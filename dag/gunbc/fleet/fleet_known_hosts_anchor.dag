@@ -238,7 +238,7 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 // never read as enrolled), writes the fragment, then READS THE FILE BACK and mints only on digest
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
-func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
+fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
   uses net: Network
 {
   if length(fleet_known_hosts_rows()) == 0 {

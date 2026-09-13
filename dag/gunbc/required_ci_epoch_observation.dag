@@ -152,7 +152,7 @@ fn required_ci_epoch_unobserved_message(cause: RequiredCiEpochUnobserved) -> Str
 // upstream wording. `cat-file -e` answers commit presence with an exit code, which is the question
 // git designed it to answer, so the two causes are decided by two typed probes rather than by
 // reading one error message twice.
-func observe_required_ci_epoch_at_commit(
+fn observe_required_ci_epoch_at_commit(
   address: GitRepositoryAddress,
   head_sha: GitRef,
 ) -> RequiredCiEpochObservation {

@@ -1,0 +1,55 @@
+module gunbc.rung_drop.native_lane_second_textual_production_reading
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// DECLARED 2026-09-12 (review 64571). The v2-native route derives its universe inside the emitted
+// compiler, and to do that before any module is prepared it reads the `module` and `import`
+// productions TEXTUALLY -- a prefix test and a first-token split, in
+// v2.compiler.compile native_lane_declared_module_name and native_lane_declared_imports.
+//
+// WHAT IS DROPPED IS SINGLE AUTHORITY OVER TWO PRODUCTIONS. The ingest fold's grammar is the
+// corpus's one reader of `module` and `import`; while these scans stand there are two, and two
+// readers of one production can disagree. The disagreement is not hypothetical: this PR already
+// found one spelling the scan could not see -- `import` followed only by spaces trims to `import`
+// with no trailing space, so a prefix test keyed on "import " classified it as not an import line
+// at all, and the module it meant to name was never walked. A line the scan misreads NARROWS the
+// derived closure, and a narrowed closure ends in a GREEN run over a smaller population rather
+// than in a visible refusal, which is the direction that hides.
+//
+// WHY IT IS DECLARED RATHER THAN FIXED HERE. The replacement is staged, not missing: the closure
+// should be computed from the FRONT END'S OWN IMPORT EDGES after a cheap parse of the seed set, at
+// which point both scans DELETE rather than stand beside the grammar. That capability does not
+// exist yet, and writing a third reading to paper over the second would be the same defect again.
+//
+// THE TRIGGER NAMES WHAT THE CAPABILITY MUST BE SUFFICIENT FOR, per DESIGN section 4b(3): not
+// "a parser exists" -- a parse that cannot yield import edges without preparing the module would
+// satisfy a weaker sentence and leave the second reading alive.
+//
+// RECORDED AS A ROW BECAUSE PROSE IS READABLE BY PEOPLE AND BY NOTHING ELSE. Until this row, the
+// dissolution condition for these scans lived only in a `//` block, so nothing could enumerate the
+// debt, rank it, or notice its trigger firing. This PR made exactly that correction for the
+// rendered driver main (gunbc.source_root_eval_driver_seed_growth) and did not make it here; the
+// asymmetry is what review 64571 caught.
+
+data native_lane_second_textual_production_reading_population: List<String> = [
+  "v2.compiler.compile native_lane_declared_module_name — the textual reading of the `module` production",
+  "v2.compiler.compile native_lane_declared_imports — the textual reading of the `import` production",
+  "v2.compiler.compile native_lane_first_malformed_import — the refusal arm that exists because the scan can misread a line",
+  "v2.compiler.compile native_lane_source_facts — their one consumer, which carries both readings onto every facts row",
+]
+
+data native_lane_second_textual_production_reading: RungDrop = RungDrop {
+  identity: "native_lane_second_textual_production_reading" as NonEmptyStr,
+  subject: "single authority over the `module` and `import` productions, for the route's universe derivation",
+  declared: "2026-09-12",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the closure computed from the front end's own import edges after a cheap parse of the seed set" },
+    population: native_lane_second_textual_production_reading_population,
+    restoration_trigger: "The route derives the universe's import closure from the FRONT END'S OWN IMPORT EDGES, after a parse of the seed set that yields those edges WITHOUT preparing each module. That capability must be sufficient for the whole derivation -- module identity and import identity both -- so that native_lane_declared_module_name and native_lane_declared_imports are DELETED rather than retained beside the grammar. A parse that yields edges only after preparation does not retire this row: preparation is the cost the scans exist to avoid, so satisfying the sentence that way would leave the second reading standing."
+  }
+}

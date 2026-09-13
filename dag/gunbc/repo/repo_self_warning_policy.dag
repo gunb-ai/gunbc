@@ -1,0 +1,37 @@
+module gunbc.repo_self_warning_policy
+
+import std.types { String, List }
+
+// THAT A WARNING IS AN ERROR IS ONE FACT ABOUT THIS REPOSITORY, SPELLED ONCE. It reaches rustc
+// two ways: as the lint arguments after clippy's `--` separator (gunbc.repo_self_build
+// repo_self_clippy_command), and as the RUSTFLAGS environment cargo forwards to every rustc it
+// spawns -- the form the v2-native route sets EXPLICITLY on the emitted compiler crate's build
+// (gunbc.witness_v2_native_route NativeRouteEmittedBuild). Until that route set it, the emitted
+// crate was built under whatever RUSTFLAGS the runner's toolchain step happened to export -- the
+// setup-rust-toolchain action's DEFAULT input, which this authority never declared -- so the same
+// crate compiled clean on a workstation and refused with status 101 in CI, and the receipt's
+// "compiled" was true of a runner rather than of the crate. The environment form is the lint
+// arguments joined by a space because that is how cargo tokenises RUSTFLAGS (whitespace-split);
+// it is derived from the same row, never re-spelled at the invocation.
+//
+// WHY IT LIVES HERE RATHER THAN BESIDE THE COMMAND THAT USES IT (2026-09-12, #10940 srv2 closure
+// receipt). This row is POLICY: what this repository asserts about warnings. Its neighbours in
+// gunbc.repo_self_build are REALIZATION: how a cargo invocation is constructed
+// (extdeps.cargo_build cargo_clippy_command, extdeps.exec.command argv_words). DESIGN section 3
+// keeps those apart, and a `.dag` import is module-level, so a consumer that wants only the policy
+// had no way to avoid the transport.
+//
+// THAT COST A REAL FAILURE, which is why the split is worth its own module rather than a comment.
+// gunbc.witness_v2_native_route imported this constant for ONE string comparison -- the admission
+// clause asking whether the recorded build denied warnings -- and thereby pulled cargo_build and
+// exec.command into the EMITTED COMPILER'S closure, because v2.compiler.compile imports that
+// witness. The emitted compiler never invokes cargo (the host harness does, before the emitted
+// binary is spawned), so the transport was reachable in a closure that cannot use it, and the
+// route's genesis build refused with 28 rustc errors in exactly those two emitted files. The
+// closure grew 180 -> 189 modules when that import landed. Policy has no transport dependency;
+// keeping it that way is what lets a judge read the policy without linking the actuator.
+data repo_self_warning_denial: List<String> = ["-D", "warnings"]
+
+fn repo_self_warning_denial_rustflags() -> String {
+  join(repo_self_warning_denial, " ")
+}
