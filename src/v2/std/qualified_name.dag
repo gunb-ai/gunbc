@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -213,6 +213,31 @@ fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
 
 fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
+}
+
+fn edge_is_qualified_name_spine_label(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
+    Positional => false
+  }
+}
+
+// O(1) gate for the fold below: a Conj with exactly the head/tail spine
+// qualified_name_from_node recognises. Walkers that skip the fold on other
+// trees must call this, not re-spell the labels.
+fn qualified_name_shape_precondition(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 2 {
+        fold(node.children, init: true, f: fn(acc, edge) {
+          acc && edge_is_qualified_name_spine_label(edge: edge)
+        })
+      } else {
+        false
+      }
+    _ => false
+  }
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {

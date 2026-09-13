@@ -10,7 +10,7 @@ import v2.lens.module_graph {
   ModuleDependencyEdge,
   dependency_edges_from_import_facts,
   import_resolution_facts_live,
-  reference_derived_resolution_facts_flagged_pending_reference_producer,
+  reference_derived_resolution_facts,
 }
 
 // XL-4 instrument: the reference-derived graph (swap body of v2.lens.module_graph) and its
@@ -82,7 +82,7 @@ fn diff_against_import(
 }
 
 fn report(source_roots: List<String>) -> Outcome<ReferenceDerivedGraphReport> {
-  match reference_derived_resolution_facts_flagged_pending_reference_producer(
+  match reference_derived_resolution_facts(
     pool_roots: source_roots,
     importer_roots: source_roots,
     exclude_substrings: instrument_exclude
