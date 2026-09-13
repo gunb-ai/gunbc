@@ -58,8 +58,11 @@ import gunbc.fleet_observation_capture_chunk {
   SourceStreamId,
   StreamPosition,
   stream_position,
-  position_at_or_before,
   compare_positions,
+  PositionBefore,
+  PositionSame,
+  PositionAfter,
+  PositionIncomparable,
   source_stream_eq,
   SourceStreamRange,
   LocalCommitStanding,
@@ -1100,7 +1103,13 @@ fn session_disagrees(a: SubjectAgreement) -> Bool {
 
 fn reaches(c: StreamContinuity, through: Nat) -> Bool {
   match c {
-    ContinuityEstablished { reach: r } => position_at_or_before(a: t_pos(at: through), b: r.verified_through) && position_at_or_before(a: r.verified_through, b: t_pos(at: through))
+    ContinuityEstablished { reach: r } =>
+      match compare_positions(a: r.verified_through, b: t_pos(at: through)) {
+        PositionSame => true
+        PositionBefore => false
+        PositionAfter => false
+        PositionIncomparable { left: _, right: _ } => false
+      }
     ContinuityGap { gap: _, cause: _ } => false
     ContinuityUnknown { detail: _ } => false
   }

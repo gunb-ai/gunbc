@@ -672,18 +672,16 @@ fn range_end(range: SourceStreamRange) -> StreamPosition {
   position_advanced_by(p: range.first, extent: range.length)
 }
 
-// COVERAGE IS DECIDED THROUGH THE POSITION ORDER, so a comparison across two streams cannot answer
-// true by arithmetic accident -- it cannot answer at all, which is the point of the refusal arm.
-fn range_covers(outer: SourceStreamRange, inner: SourceStreamRange) -> Bool {
-  position_at_or_before(a: outer.first, b: inner.first)
-  && position_at_or_before(a: range_end(range: inner), b: range_end(range: outer))
-}
-
-fn position_at_or_before(a: StreamPosition, b: StreamPosition) -> Bool {
-  match compare_positions(a: a, b: b) {
-    PositionBefore => true
-    PositionSame => true
-    PositionAfter => false
-    PositionIncomparable { left: _, right: _ } => false
-  }
-}
+// THERE IS DELIBERATELY NO Bool OVER PositionOrder IN THIS MODULE'S SURFACE.
+//
+// range_covers and position_at_or_before stood here and are DELETED. position_at_or_before mapped
+// PositionIncomparable to `false` -- the exact collapse this branch files as a class and removed from
+// three folds -- and range_covers was its only non-test caller while having no caller of its own at
+// all. So the instrument that caused the defect was left exported, where the next caller would
+// reproduce it, and the one site cited to justify keeping it was itself dangling. Both halves of the
+// filed class in one pair of declarations: an unconsumed projection, unconsumed precisely because
+// every consumer needs the arm it discards.
+//
+// A caller that wants coverage matches compare_positions and says what an incomparable pair means for
+// its own question. That is three lines at the call site instead of one, and the three lines cannot
+// quietly answer `false` for two different streams.
