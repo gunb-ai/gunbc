@@ -1356,7 +1356,7 @@ fn arm_set_consumer_planning(
     };
     let base_commit = git_stdout(&workspace, &["rev-parse", &base_commit])?;
     let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
-    match reconstruct_base_index(head_index, &base_commit, &head_commit)? {
+    match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
             Ok(ArmSetConsumerPlanning::NoSubject { head })
         }
