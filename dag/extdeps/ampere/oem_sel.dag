@@ -89,10 +89,16 @@ data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelPr
   ],
 }
 
-// §3c frontier: ampere_oem_sel_record_match. Consumer: the PreOs OEM-decode / SEL axis in
-// gunbc.machine_intake_pre_os_observation_capabilities on gunbc#11110 (this PR does not mint
-// that file). Until that lands, a 0xDE (222) record with Ampere's manufacturer bytes cannot
-// inhabit AmpereBootSyndromeOemSel.
+// Deferred consumer: the raw-record SEL layout-applicability ingestion change in
+// gunbc.machine_intake_pre_os_replay. Its trigger is a reader that obtains the
+// sensor number and manufacturer octets from the same independently read raw
+// record, calls ampere_oem_sel_record_match, and retains the resulting layout
+// applicability beside that record in replay. The current rendered SEL reader
+// does not expose those fields; the capabilities module's existence does not
+// discharge this frontier. The witness exercises the matcher only.
+// Layout applicability is not payload decoding: this matcher cannot establish
+// OemDecodeAvailable or assign a meaning to the opaque 0xDE payloads. Such a
+// decode still requires its own manufacturer-cited authority and consumer.
 type AmpereOemSelRecordMatch
   = AmpereBootSyndromeOemSel
   | AmpereOemSelSensorOutsideLayout { sensor: Int }

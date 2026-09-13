@@ -2,9 +2,10 @@ module test.claim.pre_os_observer_witness
 
 import std.types { Bool, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_sel_stimulus_listener { sel_read, sel_after, sel_is_stimulus }
+import gunbc.machine_intake_sel_stimulus_listener { sel_read, sel_after }
 import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_terminal_from_console, pre_os_has_banner, sol_activation_banner }
-import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated }
+import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated, BootRestart }
+import extdeps.bmc.ipmi_sel { InitiatedByPowerUp }
 import gunbc.machine_intake_pre_os_observer { pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment }
 import gunbc.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem }
 import std.goal_assessment { GoalIndeterminate, GoalAssessmentRefused, GoalSatisfied }
@@ -20,7 +21,7 @@ test fn w_watermark_requires_new_record_and_preserves_bmc_identity() -> Bool {
       ObservationRefused { cause: _ } => false
       ObservationEstablished { observed: delta } => count(delta.events) == 1 && match delta.events.first() {
         Absent => false
-        Present { value: event } => sel_is_stimulus(event: event) && event.record_id == 1670 && event.bmc_clock_rendering == "09/12/2026 10:59:51"
+        Present { value: event } => (match event.kind { BootRestart { offset: InitiatedByPowerUp } => true _ => false }) && event.record_id == 1670 && event.bmc_clock_rendering == "09/12/2026 10:59:51"
       }
     }
   }

@@ -107,17 +107,3 @@ fn sel_after(watermark: SelWatermark, text: String) -> ObservationAttempt<SelDel
       }
   }
 }
-
-// ACPI S0 is a stimulus alternative, never a second restart after power-up.
-// Match fields, not substrings anywhere in a row (OEM text is not a sensor).
-fn sel_is_stimulus(event: SelWindowEvent) -> Bool {
-  match event.kind {
-    BootRestart { offset } => match offset { InitiatedByPowerUp => true _ => false }
-    OtherStandardEvent { rendering } => {
-      let fields = map(split(s: rendering as String, delimiter: "|"), field => trim(field))
-      count(fields) == 6 && starts_with(s: sel_field(fields: fields, index: 3), prefix: "System ACPI Power State ")
-        && sel_field(fields: fields, index: 4) == "S0/G0: working" && sel_field(fields: fields, index: 5) == "Asserted"
-    }
-    _ => false
-  }
-}
