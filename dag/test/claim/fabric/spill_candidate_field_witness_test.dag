@@ -23,6 +23,7 @@ import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts, CompliancePostureRevision,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   ProviderPathUnread,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated,
   DownstreamProviderPopulation, NoDownstreamProviders,
 }
 import product.fabric.provider_admission {
@@ -234,10 +235,23 @@ fn s_facts(route: ProviderRoute) -> ProviderRouteFacts {
   }
 }
 
+// THE POSTURE PERMITS THE JURISDICTION THIS WITNESS'S OWN PATHS CITE, and it enumerates rather than
+// leaving the population unread, because an unread population refuses every located path and would
+// take the positive control down with the reds. Jurisdiction admission is gunbc#11194's subject and
+// has its own witnesses; this file states a well-formed posture so that the thing IT is about - the
+// offer-to-route correspondence - is what its reds actually move.
+//
+// No drop enrollments: nothing here is enrolled in the jurisdiction rung drop, and an empty list is
+// the honest value rather than a placeholder.
 fn s_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_posture_authority"),
     revision: s_hash(seed: "spill-witness-posture-r1"),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_jurisdiction"),
+      further: [],
+    },
+    jurisdiction_drop_enrollments: [],
   }
 }
 
