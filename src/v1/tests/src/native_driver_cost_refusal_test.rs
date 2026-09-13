@@ -209,3 +209,93 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
          {eval_start}: the prepared module's evaluation is inside its preparation span"
     );
 }
+
+// Execute the emitted observer itself: constructing a guard records entry, early return drops
+// it, uncalled producers stay zero, and deleting an entry guard must turn the same assertion red.
+#[test]
+fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
+    use std::process::Command;
+    use v1_compiler::std_compiler_entry::native_driver_producer_roster;
+    use v1_compiler::v1_compiler_emit_rust::{
+        emit_native_producer_entry, emit_native_producer_runtime,
+    };
+
+    let root = std::env::temp_dir().join(format!(
+        "native-producer-observer-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("test clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).expect("scratch directory");
+    let roster = native_driver_producer_roster();
+    assert_eq!(roster.len(), 5);
+    assert!(
+        emit_native_producer_entry("unrelated.module".into(), "dag_language_model".into())
+            .is_empty()
+    );
+    let runtime = emit_native_producer_runtime();
+    for missing_guard in [false, true] {
+        let mut source = runtime.clone();
+        for (i, row) in roster.iter().enumerate() {
+            let guard = emit_native_producer_entry(
+                row.declaration.module_path.clone(),
+                row.declaration.decl_name.clone(),
+            );
+            assert!(!guard.is_empty(), "roster declaration is not observed");
+            let entry = if missing_guard && i == 0 { "" } else { &guard };
+            source.push_str(&format!(
+                "fn probe_{i}() -> bool {{\n{entry} return true; }}\n"
+            ));
+        }
+        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.1 == 0 && r.2 == 0));\n");
+        for (i, _) in roster.iter().enumerate() {
+            source.push_str(&format!(
+                "for _ in 0..{} {{ assert!(probe_{i}()); }}\n",
+                i + 2
+            ));
+        }
+        source.push_str("for (i, (_, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
+        let path = root.join("observer.rs");
+        let binary = root.join("observer");
+        std::fs::write(&path, source).expect("write emitted observer");
+        let built = Command::new("rustc")
+            .args(["--edition=2021", "-Dwarnings"])
+            .arg(&path)
+            .arg("-o")
+            .arg(&binary)
+            .output()
+            .expect("compile emitted observer");
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let executed = Command::new(&binary)
+            .output()
+            .expect("execute emitted observer");
+        assert_eq!(
+            executed.status.success(),
+            !missing_guard,
+            "{}",
+            String::from_utf8_lossy(&executed.stderr)
+        );
+    }
+    std::fs::remove_dir_all(root).expect("remove scratch directory");
+}
+
+#[test]
+fn producer_observations_are_siblings_not_exclusive_rows() {
+    let main = driver_main();
+    assert!(main.contains("\"producer_counts\": producer_counts"));
+    assert!(main.contains("Vec<NativeDriverProducerCount>"));
+    let exclusive = main
+        .split("let exclusive =")
+        .nth(1)
+        .expect("exclusive value")
+        .split("let accounting =")
+        .next()
+        .expect("exclusive construction");
+    assert!(!exclusive.contains("producer_counts"));
+}
