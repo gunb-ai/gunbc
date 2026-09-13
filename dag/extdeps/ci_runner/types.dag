@@ -257,6 +257,9 @@ fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -
 // labels and sizes and withhold the processor. A quoted string is the seller's
 // own words; a catalog DeclarationRef is used only when this repository already
 // carries the named SKU (Ampere Altra Q80-30) and the seller names that SKU.
+// Cited arms carry cited_surface the same way CurrentlyAcceptingCustomers
+// carries status_surface: the constructor is unwritable without naming the
+// seller page that stated the silicon.
 type ArmSiliconStanding
   = ArmSiliconCitedSku { cpu: DeclarationRef, cited_surface: NonEmptyStr }
   | ArmSiliconCitedWords { quoted_family: NonEmptyStr, cited_surface: NonEmptyStr }
