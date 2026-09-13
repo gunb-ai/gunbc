@@ -1,7 +1,7 @@
 module test.claim.arm_ci_seller_census_witness
 
 import std.types { Bool, List, NonEmptyStr }
-import std.measure { credits_per_minute_count, hardware_thread_count }
+import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
@@ -9,6 +9,7 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   ArmListPriceStanding,
   ArmCreditsPerMinute,
+  credits_per_minute_count,
   RunnerCatalogAvailability,
   RunnerShapeRow,
   RunnerShapesCited,

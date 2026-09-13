@@ -1002,25 +1002,6 @@ pub type MoneyPerMonth = Rc<MoneyRate<PerMonth>>;
 
 pub type MoneyOnce = Rc<MoneyRate<Once>>;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CreditRate<P> {
-    pub count: Nat,
-    pub _phantom: std::marker::PhantomData<P>,
-}
-
-pub type CreditsPerMinute = Rc<CreditRate<PerMinute>>;
-
-pub fn credits_per_minute(count: Nat) -> CreditsPerMinute {
-    Rc::new(CreditRate {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
-    r.count.clone()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerKilowattHour(pub std::marker::PhantomData<()>);
 

@@ -2,13 +2,14 @@ module extdeps.ci_runner.circleci
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { credits_per_minute, hardware_thread_count }
+import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
   ArmCreditsPerMinute,
   ArmListPriceStanding,
   CatalogSnapshot,
+  credits_per_minute,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
   EntitlementUnstated,
