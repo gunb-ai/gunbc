@@ -7,6 +7,9 @@ import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathUnread,
   DownstreamProviderPopulation, DownstreamProvidersUnread,
+  ProviderRegionObservation, ProviderRegionUnread,
+  ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
 }
 
 // THE DURABLE-ORIGIN THIS REPOSITORY ANSWERS THE NINE-PATH CLOSURE FOR. PRODUCTION DOES NOT MINT A ROUTE.
@@ -23,11 +26,11 @@ import product.fabric.provider_route {
 // gunbai-fabric-origin's Get Bucket location, so no reported-location observation is minted here.
 //
 // WHAT PRODUCTION EXECUTES. cloudflare_r2_durable_origin_route_standing is
-// CloudflareR2RouteRegionUnobserved carrying cloudflare_r2_region_unread_obligation.
+// ProviderRouteRegionUnobserved carrying cloudflare_r2_region_unread_obligation.
 // cloudflare_r2_route_facts_population is therefore empty: there is no origin ProviderRoute, so
 // there is no origin row for admit_provider_use. The nine-path closure and downstream population
 // are still answered (every path Unread; Absent taken zero times). The admit_provider_use pair
-// lives only in the witness, over a route minted in the CloudflareR2RegionRead arm of the same
+// lives only in the witness, over a route minted in the ProviderRegionRead arm of the same
 // coproduct — a synthetic observed region, not this origin.
 //
 // THE REGION SLOT IS NOT A PLACE TO RECORD AUTOMATIC. product.fabric.provider_route says the
@@ -43,38 +46,23 @@ fn cloudflare_r2_service_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "R2S3Endpoint")
 }
 
-type CloudflareR2RegionObservation
-  = CloudflareR2RegionRead { region: DeclarationRef }
-  | CloudflareR2RegionUnread { obligation: DeclarationRef }
+data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. Create Bucket locationHint (r2_create_bucket_location_hint_reading, read 2026-09-13) is a requested placement. Get Bucket location (r2_get_bucket_location_reading, read 2026-09-13) is a reported location. Those are two upstream fields that share location tokens; collapsing them is a section 3 meaning-fork. This repository has not queried gunbai-fabric-origin, so no Get Bucket location is an observation of ours. Automatic and R2JurisdictionDefault are not values of ProviderRoute.region. RESOLVED BY a Get Bucket (or equivalent) observation of this bucket's location field sufficient to name the operating region, or by recreating the origin under a Jurisdictional Restriction that names a jurisdiction — at which point this standing takes ProviderRegionRead with that named location as region. A reported location is not a residency guarantee and is not the nine-path closure. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or Create Bucket locationHint."
 
-type CloudflareR2RouteStanding
-  = CloudflareR2RouteObserved { route: ProviderRoute }
-  | CloudflareR2RouteRegionUnobserved { obligation: DeclarationRef }
-
-data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. Create Bucket locationHint (r2_create_bucket_location_hint_reading, read 2026-09-13) is a requested placement. Get Bucket location (r2_get_bucket_location_reading, read 2026-09-13) is a reported location. Those are two upstream fields that share location tokens; collapsing them is a section 3 meaning-fork. This repository has not queried gunbai-fabric-origin, so no Get Bucket location is an observation of ours. Automatic and R2JurisdictionDefault are not values of ProviderRoute.region. RESOLVED BY a Get Bucket (or equivalent) observation of this bucket's location field sufficient to name the operating region, or by recreating the origin under a Jurisdictional Restriction that names a jurisdiction — at which point this standing takes CloudflareR2RegionRead with that named location as region. A reported location is not a residency guarantee and is not the nine-path closure. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or Create Bucket locationHint."
-
-fn cloudflare_r2_durable_origin_region() -> CloudflareR2RegionObservation {
-  CloudflareR2RegionUnread {
+fn cloudflare_r2_durable_origin_region() -> ProviderRegionObservation {
+  ProviderRegionUnread {
     obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
   }
 }
 
-fn cloudflare_r2_route(region: CloudflareR2RegionObservation) -> CloudflareR2RouteStanding {
-  match region {
-    CloudflareR2RegionUnread { obligation } =>
-      CloudflareR2RouteRegionUnobserved { obligation: obligation },
-    CloudflareR2RegionRead { region: observed } =>
-      CloudflareR2RouteObserved {
-        route: ProviderRoute {
-          provider: cloudflare_r2_provider_ref(),
-          service: cloudflare_r2_service_ref(),
-          region: observed,
-        },
-      },
-  }
+fn cloudflare_r2_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: cloudflare_r2_provider_ref(),
+    service: cloudflare_r2_service_ref(),
+    region: region,
+  )
 }
 
-fn cloudflare_r2_durable_origin_route_standing() -> CloudflareR2RouteStanding {
+fn cloudflare_r2_durable_origin_route_standing() -> ProviderRouteStanding {
   cloudflare_r2_route(region: cloudflare_r2_durable_origin_region())
 }
 
@@ -156,9 +144,9 @@ fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
 // THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION. Nobody has stated that we are
 // willing to place work on this vendor's default-jurisdiction R2 under a named posture. Writing a
 // roster row here to make the module look complete would be the fabricated authority the gate exists
-// to close. Production standing is CloudflareR2RouteRegionUnobserved; this function projects that
+// to close. Production standing is ProviderRouteRegionUnobserved; this function projects that
 // standing to an empty facts list. admit_provider_use is not invoked here. The witness mints a
-// synthetic CloudflareR2RegionRead route and calls admit_provider_use on that pair.
+// synthetic ProviderRegionRead route and calls admit_provider_use on that pair.
 //
 // DECLARED FRONTIER (DESIGN section 3c). The production consumer is a posture producer that mints a
 // CompliancePostureRevision whose permitted_jurisdictions enumerate only routes whose facts have
@@ -167,7 +155,7 @@ fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
 // consumer of the admission pair is the witness.
 fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
   match cloudflare_r2_durable_origin_route_standing() {
-    CloudflareR2RouteRegionUnobserved { obligation } => [],
-    CloudflareR2RouteObserved { route } => [cloudflare_r2_facts(route: route)],
+    ProviderRouteRegionUnobserved { obligation } => [],
+    ProviderRouteObserved { route } => [cloudflare_r2_facts(route: route)],
   }
 }

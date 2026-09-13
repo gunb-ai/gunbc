@@ -8,6 +8,8 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   ProviderPathUnread, DownstreamProviderPopulation, NoDownstreamProviders,
+  ProviderRegionObservation, ProviderRegionRead,
+  ProviderRouteObserved, ProviderRouteRegionUnobserved,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -24,10 +26,6 @@ import product.supplier.cloudflare_r2 {
   cloudflare_r2_route_facts_population,
   cloudflare_r2_data_paths,
   cloudflare_r2_facts,
-  CloudflareR2RegionObservation,
-  CloudflareR2RegionRead,
-  CloudflareR2RouteObserved,
-  CloudflareR2RouteRegionUnobserved,
 }
 
 data r2_witness_customer_profile: NonEmptyStr = "r2-witness-customer-profile"
@@ -75,8 +73,8 @@ fn t_agreement() -> DeclarationRef {
 // It is not gunbai-fabric-origin: that standing is Unobserved, so no origin route exists to
 // admit. The pair below asks whether admit_provider_use still refuses an unread path and
 // admits once that path is resolved, on a route the coproduct is allowed to mint.
-fn t_read_region() -> CloudflareR2RegionObservation {
-  CloudflareR2RegionRead {
+fn t_read_region() -> ProviderRegionObservation {
+  ProviderRegionRead {
     region: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
   }
 }
@@ -170,8 +168,8 @@ fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: Dec
 
 test fn the_durable_origin_has_no_admissible_facts() -> Bool {
   match cloudflare_r2_durable_origin_route_standing() {
-    CloudflareR2RouteObserved { route } => false,
-    CloudflareR2RouteRegionUnobserved { obligation } => declaration_ref_eq(
+    ProviderRouteObserved { route } => false,
+    ProviderRouteRegionUnobserved { obligation } => declaration_ref_eq(
       a: obligation,
       b: decl_ref(
         module_path: "product.supplier.cloudflare_r2",
@@ -242,8 +240,8 @@ fn t_facts_with_durable_storage(route: ProviderRoute, storage: ProviderPathStand
 
 test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool {
   match cloudflare_r2_route(region: t_read_region()) {
-    CloudflareR2RouteRegionUnobserved { obligation } => false,
-    CloudflareR2RouteObserved { route } => t_denied_with(
+    ProviderRouteRegionUnobserved { obligation } => false,
+    ProviderRouteObserved { route } => t_denied_with(
       a: t_decide(
         route: route,
         facts: t_facts_with_durable_storage(route: route, storage: ProviderPathUnread {
@@ -258,8 +256,8 @@ test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> 
 
 test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
   match cloudflare_r2_route(region: t_read_region()) {
-    CloudflareR2RouteRegionUnobserved { obligation } => false,
-    CloudflareR2RouteObserved { route } => match t_decide(
+    ProviderRouteRegionUnobserved { obligation } => false,
+    ProviderRouteObserved { route } => match t_decide(
       route: route,
       facts: t_facts_with_durable_storage(route: route, storage: t_resolved()),
     ) {
@@ -287,8 +285,8 @@ test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
 
 test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
   match cloudflare_r2_route(region: t_read_region()) {
-    CloudflareR2RouteRegionUnobserved { obligation } => false,
-    CloudflareR2RouteObserved { route } => t_denied_with(
+    ProviderRouteRegionUnobserved { obligation } => false,
+    ProviderRouteObserved { route } => t_denied_with(
       a: t_decide(route: route, facts: cloudflare_r2_facts(route: route)),
       tag: "downstream-unassessed",
       located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_downstream_obligation"),
