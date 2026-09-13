@@ -695,10 +695,23 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // adding an arm. It buys nothing about whether the policy change itself is right, which is
 // fierce-lark-661's call and is recorded above as theirs.
 //
-// THE CONDITIONS ARE FIELDS, NOT PROSE, because a condition written as narrative is one a later
-// reader satisfies by paraphrase. Both must hold. FAILING EITHER LEAVES THE ROWS IN THE REFUSED
-// CLASS -- a disposition that cannot fail is an exemption wearing a condition's clothes, which is
-// the whole objection this boundary exists to answer rather than to repeat.
+// THE CONDITIONS ARE SEPARATELY NAMED FIELDS, AND THEIR VALUES ARE STILL PROSE. An earlier draft
+// of this comment said "THE CONDITIONS ARE FIELDS, NOT PROSE, because a condition written as
+// narrative is one a later reader satisfies by paraphrase" -- which is false about this row, as
+// review 65393 noticed and declined to file. `condition_authored_before_enqueue` and
+// `condition_follow_up_lands` are `NonEmptyStr` paragraphs: the split makes the two conditions
+// separately citable and separately falsifiable, and it does NOT close the paraphrase gap the
+// sentence claimed to close. A reader can still satisfy either by restating it.
+//
+// WHAT WOULD CLOSE IT is a condition whose satisfaction is DECIDABLE from the repository -- an
+// authored-before timestamp compared against an enqueue timestamp, which is exactly the pair this
+// row's own specimens were corrected by. That is not modelled here because nothing consumes it
+// yet, and modelling ahead of a consumer is the dangling declaration DESIGN section 3c refuses.
+// It is named as what the next rung looks like rather than promised.
+//
+// Both conditions must hold. FAILING EITHER LEAVES THE ROWS IN THE REFUSED CLASS -- a disposition
+// that cannot fail is an exemption wearing a condition's clothes, which is the whole objection
+// this boundary exists to answer rather than to repeat.
 type RefusalClassBoundary {
   class_bounded: MaintenanceRefusal
   excluded_shape: NonEmptyStr
@@ -748,7 +761,7 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
   specimens: [
     "gunbc#10940's 181 v2-native-route rows: consumed by their own merge (6c7b081961, merged 2026-09-12T22:45:52Z) and deleted by gunbc#11156. CONDITION ONE NOT MET: the deletion was authored in commit a5bc810f68 at 2026-09-12T23:55:07Z, one hour and nine minutes AFTER the carrier merged -- so after it was enqueued, which is the opposite of what the condition requires. Condition two met: the deletion landed." as NonEmptyStr,
     "gunbc#11156's 2 Filesystem/Clock rows: consumed by their own merge (d7b7ab96c1f, merged 2026-09-13T02:50:04Z) and deleted by gunbc#11240. CONDITION ONE NOT MET: #11240's deletion was authored at 2026-09-13T05:14:49Z, two hours and twenty-four minutes AFTER the carrier merged. Condition two met: it landed at 6e70be25146." as NonEmptyStr,
-    "gunbc#11214's 15 rows: PENDING, follow-up authored, neither condition resolved yet." as NonEmptyStr,
+    "gunbc#11214's 15 rows: PENDING, follow-up authored, neither condition resolved yet. AND IT IS THE ONLY SPECIMEN THAT CAN MEET CONDITION ONE, which inverts how this list reads: its carrier has not been enqueued, so the pre-enqueue requirement is still satisfiable for it, while the two CLOSED specimens above are the non-compliant ones. The pending case is the potentially-compliant one and the recorded successes are not." as NonEmptyStr,
     "SO THIS BOUNDARY PRESCRIBES ITS FIRST CONDITION RATHER THAN ADJUDICATING IT, and the specimens are what establish that rather than what hide it. NOT ONE measured specimen authored its deletion before the carrying change was enqueued: in both closed cases the rows were noticed as CONSUMED by a floor refusal after the carrier had already landed, and the follow-up was written in response. That is the practice the condition exists to end, so the evidence here shows the condition is NEW. What the specimens DO establish is condition two -- both deletions landed, promptly and by the authoring lane -- and that the disposition is sound: in both cases the rows were consumed by their own merge and nothing outlived the change that needed them." as NonEmptyStr,
     "THE CONSEQUENCE FOR ENFORCEMENT, stated here because a reader who takes the specimens as precedent will size it wrongly: a condition with no precedent is carried ENTIRELY by gunbc#11250's owner charge and by the merger until it lands. There is no established practice underwriting condition one, so nothing absorbs a lapse if that charge is not built." as NonEmptyStr,
   ],
