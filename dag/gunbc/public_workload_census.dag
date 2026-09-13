@@ -252,6 +252,9 @@ fn observed_job_run_attempt(job: WorkflowJobRun) -> Int {
   job.run_attempt
 }
 
+// This census is scoped to single-label runners. An empty labels list is a fact about
+// the resource. Two or more labels are JobResourceCarriedMultipleLabels naming the set;
+// the first element is not the observed runner.
 type ObservedLabelStanding
   = ObservedLabel { label: String }
   | NoRunObservedForLabel { obligation: NonEmptyStr }
