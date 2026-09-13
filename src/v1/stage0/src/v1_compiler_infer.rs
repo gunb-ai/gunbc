@@ -213,7 +213,7 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self, type_argument_node,
+    template_return_is_receiver_self, type_argument_node, type_node_child_type, type_node_children,
 };
 pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -6516,13 +6516,12 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
                 };
                 ((here.clone() || {
                     let mut __found = false;
-                    for ch in n.children.clone().iter().cloned() {
+                    for ch in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                        .iter()
+                        .cloned()
+                    {
                         if direct_call_formal_has_unbound_type_variable_at(
-                            if (n.connective.clone() == Connective::NoConnective) {
-                                crate::v1_compiler_infer_types::type_argument_node(ch.clone())
-                            } else {
-                                crate::v1_compiler_infer_types::child_type_node(ch.clone())
-                            },
+                            crate::v1_compiler_infer_types::type_node_child_type(ch.clone()),
                             (depth.clone() + 1),
                         ) {
                             __found = true;

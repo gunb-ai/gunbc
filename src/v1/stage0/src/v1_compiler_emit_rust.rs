@@ -219,6 +219,7 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node, is_coproduct_type, is_product_type,
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, normalize_access_type_node, resolved_type, type_argument_node,
+    type_node_child_type, type_node_children,
 };
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v1_compiler_languages::{
@@ -3895,13 +3896,12 @@ pub fn type_node_has_closure_unbound_generic_atom(
         }
         if {
             let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
+            for c in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_node_has_closure_unbound_generic_atom(
-                    if (n.connective.clone() == Connective::NoConnective) {
-                        crate::v1_compiler_infer_types::type_argument_node(c.clone())
-                    } else {
-                        crate::v1_compiler_infer_types::child_type_node(c.clone())
-                    },
+                    crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                     generic_param_names.clone(),
                     env.clone(),
                     source_indices.clone(),
@@ -3967,13 +3967,12 @@ pub fn type_node_has_unbound_type_variable(
         }
         if {
             let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
+            for c in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_node_has_unbound_type_variable(
-                    if (n.connective.clone() == Connective::NoConnective) {
-                        crate::v1_compiler_infer_types::type_argument_node(c.clone())
-                    } else {
-                        crate::v1_compiler_infer_types::child_type_node(c.clone())
-                    },
+                    crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                     generic_param_names.clone(),
                     source_indices.clone(),
                 ) {
@@ -22525,13 +22524,12 @@ pub fn type_expr_reaches_sealed_carrier(
         );
         let child_reaches = {
             let mut __found = false;
-            for child in n.children.clone().iter().cloned() {
+            for child in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_expr_reaches_sealed_carrier(
-                    if (n.connective.clone() == Connective::NoConnective) {
-                        crate::v1_compiler_infer_types::type_argument_node(child.clone())
-                    } else {
-                        crate::v1_compiler_infer_types::child_type_node(child.clone())
-                    },
+                    crate::v1_compiler_infer_types::type_node_child_type(child.clone()),
                     emit_info.clone(),
                     source_indices.clone(),
                     seen.clone(),
@@ -22563,9 +22561,14 @@ pub fn type_expr_reaches_sealed_carrier(
                                     v1_rt::rc_map_insert(seen.clone(), name.clone(), true);
                                 {
                                     let mut __found = false;
-                                    for child in decl.children.clone().iter().cloned() {
+                                    for child in crate::v1_compiler_infer_types::type_node_children(
+                                        decl.clone(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
                                         if type_expr_reaches_sealed_carrier(
-                                            crate::v1_compiler_infer_types::child_type_node(
+                                            crate::v1_compiler_infer_types::type_node_child_type(
                                                 child.clone(),
                                             ),
                                             emit_info.clone(),
@@ -22590,7 +22593,7 @@ pub fn type_expr_reaches_sealed_carrier(
 
 pub fn decl_children_forbid_deserialize(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
+    item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -22602,9 +22605,12 @@ pub fn decl_children_forbid_deserialize(
         );
         {
             let mut __found = false;
-            for child in children.iter().cloned() {
+            for child in crate::v1_compiler_infer_types::type_node_children(item.clone())
+                .iter()
+                .cloned()
+            {
                 if type_expr_reaches_sealed_carrier(
-                    crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                    crate::v1_compiler_infer_types::type_node_child_type(child.clone()),
                     emit_info.clone(),
                     source_indices.clone(),
                     seen.clone(),
@@ -22628,7 +22634,7 @@ pub fn item_forbids_deserialize(
     } else {
         decl_children_forbid_deserialize(
             crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-            item.children.clone(),
+            item.clone(),
             emit_info.clone(),
             source_indices.clone(),
         )
