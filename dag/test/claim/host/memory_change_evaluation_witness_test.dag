@@ -10,13 +10,14 @@ import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.memory_configuration {
+  memory_module_label,
   MemoryConfiguration, MemoryChangeProposal, MemoryPlanAction, PositionedMemoryModule, MemoryDeliveryVariant,
   MemoryOperatingObligation, MemoryTrainingFailureScreen, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport, MemoryTraining, MemoryBoot,
   AdditionalMemoryRequirement, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
   memory_operating_obligations,
 }
 import gunbc.memory_observation {
-  MemoryEvaluationEvidence, MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, ConfigurationQualificationReceipt,
+  MemoryEvaluationEvidence, MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, ConfigurationQualificationReceipt,
   memory_collector_refusal, memory_capture_covers_population,
 }
 import gunbc.memory_configuration_evaluation {
@@ -60,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn memory_test_inventory(configuration: MemoryConfiguration) -> String {
   let inventory = map(configuration.population, dimm => concat(
     "  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S0: ",
-    if declaration_ref_eq(a: dimm.part, b: mtcollins_ads_part) { "36ADS2G72PZ-2G1A1" } else { dimm.catalog.part_number as String }))
+    if declaration_ref_eq(a: dimm.part, b: mtcollins_ads_part) { "36ADS2G72PZ-2G1A1" } else { memory_module_label(dimm: dimm) as String }))
   concat("DRAM populated DIMMs:\n", join(inventory, "\n"))
 }
 
@@ -163,7 +164,7 @@ test fn w_missing_candidate_package_is_unresolved() -> Bool {
       let original = memory_test_uniform(fixture_roles: fixture_roles)
       let configuration = MemoryConfiguration { platform: original.platform,
         population: map(original.population, dimm => PositionedMemoryModule {
-          position: dimm.position, part: dimm.part, catalog: dimm.catalog, origin: dimm.origin,
+          position: dimm.position, part: dimm.part, identity: dimm.identity, origin: dimm.origin,
           alternatives: map(dimm.alternatives, v => MemoryDeliveryVariant { identity: v.identity,
             package: if dimm.position.controller == 0 { none } else { v.package }, register_vendor: v.register_vendor }),
         }) }
@@ -237,7 +238,7 @@ test fn w_empty_coverage_cannot_admit_production() -> Bool {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
       let a = memory_test_assess(fixture_roles: fixture_roles, configuration: memory_test_uniform(fixture_roles: fixture_roles))
-      let empty = MemoryConfigurationAssessment { configuration: a.configuration, evidence: a.evidence, required: [], results: [] }
+      let empty = MemoryConfigurationAssessment { configuration: a.configuration, evidence: a.evidence, mixture_observations: a.mixture_observations, required: [], results: [] }
       match memory_configuration_admission_refusal(a: empty, purpose: ProductionMemoryPurchase) { Present { value: _ } => true, Absent => false }
     }
   }
@@ -262,8 +263,8 @@ data memory_test_short_capture_seconds: Seconds = 3
 fn memory_test_broken_collector(fixture_roles: List<MtCollinsChannelPopulationRole>, failed: Bool) -> MemoryCollectorReceipt {
   let c = mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: memory_test_payload(fixture_roles: fixture_roles))
   MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
-    observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
-    collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { memory_test_short_capture_seconds },
+    observed_stimulus: c.observed_stimulus, coverage: if failed { c.coverage } else {
+      MemoryCaptureInterval { required_start: 0, required_end: 645, collector_start: 0, collector_end: memory_test_short_capture_seconds } },
     exit_code: if failed { 1 } else { 0 }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
 }
 
@@ -271,7 +272,7 @@ test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
-      fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(
+      fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(expected_byte: 145,
         attempt: "control", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: memory_test_broken_collector(fixture_roles: fixture_roles, failed: failed)) {
           ObservationRefused { cause: _ } => true
           ObservationEstablished { observed: _ } => false
@@ -286,10 +287,10 @@ test fn w_failed_collector_cannot_establish_class_qualification() -> Bool {
     PopulationRolesResolved { roles: fixture_roles } => {
       let configuration = mtcollins_witnessed_configuration(roles: fixture_roles)
       let evidence = memory_test_evidence(fixture_roles: fixture_roles)
-      let changed = MemoryEvaluationEvidence { revision: evidence.revision, mixture: evidence.mixture, training_failures: [],
+      let changed = MemoryEvaluationEvidence { revision: evidence.revision, mixtures: evidence.mixtures, training_failures: [],
         qualifications: [ConfigurationQualificationReceipt { configuration: configuration, collector: memory_test_broken_collector(fixture_roles: fixture_roles, failed: true),
           standings: map(configuration.population, dimm => HostMemoryStanding {
-            host: configuration.platform.host, part_number: dimm.catalog.part_number, population: [dimm.position.connector],
+            host: configuration.platform.host, part_number: memory_module_label(dimm: dimm), population: [dimm.position.connector],
             class_support: ClassSupportedByBoard, part_qualification: PartQualificationUnobserved,
             training: TrainingOutcomeUnobserved, boot: BootOutcomeUnobserved, observed_at: 0,
           }) }] }
@@ -304,7 +305,7 @@ test fn w_procurement_alternatives_name_the_delivery_condition() -> Bool {
     PopulationRolesResolved { roles: fixture_roles } => {
       let original = mtcollins_witnessed_configuration(roles: fixture_roles)
       let uncertain = MemoryConfiguration { platform: original.platform, population: map(original.population, dimm =>
-        PositionedMemoryModule { position: dimm.position, part: dimm.part, catalog: dimm.catalog, origin: dimm.origin,
+        PositionedMemoryModule { position: dimm.position, part: dimm.part, identity: dimm.identity, origin: dimm.origin,
           alternatives: if dimm.position.socket == 0 && dimm.position.controller == 0 {
             concat(mtcollins_memory_variants(ads: true), mtcollins_memory_variants(ads: false))
           } else { mtcollins_memory_variants(ads: false) } }) }
@@ -326,7 +327,7 @@ test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool 
     PopulationRolesResolved { roles: fixture_roles } => {
       let original = memory_test_uniform(fixture_roles: fixture_roles)
       let with_registers = MemoryConfiguration { platform: original.platform, population: map(original.population, dimm =>
-        PositionedMemoryModule { position: dimm.position, part: dimm.part, catalog: dimm.catalog, origin: dimm.origin,
+        PositionedMemoryModule { position: dimm.position, part: dimm.part, identity: dimm.identity, origin: dimm.origin,
           alternatives: map(dimm.alternatives, v => MemoryDeliveryVariant { identity: v.identity, package: v.package,
             register_vendor: Present { value: "b3:80" } }) }) }
       let absent = memory_test_assess(fixture_roles: fixture_roles, configuration: original)
@@ -343,19 +344,17 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
     PopulationRolesResolved { roles: fixture_roles } => {
       let c = mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: memory_test_payload(fixture_roles: fixture_roles))
       let repeated = MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
-        observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
-        collector_start: c.collector_start, collector_end: c.collector_end, exit_code: c.exit_code,
+        observed_stimulus: c.observed_stimulus, coverage: c.coverage, exit_code: c.exit_code,
         payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: Present { value: c.capture_digest } }
       let incomplete = MemoryCollectorReceipt { source: repeated.source, printed_parts: repeated.printed_parts, printed_positions: repeated.printed_positions, expected_payload_token: repeated.expected_payload_token,
         session: repeated.session, expected_stimulus: repeated.expected_stimulus, observed_stimulus: repeated.observed_stimulus,
-        required_start: repeated.required_start, required_end: repeated.required_end,
-        collector_start: repeated.collector_start, collector_end: repeated.collector_start, exit_code: repeated.exit_code,
+        coverage: MemoryCaptureInterval { required_start: 0, required_end: 645, collector_start: 0, collector_end: 0 }, exit_code: repeated.exit_code,
         payload: repeated.payload, capture_digest: repeated.capture_digest, previous_capture_digest: repeated.previous_capture_digest }
       let explained = match memory_collector_refusal(c: incomplete) {
         Present { value: cause } => contains(cause as String, "repeated capture digest") && contains(cause as String, "required stimulus interval")
         Absent => false
       }
-      explained && match mtcollins_training_mixture_finding(attempt: "control",
+      explained && match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "control",
         configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: repeated) {
           ObservationEstablished { observed: _ } => true
           ObservationRefused { cause: _ } => false
@@ -403,10 +402,10 @@ test fn w_incomplete_inventory_cannot_bind_a_firmware_finding() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
-      match mtcollins_memory_evidence_from_capture(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: "NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\nERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]\nERROR:   SK[0]: 00110010\nERROR:   Non-identical DIMM mixture NOT supported!").mixture {
+      all(mtcollins_memory_evidence_from_capture(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: "NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\nERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]\nERROR:   SK[0]: 00110010\nERROR:   Non-identical DIMM mixture NOT supported!").mixtures, attempt => match attempt {
         ObservationRefused { cause: _ } => true
         _ => false
-      }
+      })
     }
   }
 }
@@ -421,11 +420,11 @@ fn memory_test_other_obligations_established(fixture_roles: List<MtCollinsChanne
   NodeRecipe { label: r.label, sockets: r.sockets, processor: r.processor, processor_label: r.processor_label,
     baseboard: r.baseboard, baseboard_label: r.baseboard_label, memory: r.memory,
     memory_purchase: r.memory_purchase, inclusions: r.inclusions,
-    memory_evidence: MemoryEvaluationEvidence { revision: "controlled positive axes, not a machine observation", mixture: e.mixture,
+    memory_evidence: MemoryEvaluationEvidence { revision: "controlled positive axes, not a machine observation", mixtures: e.mixtures,
       training_failures: [], qualifications: [ConfigurationQualificationReceipt {
         configuration: configuration, collector: mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: memory_test_inventory(configuration: configuration)),
         standings: map(configuration.population, dimm => HostMemoryStanding {
-          host: configuration.platform.host, part_number: dimm.catalog.part_number, population: [dimm.position.connector],
+          host: configuration.platform.host, part_number: memory_module_label(dimm: dimm), population: [dimm.position.connector],
           class_support: ClassSupportedByBoard,
           part_qualification: ListedInVendorAvl {
             avl_authority: ExternalAuthority { uri: Uri { scheme: File, locator: "dag/test/claim/host/memory_change_evaluation_witness_test.dag" } },
@@ -541,7 +540,7 @@ test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() 
           baseboard: r.baseboard, baseboard_label: r.baseboard_label, memory: r.memory, inclusions: r.inclusions,
           memory_purchase: if production { ProductionMemoryPurchase }
             else { QualificationMemoryPurchase { maximum_units: 16, completion: [MemoryTrainingFailureScreen] } },
-          memory_evidence: MemoryEvaluationEvidence { revision: "sample-required control", mixture: r.memory_evidence.mixture,
+          memory_evidence: MemoryEvaluationEvidence { revision: "sample-required control", mixtures: r.memory_evidence.mixtures,
             qualifications: r.memory_evidence.qualifications,
             training_failures: [PlatformTrainingFailure { board: uniform.platform.board, step: PhyWriteLeveling,
               standing: InferredFromSequencePosition,
@@ -583,10 +582,9 @@ test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
       let c = mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: memory_test_payload(fixture_roles: fixture_roles))
       let unbound = MemoryCollectorReceipt { source: c.source, printed_parts: [], printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session,
         expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
-        required_start: c.required_start, required_end: c.required_end, collector_start: c.collector_start,
-        collector_end: c.collector_end, exit_code: c.exit_code, payload: c.payload,
+        coverage: c.coverage, exit_code: c.exit_code, payload: c.payload,
         capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
-      match mtcollins_training_mixture_finding(attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: unbound) {
+      match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: unbound) {
         ObservationRefused { cause } => contains(cause as String, "binding")
         ObservationEstablished { observed: _ } => false
       }
@@ -603,7 +601,7 @@ test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool {
       let uniform = memory_test_uniform(fixture_roles: fixture_roles)
       let r = memory_test_other_obligations_established(fixture_roles: fixture_roles, configuration: MemoryConfiguration {
         platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) })
-      let evidence = MemoryEvaluationEvidence { revision: "partial qualification capture", mixture: r.memory_evidence.mixture,
+      let evidence = MemoryEvaluationEvidence { revision: "partial qualification capture", mixtures: r.memory_evidence.mixtures,
         training_failures: [], qualifications: map(r.memory_evidence.qualifications, receipt => ConfigurationQualificationReceipt {
           configuration: receipt.configuration, standings: receipt.standings,
           collector: mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: "DRAM populated DIMMs:\n  SK0 MC0 S0: 36ADS2G72PZ-2G1A1"),
@@ -692,20 +690,19 @@ test fn w_collector_format_belongs_to_observing_producer() -> Bool {
       let positions = map(configuration.population, dimm => MemoryPrintedPositionBinding {
         position: dimm.position, printed: concat("connector ", dimm.position.connector as String, ":") as NonEmptyStr,
       })
-      let parts = map(c.printed_parts, part => MemoryPrintedPartBinding { part: part.part, printed: "controlled module" })
+      let parts = map(c.printed_parts, part => MemoryPrintedPartBinding { part: part.part, printed: "controlled module", required_descriptors: [] })
       let payload = concat("controlled inventory\n", join(map(positions, p => concat(p.printed as String, " controlled module")), "\n"))
       fold([true, false], init: true, f: (ok, complete) => {
         let collector = MemoryCollectorReceipt {
           source: c.source, printed_parts: parts, printed_positions: if complete { positions } else { [] },
           expected_payload_token: "controlled inventory", session: c.session,
           expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
-          required_start: c.required_start, required_end: c.required_end,
-          collector_start: c.collector_start, collector_end: c.collector_end,
+          coverage: c.coverage,
           exit_code: c.exit_code, payload: payload, capture_digest: "controlled alternative format", previous_capture_digest: none,
         }
         ok && match memory_collector_refusal(c: collector) { Absent => true, Present { value: _ } => false }
           && memory_capture_covers_population(configuration: configuration, collector: collector) == complete
-          && match mtcollins_training_mixture_finding(attempt: "alternate-format control", configuration: configuration, collector: collector) {
+          && match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "alternate-format control", configuration: configuration, collector: collector) {
             ObservationRefused { cause: _ } => true
             ObservationEstablished { observed: _ } => false
           }

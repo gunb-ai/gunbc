@@ -5,6 +5,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.memory_configuration {
+  CatalogMemoryModule,
   MemoryPlatform, MemoryPosition, PositionedMemoryModule, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, MemoryPowerOff, MemoryReadbackRequired, memory_operating_obligations,
 }
@@ -160,12 +161,12 @@ fn supply_fixture_memory(fixture_roles: List<MtCollinsChannelPopulationRole>, un
       map(nat_range_inclusive(lo: 1, hi: units), n => PositionedMemoryModule {
         position: MemoryPosition { connector: concat("supply-fixture-", to_string(n)) as DimmSlotLocator,
           socket: 0, controller: n - 1, slot: 0, mapping: altrad8ud_ref },
-        part: dimm_ref, catalog: fixture_dimm, alternatives: [], origin: AcquireMemoryUnit,
+        part: dimm_ref, identity: CatalogMemoryModule { catalog: fixture_dimm }, alternatives: [], origin: AcquireMemoryUnit,
       })
     } else {
       flat_map(fixture_roles, role => map([false, true], additional => PositionedMemoryModule {
         position: mtcollins_memory_position(role: role, additional: additional),
-        part: dimm_ref, catalog: fixture_dimm, alternatives: [], origin: AcquireMemoryUnit,
+        part: dimm_ref, identity: CatalogMemoryModule { catalog: fixture_dimm }, alternatives: [], origin: AcquireMemoryUnit,
       }))
     },
   }
@@ -175,7 +176,7 @@ fn supply_fixture_memory(fixture_roles: List<MtCollinsChannelPopulationRole>, un
 
 data supply_fixture_memory_evidence: MemoryEvaluationEvidence = MemoryEvaluationEvidence {
   revision: "synthetic supply arithmetic fixture",
-  mixture: ObservationRefused { cause: "supply arithmetic fixture does not claim hardware observation" },
+  mixtures: [ObservationRefused { cause: "supply arithmetic fixture does not claim hardware observation" }],
   qualifications: [], training_failures: [],
 }
 

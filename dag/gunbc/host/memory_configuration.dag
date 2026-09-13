@@ -1,6 +1,7 @@
 module gunbc.memory_configuration
 
 import std.types { List, NonEmptyStr }
+import std.measure { ByteSize }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import extdeps.boards.types { BaseboardModel }
@@ -37,12 +38,41 @@ type MemoryUnitOrigin
   = RetainedMemoryUnit { serial: NonEmptyStr? }
   | AcquireMemoryUnit
 
+// A printed identifier is usable observing evidence without pretending that
+// an absent catalog suffix was established. Receiving can replace this arm
+// only with the SPD/label or manufacturer-decoder evidence it names.
+type MemoryModuleIdentity
+  = CatalogMemoryModule { catalog: DramModuleCatalogRow }
+  | ObservedMemoryModule { printed_part: NonEmptyStr, capacity: ByteSize?, source: DeclarationRef, missing_catalog_binding: NonEmptyStr }
+
+type MemoryCapacityEvidence {
+  value: ByteSize
+  source: DeclarationRef
+}
+
 type PositionedMemoryModule {
   position: MemoryPosition
   part: DeclarationRef
-  catalog: DramModuleCatalogRow
+  identity: MemoryModuleIdentity
   alternatives: List<MemoryDeliveryVariant>
   origin: MemoryUnitOrigin
+}
+
+fn memory_module_label(dimm: PositionedMemoryModule) -> NonEmptyStr {
+  match dimm.identity {
+    CatalogMemoryModule { catalog } => catalog.part_number
+    ObservedMemoryModule { printed_part, capacity: _, source: _, missing_catalog_binding: _ } => printed_part
+  }
+}
+
+fn memory_module_capacity(dimm: PositionedMemoryModule) -> MemoryCapacityEvidence? {
+  match dimm.identity {
+    CatalogMemoryModule { catalog } => Present { value: MemoryCapacityEvidence { value: catalog.capacity_bytes, source: dimm.part } }
+    ObservedMemoryModule { printed_part: _, capacity, source, missing_catalog_binding: _ } => match capacity {
+      Absent => none
+      Present { value } => Present { value: MemoryCapacityEvidence { value: value, source: source } }
+    }
+  }
 }
 
 type MemoryFirmwareSetting {
@@ -67,6 +97,8 @@ type MemoryConfiguration {
 type MemoryOperatingObligation
   = MemoryPlacement
   | MemoryFirmwareScopeCoverage
+  | MemoryCatalogBinding
+  | MemorySocketCapacity
   | MemoryPackageMixture
   | MemoryClassSupport
   | MemorySpecificPartQualification
@@ -77,7 +109,7 @@ type MemoryOperatingObligation
 
 // Runtime requirements have a fixed minimum; caller additions cannot erase it.
 data memory_operating_obligations: List<MemoryOperatingObligation> = [
-  MemoryPlacement, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
+  MemoryPlacement, MemoryCatalogBinding, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot,
   MemoryTrainingFailureScreen,
 ]
