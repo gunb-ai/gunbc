@@ -3,8 +3,8 @@ module test.claim.pre_os_replay_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost }
-import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
+import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused }
 import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for }
 import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
@@ -104,14 +104,20 @@ test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool {
     ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
     local_commit: local.local_commit, continuity: local.continuity,
     downstream: DownstreamAccepted { accepted_content: local.chunk.payload_digest } }
+  let rejected = ObservationEnvelope { binding: local.binding, source_generation: local.source_generation, native_cursor: local.native_cursor,
+    ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
+    local_commit: local.local_commit, continuity: local.continuity,
+    downstream: DownstreamRejected { cause: ChunkCommitRefused { detail: "downstream fixture refused this chunk" } } }
   let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [
     PreOsReplayObservation { envelope: local, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+    PreOsReplayObservation { envelope: rejected, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
     PreOsReplayObservation { envelope: delivered, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
   ], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
     inventory_question: ObservationRefused { cause: "no inventory question" })
-  count(rows) == 2
+  count(rows) == 3
     && match rows.first() { Present { value: row } => match row.retention { ExposedToCollectorHostLoss { refusal: _ } => true _ => false } Absent => false }
-    && match rows.skip(n: 1).first() { Present { value: row } => match row.retention { RetainedBeyondCollectorHost => true _ => false } Absent => false }
+    && match rows.skip(n: 1).first() { Present { value: row } => match row.retention { ForwardRefused { cause: ChunkCommitRefused { detail } } => detail == "downstream fixture refused this chunk" _ => false } Absent => false }
+    && match rows.skip(n: 2).first() { Present { value: row } => match row.retention { RetainedBeyondCollectorHost => true _ => false } Absent => false }
     && all(rows, row => match row.boot { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false })
     && contains(pre_os_timeline_view(rows: rows), "retention=")
 }

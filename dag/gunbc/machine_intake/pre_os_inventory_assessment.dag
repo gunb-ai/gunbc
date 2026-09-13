@@ -47,6 +47,6 @@ fn pre_os_diagnostic_absence(question: PreOsInventoryQuestion, payload: String, 
         } else { GoalSatisfied { evidence: "named diagnostic absent from the captured complete inventory phase only" } }
       }
     }
-    _ => GoalAssessmentRefused { cause: "collector did not establish a persisted continuous source range; absence is unlicensed" }
+    gap => GoalAssessmentRefused { cause: to_string(gap) as NonEmptyStr }
   }
 }

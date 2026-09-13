@@ -8,7 +8,7 @@ import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment, pre_os_firmware_boot_selection }
 import std.content_hash { content_hash_of_value }
-import gunbc.fleet_observation_observation_envelope { SourceBytesObserved, CoverageGapContinuityBroken }
+import gunbc.fleet_observation_observation_envelope { SourceBytesObserved, CoverageGapContinuityBroken, CoverageGapEvidenceNamesAnotherSubject, BindingMachineDisagrees }
 import gunbc.fleet_observation_capture_chunk { ContinuityUnknown }
 import gunbc.machine_intake_pre_os_inventory_assessment { pre_os_diagnostic_absence }
 import gunbc.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
@@ -121,8 +121,12 @@ test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool {
         let diagnostic = "Non-identical DIMM mixture NOT supported!"
         let positive = pre_os_diagnostic_absence(question: question, payload: payload, source: SourceBytesObserved { digest: content_hash_of_value(value: payload) }, diagnostic: diagnostic)
         let early = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapContinuityBroken { continuity: ContinuityUnknown { detail: "stdin EOF before phase coverage" } }, diagnostic: diagnostic)
+        let mismatch = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapEvidenceNamesAnotherSubject {
+          disagreement: BindingMachineDisagrees { binding: "wrong-fixture-machine", owner: "recording-fixture-machine" }
+        }, diagnostic: diagnostic)
         match positive { GoalSatisfied { evidence: _ } => true GoalDiverged { deviations: _ } => true _ => false }
-          && match early { GoalAssessmentRefused { cause: _ } => true _ => false }
+          && match early { GoalAssessmentRefused { cause } => contains(cause as String, "stdin EOF before phase coverage") _ => false }
+          && match mismatch { GoalAssessmentRefused { cause } => contains(cause as String, "wrong-fixture-machine") && contains(cause as String, "recording-fixture-machine") _ => false }
       }
     })
   }
