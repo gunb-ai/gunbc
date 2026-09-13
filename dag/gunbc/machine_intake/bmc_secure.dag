@@ -353,7 +353,7 @@ type BmcSecureOutcome
       endpoint: BmcControllerEndpoint,
       reference: ManagedCredentialReference,
       evidence: List<EvidenceRef>,
-      secured_at: EpochMs,
+      latest_admitted_probe_at: EpochMs,
       published_credential: PublishedCredentialAccountObservation,
     }
   | BmcSecureRefused { cause: BmcSecureRefusalCause }
@@ -506,7 +506,7 @@ fn probe_match_count_against_assigned(
 }
 
 type CensusJoinProgress
-  = CensusJoinOpen { evidence: List<EvidenceRef>, latest_rejected_at: EpochMs?, saw_addressable_lan: Bool }
+  = CensusJoinOpen { evidence: List<EvidenceRef>, latest_admitted_probe_at: EpochMs?, saw_addressable_lan: Bool }
   | CensusJoinClosed { cause: BmcSecureRefusalCause }
 
 // ONE SOURCE for whether an assigned-LAN probe admits or refuses. A later
@@ -547,8 +547,21 @@ fn adjudicate_published_probe(
   }
 }
 
+fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs {
+  match previous {
+    Absent => observed_at
+    Present { value: prev } =>
+      if observed_at > prev {
+        observed_at
+      } else {
+        prev
+      }
+  }
+}
+
 fn join_open_assigned_lan(
   ev: List<EvidenceRef>,
+  previous: EpochMs?,
   channel: IpmiChannelNumber,
   address: Ipv4Address,
   probes: List<PublishedCredentialLanProbe>,
@@ -570,7 +583,7 @@ fn join_open_assigned_lan(
           PublishedProbeAdmitted { evidence: pe, observed_at: at } =>
             CensusJoinOpen {
               evidence: concat(ev, [pe]),
-              latest_rejected_at: Present { value: at },
+              latest_admitted_probe_at: Present { value: later_admitted_probe_at(previous: previous, observed_at: at) },
               saw_addressable_lan: true,
             }
         }
@@ -588,9 +601,10 @@ fn join_assigned_lan_member(
 ) -> CensusJoinProgress {
   match progress {
     CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
-    CensusJoinOpen { evidence: ev, latest_rejected_at: _, saw_addressable_lan: _ } =>
+    CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: _ } =>
       join_open_assigned_lan(
         ev: ev,
+        previous: latest,
         channel: channel,
         address: address,
         probes: probes,
@@ -609,11 +623,11 @@ fn join_census_member(
 ) -> CensusJoinProgress {
   match progress {
     CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
-    CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw } =>
+    CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
       match member {
         IpmiNonLanChannelMember { channel: ch, medium: _, published_user_access: access } =>
           if ipmi_channel_privilege_is_no_access(limit: access) {
-            CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw }
+            CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
           } else {
             CensusJoinClosed { cause: PublishedCredentialChannelAccessNotClosed { channel: ch } }
           }
@@ -621,13 +635,13 @@ fn join_census_member(
           match cfg {
             IpmiLanIpv4Unassigned =>
               if ipmi_channel_privilege_is_no_access(limit: access) {
-                CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw }
+                CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
               } else {
                 CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
               }
             IpmiLanIpv4Assigned { address: a } =>
               join_assigned_lan_member(
-                progress: CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: true },
+                progress: CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: true },
                 channel: ch,
                 address: a,
                 probes: probes,
@@ -713,12 +727,12 @@ fn adjudicate_published_census(
     let require_closed = published_account_requires_published_closed(account: published_account)
     let joined = fold(
       census.members,
-      init: CensusJoinOpen { evidence: [], latest_rejected_at: none, saw_addressable_lan: false },
+      init: CensusJoinOpen { evidence: [], latest_admitted_probe_at: none, saw_addressable_lan: false },
       f: (acc, m) => join_census_member(progress: acc, member: m, probes: probes, applied_at: applied_at, require_published_closed: require_closed),
     )
     match joined {
       CensusJoinClosed { cause: c } => BmcSecureRefused { cause: c }
-      CensusJoinOpen { evidence: pev, latest_rejected_at: latest, saw_addressable_lan: saw } =>
+      CensusJoinOpen { evidence: pev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
         if saw == false {
           BmcSecureRefused { cause: PublishedCredentialNoAddressableLanMember }
         } else {
@@ -739,7 +753,7 @@ fn adjudicate_published_census(
                       published_probe_evidence: pev,
                       account_evidence: published_account_evidence(account: published_account),
                     ),
-                    secured_at: at,
+                    latest_admitted_probe_at: at,
                     published_credential: published_account,
                   }
               }
@@ -872,7 +886,7 @@ fn bmc_secure_receipt_result(standing: BmcSecureStanding, policy: IntakeQualific
       ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
     Absent =>
       match standing.outcome {
-        BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _, published_credential: _ } => ReceiptSatisfied
+        BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => ReceiptSatisfied
         BmcSecureRefused { cause: c } =>
           ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
       }
@@ -884,7 +898,7 @@ fn bmc_secure_receipt_observations(standing: BmcSecureStanding, policy: IntakeQu
     Present { value: _ } => []
     Absent =>
       match standing.outcome {
-        BmcSecured { endpoint: _, reference: _, evidence: e, secured_at: _, published_credential: _ } => e
+        BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } => e
         BmcSecureRefused { cause: _ } => []
       }
   }
