@@ -1,0 +1,94 @@
+module v2.workflow.floor_cost_debt_admission
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+}
+import std.measure { Millisecond, millisecond_count }
+
+// ROSTER ADMISSION BY CONSTRUCTION FOR `v2.workflow.floor_cost_debt`.
+//
+// WHY THIS IS NOT INSIDE THAT MODULE. `required_floor` already imports `floor_cost_debt` for
+// membership. Importing `ClaimCostReading` there would pull `gunbc.floor_cost_distribution`
+// into every required-floor compile — a second copy of a large analysis module on the floor's
+// hot path. The identity census stays there; the READING FIELD of a new row lives here.
+//
+// THE PROVEN CLASS, STATED SO THE PR DOES NOT RE-DERIVE THE POLICY: witnesses whose observed
+// CPU exceeds `required_floor_claim_cpu_safety_limit_ms` (the 500ms hard ceiling) plus censored
+// witnesses that never reached a verdict. required_floor treats the roster and the long home as
+// ONE declaration class. This constructor is what makes "one declaration class" true IN
+// EVIDENCE: a margin crossing (over 302, under 500) cannot mint a row.
+//
+// THE CEILING IS A PARAMETER. This module must not import `required_floor` (cycle through
+// floor_cost_debt) and must not restate 500. Callers pass
+// `required_floor_claim_cpu_safety_limit_ms()`.
+
+type FloorCostDebtRow {
+  identity: String
+  reading: ClaimCostReading
+}
+
+type FloorCostDebtRowStanding =
+    FloorCostDebtRowAdmitted { row: FloorCostDebtRow }
+  | FloorCostDebtRowRefusedUnderCeiling { identity: String, observed_cpu_ms: Millisecond }
+
+type FloorCostDebtReadingAttempt {
+  identity: String
+  reading: ClaimCostReading
+}
+
+fn floor_cost_debt_row(
+  identity: String,
+  reading: ClaimCostReading,
+  ceiling_ms: Millisecond,
+) -> FloorCostDebtRowStanding {
+  match reading {
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
+      FloorCostDebtRowAdmitted {
+        row: FloorCostDebtRow {
+          identity: identity,
+          reading: RightCensoredCpuReading {
+            cpu_lower_bound_ms: b,
+            censoring_ceiling_ms: ceiling,
+          },
+        },
+      }
+    ObservedCpuReading { cpu_ms: c } =>
+      if millisecond_count(m: c) > millisecond_count(m: ceiling_ms) {
+        FloorCostDebtRowAdmitted {
+          row: FloorCostDebtRow {
+            identity: identity,
+            reading: ObservedCpuReading { cpu_ms: c },
+          },
+        }
+      } else {
+        FloorCostDebtRowRefusedUnderCeiling { identity: identity, observed_cpu_ms: c }
+      }
+  }
+}
+
+fn floor_cost_debt_row_is_admitted(standing: FloorCostDebtRowStanding) -> Bool {
+  match standing {
+    FloorCostDebtRowAdmitted { row: _ } => true
+    FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => false
+  }
+}
+
+// THE ROSTER WITNESS FOLD. Identity-grain over every attempt: a 325ms observed row cannot
+// survive into the admitted set.
+fn floor_cost_debt_admit_attempts(
+  attempts: List<FloorCostDebtReadingAttempt>,
+  ceiling_ms: Millisecond,
+) -> List<FloorCostDebtRow> {
+  reverse(fold(attempts, init: [], f: fn(acc, attempt) {
+    match floor_cost_debt_row(
+      identity: attempt.identity,
+      reading: attempt.reading,
+      ceiling_ms: ceiling_ms,
+    ) {
+      FloorCostDebtRowAdmitted { row: row } => concat([row], acc)
+      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => acc
+    }
+  }))
+}

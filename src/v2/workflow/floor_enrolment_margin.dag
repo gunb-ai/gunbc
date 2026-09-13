@@ -177,6 +177,21 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
 }
 
+// GROUND OF A DECLARED-EXPENSIVENESS FACT, TAKEN FROM
+// `v2.workflow.required_floor` `changed_witness_expensiveness_is_declared` AND NEVER RE-DERIVED.
+// That function is the one declaration class wearing two names (roster or long home). This
+// coproduct names which name fired so the standing can report it; the predicate that decides
+// membership stays in required_floor.
+type EnrolmentExpensivenessGround =
+    EnrolmentExpensivenessRoster
+  | EnrolmentExpensivenessLongHome
+
+// WHETHER THIS IDENTITY'S EXPENSIVENESS IS ALREADY DECLARED. Consumed by
+// `enrolment_margin_standing` after the execution-join arm; never consulted in its place.
+type EnrolmentExpensivenessDeclaration =
+    EnrolmentExpensivenessNotDeclared
+  | EnrolmentExpensivenessIsDeclared { witness_identity: String, ground: EnrolmentExpensivenessGround }
+
 // THE STANDING OF ONE NEWLY ENROLLED IDENTITY AGAINST THE MARGIN.
 //
 // `EnrolmentCeilingCensored` IS A SEPARATE ARM FROM `EnrolmentOverMargin` AND MAY NOT BE MERGED
@@ -186,36 +201,73 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
 // exact cost. Folding it into an arm with an `exact_cpu_ms` field would write a bound into a slot
 // named for a cost, reintroducing that invalid state inside the gate built to respect it. Both
 // arms block; they are told apart so the remedy and the reported figure stay honest.
+//
+// `EnrolmentExpensivenessDeclared` IS THE SAME FACT `ChangedCostDebtVerdictOnly` ALREADY HONOUR.
+// It is NON-BLOCKING: the declaration is observed and reported with the reading beside it, and
+// this gate DECIDES NOTHING from the CPU. Wall deadline and semantic red stay armed on their own
+// gates. It is not an exemption: the declaration is the counted shrink-only roster
+// `floor_cost_debt` itself defends (or the long home, the same class), and the identity still
+// executes with its verdict still counting. An exemption would be this section's absorbing
+// fallback, which this module already refuses for `EnrolmentOutsideThisRunsExecution`.
 type EnrolmentMarginStanding =
     EnrolmentWithinMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentCeilingCensored { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
   | EnrolmentNotMeasured { witness_identity: String, cause: String }
   | EnrolmentOutsideThisRunsExecution { witness_identity: String, disposition: String }
+  | EnrolmentExpensivenessDeclared {
+      witness_identity: String
+      ground: EnrolmentExpensivenessGround
+      reading: EnrolmentCostReading
+    }
 
 // THE CLASSIFICATION. Total over both coproducts, so neither a new reading arm nor a new absence
 // can be absorbed into a neighbour.
+//
+// ORDER IS LOAD-BEARING. The execution-join arm (`EnrolmentNotPlanned`) comes first: consulting
+// cost before that join is the defect review 64022 found. The declaration is consulted NEXT,
+// and it is a declaration, never `claim_cost`. Only an undeclared planned identity is classified
+// from its measurement.
 fn enrolment_margin_standing(
   reading: EnrolmentCostReading,
   budget_ms: Millisecond,
+  declaration: EnrolmentExpensivenessDeclaration,
 ) -> EnrolmentMarginStanding {
   match reading {
-    EnrolmentCostAbsent { witness_identity: i, cause: k } =>
-      EnrolmentNotMeasured { witness_identity: i, cause: k }
     EnrolmentNotPlanned { witness_identity: i, disposition: d } =>
       EnrolmentOutsideThisRunsExecution { witness_identity: i, disposition: d }
-    EnrolmentCostMeasured { reading: r } =>
-      match r {
-        ObservedCpuReading { cpu_ms: c } =>
-          if millisecond_count(m: c) > millisecond_count(m: budget_ms) {
-            EnrolmentOverMargin { exact_cpu_ms: c, budget_ms: budget_ms }
-          } else {
-            EnrolmentWithinMargin { exact_cpu_ms: c, budget_ms: budget_ms }
+    EnrolmentCostAbsent { witness_identity: i, cause: k } =>
+      match declaration {
+        EnrolmentExpensivenessIsDeclared { witness_identity: id, ground: g } =>
+          EnrolmentExpensivenessDeclared {
+            witness_identity: id,
+            ground: g,
+            reading: EnrolmentCostAbsent { witness_identity: i, cause: k },
           }
-        RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
-          EnrolmentCeilingCensored {
-            cpu_lower_bound_ms: b,
-            censoring_ceiling_ms: ceiling,
+        EnrolmentExpensivenessNotDeclared =>
+          EnrolmentNotMeasured { witness_identity: i, cause: k }
+      }
+    EnrolmentCostMeasured { reading: r } =>
+      match declaration {
+        EnrolmentExpensivenessIsDeclared { witness_identity: id, ground: g } =>
+          EnrolmentExpensivenessDeclared {
+            witness_identity: id,
+            ground: g,
+            reading: EnrolmentCostMeasured { reading: r },
+          }
+        EnrolmentExpensivenessNotDeclared =>
+          match r {
+            ObservedCpuReading { cpu_ms: c } =>
+              if millisecond_count(m: c) > millisecond_count(m: budget_ms) {
+                EnrolmentOverMargin { exact_cpu_ms: c, budget_ms: budget_ms }
+              } else {
+                EnrolmentWithinMargin { exact_cpu_ms: c, budget_ms: budget_ms }
+              }
+            RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
+              EnrolmentCeilingCensored {
+                cpu_lower_bound_ms: b,
+                censoring_ceiling_ms: ceiling,
+              }
           }
       }
   }
@@ -240,6 +292,7 @@ fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
+    EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => false
   }
 }
 
@@ -258,6 +311,7 @@ fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String 
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "enrolment_censored_at_ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
+    EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => ""
   }
 }
 
@@ -271,6 +325,7 @@ fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "censored_at_ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
+    EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness_declared"
   }
 }
 

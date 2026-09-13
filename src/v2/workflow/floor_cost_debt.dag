@@ -111,6 +111,9 @@ import v2.std.collection { List }
 //   - the direction is justified: a row leaves by being made cheap, and the forward hole is
 //     already shut -- a NEW or REGRESSED row over 500ms simply refuses, because 500 is the
 //     ceiling and nothing here admits an identity the floor did not already discover;
+//     NEW rows are minted only through `v2.workflow.floor_cost_debt_admission` `floor_cost_debt_row`,
+//     whose reading field admits RightCensoredCpuReading or an observed CPU that EXCEEDS that
+//     ceiling, so a margin crossing cannot be rostered as cost debt;
 //   - a rostered identity the tree no longer carries REFUSES as a stale row, so the roster
 //     cannot rot into a permission slip for witnesses that no longer exist.
 //

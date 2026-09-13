@@ -1,0 +1,95 @@
+module v2.test.floor_cost_debt_admission
+
+import v2.workflow.floor_cost_debt_admission {
+  FloorCostDebtRow, FloorCostDebtRowStanding,
+  FloorCostDebtRowAdmitted, FloorCostDebtRowRefusedUnderCeiling,
+  FloorCostDebtReadingAttempt,
+  floor_cost_debt_row, floor_cost_debt_row_is_admitted, floor_cost_debt_admit_attempts,
+}
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+}
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Ceiling is a constructor parameter. The live authority is
+// `required_floor_claim_cpu_safety_limit_ms`; the enrolment-margin suite joins that name to this
+// constructor so this file need not import required_floor (and with it the floor's whole roster).
+fn ceiling() -> Millisecond {
+  millisecond(count: 500)
+}
+
+fn observed(cpu_ms: Int) -> ClaimCostReading {
+  ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms) }
+}
+
+fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> ClaimCostReading {
+  RightCensoredCpuReading {
+    cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
+    censoring_ceiling_ms: millisecond(count: ceiling_ms),
+  }
+}
+
+// HALF TWO RED: a fixture row at 325ms OBSERVED refuses to enter the roster. That is the
+// gunbc#10994 specimen cost — over the enrolment margin, under the 500ms ceiling — and
+// rostering it would mint "declared too expensive" from a margin crossing.
+test fn an_observed_row_at_325ms_cannot_enter_the_cost_debt_roster() -> Bool {
+  let standing = floor_cost_debt_row(
+    identity: "fixture.tripwire_325",
+    reading: observed(cpu_ms: 325),
+    ceiling_ms: ceiling(),
+  )
+  !floor_cost_debt_row_is_admitted(standing: standing)
+    && match standing {
+      FloorCostDebtRowAdmitted { row: _ } => false
+      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: c } =>
+        millisecond_count(m: c) == 325
+    }
+}
+
+test fn an_observed_row_above_the_ceiling_is_admitted() -> Bool {
+  floor_cost_debt_row_is_admitted(
+    standing: floor_cost_debt_row(
+      identity: "fixture.proven_501",
+      reading: observed(cpu_ms: 501),
+      ceiling_ms: ceiling(),
+    )
+  )
+}
+
+test fn a_censored_row_is_admitted() -> Bool {
+  floor_cost_debt_row_is_admitted(
+    standing: floor_cost_debt_row(
+      identity: "fixture.censored",
+      reading: censored(lower_bound_ms: 500, ceiling_ms: 500),
+      ceiling_ms: ceiling(),
+    )
+  )
+}
+
+test fn the_admission_fold_drops_a_325ms_observed_row() -> Bool {
+  let admitted = floor_cost_debt_admit_attempts(
+    attempts: [
+      FloorCostDebtReadingAttempt {
+        identity: "fixture.tripwire_325",
+        reading: observed(cpu_ms: 325),
+      },
+      FloorCostDebtReadingAttempt {
+        identity: "fixture.proven_501",
+        reading: observed(cpu_ms: 501),
+      },
+      FloorCostDebtReadingAttempt {
+        identity: "fixture.censored",
+        reading: censored(lower_bound_ms: 514, ceiling_ms: 500),
+      },
+    ],
+    ceiling_ms: ceiling(),
+  )
+  fold(admitted, init: "", f: fn(acc, row) {
+    concat(acc, concat(row.identity, ";"))
+  }) == "fixture.proven_501;fixture.censored;"
+}

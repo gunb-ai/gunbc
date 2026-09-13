@@ -1316,6 +1316,20 @@ pub(crate) enum EnrolmentMarginStanding {
     OutsideThisRunsExecution {
         disposition: String,
     },
+    /// Mirror of `EnrolmentExpensivenessDeclared`. Non-blocking: the declaration is observed
+    /// and reported with the CPU reading beside it, and this gate decides nothing from the
+    /// cost. Consumed from `changed_witness_expensiveness_is_declared` (roster first, else
+    /// long home) after the execution join, never from `claim_cost`.
+    ExpensivenessDeclared {
+        ground: EnrolmentExpensivenessGround,
+        observed_cpu_ms: Option<u64>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EnrolmentExpensivenessGround {
+    Roster,
+    LongHome,
 }
 
 impl EnrolmentMarginStanding {
@@ -1327,6 +1341,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::CeilingCensored { .. } => true,
             EnrolmentMarginStanding::NotMeasured { .. } => true,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => false,
         }
     }
 
@@ -1340,6 +1355,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
             EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "",
         }
     }
 
@@ -1356,6 +1372,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 "outside_this_runs_execution"
             }
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "expensiveness_declared",
         }
     }
 
@@ -1382,6 +1399,25 @@ impl EnrolmentMarginStanding {
                 "not adjudicated here: this run withheld the identity (disposition={disposition}); \
                  changed_witness_blocking owns it"
             ),
+            EnrolmentMarginStanding::ExpensivenessDeclared {
+                ground,
+                observed_cpu_ms,
+            } => {
+                let ground_name = match ground {
+                    EnrolmentExpensivenessGround::Roster => "roster",
+                    EnrolmentExpensivenessGround::LongHome => "long_home",
+                };
+                match observed_cpu_ms {
+                    Some(ms) => format!(
+                        "expensiveness_declared ground={ground_name} observed_cpu_ms={ms} \
+                         (reported; does not decide this gate)"
+                    ),
+                    None => format!(
+                        "expensiveness_declared ground={ground_name} cost=UNMEASURED \
+                         (reported; does not decide this gate)"
+                    ),
+                }
+            }
         }
     }
 }
@@ -1471,6 +1507,7 @@ pub(crate) fn enrolment_margin_standing_for(
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
     budget_ms: u64,
+    declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
@@ -1493,6 +1530,22 @@ pub(crate) fn enrolment_margin_standing_for(
                 disposition: "no_disposition_row".to_string(),
             };
         }
+    }
+    // THE DECLARATION COMES NEXT, AND IT IS NOT THE COST POPULATION. Consulting `claim_cost`
+    // before this point would rebuild review 64022; consulting the declaration after the
+    // join consumes `changed_witness_expensiveness_is_declared` (roster or long home) and
+    // decides nothing from the CPU — `ChangedCostDebtVerdictOnly` on this gate.
+    if let Some(ground) = declared_expensiveness {
+        let observed_cpu_ms = claim_cost.get(identity).and_then(|row| match &row.reading {
+            crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms, ..
+            } => Some(*observed_cpu_ms),
+            crate::cli_run::ClaimCostReading::RightCensored(_) => None,
+        });
+        return EnrolmentMarginStanding::ExpensivenessDeclared {
+            ground,
+            observed_cpu_ms,
+        };
     }
     let Some(row) = claim_cost.get(identity) else {
         return EnrolmentMarginStanding::NotMeasured {
@@ -8391,11 +8444,22 @@ pub fn run_required_floor(
         let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
         let mut deferred = 0usize;
         for identity in &newly_enrolled {
+            // Consumed from the same join `changed_witness_cost_policy` already computed:
+            // roster first, else long-home via `cost_debt_verdict_only`. Not re-derived from
+            // `claim_cost`.
+            let declared_expensiveness = if cost_debt_roster.contains(identity) {
+                Some(EnrolmentExpensivenessGround::Roster)
+            } else if cost_debt_verdict_only.contains(identity) {
+                Some(EnrolmentExpensivenessGround::LongHome)
+            } else {
+                None
+            };
             let standing = enrolment_margin_standing_for(
                 identity,
                 &cost_by_identity,
                 &dispositions,
                 budget_ms,
+                declared_expensiveness,
             );
             eprintln!(
                 "[enrolment-margin] identity={identity} standing={} {}",
