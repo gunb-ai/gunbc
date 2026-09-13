@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
@@ -1762,7 +1763,7 @@ fn gunbc_ci_r2_mint_preflight_invoke() -> String {
     entry: gunbc_ci_r2_mint_preflight_target.entry,
     function: gunbc_ci_r2_mint_preflight_target.function,
     claim_run: false,
-    receipt_rel: "target/r2-mint-preflight-permission-groups.txt"
+    receipt_rel: r2_mint_preflight_receipt_path
   )
 }
 

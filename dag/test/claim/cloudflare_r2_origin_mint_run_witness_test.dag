@@ -71,6 +71,9 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintAccountUnallocated,
   R2MintOriginUnallocated,
   R2MintAdmissionRefused,
+  R2MintCustodyContainerAbsent,
+  R2MintContainerAdmission, ContainerAdmitted, ContainerAbsent,
+  r2_mint_custody_container_intervention,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
 }
@@ -91,6 +94,7 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
     account: fleet_cloudflare_account_standing(),
     custody: BootstrapCustodyUnrecorded { intervention: cloudflare_bootstrap_custody_intervention() },
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
       human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
@@ -98,6 +102,47 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
           s: intervention.instruction as String,
           pattern: cloudflare_bootstrap_custody_secret_id as String)
     R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
+  }
+}
+
+// THE CUSTODY CONTAINER IS DECIDED BEFORE THE CREATE, AND THIS IS THE RED THAT SAYS SO. Until the
+// 2026-09-12 ruling the container was CREATED by store_minted_token, after cloudflare.AccountTokens.Create
+// had already minted a token whose value is returned exactly once -- so a run without permission to
+// create it would have left a live credential on the account that nothing in this tree could name.
+// gunbc#10947 never saw it because the operator's identity held project-wide secretmanager.secrets.create.
+//
+// The arm is first in the ladder, so this probe also pins the ORDER: it hands a ladder that is
+// otherwise entirely satisfiable -- real account, real pinned custody, real allocated origin -- and
+// requires the container refusal to win anyway. Move the check back below the Create and this goes
+// red. The class is
+// gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect.
+test fn r2_origin_mint_refuses_before_the_create_when_the_custody_container_is_absent() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectWrite,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+    container: ContainerAbsent {
+      intervention: r2_mint_custody_container_intervention(
+        secret_id: fabric_durable_origin_write_secret_id,
+        cause: "the custody container could not be read: NOT_FOUND" as NonEmptyStr,
+      ),
+    },
+  ) {
+    R2MintCustodyContainerAbsent { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+        && string_contains(
+             s: intervention.instruction as String,
+             pattern: fabric_durable_origin_write_secret_id as String)
+        && string_contains(
+             s: intervention.instruction as String,
+             pattern: "NOTHING WAS CREATED AT CLOUDFLARE")
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
@@ -114,6 +159,7 @@ test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: _, bootstrap_locus: locus, request: _ } =>
       (locus.secret as String) == (cloudflare_bootstrap_custody_secret_id as String)
@@ -123,6 +169,7 @@ test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -147,6 +194,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
       (account_id as String) == (fleet_cloudflare_account_id as String)
@@ -166,6 +214,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -183,6 +232,7 @@ test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
     },
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintAccountUnallocated { intervention: intervention } =>
       human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
@@ -190,6 +240,7 @@ test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
     R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -320,6 +371,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
       string_contains(s: request.name, pattern: "-object-write")
@@ -339,6 +391,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 

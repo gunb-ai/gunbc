@@ -26,6 +26,14 @@ data role_secretmanager_secret_accessor: String = "roles/secretmanager.secretAcc
 
 data role_secretmanager_secret_version_adder: String = "roles/secretmanager.secretVersionAdder"
 
+// THE CONTAINER READ IS A THIRD ROLE, AND secretAccessor IS NOT IT. roles/secretmanager.secretAccessor
+// carries secretmanager.versions.access -- the PAYLOAD of a version -- and does not carry
+// secretmanager.secrets.get, which reads the secret RESOURCE and nothing secret at all. A caller that
+// must confirm a container exists before writing to it therefore needs viewer beside accessor, and
+// assuming accessor covered it is how a precondition check ends up 403-ing at the moment it is
+// supposed to be protecting an irreversible effect.
+data role_secretmanager_viewer: String = "roles/secretmanager.viewer"
+
 data common_roles: List<GcpRole> = [
   { name: "roles/viewer", title: "Viewer", permissions: null, predefined: true },
   { name: "roles/editor", title: "Editor", permissions: null, predefined: true },
@@ -34,6 +42,7 @@ data common_roles: List<GcpRole> = [
   { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
   { name: role_secretmanager_secret_accessor, title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
   { name: role_secretmanager_secret_version_adder, title: "Secret Manager Secret Version Adder", permissions: null, predefined: true },
+  { name: role_secretmanager_viewer, title: "Secret Manager Viewer", permissions: null, predefined: true },
   { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
   { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
 ]

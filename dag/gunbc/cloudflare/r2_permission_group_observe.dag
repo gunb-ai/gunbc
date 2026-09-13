@@ -20,8 +20,8 @@ import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_bootstrap_custody,
 }
 import gunbc.auth.access_token_source {
-  AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source,
-  ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  resolve_access_token,
+  AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
   access_token_upsert_required_reason,
 }
 import gunbc.auth.secret_ref_credential {
@@ -50,29 +50,9 @@ import gunbc.auth.secret_ref_credential {
 // records the observation, with the retrieval date beside it.
 // THE IDENTITY THIS OBSERVATION RUNS AS IS THE RUN'S OWN, for the same reason the mint's is: a
 // listing that only an operator session can perform cannot be the preflight of a workflow job.
-// gunbc.auth.access_token_source select_access_token_source names the arm the environment supports;
-// nothing about identity is decided here.
-type PermissionGroupObserveToken
-  = PermissionGroupObserveTokenResolved { token: Secret }
-  | PermissionGroupObserveTokenRefused { cause: NonEmptyStr }
-
-func permission_group_observe_access_token() -> PermissionGroupObserveToken uses net: Network {
-  match select_access_token_source() {
-    AccessTokenSourceUnavailable { cause: cause } =>
-      PermissionGroupObserveTokenRefused { cause: cause }
-    AccessTokenSourceSelected { source: source } =>
-      match ensure_access_token(source: source) {
-        AccessTokenUpsertRequired { plan: plan } =>
-          PermissionGroupObserveTokenRefused {
-            cause: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
-          }
-        AccessTokenEnsureRefused { reason: reason } =>
-          PermissionGroupObserveTokenRefused { cause: reason }
-        AccessTokenReady { token: token } =>
-          PermissionGroupObserveTokenResolved { token: token }
-      }
-  }
-}
+// gunbc.auth.access_token_source resolve_access_token selects the arm the environment supports and
+// realizes it; nothing about identity is decided here, and the composition is not re-authored here
+// either.
 
 // THE REFUSAL IS AN ARM, NOT A PREFIX. An earlier draft of the preflight below decided whether this
 // observation had succeeded by testing the returned String for "NO "/"THE "/"LISTING " -- a
@@ -91,10 +71,14 @@ func observe_account_permission_groups_standing() -> PermissionGroupListing uses
         BootstrapCustodyUnrecorded { intervention: _ } =>
           PermissionGroupListingRefused { cause: "NO BOOTSTRAP TOKEN IN CUSTODY: the listing needs the account credential" as NonEmptyStr }
         BootstrapCustodyPinned { locus: locus } =>
-          match permission_group_observe_access_token() {
-            PermissionGroupObserveTokenRefused { cause: cause } =>
-              PermissionGroupListingRefused { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
-            PermissionGroupObserveTokenResolved { token: gcp_token } =>
+          match resolve_access_token() {
+            AccessTokenUpsertRequired { plan: plan } =>
+              PermissionGroupListingRefused {
+                cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr,
+              }
+            AccessTokenEnsureRefused { reason: reason } =>
+              PermissionGroupListingRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+            AccessTokenReady { token: gcp_token } =>
               match fetch_secret_ref_credential_with_token(
                 secret_ref: locus,
                 access_token: gcp_token,

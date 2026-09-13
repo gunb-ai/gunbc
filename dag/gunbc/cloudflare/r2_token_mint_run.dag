@@ -3,7 +3,12 @@ module gunbc.cloudflare.r2_token_mint_run
 import std.types { String, NonEmptyStr, Secret, List, Bool }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.human_intervention { HumanIntervention, ProvisioningHumanBurden }
+import std.human_intervention {
+  HumanIntervention, ProvisioningHumanBurden,
+  HumanInterventionIdentity, FleetOnce,
+  InterventionCompletionEvidence, DischargedAt,
+}
+import std.decl_ref { decl_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
@@ -55,9 +60,8 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialUnminted,
 }
 import gunbc.auth.access_token_source {
-  AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
-  select_access_token_source,
-  ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  resolve_access_token,
+  AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
   access_token_upsert_required_reason,
 }
 import gunbc.auth.secret_ref_credential {
@@ -74,7 +78,8 @@ import gunbc.secret_provision_actuator {
   snapshot_minted_secret,
   CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
   OwnedCredentialSnapshot,
-  create_secret_for_attempt, SecretCreatedForAttempt, SecretCreationRefused, SecretCreationOutcomeUnknown,
+  observe_secret_container, SecretContainerObserved, SecretObservationRefused,
+  ObservedSecretContainer, version_add_capability_for_observed_container,
   add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
   VersionAddedButUnverified,
   verified_exact_ref,
@@ -133,6 +138,7 @@ type R2MintPreconditions
       request: CreateAccountTokenRequest
     }
   | R2MintBootstrapCustodyUnrecorded { intervention: HumanIntervention }
+  | R2MintCustodyContainerAbsent { intervention: HumanIntervention }
   | R2MintAccountUnallocated { intervention: HumanIntervention }
   | R2MintOriginUnallocated { purpose: BucketPurpose }
   | R2MintAdmissionRefused { standing: AccountTokenApiMintStanding }
@@ -191,12 +197,105 @@ fn admit_r2_origin_token_mint(
   }
 }
 
+// THE CONTAINER STANDING CARRIES THE OBSERVATION SEAL RATHER THAN A Bool. A boolean "the container
+// exists" would be re-derived into a write authorization somewhere downstream, which is exactly the
+// seam gunbc.secret_provision_actuator's sole_constructor seals exist to close: the authorization to
+// add a version is derived only from a GET whose returned resource actually named the requested
+// project and secret.
+type R2MintCustodyContainerStanding
+  = R2MintCustodyContainerPresent { container: ObservedSecretContainer }
+  | R2MintCustodyContainerUnobserved { intervention: HumanIntervention }
+
+// THE PURE FOLD TAKES THE VERDICT, NOT THE SEAL, AND THAT IS WHAT KEEPS IT WITNESSABLE.
+// ObservedSecretContainer is sole_constructor, so no module but gunbc.secret_provision_actuator can
+// build one -- correct, and it means any fold downstream of it that takes the seal directly cannot be
+// exercised by a witness at all. classify_r2_mint is the pure admission ladder and its job is to
+// DECIDE, so it needs only "was the container admitted, and if not what does the operator do". The
+// seal never enters it; r2_mint_bootstrap already holds it and carries it straight to the store.
+type R2MintContainerAdmission
+  = ContainerAdmitted
+  | ContainerAbsent { intervention: HumanIntervention }
+
+fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2MintContainerAdmission {
+  match standing {
+    R2MintCustodyContainerPresent { container: _ } => ContainerAdmitted
+    R2MintCustodyContainerUnobserved { intervention: intervention } =>
+      ContainerAbsent { intervention: intervention }
+  }
+}
+
+data r2_mint_custody_container_intervention_identity: String = "cloudflare-r2-origin-write-custody-container"
+
+// THIS BURDEN HAS A REAL DISCHARGE SITE, WHICH IS WHY IT IS NOT NoDischargeSiteModeled. The two
+// interventions beside it in gunbc.cloudflare.r2_origin are dashboard ceremonies nothing in this
+// tree can observe. This one is discharged by the very fold that raises it: the container GET is the
+// discharge check, so "has the operator done it" is answered by execution rather than by a human
+// remembering.
+fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmptyStr) -> HumanIntervention {
+  HumanIntervention {
+    identity: r2_mint_custody_container_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: join(["the Secret Manager custody container ", secret_id as String], "") as NonEmptyStr,
+    instruction: join([
+      "THE CUSTODY CONTAINER COULD NOT BE OBSERVED: ", cause as String,
+      " -- create the empty secret ", secret_id as String,
+      " in gunbai-secrets from an operator gcloud session and converge the cells declared in gunbc.cloudflare.r2_mint_secret_access, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
+    ], "") as NonEmptyStr,
+    completion_evidence: DischargedAt {
+      evidence: decl_ref(
+        module_path: "gunbc.cloudflare.r2_token_mint_run",
+        decl_name: "observe_r2_mint_custody_container",
+      ),
+    },
+  }
+}
+
+func observe_r2_mint_custody_container(
+  profile: R2OriginTokenProfile,
+  gcp_token: Secret,
+) -> R2MintCustodyContainerStanding uses net: Network {
+  let secret_id = r2_origin_token_secret_id(profile: profile)
+  match observe_secret_container(
+    project: fleet_secret_ref(secret_id: secret_id).project,
+    secret_id: secret_id,
+    token: gcp_token,
+  ) {
+    SecretObservationRefused { cause: cause } =>
+      R2MintCustodyContainerUnobserved {
+        intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: cause),
+      }
+    SecretContainerObserved { container: container } =>
+      R2MintCustodyContainerPresent { container: container }
+  }
+}
+
+// THE DESTINATION CONTAINER IS A PRECONDITION, DECIDED BEFORE THE CREATE, AND THAT ORDERING IS THE
+// WHOLE OF THIS ARM. This module's own annotation has always claimed "every precondition is decided
+// before the Create", and for the custody CONTAINER it was not true: store_minted_token called
+// CreateSecret AFTER cloudflare.AccountTokens.Create had already minted a token whose value is
+// returned exactly once. #10947 succeeded only because the operator's identity happened to hold
+// project-wide secretmanager.secrets.create; a federated least-privilege identity does not, and the
+// failure that would have followed is not a failed run but a live credential on the account that
+// nobody holds.
+//
+// THE REMEDY IS NOT TO GRANT create, IT IS TO STOP NEEDING IT. secretmanager.secrets.create is a
+// PROJECT-level permission and cannot be a gunbc.auth.gcp_secret_access cell (one secret, one role),
+// and no per-secret cell can be written for a secret that does not exist. So the container is
+// established by the operator ceremony that grants the cells, this fold refuses when it is absent,
+// and the write path is AddSecretVersion only. Mapping a 409 AFTER the Create to "container present"
+// would have left the irreversible effect ahead of the check, which is the defect rather than a fix
+// for it (operator ruling, 2026-09-12).
 fn classify_r2_mint(
   profile: R2OriginTokenProfile,
   account: FleetCloudflareAccountStanding,
   custody: BootstrapCustodyStanding,
   origin: DurableOriginStanding,
+  container: R2MintContainerAdmission,
 ) -> R2MintPreconditions {
+  match container {
+    ContainerAbsent { intervention: container_intervention } =>
+      R2MintCustodyContainerAbsent { intervention: container_intervention }
+    ContainerAdmitted =>
   match custody {
     BootstrapCustodyUnrecorded { intervention: intervention } =>
       R2MintBootstrapCustodyUnrecorded { intervention: intervention }
@@ -232,6 +331,7 @@ fn classify_r2_mint(
       }
       }
   }
+  }
 }
 
 // THE BURDEN IS RENDERED FROM THE PRICED INTERVENTIONS RATHER THAN RESTATED, which is what makes
@@ -257,32 +357,10 @@ fn bootstrap_burden_text() -> String {
 // executed precedent (#10947) was an operator pasting a one-hour ya29 token into a session, and why
 // no federated workflow run could perform this mint at all.
 //
-// select_access_token_source names the arm the RUN's environment supports (workload federation in a
-// dispatched job, an operator token file in a session) and ensure_access_token realizes it. This
-// module chooses nothing about identity and spells no arm: the ladder lives in
-// gunbc.auth.access_token_source, and adding a fourth realizer there reaches this mint without an
-// edit here.
-type R2MintAccessTokenStanding
-  = R2MintAccessTokenResolved { token: Secret }
-  | R2MintAccessTokenRefused { cause: NonEmptyStr }
-
-func r2_mint_gcp_access_token() -> R2MintAccessTokenStanding uses net: Network {
-  match select_access_token_source() {
-    AccessTokenSourceUnavailable { cause: cause } =>
-      R2MintAccessTokenRefused { cause: cause }
-    AccessTokenSourceSelected { source: source } =>
-      match ensure_access_token(source: source) {
-        AccessTokenUpsertRequired { plan: plan } =>
-          R2MintAccessTokenRefused {
-            cause: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
-          }
-        AccessTokenEnsureRefused { reason: reason } =>
-          R2MintAccessTokenRefused { cause: reason }
-        AccessTokenReady { token: token } =>
-          R2MintAccessTokenResolved { token: token }
-      }
-  }
-}
+// gunbc.auth.access_token_source resolve_access_token names the arm the RUN's environment supports
+// (workload federation in a dispatched job, an operator token file in a session) and realizes it.
+// This module chooses nothing about identity, spells no arm, and does not compose the selection
+// itself: adding a fourth realizer there reaches this mint without an edit here.
 
 type R2MintBootstrapStanding
   = R2MintBootstrapReady {
@@ -291,16 +369,36 @@ type R2MintBootstrapStanding
       bootstrap: Secret
       gcp_token: Secret
       resolved_version: SmResolvedVersionIdentity
+      container: ObservedSecretContainer
     }
   | R2MintBootstrapRefused { cause: NonEmptyStr }
 
+// THE ACCESS TOKEN IS RESOLVED BEFORE THE LADDER RUNS, AND THAT REORDERING IS DELIBERATE. The
+// container precondition is an OBSERVATION, so it needs the run's identity before it can be decided,
+// and a precondition that cannot be evaluated is not a precondition. The cost is that a run with no
+// credential at all now reports that first rather than reporting the account or custody gap; the
+// benefit is that the one check whose absence could burn a non-idempotent Cloudflare Create is
+// inside the ladder rather than downstream of it. Nothing here reaches the network except the
+// container GET, which is readonly.
 func r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding uses net: Network {
-  match classify_r2_mint(
+  match resolve_access_token() {
+    AccessTokenUpsertRequired { plan: plan } =>
+      R2MintBootstrapRefused {
+        cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr,
+      }
+    AccessTokenEnsureRefused { reason: reason } =>
+      R2MintBootstrapRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+    AccessTokenReady { token: gcp_token } => {
+      let container_standing = observe_r2_mint_custody_container(profile: profile, gcp_token: gcp_token)
+      match classify_r2_mint(
     profile: profile,
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: r2_mint_container_admission(standing: container_standing),
   ) {
+    R2MintCustodyContainerAbsent { intervention: intervention } =>
+      R2MintBootstrapRefused { cause: intervention.instruction }
     R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
       R2MintBootstrapRefused { cause: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String) as NonEmptyStr }
     R2MintAccountUnallocated { intervention: intervention } =>
@@ -310,10 +408,10 @@ func r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding
     R2MintAdmissionRefused { standing: standing } =>
       R2MintBootstrapRefused { cause: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)) as NonEmptyStr }
     R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
-      match r2_mint_gcp_access_token() {
-        R2MintAccessTokenRefused { cause: cause } =>
-          R2MintBootstrapRefused { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
-        R2MintAccessTokenResolved { token: gcp_token } =>
+      match container_standing {
+        R2MintCustodyContainerUnobserved { intervention: intervention } =>
+          R2MintBootstrapRefused { cause: intervention.instruction }
+        R2MintCustodyContainerPresent { container: container } =>
           match fetch_secret_ref_credential_with_token(
             secret_ref: locus,
             access_token: gcp_token,
@@ -341,8 +439,11 @@ func r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding
                 bootstrap: bootstrap,
                 gcp_token: gcp_token,
                 resolved_version: identity,
+                container: container,
               }
           }
+      }
+  }
       }
   }
 }
@@ -502,10 +603,16 @@ type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
   | R2CredentialStoreRefused { cause: NonEmptyStr }
 
+// THE CONTAINER IS AN ARGUMENT, NOT SOMETHING THIS FUNCTION CREATES. It arrives as the seal
+// r2_mint_bootstrap observed BEFORE the Cloudflare Create, so by the time this runs the destination
+// is a confirmed fact rather than a write about to be attempted. The CreateSecret that used to sit
+// here is gone: it was the one effect in this flow placed after the irreversible one, and the only
+// reason #10947 survived it was that the operator's identity held project-wide secrets.create.
 func store_minted_token(
   token: CreatedAccountToken,
   locus: SecretRef,
   gcp_token: Secret,
+  container: ObservedSecretContainer,
 ) -> R2CredentialStored uses net: Network {
   match snapshot_minted_secret(payload: token.value) {
     CredentialSnapshotRefused { cause: cause } =>
@@ -522,23 +629,12 @@ func store_minted_token(
       }
     CredentialSnapshotTaken { snapshot: snapshot } => {
       let attempt = concat("cloudflare-r2-origin-token-mint:", locus.secret as String) as SecretProvisionAttemptIdentity
-      match create_secret_for_attempt(
+      let capability = version_add_capability_for_observed_container(
+        container: container,
         attempt: attempt,
-        project: locus.project,
-        secret_id: locus.secret,
         snapshot: snapshot,
-        token: gcp_token,
-      ) {
-        SecretCreationRefused { cause: cause } =>
-          R2CredentialStoreRefused {
-            cause: concat("THE TOKEN WAS MINTED BUT ITS CUSTODY CONTAINER WAS REFUSED, so the value is unrecoverable and the token must be revoked: ", cause as String) as NonEmptyStr,
-          }
-        SecretCreationOutcomeUnknown { cause: cause } =>
-          R2CredentialStoreRefused {
-            cause: concat("THE TOKEN WAS MINTED AND THE CUSTODY CREATE OUTCOME IS UNKNOWN: ", cause as String) as NonEmptyStr,
-          }
-        SecretCreatedForAttempt { capability: capability } =>
-          match add_initial_version(capability: capability, token: gcp_token) {
+      )
+      match add_initial_version(capability: capability, token: gcp_token) {
             VersionAdditionRefused { cause: cause } =>
               R2CredentialStoreRefused {
                 cause: concat("THE TOKEN WAS MINTED BUT ITS VERSION WAS REFUSED: ", cause as String) as NonEmptyStr,
@@ -554,9 +650,8 @@ func store_minted_token(
               }
             VersionAddedAndVerified { verified: verified } =>
               R2CredentialStoredAt { version_resource: verified_exact_ref(verified) as String }
-            }
-          }
       }
+    }
   }
 }
 
@@ -575,6 +670,7 @@ func list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
       bootstrap: bootstrap,
       gcp_token: _,
       resolved_version: _,
+      container: _,
     } =>
       match list_account_tokens(bootstrap: bootstrap, account_id: account_id) {
         R2AccountTokenListRefused { cause: cause } =>
@@ -605,6 +701,7 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
       bootstrap: bootstrap,
       gcp_token: _,
       resolved_version: _,
+      container: _,
     } =>
       match list_account_tokens(bootstrap: bootstrap, account_id: account_id) {
         R2AccountTokenListRefused { cause: cause } =>
@@ -730,6 +827,7 @@ func mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit u
       bootstrap: bootstrap,
       gcp_token: gcp_token,
       resolved_version: _,
+      container: container,
     } =>
       match mint_r2_origin_token(
         account_id: account_id,
@@ -745,6 +843,7 @@ func mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit u
             token: token,
             locus: fleet_secret_ref(secret_id: r2_origin_token_secret_id(profile: profile)),
             gcp_token: gcp_token,
+            container: container,
           ) {
             R2CredentialStoreRefused { cause: cause } =>
               exit_failure(reason: concat("STORE REFUSED: ", cause as String))

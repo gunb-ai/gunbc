@@ -317,3 +317,21 @@ func select_access_token_source() -> AccessTokenSourceSelection {
       }
   }
 }
+
+// SELECT THEN REALIZE, COMPOSED ONCE. Every caller that wants "whatever credential this run has,
+// realized" wants exactly this composition, and the first two to want it wrote it out separately --
+// the same select -> ensure -> three arms, differing only in which two-arm wrapper each declared
+// around the result. That is this module's own thesis one level up: a resolution COMPOSED at the
+// call site, twice, forks the same way an arm chosen at the call site does, and a fourth realizer
+// added to the ladder would reach both callers only while the copies agreed.
+//
+// The result is AccessTokenResolution rather than a new coproduct, because it already carries
+// exactly the arms a caller has to distinguish, and an unavailable SOURCE is a refused ENSURE from
+// where a caller stands: nothing downstream acts differently on "no variable was set" than on "the
+// variable was set and empty", and both must refuse rather than proceed.
+func resolve_access_token() -> AccessTokenResolution uses net: Network {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: cause } => AccessTokenEnsureRefused { reason: cause }
+    AccessTokenSourceSelected { source: source } => ensure_access_token(source: source)
+  }
+}

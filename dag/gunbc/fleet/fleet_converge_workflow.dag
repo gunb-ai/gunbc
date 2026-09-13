@@ -11,6 +11,7 @@ import extdeps.github.actions {
   RunnerSpec, RunsOnExpression,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -1119,7 +1120,7 @@ fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "r2-mint-preflight")),
-      kv(key: "path", value: yaml_string(s: "target/r2-mint-preflight-permission-groups.txt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_preflight_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
