@@ -1152,13 +1152,22 @@ fn srv1_authorization() -> CapConvergeDecision {
 // 1. A MATCHING AUTHORIZATION REACHES THE STAGED CAP APPLICATION. This is the row that was failing
 // before the staged-builder repair: the authorized branch produced a script the ordering guard could
 // not accept, so it emitted "ordering gate failed" for every ordinary authorization.
+//
+// THE REVERT HALF IS ASSERTED THROUGH ITS OWN RENDERER, NOT THROUGH A HAND-SPELLED SUBSTRING. This
+// witness previously looked for the literal "systemctl revert" and failed for exactly the reason the
+// guard it covers failed: `shell_command_intent` sends every argv word through `shell_literal_words`,
+// so the emitted bytes carry 'systemctl' 'revert' per-word-quoted and the two-word literal appears
+// nowhere. Asserting against `deploy_memory_cap_shadow_revert_script` compares the emission to the
+// authority that produces it, which is both correct and immune to how the serializer quotes -- the
+// same reason the sibling wiring witness below was already green while this one was red.
 test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
+  let units = runner_slot_service_units_for_host(host: deployment_srv1_target().host.identity)
   let text = cap_steps_text(
     steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
   )
   string_contains(s: text, pattern: "20-fleet-width.conf")
     && string_contains(s: text, pattern: "40-fleet-high.conf")
-    && string_contains(s: text, pattern: "systemctl revert")
+    && string_contains(s: text, pattern: deploy_memory_cap_shadow_revert_script(units: units))
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
 
