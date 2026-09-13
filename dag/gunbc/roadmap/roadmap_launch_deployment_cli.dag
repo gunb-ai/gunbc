@@ -69,7 +69,7 @@ import gunbc.roadmap_belt_actuate {
   BeltProviderPreflight, ProviderPreflightRefused,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
-import gunbc.roadmap_model { Unsized }
+import gunbc.dispatch_selection { NoDerivedSizingExpectation }
 import gunbc.dispatch_preflight { dispatch_preflight_for_instance, PreflightAdmitted, PreflightRefused }
 import gunbc.roadmap_launch_admission { launch_admission_contract_digest_hex }
 import gunbc.roadmap_launch_deployment_observe {
@@ -330,7 +330,7 @@ fn principal_fact() -> PrincipalFact {
 }
 
 fn provider_fact(instance: HostDashboardInstance) -> BeltProviderPreflight {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionRefused { reason: r } => ProviderPreflightRefused { step: "dispatch-selection", detail: r as String }
     DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
   }

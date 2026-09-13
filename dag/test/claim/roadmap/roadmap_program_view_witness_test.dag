@@ -4,7 +4,7 @@ import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapNodeIdentity, RoadmapAcceptanceReceipt,
   roadmap_criteria_digest,
-  NodeSizing, Sized, Unsized, IntricacyLow, VolumeSmall, ManualAcceptance, PrsMerged,
+  WorkItemDispatch, NotDispatchable, Dispatchable, ManualAcceptance, PrsMerged,
 }
 import gunbc.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
@@ -66,9 +66,9 @@ fn fx_node_custom(
     node: id as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
     carriers: [],
-    sizing: if sized {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
-    } else { Unsized },
+    dispatch: if sized {
+      Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }
+    } else { NotDispatchable },
     execution: if bound {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
@@ -83,9 +83,9 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
     node: id as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
-    sizing: if sized {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
-    } else { Unsized },
+    dispatch: if sized {
+      Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }
+    } else { NotDispatchable },
     execution: if bound {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
@@ -100,7 +100,7 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     node: id as RoadmapNodeId,
     line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
     owner: "fixture",
     signoff: Unsigned,
@@ -191,7 +191,7 @@ fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>)
       finish_lines: [], fronts: [],
       remaining: RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
-        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
+        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, undispatchable: 0 - 1,
       },
       proposed: ProposedCarrierAbsent,
     }
@@ -212,7 +212,7 @@ test fn witness_fixture_shape_exact_populations() -> Bool {
         && lv.remaining.in_flight == 0
         && lv.remaining.dependency_held == 3
         && lv.remaining.contract_held == 1
-        && lv.remaining.unsized == 1
+        && lv.remaining.undispatchable == 1
         && !lv.accepted
         && count(lv.contributing_fronts) == 2
   }

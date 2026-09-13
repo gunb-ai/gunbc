@@ -75,14 +75,8 @@ import gunbc.roadmap_model {
   roadmap_parent_ids,
   is_top_level,
   Pointer,
-  IntricacyLow,
-  IntricacyMedium,
-  IntricacyHigh,
-  VolumeSmall,
-  VolumeMedium,
-  VolumeLarge,
-  Sized,
-  Unsized,
+  Dispatchable,
+  NotDispatchable,
   ManualAcceptance,
 }
 import gunbc.roadmap_status {
@@ -245,10 +239,10 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
     }
     && count(n.carriers) > 0
     && !(n.owner == "")
-    && match n.sizing {
-      Sized { intricacy: _, volume: _, repo, acceptance } =>
+    && match n.dispatch {
+      Dispatchable { repo, acceptance } =>
         repo == "gunbc" && acceptance == ManualAcceptance
-      Unsized => false
+      NotDispatchable => false
   }
 }
 
@@ -258,9 +252,7 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
     node: "red-fixture",
     line: line,
     carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
-    sizing: Sized {
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
+    dispatch: Dispatchable {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
@@ -492,20 +484,14 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   ))
 }
 
-test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
-  all(nodes(), n => match n.sizing {
-    Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
-    _ => false
-  })
-    && any(nodes(), n => match n.sizing {
-      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
-      _ => false
-    })
-    && any(nodes(), n => match n.sizing {
-      Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
-      _ => false
-    })
-}
+// witness_active_sizes_are_intentional_and_nonuniform WAS HERE AND IS RETIRED WITH ITS SUBJECT.
+// It asserted that the authored size cells across the active rows were deliberate rather than one
+// value copied down the file -- every row sized, and at least one row at each end of the range.
+// Sizing is derived now and nothing carries a cell, so the claim has no population; weakening it
+// to "every row is dispatchable" would leave the witness green while asserting something the row
+// shape witness above already checks by identity. It is named in the population of
+// gunbc.rung_drop.roadmap_sizing_authored_to_derived beside the forecast controls, and its trigger
+// is the condition under which a derived distribution exists to make the claim about again.
 
 test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
   all(nodes(), n => match n.line {

@@ -1780,6 +1780,26 @@ pub struct TransitionAdmission {
 /// (base: the producer's own declaration; head: the identical declaration in its new home), which
 /// `names_leaf` cannot see as authored resolution. Required floor run 34573949372 printed all five
 /// as unadjudicated; they are admitted here by the same exact identity as the rest.
+///
+/// #10994's seventeen rows: HOW THEIR `expected_candidates` SETS WERE ESTABLISHED, and why each
+/// is a singleton. The sets are NOT transcribed from a run's `found candidates` -- copying found
+/// into expected makes the equality a tautology and turns the admission into permission for
+/// whatever the change happened to do. They are derived from `declaring_candidates`, which maps
+/// every exposing import through `declarer_of`, so a candidate set is over DECLARING modules and
+/// never over the import paths that reach them. That makes set size decidable from source: each
+/// moved spelling is declared in EXACTLY ONE module on each side --
+///
+///   base: `Intricacy*`/`Volume*` in `gunbc.roadmap_model`, `node_title` in `gunbc.roadmap_spawner`
+///   head: `Intricacy*`/`Volume*` in `gunbc.roadmap_sizing`, `node_title` in `gunbc.roadmap_status`
+///
+/// so each site's set is a singleton by structure rather than by compile convenience, and a second
+/// declarer appearing anywhere would widen the set and refuse here rather than pass quietly.
+///
+/// WHY ALL SEVENTEEN ARE STILL REQUIRED, rather than seventeen being carried over as a target: a
+/// row is needed only where this branch still produces a delta. Every one of the seventeen sites
+/// references its spelling on BOTH sides -- the reference survives the unbundling and only the
+/// declarer moves -- which is precisely `TargetChanged`. No site lost its reference, so no row is
+/// stale and none was re-authored to preserve a count.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
@@ -3588,6 +3608,176 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "entry_canonical_identities",
             spelling: "floor_discovery_walk_state_zero",
             expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "IntricacyHigh",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.dispatch_selection",
+            in_declaration: "automatic_codex_behavior_preservation_holds",
+            spelling: "VolumeMedium",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_audit_spawn",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_belt_actuate",
+            in_declaration: "belt_review_plan_for_head",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_dispatch_actuator",
+            in_declaration: "dispatch_slot_fields",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "node_json_value",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "roadmap_dispatch_json_value",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_array_json",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `node_title` moves to `gunbc.roadmap_status`",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.roadmap_spawner",
+            in_declaration: "upcoming_node_json",
+            spelling: "node_title",
+            expected_candidates: &["gunbc.roadmap_status"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "IntricacyMedium",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeMedium` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "fixture_cell",
+            spelling: "VolumeMedium",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyHigh",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dispatch_selection_witness",
+            in_declaration: "witness_intricacy_does_not_change_automatic_effort",
+            spelling: "IntricacyLow",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyHigh",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyLow` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_dispatch_actuator",
+            in_declaration: "witness_dispatch_effort_ignores_intricacy",
+            spelling: "IntricacyLow",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "IntricacyHigh",
+            expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10994 sizing unbundling: `VolumeSmall` moves to `gunbc.roadmap_sizing`",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.roadmap_forecast_witness",
+            in_declaration: "witness_empty_calibration_cell_refuses",
+            spelling: "VolumeSmall",
+            expected_candidates: &["gunbc.roadmap_sizing"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

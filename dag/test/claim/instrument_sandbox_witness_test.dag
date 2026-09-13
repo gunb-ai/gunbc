@@ -160,14 +160,14 @@ fn witness_the_press_response_is_a_bounded_translation() -> Bool {
 fn fixture_line_remaining() -> RemainingShape {
   RemainingShape {
     sequential_depth: 1, open_fronts: 1, startable_now: 0, in_flight: 0,
-    dependency_held: 0, contract_held: 0, unsized: 0,
+    dependency_held: 0, contract_held: 0, undispatchable: 0,
   }
 }
 
 fn fixture_program_remaining() -> RemainingShape {
   RemainingShape {
     sequential_depth: 9, open_fronts: 7, startable_now: 5, in_flight: 0,
-    dependency_held: 0, contract_held: 0, unsized: 0,
+    dependency_held: 0, contract_held: 0, undispatchable: 0,
   }
 }
 
