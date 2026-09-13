@@ -716,6 +716,15 @@ fn band_key_for_label(label: String) -> String {
 // The three LaunchNotAgentWork modes are pinned separately BELOW rather than by this join, because
 // one arm produces THREE wire labels through launch_non_agent_work_wire_label -- so arm coverage is
 // necessary and not sufficient for vocabulary coverage, and the mode labels need their own rows.
+//
+// WHAT WOULD NOT RED THIS, stated so nobody trusts the join further than it reaches: the witness is
+// closed under a new ARM and still OPEN under a new MODE. Adding a fourth NonAgentWorkMode leaves
+// the arm join satisfied -- LaunchNotAgentWork still has exemplars -- and leaves the three named
+// labels passing, while the fourth label goes unpinned and silent. The sentence that would close it
+// is a join over the PRODUCT rather than the arms: for every arm, and for every mode of an arm that
+// ranges over modes, a label row exists. coproduct_arm_keys applies to NonAgentWorkMode exactly as
+// it applies here, so that version is authorable; it is not built yet, and this paragraph is the
+// declared edge rather than an omission a reader has to infer from the arm join's shape.
 fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
   let arms = coproduct_arm_keys(type_name: ^LaunchRefusal)
   count(arms) > 0
