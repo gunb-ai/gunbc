@@ -841,7 +841,8 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 //   gunbc#11173 head 26a02cab, run 34730761129, SAME HEAD, SAME CONTENT, SAME TREE:
 //     attempt 1 crossed at 562, attempt 2 crossed at 556, attempt 3 PASSED
 //   attempt 2: wall 2435ms at 556ms CPU -- a wall-beyond-CPU gap of about 1.9s
-//   run-wide mean on that run: 11.8ms over 3789 claims -- an outlier on the clock, not by shape
+//   run-wide mean on that run: 11.8ms over 3789 claims. The reported CPU measurements exceed
+//     the run-wide mean; these figures do not establish which factors account for that difference.
 //   ceiling: `required_floor_claim_cpu_safety_limit_ms` = 500; the floor printed
 //     COMPLETED-OVER-COST-REQUIREMENT and refused with blockers=1 while claims_failed=0
 //
