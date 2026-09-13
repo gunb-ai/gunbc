@@ -90,7 +90,7 @@ fn classify_observed_unit(
 ) -> SlotCensusRow {
   if !unit_is_owned_by_host(host: host, unit: o.unit) {
     ForeignOccupant { unit: o.unit }
-  } else if string_list_contains(xs: desired, wanted: o.unit) {
+  } else if any(desired, d => d == o.unit) {
     RetainedSlot { unit: o.unit }
   } else {
     RetiringSlot { unit: o.unit, active: o.active }
@@ -102,7 +102,7 @@ fn classify_observed_unit(
 // than it committed to, which is the under-provisioning direction of the same defect.
 fn missing_rows(desired: List<String>, observed_names: List<String>) -> List<SlotCensusRow> {
   desired
-    |> filter(d => !string_list_contains(xs: observed_names, wanted: d))
+    |> filter(d => !any(observed_names, o => o == d))
     |> map(d => MissingSlot { unit: d })
 }
 
