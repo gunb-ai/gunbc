@@ -153,9 +153,13 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   }
 }
 
+fn inhabitance_no_candidate_application_reason() -> Symbol {
+  ^application_argument_does_not_inhabit
+}
+
 fn inhabitance_application_refusal_reason(find_witness_reason: Symbol) -> Symbol {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    ^application_argument_does_not_inhabit
+    inhabitance_no_candidate_application_reason()
   } else {
     find_witness_reason
   }
