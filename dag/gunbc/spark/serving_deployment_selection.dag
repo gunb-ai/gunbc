@@ -792,6 +792,17 @@ fn v4_1_selection_frontier_fact(decl_name: NonEmptyStr) -> DeclarationRef {
 }
 
 data v4_1_selection_frontier: List<FrontierRow> = [
+  // THIS ROW LIVES HERE AND NOT IN THE ROUTE AUTHORITY'S ROSTER. A first cut filed it beside the Engram
+  // rows because the obligation is about the Engram budget -- but the DECLARATION it defers is this
+  // module's, and `engram_frontier_subject_key` builds every expected subject with the route module's
+  // path, so an enrolled row pointing at a serving declaration had no expected subject and the
+  // deferral-account join refused in the direction that catches exactly this. A fact's home is its
+  // layer, and the roster that refused was right.
+  frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "candidate_component_budget" as NonEmptyStr),
+    reason: "the idle-free reading was taken on a Group A rank and this closure has no candidate-to-fabric-group binding to key it by",
+    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, because nothing in this closure says which fabric group a candidate lands on. That is the same grain spark_fleet_snapshot already applies its single-host reading at, so it adds no new generalisation -- but a group whose ranks have less free memory would be screened against another group's reading. TRIGGER: a candidate carrying its target fabric group, so group_rank_free_memory is keyed by the group the candidate actually runs on. SUFFICIENT FOR: candidate_component_budget selects the reading for that candidate's own group and reports an obligation when no reading exists for it, rather than reaching for Group A's." as NonEmptyStr),
+  ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
     reason: "V4.1 domain stays the fleet cartesian until DSV41-1 names admitted TP widths",

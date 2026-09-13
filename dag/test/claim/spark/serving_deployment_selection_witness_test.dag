@@ -945,6 +945,12 @@ data v4_1_expected_frontier_subjects: List<String> = [
   "component_route_gap_over",
   "spark_fleet_snapshot",
   "execution_profile_of",
+  // THE PER-RANK BUDGET'S OWN DEFERRAL, enrolled here because the declaration it defers is this
+  // module's. It was briefly filed in the route authority's roster instead, and that roster refused --
+  // its expected subjects are all built with the route module's path, so a row pointing at a serving
+  // declaration had no counterpart. The join catching that is the reason both these rosters check in
+  // both directions rather than by count.
+  "candidate_component_budget",
 ]
 
 fn v4_1_frontier_subject_key(decl_name: String) -> String {
