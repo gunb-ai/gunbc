@@ -1,10 +1,15 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { NonEmptyStr, List, Unit }
+import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.string_type { String }
 import std.credentials { FactoryLogin }
-import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+  bmc_firmware_release_identity_eq,
+  bmc_firmware_release_identity_of_wire,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -101,7 +106,7 @@ data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/settings/media/remote/start-media",
-  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status nonzero, session_index bound)",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status started or connecting via megarac_redirection_status_of_wire, session_index bound)",
 }
 
 data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
@@ -157,6 +162,210 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
     MegaRacImageRedirectionOn => "1"
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// SERVED SP-X UI SURFACE CATALOG, keyed to firmware identity 0.32. The capture receipt (path
+// and digest) is gunbc.machine_intake_megarac_served_ui_catalog_observation; this module keeps
+// only firmware-identity-keyed facts about that surface. The catalog is a FACT ABOUT THIS
+// FIRMWARE'S SERVED UI PATHS, not a family-wide MegaRAC claim, and not a redirection_status map:
+// AMI advertises Redfish on other builds; this surface does not carry it. Status-code meanings
+// are a separate fact, cited on megarac_redirection_status_of_wire.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.32",
+)
+
+// THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
+// share type; the host sees a virtual CD. PXE is not a term of this route. The required
+// image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
+
+// REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
+// decoder names are the ones committed observations actually returned on firmware 0.32:
+// 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
+// and 100 connecting (gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+// mtcollins1_diskless_boot_artifact_path, and
+// gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
+// Connecting is presenting: the same unit booted GRUB from a session that still read 100.
+// Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial
+// recovered from source.min.js (those bytes are not in the tree). A firmware identity this row
+// does not catalog refuses rather than inheriting 0.32's numbers.
+type MegaRacRedirectionStatus
+  = RedirectionStopped
+  | RedirectionStartedConnectionAccepted
+  | RedirectionConnecting
+  | RedirectionWireUncatalogued { wire: Int }
+
+type MegaRacRedirectionStatusLookup
+  = RedirectionStatusKnown { firmware: BmcFirmwareReleaseIdentity, status: MegaRacRedirectionStatus }
+  | RedirectionStatusFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+
+fn megarac_redirection_status_of_wire(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+) -> MegaRacRedirectionStatusLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    let status = if wire == 0 {
+      RedirectionStopped
+    } else if wire == 1 {
+      RedirectionStartedConnectionAccepted
+    } else if wire == 100 {
+      RedirectionConnecting
+    } else {
+      RedirectionWireUncatalogued { wire: wire }
+    }
+    RedirectionStatusKnown { firmware: firmware, status: status }
+  } else {
+    RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
+// presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are
+// unread, and a Bool false here would license StartMedia.
+type MegaRacRedirectionPresentationStanding
+  = RedirectionPresenting
+  | RedirectionKnownStopped
+  | RedirectionPresentationUnknown
+
+fn megarac_redirection_presentation_standing(
+  lookup: MegaRacRedirectionStatusLookup,
+) -> MegaRacRedirectionPresentationStanding {
+  match lookup {
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => RedirectionPresentationUnknown
+    RedirectionStatusKnown { firmware: _, status: status } =>
+      match status {
+        RedirectionStartedConnectionAccepted => RedirectionPresenting
+        RedirectionConnecting => RedirectionPresenting
+        RedirectionStopped => RedirectionKnownStopped
+        RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
+      }
+  }
+}
+
+// CONSOLE RECORDERS. Two recorders, two subjects. video/* records the framebuffer the KVM
+// renders; sol-triggers records the SOL stream. Both persist across resets. The SOL object's
+// chassis-power-on field is spelled chasis_power_on_events_enable (upstream typo); the video
+// object spells chassis_power_on_events_enable. Model what upstream sends.
+//
+// §3c frontier: megarac_recorder_trigger_power_on_field, megarac_trigger_power_on_field_wire,
+// megarac_recorder_reset_survival, and the four data rows they bind. Consumer: the PreOs
+// console-recorder / live-SOL axis in gunbc.machine_intake_pre_os_observation_capabilities on
+// gunbc#11110 (this PR does not mint that file). Until that lands, an arming PUT cannot be keyed
+// to the subject's wire spelling, and live sol activate cannot be distinguished from a recorder
+// that survives reset.
+type MegaRacConsoleRecorderSubject
+  = FramebufferRecorder
+  | SolStreamRecorder
+
+type MegaRacTriggerPowerOnFieldName
+  = ChassisPowerOnEventsEnable
+  | ChasisPowerOnEventsEnable
+
+fn megarac_recorder_trigger_power_on_field(subject: MegaRacConsoleRecorderSubject) -> MegaRacTriggerPowerOnFieldName {
+  match subject {
+    FramebufferRecorder => ChassisPowerOnEventsEnable
+    SolStreamRecorder => ChasisPowerOnEventsEnable
+  }
+}
+
+data megarac_video_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = megarac_recorder_trigger_power_on_field(subject: FramebufferRecorder)
+
+data megarac_sol_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = megarac_recorder_trigger_power_on_field(subject: SolStreamRecorder)
+
+fn megarac_trigger_power_on_field_wire(name: MegaRacTriggerPowerOnFieldName) -> NonEmptyStr {
+  match name {
+    ChassisPowerOnEventsEnable => "chassis_power_on_events_enable" as NonEmptyStr
+    ChasisPowerOnEventsEnable => "chasis_power_on_events_enable" as NonEmptyStr
+  }
+}
+
+type MegaRacResetSurvival
+  = SurvivesHostAndControllerReset
+  | DiesOnReset
+
+fn megarac_recorder_reset_survival(subject: MegaRacConsoleRecorderSubject) -> MegaRacResetSurvival {
+  match subject {
+    FramebufferRecorder => SurvivesHostAndControllerReset
+    SolStreamRecorder => SurvivesHostAndControllerReset
+  }
+}
+
+data megarac_framebuffer_recorder_reset_survival: MegaRacResetSurvival = megarac_recorder_reset_survival(subject: FramebufferRecorder)
+
+data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = megarac_recorder_reset_survival(subject: SolStreamRecorder)
+
+data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
+
+// WHAT THIS SERVED UI CAN AND CANNOT DO, as PATH PRESENCE in the 0.32 catalog. They are not
+// omissions and not unit telemetry. Per-DIMM AEP inventory and api/fru ARE in the catalog
+// (api/aep_inventory/aep_dimm_info, api/fru); a controller answering nothing through those paths
+// is a unit observation, not a served-surface absence. BIOS *settings* (`settings/bios`) are
+// absent; flash/version (`api/maintenance/hpm/getbiosversions`) is present. MegaRacWebEventLogOemDescriptionUnknown
+// was the same fork: the renderer answering unknown is not a missing path. Ampere OEM SEL
+// producer layout is extdeps.ampere.oem_sel.
+//
+// §3c frontier: megarac_served_ui_surface_standing. Consumer: the PreOs capability axes that
+// would claim Redfish or a BIOS/UEFI settings surface, on
+// gunbc.machine_intake_pre_os_observation_capabilities (gunbc#11110; this PR does not mint that
+// file). Until that lands, a firmware this decoder does not catalog cannot refuse an inherited
+// 0.32 presence map. The coproduct carries present surfaces so Absent is not the only
+// constructible known answer: a Bool that can only be true is a decoration.
+type MegaRacServedUiSurface
+  = RedfishService
+  | BiosUefiSettings
+  | FruInventory
+  | AepDimmInventory
+  | BiosVersionFlash
+
+type MegaRacServedUiSurfacePresence
+  = ServedUiSurfacePresent
+  | ServedUiSurfaceAbsent
+
+fn megarac_served_ui_surface_presence_at_0_32(surface: MegaRacServedUiSurface) -> MegaRacServedUiSurfacePresence {
+  match surface {
+    RedfishService => ServedUiSurfaceAbsent
+    BiosUefiSettings => ServedUiSurfaceAbsent
+    FruInventory => ServedUiSurfacePresent
+    AepDimmInventory => ServedUiSurfacePresent
+    BiosVersionFlash => ServedUiSurfacePresent
+  }
+}
+
+type MegaRacServedUiFactLookup
+  = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, presence: MegaRacServedUiSurfacePresence }
+  | ServedUiFactFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+
+fn megarac_served_ui_surface_standing(
+  firmware: BmcFirmwareReleaseIdentity,
+  surface: MegaRacServedUiSurface,
+) -> MegaRacServedUiFactLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    ServedUiFactKnown {
+      firmware: firmware,
+      presence: megarac_served_ui_surface_presence_at_0_32(surface: surface),
+    }
+  } else {
+    ServedUiFactFirmwareUncatalogued { firmware: firmware }
+  }
+}
+
+// EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
+// template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
+// layout for those manufacturer bytes is extdeps.ampere.oem_sel.
+//
+// §3c frontier: megarac_web_event_log_layout and megarac_ipmi_sel_layout. Consumer: the PreOs
+// OEM-decode / SEL axis in gunbc.machine_intake_pre_os_observation_capabilities on gunbc#11110
+// (this PR does not mint that file). Until that lands, a web-log empty SelData row cannot be
+// refused as a preserved IPMI payload, and the two layouts remain unjoined to a decoder.
+type MegaRacEventLogLayout
+  = MegaRacWebEventLogOemEmptySelData
+  | MegaRacIpmiSelPayloadPreserved
+
+data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
+
+data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the

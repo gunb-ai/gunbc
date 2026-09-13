@@ -241,6 +241,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/firmware/types.dag",
   "dag/extdeps/memory/training.dag",
   "dag/extdeps/ampere/scp_diagnostic.dag",
+  "dag/extdeps/ampere/oem_sel.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/subject.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/memory_population.dag",
   "dag/extdeps/ampere/mt_collins_getting_started_guide/subject.dag",

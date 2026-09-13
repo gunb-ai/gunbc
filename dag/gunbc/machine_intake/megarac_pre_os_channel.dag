@@ -1,0 +1,27 @@
+module gunbc.machine_intake_megarac_pre_os_channel
+
+import std.types { NonEmptyStr }
+import std.measure { Second, second }
+import gunbc.machine_intake_sol_collector_observation {
+  SolCollectorSessionAcknowledged,
+  SolCoverageStillRunningPastDeadline,
+  SolHostPayloadReceived,
+  SolCollectorObservation,
+}
+
+// JOIN: MegaRAC names the SOL session as a channel on the served UI; whether captured bytes
+// are a HOST fact is the collector observation. Platform console capability (SolPresentEmitting
+// vs SolPresentSilent) is not this module. The 2026-09-12 DRAM-training capture is the
+// positive control that this controller delivered host console bytes over SOL.
+
+data megarac_sol_host_payload_positive_control_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt" as NonEmptyStr
+
+data megarac_sol_host_payload_positive_control_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" as NonEmptyStr
+
+data megarac_sol_collector_terminate_deadline: Second = second(count: 645)
+
+data megarac_sol_host_payload_positive_control: SolCollectorObservation = SolCollectorSessionAcknowledged {
+  coverage: SolCoverageStillRunningPastDeadline,
+  host_payload: SolHostPayloadReceived,
+  terminate_deadline: megarac_sol_collector_terminate_deadline,
+}
