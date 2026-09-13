@@ -5,6 +5,16 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiControllerChannelCensus,
+  IpmiMedium8023Lan,
+  IpmiMediumSerialAsync,
+  ipmi_controller_channel_census,
+  ipmi_lan_channel_member,
+  ipmi_non_lan_channel_member,
+}
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import gunbc.machine_intake_subject {
   AssemblyManifest,
@@ -79,9 +89,21 @@ import gunbc.machine_intake_bmc_secure {
   ManagedCredentialReference,
   ManagedCredentialUnestablished,
   PreviouslyRotatedCredentialRequired,
+  PublishedCredentialAccountObservation,
+  PublishedCredentialCensusMemberUnprobed,
+  PublishedCredentialCensusNotTaken,
+  PublishedCredentialDisabledNotRetired,
+  PublishedCredentialLanMemberUnaddressed,
+  PublishedCredentialLanProbe,
+  PublishedCredentialNoAddressableLanMember,
+  PublishedCredentialProbeDuplicate,
   PublishedCredentialProbePrecedesRotation,
+  PublishedCredentialProbeUnmatched,
+  PublishedCredentialRetired,
   PublishedCredentialRetirementUnestablished,
   PublishedCredentialStillAccepted,
+  FirmwareResetRestoresPublishedAccount,
+  AdministratorReEnableRestoresPublishedAccount,
   RotationApplied,
   RotationNotAttempted,
   RotationObservationForOtherAttempt,
@@ -116,6 +138,38 @@ data other_attempt_subject: MachineIntakeSubject = MachineIntakeSubject { subjec
 
 data controller: BmcControllerEndpoint = BmcControllerEndpoint { host: "192.168.1.192" }
 
+data lan_228: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228)
+data lan_231: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231)
+data lan_unspecified: Ipv4Address = ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)
+
+data channel_one: IpmiChannelNumber = 1
+data channel_two: IpmiChannelNumber = 2
+data channel_seven: IpmiChannelNumber = 7
+data channel_eight: IpmiChannelNumber = 8
+
+data census_two_lan: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
+  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+])
+
+data census_empty: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [])
+
+data census_with_unaddressed: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
+  ipmi_lan_channel_member(channel: channel_seven, medium: IpmiMedium8023Lan, address: lan_unspecified),
+  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+])
+
+data census_with_serial: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
+  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
+  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+])
+
+data census_serial_only: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
+])
+
 data managed_secret: SecretRef = SecretRef {
   project: "gunbai-secrets",
   secret: "bmc-brd000451-admin",
@@ -140,10 +194,45 @@ data bootstrap_accepted: CredentialProbeOutcome = CredentialAccepted { evidence:
 data managed_accepted: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "managed-login"), observed_at: 1788000006000 }
 data published_rejected: CredentialProbeOutcome = CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000007000 }
 data published_accepted: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "published-login-200"), observed_at: 1788000007000 }
+data published_rejected_231: CredentialProbeOutcome = CredentialRejected { evidence: evidence(label: "published-login-401-231"), observed_at: 1788000008000 }
+data published_accepted_231: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "published-login-200-231"), observed_at: 1788000008000 }
 
-// One rotation observation with the four readings the design doc's BmcSecure
-// row names. Every test below perturbs exactly one of them, so a refusal can
-// only be attributed to the reading it changed.
+data published_account_retired: PublishedCredentialAccountObservation = PublishedCredentialRetired {
+  evidence: evidence(label: "user-list-absent"),
+  observed_at: 1788000009000,
+}
+
+data published_account_disabled: PublishedCredentialAccountObservation = PublishedCredentialDisabledNotRetired {
+  restore_path: FirmwareResetRestoresPublishedAccount,
+  evidence: evidence(label: "user-list-disabled"),
+  observed_at: 1788000009000,
+}
+
+data published_account_disabled_reenable: PublishedCredentialAccountObservation = PublishedCredentialDisabledNotRetired {
+  restore_path: AdministratorReEnableRestoresPublishedAccount,
+  evidence: evidence(label: "user-list-disabled-reenable"),
+  observed_at: 1788000009000,
+}
+
+fn lan_probe(channel: IpmiChannelNumber, address: Ipv4Address, outcome: CredentialProbeOutcome) -> PublishedCredentialLanProbe {
+  PublishedCredentialLanProbe { channel: channel, address: address, outcome: outcome }
+}
+
+fn both_lan_rejecting() -> List<PublishedCredentialLanProbe> {
+  [
+    lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+    lan_probe(channel: channel_eight, address: lan_231, outcome: published_rejected_231),
+  ]
+}
+
+fn split_lan_probes() -> List<PublishedCredentialLanProbe> {
+  [
+    lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+    lan_probe(channel: channel_eight, address: lan_231, outcome: published_accepted_231),
+  ]
+}
+
+// One rotation observation. Every test below perturbs exactly one reading.
 fn rotation_observed(
   subj: MachineIntakeSubject,
   previous_epoch: Int,
@@ -151,7 +240,9 @@ fn rotation_observed(
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   managed: CredentialProbeOutcome,
-  published: CredentialProbeOutcome,
+  census: IpmiControllerChannelCensus,
+  probes: List<PublishedCredentialLanProbe>,
+  account: PublishedCredentialAccountObservation,
 ) -> BmcCredentialRotationObservation {
   observed_bmc_credential_rotation(
     subject: subj,
@@ -160,7 +251,10 @@ fn rotation_observed(
     bootstrap_probe: bootstrap,
     rotation: RotationApplied { reference: reference, applied_at: applied_at, evidence: evidence(label: "account-create-201") },
     managed_probe: managed,
-    published_probe: published,
+    channel_census: census,
+    census_evidence: evidence(label: "channel-census"),
+    published_probes: probes,
+    published_account: account,
   )
 }
 
@@ -172,20 +266,22 @@ fn nominal_rotation() -> BmcCredentialRotationObservation {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
 }
 
 fn is_secured(standing: BmcSecureStanding) -> Bool {
   match standing.outcome {
-    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => true
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _, published_credential: _ } => true
     BmcSecureRefused { cause: _ } => false
   }
 }
 
 fn refusal_cause(standing: BmcSecureStanding) -> BmcSecureRefusalCause? {
   match standing.outcome {
-    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => none
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _, published_credential: _ } => none
     BmcSecureRefused { cause: c } => Present { value: c }
   }
 }
@@ -204,8 +300,8 @@ fn refused_with(standing: BmcSecureStanding, expected: BmcSecureRefusalCause) ->
 test fn nominal_rotation_secures_the_bmc() -> Bool {
   let standing = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
   let satisfied = match standing.outcome {
-    BmcSecured { endpoint: e, reference: r, evidence: ev, secured_at: at } =>
-      e == controller && r.credential_epoch == 1 && list_length(items: ev) == 4 && at == 1788000007000
+    BmcSecured { endpoint: e, reference: r, evidence: ev, secured_at: at, published_credential: acc } =>
+      e == controller && r.credential_epoch == 1 && list_length(items: ev) == 7 && at == 1788000008000 && acc == published_account_retired
     BmcSecureRefused { cause: _ } => false
   }
   satisfied && is_secured(standing: standing)
@@ -223,10 +319,15 @@ test fn published_credential_still_working_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_accepted,
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: published_accepted),
+      lan_probe(channel: channel_eight, address: lan_231, outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
   )
   let standing = derive_bmc_secure(subject: intake_subject, observation: observation)
-  refused_with(standing: standing, expected: PublishedCredentialStillAccepted) && (is_secured(standing: standing) == false)
+  refused_with(standing: standing, expected: PublishedCredentialStillAccepted { channel: channel_one }) && (is_secured(standing: standing) == false)
 }
 
 // UNESTABLISHED IS NOT RETIRED. An account service that did not answer must
@@ -240,7 +341,12 @@ test fn published_credential_retirement_unestablished_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: CredentialProbeUnestablished { detail: "connection reset before the login response" },
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: CredentialProbeUnestablished { detail: "connection reset before the login response" }),
+      lan_probe(channel: channel_eight, address: lan_231, outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -259,12 +365,223 @@ test fn published_probe_before_rotation_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000002000 },
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000002000 }),
+      lan_probe(channel: channel_eight, address: lan_231, outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
     expected: PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
   )
+}
+
+// RED 1. Census of two addresses: .228 rejects, .231 accepts. Count of probes
+// equals members; identity join still refuses because one member accepts.
+// MUTATION: published_probe_refusal CredentialAccepted -> none mints BmcSecured.
+test fn split_lan_census_one_accepting_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: split_lan_probes(),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialStillAccepted { channel: channel_eight },
+  )
+}
+
+// RED 2. A single-address observation with no census must refuse, not
+// adjudicate. MUTATION: replace CensusNotTaken with the retired single-host
+// path (sole rejecting probe mints BmcSecured). Deleting the arm so the
+// fold proceeds still refuses NoAddressableLanMember and is VOID.
+test fn single_address_without_census_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_empty,
+    probes: [lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected)],
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialCensusNotTaken,
+  )
+}
+
+// Equal probe/member counts without identity coverage is not coverage: ch8
+// has no matching probe, a probe for a third address does not cover it.
+test fn census_member_unprobed_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+      lan_probe(channel: channel_two, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 10), outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
+  )
+}
+
+test fn published_probe_unmatched_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: concat(both_lan_rejecting(), [
+      lan_probe(channel: channel_two, address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 10), outcome: published_rejected_231),
+    ]),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialProbeUnmatched { channel: channel_two },
+  )
+}
+
+test fn published_probe_duplicate_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+      lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+      lan_probe(channel: channel_eight, address: lan_231, outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialProbeDuplicate { channel: channel_one },
+  )
+}
+
+test fn serial_only_census_is_not_vacuous_secure() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_serial_only,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialNoAddressableLanMember,
+  )
+}
+
+test fn unaddressed_lan_member_is_not_a_rejection() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_with_unaddressed,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
+  )
+}
+
+test fn serial_channel_stays_in_census_and_does_not_block_lan_secure() -> Bool {
+  let standing = derive_bmc_secure(
+    subject: intake_subject,
+    observation: rotation_observed(
+      subj: intake_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      census: census_with_serial,
+      probes: both_lan_rejecting(),
+      account: published_account_retired,
+    ),
+  )
+  is_secured(standing: standing)
+}
+
+test fn disabled_not_retired_is_a_secured_residual() -> Bool {
+  let standing = derive_bmc_secure(
+    subject: intake_subject,
+    observation: rotation_observed(
+      subj: intake_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      census: census_two_lan,
+      probes: both_lan_rejecting(),
+      account: published_account_disabled,
+    ),
+  )
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _, published_credential: acc } =>
+      acc == published_account_disabled
+    BmcSecureRefused { cause: _ } => false
+  }
+}
+
+test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
+  let standing = derive_bmc_secure(
+    subject: intake_subject,
+    observation: rotation_observed(
+      subj: intake_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      census: census_two_lan,
+      probes: both_lan_rejecting(),
+      account: published_account_disabled_reenable,
+    ),
+  )
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _, published_credential: acc } =>
+      acc == published_account_disabled_reenable
+    BmcSecureRefused { cause: _ } => false
+  }
 }
 
 test fn managed_credential_rejected_refuses() -> Bool {
@@ -275,7 +592,9 @@ test fn managed_credential_rejected_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: CredentialRejected { evidence: evidence(label: "managed-login-401"), observed_at: 1788000006000 },
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: ManagedCredentialRejected)
 }
@@ -288,7 +607,9 @@ test fn managed_credential_unestablished_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: CredentialProbeUnestablished { detail: "no route to the account service" },
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -304,7 +625,9 @@ test fn managed_probe_before_rotation_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: CredentialAccepted { evidence: evidence(label: "managed-login"), observed_at: 1788000004000 },
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -323,7 +646,9 @@ test fn credential_epoch_not_advanced_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -339,7 +664,10 @@ test fn rotation_not_attempted_refuses() -> Bool {
     bootstrap_probe: bootstrap_accepted,
     rotation: RotationNotAttempted,
     managed_probe: managed_accepted,
-    published_probe: published_rejected,
+    channel_census: census_two_lan,
+    census_evidence: evidence(label: "channel-census"),
+    published_probes: both_lan_rejecting(),
+    published_account: published_account_retired,
   )
   refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: CredentialRotationNotApplied)
 }
@@ -352,7 +680,10 @@ test fn account_management_unavailable_refuses() -> Bool {
     bootstrap_probe: bootstrap_accepted,
     rotation: AccountManagementUnavailable { detail: "AccountService returned 501" },
     managed_probe: managed_accepted,
-    published_probe: published_rejected,
+    channel_census: census_two_lan,
+    census_evidence: evidence(label: "channel-census"),
+    published_probes: both_lan_rejecting(),
+    published_account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -371,7 +702,9 @@ test fn bootstrap_credential_already_rejected_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: PreviouslyRotatedCredentialRequired)
 }
@@ -384,7 +717,9 @@ test fn bootstrap_credential_state_unknown_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -402,7 +737,9 @@ test fn rotation_observation_for_other_attempt_refuses() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_rejected,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
   )
   refused_with(
     standing: derive_bmc_secure(subject: intake_subject, observation: observation),
@@ -420,9 +757,15 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   ManagedCredentialRejected,
   ManagedCredentialUnestablished { detail: "no route to the account service" },
   ManagedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000004000 },
-  PublishedCredentialStillAccepted,
+  PublishedCredentialStillAccepted { channel: channel_eight },
   PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
   PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
+  PublishedCredentialCensusNotTaken,
+  PublishedCredentialNoAddressableLanMember,
+  PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
+  PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
+  PublishedCredentialProbeDuplicate { channel: channel_one },
+  PublishedCredentialProbeUnmatched { channel: channel_eight },
 ]
 
 // WHAT THIS ROSTER IS, AND WHAT IT IS NOT. `every_refusal_cause` is a
@@ -451,9 +794,15 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     ManagedCredentialRejected => 6
     ManagedCredentialUnestablished { detail: _ } => 7
     ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 8
-    PublishedCredentialStillAccepted => 9
+    PublishedCredentialStillAccepted { channel: _ } => 9
     PublishedCredentialRetirementUnestablished { detail: _ } => 10
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 11
+    PublishedCredentialCensusNotTaken => 12
+    PublishedCredentialNoAddressableLanMember => 13
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => 14
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => 15
+    PublishedCredentialProbeDuplicate { channel: _ } => 16
+    PublishedCredentialProbeUnmatched { channel: _ } => 17
   }
 }
 
@@ -591,7 +940,9 @@ test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    published: published_accepted,
+    census: census_two_lan,
+    probes: split_lan_probes(),
+    account: published_account_retired,
   )
   match disposition_with_bmc_secure(standing: derive_bmc_secure(subject: intake_subject, observation: observation)) {
     Present { value: d } =>
@@ -638,12 +989,14 @@ test fn phase_receipt_projects_the_standing() -> Bool {
       reference: managed_reference,
       applied_at: rotation_at,
       managed: managed_accepted,
-      published: published_accepted,
+      census: census_two_lan,
+    probes: split_lan_probes(),
+    account: published_account_retired,
     ),
   )
   let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let good_ok = match good.result {
-    ReceiptSatisfied => list_length(items: good.observations) == 4 && good.phase == bmc_secure_phase
+    ReceiptSatisfied => list_length(items: good.observations) == 7 && good.phase == bmc_secure_phase
     ReceiptRefused { owner: _, cause: _ } => false
   }
   let bad_ok = match bad.result {
@@ -675,7 +1028,9 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
       reference: managed_reference,
       applied_at: rotation_at,
       managed: managed_accepted,
-      published: published_rejected,
+      census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
     ),
   )
   let receipt_one = bmc_secure_phase_receipt(standing: standing_one, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
