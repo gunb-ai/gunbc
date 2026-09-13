@@ -254,10 +254,6 @@ fn hetzner_nuremberg_route_facts() -> ProviderRouteFacts {
   }
 }
 
-fn hetzner_route_facts_population() -> List<ProviderRouteFacts> {
-  [hetzner_helsinki_route_facts(), hetzner_nuremberg_route_facts()]
-}
-
 // ── THE ADMISSION, AND WHY THE ROSTER AND THE POSTURE ARE PARAMETERS ──────────────────────────
 //
 // THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION, AND THAT IS A DELIBERATE
@@ -293,3 +289,6 @@ fn hetzner_route_facts_population() -> List<ProviderRouteFacts> {
 // third-party route, SUFFICIENT FOR a roster row on these routes to be authored by the party that owns
 // our compliance posture rather than by a test. Until then the executing consumer is the witness, and
 // it exercises the refusing and the admitting arms both.
+fn hetzner_route_facts_population() -> List<ProviderRouteFacts> {
+  [hetzner_helsinki_route_facts(), hetzner_nuremberg_route_facts()]
+}
