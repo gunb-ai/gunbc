@@ -9,6 +9,7 @@ import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import gunbc.roadmap_authority {
+  declared_roadmap_nodes,
   active_roadmap_nodes_for_accepted,
   active_roadmap_edges_for_accepted,
   accepted_roadmap_node_ids_projection,
@@ -49,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn all_nodes() -> List<RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted)
+      active_roadmap_nodes_for_accepted(declared: declared_roadmap_nodes(), accepted: accepted)
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
   }
 }

@@ -3190,8 +3190,13 @@ fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
   }
 }
 
-fn active_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
-  declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+// THE DECLARED ROSTER IS A PARAMETER, NOT A RE-DERIVATION. Every caller of this function already
+// stands at a point where the roster is (or can be) in hand once, so deriving it again inside the
+// filter was DESIGN §2 authored duplication with a shared-state least common ancestor -- the
+// caller derives it once per fold and passes it in, and the membership algorithm below is then
+// separately reviewable from the wiring.
+fn active_roadmap_nodes_for_accepted(declared: List<RoadmapNode>, accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
+  declared |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
 type ActiveRoadmapNodesProjection
@@ -3206,7 +3211,7 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       ActiveRoadmapNodesProjected {
-        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+        nodes: active_roadmap_nodes_for_accepted(declared: declared_roadmap_nodes(), accepted: accepted),
       }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
@@ -3570,7 +3575,7 @@ data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   concat(
-    active_roadmap_nodes_for_accepted(accepted: accepted),
+    active_roadmap_nodes_for_accepted(declared: declared_roadmap_nodes(), accepted: accepted),
     startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
       |> map(n => closing_contract_task_for(n: n)),
   )
