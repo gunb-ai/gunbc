@@ -439,11 +439,19 @@ fn interpret_acquisition(
             "acquired a generation with no stored compiler",
         )
     })?;
+    let seed_identity =
+        read_ancestry_text(&ancestry_seed_binary_path(workspace)).ok_or_else(|| {
+            acquisition_refusal(
+                "NativeAncestorUnverified",
+                ANCESTRY_GENERATION_ZERO as i64,
+                "genesis seed_binary sha512 was not stored",
+            )
+        })?;
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
         closure_identity,
-        seed_identity: "native-generation-acquired".to_string(),
+        seed_identity,
         build: load_stored_build(workspace).ok_or_else(|| {
             acquisition_refusal(
                 "NativeAncestorUnverified",
@@ -726,62 +734,14 @@ fn acquire_native_compiler(
             (Some("available".to_string()), available),
         ],
     )?;
-    let preparation = interpret_acquisition(
+    interpret_acquisition(
         &ctx,
         workspace,
         &acquisition,
         binary_path,
         closure_identity,
         binary_identity,
-    )?;
-    refuse_if_stored_producer_closure_is_not_native(source_roots, workspace)?;
-    Ok(preparation)
-}
-
-fn refuse_if_stored_producer_closure_is_not_native(
-    source_roots: &[String],
-    workspace: &Path,
-) -> Result<(), String> {
-    let paths = read_ancestry_lines(&ancestry_producer_closure_path(workspace)).map_err(|_| {
-        "V2-NATIVE REFUSAL cause=OldRouteControlAbsent — producer_closure was not stored"
-            .to_string()
-    })?;
-    if paths.is_empty() {
-        return Err(
-            "V2-NATIVE REFUSAL cause=OldRouteControlAbsent — producer_closure names nothing"
-                .to_string(),
-        );
-    }
-    let ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
-    let closure = realized_closure_value(&ctx, &paths);
-    let verdict = eval_named(
-        &ctx,
-        "v2.compiler.self_host.emitter_producer_provenance.v2_emitter_closure_admission",
-        &[(Some("closure".to_string()), closure)],
-    )?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &verdict
-    else {
-        return Err("v2_emitter_closure_admission did not return a variant".to_string());
-    };
-    if ctx.sym_eq(*variant_name, "ProducerMintRefused") {
-        let cause = record_field(ctx, fields, "cause")
-            .map(|v| ctx.format_value(v))
-            .unwrap_or_else(|_| "producer_closure_refused".to_string());
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=OldRoutePresentInProducerClosure — {cause}"
-        ));
-    }
-    if !ctx.sym_eq(*variant_name, "ProducerMintAdmitted") {
-        return Err(format!(
-            "v2_emitter_closure_admission returned unknown variant `{}`",
-            ctx.resolve(*variant_name)
-        ));
-    }
-    Ok(())
+    )
 }
 
 fn refuse_if_genesis_already_executed(workspace: &Path) -> Result<(), String> {
@@ -936,11 +896,6 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )
     .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     let provenance_ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
-    let door_closure = eval_named(
-        &provenance_ctx,
-        "v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run",
-        &[],
-    )?;
     let generation_closure = eval_named(
         &provenance_ctx,
         "v2.compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure",
@@ -950,7 +905,7 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
         emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?;
     write_ancestry_lines(
         &ancestry_producer_closure_path(&workspace),
-        &emitter_module_paths_from_closure_value(&provenance_ctx, &door_closure)?,
+        &generation_paths,
     )?;
     write_ancestry_lines(
         &ancestry_generation_closure_path(&workspace),
