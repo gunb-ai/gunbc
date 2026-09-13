@@ -22,7 +22,7 @@ import product.supplier.hetzner {
   hetzner_helsinki_route_facts, hetzner_nuremberg_route_facts,
   hetzner_helsinki_downstream, hetzner_route_admission, hetzner_route_facts_population,
 }
-import extdeps.cloud.hetzner { hetzner_subcontractors_for_server_location }
+import extdeps.cloud.hetzner { hetzner_subcontractors_for_server_location, hetzner_subcontractor_finland }
 
 // WHAT THESE ROWS ARE FOR. product.supplier.hetzner answers the nine-path closure for two rented
 // routes and BOTH refuse, so the whole module is a claim about refusals -- and a compliance gate
@@ -306,11 +306,27 @@ test fn every_hetzner_route_in_the_population_refuses() -> Bool {
     && count(filter(hetzner_route_facts_population(), f => !t_refuses(a: t_decide(facts: f)))) == 0
 }
 
-// THE ENUMERATED POPULATION IS ONLY AS GOOD AS THE ROW COUNT IT WAS WRITTEN AGAINST. The Helsinki
-// route answers DownstreamProvidersEnumerated with ONE subcontractor and an empty further list, which
-// is true of Appendix 3 version 1.0 of August 08, 2024 and is a claim that expires the moment upstream
-// adds a second Finland row. This folds the vendor's own table and reds exactly then, which sends the
-// author to extend the population rather than leaving an enumeration that silently stopped covering.
-test fn the_finland_subcontractor_table_still_has_exactly_one_row() -> Bool {
-  count(hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)) == 1
+// THE ROUTE'S ENUMERATION IS JOINED TO THE VENDOR TABLE BY IDENTITY, NOT BY COUNT, and the
+// distinction is the whole value of this wall. The Helsinki route answers
+// DownstreamProvidersEnumerated citing extdeps.cloud.hetzner hetzner_subcontractor_finland with an
+// empty further list. An earlier form of this witness asserted only that the table's Finland filter
+// returned exactly one row -- which review 64926 correctly rejected: replacing that row with a
+// DIFFERENT entity preserves the count, greens the witness, and leaves the route citing a
+// subcontractor the vendor no longer publishes. DESIGN section 5 names it exactly: completeness is an
+// identity join, not a count equality.
+//
+// So this folds the vendor's own table and asserts BOTH halves. The cardinality half reds when
+// upstream adds a second Finland row, which is the claim that expires and sends the author to extend
+// the enumerated population. The MEMBERSHIP half reds when the row the route actually cites is no
+// longer among the published ones, compared on the legal name the entity carries rather than on a
+// position in the list. Editing the cited declaration and the table together keeps them in
+// correspondence and is correctly green; removing it from the published table while the route still
+// names it is the defect, and it now refuses.
+test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool {
+  let published = hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)
+  count(published) == 1
+    && count(filter(
+         published,
+         s => s.entity.legal_name == hetzner_subcontractor_finland.entity.legal_name,
+       )) == 1
 }
