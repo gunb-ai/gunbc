@@ -62,9 +62,15 @@ import gunbc.spark.pair_serving_observed { first_pair_ray_head, first_pair_vllm_
 //   - the worker unit runs `ray start --block`, so when the head restarts its session the worker's
 //     raylet exits, the unit's Restart=always brings it back, and it rejoins -- the supervision the
 //     polling loop in spark-ray-worker.sh did by hand;
-//   - the head engine's own Restart=on-failure is what waits for the worker: an engine started
-//     before both GPUs are registered refuses at placement-group creation and is restarted, so no
+//   - the head engine's own Restart=always is what waits for the worker: an engine started
+//     before every GPU is registered refuses at placement-group creation and is restarted, so no
 //     unit carries a wait loop.
+//   - a serving engine has no successful terminal, so the head restarts on ANY spontaneous exit.
+//     When group A lost two ranks on 2026-09-12 the engine shut down cleanly and the unit exited 0,
+//     and Restart=on-failure left the group dark until someone noticed. A manager-requested stop
+//     (systemctl stop, or the apply's own restart) is exempt from Restart= and stays stopped. An
+//     engine that stays alive but unhealthy is not this policy's to catch: that is readiness and
+//     route withdrawal.
 // The JIT caches the image writes under /cache/huggingface are bound to a host directory, so a
 // recreated container keeps them instead of rebuilding for minutes on first start.
 
@@ -370,7 +376,7 @@ fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesire
                   ExecStartPre { command: ray_line },
                   ExecStart { command: serve_line },
                   ExecStop { command: stop_line },
-                  Restart { policy: "on-failure" as NonEmptyStr },
+                  Restart { policy: "always" as NonEmptyStr },
                   RestartSec { duration: "30" as NonEmptyStr },
                   TimeoutStartSec { duration: "0" as NonEmptyStr },
                   ServiceStandardOutput { stream: OutputAppendFile { path: spark_pair_head_log_path as NonEmptyStr } },
