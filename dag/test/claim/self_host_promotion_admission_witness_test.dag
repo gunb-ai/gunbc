@@ -1858,3 +1858,48 @@ test fn the_contract_axis_is_a_structural_digest() -> Bool {
   axis == structural
     && combine_hash(a: axis, b: structural) == combine_hash(a: structural, b: structural)
 }
+
+// ---- A ROW IS NOT AN EXECUTION ----
+//
+// The receipt is submitter-authored, so every field in it is chosen by the party asking to be
+// promoted. Deciding coverage on the PRESENCE of a row left the count unread: rows naming every
+// required identity at the registered grain, a roster digest derived from the same material, and a
+// material bound to the generation's axis -- all consistent, all satisfiable, and `observations: 0`
+// on every row, meaning the lens never ran. That promotes a generation on a roster nothing executed,
+// which is the fabricated-plausible-output shape rather than a missing check. The door's obligation
+// is at-least-one per registration (it refuses `RegistrationUnobserved`); this is that obligation
+// surviving to the promotion that consumes the receipt.
+fn pa_coverage_rows_never_executed() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity(),
+    material: pa_contract_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_contract_material()),
+      rows: [
+        RequiredLensCoverageRow {
+          lens: pa_lens_alpha().identity,
+          grain: pa_lens_alpha().grain,
+          observations: 0
+        },
+        RequiredLensCoverageRow {
+          lens: pa_lens_beta().identity,
+          grain: pa_lens_beta().grain,
+          observations: 0
+        }
+      ]
+    }
+  )
+}
+
+test fn coverage_whose_rows_never_ran_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_with_coverage(
+      candidate_cov: pa_coverage_rows_never_executed(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  )
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_observed_zero_times)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_covered_at_wrong_grain)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_ran_a_different_roster)
+}

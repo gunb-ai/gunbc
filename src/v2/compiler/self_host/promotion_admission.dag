@@ -251,6 +251,7 @@ type PromotionRefusalCause
   | RequiredLensContractMaterialUnbound { receipt: Symbol, derived: String }
   | RequiredLensCoverageRanADifferentRoster { receipt: Symbol, derived: String, observed: String }
   | RequiredLensCoverageRowDuplicated { receipt: Symbol, lens: String }
+  | RequiredLensObligationObservedZeroTimes { receipt: Symbol, lens: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -498,7 +499,7 @@ fn concat_causes(
 // registration by name (`RegistrationDuplicated`); a coverage receipt that reports the same lens
 // twice is the same defect one layer out, so it carries its own cause rather than a resolution rule.
 type CoverageObservationIndex {
-  seen: Map<String, CompileLensGrain>
+  seen: Map<String, RequiredLensCoverageRow>
   duplicated: List<String>
 }
 
@@ -513,7 +514,7 @@ fn coverage_observation_index(
       match map_lookup(acc.seen, key) {
         Absent =>
           CoverageObservationIndex {
-            seen: map_insert(acc.seen, key, row.grain),
+            seen: map_insert(acc.seen, key, row),
             duplicated: acc.duplicated
           }
         Present { value: _ } =>
@@ -526,6 +527,16 @@ fn coverage_observation_index(
   )
 }
 
+// A ROW IS NOT AN EXECUTION, AND THE COUNT IS THE DIFFERENCE. `RequiredLensCoverageRow` carries
+// `observations` because the door's obligation is at-least-one per registration -- it refuses
+// `RegistrationUnobserved` there. An earlier revision of this fold decided coverage by the PRESENCE
+// of a row and dropped the count, which left the hole this module exists to close standing one field
+// further in: the receipt is submitter-authored, so rows naming every required identity at the right
+// grain with `observations: 0`, a roster digest derived from the same material and a material bound
+// to the generation's axis would promote a generation on a roster where no lens ran. Exactly-one for
+// root grain stays the door's statement; what promotion refuses here is a covered obligation that
+// never executed.
+//
 // GRAIN IS PART OF THE OBLIGATION, NOT DECORATION, and the earlier revision compared identity alone.
 // A lens registered at SUBTREE grain runs per node; the same identity observed once at ROOT is a
 // different execution, so coverage closed over root registrations would have satisfied a contract
@@ -561,14 +572,21 @@ fn lens_coverage_uncovered_causes(
             xs: acc,
             item: RequiredLensObligationNotCovered { receipt: receipt, lens: key }
           )
-        Present { value: observed_grain } =>
-          if compile_lens_grain_eq(a: observed_grain, b: reg.grain) {
-            acc
-          } else {
+        Present { value: row } =>
+          if !compile_lens_grain_eq(a: row.grain, b: reg.grain) {
             list_snoc_item(
               xs: acc,
               item: RequiredLensObligationCoveredAtWrongGrain { receipt: receipt, lens: key }
             )
+          } else {
+            if row.observations > 0 {
+              acc
+            } else {
+              list_snoc_item(
+                xs: acc,
+                item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
+              )
+            }
           }
       }
     }
@@ -819,6 +837,8 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_coverage_ran_a_different_roster
     RequiredLensCoverageRowDuplicated { receipt: _, lens: _ } =>
       ^refusal_required_lens_coverage_row_duplicated
+    RequiredLensObligationObservedZeroTimes { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_observed_zero_times
   }
 }
 
