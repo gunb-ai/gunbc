@@ -976,8 +976,21 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// The memory capture digest control was executed hermetically after its wet
+// pass: DigestStdin refused with NoMockResponse before a verdict. Its real
+// terminal is required by local_repo_wet_schedule on the same prepared subject.
+fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation {
+      identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content",
+      operation: "DigestStdin", ground: NoMockResponse {}
+    },
+    tail: Empty {}
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Empty {} } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Empty {} } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

@@ -119,7 +119,7 @@ fn netrc_write_refusal(
   }
 }
 
-func place_netrc_binding(
+fn place_netrc_binding(
   path: FilePath,
   machine: NonEmptyStr,
   login: NonEmptyStr,
@@ -146,7 +146,7 @@ func place_netrc_binding(
 // remove-then-write, so delivery A's netrc can vanish after A minted its binding and before A's curl
 // reads it, and A then authenticates with B's access code or with nothing. mktemp -d creates a fresh
 // 0700 directory per call, which makes the collision unspellable rather than unlikely.
-func place_netrc_binding_privately(
+fn place_netrc_binding_privately(
   machine: NonEmptyStr,
   login: NonEmptyStr,
   password: Secret,
@@ -170,6 +170,6 @@ func place_netrc_binding_privately(
 // SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused transfer that
 // leaves the credential on disk has converted a transient failure into a standing exposure, so the
 // consumer calls this on every path out of the bracket rather than only on success.
-func shred_netrc_binding(binding: NetrcBinding) -> Bool {
+fn shred_netrc_binding(binding: NetrcBinding) -> Bool {
   shell.Remove.FileForce(path: binding.path).success
 }

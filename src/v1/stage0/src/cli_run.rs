@@ -20214,7 +20214,7 @@ pub fn run_bootstrap_dag_operation(
     let declaration_present = graph.item_registry.values().any(|item| {
         item.module_name == declaration_module
             && item.name == declaration_name
-            && matches!(item.kind, ItemKind::FnItem | ItemKind::FuncItem)
+            && matches!(item.kind, ItemKind::FnItem)
     });
     if !declaration_present {
         eprintln!(
@@ -33928,7 +33928,7 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
     let closed = non_fold_residue_closed_coproduct_type_names();
     let mut out = Vec::new();
     for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+        if !matches!(fact.kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = fact.node.body.as_ref() else {
@@ -34125,7 +34125,7 @@ fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
     let closed = non_fold_residue_closed_coproduct_type_names();
     let mut out = Vec::new();
     for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+        if !matches!(fact.kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = fact.node.body.as_ref() else {
@@ -40418,7 +40418,6 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
     use crate::v1_compiler_infer_items::ItemKind;
     match kind {
         ItemKind::FnItem => "fn",
-        ItemKind::FuncItem => "func",
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",

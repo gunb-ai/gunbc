@@ -117,7 +117,7 @@ type ClassBOverlayMaterialization
   = OverlayMaterialized { overlay_entry_path: String }
   | OverlayMaterializationRefused { phase: NonEmptyStr, cause: NonEmptyStr }
 
-func class_b_materialize_stripped_entry_overlay(root: String, overlay_dir: String) -> ClassBOverlayMaterialization {
+fn class_b_materialize_stripped_entry_overlay(root: String, overlay_dir: String) -> ClassBOverlayMaterialization {
   let live_path = concat(root, "/", class_b_entry_rel)
   let overlay_path = concat(overlay_dir, "/", class_b_entry_rel)
   let read = Filesystem.Read(path: live_path)

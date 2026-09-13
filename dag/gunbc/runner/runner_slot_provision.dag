@@ -450,7 +450,7 @@ fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bo
 // would be invisible and never reported as MemberRemoved. Listing the base directory makes the
 // observed population independent of the desired one, which is the whole point of a reconcile.
 
-func observe_runner_slot_members_wet() -> RunnerSlotObservation
+fn observe_runner_slot_members_wet() -> RunnerSlotObservation
   uses net: Network
 {
   match run_shell_command_capture(

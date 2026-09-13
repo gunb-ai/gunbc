@@ -606,7 +606,7 @@ fn app_control_plane_receipt_text(
   ], "")
 }
 
-func app_control_plane_converge_wet() -> ProcessExit {
+fn app_control_plane_converge_wet() -> ProcessExit {
   let header_file = shell.Env.Get(name: app_jwt_header_file_env_name)
   match header_file.value {
     Absent => exit_failure(reason: "AppJwtHeaderFileMissing: GUNBC_APP_JWT_HEADER_FILE is absent -- GET /app and GET /app/hook/config authenticate as the APP and an installation access token reaches neither. The fleet-converge step mints a short-lived App JWT in-run from the gunbai-ci key (gunbc.ci_spec gunbc_ci_app_jwt_prelude); outside that step there is no credential to read")

@@ -216,7 +216,7 @@ data runner_microvm_boot_probe_receipt_dir: String = "target"
 
 data runner_microvm_boot_probe_receipt_path: String = "target/runner-microvm-boot-probe.txt"
 
-func executor_home_wet() -> String? {
+fn executor_home_wet() -> String? {
   match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
     Absent => none
     Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
@@ -227,7 +227,7 @@ func executor_home_wet() -> String? {
 // writable /dev/kvm or no Firecracker cannot boot anything, and a probe that discovered that by
 // failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to
 // the wrong module, which is the state-space conflation this repository refuses elsewhere.
-func runner_microvm_boot_probe_wet() -> ProcessExit
+fn runner_microvm_boot_probe_wet() -> ProcessExit
   uses net: Network
 {
   match executor_home_wet() {
@@ -287,7 +287,7 @@ func runner_microvm_boot_probe_wet() -> ProcessExit
   }
 }
 
-func runner_microvm_boot_probe_receipt_wet(verdict: BootProbeVerdict) -> ProcessExit {
+fn runner_microvm_boot_probe_receipt_wet(verdict: BootProbeVerdict) -> ProcessExit {
   let text = boot_probe_verdict_text(v: verdict)
   let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_boot_probe_receipt_dir)], transport: LocalExec)
   let w = Filesystem.Write(path: runner_microvm_boot_probe_receipt_path, content: concat(text, "\n"))
