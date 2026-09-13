@@ -7,7 +7,8 @@ import std.access { AccessDecision, access_policy_refusal }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, fabric_identity_eq }
 import product.fabric.provider_route {
   ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
-  first_unresolved_obligation, downstream_obligation, first_unread_consulted_citations,
+  ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
+  first_unread_standing, downstream_obligation,
 }
 
 // THE MISSING NON-ECONOMIC GATE. The code in this tree that actually places work admits an offer
@@ -343,24 +344,27 @@ fn disposition_program_refusal(p: DispositionProgram, obligation: DeclarationRef
 // the coproduct that caused the refusal, so there is no seed anywhere and no arm carries a value
 // that had to be invented to fill a slot. An empty result means the condition does not hold; a
 // one-element result IS the refusal, carrying the obligation its own arm named.
-// THE REFUSAL BUILDERS. Each is a map over a zero-or-one obligation list produced by ONE match of
-// the coproduct that caused the refusal, so there is no seed anywhere and no arm carries a value
-// that had to be invented to fill a slot. An empty result means the condition does not hold; a
-// one-element result IS the refusal, carrying the obligation its own arm named.
 //
 // consulted TRAVELS ON THE FACTS-INCOMPLETE ARM because the remedy differs: empty means go read
 // a source for the first time, nonempty means the published sources have been read and do not
-// answer, so the next step is to ask the provider. first_unread_consulted_citations is the same
-// first-unread walk as first_unresolved_obligation, so the list it returns is the consulted slot
-// of the obligation this refusal names -- not a later path's. This call is the production
-// consumer of that fold (DESIGN section 3c).
+// answer, so the next step is to ask the provider. path_refusals matches first_unread_standing
+// ONCE and projects both fields from that standing, so obligation and consulted cannot name
+// different paths (DESIGN sections 2 and 3).
 fn path_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
-  map(
-    first_unresolved_obligation(c: facts.data_paths),
-    o => ProviderRouteFactsIncomplete {
-      route: facts.route,
-      obligation: o,
-      consulted: first_unread_consulted_citations(c: facts.data_paths),
+  fold(
+    first_unread_standing(c: facts.data_paths),
+    init: [],
+    f: fn(acc, p) {
+      match p {
+        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+        ProviderPathAbsent { evidence } => acc,
+        ProviderPathUnread { obligation, consulted } =>
+          [ProviderRouteFactsIncomplete {
+            route: facts.route,
+            obligation: obligation,
+            consulted: consulted,
+          }],
+      }
     },
   )
 }

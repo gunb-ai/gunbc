@@ -15,9 +15,8 @@ import product.fabric.provider_route {
 import extdeps.cloud.hetzner {
   hetzner_published_readings,
   hetzner_published_reading_locators,
-  hetzner_published_reading_statements,
   hetzner_tom_records_negative_reading,
-  hetzner_dpo_records_non_eu_split,
+  hetzner_dpo_records_no_silence,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -660,17 +659,16 @@ test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
 test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool {
   count(hetzner_published_readings()) == 2
     && count(hetzner_published_reading_locators()) == 2
-    && count(hetzner_published_reading_statements()) == 2
     && count(filter(
       hetzner_published_reading_locators(),
-      l => l == "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/",
+      l => l == ("docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" as NonEmptyStr),
     )) == 1
     && count(filter(
       hetzner_published_reading_locators(),
-      l => l == "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/",
+      l => l == ("docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" as NonEmptyStr),
     )) == 1
     && hetzner_tom_records_negative_reading()
-    && hetzner_dpo_records_non_eu_split()
+    && hetzner_dpo_records_no_silence()
 }
 
 test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {

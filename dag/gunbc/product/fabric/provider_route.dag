@@ -87,10 +87,10 @@ type CompliancePostureRevision {
 // consulted: is the same DeclarationRef vocabulary evidence: already uses (DESIGN section 3:
 // no second citation name). The empty list is NEVER-LOOKED. A nonempty list is RESEARCHED AND
 // UNANSWERED. The production consumer of the SLOT, once filled, is product.fabric.provider_admission
-// path_refusals, which calls first_unread_consulted_citations and records the list on
-// ProviderRouteFactsIncomplete so a live denial can tell the two remedies apart. Filling the
-// slot without that fold reaching admit_provider_use would be the gunbc#11194 shape under
-// another name.
+// path_refusals, which matches first_unread_standing once and records obligation and consulted
+// from that standing on ProviderRouteFactsIncomplete so a live denial can tell the two
+// remedies apart. Filling the slot without that fold reaching admit_provider_use would be the
+// gunbc#11194 shape under another name.
 //
 // DECLARED FRONTIER (DESIGN section 3c). Nonempty consulted is constructible and is refused with
 // a different remedy, but no production ProviderDataPathClosure in THIS tree inhabits it: the
@@ -159,16 +159,19 @@ type ProviderRouteFacts {
   facts_revision: ContentHash
 }
 
-// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE OBLIGATION DIRECTLY. There is deliberately no
+// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE UNREAD STANDING DIRECTLY. There is deliberately no
 // Bool predicate here. A path_is_resolved returning Bool DISCARDS exactly the payload a refusal
-// then needs, so the refusal builder has to walk the same value a second time - and that second
-// walk is what forces a seed to exist, which is what made the seed a place to fabricate an
-// obligation. Matching once removes the seed rather than improving it: an empty list is "no
-// obligation", a one-element list IS the located obligation, and neither can lie.
+// then needs, so the refusal builder has to walk the same value a second time - and it is that
+// second walk which forces a seed to exist, which is where a fabricated obligation gets to live.
+// Matching once removes the seed rather than improving it: an empty list is "no unread path",
+// a one-element list IS that standing, and neither can lie.
 //
-// The nine paths are visited in a FIXED order, so the reported obligation is deterministic
-// rather than whichever arm a fold happened to reach last.
-fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+// The nine paths are visited in a FIXED order, so the reported unread path is deterministic
+// rather than whichever arm a fold happened to reach last. obligation and consulted are both
+// projected from this one value -- they are not independently walked. An unread path whose
+// consulted list is empty still STOPS the walk, because the standing itself is the found
+// signal, not count(consulted)>0.
+fn first_unread_standing(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
   fold(
     [
       c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
@@ -182,45 +185,10 @@ fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRe
         match p {
           ProviderPathLocated { operator, jurisdiction, evidence } => acc,
           ProviderPathAbsent { evidence } => acc,
-          ProviderPathUnread { obligation, consulted } => [obligation],
+          ProviderPathUnread { obligation, consulted } => [p],
         }
       }
     },
-  )
-}
-
-// THE CONSULTED SLOT IS READ HERE, ON THE SAME WALK AND THE SAME FIRST-UNREAD PATH as
-// first_unresolved_obligation. An unread path whose consulted list is empty still STOPS the walk:
-// the box is one element whose inner list is empty, which is how never-looked is distinguishable
-// from "no unread path" (outer empty) and from researched-and-unanswered (inner nonempty). A
-// flatten that used count(consulted)>0 as the found signal would skip a never-looked first path
-// and pick up a later researched one, collapsing the two states this field exists to tell apart.
-fn first_unread_consulted_box(c: ProviderDataPathClosure) -> List<List<DeclarationRef>> {
-  fold(
-    [
-      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
-      c.control_plane, c.support_access, c.administrative_access, c.spill,
-    ],
-    init: [],
-    f: fn(acc, p) {
-      if count(acc) > 0 {
-        acc
-      } else {
-        match p {
-          ProviderPathLocated { operator, jurisdiction, evidence } => acc,
-          ProviderPathAbsent { evidence } => acc,
-          ProviderPathUnread { obligation, consulted } => [consulted],
-        }
-      }
-    },
-  )
-}
-
-fn first_unread_consulted_citations(c: ProviderDataPathClosure) -> List<DeclarationRef> {
-  fold(
-    first_unread_consulted_box(c: c),
-    init: [],
-    f: fn(acc, inner) { inner },
   )
 }
 
@@ -230,6 +198,32 @@ fn path_unread_consulted(p: ProviderPathStanding) -> List<DeclarationRef> {
     ProviderPathAbsent { evidence } => [],
     ProviderPathUnread { obligation, consulted } => consulted,
   }
+}
+
+fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+  fold(
+    first_unread_standing(c: c),
+    init: [],
+    f: fn(acc, p) {
+      match p {
+        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+        ProviderPathAbsent { evidence } => acc,
+        ProviderPathUnread { obligation, consulted } => [obligation],
+      }
+    },
+  )
+}
+
+fn first_unread_consulted_box(c: ProviderDataPathClosure) -> List<List<DeclarationRef>> {
+  map(first_unread_standing(c: c), p => path_unread_consulted(p: p))
+}
+
+fn first_unread_consulted_citations(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+  fold(
+    first_unread_consulted_box(c: c),
+    init: [],
+    f: fn(acc, inner) { inner },
+  )
 }
 
 // Same discipline for the downstream population: one match, and the unread arm's own obligation
