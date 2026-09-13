@@ -4,6 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.host_axis_caps {
+  CapRaiseBlockedIncompleteEvidence,
   CapRaiseAdmitted,
   CapRaiseBlockedPendingRetirement,
   CapRaiseBlockedUnobserved,
@@ -48,6 +49,7 @@ test fn another_hosts_slot_is_not_ours() -> Bool {
 // census -> observation -> gate.
 test fn a_surviving_old_slot_blocks_the_raise_through_the_census() -> Bool {
   match cap_raise_standing(
+    required_retiring: [],
     observation: surplus_observation(
       census: slot_population_census(
         host: operator_host_srv1,
@@ -61,6 +63,7 @@ test fn a_surviving_old_slot_blocks_the_raise_through_the_census() -> Bool {
     CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
     CapRaiseAdmitted => false
     CapRaiseBlockedUnobserved { cause: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
   }
 }
 
@@ -98,6 +101,7 @@ test fn a_foreign_occupant_refuses_the_census() -> Bool {
 
 test fn a_refused_census_blocks_the_raise_as_unobserved() -> Bool {
   match cap_raise_standing(
+    required_retiring: [],
     observation: surplus_observation(
       census: slot_population_census(
         host: operator_host_srv1,
@@ -108,6 +112,7 @@ test fn a_refused_census_blocks_the_raise_as_unobserved() -> Bool {
     CapRaiseBlockedUnobserved { cause: _ } => true
     CapRaiseAdmitted => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
   }
 }
 
@@ -116,6 +121,7 @@ test fn a_refused_census_blocks_the_raise_as_unobserved() -> Bool {
 // one. Counting is what the capacity planner's own history records as unable to converge.
 test fn equal_counts_with_wrong_identities_do_not_admit() -> Bool {
   match cap_raise_standing(
+    required_retiring: [],
     observation: surplus_observation(
       census: slot_population_census(
         host: operator_host_srv1,
@@ -126,6 +132,7 @@ test fn equal_counts_with_wrong_identities_do_not_admit() -> Bool {
     CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
     CapRaiseAdmitted => false
     CapRaiseBlockedUnobserved { cause: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
   }
 }
 

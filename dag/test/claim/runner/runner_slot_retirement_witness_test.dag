@@ -14,6 +14,10 @@ import gunbc.host_axis_caps {
 }
 import gunbc.host_operation_exec { SystemctlMaskNow }
 import gunbc.runner_slot_retirement {
+  CgroupObservedEmpty,
+  CgroupObservedPopulated,
+  CgroupAbsent,
+  CgroupUnobserved,
   RetirementComplete,
   RetirementPendingDrain,
   RetirementUnobserved,
@@ -31,7 +35,7 @@ import gunbc.runner_slot_retirement {
   surplus_observation_after_attempts,
   surplus_observation_from_census_and_retirement,
   retirement_observation_unreadable,
-  retirement_task_count,
+  retirement_observation_from_readings,
   authorized_retirement_actuation,
   RetirementActuationAuthorized,
   RetirementActuationRefused,
@@ -43,9 +47,8 @@ fn drained() -> RunnerRetirementObservation {
   RunnerRetirementObservation {
     unit: "actions-runner@srv1-14.service",
     replacement_inhibited: true,
-    unit_present: false,
-    cgroup_process_count: 0,
-    cgroup_readable: true,
+    service_running: false,
+    occupancy: CgroupObservedEmpty,
   }
 }
 
@@ -65,9 +68,8 @@ test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
     o: RunnerRetirementObservation {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: true,
-      unit_present: true,
-      cgroup_process_count: 3,
-      cgroup_readable: true,
+      service_running: true,
+      occupancy: CgroupObservedPopulated { count: 3 },
     }
   ) {
     RetirementPendingDrain { unit: _, cause: _ } => true
@@ -85,9 +87,8 @@ test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {
     o: RunnerRetirementObservation {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: true,
-      unit_present: false,
-      cgroup_process_count: 2,
-      cgroup_readable: true,
+      service_running: false,
+      occupancy: CgroupObservedPopulated { count: 2 },
     }
   ) {
     RetirementPendingDrain { unit: _, cause: _ } => true
@@ -104,9 +105,8 @@ test fn an_unreadable_cgroup_is_unobserved_not_empty() -> Bool {
     o: RunnerRetirementObservation {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: true,
-      unit_present: false,
-      cgroup_process_count: 0,
-      cgroup_readable: false,
+      service_running: false,
+      occupancy: CgroupUnobserved { cause: "probe" },
     }
   ) {
     RetirementUnobserved { unit: _, cause: _ } => true
@@ -122,9 +122,8 @@ test fn an_uninhibited_slot_cannot_complete_a_drain() -> Bool {
     o: RunnerRetirementObservation {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: false,
-      unit_present: false,
-      cgroup_process_count: 0,
-      cgroup_readable: true,
+      service_running: false,
+      occupancy: CgroupObservedEmpty,
     }
   ) {
     RetirementPendingDrain { unit: _, cause: _ } => true
@@ -145,9 +144,8 @@ test fn a_partial_drain_still_blocks_the_raise() -> Bool {
           o: RunnerRetirementObservation {
             unit: "actions-runner@srv1-15.service",
             replacement_inhibited: true,
-            unit_present: true,
-            cgroup_process_count: 1,
-            cgroup_readable: true,
+            service_running: true,
+            occupancy: CgroupObservedPopulated { count: 1 },
           }
         ),
       ]
@@ -188,9 +186,8 @@ fn drained_unit(unit: String) -> RunnerRetirementObservation {
   RunnerRetirementObservation {
     unit: unit,
     replacement_inhibited: true,
-    unit_present: false,
-    cgroup_process_count: 0,
-    cgroup_readable: true,
+    service_running: false,
+    occupancy: CgroupObservedEmpty,
   }
 }
 
@@ -273,9 +270,8 @@ test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
       observation: RunnerRetirementObservation {
         unit: "actions-runner@srv4-13.service",
         replacement_inhibited: true,
-        unit_present: false,
-        cgroup_process_count: 4,
-        cgroup_readable: true,
+        service_running: false,
+        occupancy: CgroupObservedPopulated { count: 4 },
       },
       work_interrupted: true,
     )
@@ -351,9 +347,8 @@ test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool
           o: RunnerRetirementObservation {
             unit: "actions-runner@srv4-13.service",
             replacement_inhibited: true,
-            unit_present: false,
-            cgroup_process_count: 2,
-            cgroup_readable: true,
+            service_running: false,
+            occupancy: CgroupObservedPopulated { count: 2 },
           },
         ),
       ],
@@ -417,14 +412,97 @@ test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
   }
 }
 
-// `TasksCurrent` ANSWERS `[not set]` ON AN INACTIVE UNIT, AND THAT IS NOT ZERO TASKS. Parsing it as
-// a number and taking the failure as zero is the one substitution that would let an unreadable
-// cgroup read as an empty one.
-test fn an_unparseable_task_count_does_not_read_as_an_empty_cgroup() -> Bool {
-  retirement_task_count(raw: "[not set]") > 0
-    && retirement_task_count(raw: "") > 0
-    && retirement_task_count(raw: "0") == 0
-    && retirement_task_count(raw: "7") == 7
+// THE REACHABILITY CONTROL, AND IT IS THE ONE THE PREVIOUS SUITE LACKED.
+//
+// `mask --now` leaves UnitFileState=masked and ActiveState=inactive, and systemd removes the unit's
+// cgroup when it stops. Those exact readings must produce RetirementComplete, or the actuator cannot
+// retire anything no matter how correct the fold is. The prior positive control hand-built
+// `{ replacement_inhibited: true, unit_present: false, cgroup_process_count: 0 }` and passed while the
+// live observer -- which required LoadState=not-found against a mask that reports LoadState=masked --
+// could never produce it. This feeds the property READINGS instead, so it fails if the projection and
+// the actuator ever disagree again.
+test fn the_state_mask_now_actually_leaves_behind_completes_the_retirement() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  ) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A MASKED UNIT IS NOT AN ABSENT ONE, and requiring absence is what made completion unreachable. The
+// mask must REMAIN for replacement to stay inhibited, so `masked` is the expected steady state of a
+// retired slot rather than a transitional reading on the way to not-found.
+test fn a_masked_unit_is_inhibited_rather_than_missing() -> Bool {
+  let o = retirement_observation_from_readings(
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit_file_state: "masked",
+    active_state: "inactive",
+    occupancy: CgroupObservedEmpty,
+  )
+  o.replacement_inhibited && !o.service_running
+}
+
+// A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to
+// stop and its worker has not exited -- exactly when an orphan is most likely and least visible -- so
+// reading only `active` would let that window register as a stopped service.
+test fn a_deactivating_unit_still_counts_as_running() -> Bool {
+  let o = retirement_observation_from_readings(
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    unit_file_state: "masked",
+    active_state: "deactivating",
+    occupancy: CgroupObservedEmpty,
+  )
+  o.service_running
+    && match runner_retirement_standing(o: o) {
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementComplete { unit: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+}
+
+// AN UNMASKED BUT STOPPED SLOT MUST NOT COMPLETE, because its manager will restart it. This is the
+// discriminating red for the inhibition half of the completion condition.
+test fn a_stopped_but_unmasked_slot_does_not_complete() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "enabled",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A COMPLETED IDENTITY MUST DISCHARGE EVEN THOUGH ITS MASK KEEPS IT LISTED. `mask --now` leaves the
+// unit visible to `list-units --all` on purpose, so a join that carried the whole census population
+// into the blocking set could never let a successful retirement finish. This is that subtraction.
+test fn a_completed_masked_unit_is_subtracted_from_census_presence() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved {
+        retired: [],
+        still_present: ["actions-runner@srv4-13.service" as NonEmptyStr],
+      },
+      standings: [runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service"))],
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
 }
 
 // THE ACTUATOR IS GATED ON THE AUTHORIZATION'S SCOPE, not on the host or the environment. srv1-14 is

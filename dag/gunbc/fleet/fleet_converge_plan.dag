@@ -151,6 +151,7 @@ import gunbc.host_converge {
   systemd_tasks_max_property,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 import gunbc.runner_slot_provision {
   runner_slot_provenance_wire,
   RunnerSlotMember,
@@ -799,10 +800,30 @@ fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) 
   }
 }
 
+// A REFUSED HOST IS NOT A HOST THAT WANTS ZERO SLOTS, AND THE DIFFERENCE IS A REMOVE-ALL PLAN.
+//
+// `RunnerHostDeploy.runner_count` consumes `gunbc_runner_slots_per_host`, which answers 0 for a host
+// whose admission REFUSED -- srv2, whose session denominator is unestablished, is the live instance.
+// This family previously treated any found deploy row as an ordinary desired roster, so that refusal
+// arrived at `desired_runner_slot_members` as the empty list. Reconcile reads an empty desired set
+// against a populated host as "every one of these should go": syntactically a full teardown proposal
+// aimed at the one host we are least able to reason about.
+//
+// THAT THE CURRENT PROVENANCE CHECK WOULD REFUSE MOST OF THOSE REMOVALS IS NOT THE SAME PROPERTY.
+// `runner_slot_member_ownership` declines to admit a removal for an active slot, so today the plan
+// would mostly render `MemberRemovalRefused` rather than deletions. But that is a per-member accident
+// of what the host happens to be running at plan time, not a statement that an inadmissible host is
+// out of scope for convergence -- and it degrades silently the moment those slots are inactive, which
+// is exactly the state a masked retirement produces.
+//
+// SO THE REFUSAL IS CONSUMED AS A TYPED DISPOSITION BEFORE ANY RECONCILE HAPPENS. A refused host
+// reaches no membership plan at all: no adds, no masks, no removals, and no cap authorization derived
+// from a population nobody was entitled to compute.
 type FleetConvergeSlotFamily
   = SlotFamilyPlanned { plan: RunnerSlotProvisionPlan }
   | SlotFamilyUnmodeledHost { host: HostIdentity }
   | SlotFamilyArtifactUnpublished { host: HostIdentity }
+  | SlotFamilyHostRefused { host: HostIdentity, cause: String }
 
 // ONE RESOLUTION FEEDS BOTH THE REVIEW LINES AND THE APPLY SCRIPT, which is not tidiness -- it is
 // the property the whole plan/apply split rests on. If the renderer and the actuator each resolved
@@ -817,15 +838,29 @@ fn fleet_converge_slot_family(
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
     RunnerHostDeployFound { deploy: d } =>
-      match actions_runner_binary_artifact_for_arch(
-        binary_release: actions_runner_release_2_336_0,
-        arch: altra_max_m12830_catalog.architecture,
-      ) {
-        Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
-        Present { value: a } =>
-          SlotFamilyPlanned {
-            plan: runner_slot_provision_plan(deploy: d, artifact: a, observed: observed_slots),
-          }
+      if d.runner_count == 0 {
+        SlotFamilyHostRefused {
+          host: host as HostIdentity,
+          cause: "this host's admitted runner width is zero, which is a REFUSAL to derive a population rather than a request for no slots; reconciling an empty desired set against a populated host would propose removing every slot on it",
+        }
+      } else {
+        match actions_runner_binary_artifact_for_arch(
+          binary_release: actions_runner_release_2_336_0,
+          arch: altra_max_m12830_catalog.architecture,
+        ) {
+          Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
+          Present { value: a } =>
+            SlotFamilyPlanned {
+              plan: runner_slot_provision_plan(
+                deploy: d,
+                artifact: a,
+                observed: observed_slots,
+                retirement_evidence: SlotRetirementEvidenceAbsent {
+                  cause: "this planner takes no retirement observation, so no slot tree may be deleted and no slot may be masked through it; the evidence-bearing route is the realizer that holds the host transport",
+                },
+              ),
+            }
+        }
       }
   }
 }
@@ -1051,6 +1086,8 @@ fn fleet_converge_slot_lines(
       [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
     SlotFamilyArtifactUnpublished { host: h } =>
       [concat("REFUSED-NO-PUBLISHED-RUNNER-BINARY runner-slot host=", h as String)]
+    SlotFamilyHostRefused { host: h, cause: c } =>
+      [concat(concat("REFUSED-HOST-NOT-ADMITTED runner-slot host=", h as String), concat(" cause=", c))]
     SlotFamilyPlanned { plan: p } => map(p.membership.actions, a => slot_action_line(action: a))
   }
 }
@@ -1084,6 +1121,7 @@ fn fleet_converge_slot_refusal_count(
   match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
     SlotFamilyUnmodeledHost { host: _ } => 1
     SlotFamilyArtifactUnpublished { host: _ } => 1
+    SlotFamilyHostRefused { host: _, cause: _ } => 1
     SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
   }
 }
@@ -1425,6 +1463,14 @@ fn slot_apply_lines(
         ),
         "exit 1",
       ]
+    SlotFamilyHostRefused { host: h, cause: c } =>
+      [
+        concat(
+          "echo 'fleet_converge_apply: REFUSED-HOST-NOT-ADMITTED runner-slot host=",
+          concat(h as String, concat(" cause=", concat(c, "' >&2"))),
+        ),
+        "exit 1",
+      ]
     SlotFamilyPlanned { plan: p } =>
       concat(
         if membership_added_count(plan: p.membership) == 0 {
@@ -1432,10 +1478,15 @@ fn slot_apply_lines(
         } else {
           concat([p.base_dir_script], p.upsert_extract_scripts)
         },
+        if length(p.retirement_scripts) == 0 {
+          ["# runner-slot: no slot retirements authorized on this pass"]
+        } else {
+          concat(["# runner-slot: retirement inhibition (mask --now) for authorized surplus slots; no tree is deleted on the pass that actuates"], p.retirement_scripts)
+        },
         if length(p.teardown_scripts) == 0 {
           ["# runner-slot: no retired trees to remove"]
         } else {
-          concat(["# runner-slot: retired incarnations (unregistered, unit inactive and disabled, name in this host's grammar)"], p.teardown_scripts)
+          concat(["# runner-slot: tree removal, admitted ONLY for a unit with an independently reobserved RetirementComplete; every other disposition renders a withheld line instead"], p.teardown_scripts)
         },
       )
   }
