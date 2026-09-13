@@ -457,6 +457,15 @@ type ResourceRequirements
     }
   | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
 
+// CandidateSelection is complementary census coverage, not realization selection
+// (DESIGN §3b stated departure from §3d). std.decision / std.pareto choose one
+// realization on a funded multi-axis field and bind a SelectionReceipt. This item
+// asks for two or three complementary jobs kept visible with rejected and unresolved
+// rows. SelectedWorkload is an authored coverage pick, not SelectedWithin. rank orders
+// complementarity of the selected set, not Pareto dominance. CandidateUnresolved is an
+// inspection obligation (catalog gap, floating alias), not SelectionNeedsEvidence.
+// incumbent-head-to-head is the named later consumer of the selected set; it is not a
+// decision subject in this change.
 type CandidateSelection
   = SelectedWorkload { rank: Int, complementarity: NonEmptyStr }
   | CandidateRejected { reason: NonEmptyStr }
