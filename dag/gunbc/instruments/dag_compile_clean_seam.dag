@@ -11,10 +11,11 @@ import tools.dag_compile_clean_seam_transport {
   cross_shard_seam_importer_entry_path,
   cross_shard_seam_importee_entry_path
 }
-import std.types { String, Bool }
+import gunbc.ci_gate { GateReceipt, GateObserved, GateNotApplicable, GateNotRun, GateClean, GateFailed }
+import std.types { String, Bool, NonEmptyStr }
 
 type CrossShardSeamReceipt {
-  probe_ran: Bool
+  admission: GateReceipt
   y_reds: Bool
   x_reds: Bool
   m_reds: Bool
@@ -25,7 +26,7 @@ type CrossShardSeamReceipt {
 
 fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
   CrossShardSeamReceipt {
-    probe_ran: probe.probe_ran,
+    admission: probe.admission,
     y_reds: !probe.y_exit_zero,
     x_reds: !probe.x_exit_zero,
     m_reds: !probe.m_exit_zero,
@@ -68,12 +69,24 @@ fn composed_verdict_reds_and_names_cause(receipt: CrossShardSeamReceipt) -> Bool
   }
 }
 
+// THE ADMISSION ARM IS MATCHED BEFORE ANY EXIT STATUS IS READ, and the three arms answer in their
+// own vocabularies. GateNotRun is the one this fold exists for: the probe never arrived at the
+// seam, so every `*_exit_zero: false` beside it is ignorance, not the shard reds this witness
+// claims to have observed -- reading them as a verdict is the supremum-as-answer conflation.
+
 fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamReceipt) -> Bool {
-  receipt.probe_ran
-    && shard_y_reds(receipt: receipt)
-    && shard_x_reds_with_seam_attribution(receipt: receipt)
-    && composed_verdict_reds_and_names_cause(receipt: receipt)
-    && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
+  match receipt.admission {
+    GateNotRun { cause: _ } => false
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateFailed { detail: _ } => false
+      GateClean =>
+        shard_y_reds(receipt: receipt)
+          && shard_x_reds_with_seam_attribution(receipt: receipt)
+          && composed_verdict_reds_and_names_cause(receipt: receipt)
+          && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
+    }
+  }
 }
 
 fn witness_cross_shard_seam_preservation_holds() -> Bool {
@@ -84,7 +97,7 @@ fn witness_cross_shard_seam_preservation_holds() -> Bool {
 
 fn synthetic_seam_receipt(y_reds: Bool, x_reds: Bool, m_reds: Bool, y_names: Bool, x_names: Bool, m_names: Bool) -> CrossShardSeamReceipt {
   CrossShardSeamReceipt {
-    probe_ran: true,
+    admission: GateObserved { outcome: GateClean },
     y_reds: y_reds, x_reds: x_reds, m_reds: m_reds,
     y_names_class: y_names, x_names_class: x_names, m_names_class: m_names
   }
@@ -105,5 +118,22 @@ fn witness_seam_algebra_fails_closed_when_class_missing() -> Bool {
 fn witness_seam_algebra_fails_closed_when_importer_silently_passes() -> Bool {
   !witness_cross_shard_seam_preservation_holds_from(
     receipt: synthetic_seam_receipt(y_reds: true, x_reds: false, m_reds: true, y_names: true, x_names: false, m_names: true)
+  )
+}
+
+// THE SYNTHETIC ARM THAT PINS THE NEW DISTINCTION, and it is the strongest statement of the class:
+// a probe that never reached the seam presents to this fold in exactly the shape a successful seam
+// break presents -- every compile nonzero -- so before the admission arm existed the two were the
+// same receipt. It must not satisfy the witness.
+
+fn witness_seam_algebra_fails_closed_when_probe_never_reached_the_seam() -> Bool {
+  !witness_cross_shard_seam_preservation_holds_from(
+    receipt: CrossShardSeamReceipt {
+      admission: GateNotRun {
+        cause: "synthetic: the seam probe was refused before its subject" as NonEmptyStr
+      },
+      y_reds: true, x_reds: true, m_reds: true,
+      y_names_class: true, x_names_class: true, m_names_class: true
+    }
   )
 }

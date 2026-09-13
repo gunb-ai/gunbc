@@ -1,9 +1,11 @@
 module test.claim.dag_compile_clean_perturb_receipts
 
+import gunbc.ci_gate { GateObserved, GateNotApplicable, GateNotRun, GateClean, GateFailed }
 import tools.dag_compile_clean_transport {
   run_perturb_optional_skew_fixture_red_receipt,
   run_perturb_unresolved_import_fixture_red_receipt,
   run_perturb_fixture_green_receipt,
+  dcc_outside_workspace_staging_red_control,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -17,13 +19,53 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag.
 
 test fn perturb_optional_skew_fixture_red_holds() -> Bool {
-  run_perturb_optional_skew_fixture_red_receipt()
+  match run_perturb_optional_skew_fixture_red_receipt() {
+    GateNotRun { cause: _ } => false
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => true
+      GateFailed { detail: _ } => false
+    }
+  }
 }
 
 test fn perturb_unresolved_import_fixture_red_holds() -> Bool {
-  run_perturb_unresolved_import_fixture_red_receipt()
+  match run_perturb_unresolved_import_fixture_red_receipt() {
+    GateNotRun { cause: _ } => false
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => true
+      GateFailed { detail: _ } => false
+    }
+  }
 }
 
 test fn perturb_fixture_green_holds() -> Bool {
-  run_perturb_fixture_green_receipt()
+  match run_perturb_fixture_green_receipt() {
+    GateNotRun { cause: _ } => false
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => true
+      GateFailed { detail: _ } => false
+    }
+  }
+}
+
+// THE ENROLLED RED CONTROL FOR REFUSAL-BEFORE-SUBJECT, kept after the fix (DESIGN 4b
+// meta-obligation 4) rather than retired by it. The expected answer here is GateNotRun and every
+// other arm is a failure, so this witness is the one place where reaching a subject is the defect:
+// it goes red both if the containment relation stops agreeing with cli_run's admission and if a
+// host fault stops the control from exercising it at all. perturb_fixture_green_holds above is its
+// positive control -- the same module source staged UNDER the workspace root, reaching the subject
+// and compiling green.
+
+test fn compile_clean_staging_outside_workspace_root_refuses_before_subject() -> Bool {
+  match dcc_outside_workspace_staging_red_control() {
+    GateNotRun { cause: _ } => true
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => false
+      GateFailed { detail: _ } => false
+    }
+  }
 }

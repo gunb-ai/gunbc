@@ -5,8 +5,15 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import std.types { String, Bool }
-import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
+import gunbc.ci_gate { GateReceipt, GateObserved, GateClean, GateFailed }
+import std.types { String, Bool, NonEmptyStr }
+import tools.dag_compile_clean_transport {
+  dcc_gunbc_path,
+  dcc_gunbc_ready,
+  dcc_refused_before_subject,
+  dcc_staged_under_workspace,
+  dcc_staging_template
+}
 
 // Dedicated fixture pair (2026-07-25 falsifier green): the prior live-corpus seam (dag/std/bit.dag
 // importing Classical from dag/std/logic.dag) went stale when bit.dag stopped importing std.logic —
@@ -19,8 +26,16 @@ data cross_shard_seam_break_needle: String = "type SeamMarker = SeamAlpha | Seam
 data cross_shard_seam_break_replacement: String = "type SeamMarkerRenamedBug = SeamAlpha | SeamBeta"
 data cross_shard_seam_class_marker: String = "SeamMarker"
 
+// `probe_ran: Bool` stood here until the refusal-before-subject arm landed, and it is exactly the
+// collapse: every way of not reaching the subject -- no gunbc binary, staging that could not be
+// created, a seam that could not be broken, and a staging root outside the workspace root that the
+// compiler refuses at root-admission -- arrived at the citing fold as one false, beside three
+// `*_exit_zero: false` fields that read as "the shard reddened", which is the verdict the seam
+// witness is looking for. The field is now the shared report coproduct, so the seam fold must
+// match the not-run arm before it may read any exit status.
+
 type CrossShardSeamProbeResult {
-  probe_ran: Bool
+  admission: GateReceipt
   y_exit_zero: Bool
   x_exit_zero: Bool
   m_exit_zero: Bool
@@ -29,9 +44,9 @@ type CrossShardSeamProbeResult {
   m_output: String
 }
 
-fn cross_shard_seam_probe_failed() -> CrossShardSeamProbeResult {
+fn cross_shard_seam_not_run(cause: String) -> CrossShardSeamProbeResult {
   CrossShardSeamProbeResult {
-    probe_ran: false,
+    admission: dcc_refused_before_subject(cause: cause),
     y_exit_zero: false, x_exit_zero: false, m_exit_zero: false,
     y_output: "", x_output: "", m_output: ""
   }
@@ -66,62 +81,99 @@ fn cross_shard_seam_break_module(broken_dag: String) -> Bool {
 
 fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let broken = shell.Mktemp.Dir()
-    let stage_y = shell.Mktemp.Dir()
-    let stage_x = shell.Mktemp.Dir()
-    let out_y = shell.Mktemp.Dir()
-    let out_x = shell.Mktemp.Dir()
-    let out_m = shell.Mktemp.Dir()
-    if broken.success && stage_y.success && stage_x.success && out_y.success && out_x.success && out_m.success {
-      let broken_dag = concat(broken.path, "/dag")
-      let copied = shell.Copy.Recursive(source: concat(root.path, "/dag"), destination: broken_dag)
-      let seam_broken = cross_shard_seam_break_module(broken_dag: broken_dag)
-      let staged_y = shell.Copy.File(
-        source: concat(broken.path, concat("/", cross_shard_seam_importee_entry_path)),
-        destination: stage_y.path
-      )
-      let staged_x = shell.Copy.File(
-        source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)),
-        destination: stage_x.path
-      )
-      let gunbc_path = dcc_gunbc_path(root: root.path)
-      let compile_y = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: gunbc_path,
-        args: cross_shard_seam_compile_args(stage: stage_y.path, broken_dag: broken_dag, out_dir: out_y.path)
-      )
-      let compile_x = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: gunbc_path,
-        args: cross_shard_seam_compile_args(stage: stage_x.path, broken_dag: broken_dag, out_dir: out_x.path)
-      )
-      let compile_m = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: gunbc_path,
-        args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path)
-      )
-      let cleaned_broken = shell.Remove.RecursiveForce(path: broken.path)
-      let cleaned_sy = shell.Remove.RecursiveForce(path: stage_y.path)
-      let cleaned_sx = shell.Remove.RecursiveForce(path: stage_x.path)
-      let cleaned_oy = shell.Remove.RecursiveForce(path: out_y.path)
-      let cleaned_ox = shell.Remove.RecursiveForce(path: out_x.path)
-      let cleaned_om = shell.Remove.RecursiveForce(path: out_m.path)
-      CrossShardSeamProbeResult {
-        probe_ran: copied.success && seam_broken && staged_y.success && staged_x.success
-          && cleaned_broken.success && cleaned_sy.success && cleaned_sx.success
-          && cleaned_oy.success && cleaned_ox.success && cleaned_om.success,
-        y_exit_zero: compile_y.success,
-        x_exit_zero: compile_x.success,
-        m_exit_zero: compile_m.success,
-        y_output: concat(compile_y.stdout, compile_y.stderr),
-        x_output: concat(compile_x.stdout, compile_x.stderr),
-        m_output: concat(compile_m.stdout, compile_m.stderr)
-      }
-    } else {
-      cross_shard_seam_probe_failed()
-    }
+  if !dcc_gunbc_ready(root: root.path) {
+    cross_shard_seam_not_run(cause: concat(
+      "gunbc release binary is not ready, so no cross-shard seam compile ran at ", root.path
+    ))
   } else {
-    cross_shard_seam_probe_failed()
+    let broken = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_broken"))
+    let stage_y = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_stage_y"))
+    let stage_x = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_stage_x"))
+    let out_y = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_out_y"))
+    let out_x = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_out_x"))
+    let out_m = shell.Mktemp.DirWithTemplate(template: dcc_staging_template(root: root.path, name: "dcc_seam_out_m"))
+    if !(broken.success && stage_y.success && stage_x.success && out_y.success && out_x.success && out_m.success) {
+      cross_shard_seam_not_run(cause: concat(
+        "cross-shard seam staging directories could not be created under the workspace root at ", root.path
+      ))
+    } else {
+      let broken_dag = concat(broken.path, "/dag")
+      let all_staged_under_root = dcc_staged_under_workspace(root: root.path, staged: broken_dag)
+        && dcc_staged_under_workspace(root: root.path, staged: stage_y.path)
+        && dcc_staged_under_workspace(root: root.path, staged: stage_x.path)
+      if !all_staged_under_root {
+        cross_shard_seam_not_run(cause: concat(
+          "cross-shard seam source roots staged outside the workspace root, so the compiler refuses at root-admission before the seam: ",
+          broken.path
+        ))
+      } else {
+        let copied = shell.Copy.Recursive(source: concat(root.path, "/dag"), destination: broken_dag)
+        let seam_broken = cross_shard_seam_break_module(broken_dag: broken_dag)
+        let staged_y = shell.Copy.File(
+          source: concat(broken.path, concat("/", cross_shard_seam_importee_entry_path)),
+          destination: stage_y.path
+        )
+        let staged_x = shell.Copy.File(
+          source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)),
+          destination: stage_x.path
+        )
+        if !(copied.success && seam_broken && staged_y.success && staged_x.success) {
+          cross_shard_seam_not_run(cause: concat(
+            "the cross-shard seam fixture could not be copied and broken, so no shard compile ran over it: ",
+            broken_dag
+          ))
+        } else {
+          let gunbc_path = dcc_gunbc_path(root: root.path)
+          let compile_y = gunbc.WitnessBin.Run(
+            workdir: root.path,
+            bin_path: gunbc_path,
+            args: cross_shard_seam_compile_args(stage: stage_y.path, broken_dag: broken_dag, out_dir: out_y.path)
+          )
+          let compile_x = gunbc.WitnessBin.Run(
+            workdir: root.path,
+            bin_path: gunbc_path,
+            args: cross_shard_seam_compile_args(stage: stage_x.path, broken_dag: broken_dag, out_dir: out_x.path)
+          )
+          let compile_m = gunbc.WitnessBin.Run(
+            workdir: root.path,
+            bin_path: gunbc_path,
+            args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path)
+          )
+          let cleaned_broken = shell.Remove.RecursiveForce(path: broken.path)
+          let cleaned_sy = shell.Remove.RecursiveForce(path: stage_y.path)
+          let cleaned_sx = shell.Remove.RecursiveForce(path: stage_x.path)
+          let cleaned_oy = shell.Remove.RecursiveForce(path: out_y.path)
+          let cleaned_ox = shell.Remove.RecursiveForce(path: out_x.path)
+          let cleaned_om = shell.Remove.RecursiveForce(path: out_m.path)
+          if !(cleaned_broken.success && cleaned_sy.success && cleaned_sx.success
+              && cleaned_oy.success && cleaned_ox.success && cleaned_om.success) {
+            CrossShardSeamProbeResult {
+              admission: GateObserved { outcome: GateFailed {
+                detail: concat(
+                  "the cross-shard seam reached its subject and its staging could not be removed, so the tree it compiled is not the tree the next run will see: ",
+                  broken.path
+                ) as NonEmptyStr
+              } },
+              y_exit_zero: compile_y.success,
+              x_exit_zero: compile_x.success,
+              m_exit_zero: compile_m.success,
+              y_output: concat(compile_y.stdout, compile_y.stderr),
+              x_output: concat(compile_x.stdout, compile_x.stderr),
+              m_output: concat(compile_m.stdout, compile_m.stderr)
+            }
+          } else {
+            CrossShardSeamProbeResult {
+              admission: GateObserved { outcome: GateClean },
+              y_exit_zero: compile_y.success,
+              x_exit_zero: compile_x.success,
+              m_exit_zero: compile_m.success,
+              y_output: concat(compile_y.stdout, compile_y.stderr),
+              x_output: concat(compile_x.stdout, compile_x.stderr),
+              m_output: concat(compile_m.stdout, compile_m.stderr)
+            }
+          }
+        }
+      }
+    }
   }
 }

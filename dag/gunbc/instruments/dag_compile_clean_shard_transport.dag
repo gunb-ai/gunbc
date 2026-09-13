@@ -4,39 +4,74 @@ import extdeps.shell
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
+import gunbc.ci_gate { GateReceipt }
 import std.logic { Bool }
 import tools.dag_compile_clean_transport {
   dcc_fixture_only_compile_args,
   dcc_gunbc_path,
-  dcc_gunbc_ready
+  dcc_gunbc_ready,
+  dcc_refused_before_subject,
+  dcc_staged_under_workspace,
+  dcc_staging_template,
+  dcc_subject_reached
 }
 
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 
-fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
+// The shard exemplar is copied to a staging root and that root is handed to the compiler as the
+// primary --source-root, so it must sit under the workspace root or the compile is refused at
+// root-admission before the shard is ever read. The receipt carrier and the staging template are
+// tools.dag_compile_clean_transport's, not this module's: the arm is declared once at the report
+// coproduct the compile-clean transports share.
+
+fn single_module_shard_compile_typed(entry_rel_path: String) -> GateReceipt {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let stage = shell.Mktemp.Dir()
-    if stage.success {
+  if !dcc_gunbc_ready(root: root.path) {
+    dcc_refused_before_subject(cause: concat(
+      "gunbc release binary is not ready, so no shard compile ran over ", entry_rel_path
+    ))
+  } else {
+    let stage = shell.Mktemp.DirWithTemplate(
+      template: dcc_staging_template(root: root.path, name: "dcc_shard_stage")
+    )
+    if !stage.success {
+      dcc_refused_before_subject(cause: concat(
+        "shard staging directory could not be created under the workspace root for ", entry_rel_path
+      ))
+    } else if !dcc_staged_under_workspace(root: root.path, staged: stage.path) {
+      dcc_refused_before_subject(cause: concat(
+        concat("shard subject staged outside the workspace root, so the compiler refuses at root-admission before reading ", entry_rel_path),
+        concat(": ", stage.path)
+      ))
+    } else {
       let staged = shell.Copy.File(
         source: concat(root.path, concat("/", entry_rel_path)),
         destination: stage.path
       )
-      let compile = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_fixture_only_compile_args(tmp: stage.path)
-      )
-      let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
-      staged.success && compile.success && cleaned_stage.success
-    } else {
-      false
+      if !staged.success {
+        dcc_refused_before_subject(cause: concat(
+          concat("shard subject could not be copied into the staging root, so no compile ran over ", entry_rel_path),
+          concat(": ", stage.path)
+        ))
+      } else {
+        let compile = gunbc.WitnessBin.Run(
+          workdir: root.path,
+          bin_path: dcc_gunbc_path(root: root.path),
+          args: dcc_fixture_only_compile_args(tmp: stage.path)
+        )
+        let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+        dcc_subject_reached(
+          met: compile.success && cleaned_stage.success,
+          detail: concat(
+            concat(entry_rel_path, " did not compile clean as a single-module shard; stderr: "),
+            compile.stderr
+          )
+        )
+      }
     }
-  } else {
-    false
   }
 }
 
-fn run_shard_a_exemplar_compile() -> Bool {
+fn run_shard_a_exemplar_compile() -> GateReceipt {
   single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path)
 }

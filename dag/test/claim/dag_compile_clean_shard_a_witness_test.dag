@@ -23,6 +23,17 @@ test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
   witness_compose_red_on_injected_failure
 }
 
+// The fold matches the shared compile-clean report coproduct rather than reading a Bool: a shard
+// whose staging root the compiler refused before the subject answers GateNotRun and is RED here,
+// where it used to be indistinguishable from a shard that compiled clean.
+
 test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
-  run_shard_a_exemplar_compile()
+  match run_shard_a_exemplar_compile() {
+    GateNotRun { cause: _ } => false
+    GateNotApplicable { reason: _ } => false
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => true
+      GateFailed { detail: _ } => false
+    }
+  }
 }

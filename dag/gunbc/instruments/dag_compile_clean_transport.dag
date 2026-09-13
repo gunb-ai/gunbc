@@ -5,10 +5,15 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import gunbc.ci_gate { GateReceipt }
+import gunbc.ci_gate {
+  GateReceipt, GateObserved, GateNotApplicable, GateNotRun, GateClean, GateFailed
+}
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectFailure, ExpectSuccess }
+import std.effect_grant { position_under }
+import std.filesystem_path_grant { absolute_path_position }
 import std.logic { Bool }
+import std.types { NonEmptyStr }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 // Compile-clean gate transports, typed. Each receipt is a composition of typed service operations
@@ -28,6 +33,72 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // unresolved_import) need only a single-module fixture closure (dcc_fixture_only_compile_args);
 // cross_tree_import and dag_shell_primary_precedence need the live-tree pool and ride
 // falsifier_rehomed_bin_wet_entries.
+
+// WHERE A SUBJECT IS STAGED. Every compile-clean transport writes its subject somewhere and hands
+// that path to the compiler as --source-root. v1_compiler.cli_run refuses a primary source root
+// that is not under the workspace root at the "root-admission" phase, BEFORE the subject, so a
+// subject staged into the host temp namespace is never compiled at all. target/ is where this
+// repository already keeps generated fixtures out of version control, and the root it hangs from is
+// git.Inspect.Toplevel rather than a literal, so the staging path moves with the checkout.
+
+fn dcc_staging_template(root: String, name: String) -> String {
+  concat(root, concat("/target/", concat(name, "_XXXXXX")))
+}
+
+// The containment relation is std.effect_grant position_under over std.filesystem_path_grant
+// absolute_path_position -- the one prefix authority the corpus already carries, segment-wise, so a
+// sibling directory whose name merely shares a prefix with the root is not under it. It is asked
+// here rather than inferred from the compiler's refusal text: cli_run's own consumer at
+// v1_compiler.cli_run reads .contains("outside the workspace root"), and a second reader of that
+// prose is a second authority for a relation that is decidable from the path alone.
+
+fn dcc_staged_under_workspace(root: String, staged: String) -> Bool {
+  position_under(
+    target: absolute_path_position(path: staged),
+    root: absolute_path_position(path: root)
+  )
+}
+
+// THE REPORT COPRODUCT THE COMPILE-CLEAN TRANSPORTS FOLD TO, and the reason it is
+// gunbc.ci_gate GateReceipt rather than a fresh sum: GateNotRun already means "the instrument did
+// not arrive at its subject -- owner the instrument, remedy never 'fix the tree'", which is exactly
+// refusal-before-subject, and that module hands back no Bool accessor, so a citing witness can only
+// reach a verdict by matching the arm. Until this carrier landed these transports folded
+// gunbc.WitnessBin.Run straight to a Bool, and a workspace-root admission refusal, a missing gunbc
+// binary and a genuine subject verdict arrived at the citing report as the same Bool -- the
+// instrument never reached its subject and the report read that as coverage.
+
+fn dcc_refused_before_subject(cause: String) -> GateReceipt {
+  GateNotRun { cause: cause as NonEmptyStr }
+}
+
+// AN ExpectFailure ARM CANNOT BE SATISFIED BY A REFUSAL-BEFORE-SUBJECT, by construction: the
+// expectation is compared here, on the far side of the admission arms, so the only way to
+// GateObserved is to have run the compiler over the staged subject. `met` is the expectation
+// comparison, not the exit status -- a perturb expecting failure is GateClean when the subject
+// refused.
+
+fn dcc_subject_reached(met: Bool, detail: String) -> GateReceipt {
+  if met {
+    GateObserved { outcome: GateClean }
+  } else {
+    GateObserved { outcome: GateFailed { detail: detail as NonEmptyStr } }
+  }
+}
+
+// Receipt-preserving conjunction: the first non-clean receipt is carried out whole, so a fold over
+// several transports still names which one stopped and in whose vocabulary.
+
+fn dcc_receipt_then(acc: GateReceipt, next: GateReceipt) -> GateReceipt {
+  match acc {
+    GateObserved { outcome: outcome } => match outcome {
+      GateClean => next
+      GateFailed { detail: _ } => acc
+    }
+    GateNotApplicable { reason: _ } => acc
+    GateNotRun { cause: _ } => acc
+  }
+}
 
 fn dcc_source_root_args() -> List<String> {
   fold(compile_clean_source_roots(), init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
@@ -73,23 +144,36 @@ fn dcc_gunbc_path(root: String) -> String {
   witness_bin_release_path(root: root, bin_name: "gunbc")
 }
 
-fn run_clean_tree_compile_typed() -> Bool {
+// The clean-tree arm stages only an OUTPUT directory, never a source root, so no admission arm
+// applies to it -- but a missing gunbc binary is still a state in which this instrument never
+// reached its subject, and it used to arrive at the fold as the same false a dirty tree produces.
+
+fn run_clean_tree_compile_typed() -> GateReceipt {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let out = shell.Mktemp.Dir()
-    if out.success {
+  if !dcc_gunbc_ready(root: root.path) {
+    dcc_refused_before_subject(cause: concat(
+      "gunbc release binary is not ready, so no clean-tree compile ran at ", root.path
+    ))
+  } else {
+    let out = shell.Mktemp.DirWithTemplate(
+      template: dcc_staging_template(root: root.path, name: "dcc_clean_tree_out")
+    )
+    if !out.success {
+      dcc_refused_before_subject(cause: concat(
+        "clean-tree output directory could not be created under the workspace root at ", root.path
+      ))
+    } else {
       let compile = gunbc.WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
         args: dcc_clean_tree_compile_args(out_dir: out.path)
       )
       let cleaned = shell.Remove.RecursiveForce(path: out.path)
-      compile.success && cleaned.success
-    } else {
-      false
+      dcc_subject_reached(
+        met: compile.success && cleaned.success,
+        detail: concat("clean-tree compile over the witness layer roots did not complete; stderr: ", compile.stderr)
+      )
     }
-  } else {
-    false
   }
 }
 
@@ -115,33 +199,76 @@ data perturb_fixture_green_module_source: String = "module test.perturb_compile_
 
 data unresolved_import_perturb_source: String = "module test.perturb_compile_clean_unresolved_import\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }"
 
+// THE ADMISSION IS ASKED BEFORE THE SUBJECT IS WRITTEN, not after the compiler has answered.
+// A staging path outside the workspace root produces a receipt that says so in the instrument's
+// own vocabulary, and there is no route from that arm to an expectation being met: the
+// ExpectFailure perturbs previously read the root-admission refusal as the refusal they were
+// looking for.
+
 fn dcc_perturb_compile_with_args(
   tmp_path: String,
   compile_args: List<String>,
   module_file: String,
   source: String,
   expect_success: Bool
-) -> Bool {
-  let wrote = Filesystem.Write(
-    path: concat(tmp_path, concat("/", module_file)),
-    content: source
-  )
+) -> GateReceipt {
   let root = git.Inspect.Toplevel()
-  let compile = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: dcc_gunbc_path(root: root.path),
-    args: compile_args,
-    expect: if expect_success { ExpectSuccess } else { ExpectFailure }
-  )
-  let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
-  wrote.success && cleaned.success && (compile.success == expect_success)
+  if !dcc_staged_under_workspace(root: root.path, staged: tmp_path) {
+    dcc_refused_before_subject(cause: concat(
+      "perturb subject staged outside the workspace root, so the compiler refuses at root-admission before reaching it: ",
+      tmp_path
+    ))
+  } else {
+    let wrote = Filesystem.Write(
+      path: concat(tmp_path, concat("/", module_file)),
+      content: source
+    )
+    if !wrote.success {
+      dcc_refused_before_subject(cause: concat(
+        concat("perturb subject could not be written, so no compile ran over ", module_file),
+        concat(" under ", tmp_path)
+      ))
+    } else {
+      let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: dcc_gunbc_path(root: root.path),
+        args: compile_args,
+        expect: if expect_success { ExpectSuccess } else { ExpectFailure }
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
+      if compile.success == expect_success {
+        dcc_subject_reached(
+          met: cleaned.success,
+          detail: concat("perturb staging could not be removed after the subject compiled: ", tmp_path)
+        )
+      } else {
+        dcc_subject_reached(
+          met: false,
+          detail: concat(
+            concat(module_file, ": compile verdict did not match the expectation; stderr: "),
+            compile.stderr
+          )
+        )
+      }
+    }
+  }
 }
 
-fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
+fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> GateReceipt {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let tmp = shell.Mktemp.Dir()
-    if tmp.success {
+  if !dcc_gunbc_ready(root: root.path) {
+    dcc_refused_before_subject(cause: concat(
+      "gunbc release binary is not ready, so no compile ran over ", module_file
+    ))
+  } else {
+    let tmp = shell.Mktemp.DirWithTemplate(
+      template: dcc_staging_template(root: root.path, name: "dcc_perturb_corpus")
+    )
+    if !tmp.success {
+      dcc_refused_before_subject(cause: concat(
+        "perturb staging directory could not be created under the workspace root for ", module_file
+      ))
+    } else {
       dcc_perturb_compile_with_args(
         tmp_path: tmp.path,
         compile_args: dcc_perturb_compile_args(tmp: tmp.path),
@@ -149,21 +276,25 @@ fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_suc
         source: source,
         expect_success: expect_success
       )
-    } else {
-      false
     }
-  } else {
-    false
   }
 }
 
-fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
+fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> GateReceipt {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
+  if !dcc_gunbc_ready(root: root.path) {
+    dcc_refused_before_subject(cause: concat(
+      "gunbc release binary is not ready, so no compile ran over ", module_file
+    ))
+  } else {
     let tmp = shell.Mktemp.DirWithTemplate(
-      template: concat(root.path, "/target/dcc_perturb_fixture_XXXXXX")
+      template: dcc_staging_template(root: root.path, name: "dcc_perturb_fixture")
     )
-    if tmp.success {
+    if !tmp.success {
+      dcc_refused_before_subject(cause: concat(
+        "fixture staging directory could not be created under the workspace root for ", module_file
+      ))
+    } else {
       dcc_perturb_compile_with_args(
         tmp_path: tmp.path,
         compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
@@ -171,15 +302,11 @@ fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, ex
         source: source,
         expect_success: expect_success
       )
-    } else {
-      false
     }
-  } else {
-    false
   }
 }
 
-fn run_perturb_optional_skew_red_receipt() -> Bool {
+fn run_perturb_optional_skew_red_receipt() -> GateReceipt {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_red.dag",
     source: perturb_module_source,
@@ -187,7 +314,7 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_unresolved_import_red_receipt() -> Bool {
+fn run_perturb_unresolved_import_red_receipt() -> GateReceipt {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_unresolved_import.dag",
     source: unresolved_import_perturb_source,
@@ -195,7 +322,7 @@ fn run_perturb_unresolved_import_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_optional_skew_fixture_red_receipt() -> Bool {
+fn run_perturb_optional_skew_fixture_red_receipt() -> GateReceipt {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_red.dag",
     source: perturb_module_source,
@@ -203,7 +330,7 @@ fn run_perturb_optional_skew_fixture_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_unresolved_import_fixture_red_receipt() -> Bool {
+fn run_perturb_unresolved_import_fixture_red_receipt() -> GateReceipt {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_unresolved_import.dag",
     source: unresolved_import_perturb_source,
@@ -211,7 +338,7 @@ fn run_perturb_unresolved_import_fixture_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_fixture_green_receipt() -> Bool {
+fn run_perturb_fixture_green_receipt() -> GateReceipt {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_fixture_green.dag",
     source: perturb_fixture_green_module_source,
@@ -219,7 +346,7 @@ fn run_perturb_fixture_green_receipt() -> Bool {
   )
 }
 
-fn run_cross_tree_import_green_receipt() -> Bool {
+fn run_cross_tree_import_green_receipt() -> GateReceipt {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_cross_tree_green.dag",
     source: cross_tree_green_module_source,
@@ -227,7 +354,7 @@ fn run_cross_tree_import_green_receipt() -> Bool {
   )
 }
 
-fn run_dag_shell_primary_precedence_receipt() -> Bool {
+fn run_dag_shell_primary_precedence_receipt() -> GateReceipt {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_dag_shell_primary.dag",
     source: dag_shell_primary_module_source,
@@ -235,10 +362,93 @@ fn run_dag_shell_primary_precedence_receipt() -> Bool {
   )
 }
 
-fn run_dag_compile_clean_gate_shell() -> Bool {
-  run_clean_tree_compile_typed()
-    && run_perturb_optional_skew_red_receipt()
-    && run_perturb_unresolved_import_red_receipt()
-    && run_cross_tree_import_green_receipt()
-    && run_dag_shell_primary_precedence_receipt()
+fn run_dag_compile_clean_gate_shell() -> GateReceipt {
+  dcc_receipt_then(
+    acc: dcc_receipt_then(
+      acc: dcc_receipt_then(
+        acc: dcc_receipt_then(
+          acc: run_clean_tree_compile_typed(),
+          next: run_perturb_optional_skew_red_receipt()
+        ),
+        next: run_perturb_unresolved_import_red_receipt()
+      ),
+      next: run_cross_tree_import_green_receipt()
+    ),
+    next: run_dag_shell_primary_precedence_receipt()
+  )
+}
+
+// THE RED CONTROL FOR THIS CLASS, AND IT STAYS ENROLLED AFTER THE FIX (DESIGN 4b meta-obligation
+// 4). It stages a module that WOULD compile green outside the workspace root on purpose, which is
+// the state the four false greens were in, and it asserts BOTH halves of the agreement: the
+// modeled containment relation must say the staged root is not under the workspace root, AND the
+// compiler invoked over that same staged root must refuse. Asserting only the first would make
+// dcc_staged_under_workspace a second, unchecked authority for a rule v1_compiler.cli_run owns;
+// asserting only the second would be the message-string read this change exists to avoid. A
+// HOST FAULT IS NOT A PASS HERE: in this control the expected answer IS the refused-before-subject
+// arm, so a staging failure answers GateFailed instead, or the control would green on never having
+// run. The closure is the single-module fixture one, so if the compiler ever ADMITTED an outside
+// root this control would report that in seconds rather than paying a whole-tree compile.
+//
+// THE POSITIVE CONTROL IS run_perturb_fixture_green_receipt: the same module source, staged under
+// the workspace root by dcc_staging_template, reaching the subject and compiling green. The pair
+// is what makes the arm discriminating rather than permanently one-sided.
+
+data dcc_outside_root_control_module_file: String = "_dcc_outside_workspace_root_control.dag"
+
+fn dcc_outside_workspace_staging_red_control() -> GateReceipt {
+  let root = git.Inspect.Toplevel()
+  if !dcc_gunbc_ready(root: root.path) {
+    dcc_subject_reached(
+      met: false,
+      detail: concat("outside-root control could not run: gunbc release binary is not ready at ", root.path)
+    )
+  } else {
+    let outside = shell.Mktemp.Dir()
+    if !outside.success {
+      dcc_subject_reached(
+        met: false,
+        detail: "outside-root control could not create a staging directory outside the workspace root"
+      )
+    } else {
+      let wrote = Filesystem.Write(
+        path: concat(outside.path, concat("/", dcc_outside_root_control_module_file)),
+        content: perturb_fixture_green_module_source
+      )
+      let compile = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: dcc_gunbc_path(root: root.path),
+        args: dcc_fixture_only_compile_args(tmp: outside.path),
+        expect: ExpectFailure
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: outside.path)
+      if !wrote.success || !cleaned.success {
+        dcc_subject_reached(
+          met: false,
+          detail: concat("outside-root control could not stage or clean its subject at ", outside.path)
+        )
+      } else if dcc_staged_under_workspace(root: root.path, staged: outside.path) {
+        dcc_subject_reached(
+          met: false,
+          detail: concat(
+            "outside-root control staged a path the containment relation reports as under the workspace root: ",
+            outside.path
+          )
+        )
+      } else if compile.success {
+        dcc_subject_reached(
+          met: false,
+          detail: concat(
+            "the compiler ADMITTED a primary source root outside the workspace root, so the containment relation this transport asks no longer matches cli_run's admission: ",
+            outside.path
+          )
+        )
+      } else {
+        dcc_refused_before_subject(cause: concat(
+          "outside-root control: the staged root is not under the workspace root and the compiler refused before the subject: ",
+          outside.path
+        ))
+      }
+    }
+  }
 }
