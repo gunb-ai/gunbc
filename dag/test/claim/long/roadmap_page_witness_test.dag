@@ -220,7 +220,11 @@ fn ready_dispatch_node() -> RoadmapNode {
     repo: "gunbc"))
 }
 
-fn unsized_open_dispatch_node() -> RoadmapNode {
+// The node this mints carries dispatch: NotDispatchable, which is why the page refuses it. It is
+// not an UNSIZED node: sizing is derived now and this fixture never had a cell. The id string
+// still reads disp-unsized and is deliberately left alone -- it is unasserted fixture data that
+// renders into the page, and changing it would alter output this branch cannot execute to check.
+fn undispatchable_open_node() -> RoadmapNode {
   gunbc.roadmap_authority.authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
@@ -348,7 +352,7 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
 // fact about its WorkItemDispatch and not about a size -- sizing is derived now and this row
 // never had a cell to be missing.
 test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> Bool {
-  match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
+  match dispatch_doc_html_for(rn: undispatchable_open_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"workflow-controls\"")
