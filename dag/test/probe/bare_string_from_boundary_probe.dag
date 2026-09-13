@@ -5,7 +5,9 @@ module test.probe.bare_string_from_boundary_probe
 // OidcIdTokenClaims on its projection, so `projection.claims.standard.email` was one field walk
 // away from any consumer. Now the projection carries Classified<PersonalIdentity,
 // OidcStandardClaims>, which has no `email` and no `value`: the walk below has no field to land
-// on and refuses as FieldNotFound. The second function is the same temptation aimed at the
+// on and refuses as InternalError ("no field 'email' on type 'Classified'" -- the class the checker
+// actually emits for a projection off a type without the field; FieldNotFound is never emitted for
+// field access, per gunbc.recurring_failure_mode diagnostic_name_mechanism_silent). The second function is the same temptation aimed at the
 // carrier itself -- constructing a Classified in this module from a String -- which refuses as
 // SoleConstructorViolation: classification happens at a boundary or not at all.
 

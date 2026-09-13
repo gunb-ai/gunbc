@@ -529,6 +529,11 @@ data data_class_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first ingest boundary for each -- a CI secret entering a job's environment (CiSecret), a job's stdout/stderr entering the log channel (JobLog), a support message entering the operator's tooling (SupportCommunication), a screening result entering provider admission (AbuseAndSanctionsRecord). TRIGGER, per marker: an admit_callers-sealed classify_<category> mint in product.data_class with a production boundary as its admitted caller. SUFFICIENT FOR deleting that marker from this row; the row deletes when all four have mints. NOT satisfied by the private citation alone"),
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "canary_ending_under"),
+    reason: "the canary's PUT is reachable only under a data-handling map with rows, and the public map is empty by design, so from this tree canary_ending refuses CategoryUnmapped and the PUT-reaching entry canary_ending_under has no caller here: its consumer is a run under the private map",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a gunbc-private entry that calls canary_ending_under with the map minted by strategy.data_map data_handling_map_rows and its posture. TRIGGER: that entry exists and its recipe is recorded beside the canary's. SUFFICIENT FOR deleting this row. NOT satisfied by a public row admitting BuildOutput, which would be policy authored in the tree forbidden to author it"),
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "product.data_class", decl_name: "redact"),
     reason: "the erasure exit is exercised by test.claim.fabric.data_class_admission_witness and has no production caller: nothing in this tree renders a classified value into a log line, a job ending or a sheet, which is where a Redacted<C> stands in for the payload",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first production renderer that carries a projection holding a Classified value into text -- gunbc.principal_projection's consumer rendering a principal, or the fabric job ending rendering its committed outputs. TRIGGER: that renderer calls redact and renders the Redacted<C> where it would otherwise have rendered the payload. SUFFICIENT FOR deleting this row"),

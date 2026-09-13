@@ -254,6 +254,7 @@ type OriginObjectCommit sole_constructor {
 type OriginWritePermitStanding
   = PermitAuthorisesThisOrigin
   | PermitNamesAnotherSink { sink: SinkKind }
+  | PermitNamesAnotherRoute { route: ProviderRoute }
   | PermitNamesAnotherOperation { operation: DataOperation }
 
 fn origin_write_permit_standing(permit: DataEffectPermit<BuildOutput, FilePath>) -> OriginWritePermitStanding {
@@ -265,7 +266,7 @@ fn origin_write_permit_standing(permit: DataEffectPermit<BuildOutput, FilePath>)
           other => PermitNamesAnotherOperation { operation: permit.operation }
         }
       } else {
-        PermitNamesAnotherSink { sink: permit.sink.kind }
+        PermitNamesAnotherRoute { route: r }
       }
     other => PermitNamesAnotherSink { sink: permit.sink.kind }
   }

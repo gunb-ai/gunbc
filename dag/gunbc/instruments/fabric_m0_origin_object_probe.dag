@@ -29,7 +29,7 @@ import gunbc.fabric_m0_completion {
 import gunbc.fabric_m0_commit { CommitNamespace, commit_slot_key }
 import gunbc.fabric_m0_origin_commit {
   OriginCommitObservation, OriginObjectCommit, OriginObjectWrite, OriginObjectWritten, OriginObjectWriteRefused,
-  OriginWritePermitStanding, PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherOperation,
+  OriginWritePermitStanding, PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherRoute, PermitNamesAnotherOperation,
   commit_manifest_to_origin, commit_object_to_origin,
   process_exit_with_credential_custody, job_output_bytes, fabric_durable_origin_route,
 }
@@ -286,6 +286,7 @@ fn write_refusal_reason(standing: OriginWritePermitStanding) -> String {
   match standing {
     PermitAuthorisesThisOrigin => "authorised"
     PermitNamesAnotherSink { sink: _ } => "the permit was admitted for another sink"
+    PermitNamesAnotherRoute { route: _ } => "the permit was admitted for a durable origin on another route"
     PermitNamesAnotherOperation { operation: _ } => "the permit was admitted for another operation"
   }
 }
