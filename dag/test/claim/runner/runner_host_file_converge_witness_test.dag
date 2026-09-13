@@ -36,6 +36,7 @@ import gunbc.runner_host_file_converge {
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
   RunnerHostFileDesiredPopulation,
+  RunnerHostFileWithheld,
   runner_host_file_desired_population,
   runner_host_file_desired_population_from_uid_figure,
   RunnerHostFileSubject,
@@ -162,7 +163,7 @@ data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\
 fn desired_content(subject: String) -> String {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
   }
 }
@@ -170,7 +171,7 @@ fn desired_content(subject: String) -> String {
 fn desired_path(subject: String) -> String {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
   }
 }
@@ -180,18 +181,26 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
     && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
 }
 
-test fn production_desired_population_refuses_transcribed_uncited_docker_host() -> Bool {
+test fn production_desired_population_withholds_uncited_depriv_and_still_delivers_teardown() -> Bool {
   match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
-    RunnerHostFilesDesired { files: _ } => false
-    RunnerHostFilesDesiredRefused { cause: c } => string_contains(s: c as String, pattern: "TranscribedUncited")
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: w } =>
+      length(fs) == 3
+        && length(w) == 1
+        && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "TranscribedUncited"))
+        && any(fs, f => (f.subject as String) == "runner-teardown-dropin")
+        && any(fs, f => (f.subject as String) == "needrestart-runner-deferral")
+        && any(fs, f => (f.subject as String) == "runner-unit-fragment")
+        && !any(fs, f => (f.subject as String) == "runner-depriv-dropin")
   }
 }
 
 test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(fs) == 4
+        && length(w) == 0
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-unit-fragment") == "/etc/systemd/system/actions-runner@.service"
         && desired_path(subject: "runner-depriv-dropin") == "/etc/systemd/system/actions-runner@.service.d/depriv.conf"
@@ -236,7 +245,7 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
         TypedRemoteFileWriteAdmitted { write: _ } => true
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
@@ -269,7 +278,7 @@ test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
 test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
   match runner_host_file_desired_population(host: "srv9" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => true
-    RunnerHostFilesDesired { files: _ } => false
+    RunnerHostFilesDesired { files: _, withheld: _ } => false
   }
 }
 
@@ -488,7 +497,7 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 fn teardown_desired() -> RunnerHostFileDesired? {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
   }
 }
@@ -557,7 +566,7 @@ test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
         Present { value: context } =>
           match srv1_desired_population() {
             RunnerHostFilesDesiredRefused { cause: _ } => false
-            RunnerHostFilesDesired { files: fs } => {
+            RunnerHostFilesDesired { files: fs, withheld: _ } => {
               let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
               let privileged = match run.privilege { AdministratorPrivilegeAvailable => true AdministratorPrivilegeRefused { reason: _ } => false }
               let refused_before_write = all(run.results, r => is_refused(a: r.planned.action) && match r.outcome {
