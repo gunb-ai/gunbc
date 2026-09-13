@@ -1520,9 +1520,9 @@ fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandid
       && (r.workflow_blob_sha as String) == (needle.workflow_blob_sha as String)
       && (r.job_display_name as String) == (needle.job_display_name as String)
       && match r.observed {
-        JobRunObserved { job: rj, repository: _, workflow_path: _, workflow_blob_sha_at_head: rb, head_sha: rh, correctness: _ } =>
+        JobRunObserved { job: rj, repository: r_repo, workflow_path: r_path, workflow_blob_sha_at_head: rb, head_sha: rh, correctness: r_corr } =>
           match needle.observed {
-            JobRunObserved { job: nj, repository: _, workflow_path: _, workflow_blob_sha_at_head: nb, head_sha: nh, correctness: _ } =>
+            JobRunObserved { job: nj, repository: n_repo, workflow_path: n_path, workflow_blob_sha_at_head: nb, head_sha: nh, correctness: n_corr } =>
               (rb as String) == (nb as String) && rh == nh && rj.id == nj.id
             NoRunObserved { obligation } => false
           }
