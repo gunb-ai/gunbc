@@ -169,7 +169,7 @@ type ReceiptNodeMatchVerdict
   | ReceiptDoesNotMatchNode
 
 fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> ReceiptNodeMatchVerdict {
-  if r.node != rn.node {
+  if !(r.node == rn.node) {
     ReceiptDoesNotMatchNode
   } else {
     match rn.line {
@@ -211,11 +211,9 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
 
 type AcceptanceNodeReopensActiveFrontier {}
 
-type AcceptanceNodeSuperseded { by: String }
-
 type AcceptanceRevocationDisposition
   = AcceptanceNodeReopensActiveFrontier
-  | AcceptanceNodeSuperseded
+  | AcceptanceNodeSuperseded { by: String }
 
 fn revocation_reopens_active_frontier(disposition: AcceptanceRevocationDisposition) -> Bool {
   match disposition {
@@ -643,7 +641,7 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
 fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapNodeId> {
   fold(
     history,
-    init: [],
+    init: [] as List<RoadmapNodeId>,
     f: fn(acc, event) {
       match event {
         AcceptanceRecorded { receipt } =>
