@@ -166,12 +166,16 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
     // loop -- the regression this file is being extended for -- reds here and nowhere else.
     let main_rs = driver_main();
     let close = main_rs
-        .match_indices("module_prepare_nanos = span_nanos(prepare_started);")
+        .match_indices("let this_prepare = span_nanos(prepare_started);")
         .map(|(i, _)| i)
         .collect::<Vec<usize>>();
-    assert!(
-        !close.is_empty(),
-        "the preparation span must be closed by an explicit span_nanos read; emitted:\n{main_rs}"
+    assert_eq!(
+        close.len(),
+        3,
+        "each preparation arm closes its own span and yields it as the arm's VALUE -- an outer \
+         binding assigned from every arm leaves its initialiser dead, which is an error in the \
+         emitted crate under -D warnings. Expected one close per arm (context, resolve, infer/accepted); \
+         emitted:\n{main_rs}"
     );
     let eval_start = main_rs
         .find("let evaluate_started = Instant::now();")
