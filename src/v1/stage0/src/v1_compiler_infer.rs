@@ -9100,11 +9100,9 @@ pub fn scope_with_unbound_call_generics(
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         unbound_call_generic_names: generic_names.iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<String>>, g: String| {
-                match v1_rt::map_get(&subst, g.clone()) {
-                    Some(_) => acc.clone(),
-                    std::option::Option::None => v1_rt::concat(acc.clone(), Rc::new(vec![g.clone()])),
-                }
+            |acc: Rc<Vec<String>>, g: String| match v1_rt::map_get(&subst, g.clone()) {
+                Some(_) => acc.clone(),
+                std::option::Option::None => v1_rt::concat(acc.clone(), Rc::new(vec![g.clone()])),
             },
         ),
     })
@@ -13027,7 +13025,7 @@ pub fn is_never_constrained_enclosing_generic_base(n: Rc<Node>, scope: Rc<InferS
             };
             let in_unbound_callee = {
                 let mut __found = false;
-                for g in scope.unbound_call_generic_names.iter().cloned() {
+                for g in scope.unbound_call_generic_names.clone().iter().cloned() {
                     if (g.clone() == id.clone()) {
                         __found = true;
                         break;
@@ -13035,7 +13033,7 @@ pub fn is_never_constrained_enclosing_generic_base(n: Rc<Node>, scope: Rc<InferS
                 }
                 __found
             };
-            (in_enclosing && (!in_unbound_callee))
+            (in_enclosing.clone() && !in_unbound_callee.clone())
         }
         _ => false,
     }
