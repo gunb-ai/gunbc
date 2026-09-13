@@ -22,6 +22,12 @@ module v1.compiler.infer
 // Optional constructors. infer_record_lit_structural previously produced T with
 // CardOptional for Present; that producer now uses the same Optional application.
 // Cardinality differences remain refusals; refinement does not equate encodings.
+// This producer rule covers every generic variant literal, using the existing
+// field-derived GenericUnification before constructing its ordered arguments.
+// ExprVar paths retain their binding/diagnostic owner while canonicalizing values.
+// infer_literal_node contributes an unresolved element for LitNull; ExprLiteral
+// supplies the declared Optional owner and its expected element constraint through
+// the same application constructor. Unit is not an empty Optional element.
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
