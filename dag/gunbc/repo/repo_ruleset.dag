@@ -179,20 +179,19 @@ data desired_ruleset_target: RulesetTarget = BranchTarget
 
 // STRICT IS FALSE AND THAT IS A DECLARED POSITION, NOT AN OMISSION. A strict policy requires every
 // branch to be up to date with the base before merging, which re-runs the ~30-minute floor for
-// every pull request behind a merge. DESIGN's merge_group note records the merge queue as the
-// construction that establishes the same invariant without that cost, and records that the queue is
-// not configured yet. Declaring false here states the current position so that turning it on is a
-// visible edit to this row rather than a web-form change nobody sees.
+// every pull request behind a merge. The merge queue is MergeQueueSignedOff and projected; that is
+// the construction that establishes the same invariant without that cost. Declaring false here
+// states the current position so that turning it on is a visible edit to this row rather than a
+// web-form change nobody sees.
 data desired_strict_required_status_checks_policy: Bool = false
 data desired_do_not_enforce_on_create: Bool = false
 
 data desired_ruleset_bypass_standing: ReaderBypassStanding = ThisReaderCannotBypass
 
-// THE THREE RULES, IN THE ORDER GITHUB REPORTS THEM. deletion and non_fast_forward protect the
-// branch's history; required_status_checks is the one that gates. They are declared together
-// because the PUT is whole-ruleset (extdeps.github.rulesets Update): sending only the rule this
-// module cares about would DELETE the other two, which is exactly the read-modify-write hazard a
-// desired-state authority exists to remove.
+// THE PUT IS WHOLE-RULESET. deletion and non_fast_forward protect history; required_status_checks
+// gates; merge_queue is projected only from MergeQueueSignedOff. Sending a subset would DELETE
+// the rest (extdeps.github.rulesets Update), which is the read-modify-write hazard a desired-state
+// authority exists to remove.
 // THE TYPE ROSTER IS DERIVED FROM THE RULES AND IS NO LONGER A SECOND LIST BESIDE THEM. It was
 // authored as a literal `[DeletionRule, NonFastForwardRule, RequiredStatusChecksRule]` that a human
 // kept in agreement with `desired_ruleset_rules` -- one fact with two authorities, agreeing by
@@ -1370,7 +1369,7 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // and its reason is stated here rather than beside it because DESIGN section 4c models annotations
 // at module-item grain only. An annotation inside a body is a parse refusal, which is how this
 // note came to be here.
-func verify() -> ProcessExit {
+fn verify() -> ProcessExit {
   match inspect_goal(
     subject: gunbc_repository,
     goal: desired_repo_ruleset_goal(),
