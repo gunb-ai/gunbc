@@ -97,40 +97,70 @@ data call_argument_fixture_ingest: SourceRootIngest = Cons {
   tail: Cons { head: call_argument_fixture_read(), tail: Empty }
 }
 
-// THE PIPELINE RUNS ONCE FOR THE WHOLE FILE, AS DATA ROWS RATHER THAN PER-TEST CALLS.
+// THE INGEST IS A CROSS-CLAIM SHARED PURE PRODUCER, ENROLLED, AND TWO WEAKER REMEDIES FAILED FIRST.
 //
-// These were functions, and every test called one, so the REAL parse-and-normalize ingest was
-// re-driven per test fn -- twenty-four times across this file. Locally that only looked slow;
-// under the required floor it was fatal in a way a failure would not have been: every claim came
-// back `interrupted_before_verdict`, which is neither pass nor fail, so the rows carried no
-// verdict at all and the lane blocked on the absence of an answer rather than on a wrong one.
+// THE DEFECT. Every claim below needs the same parsed-and-normalized fixture, and the required
+// floor builds a FRESH EVALUATION FRAME PER CLAIM -- deliberately, so one witness cannot
+// contaminate the next -- so the real parse+normalize was re-derived once per claim. It did not
+// fail; it came back `budget_interrupted` / `right_censored` against the operator's per-claim CPU
+// deadline, which is NEITHER PASS NOR FAIL, so the lane blocked on the absence of a verdict rather
+// than on a wrong answer. The instrument is the floor's own per-claim cost artifact,
+// `required_floor_claim_cost.tsv`, whose rows for this module name the deadline and the interrupt.
 //
-// A `data` row is evaluated once and shared, which is the substrate's own answer to a repeated
-// pure demand -- DESIGN section 2: minimize the demand graph before materializing its answers, and
-// a repetition with a shared-state least common ancestor is authored duplication rather than a
-// caching obligation. The ancestor here is the file.
-data fixture_ingest_outcome: Outcome<FreeMonoid<NormalizedTree>> = module_roots_from_source_root_ingest(
-  ingest: call_argument_fixture_ingest,
-  lm: dag_language_model()
-)
-
-data fixture_roots: FreeMonoid<Node> = match fixture_ingest_outcome {
-  Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
-  Rejected { diagnostics: _ } => Empty
+// WHAT DID NOT WORK, RECORDED BECAUSE THE NEXT AUTHOR WILL REACH FOR IT. Hoisting the chain into
+// module-scope `data` rows does not help: a `data` row is shared within ONE frame, and the thing
+// being repeated here is the frame itself. Relocating the file under `long/` does not help either,
+// because changed-witness selection plans a changed file regardless of its cadence.
+//
+// THE MODELED REMEDY IS THE ONE THE SUBSTRATE ALREADY CARRIES: v2.workflow.floor_pure_producer_share
+// warms a nullary pure producer ONCE during strict preparation, outside every per-claim budget, and
+// serves it to each claim. `call_argument_fixture_normalized` is enrolled WARM there. It is nullary,
+// pure (the sources are inline, so no host read is dispatched), and its value reifies totally:
+// Outcome<FreeMonoid<NormalizedTree>> bottoms out in Nodes, symbols, strings and loci with no
+// closure or evaluator-node reference at any depth.
+//
+// THE SEAM IS THE INGEST AND NOT THE COLLECTION, WHICH IS THAT ROSTER'S OWN RULE RATHER THAN A
+// PREFERENCE: it enrolls parse rows and says normalize is deliberately not the share point, so that
+// every claim still EXECUTES THE STAGE IT NAMES. The claims here name the COLLECTOR. Sharing the
+// collection would hand each of them a precomputed answer to the question it is asking, which is a
+// green bought by deleting the measurement. So the walk stays per claim -- it is a fold over two
+// small roots -- and only the parse-and-normalize that no claim below is about is shared.
+fn call_argument_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  )
 }
 
-data fixture_ingest_accepted: Bool = match fixture_ingest_outcome {
-  Accepted { value: _, diagnostics: _ } => true
-  Rejected { diagnostics: _ } => false
+fn fixture_roots() -> FreeMonoid<Node> {
+  match call_argument_fixture_normalized() {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
 }
 
-data fixture_root_count: Int = length(xs: fixture_roots)
+fn fixture_ingest_accepted() -> Bool {
+  match call_argument_fixture_normalized() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
-data fixture_collection: ReferenceSiteCollection = collect_reference_sites(roots: fixture_roots)
+fn fixture_root_count() -> Int {
+  length(xs: fixture_roots())
+}
 
-data fixture_sites: FreeMonoid<ReferenceSite> = fixture_collection.sites
+fn fixture_collection() -> ReferenceSiteCollection {
+  collect_reference_sites(roots: fixture_roots())
+}
 
-data fixture_import_sites: FreeMonoid<ReferenceSite> = fixture_collection.import_sites
+fn fixture_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().sites
+}
+
+fn fixture_import_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().import_sites
+}
 
 fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
   fold_list(
@@ -194,34 +224,34 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // A row here must never be retired by a trigger that does not restore it.
 
 test fn the_call_argument_fixture_ingests_holds() -> Bool {
-  fixture_ingest_accepted
+  fixture_ingest_accepted()
 }
 
 test fn the_call_argument_fixture_yields_two_module_roots_holds() -> Bool {
-  fixture_root_count == 2
+  fixture_root_count() == 2
 }
 
 // THE CONTROL THAT MAKES EVERY ROW BELOW MEAN SOMETHING: a mention outside any call, found by the
 // same walk over the same tree. If this ever reds, the collector is blind generally and every
 // deficiency row below is uninformative rather than a measurement.
 test fn a_mention_outside_any_call_reaches_the_collector_holds() -> Bool {
-  sites_mention(sites: fixture_sites, spelling: "xl0_no_call")
+  sites_mention(sites: fixture_sites(), spelling: "xl0_no_call")
 }
 
 test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
-  sites_mention(sites: fixture_sites, spelling: "probe")
+  sites_mention(sites: fixture_sites(), spelling: "probe")
 }
 
 // MEASURED DEFICIENCY 1: a reference occurring only as a call ARGUMENT does not reach the
 // collector. Asserted as absent so this reds when the lowering repair lands.
 test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites, spelling: "xl0_call_only")
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
 }
 
 // MEASURED DEFICIENCY 2: the CALLEE name of a call does not reach the collector either, so the
 // erasure is of the whole call expression rather than of its arguments alone.
 test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites, spelling: "xl0_callee")
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
 // WHAT "Bool REACHES THE COLLECTOR" ACTUALLY MEASURES, AND IT IS NOT WHAT ITS FIRST NAME CLAIMED.
@@ -239,7 +269,7 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
 // name that appears in no import at all. A test whose name claims more than its predicate measures
 // is worse than a red one, because it is cited as coverage.
 //
-// This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites folded the
+// This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites() folded the
 // roots while discarding the accumulator, so it answered over the LAST root only. `Bool` is
 // mentioned in both fixture modules, the provider's sites were the ones dropped, and the absence
 // was manufactured by the fold rather than observed in the tree. Over the full population the name
@@ -254,31 +284,24 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
 // `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
 // import statement anywhere, so a site spelling it can only have come from the type position.
 test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds() -> Bool {
-  sites_mention(sites: fixture_sites, spelling: "Xl0UserType")
+  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
 // EVERY root, not the last one. This fold dropped `acc` too -- the same defect the review found in
-// fixture_sites, in the same file, one screen below it. Answering for the last root while reading
+// fixture_sites(), in the same file, one screen below it. Answering for the last root while reading
 // as though it answered for all of them is the identical silent truncation, so it is fixed the
 // same way: the fold conjoins, and the empty case is the identity rather than a verdict.
 test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
-  match module_roots_from_source_root_ingest(
-    ingest: call_argument_fixture_ingest,
-    lm: dag_language_model()
-  ) {
-    Accepted { value: roots, diagnostics: _ } =>
-      fold_list(
-        xs: normalized_tree_roots_to_nodes(roots: roots),
-        empty: true,
-        cons: fn(acc, root) {
-          acc && match qualified_name_from_module_node(root: root) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        }
-      )
-    Rejected { diagnostics: _ } => false
-  }
+  fold_list(
+    xs: fixture_roots(),
+    empty: true,
+    cons: fn(acc, root) {
+      acc && match qualified_name_from_module_node(root: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    }
+  )
 }
 
 // BARE VERSUS QUALIFIED, THE DISCRIMINATOR XL-4'S RESULT FORCED. I reported "a value reference
@@ -290,14 +313,14 @@ test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
 // call, and nothing else in either fixture module can produce that spelling.
 test fn a_qualified_cross_module_reference_is_absent_from_the_denominator_today() -> Bool {
   !sites_mention(
-    sites: fixture_sites,
+    sites: fixture_sites(),
     spelling: "v2.test.xl0_provider.xl0_provided_value"
   )
 }
 
 // THE WALL THAT WOULD HAVE CAUGHT THE DEFECT THAT INVALIDATED EVERY NEGATIVE ROW ABOVE.
 //
-// fixture_sites used to fold the roots with `cons: fn(acc, root) { collect_module_reference_sites(
+// fixture_sites() used to fold the roots with `cons: fn(acc, root) { collect_module_reference_sites(
 // root: root).sites }` -- DISCARDING acc. It therefore returned only the LAST root's sites, and
 // threw away .unreadable_roots at the same time. Every "is absent" row in this file is a NEGATIVE
 // claim, and a negative claim is satisfied for free by a population that never contained the root
@@ -316,11 +339,11 @@ test fn a_qualified_cross_module_reference_is_absent_from_the_denominator_today(
 // requires the collection to be total, so a root that could not be read can never be the reason an
 // "is absent" row is green.
 test fn the_census_population_covers_every_ingested_root_holds() -> Bool {
-  length(xs: fixture_roots) == 2 && fixture_root_count == 2
+  length(xs: fixture_roots()) == 2 && fixture_root_count() == 2
 }
 
 test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
-  reference_site_collection_is_total(collection: fixture_collection)
+  reference_site_collection_is_total(collection: fixture_collection())
 }
 
 // IMPORTS DO NOT REACH THIS ROUTE, SO THE IMPORT ARM IS EMPTY BY CONSTRUCTION HERE -- MEASURED,
@@ -347,14 +370,14 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 // import productions and should not have to invent its own policy -- which is the fork the arm was
 // asked to close.
 test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() -> Bool {
-  !sites_mention(sites: fixture_import_sites, spelling: "Absent")
-    && !sites_mention(sites: fixture_sites, spelling: "Absent")
-    && is_empty(xs: fixture_import_sites)
+  !sites_mention(sites: fixture_import_sites(), spelling: "Absent")
+    && !sites_mention(sites: fixture_sites(), spelling: "Absent")
+    && is_empty(xs: fixture_import_sites())
 }
 
 test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
-  sites_mention(sites: fixture_sites, spelling: "Bool")
-    && sites_mention(sites: fixture_sites, spelling: "Xl0UserType")
+  sites_mention(sites: fixture_sites(), spelling: "Bool")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
 // IS A BARE FIELD TYPE ITS OWN MISSING CLASS? The three-class rule this PR states -- bare reaches,
@@ -373,6 +396,6 @@ test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool 
 // too. A type-position claim that does not say WHICH type position is therefore too coarse: the
 // same bare name reaches from a parameter and does not reach from a field.
 test fn a_bare_field_type_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites, spelling: "Xl0FieldOnly")
-    && sites_mention(sites: fixture_sites, spelling: "Xl0UserType")
+  !sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
