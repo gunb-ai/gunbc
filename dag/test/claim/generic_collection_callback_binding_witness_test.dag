@@ -55,3 +55,11 @@ data applied_alias_return_source: String = "module probe\n\ntype FreeMonoid<T> =
 test fn applied_alias_return_binds() -> Bool {
   callback_inference_error_count(source: applied_alias_return_source) == 0
 }
+
+// Consumed by seed type-argument canonicalization: an initially empty accumulator
+// must acquire its element type before a later callback reads that element.
+data empty_fold_source: String = "module probe_generic_empty_fold\nimport std.types { Int, List, String }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Module { module: String, declarations: List<String> }\nfn asks(xs: List<Module>) -> Int {\n  let modules = fold_list(xs: xs, empty: [], cons: fn(acc, m) { list_snoc_item(xs: acc, item: m) })\n  fold_list(xs: modules, empty: 0, cons: fn(acc, m) { acc + count(m.declarations) })\n}\n"
+
+test fn empty_fold_element_binds() -> Bool {
+  callback_inference_error_count(source: empty_fold_source) == 0
+}

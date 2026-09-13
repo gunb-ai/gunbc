@@ -41,6 +41,7 @@ import v1.std.core {
 }
 
 import v1.compiler.infer_types {
+  type_argument_node,
   resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, is_declared_container_alias_spelling
 }
 
@@ -560,34 +561,28 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let type_name = authored_name(env: env, node: n)
       let key_child_node = match n.children |> first { Present { value: k } => k  Absent => unit_type }
       let val_child_node = match skip(n.children, 1) |> first { Present { value: v } => v  Absent => unit_type }
-      let key_type = child_type_node(ch: key_child_node)
-      let val_type = child_type_node(ch: val_child_node)
+      let key_type = type_argument_node(ch: key_child_node)
+      let val_type = type_argument_node(ch: val_child_node)
       let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
       let key_resolved = key_result.resolved
       let key_diags = key_result.diagnostics
       let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
       let val_resolved = val_result.resolved
       let val_diags = val_result.diagnostics
-      let key_param_name = if key_child_node.inferred != none { authored_name(env: env, node: key_child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: key_child_node) } }
-      let val_param_name = if val_child_node.inferred != none { authored_name(env: env, node: val_child_node) } else { match container_param_name(kind_name: type_name, index: 1) { Present { value: pn } => pn  Absent => authored_name(env: env, node: val_child_node) } }
-      let resolved_key_child = Node { occurrence_identity: key_child_node.occurrence_identity, name: key_param_name, span: key_child_node.span, ident_span: key_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-      let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
       NodeResolveResult {
-        resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, expr_data: NoExprData },
+        resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [key_resolved, val_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, expr_data: NoExprData },
         diagnostics: concat(key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
     let type_name = authored_name(env: env, node: n)
     match n.children |> first {
       Present { value: child_node } =>
-        let el_type = child_type_node(ch: child_node)
+        let el_type = type_argument_node(ch: child_node)
         let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
-        let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: child_node) } }
-        let resolved_child = Node { occurrence_identity: child_node.occurrence_identity, name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: el_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
         NodeResolveResult {
-          resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, expr_data: NoExprData },
+          resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [el_resolved], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, expr_data: NoExprData },
           diagnostics: el_diags
         }
       Absent => NodeResolveResult { resolved: n, diagnostics: [] }

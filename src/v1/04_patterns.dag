@@ -27,6 +27,7 @@ import v1.std.core {
 }
 
 import v1.compiler.infer_types {
+  type_argument_node,
   child_type_node,
   extract_optional_inner_node
 }
@@ -188,7 +189,7 @@ fn synthesize_optional_present_variant(scrut: Node) -> Node {
 
 fn synthesize_witness_holds_variant(scrut: Node) -> Node {
   let inner = match scrut.children |> first {
-    Present { value: child } => child_type_node(ch: child)
+    Present { value: child } => type_argument_node(ch: child)
     Absent => error_type
   }
   let value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
