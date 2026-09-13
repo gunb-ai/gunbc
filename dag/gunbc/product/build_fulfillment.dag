@@ -619,24 +619,38 @@ fn memory_recipe_admission_refusal(recipe: NodeRecipe, assessment: MemoryChangeA
 }
 
 // Assessment and purchase purpose describe the whole build, including refused
-// and unfillable builds. Lines carry only their own fulfillment facts.
+// and unfillable builds. Lines and constructible ceiling share that one
+// assessment, admission decision, bill of materials and screened supply.
 type BuildResolution {
   memory_context: MemoryFulfillmentContext
   lines: List<LineResolution>
+  ceiling: ConstructibleCeiling
 }
 
 fn resolve_build(recipe: NodeRecipe, rows: List<SupplyRow>) -> BuildResolution {
   let assessment = evaluate_memory_change(proposal: recipe.memory, evidence: recipe.memory_evidence)
-  BuildResolution {
-    memory_context: MemoryFulfillmentContext { assessment: assessment, purpose: recipe.memory_purchase },
-    lines: match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
-      Present { value: reason } => map(derive_bom(recipe: recipe), line =>
-        LineRefused { line: line, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason } })
-      Absent => {
-        let screened = memory_screened_rows(recipe: recipe, rows: rows)
-        map(derive_bom(recipe: recipe), line => resolve_line(line: line, inclusions: recipe.inclusions, rows: screened, holder: recipe.label))
+  let context = MemoryFulfillmentContext { assessment: assessment, purpose: recipe.memory_purchase }
+  let bom = derive_bom(recipe: recipe)
+  match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
+    Present { value: reason } => {
+      let cause = MemoryProposalNotAdmitted { assessment: assessment, reason: reason }
+      BuildResolution {
+        memory_context: context,
+        lines: map(bom, line => LineRefused { line: line, cause: cause }),
+        ceiling: CeilingRefused { cause: CeilingLineRefused { part: recipe.baseboard, cause: cause } },
       }
-    },
+    }
+    Absent => {
+      let screened = memory_screened_rows(recipe: recipe, rows: rows)
+      BuildResolution {
+        memory_context: context,
+        lines: map(bom, line => resolve_line(line: line, inclusions: recipe.inclusions, rows: screened, holder: recipe.label)),
+        ceiling: fold(bom, init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
+          ceiling_step(acc: acc, line: line,
+            depth: line_depth(line: line, inclusions: recipe.inclusions, rows: screened))
+        }),
+      }
+    }
   }
 }
 
@@ -1029,18 +1043,7 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
   }
 }
 
-fn max_constructible(recipe: NodeRecipe, rows: List<SupplyRow>) -> ConstructibleCeiling {
-  let assessment = evaluate_memory_change(proposal: recipe.memory, evidence: recipe.memory_evidence)
-  match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
-    Present { value: reason } => CeilingRefused { cause: CeilingLineRefused {
-      part: recipe.baseboard, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason },
-    } }
-    Absent => {
-      let screened = memory_screened_rows(recipe: recipe, rows: rows)
-      fold(derive_bom(recipe: recipe), init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
-        ceiling_step(acc: acc, line: line,
-          depth: line_depth(line: line, inclusions: recipe.inclusions, rows: screened))
-      })
-    }
-  }
+// Both projections consume the same admitted, screened build resolution.
+fn max_constructible(build: BuildResolution) -> ConstructibleCeiling {
+  build.ceiling
 }

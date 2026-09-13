@@ -75,7 +75,7 @@ fn mtcollins_3ds_collector(configuration: MemoryConfiguration, payload: String) 
     expected_stimulus: "two complete captured firmware-210525 boot cycles",
     observed_stimulus: Present { value: "two complete captured firmware-210525 boot cycles" },
     coverage: MemoryCaptureCycles { required_cycles: 2, start_token: mtcollins_dram_cycle_start, completion_token: "ERROR:   Non-identical DIMM mixture NOT supported!" },
-    exit_code: 0, payload: payload, capture_digest: mtcollins_3ds_capture_sha256, previous_capture_digest: none,
+    process_exit: ExitSuccess, payload: payload, capture_digest: mtcollins_3ds_capture_sha256, previous_capture_digest: none,
   }
 }
 

@@ -144,7 +144,6 @@ type BuildCandidate {
   memory_bandwidth: Bandwidth
   resolutions: BuildResolution
   cash: CashProjection
-  ceiling: ConstructibleCeiling
 }
 
 // A GAP NAMES THE AXIS IT IS ABOUT, because that is the grain at which std.pareto excuses an
@@ -232,7 +231,7 @@ fn candidate_missing_inputs(candidate: BuildCandidate, declared: CurrencyCode) -
       }, f: fn(acc, r) { line_missing(acc: acc, r: r) }),
       cash_missing(declared: declared, cash: candidate.cash),
     ),
-    ceiling_missing(ceiling: candidate.ceiling),
+    ceiling_missing(ceiling: candidate.resolutions.ceiling),
   )
 }
 
@@ -272,7 +271,7 @@ fn candidate_readings(candidate: BuildCandidate, declared: CurrencyCode) -> List
   [
     BuildAxisReading { axis: capacity_axis, magnitude: MagnitudeBytes { bytes: candidate.memory_capacity } },
     cash_reading(cash: candidate.cash, declared: declared),
-    ceiling_reading(ceiling: candidate.ceiling),
+    ceiling_reading(ceiling: candidate.resolutions.ceiling),
     BuildAxisReading { axis: wall_power_axis, magnitude: MagnitudeWatts { watts: candidate.wall_power } },
     BuildAxisReading { axis: bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: candidate.memory_bandwidth } },
   ]
