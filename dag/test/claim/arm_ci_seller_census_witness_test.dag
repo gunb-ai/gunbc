@@ -1,9 +1,8 @@
 module test.claim.arm_ci_seller_census_witness
 
 import std.types { Bool, List, NonEmptyStr }
-import std.nat { Nat }
 import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
@@ -14,29 +13,51 @@ import extdeps.ci_runner.types {
   SellerArmLinuxOffer,
   aarch64_rows_missing_cited_label,
 }
-import extdeps.ci_runner.blacksmith { blacksmith_arm_linux_offer, blacksmith_catalog_snapshot }
-import extdeps.ci_runner.depot { depot_arm_linux_offer }
-import extdeps.ci_runner.warpbuild { warpbuild_arm_linux_offer }
-import extdeps.ci_runner.circleci { circleci_arm_linux_offer }
-import extdeps.ci_runner.github_actions { github_actions_arm_linux_offer }
-import extdeps.ci_runner.namespace { namespace_arm_linux_offer }
-import extdeps.ci_runner.buildjet { buildjet_arm_linux_offer }
-import extdeps.ci_runner.runs_on { runs_on_arm_linux_offer }
-import extdeps.ci_runner.actuated { actuated_arm_linux_offer }
-import extdeps.ci_runner.cirrus_runners { cirrus_runners_arm_linux_offer }
-import extdeps.ci_runner.buildkite { buildkite_arm_linux_offer }
-import extdeps.ci_runner.gitlab { gitlab_arm_linux_offer }
-import extdeps.ci_runner.aws_codebuild { aws_codebuild_arm_linux_offer }
-import extdeps.ci_runner.sprinters { sprinters_arm_linux_offer }
-import extdeps.ci_runner.semaphore { semaphore_arm_linux_offer }
-import extdeps.ci_runner.google_cloud_build { google_cloud_build_arm_linux_offer }
+import extdeps.ci_runner.blacksmith {
+  blacksmith_arm_linux_offer,
+  blacksmith_catalog_snapshot,
+  blacksmith_provider_identity,
+}
+import extdeps.ci_runner.depot { depot_arm_linux_offer, depot_provider_identity }
+import extdeps.ci_runner.warpbuild { warpbuild_arm_linux_offer, warpbuild_provider_identity }
+import extdeps.ci_runner.circleci { circleci_arm_linux_offer, circleci_provider_identity }
+import extdeps.ci_runner.github_actions {
+  github_actions_arm_linux_offer,
+  github_actions_provider_identity,
+}
+import extdeps.ci_runner.namespace { namespace_arm_linux_offer, namespace_provider_identity }
+import extdeps.ci_runner.buildjet { buildjet_arm_linux_offer, buildjet_provider_identity }
+import extdeps.ci_runner.runs_on { runs_on_arm_linux_offer, runs_on_provider_identity }
+import extdeps.ci_runner.actuated { actuated_arm_linux_offer, actuated_provider_identity }
+import extdeps.ci_runner.cirrus_runners {
+  cirrus_runners_arm_linux_offer,
+  cirrus_runners_provider_identity,
+}
+import extdeps.ci_runner.buildkite { buildkite_arm_linux_offer, buildkite_provider_identity }
+import extdeps.ci_runner.gitlab { gitlab_arm_linux_offer, gitlab_provider_identity }
+import extdeps.ci_runner.aws_codebuild {
+  aws_codebuild_arm_linux_offer,
+  aws_codebuild_provider_identity,
+}
+import extdeps.ci_runner.sprinters { sprinters_arm_linux_offer, sprinters_provider_identity }
+import extdeps.ci_runner.semaphore { semaphore_arm_linux_offer, semaphore_provider_identity }
+import extdeps.ci_runner.google_cloud_build {
+  google_cloud_build_arm_linux_offer,
+  google_cloud_build_provider_identity,
+}
+import extdeps.cloud.ubicloud { ubicloud_provider_identity }
 import extdeps.pricing.ubicloud { ubicloud_arm_linux_offer }
 import gunbc.arm_ci_seller_census {
+  arm_ci_market_exclusions,
   cloud_arm_reseller_offers,
   customer_account_cloud_arm_offers,
-  hetzner_not_a_ci_seller,
-  mac_apple_silicon_ci_excluded_by_scope,
+  customer_account_includes_provider,
+  exclusion_is_hetzner_supply,
+  exclusion_is_mac_apple_silicon,
+  provider_in,
+  reseller_includes_provider,
   surveyed_arm_linux_offers,
+  surveyed_includes_provider,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -124,8 +145,45 @@ fn offer_aarch64_labels_are_page_cited(offer: SellerArmLinuxOffer) -> Bool {
   )) == 0
 }
 
-test fn surveyed_arm_linux_offers_are_seventeen() -> Bool {
-  count(surveyed_arm_linux_offers()) == 17
+fn expected_seller_identities() -> List<DeclarationRef> {
+  [
+    blacksmith_provider_identity,
+    depot_provider_identity,
+    warpbuild_provider_identity,
+    circleci_provider_identity,
+    github_actions_provider_identity,
+    ubicloud_provider_identity,
+    namespace_provider_identity,
+    buildjet_provider_identity,
+    runs_on_provider_identity,
+    actuated_provider_identity,
+    cirrus_runners_provider_identity,
+    buildkite_provider_identity,
+    gitlab_provider_identity,
+    aws_codebuild_provider_identity,
+    sprinters_provider_identity,
+    semaphore_provider_identity,
+    google_cloud_build_provider_identity,
+  ]
+}
+
+fn expected_reseller_identities() -> List<DeclarationRef> {
+  [github_actions_provider_identity, depot_provider_identity, gitlab_provider_identity]
+}
+
+fn expected_customer_account_identities() -> List<DeclarationRef> {
+  [runs_on_provider_identity, sprinters_provider_identity]
+}
+
+test fn every_expected_seller_is_surveyed() -> Bool {
+  all(expected_seller_identities(), p => surveyed_includes_provider(provider: p))
+}
+
+test fn every_surveyed_offer_provider_is_an_expected_seller() -> Bool {
+  all(
+    surveyed_arm_linux_offers(),
+    o => provider_in(provider: o.provider, identities: expected_seller_identities()),
+  )
 }
 
 test fn every_surveyed_offer_declares_scope() -> Bool {
@@ -205,20 +263,28 @@ test fn google_cloud_build_offer_is_surveyed() -> Bool {
   offer_scope_nonempty(offer: google_cloud_build_arm_linux_offer)
 }
 
-test fn wholesale_join_names_github_depot_and_gitlab() -> Bool {
-  count(cloud_arm_reseller_offers()) == 3
+test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
+  all(expected_reseller_identities(), p => reseller_includes_provider(provider: p))
+    && all(
+      cloud_arm_reseller_offers(),
+      o => provider_in(provider: o.provider, identities: expected_reseller_identities()),
+    )
 }
 
-test fn customer_account_cloud_join_names_runs_on_and_sprinters() -> Bool {
-  count(customer_account_cloud_arm_offers()) == 2
+test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
+  all(expected_customer_account_identities(), p => customer_account_includes_provider(provider: p))
+    && all(
+      customer_account_cloud_arm_offers(),
+      o => provider_in(provider: o.provider, identities: expected_customer_account_identities()),
+    )
 }
 
 test fn mac_market_is_excluded_by_scope() -> Bool {
-  string_length(s: mac_apple_silicon_ci_excluded_by_scope) > 0
+  any(arm_ci_market_exclusions(), e => exclusion_is_mac_apple_silicon(row: e))
 }
 
 test fn hetzner_is_named_as_supply_not_ci_seller() -> Bool {
-  string_length(s: hetzner_not_a_ci_seller) > 0
+  any(arm_ci_market_exclusions(), e => exclusion_is_hetzner_supply(row: e))
 }
 
 data rogue_provider: DeclarationRef = decl_ref(

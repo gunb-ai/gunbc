@@ -1,6 +1,7 @@
 module gunbc.arm_ci_seller_census
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.ci_runner.types {
   CustomerAccountNamedCloud,
   ResoldNamedCloud,
@@ -84,9 +85,48 @@ fn customer_account_cloud_arm_offers() -> List<SellerArmLinuxOffer> {
   filter(surveyed_arm_linux_offers(), o => offer_launches_customer_cloud(offer: o))
 }
 
-// Mac/Apple-silicon CI (Bitrise, Codemagic, MacStadium, and macOS rows on
-// otherwise-Linux sellers) is a different market: excluded by scope, not modelled
-// as ARM Linux runner shapes.
-data mac_apple_silicon_ci_excluded_by_scope: NonEmptyStr = "Bitrise, Codemagic, and MacStadium, and macOS/Apple-silicon runner families on mixed sellers, are a different market from Linux aarch64 CI runners and are excluded by scope: no shapes, prices, or silicon rows are modelled for them."
+fn offer_has_provider(offer: SellerArmLinuxOffer, provider: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: offer.provider, b: provider)
+}
 
-data hetzner_not_a_ci_seller: NonEmptyStr = "extdeps.cloud.hetzner / extdeps.pricing.hetzner_dedicated is ARM SUPPLY, not a CI-runner seller. CAX was not orderable to our account on three dated readings. It is not enrolled as a CI seller offer."
+fn surveyed_includes_provider(provider: DeclarationRef) -> Bool {
+  any(surveyed_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn reseller_includes_provider(provider: DeclarationRef) -> Bool {
+  any(cloud_arm_reseller_offers(), o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn customer_account_includes_provider(provider: DeclarationRef) -> Bool {
+  any(customer_account_cloud_arm_offers(), o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn provider_in(provider: DeclarationRef, identities: List<DeclarationRef>) -> Bool {
+  any(identities, p => declaration_ref_eq(a: provider, b: p))
+}
+
+// Mac/Apple-silicon CI (Bitrise, Codemagic, MacStadium, and macOS families on mixed sellers)
+// is a different market from Linux aarch64 runners: excluded by scope, not modelled as shapes.
+// Hetzner CAX is ARM supply (extdeps.cloud.hetzner), not a CI-runner seller, unread as orderable
+// CAX on three dated readings. The join reads these constructors; they are not commentary strings.
+type ArmCiMarketExclusion
+  = DifferentMarketMacAppleSilicon
+  | ArmSupplyNotCiSellerHetzner
+
+fn arm_ci_market_exclusions() -> List<ArmCiMarketExclusion> {
+  [DifferentMarketMacAppleSilicon, ArmSupplyNotCiSellerHetzner]
+}
+
+fn exclusion_is_mac_apple_silicon(row: ArmCiMarketExclusion) -> Bool {
+  match row {
+    DifferentMarketMacAppleSilicon => true
+    ArmSupplyNotCiSellerHetzner => false
+  }
+}
+
+fn exclusion_is_hetzner_supply(row: ArmCiMarketExclusion) -> Bool {
+  match row {
+    ArmSupplyNotCiSellerHetzner => true
+    DifferentMarketMacAppleSilicon => false
+  }
+}
