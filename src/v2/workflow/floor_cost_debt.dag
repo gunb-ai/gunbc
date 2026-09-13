@@ -840,22 +840,29 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 //   passing baselines at the same 2884: 455 and 456-464
 //   gunbc#11173 head 26a02cab, run 34730761129, SAME HEAD, SAME CONTENT, SAME TREE:
 //     attempt 1 crossed at 562, attempt 2 crossed at 556, attempt 3 PASSED
-//   attempt 2: wall 2435ms at 556ms CPU -- about 1.9s NOT computing, which is contention, not work
-//   run-wide mean on that run: 11.8ms over 3789 claims -- an outlier by slot, not by shape
+//   attempt 2: wall 2435ms at 556ms CPU -- a wall-beyond-CPU gap of about 1.9s
+//   run-wide mean on that run: 11.8ms over 3789 claims -- an outlier on the clock, not by shape
 //   ceiling: `required_floor_claim_cpu_safety_limit_ms` = 500; the floor printed
 //     COMPLETED-OVER-COST-REQUIREMENT and refused with blockers=1 while claims_failed=0
 //
 // The step count is the unit, run after run; the charge moved by up to 67% across the same 2884
 // steps. The three attempts on one head are the strongest form of the finding: content and tree
-// held fixed BY CONSTRUCTION, and the verdict still went cross, cross, pass -- slot-dependence
-// observed directly rather than inferred from a cross-head spread. What moved is which runner the
-// job landed on. That is `gunbc.rung_drop floor_cost_claim_qualification_unavailable` observed at
-// identity grain, exactly as it was for the two rows above.
+// held fixed BY CONSTRUCTION, and the verdict still went cross, cross, pass -- the variation
+// observed directly rather than inferred from a cross-head spread. The observations are CONSISTENT
+// WITH AN ENVIRONMENTAL CONTRIBUTION to the charge, and that is the whole of the causal claim: the
+// wall-beyond-CPU gap does not explain why CPU itself crossed, and a constant eval_steps is
+// constancy of THAT COUNTER, not of all underlying work -- a fold whose accumulator is copied does
+// O(n^2) host work at a lower step count, so the counter is demonstrably blind to some real work.
+// An earlier draft of this block read "contention, not work" and "what moved is which runner the
+// job landed on"; both state a mechanism the measurements do not establish, and were refused. What
+// the measurements DO establish is that the charge is not a stable property of the claim, which is
+// `gunbc.rung_drop floor_cost_claim_qualification_unavailable` observed at identity grain, exactly
+// as it was for the two rows above.
 //
 // THE SAME PHENOMENON, NOT ENROLLED: the sibling `affected_set_universe_includes_meta_self` went
 // over once at 520ms (eval_steps=235, passing baselines 406 and 437) and passed at 486ms on the next
 // attempt. It is named here so the next reader recognises the module rather than the identity as
-// the site of the slot sensitivity, and it is NOT enrolled: one observation over the line is not
+// the site of the clock variation, and it is NOT enrolled: one observation over the line is not
 // the straddling pattern, and the roster grows one identity per demonstrated straddle, never by
 // module. `affected_set_universe_is_complete` and `affected_set_universe_incomplete_fails_closed`
 // likewise stay on the floor as the executing controls that the universe still folds and still
@@ -881,14 +888,14 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 // trigger already in flight and hours away would make a new debt row ceremony, and gunbc#11195,
 // the lane carrying the capability, is a DRAFT at +2335/-266 with a FAILING floor at this writing,
 // so migration is unavailable today and the alternative for the wait is a required lane whose
-// verdict on this identity is decided by hardware. That is the admission; the trigger below
+// verdict on this identity varies with content and tree held fixed. That is the admission; the trigger below
 // describes how the debt ENDS and authorises none of it (DESIGN section 5).
 //
 // WHY THIS IS NOT THE REMEDY REFUSED FOR gunbc#10994. A cost-debt row was refused there as a CLASS
 // remedy, because that witness carried a real 618,109-step cost and a debt row would have hidden a
-// genuine cost-shape defect. This is one identity whose tree-side cost is constant at 2884 steps
-// and whose clock-side cost is the runner's. The roster exists for precisely that and for nothing
-// else.
+// genuine cost-shape defect. This is one identity whose eval_steps are constant at 2884 and whose
+// charged CPU varies, with content and tree fixed, in a way consistent with an environmental
+// contribution. The roster exists for precisely that and for nothing else.
 //
 // TRIGGER, A CAPABILITY AND NOT A ROSTER ERASURE, AND THIS ROW HAS ONE ARM ONLY. Rostered as a
 // DESIGN section 4b(3) drop at `gunbc.rung_drop.floor_cost_debt_straddling_affected_set_universe`,
@@ -897,7 +904,8 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 // so one name over both populations would be a section 3 meaning fork with a trigger half of which
 // can fire while this identity stays withheld. The single arm is arm (b): the operative required
 // floor ceiling is denominated in CALIBRATED `eval_steps`, with CPU observed-only, so a claim's cost
-// is qualified on a stable property of the claim rather than on the slot it landed in -- at which point
+// is qualified on a stable property of the claim rather than on a charge that varies with the
+// claim held fixed -- at which point
 // `floor_cost_claim_qualification_unavailable` retires and this row is decided by its work. gunbc#11195
 // is the lane currently carrying that capability and is cited as such; the merge of #11195 is NOT
 // the trigger, the capability is, and a trigger naming less than the capability it restores would be
