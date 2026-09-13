@@ -24,7 +24,7 @@ fn posix_effective_principal_read_argv() -> List<String> {
   ["whoami"]
 }
 
-func effective_posix_principal_read(
+fn effective_posix_principal_read(
   read: EffectivePosixPrincipalRead,
 ) -> EffectivePosixPrincipalReadOutcome {
   let result = access.PosixEffectivePrincipal.Read(read: read)
