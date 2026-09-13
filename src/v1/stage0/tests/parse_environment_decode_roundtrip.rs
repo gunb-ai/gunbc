@@ -131,27 +131,17 @@ fn the_loader_reads_the_revision_not_the_worktree() {
     );
     std::fs::write(&env_path, &edited).expect("write diverged worktree copy");
 
-    // The committed blob and the worktree differ -- the premise of the whole probe.
-    let committed_id = {
-        let prev = std::env::current_dir().expect("cwd");
-        std::env::set_current_dir(&scratch).expect("chdir scratch");
-        let id = blob_id_at(&baseline, ENVIRONMENT_MODULE_PATH);
-        std::env::set_current_dir(prev).expect("restore cwd");
-        id
-    };
+    // The committed blob exists -- the premise of the whole probe. The repository is named
+    // explicitly rather than reached through the process cwd: `workspace_root()` memoizes the cwd
+    // on first use and the other tests in this binary run concurrently, so a chdir here would
+    // have made their colour depend on thread interleaving.
+    let committed_id = blob_id_at(&scratch, &baseline, ENVIRONMENT_MODULE_PATH);
     assert!(
         matches!(committed_id, Ok(Some(_))),
         "the scratch revision has no environment blob, so the probe is not set up"
     );
 
-    let loaded = {
-        let prev = std::env::current_dir().expect("cwd");
-        std::env::set_current_dir(&scratch).expect("chdir scratch");
-        let got = load_parse_environment_at(&baseline);
-        std::env::set_current_dir(prev).expect("restore cwd");
-        got
-    };
-    let loaded = match loaded {
+    let loaded = match load_parse_environment_at(&scratch, &baseline) {
         Ok(env) => env,
         Err(e) => panic!("loader refused on the scratch revision: {e}"),
     };
