@@ -41,6 +41,20 @@ data cloudflare_customer_dpa_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data r2_create_bucket_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create"
+  }
+}
+
+data r2_get_bucket_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/get"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -55,6 +69,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     r2_us_jurisdiction_changelog_authority,
     cloudflare_subprocessors_authority,
     cloudflare_customer_dpa_authority,
+    r2_create_bucket_authority,
+    r2_get_bucket_authority,
   ]
 }
 
@@ -99,8 +115,24 @@ data r2_tokens_default_jurisdiction_reading: CloudflarePublishedReading = Cloudf
 data cloudflare_subprocessors_reading: CloudflarePublishedReading = CloudflarePublishedReading {
   authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_subprocessors_authority"),
   read_on: "2026-09-12",
-  statement: "Last Updated: October 1, 2025. Cloudflare uses a handful of sub-processors to support the Cloudflare service. Some of these sub-processors are members of the Cloudflare Group (Cloudflare, Inc. and its subsidiaries) and some are third parties. Third-party entities include Slack Technologies, Inc. (Customer support communications, United States); Zendesk, Inc. (Customer support and account management, United States, the European Economic Area, Japan, and Australia); Salesforce, Inc. (Customer support and account management, United States); Google LLC (Cloudflare Developer Platform, Cloudflare Zero Trust and AI Gateway; European Economic Area, United States, Australia, India); Oracle America, Inc. (Cloudflare Developer Platform and Cache Reserve; United States, European Economic Area, UK, Japan, Australia, Canada, Singapore); Amazon Web Services (Cloudflare Email Security; United States, European Economic Area); CoreWeave, Inc., Nebius BV (Workers AI); Anthropic PBC, OpenAI, Inc., X.AI Corp., Groq, Inc. (AI Gateway). The page lists Cloudflare Group subsidiaries by location and does not key any row to a named R2 bucket or to the default jurisdiction.",
+  statement: "Last Updated: October 1, 2025. Cloudflare uses a handful of sub-processors to support the Cloudflare service. Some of these sub-processors are members of the Cloudflare Group (Cloudflare, Inc. and its subsidiaries) and some are third parties. Third-party entities include Slack Technologies, Inc. (Customer support communications, United States); Zendesk, Inc. (Customer support and account management, United States, the European Economic Area, Japan, and Australia); Salesforce, Inc. (Customer support and account management, United States); Google LLC (Cloudflare Developer Platform, Cloudflare Zero Trust and AI Gateway; European Economic Area, United States, Australia, India); Oracle America, Inc. (Cloudflare Developer Platform and Cache Reserve; United States, European Economic Area, UK, Japan, Australia, Canada, Singapore); Amazon Web Services (Cloudflare Email Security; United States, European Economic Area); CoreWeave, Inc., Nebius BV (Workers AI); Anthropic PBC, OpenAI, Inc., X.AI Corp., Groq, Inc. (AI Gateway). The page lists Cloudflare Group subsidiaries by location.",
 }
+
+data r2_create_bucket_location_hint_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_create_bucket_authority"),
+  read_on: "2026-09-13",
+  statement: "Create Bucket POST /accounts/{account_id}/r2/buckets. Body parameter locationHint, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Header cf-r2-jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13.",
+}
+
+data r2_get_bucket_location_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_get_bucket_authority"),
+  read_on: "2026-09-13",
+  statement: "Get Bucket GET /accounts/{account_id}/r2/buckets/{bucket_name}. Result field location, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Result field jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13.",
+}
+
+// READER FINDING, not a Cloudflare sentence. CloudflarePublishedReading.statement carries only
+// transcription. This row is the absence claim that the table does not cover a named bucket.
+data cloudflare_subprocessors_not_keyed_to_this_bucket: NonEmptyStr = "READER FINDING, not a Cloudflare sentence: cloudflare_subprocessors_reading transcribes a company-wide activity table. That table is not keyed to a named R2 bucket or to the default jurisdiction. It does not cover gunbai-fabric-origin and it does not establish an empty downstream population."
 
 data cloudflare_customer_dpa_reading: CloudflarePublishedReading = CloudflarePublishedReading {
   authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_authority"),
@@ -124,12 +156,14 @@ data cloudflare_customer_dpa_reading: CloudflarePublishedReading = CloudflarePub
 // r2_tokens_default_jurisdiction_reading; the fleet bucket's jurisdiction is
 // gunbc.cloudflare.r2_origin fabric_durable_origin_standing.
 
-// AUTOMATIC IS A CHOICE MECHANISM, AND THAT IS WHAT THIS ROW RECORDS. It is the region a route
-// cites when a bucket was created without a jurisdictional restriction: not a country, not a
-// data-center park, and not a residency commitment. Treating R2JurisdictionDefault, a dashboard
-// Location label, or a Location Hint as the place the bytes live is the reading this row exists
-// to make unusable as a location fact. Automatic is not an arm of R2Jurisdiction — that type's
-// corresponding non-guarantee is R2JurisdictionDefault, owned by extdeps.cloudflare.r2.
+// AUTOMATIC IS A CHOICE MECHANISM, AND THAT IS WHAT THIS ROW RECORDS. It is not a country, not a
+// data-center park, not a residency commitment, and not a value of ProviderRoute.region. product.supplier.cloudflare_r2
+// mints a ProviderRoute only in the read arm; Automatic is excluded from that slot. Treating
+// R2JurisdictionDefault, a dashboard Location label, Create Bucket locationHint, or Get Bucket
+// location as interchangeable is the section 3 fork this row exists to keep unusable: requested
+// placement, reported location, and residency guarantee are three facts. Automatic is not an arm
+// of R2Jurisdiction — that type's corresponding non-guarantee is R2JurisdictionDefault, owned by
+// extdeps.cloudflare.r2.
 type R2PlacementModeRow {
   reading: CloudflarePublishedReading
 }
