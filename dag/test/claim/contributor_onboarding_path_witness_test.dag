@@ -214,6 +214,56 @@ test fn an_artifact_with_no_producer_is_refused() -> Bool {
   }
 }
 
+// THE CONVERSE CONTRADICTION, WHICH WENT UNREFUSED UNTIL review 65734 NAMED IT. An artifact this
+// module can PRODUCE whose location authority puts it outside `docs` is in neither population --
+// regen does not write it, main does not agree it, nothing compares it. These three arms are the
+// executing evidence that the arm refusing it is a wall and not a decoration.
+//
+// THE RED IS AUTHORABLE ONLY BECAUSE THE VERDICT READS A PROJECTION. Both halves of the
+// contradiction are total functions of the registry variant, so no live variant can carry the
+// forbidden combination and no population of variants could make this red. The rows below author
+// the combination directly, which is the whole reason the verdict does not take artifacts.
+test fn a_producer_for_an_artifact_outside_docs_is_refused() -> Bool {
+  match docs_placement_verdict_over(placements: [
+    DocsArtifactPlacement { path: "src/v1/stage0/src/generated.rs", directory: "src", has_producer: true }
+  ]) {
+    ExitFailure { code: _, reason: _ } => true
+    ExitSuccess => false
+  }
+}
+
+// CONTROL ONE, DIFFERING IN EXACTLY ONE FIELD: same directory, no producer. That is the ordinary
+// state of most of the registry and must stay green, or the arm above would refuse every artifact
+// that simply lives somewhere else.
+test fn an_artifact_outside_docs_with_no_producer_is_fine() -> Bool {
+  match docs_placement_verdict_over(placements: [
+    DocsArtifactPlacement { path: "src/v1/stage0/src/generated.rs", directory: "src", has_producer: false }
+  ]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// CONTROL TWO: a producer for an artifact that IS under docs -- the state every real docs
+// projection is in. Green, or the arm would refuse the population it exists to protect.
+test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
+  match docs_placement_verdict_over(placements: [
+    DocsArtifactPlacement { path: "docs/onboarding.md", directory: "docs", has_producer: true }
+  ]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// NO LIVE-REGISTRY ARM HERE, DELIBERATELY, AND THE REASON IS THIS MODULE'S OWN HISTORY. An arm
+// folding the live registry was measured at nearly twice the cost of the one the floor's enrolment
+// margin ALREADY REFUSED in this same module, and a witness that passes today on a fast host is
+// the one that refuses tomorrow on a slow one. It would also have been redundant: `main` and
+// `regen` both call the verdict over the real registry on the acceptance path, so production is
+// the positive control for the live population and this file controls the logic. The authored red
+// and its two controls are what DESIGN section 4b asks of the evidence; paying a floor refusal to
+// restate what production already executes is not.
+
 // DERIVED MEMBERSHIP: THE DISCRIMINATING RED. A non-docs artifact must NOT be admitted to the
 // docs population, and must have no docs producer. Without this arm the predicate above is
 // satisfied by one that answers true for everything -- which would put .gitignore in the docs

@@ -175,6 +175,68 @@ fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
 // before calling; this fold asks only whether everything it was handed can be produced. That is
 // what lets a fixture hand it a non-docs artifact and get a refusal, which is the discriminating
 // input, and it keeps one responsibility per function.
+// THE SAME CONTRADICTION READ BACKWARDS, AND UNTIL NOW ONLY ONE DIRECTION REFUSED (review 65734).
+//
+// The arm above refuses a `docs/`-located artifact that nothing produces. Its converse is equally
+// reachable and was silent: an artifact this module CAN produce whose location authority puts it
+// somewhere other than `docs` is in neither population -- not written by regen, not agreed by main,
+// compared by nothing, with no diagnostic. That is the exact shape the failure-mode row this change
+// cites as its motive already named: a projection that compiles, ships, and is compared by nothing.
+// Deriving membership from the registry closed the direction that was easy to see and left the one
+// that reads backwards, which is why it survived the derivation.
+//
+// TWO EDITS REACH IT, NEITHER OF THEM EXOTIC. Adding a producer arm for an artifact located
+// elsewhere, and moving an existing docs projection's directory in `gunbc.generated_artifact`
+// `artifact_location`. Both are ordinary changes to adjacent authorities by someone who has never
+// read this module, which is precisely the reader a silent gap is worst for.
+//
+// THE POPULATION IS A PROJECTION AND NOT A LIST OF REGISTRY VARIANTS, WHICH IS WHAT MAKES THE RED
+// AUTHORABLE AT ALL. Both halves of the contradiction -- where the bytes live, and whether this
+// module produces them -- are total functions OF THE VARIANT, so no live variant can be handed in
+// carrying the forbidden combination, and a fold taking `List<GeneratedArtifact>` would have been
+// permanently green no matter what population a fixture supplied. Carrying the two facts as data
+// is the difference between a wall and a decoration (DESIGN section 4b). The host side projects
+// once; the verdict below is pure and witnessable from authored rows.
+type DocsArtifactPlacement {
+  path: String
+  directory: String
+  has_producer: Bool
+}
+
+fn docs_artifact_placement(a: GeneratedArtifact) -> DocsArtifactPlacement {
+  DocsArtifactPlacement {
+    path: artifact_path(a: a),
+    directory: artifact_location(a: a).directory,
+    has_producer: artifact_has_docs_producer(a: a)
+  }
+}
+
+fn docs_artifact_placements(artifacts: List<GeneratedArtifact>) -> List<DocsArtifactPlacement> {
+  map(artifacts, a => docs_artifact_placement(a: a))
+}
+
+fn placement_is_outside_docs(p: DocsArtifactPlacement) -> Bool {
+  p.has_producer && !(p.directory == docs_projection_directory)
+}
+
+fn docs_placement_verdict_over(placements: List<DocsArtifactPlacement>) -> ProcessExit {
+  let misplaced = filter(placements, p => placement_is_outside_docs(p: p))
+  if count(misplaced) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: fold(
+      misplaced,
+      init: "this module produces these artifacts but their location authority does not put them under docs, so nothing compares them:",
+      f: fn(acc, p) { concat(acc, concat(" ", concat(p.path, concat(" -> ", p.directory)))) }
+    ))
+  }
+}
+
+fn docs_placement_verdict() -> ProcessExit {
+  docs_placement_verdict_over(placements: docs_artifact_placements(artifacts: generated_artifact_registry))
+}
+
+
 fn docs_projection_resolutions(artifacts: List<GeneratedArtifact>) -> List<DocsProjectionResolution> {
   map(artifacts, a => docs_projection_resolution(a: a))
 }
@@ -256,7 +318,10 @@ fn write_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
 // main's.
 fn regen() -> ProcessExit {
   let resolutions = docs_projection_resolutions(artifacts: docs_located_artifacts())
-  match docs_projection_coverage_of(resolutions: resolutions) {
+  match first_failure(
+    acc: docs_placement_verdict(),
+    next: docs_projection_coverage_of(resolutions: resolutions)
+  ) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
     ExitSuccess => fold(
       resolutions,
@@ -295,7 +360,10 @@ fn agree_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
 // projection enrolls it here with no edit to this function.
 fn main() -> ProcessExit {
   let resolutions = docs_projection_resolutions(artifacts: committed_docs_located_artifacts())
-  match docs_projection_coverage_of(resolutions: resolutions) {
+  match first_failure(
+    acc: docs_placement_verdict(),
+    next: docs_projection_coverage_of(resolutions: resolutions)
+  ) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
     ExitSuccess => fold(
       resolutions,
