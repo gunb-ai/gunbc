@@ -1,6 +1,6 @@
 module v2.workflow.legacy_repair_tap
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.decl_ref { decl_ref }
 import std.occurrence_identity {
   ValidatedOccurrenceTransport,
@@ -150,32 +150,11 @@ fn binding_observation_from_tap_rows(
   }
 }
 
-fn persist_capture_from_observed_tap<O>(
-  materialization: CheckoutMaterialization,
-  tree_subject: TreeDerivedSubjectReceipt,
-  observation: LegacyBindingObservation<O>,
-  tap: Xl1PrimaryRootTap
-) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
-  match tap {
-    Xl1PrimaryRootRefused { cause: _ } => PersistRefusedNotCaptured
-    Xl1PrimaryRootObserved { repair_rows: rows, occurrence_transport: ot, primary_root: _, binding_rows: _ } =>
-      persist_legacy_baseline(
-        outcome: capture_legacy_baseline_from_observed_transport(
-          materialization: materialization,
-          tree_subject: tree_subject,
-          observation: observation,
-          observed_transport: ot,
-          repair_observation: repair_observation_from_bridge_rows(rows: rows, tree: tree_subject.subject),
-          repair_roster: repair_roster_from_bridge_rows(rows: rows)
-        )
-      )
-  }
-}
-
 // THE NAMED-BASE CAPTURE ENTRY. CheckoutMaterialization.requested is the GitObjectId the capture
 // will bind; the tap is the only producer of live repair rows and of the occurrence transport those
 // rows were taken with. Caller-supplied binding observations are not this entry: they can mint
-// without the tap. persist_capture_from_observed_tap remains the injection seam for a refused tap.
+// without the tap. persist_capture_from_bridge_rows is the fixture injection (validated transport
+// plus rows, no live builtin). Empty source_roots refuse inside the seed arm.
 fn persist_named_base_from_primary_root_tap(
   materialization: CheckoutMaterialization,
   tree_subject: TreeDerivedSubjectReceipt,
@@ -200,18 +179,6 @@ fn persist_named_base_from_primary_root_tap(
         )
       )
   }
-}
-
-fn persist_capture_from_primary_root_tap(
-  materialization: CheckoutMaterialization,
-  tree_subject: TreeDerivedSubjectReceipt,
-  source_roots: List<String>
-) -> PersistAdmission<ReferenceOccurrenceBindingDisposition, ReferenceDerivedCandidateDisposition> {
-  persist_named_base_from_primary_root_tap(
-    materialization: materialization,
-    tree_subject: tree_subject,
-    source_roots: source_roots
-  )
 }
 
 fn append_unique_module(acc: List<String>, n: String) -> List<String> {
@@ -241,8 +208,6 @@ fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCen
   match emit_rust_reference_derived_rows_bridge(source_roots) {
     Xl1PrimaryRootRefused { cause: c } => Xl1LiveRepairTapUnavailable { cause: c }
     Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
-      Xl1LiveRepairTapRows { count: rows |> count }
+      Xl1LiveRepairTapRows { count: list_length(items: rows) }
   }
 }
-
-data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_named_base_from_primary_root_tap / persist_capture_from_primary_root_tap / persist_capture_from_bridge_rows / xl1_live_repair_tap_census."
