@@ -147,9 +147,9 @@ WHAT WAS OBSERVED ONCE AND DID NOT REPRODUCE. A wrapper returning zero while the
 
 Stated as a census rather than as reassurance. These are the steps and obstacles a document cannot discharge, and they are the standing bus-factor risks in this path.
 
-- Step 5, run-witnesses: needs a machine: a host whose cgroup exposes an enforceable memory bound large enough for the floor fold
-- Step 9, propose: needs a credential: push access to the repository, or a fork plus the ability to open a pull request from it
-- Step 10, land: needs an operator decision: who reviews and who merges; the merge itself is performed by the operator under the standing squash-merge policy
+- run-witnesses: needs a machine: a host whose cgroup exposes an enforceable memory bound large enough for the floor fold
+- propose: needs a credential: push access to the repository, or a fork plus the ability to open a pull request from it
+- land: needs an operator decision: who reviews and who merges; the merge itself is performed by the operator under the standing squash-merge policy
 
 Obstacles whose only honest disposition is that somebody else must act:
 

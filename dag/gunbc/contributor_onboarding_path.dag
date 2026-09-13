@@ -112,15 +112,14 @@ type OnboardingBlocker
 // coverage of a state nobody can write -- which DESIGN section 4b names as worse than absent,
 // because it will be cited as coverage.
 //
-// AND IT IS NOT A MISSING FIXTURE. Two sibling arms in this change were repaired exactly that way
-// after review 64627: a duplicated ordinal and a reading order with no first-day row are both
-// perfectly authorable, so each got an authored fixture and a real RED. This one is different in
+// AND IT IS NOT A MISSING FIXTURE. A sibling arm in this change was repaired exactly that way
+// after review 64627: a reading order with no first-day row is perfectly authorable, so it got an
+// authored fixture and a real RED. This one is different in
 // kind -- the forbidden state has no constructor, at the top rung of the ladder, so the field type
 // IS the guarantee and a validator restating it would be the second representation section 5
 // forbids. The right answer is that the check is gone and this paragraph says why, so the next
 // author does not read its absence as an oversight and add it back.
 type OnboardingStep {
-  ordinal: Int
   id: NonEmptyStr
   goal: NonEmptyStr
   command: Optional<NonEmptyStr>
@@ -236,7 +235,6 @@ data onboarding_merge_check_command: String = "git merge-tree --write-tree origi
 
 data onboarding_steps: List<OnboardingStep> = [
   OnboardingStep {
-    ordinal: 1,
     id: "clone" as NonEmptyStr,
     goal: "Obtain the repository." as NonEmptyStr,
     command: Present { value: onboarding_clone_command as NonEmptyStr },
@@ -244,7 +242,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 2,
     id: "toolchain" as NonEmptyStr,
     goal: "Get the pinned Rust toolchain, with clippy and rustfmt." as NonEmptyStr,
     command: Present { value: onboarding_toolchain_command as NonEmptyStr },
@@ -252,7 +249,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 3,
     id: "build" as NonEmptyStr,
     goal: "Build the two binaries every later step needs." as NonEmptyStr,
     command: Present { value: onboarding_build_command() as NonEmptyStr },
@@ -260,7 +256,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 4,
     id: "seed-hooks" as NonEmptyStr,
     goal: "Point git at the generated hooks, which is the one documented manual seed per clone." as NonEmptyStr,
     command: Present { value: onboarding_hooks_command as NonEmptyStr },
@@ -268,7 +263,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 5,
     id: "run-witnesses" as NonEmptyStr,
     goal: "Run the corpus lane the merge gate runs: the parse sweep and the witness floor. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait." as NonEmptyStr,
     command: Present { value: onboarding_witness_command() as NonEmptyStr },
@@ -276,7 +270,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: NeedsMachine { resource: "a host whose cgroup exposes an enforceable memory bound large enough for the floor fold" as NonEmptyStr },
   },
   OnboardingStep {
-    ordinal: 6,
     id: "run-build-lane" as NonEmptyStr,
     goal: "Run the emission lane: the regen comparison and the emission compile. Also tens of minutes. RUN IT BEFORE YOU CHANGE ANYTHING, because step 7 asks you to take it from refusing to green and you cannot see that transition if you never saw it green first." as NonEmptyStr,
     command: Present { value: onboarding_build_lane_command() as NonEmptyStr },
@@ -284,7 +277,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 7,
     id: "change" as NonEmptyStr,
     goal: "Make one small change in the .dag authority that owns the fact, then regenerate what projects from it. A NAMED FIRST CHANGE, WITH ITS FILE, because a step that says only which KIND of change to make is a step that sends you exploring: open dag/gunbc/contributor_onboarding_path.dag, edit one why string in onboarding_design_reading -- a row of the reading order on this very page -- and regenerate. DO THE REGEN SECOND, NOT FIRST. Edit, then run the emission lane and watch it REFUSE and name your drifted file, then regen, then run it again and watch it pass. Running regen before the lane skips the refusal, which is the half of the loop worth seeing. THEN COMMIT: that is what converges the merge driver step 4 told you to check later, so check it now. It is the smallest projection in the repository, so the loop closes in one run, and the file you are reading is the diff." as NonEmptyStr,
     command: Present { value: docs_projection_regen_command as NonEmptyStr },
@@ -292,7 +284,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 8,
     id: "local-checks" as NonEmptyStr,
     goal: "Run the checks that block a merge and the ones that are local diligence only." as NonEmptyStr,
     command: Present { value: repo_self_clippy_command() as NonEmptyStr },
@@ -300,7 +291,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: SelfServe,
   },
   OnboardingStep {
-    ordinal: 9,
     id: "propose" as NonEmptyStr,
     goal: "Push a branch and open a pull request." as NonEmptyStr,
     command: Absent,
@@ -308,7 +298,6 @@ data onboarding_steps: List<OnboardingStep> = [
     blocker: NeedsCredential { credential: "push access to the repository, or a fork plus the ability to open a pull request from it" as NonEmptyStr },
   },
   OnboardingStep {
-    ordinal: 10,
     id: "land" as NonEmptyStr,
     goal: "Get the change reviewed and merged." as NonEmptyStr,
     command: Present { value: onboarding_merge_check_command as NonEmptyStr },
@@ -596,27 +585,21 @@ fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
   filter(onboarding_obstacles, o => !step_id_is_declared(id: (o.step_id as String)))
 }
 
-// THE ORDINALS ARE A GAPLESS TOTAL ORDER. A duplicated or skipped ordinal makes the projection
-// render two steps as the same position, and a reader following a numbered path cannot tell
-// which one they are on.
-fn step_ordinals_are_gapless(steps: List<OnboardingStep>) -> Bool {
-  let n = count(steps)
-  fold(
-    steps,
-    init: true,
-    f: fn(acc, s) {
-      let matching = count(filter(steps, other => other.ordinal == s.ordinal))
-      acc && matching == 1 && s.ordinal >= 1 && s.ordinal <= n
-    }
-  )
-}
+// WHY THERE IS NO GAPLESS-ORDINAL CHECK, AND NO ORDINAL (review 65422).
+//
+// Each step used to carry an authored `ordinal`, and a fold asserted the set was a gapless total
+// order -- by filtering the whole list once per step, which is the quadratic shape DESIGN section 6
+// says is always fixed regardless of the realised n. But the quadratic scan was the SYMPTOM. The
+// defect was that the order of a list was authored a second time inside its own elements, so the
+// two could disagree and a validator was needed to notice.
+//
+// The position now comes from the list. A duplicate or a gap has no constructor, so the check is
+// not made linear -- it is DELETED along with the field and the two fixtures that fed it, which is
+// DESIGN section 5's preference for making the state unwritable over catching it. This is the same
+// repair the rule roster above received, and the step ordinal was the last authored position left.
 
-fn ordinals_are_gapless() -> Bool {
-  step_ordinals_are_gapless(steps: onboarding_steps)
-}
-
-fn step_blocks(s: OnboardingStep) -> List<MarkdownBlock> {
-  let head = h3(text: join([integer_int_to_decimal_string(value: s.ordinal), ". ", (s.id as String)], ""))
+fn step_blocks(s: OnboardingStep, position: Int) -> List<MarkdownBlock> {
+  let head = h3(text: join([integer_int_to_decimal_string(value: position), ". ", (s.id as String)], ""))
   let goal = p(text: (s.goal as String))
   let who = p(text: join(["Who is needed: ", blocker_rendered(b: s.blocker)], ""))
   let verify = p(text: join(["Done when: ", (s.verification as String)], ""))
@@ -659,6 +642,28 @@ fn onboarding_preamble_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+// THE ONE WALK THAT KNOWS A STEP'S POSITION, because the list is now the only place the order
+// lives. The accumulator carries the next position alongside the blocks emitted so far, so a step
+// is numbered by WHERE IT IS rather than by what it claims about itself, and inserting a step
+// renumbers everything after it with no edit anywhere.
+type StepRenderWalk {
+  position: Int
+  blocks: List<MarkdownBlock>
+}
+
+fn rendered_step_blocks(steps: List<OnboardingStep>) -> List<MarkdownBlock> {
+  fold(
+    steps,
+    init: StepRenderWalk { position: 1, blocks: [] },
+    f: fn(acc, s) {
+      StepRenderWalk {
+        position: acc.position + 1,
+        blocks: concat(acc.blocks, step_blocks(s: s, position: acc.position)),
+      }
+    }
+  ).blocks
+}
+
 fn onboarding_step_blocks() -> List<MarkdownBlock> {
   flat_map(
     [
@@ -666,7 +671,7 @@ fn onboarding_step_blocks() -> List<MarkdownBlock> {
         h2(text: "The path"),
         p(text: join([integer_int_to_decimal_string(value: count(onboarding_steps)), " steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."], "")),
       ],
-      flat_map(onboarding_steps, s => step_blocks(s: s)),
+      rendered_step_blocks(steps: onboarding_steps),
     ],
     bs => bs
   )
@@ -684,7 +689,7 @@ fn onboarding_bus_factor_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Where the path still needs somebody else"),
     p(text: "Stated as a census rather than as reassurance. These are the steps and obstacles a document cannot discharge, and they are the standing bus-factor risks in this path."),
-    ul(items: map(steps_blocked_on_others(), s => li(text: join(["Step ", integer_int_to_decimal_string(value: s.ordinal), ", ", (s.id as String), ": ", blocker_rendered(b: s.blocker)], "")))),
+    ul(items: map(steps_blocked_on_others(), s => li(text: join([(s.id as String), ": ", blocker_rendered(b: s.blocker)], "")))),
     p(text: "Obstacles whose only honest disposition is that somebody else must act:"),
     ul(items: map(operator_gated_obstacles(), o => li(text: join([(o.step_id as String), ": ", disposition_rendered(d: o.disposition)], "")))),
   ]

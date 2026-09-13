@@ -23,8 +23,6 @@ import gunbc.contributor_onboarding_path {
   readings_have_a_first_day,
   first_day_readings,
   reading_priority_is_first_day,
-  ordinals_are_gapless,
-  step_ordinals_are_gapless,
   obstacles_with_undeclared_step,
   steps_blocked_on_others,
   operator_gated_obstacles,
@@ -64,57 +62,18 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
   string_contains(s: haystack, pattern: marker)
 }
 
-// POSITIVE CONTROL FOR THE ORDER. Without it the discriminating arms below could pass on a
-// predicate that reported every ordering broken.
-test fn the_declared_path_is_a_gapless_total_order() -> Bool {
-  ordinals_are_gapless() && count(onboarding_steps) > 0
-}
-
-// THE DISCRIMINATING RED FOR THE ORDER. A duplicated ordinal must be refused, and the fixture
-// authors the duplicate rather than hoping the live roster contains one.
-// THE FIXTURES ARE AUTHORED, NOT SLICED OFF THE LIVE ROSTER. The predicate under test answers
-// for an arbitrary list, so the discriminating inputs are two-element lists written here: one
-// well-ordered, one with a duplicate, one with a gap. Deriving them from onboarding_steps would
-// make the RED depend on what the live roster happens to contain, which is the input the roster
-// is free to change.
-fn fixture_step(ordinal: Int, id: String) -> OnboardingStep {
-  OnboardingStep {
-    ordinal: ordinal,
-    id: id as NonEmptyStr,
-    goal: "a fixture step" as NonEmptyStr,
-    command: Absent,
-    verification: "a fixture verification" as NonEmptyStr,
-    blocker: SelfServe,
-  }
-}
-
-data fixture_well_ordered: List<OnboardingStep> = [
-  fixture_step(ordinal: 1, id: "first"),
-  fixture_step(ordinal: 2, id: "second"),
-]
-
-data fixture_duplicated_ordinal: List<OnboardingStep> = [
-  fixture_step(ordinal: 1, id: "first"),
-  fixture_step(ordinal: 1, id: "second"),
-]
-
-data fixture_gapped_ordinal: List<OnboardingStep> = [
-  fixture_step(ordinal: 1, id: "first"),
-  fixture_step(ordinal: 3, id: "second"),
-]
-
-// THE DISCRIMINATING RED FOR THE ORDER, with its positive control beside it so the arm cannot be
-// satisfied by a predicate that refuses everything.
-test fn a_duplicated_ordinal_is_refused() -> Bool {
-  step_ordinals_are_gapless(steps: fixture_well_ordered)
-    && !step_ordinals_are_gapless(steps: fixture_duplicated_ordinal)
-}
-
-// AND A GAP IS REFUSED TOO, which a duplicate check alone does not establish: two steps numbered
-// 1 and 3 are distinct and still leave a reader unable to tell whether they missed one.
-test fn a_gap_in_the_ordinals_is_refused() -> Bool {
-  !step_ordinals_are_gapless(steps: fixture_gapped_ordinal)
-}
+// WHY THERE IS NO ORDINAL ARM HERE ANY MORE (review 65422).
+//
+// Three arms used to live in this span: a gapless-total-order control and two authored REDs, a
+// duplicated ordinal and a gapped one. They are gone because their SUBJECT is gone. A step no
+// longer carries an authored ordinal -- its position is the list's -- so a duplicate or a gap has
+// no constructor, and a fixture cannot express one to hand the predicate.
+//
+// That is the same disposition this module already applied to the verification check: when a
+// state stops being writable, its check is a decoration and DESIGN section 4b calls a decoration
+// worse than absent because it gets cited as coverage. So the arms are deleted rather than kept
+// green, and the count of enrolled witnesses drops by two -- which is the honest direction when a
+// guarantee moves from validation to construction.
 
 // EVERY OBSTACLE IS REACHABLE FROM THE PATH. An identity join over step ids, not a count: an
 // obstacle filed against a step that does not exist is invisible exactly when it fires, and a
