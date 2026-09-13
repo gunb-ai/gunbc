@@ -75,10 +75,10 @@ type ReadBackReceipt
   = ReadBackUnperformed
   | ReadBackReported { reported_artifact: ObservedArtifactDigest }
 
-// BUILD PATH IS AN INPUT THE SIX GENERATION AXES DO NOT NAME. A Rust binary embeds its
+// BUILD PATH IS AN INPUT THE GENERATION AXES DO NOT NAME. A Rust binary embeds its
 // build directory, so identical source built in two directories yields different bytes
-// while producer_compiler, source_closure, target_model, toolchain and build_configuration
-// all agree (measured twice, gunbc#8181; registered as an obligation in
+// while producer_compiler, source_closure, target_model, toolchain, build_configuration and
+// required_lens_contract all agree (measured twice, gunbc#8181; registered as an obligation in
 // gunbc.self_host_promotion_obligations artifact_axis_omits_build_path).
 //
 // For a one-time genesis run on one host, pinning the directory is an honest treatment:
