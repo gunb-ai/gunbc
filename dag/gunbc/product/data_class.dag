@@ -26,7 +26,7 @@ import product.data_category {
 //
 // DESIGN 4b SAYS A WRAPPER IS COSMETIC UNTIL CONSTRUCTION AND ACCEPTANCE ENFORCE THE DISTINCTION,
 // so this module is organised around the two enforcement points and states, per point, what the
-// compiler actually refuses today -- measured, not asserted (gunbc#TBD PR body carries the rung
+// compiler actually refuses today -- measured, not asserted (the landing PR body carries the rung
 // table; the executing evidence is test.claim.data_class_refusal_probe_witness and
 // test.claim.data_class_admission_witness).
 //
