@@ -16,15 +16,17 @@ import std.materialization_provider {
 }
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
-import std.materialization_object {
-  ArtifactPayload, payload_part,
-  OpenedMaterializationStore,
+import std.object_store {
   StoreFault, StoreFaultUnreachable,
   StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
   StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+  StoreObjectPublish,
+}
+import std.materialization_object {
+  ArtifactPayload, payload_part,
+  OpenedMaterializationStore,
   StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared, StoreCommitSettled, StoreCommitRefused,
-  StoreObjectPublish,
   store_commit_prepare, store_commit_settle, store_lookup_decide,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,

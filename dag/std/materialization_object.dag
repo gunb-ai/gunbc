@@ -10,6 +10,10 @@ import std.content_hash {
   serialize_content_hash,
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
+import std.object_store {
+  StoreFault, StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+}
 import std.measure { ByteSize, byte_size, measure_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.materialization_provider {
@@ -41,7 +45,7 @@ import std.materialization_provider {
 // second and third: everything a store must decide that does NOT depend on where it stores --
 // the stored OBJECT's format, what a read or a publish OBSERVED, and the lookup and commit
 // DECISIONS over those observations. A realization maps its transport onto the two observation
-// coproducts below and calls these folds; it adds no semantics of its own.
+// coproducts of std.object_store and calls these folds; it adds no semantics of its own.
 //
 // That split is what "GCS-ready on day one" means, stated so it can be checked: no type in this
 // module or in std.materialization_provider names a path, mount, rename, directory or
@@ -62,7 +66,8 @@ import std.materialization_provider {
 //   no prefix or existence fallback -- a lookup reads exactly one name and a present object is
 //     SERVED only by the contract's door, never because it exists;
 //   batch -- the batch folds are per-request folds over one opened store;
-//   no listing -- no observation here is a listing;
+//   no listing -- no decision here consumes one (std.object_store's listing is for enumerating
+//     consumers, and no parameter below can receive it);
 //   typed unavailable / corrupt / incomplete -- each is its own refusal arm.
 //
 // AND THE ONE RULE THE BRIEF STATES AS SEMANTICS: a MISS may execute; unavailable, corrupt,
@@ -342,25 +347,9 @@ fn decode_store_object(content: String) -> StoreObjectDecode {
 // ---------------------------------------------------------------------------------------------
 // What a realization observed. These are the ONLY inputs the decisions take from a transport.
 
-type StoreFaultClass
-  = StoreFaultUnauthorized
-  | StoreFaultUnreachable
-  | StoreFaultTransportVocabulary
-
-type StoreFault {
-  class: StoreFaultClass
-  detail: String
-}
-
-type StoreObjectRead
-  = StoreObjectPresent { content: String }
-  | StoreObjectAbsent
-  | StoreObjectUnavailable { fault: StoreFault }
-
-type StoreObjectPublish
-  = StoreObjectPublished
-  | StoreObjectOccupied
-  | StoreObjectPublishRefused { fault: StoreFault }
+// The observation coproducts (StoreFault, StoreObjectRead, StoreObjectPublish) live in std.object_store,
+// the realization-agnostic authority shared with every other immutable-object subject; this module
+// imports them and adds only the decisions that are about artifacts.
 
 // An OPENED store: the realization established that the store exists and is the store it claims to
 // be before any per-key read is interpreted. This is what makes StoreObjectAbsent mean "no artifact

@@ -1,0 +1,445 @@
+module extdeps.realization.object_store_git
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFailureKind, FilesystemNotFound, FilesystemAlreadyExists, FilesystemPermissionDenied,
+  FilesystemOtherFailure,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
+}
+import extdeps.git {
+  shape_git_worktree_add_branch_argv, shape_git_worktree_add_orphan_argv,
+  shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
+  shape_git_rev_parse_head_args, shape_git_ls_tree_names_args,
+}
+import std.object_store {
+  StoreFault, StoreFaultUnauthorized, StoreFaultUnreachable, StoreFaultTransportVocabulary, StoreFaultRemoteRejected,
+  StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+  StoreObjectListing, StoreObjectsListed, StoreObjectsListUnavailable,
+  ImmutableRecordPut, immutable_record_name, immutable_record_put_settle,
+}
+
+// A GIT BRANCH AS AN IMMUTABLE OBJECT STORE: std.object_store's read, put-if-absent publish and
+// snapshot listing, realized as one file per object under objects/ on a named branch of a named
+// remote, checked out in a worktree the caller owns.
+//
+// WHY A BRANCH. It is shared without a new service -- every host already has git and a remote it can
+// push to -- it is auditable, and a listing taken at a commit is a consistent snapshot rather than a
+// directory read racing concurrent writers. The mechanism is the one gunbc.roadmap.roadmap_event_carrier
+// already runs for roadmap events; this module states it once, behind the store observations, so a
+// record subject does not have to know it is on a branch. The roadmap carrier re-homing onto this
+// realization is a separate change; until it lands the ensure/sync steps exist in both places.
+//
+// WHERE THE BYTES LIVE IS THE CALLER'S DECISION. Remote, branch and worktree are parameters, never
+// defaults: a public realization module must not be the thing that decides a record lands on a
+// public branch.
+//
+// WHAT "PUBLISHED" MEANS HERE: the push that carries the object's commit was accepted by the remote.
+// A commit that exists only in the local worktree is not in the store -- the next sync discards it on
+// purpose -- so a publish never reports success on local persistence.
+//
+// WHAT THIS REALIZATION REFUSES RATHER THAN HIDES:
+//   - a store is opened only by reading its marker at the synced head, so an absent object means
+//     "not in this store" and never "no store here";
+//   - a fetch that fails makes every read and listing unavailable -- the last-fetched tree is not the
+//     store, it is the store as of a fetch of unknown age;
+//   - a rejected push is followed by a fresh sync and a read of the SAME name: present means another
+//     writer holds it (Occupied, and the caller's settle verifies the bytes), absent means the push
+//     simply was not accepted, and after the caller's attempt bound that is StoreFaultRemoteRejected.
+//     The remote's message is carried in the detail and never parsed to choose a cause.
+
+data git_object_store_objects_segment: String = "objects"
+data git_object_store_marker_name: String = "store.marker"
+data git_object_store_marker_magic: String = "gunbc-object-store v1"
+
+type GitObjectStoreLayout {
+  repo_root: FilePath
+  worktree: FilePath
+  git_program: String
+  directory_program: String
+  remote: NonEmptyStr
+  branch: NonEmptyStr
+}
+
+fn git_object_store_path(layout: GitObjectStoreLayout, relative: String) -> String {
+  join([layout.worktree as String, "/", relative], "")
+}
+
+fn git_object_relative(name: String) -> String {
+  join([git_object_store_objects_segment, "/", name], "")
+}
+
+fn git_object_store_push_refspec(layout: GitObjectStoreLayout) -> String {
+  join([layout.branch as String, ":", layout.branch as String], "")
+}
+
+fn git_object_store_marker_content(label: NonEmptyStr) -> String {
+  join([git_object_store_marker_magic, "\n", label as String, "\n"], "")
+}
+
+fn git_object_store_marker_recognized(content: String) -> Bool {
+  match split(s: content, delimiter: "\n") |> first {
+    Absent => false
+    Present { value: line } => line == git_object_store_marker_magic
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Transport observations.
+
+type GitStoreExec
+  = GitStoreExecOk { stdout: String }
+  | GitStoreExecFailed { exit_code: Int, stderr: String }
+
+fn git_store_exec(program: String, workdir: String, args: List<String>) -> GitStoreExec {
+  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
+  if r.success { GitStoreExecOk { stdout: r.stdout } } else { GitStoreExecFailed { exit_code: r.exit_code, stderr: r.stderr } }
+}
+
+fn git(layout: GitObjectStoreLayout, workdir: String, args: List<String>) -> GitStoreExec {
+  git_store_exec(program: layout.git_program, workdir: workdir, args: args)
+}
+
+fn git_exec_fault(step: String, exit_code: Int, stderr: String) -> StoreFault {
+  StoreFault { class: StoreFaultUnreachable, detail: join([step, " exit ", to_string(value: exit_code), ": ", stderr], "") }
+}
+
+fn git_filesystem_fault(kind: FilesystemFailureKind, detail: String) -> StoreFault {
+  let d = join([filesystem_failure_kind_name(kind: kind), ": ", detail], "")
+  match kind {
+    FilesystemPermissionDenied => StoreFault { class: StoreFaultUnauthorized, detail: d }
+    FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: d }
+    FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: d }
+    FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: d }
+  }
+}
+
+// An object read at a synced head. Absence is concluded only from the host's NotFound on the exact
+// path, and that conclusion is sound here only because the caller holds an OPENED store: the marker
+// was read at this same head, so the worktree is the store's tree and a missing objects/ directory
+// is a store with no objects yet.
+fn git_object_read_observation(read: FilesystemExactRead) -> StoreObjectRead {
+  match read {
+    FilesystemExactPathRead { path: _, content: c } => StoreObjectPresent { content: c }
+    FilesystemExactPathAbsent { path: _ } => StoreObjectAbsent
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      StoreObjectUnavailable { fault: git_filesystem_fault(kind: k, detail: concat(p, ": ", e)) }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      StoreObjectUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Open.
+
+type GitObjectStoreOpening
+  = GitObjectStoreOpened { layout: GitObjectStoreLayout, head: NonEmptyStr }
+  | GitObjectStoreNotInitialized { marker_path: String }
+  | GitObjectStoreMarkerUnrecognized { marker_path: String }
+  | GitObjectStoreUnavailable { fault: StoreFault }
+
+// PURE: the open decision over what the synced head and the marker read observed.
+fn git_object_store_open_decide(layout: GitObjectStoreLayout, head: GitStoreExec, marker: FilesystemExactRead) -> GitObjectStoreOpening {
+  let marker_path = git_object_store_path(layout: layout, relative: git_object_store_marker_name)
+  match head {
+    GitStoreExecFailed { exit_code, stderr } => GitObjectStoreUnavailable { fault: git_exec_fault(step: "rev-parse", exit_code: exit_code, stderr: stderr) }
+    GitStoreExecOk { stdout } =>
+      if trim(stdout) == "" {
+        GitObjectStoreUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: "rev-parse HEAD answered success with no commit" } }
+      } else {
+        match marker {
+          FilesystemExactPathAbsent { path: _ } => GitObjectStoreNotInitialized { marker_path: marker_path }
+          FilesystemExactPathUnreadable { path: _, kind: k, error: e } =>
+            GitObjectStoreUnavailable { fault: git_filesystem_fault(kind: k, detail: concat(marker_path, ": ", e)) }
+          FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
+            GitObjectStoreUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([marker_path, ": unrecognized error_kind ", o, ": ", e], "") } }
+          FilesystemExactPathRead { path: _, content: c } =>
+            if git_object_store_marker_recognized(content: c) {
+              GitObjectStoreOpened { layout: layout, head: trim(stdout) as NonEmptyStr }
+            } else {
+              GitObjectStoreMarkerUnrecognized { marker_path: marker_path }
+            }
+        }
+      }
+  }
+}
+
+// The worktree exists, or is added on the remote's branch. A branch the remote does not have is NOT
+// created here: creating a store is git_object_store_initialize's decision, never a side effect of
+// opening one, so a mistyped branch name refuses instead of silently founding an empty store.
+type GitWorktreeEnsure
+  = GitWorktreeReady
+  | GitWorktreeBranchAbsent
+  | GitWorktreeRefused { fault: StoreFault }
+
+func git_object_store_ensure_worktree(layout: GitObjectStoreLayout) -> GitWorktreeEnsure {
+  let probe = Filesystem.List(path: layout.worktree as String)
+  if probe.success {
+    GitWorktreeReady
+  } else {
+    match git(layout: layout, workdir: layout.repo_root as String, args: shape_git_ls_remote_heads_args(remote: layout.remote as String, branch: layout.branch)) {
+      GitStoreExecFailed { exit_code, stderr } => GitWorktreeRefused { fault: git_exec_fault(step: "ls-remote", exit_code: exit_code, stderr: stderr) }
+      GitStoreExecOk { stdout } =>
+        if trim(stdout) == "" {
+          GitWorktreeBranchAbsent
+        } else {
+          match git(layout: layout, workdir: layout.repo_root as String, args: ["fetch", "-q", layout.remote as String, git_object_store_push_refspec(layout: layout)]) {
+            GitStoreExecFailed { exit_code, stderr } => GitWorktreeRefused { fault: git_exec_fault(step: "fetch-branch", exit_code: exit_code, stderr: stderr) }
+            GitStoreExecOk { stdout: _ } =>
+              match git(layout: layout, workdir: layout.repo_root as String, args: shape_git_worktree_add_branch_argv(path: layout.worktree, branch: layout.branch)) {
+                GitStoreExecFailed { exit_code, stderr } => GitWorktreeRefused { fault: git_exec_fault(step: "worktree-add", exit_code: exit_code, stderr: stderr) }
+                GitStoreExecOk { stdout: _ } => GitWorktreeReady
+              }
+          }
+        }
+    }
+  }
+}
+
+// Sync to the remote branch head: fetch, then reset the worktree hard to it. Unpushed local state is
+// discarded on purpose -- it is not in the store.
+func git_object_store_sync(layout: GitObjectStoreLayout) -> GitStoreExec {
+  match git(layout: layout, workdir: layout.worktree as String, args: ["fetch", "-q", layout.remote as String, layout.branch as String]) {
+    GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("fetch: ", stderr) }
+    GitStoreExecOk { stdout: _ } =>
+      match git(layout: layout, workdir: layout.worktree as String, args: ["reset", "-q", "--hard", "FETCH_HEAD"]) {
+        GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("reset: ", stderr) }
+        GitStoreExecOk { stdout: _ } => git(layout: layout, workdir: layout.worktree as String, args: shape_git_rev_parse_head_args())
+      }
+  }
+}
+
+fn git_exact_read(path: String) -> FilesystemExactRead {
+  let r = Filesystem.Read(path: path)
+  filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
+}
+
+func git_object_store_open(layout: GitObjectStoreLayout) -> GitObjectStoreOpening {
+  match git_object_store_ensure_worktree(layout: layout) {
+    GitWorktreeRefused { fault: f } => GitObjectStoreUnavailable { fault: f }
+    GitWorktreeBranchAbsent => GitObjectStoreNotInitialized { marker_path: git_object_store_path(layout: layout, relative: git_object_store_marker_name) }
+    GitWorktreeReady =>
+      git_object_store_open_decide(
+        layout: layout,
+        head: git_object_store_sync(layout: layout),
+        marker: git_exact_read(path: git_object_store_path(layout: layout, relative: git_object_store_marker_name)),
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Initialize: found the branch with its marker as the root commit, then open what the remote holds.
+
+type GitObjectStoreInitialization
+  = GitObjectStoreInitialized { opening: GitObjectStoreOpening }
+  | GitObjectStoreInitializationRefused { fault: StoreFault }
+
+// If another initializer won the race the root push is rejected, and the store opened afterwards is
+// THEIRS -- the same rule the local store's initializer follows: the returned opening is always what
+// the remote holds, never what this call intended.
+func git_object_store_initialize(layout: GitObjectStoreLayout, label: NonEmptyStr) -> GitObjectStoreInitialization {
+  match git_object_store_ensure_worktree(layout: layout) {
+    GitWorktreeRefused { fault: f } => GitObjectStoreInitializationRefused { fault: f }
+    GitWorktreeReady => GitObjectStoreInitialized { opening: git_object_store_open(layout: layout) }
+    GitWorktreeBranchAbsent =>
+      match git(layout: layout, workdir: layout.repo_root as String, args: shape_git_worktree_add_orphan_argv(path: layout.worktree, branch: layout.branch)) {
+        GitStoreExecFailed { exit_code, stderr } => GitObjectStoreInitializationRefused { fault: git_exec_fault(step: "worktree-add-orphan", exit_code: exit_code, stderr: stderr) }
+        GitStoreExecOk { stdout: _ } => {
+          let w = Filesystem.WriteCreateNew(path: git_object_store_path(layout: layout, relative: git_object_store_marker_name), content: git_object_store_marker_content(label: label))
+          if !w.success {
+            GitObjectStoreInitializationRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: concat("marker write: ", w.error) } }
+          } else {
+            match git_commit_and_push(layout: layout, relative: git_object_store_marker_name, message: "object store: root") {
+              GitStoreExecFailed { exit_code: _, stderr: _ } => GitObjectStoreInitialized { opening: git_object_store_open(layout: layout) }
+              GitStoreExecOk { stdout: _ } => GitObjectStoreInitialized { opening: git_object_store_open(layout: layout) }
+            }
+          }
+        }
+      }
+  }
+}
+
+func git_commit_and_push(layout: GitObjectStoreLayout, relative: String, message: String) -> GitStoreExec {
+  match git(layout: layout, workdir: layout.worktree as String, args: shape_git_add_path_args(path: relative)) {
+    GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("add: ", stderr) }
+    GitStoreExecOk { stdout: _ } =>
+      match git(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_message_args(message: message)) {
+        GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("commit: ", stderr) }
+        GitStoreExecOk { stdout: _ } =>
+          match git(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", layout.remote as String, git_object_store_push_refspec(layout: layout)]) {
+            GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("push: ", stderr) }
+            GitStoreExecOk { stdout: s } => GitStoreExecOk { stdout: s }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Read and list over an opened store. Each syncs first: an opened store names the head it was opened
+// at, and an operation that answered from that head without fetching would answer from a store of
+// unknown age.
+
+func git_object_store_read(store: GitObjectStoreOpening, name: String) -> StoreObjectRead {
+  match store {
+    GitObjectStoreOpened { layout, head: _ } =>
+      match git_object_store_sync(layout: layout) {
+        GitStoreExecFailed { exit_code, stderr } => StoreObjectUnavailable { fault: git_exec_fault(step: "sync", exit_code: exit_code, stderr: stderr) }
+        GitStoreExecOk { stdout: _ } => git_object_read_observation(read: git_exact_read(path: git_object_store_path(layout: layout, relative: git_object_relative(name: name))))
+      }
+    GitObjectStoreNotInitialized { marker_path } => StoreObjectUnavailable { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreMarkerUnrecognized { marker_path } => StoreObjectUnavailable { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreUnavailable { fault } => StoreObjectUnavailable { fault: fault }
+  }
+}
+
+fn git_unopened_fault(marker_path: String) -> StoreFault {
+  StoreFault { class: StoreFaultUnreachable, detail: concat("the store is not open: no recognized marker at ", marker_path) }
+}
+
+// PURE: a listing at an exact commit. ls-tree prints "objects/<name>" per entry and prints nothing,
+// with success, when the commit has no objects/ directory -- an empty store at that commit. A line
+// without the prefix is a transport answer this reader does not model, and refuses.
+fn git_object_store_listing_decide(head: GitStoreExec, tree: GitStoreExec) -> StoreObjectListing {
+  match head {
+    GitStoreExecFailed { exit_code, stderr } => StoreObjectsListUnavailable { fault: git_exec_fault(step: "sync", exit_code: exit_code, stderr: stderr) }
+    GitStoreExecOk { stdout: head_out } =>
+      if trim(head_out) == "" {
+        StoreObjectsListUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: "rev-parse HEAD answered success with no commit" } }
+      } else {
+        match tree {
+          GitStoreExecFailed { exit_code, stderr } => StoreObjectsListUnavailable { fault: git_exec_fault(step: "ls-tree", exit_code: exit_code, stderr: stderr) }
+          GitStoreExecOk { stdout: listing } => {
+            let prefix = concat(git_object_store_objects_segment, "/")
+            let lines = filter(split(s: listing, delimiter: "\n"), l => trim(l) != "")
+            match filter(lines, l => !starts_with(s: l, prefix: prefix)) |> first {
+              Present { value: foreign } =>
+                StoreObjectsListUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat("ls-tree line outside objects/: ", foreign) } }
+              Absent =>
+                StoreObjectsListed {
+                  snapshot: trim(head_out) as NonEmptyStr,
+                  names: map(lines, l => substring(s: l, start: string_length(s: prefix), end: string_length(s: l))),
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+func git_object_store_list(store: GitObjectStoreOpening) -> StoreObjectListing {
+  match store {
+    GitObjectStoreOpened { layout, head: _ } => {
+      let head = git_object_store_sync(layout: layout)
+      match head {
+        GitStoreExecFailed { exit_code, stderr } => git_object_store_listing_decide(head: head, tree: head)
+        GitStoreExecOk { stdout } =>
+          git_object_store_listing_decide(
+            head: head,
+            tree: git(layout: layout, workdir: layout.worktree as String, args: shape_git_ls_tree_names_args(commit: trim(stdout), directory: git_object_store_objects_segment)),
+          )
+      }
+    }
+    GitObjectStoreNotInitialized { marker_path } => StoreObjectsListUnavailable { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreMarkerUnrecognized { marker_path } => StoreObjectsListUnavailable { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreUnavailable { fault } => StoreObjectsListUnavailable { fault: fault }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Publish: put-if-absent over a shared branch.
+
+// What one publish attempt observed, before the retry decision.
+type GitPublishAttempt
+  = GitPublishPushed
+  | GitPublishNameTaken
+  | GitPublishNotAccepted { detail: String }
+  | GitPublishFault { fault: StoreFault }
+
+type GitPublishNext
+  = GitPublishSettled { publish: StoreObjectPublish }
+  | GitPublishRetry
+
+// PURE: the retry decision. A name taken at the synced head is Occupied whatever attempt found it; a
+// push that was not accepted is retried while attempts remain and then refused as RemoteRejected with
+// the last transport detail. `attempts_remaining` counts attempts AFTER this one.
+fn git_publish_next(attempt: GitPublishAttempt, attempts_remaining: Int) -> GitPublishNext {
+  match attempt {
+    GitPublishPushed => GitPublishSettled { publish: StoreObjectPublished }
+    GitPublishNameTaken => GitPublishSettled { publish: StoreObjectOccupied }
+    GitPublishFault { fault } => GitPublishSettled { publish: StoreObjectPublishRefused { fault: fault } }
+    GitPublishNotAccepted { detail } =>
+      if attempts_remaining > 0 {
+        GitPublishRetry
+      } else {
+        GitPublishSettled { publish: StoreObjectPublishRefused { fault: StoreFault { class: StoreFaultRemoteRejected, detail: detail } } }
+      }
+  }
+}
+
+func git_publish_attempt(layout: GitObjectStoreLayout, name: String, content: NonEmptyStr) -> GitPublishAttempt {
+  match git_object_store_sync(layout: layout) {
+    GitStoreExecFailed { exit_code, stderr } => GitPublishFault { fault: git_exec_fault(step: "sync", exit_code: exit_code, stderr: stderr) }
+    GitStoreExecOk { stdout: _ } => {
+      let relative = git_object_relative(name: name)
+      let path = git_object_store_path(layout: layout, relative: relative)
+      match git_object_read_observation(read: git_exact_read(path: path)) {
+        StoreObjectPresent { content: _ } => GitPublishNameTaken
+        StoreObjectUnavailable { fault } => GitPublishFault { fault: fault }
+        StoreObjectAbsent =>
+          match git_store_exec(program: layout.directory_program, workdir: layout.worktree as String, args: ["-d", git_object_store_path(layout: layout, relative: git_object_store_objects_segment)]) {
+            GitStoreExecFailed { exit_code, stderr } => GitPublishFault { fault: git_exec_fault(step: "mkdir", exit_code: exit_code, stderr: stderr) }
+            GitStoreExecOk { stdout: _ } => {
+              let w = Filesystem.WriteCreateNew(path: path, content: content as String)
+              match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+                FilesystemCreateTargetOccupied { path: _ } => GitPublishNameTaken
+                FilesystemCreateRefused { path: p, kind: k, error: e } => GitPublishFault { fault: git_filesystem_fault(kind: k, detail: concat(p, ": ", e)) }
+                FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+                  GitPublishFault { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: join([p, ": unrecognized error_kind ", o, ": ", e], "") } }
+                FilesystemCreated { path: _ } =>
+                  match git_commit_and_push(layout: layout, relative: relative, message: concat("object ", name)) {
+                    GitStoreExecOk { stdout: _ } => GitPublishPushed
+                    GitStoreExecFailed { exit_code, stderr } => GitPublishNotAccepted { detail: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                  }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+func git_object_store_publish(store: GitObjectStoreOpening, name: String, content: NonEmptyStr, attempts: Int) -> StoreObjectPublish {
+  match store {
+    GitObjectStoreOpened { layout, head: _ } =>
+      match git_publish_next(attempt: git_publish_attempt(layout: layout, name: name, content: content), attempts_remaining: attempts - 1) {
+        GitPublishSettled { publish } => publish
+        GitPublishRetry => git_object_store_publish(store: store, name: name, content: content, attempts: attempts - 1)
+      }
+    GitObjectStoreNotInitialized { marker_path } => StoreObjectPublishRefused { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreMarkerUnrecognized { marker_path } => StoreObjectPublishRefused { fault: git_unopened_fault(marker_path: marker_path) }
+    GitObjectStoreUnavailable { fault } => StoreObjectPublishRefused { fault: fault }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// An immutable record: name from the key, put-if-absent, then the read-back settle. The read is a
+// second, independent sync, so a publish this realization reported is verified against what the
+// remote actually holds rather than against the worktree that made it.
+
+func git_object_store_put_record(store: GitObjectStoreOpening, key: NonEmptyStr, content: NonEmptyStr, attempts: Int) -> ImmutableRecordPut {
+  let name = immutable_record_name(key: key)
+  let published = git_object_store_publish(store: store, name: name, content: content, attempts: attempts)
+  match published {
+    StoreObjectPublishRefused { fault } => immutable_record_put_settle(offered: content, publish: published, read_back: StoreObjectUnavailable { fault: fault })
+    StoreObjectPublished => immutable_record_put_settle(offered: content, publish: published, read_back: git_object_store_read(store: store, name: name))
+    StoreObjectOccupied => immutable_record_put_settle(offered: content, publish: published, read_back: git_object_store_read(store: store, name: name))
+  }
+}

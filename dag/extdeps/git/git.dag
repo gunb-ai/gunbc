@@ -1520,8 +1520,24 @@ fn shape_git_add_path_args(path: String) -> List<String> {
   ["add", "--", path]
 }
 
+// git-ls-tree(1) (git-scm.com/docs/git-ls-tree): with --name-only and a pathspec naming a directory
+// prefix, prints one "<prefix>/<name>" line per entry of that directory in the named commit's tree,
+// and prints nothing with exit 0 when the commit's tree has no such directory -- an empty listing at
+// an exact commit, not a failed one.
+fn shape_git_ls_tree_names_args(commit: String, directory: String) -> List<String> {
+  ["ls-tree", "--name-only", commit, "--", concat(directory, "/")]
+}
+
 fn shape_git_ls_remote_heads_args(remote: String, branch: NonEmptyStr) -> List<String> {
   ["ls-remote", "--heads", remote, branch as String]
+}
+
+// git-worktree(1) (git-scm.com/docs/git-worktree), `add --orphan`, available since git 2.42: creates
+// the worktree on a new unborn branch with an empty index and working tree. Unlike adding a detached
+// worktree and then checking out an orphan, it needs no commit to start from, so it founds a branch in
+// a repository whose HEAD is unborn.
+fn shape_git_worktree_add_orphan_argv(path: FilePath, branch: NonEmptyStr) -> List<String> {
+  ["worktree", "add", "--orphan", "-b", branch as String, path as String]
 }
 
 fn shape_git_worktree_add_detached_argv(path: FilePath, commit: GitRef) -> List<String> {

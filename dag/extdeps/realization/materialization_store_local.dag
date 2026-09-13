@@ -48,11 +48,13 @@ import std.materialization_store_grant {
   materialization_store_admissible,
   materialization_store_frame,
 }
-import std.materialization_object {
-  ArtifactPayload,
+import std.object_store {
   StoreFault, StoreFaultClass, StoreFaultUnauthorized, StoreFaultUnreachable, StoreFaultTransportVocabulary,
   StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
   StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+}
+import std.materialization_object {
+  ArtifactPayload,
   OpenedMaterializationStore,
   StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,

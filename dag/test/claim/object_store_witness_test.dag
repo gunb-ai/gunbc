@@ -1,0 +1,212 @@
+module test.claim.object_store_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.object_store {
+  StoreFault, StoreFaultUnauthorized, StoreFaultUnreachable, StoreFaultRemoteRejected, StoreFaultTransportVocabulary,
+  StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
+  StoreObjectListing, StoreObjectsListed, StoreObjectsListUnavailable,
+  ImmutableRecordPut, ImmutableRecordStored, ImmutableRecordAlreadyPresent, ImmutableRecordConflict,
+  ImmutableRecordOccupiedByEmptyObject, ImmutableRecordPublishRefused, ImmutableRecordReadBackRefused,
+  immutable_record_put_settle, immutable_record_name,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemPermissionDenied, FilesystemExactRead,
+  filesystem_exact_read,
+}
+import extdeps.realization.object_store_git {
+  GitObjectStoreLayout, GitObjectStoreOpening, GitObjectStoreOpened, GitObjectStoreNotInitialized,
+  GitObjectStoreMarkerUnrecognized, GitObjectStoreUnavailable,
+  GitStoreExec, GitStoreExecOk, GitStoreExecFailed,
+  GitPublishAttempt, GitPublishPushed, GitPublishNameTaken, GitPublishNotAccepted, GitPublishFault,
+  GitPublishNext, GitPublishSettled, GitPublishRetry,
+  git_object_store_open_decide, git_object_store_listing_decide, git_publish_next,
+  git_object_store_marker_content, git_object_read_observation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR THE IMMUTABLE-RECORD PUT AND THE GIT-BRANCH STORE'S DECISIONS. Every arm is
+// driven through the observation coproducts, so nothing here touches git or a filesystem. What these
+// do NOT establish is that the git realization's effects produce those observations -- that is the
+// transport's claim and is not asserted here.
+//
+// Each refusal is paired with the positive control that makes it discriminating: a settle that
+// accepted everything fails the conflict and read-back controls, and one that refused everything
+// fails the stored and already-present controls.
+
+fn record() -> NonEmptyStr {
+  "evidence v1\nrepository_id 12345\n" as NonEmptyStr
+}
+
+fn unreachable() -> StoreFault {
+  StoreFault { class: StoreFaultUnreachable, detail: "fetch exit 128: could not resolve host" }
+}
+
+fn put_arm(p: ImmutableRecordPut) -> String {
+  match p {
+    ImmutableRecordStored => "stored"
+    ImmutableRecordAlreadyPresent => "already_present"
+    ImmutableRecordConflict { committed: _, offered: _ } => "conflict"
+    ImmutableRecordOccupiedByEmptyObject { offered: _ } => "occupied_by_empty"
+    ImmutableRecordPublishRefused { fault: _ } => "publish_refused"
+    ImmutableRecordReadBackRefused { read: _ } => "read_back_refused"
+  }
+}
+
+// ---- immutable record put
+
+test fn a_published_record_that_reads_back_identically_is_stored() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectPublished, read_back: StoreObjectPresent { content: record() as String })) == "stored"
+}
+
+test fn an_occupied_name_holding_the_same_bytes_is_the_idempotent_retry() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectOccupied, read_back: StoreObjectPresent { content: record() as String })) == "already_present"
+}
+
+test fn an_occupied_name_holding_different_bytes_is_a_conflict_not_a_retry() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectOccupied, read_back: StoreObjectPresent { content: "evidence v1\nrepository_id 99999\n" })) == "conflict"
+}
+
+test fn a_publish_whose_read_back_differs_is_a_conflict_even_when_the_publish_reported_success() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectPublished, read_back: StoreObjectPresent { content: "evidence v1\n" })) == "conflict"
+}
+
+test fn an_empty_object_under_the_name_is_its_own_refusal() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectOccupied, read_back: StoreObjectPresent { content: "" })) == "occupied_by_empty"
+}
+
+test fn a_reported_publish_that_reads_back_absent_is_not_stored() -> Bool {
+  put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectPublished, read_back: StoreObjectAbsent)) == "read_back_refused"
+    && put_arm(p: immutable_record_put_settle(offered: record(), publish: StoreObjectPublished, read_back: StoreObjectUnavailable { fault: unreachable() })) == "read_back_refused"
+}
+
+test fn a_refused_publish_carries_its_fault() -> Bool {
+  match immutable_record_put_settle(offered: record(), publish: StoreObjectPublishRefused { fault: unreachable() }, read_back: StoreObjectPresent { content: record() as String }) {
+    ImmutableRecordPublishRefused { fault: f } => f.detail == unreachable().detail
+    ImmutableRecordStored => false
+    ImmutableRecordAlreadyPresent => false
+    ImmutableRecordConflict { committed: _, offered: _ } => false
+    ImmutableRecordOccupiedByEmptyObject { offered: _ } => false
+    ImmutableRecordReadBackRefused { read: _ } => false
+  }
+}
+
+test fn a_record_name_is_a_function_of_its_key_alone() -> Bool {
+  immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr)
+    && (immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(key: "repo:1/wf/job/x@abd" as NonEmptyStr)) == false
+}
+
+// ---- git store: open
+
+fn layout() -> GitObjectStoreLayout {
+  GitObjectStoreLayout {
+    repo_root: "/srv/store-repo",
+    worktree: "/srv/store-worktree",
+    git_program: "/usr/bin/git",
+    directory_program: "/usr/bin/install",
+    remote: "origin" as NonEmptyStr,
+    branch: "evidence" as NonEmptyStr,
+  }
+}
+
+fn head_ok() -> GitStoreExec {
+  GitStoreExecOk { stdout: "0123456789abcdef0123456789abcdef01234567\n" }
+}
+
+fn marker_read(success: Bool, content: String, error_kind: String) -> FilesystemExactRead {
+  filesystem_exact_read(path: "/srv/store-worktree/store.marker", content: content, success: success, error: "e", error_kind: error_kind)
+}
+
+fn opening_arm(o: GitObjectStoreOpening) -> String {
+  match o {
+    GitObjectStoreOpened { layout: _, head: h } => concat("opened:", h as String)
+    GitObjectStoreNotInitialized { marker_path: _ } => "not_initialized"
+    GitObjectStoreMarkerUnrecognized { marker_path: _ } => "marker_unrecognized"
+    GitObjectStoreUnavailable { fault: _ } => "unavailable"
+  }
+}
+
+test fn a_recognized_marker_at_a_synced_head_opens_at_that_head() -> Bool {
+  opening_arm(o: git_object_store_open_decide(layout: layout(), head: head_ok(), marker: marker_read(success: true, content: git_object_store_marker_content(label: "evidence" as NonEmptyStr), error_kind: ""))) == "opened:0123456789abcdef0123456789abcdef01234567"
+}
+
+test fn a_missing_marker_is_not_initialized_and_a_foreign_one_is_unrecognized() -> Bool {
+  opening_arm(o: git_object_store_open_decide(layout: layout(), head: head_ok(), marker: marker_read(success: false, content: "", error_kind: "not_found"))) == "not_initialized"
+    && opening_arm(o: git_object_store_open_decide(layout: layout(), head: head_ok(), marker: marker_read(success: true, content: "some other file\n", error_kind: ""))) == "marker_unrecognized"
+}
+
+test fn an_unreadable_marker_or_a_failed_sync_is_unavailable_never_not_initialized() -> Bool {
+  opening_arm(o: git_object_store_open_decide(layout: layout(), head: head_ok(), marker: marker_read(success: false, content: "", error_kind: "permission_denied"))) == "unavailable"
+    && opening_arm(o: git_object_store_open_decide(layout: layout(), head: GitStoreExecFailed { exit_code: 128, stderr: "fetch: no route" }, marker: marker_read(success: false, content: "", error_kind: "not_found"))) == "unavailable"
+}
+
+test fn an_object_read_that_is_denied_is_unavailable_not_absent() -> Bool {
+  let denied = match git_object_read_observation(read: filesystem_exact_read(path: "/srv/store-worktree/objects/x.record", content: "", success: false, error: "denied", error_kind: "permission_denied")) {
+    StoreObjectUnavailable { fault: _ } => true
+    StoreObjectAbsent => false
+    StoreObjectPresent { content: _ } => false
+  }
+  let absent = match git_object_read_observation(read: filesystem_exact_read(path: "/srv/store-worktree/objects/x.record", content: "", success: false, error: "missing", error_kind: "not_found")) {
+    StoreObjectAbsent => true
+    StoreObjectUnavailable { fault: _ } => false
+    StoreObjectPresent { content: _ } => false
+  }
+  denied && absent
+}
+
+// ---- git store: listing
+
+fn listing_names(l: StoreObjectListing) -> String {
+  match l {
+    StoreObjectsListed { snapshot: s, names: ns } => join([s as String, "|", join(ns, ",")], "")
+    StoreObjectsListUnavailable { fault: _ } => "unavailable"
+  }
+}
+
+test fn a_listing_names_its_snapshot_and_strips_the_objects_prefix() -> Bool {
+  listing_names(l: git_object_store_listing_decide(head: head_ok(), tree: GitStoreExecOk { stdout: "objects/a.record\nobjects/b.record\n" })) == "0123456789abcdef0123456789abcdef01234567|a.record,b.record"
+}
+
+test fn an_empty_tree_listing_at_a_commit_is_an_empty_store() -> Bool {
+  listing_names(l: git_object_store_listing_decide(head: head_ok(), tree: GitStoreExecOk { stdout: "" })) == "0123456789abcdef0123456789abcdef01234567|"
+}
+
+test fn a_failed_sync_or_ls_tree_is_unavailable_never_an_empty_population() -> Bool {
+  listing_names(l: git_object_store_listing_decide(head: GitStoreExecFailed { exit_code: 128, stderr: "fetch" }, tree: GitStoreExecOk { stdout: "" })) == "unavailable"
+    && listing_names(l: git_object_store_listing_decide(head: head_ok(), tree: GitStoreExecFailed { exit_code: 128, stderr: "bad object" })) == "unavailable"
+}
+
+test fn a_listing_line_outside_the_objects_directory_refuses() -> Bool {
+  listing_names(l: git_object_store_listing_decide(head: head_ok(), tree: GitStoreExecOk { stdout: "objects/a.record\nstore.marker\n" })) == "unavailable"
+}
+
+// ---- git store: publish retry decision
+
+fn next_arm(n: GitPublishNext) -> String {
+  match n {
+    GitPublishRetry => "retry"
+    GitPublishSettled { publish: p } => match p {
+      StoreObjectPublished => "published"
+      StoreObjectOccupied => "occupied"
+      StoreObjectPublishRefused { fault: f } => match f.class {
+        StoreFaultRemoteRejected => "refused:remote_rejected"
+        StoreFaultUnreachable => "refused:unreachable"
+        StoreFaultTransportVocabulary => "refused:vocabulary"
+        StoreFaultUnauthorized => "refused:unauthorized"
+      }
+    }
+  }
+}
+
+test fn a_push_not_accepted_retries_while_attempts_remain_then_refuses_as_remote_rejected() -> Bool {
+  next_arm(n: git_publish_next(attempt: GitPublishNotAccepted { detail: "push: rejected" }, attempts_remaining: 1)) == "retry"
+    && next_arm(n: git_publish_next(attempt: GitPublishNotAccepted { detail: "push: rejected" }, attempts_remaining: 0)) == "refused:remote_rejected"
+}
+
+test fn a_taken_name_settles_occupied_on_any_attempt_and_a_fault_is_never_retried() -> Bool {
+  next_arm(n: git_publish_next(attempt: GitPublishNameTaken, attempts_remaining: 3)) == "occupied"
+    && next_arm(n: git_publish_next(attempt: GitPublishFault { fault: unreachable() }, attempts_remaining: 3)) == "refused:unreachable"
+    && next_arm(n: git_publish_next(attempt: GitPublishPushed, attempts_remaining: 0)) == "published"
+}

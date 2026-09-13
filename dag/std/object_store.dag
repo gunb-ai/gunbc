@@ -1,0 +1,138 @@
+module std.object_store
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+
+// WHAT ANY IMMUTABLE OBJECT STORE OBSERVED, INDEPENDENT OF WHAT IT STORES OR WHERE.
+//
+// These observation coproducts were authored inside std.materialization_object, whose own opening
+// note already stated them as the realization-agnostic seam: a realization maps its transport onto
+// a read and a put-if-absent publish, and decisions fold over the observations. Nothing in them named
+// an artifact, a manifest or a request. They move here because a second subject -- an immutable
+// evidence record -- needs exactly the same observations, and minting a parallel read/publish
+// vocabulary for it would be two names for one concept. std.materialization_object keeps every
+// decision that IS about artifacts (manifest decode, provider contract, digest-over-parts settle).
+//
+// THE LISTING IS A SEPARATE OBSERVATION, AND NO LOOKUP DECISION CONSUMES IT. A materialization
+// lookup reads exactly one name and never consults a listing, and that property is preserved by
+// construction: store_lookup_decide takes a StoreObjectRead and has no parameter a listing could
+// reach. A consumer that must enumerate a population -- a publisher projecting every stored record --
+// asks the realization for a StoreObjectListing, and a listing that could not be taken is its own arm.
+// It is never an empty population, because "the store holds nothing" and "the store could not be
+// enumerated" have opposite correct actions and only one of them may reach a projection.
+
+// StoreFaultRemoteRejected is a shared store's remote declining a publish whose transport does not
+// say why -- a git push refused after a clean fetch is contention OR authorization OR a hook, and the
+// exit status does not separate them. Naming it Contended or Unauthorized would assert a cause
+// nothing observed; reading the remote's message to pick one would be a heuristic over text.
+type StoreFaultClass
+  = StoreFaultUnauthorized
+  | StoreFaultUnreachable
+  | StoreFaultTransportVocabulary
+  | StoreFaultRemoteRejected
+
+type StoreFault {
+  class: StoreFaultClass
+  detail: String
+}
+
+type StoreObjectRead
+  = StoreObjectPresent { content: String }
+  | StoreObjectAbsent
+  | StoreObjectUnavailable { fault: StoreFault }
+
+type StoreObjectPublish
+  = StoreObjectPublished
+  | StoreObjectOccupied
+  | StoreObjectPublishRefused { fault: StoreFault }
+
+// A LISTING NAMES THE SNAPSHOT IT WAS TAKEN AT. A shared store changes under concurrent writers, so a
+// list of names without the state it describes cannot be compared with a later read. `snapshot` is
+// the realization's own identity for that state (a commit on a git-branch store); a realization with
+// no such identity has no honest way to fill it and should not offer a listing.
+type StoreObjectListing
+  = StoreObjectsListed { snapshot: NonEmptyStr, names: List<String> }
+  | StoreObjectsListUnavailable { fault: StoreFault }
+
+// ---------------------------------------------------------------------------------------------
+// Immutable records: a key, canonical bytes, and a put that never overwrites.
+//
+// The record's NAME is derived from its key alone, so every writer of one key writes one name, and
+// the store's put-if-absent arbitrates between them. Its CONTENT is the caller's canonical bytes.
+// The two are deliberately not the same hash: the name answers "which record", the content answers
+// "what does it say", and a put whose name is taken by DIFFERENT content is a conflict rather than
+// an idempotent retry.
+//
+// The name uses the structural FNV-1a 64 hash, the only content hash computable in this substrate.
+// A collision between two distinct keys does NOT pass silently: the colliding put reads back
+// different bytes and settles as ImmutableRecordConflict. The residual cost of a collision is a
+// false refusal, never a wrong record.
+
+fn immutable_record_name(key: NonEmptyStr) -> String {
+  concat(serialize_content_hash(hash: content_hash_of_value(value: key)) as String, ".record")
+}
+
+type ImmutableRecordPut
+  = ImmutableRecordStored
+  | ImmutableRecordAlreadyPresent
+  | ImmutableRecordConflict { committed: ContentHash, offered: ContentHash }
+  | ImmutableRecordOccupiedByEmptyObject { offered: ContentHash }
+  | ImmutableRecordPublishRefused { fault: StoreFault }
+  | ImmutableRecordReadBackRefused { read: StoreObjectRead }
+
+// A PUT IS NOT REPORTED UNTIL IT READS BACK, for the same reason the artifact commit is not: a
+// publish the realization reported as successful is a claim, and the read of the same name is the
+// observation. Both publish outcomes that can end in a stored record are verified:
+//   published + present with the offered bytes => Stored;
+//   occupied  + present with the offered bytes => AlreadyPresent (an earlier or concurrent writer of
+//                                                 the identical record -- the idempotent retry);
+//   either    + present with different bytes   => Conflict, refused;
+//   either    + present but empty               => OccupiedByEmptyObject, refused -- its own arm
+//                                                 because an empty object has no content hash, and
+//                                                 hashing a placeholder label in its place would
+//                                                 report a digest nothing was ever stored under;
+//   either    + absent or unavailable          => ReadBackRefused, including absent right after a
+//                                                 successful publish.
+// Byte equality is the comparison because the caller supplies CANONICAL bytes; a record type whose
+// encoding is not canonical has to be canonicalized before it reaches this fold, or equal records
+// will conflict.
+fn immutable_record_put_settle(
+  offered: NonEmptyStr,
+  publish: StoreObjectPublish,
+  read_back: StoreObjectRead,
+) -> ImmutableRecordPut {
+  match publish {
+    StoreObjectPublishRefused { fault: f } => ImmutableRecordPublishRefused { fault: f }
+    StoreObjectPublished => immutable_record_verify(offered: offered, read_back: read_back, settled: ImmutableRecordStored)
+    StoreObjectOccupied => immutable_record_verify(offered: offered, read_back: read_back, settled: ImmutableRecordAlreadyPresent)
+  }
+}
+
+fn immutable_record_verify(offered: NonEmptyStr, read_back: StoreObjectRead, settled: ImmutableRecordPut) -> ImmutableRecordPut {
+  match read_back {
+    StoreObjectPresent { content: c } =>
+      if c == (offered as String) {
+        settled
+      } else if c == "" {
+        ImmutableRecordOccupiedByEmptyObject { offered: content_hash_of_value(value: offered) }
+      } else {
+        ImmutableRecordConflict {
+          committed: content_hash_of_value(value: c as NonEmptyStr),
+          offered: content_hash_of_value(value: offered),
+        }
+      }
+    StoreObjectAbsent => ImmutableRecordReadBackRefused { read: read_back }
+    StoreObjectUnavailable { fault: _ } => ImmutableRecordReadBackRefused { read: read_back }
+  }
+}
+
+fn immutable_record_put_holds(put: ImmutableRecordPut) -> Bool {
+  match put {
+    ImmutableRecordStored => true
+    ImmutableRecordAlreadyPresent => true
+    ImmutableRecordConflict { committed: _, offered: _ } => false
+    ImmutableRecordOccupiedByEmptyObject { offered: _ } => false
+    ImmutableRecordPublishRefused { fault: _ } => false
+    ImmutableRecordReadBackRefused { read: _ } => false
+  }
+}

@@ -1,0 +1,164 @@
+module test.claim.object_store_git_wet_witness_test
+
+import extdeps.shell
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.object_store {
+  StoreObjectsListed, StoreObjectsListUnavailable, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
+  ImmutableRecordPut, ImmutableRecordStored, ImmutableRecordAlreadyPresent, ImmutableRecordConflict,
+  ImmutableRecordOccupiedByEmptyObject, ImmutableRecordPublishRefused, ImmutableRecordReadBackRefused,
+  immutable_record_name,
+}
+import extdeps.realization.object_store_git {
+  GitObjectStoreLayout, GitObjectStoreOpening, GitObjectStoreOpened, GitObjectStoreNotInitialized,
+  GitObjectStoreMarkerUnrecognized, GitObjectStoreUnavailable,
+  GitObjectStoreInitialization, GitObjectStoreInitialized, GitObjectStoreInitializationRefused,
+  git_object_store_initialize, git_object_store_open, git_object_store_put_record,
+  git_object_store_list, git_object_store_read,
+}
+
+// WET CONTROLS FOR THE GIT-BRANCH OBJECT STORE: the hermetic decisions of
+// test.claim.object_store_witness_test, reached through real git against a throwaway bare remote.
+// Each test builds its own /tmp/gunbc_objstore.* directory holding a bare "remote" and two clones of
+// it standing for two hosts, and removes it before returning. Effects: shell.Mktemp.DirWithTemplate,
+// git through gunbc.WitnessBin.Run, Filesystem reads and create-new writes inside the realization,
+// shell.Remove.RecursiveForce. No network: the remote is a local path.
+//
+// What these establish that the hermetic file cannot: that a publish is visible to a second clone
+// only after the push, that the same record from the second host settles as already present rather
+// than as a second object, that different bytes under one key are refused across hosts, and that the
+// listing a second host takes names every object at the commit it names.
+
+func run(workdir: String, args: List<String>) -> Bool {
+  gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: "/usr/bin/git" as FilePath, args: args, expect: OutcomeIsData).success
+}
+
+// A bare remote with one commit on main, and two clones that can commit. The store's branch does not
+// exist yet: founding it is the first host's initialize.
+func fresh_fixture() -> String {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_objstore.XXXXXX").path as String
+  let ok = run(workdir: root, args: ["init", "-q", "--bare", "remote.git"])
+    && run(workdir: root, args: ["init", "-q", "-b", "main", "seed"])
+    && run(workdir: concat(root, "/seed"), args: ["-c", "user.email=w@example.invalid", "-c", "user.name=w", "commit", "-q", "--allow-empty", "-m", "seed"])
+    && run(workdir: concat(root, "/seed"), args: ["push", "-q", concat(root, "/remote.git"), "main:main"])
+    && run(workdir: root, args: ["clone", "-q", "remote.git", "host_a"])
+    && run(workdir: root, args: ["clone", "-q", "remote.git", "host_b"])
+    && run(workdir: concat(root, "/host_a"), args: ["config", "user.email", "a@example.invalid"])
+    && run(workdir: concat(root, "/host_a"), args: ["config", "user.name", "host a"])
+    && run(workdir: concat(root, "/host_b"), args: ["config", "user.email", "b@example.invalid"])
+    && run(workdir: concat(root, "/host_b"), args: ["config", "user.name", "host b"])
+  if ok { root } else { "" }
+}
+
+fn layout(root: String, host: String) -> GitObjectStoreLayout {
+  GitObjectStoreLayout {
+    repo_root: concat(root, concat("/", host)) as FilePath,
+    worktree: concat(root, concat("/", concat(host, "_store"))) as FilePath,
+    git_program: "/usr/bin/git",
+    directory_program: "/usr/bin/install",
+    remote: "origin" as NonEmptyStr,
+    branch: "evidence-store" as NonEmptyStr,
+  }
+}
+
+fn put_arm(p: ImmutableRecordPut) -> String {
+  match p {
+    ImmutableRecordStored => "stored"
+    ImmutableRecordAlreadyPresent => "already_present"
+    ImmutableRecordConflict { committed: _, offered: _ } => "conflict"
+    ImmutableRecordOccupiedByEmptyObject { offered: _ } => "occupied_by_empty"
+    ImmutableRecordPublishRefused { fault: f } => concat("publish_refused: ", f.detail)
+    ImmutableRecordReadBackRefused { read: _ } => "read_back_refused"
+  }
+}
+
+fn is_opened(o: GitObjectStoreOpening) -> Bool {
+  match o {
+    GitObjectStoreOpened { layout: _, head: _ } => true
+    GitObjectStoreNotInitialized { marker_path: _ } => false
+    GitObjectStoreMarkerUnrecognized { marker_path: _ } => false
+    GitObjectStoreUnavailable { fault: _ } => false
+  }
+}
+
+func initialized(l: GitObjectStoreLayout) -> GitObjectStoreOpening {
+  match git_object_store_initialize(layout: l, label: "wet-witness" as NonEmptyStr) {
+    GitObjectStoreInitialized { opening } => opening
+    GitObjectStoreInitializationRefused { fault } => GitObjectStoreUnavailable { fault: fault }
+  }
+}
+
+test fn a_store_that_was_never_founded_opens_as_not_initialized_by_real_execution() -> Bool {
+  let root = fresh_fixture()
+  let verdict = root != "" && match git_object_store_open(layout: layout(root: root, host: "host_a")) {
+    GitObjectStoreNotInitialized { marker_path: _ } => true
+    GitObjectStoreOpened { layout: _, head: _ } => false
+    GitObjectStoreMarkerUnrecognized { marker_path: _ } => false
+    GitObjectStoreUnavailable { fault: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  verdict && removed.success
+}
+
+test fn one_host_stores_and_a_second_host_retrying_the_same_record_finds_it_present_by_real_execution() -> Bool {
+  let root = fresh_fixture()
+  let a = initialized(l: layout(root: root, host: "host_a"))
+  let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
+  let first = put_arm(p: git_object_store_put_record(store: a, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let again = put_arm(p: git_object_store_put_record(store: b, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let verdict = root != "" && is_opened(o: a) && is_opened(o: b) && first == "stored" && again == "already_present"
+  let removed = shell.Remove.RecursiveForce(path: root)
+  verdict && removed.success
+}
+
+test fn different_bytes_under_one_key_from_another_host_is_a_conflict_by_real_execution() -> Bool {
+  let root = fresh_fixture()
+  let a = initialized(l: layout(root: root, host: "host_a"))
+  let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
+  let first = put_arm(p: git_object_store_put_record(store: a, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let other = put_arm(p: git_object_store_put_record(store: b, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record TWO\n" as NonEmptyStr, attempts: 3))
+  let still = match git_object_store_read(store: a, name: immutable_record_name(key: "repo:1/wf/job@abc" as NonEmptyStr)) {
+    StoreObjectPresent { content: c } => c == "record one\n"
+    StoreObjectAbsent => false
+    StoreObjectUnavailable { fault: _ } => false
+  }
+  let verdict = root != "" && first == "stored" && other == "conflict" && still
+  let removed = shell.Remove.RecursiveForce(path: root)
+  verdict && removed.success
+}
+
+test fn a_listing_from_the_second_host_names_both_hosts_objects_at_one_commit_by_real_execution() -> Bool {
+  let root = fresh_fixture()
+  let a = initialized(l: layout(root: root, host: "host_a"))
+  let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
+  let pa = put_arm(p: git_object_store_put_record(store: a, key: "k-a" as NonEmptyStr, content: "from a\n" as NonEmptyStr, attempts: 3))
+  let pb = put_arm(p: git_object_store_put_record(store: b, key: "k-b" as NonEmptyStr, content: "from b\n" as NonEmptyStr, attempts: 3))
+  let listed = match git_object_store_list(store: b) {
+    StoreObjectsListed { snapshot: _, names: ns } =>
+      count(ns) == 2
+        && any(ns, n => n == immutable_record_name(key: "k-a" as NonEmptyStr))
+        && any(ns, n => n == immutable_record_name(key: "k-b" as NonEmptyStr))
+    StoreObjectsListUnavailable { fault: _ } => false
+  }
+  let verdict = root != "" && pa == "stored" && pb == "stored" && listed
+  let removed = shell.Remove.RecursiveForce(path: root)
+  verdict && removed.success
+}
+
+test fn an_empty_founded_store_lists_empty_and_an_unreachable_remote_lists_unavailable_by_real_execution() -> Bool {
+  let root = fresh_fixture()
+  let a = initialized(l: layout(root: root, host: "host_a"))
+  let empty = match git_object_store_list(store: a) {
+    StoreObjectsListed { snapshot: _, names: ns } => count(ns) == 0
+    StoreObjectsListUnavailable { fault: _ } => false
+  }
+  let moved = run(workdir: root, args: ["-C", concat(root, "/host_a"), "remote", "set-url", "origin", concat(root, "/no-such-remote.git")])
+  let unreachable = match git_object_store_list(store: a) {
+    StoreObjectsListed { snapshot: _, names: _ } => false
+    StoreObjectsListUnavailable { fault: _ } => true
+  }
+  let verdict = root != "" && empty && moved && unreachable
+  let removed = shell.Remove.RecursiveForce(path: root)
+  verdict && removed.success
+}
