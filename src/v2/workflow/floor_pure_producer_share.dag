@@ -409,6 +409,15 @@ import v2.std.collection { List }
 // the three test files> [witness] lines, and this run's [floor-shared-fill] ledger, which must
 // show the eight fills landing at preparation with disposition=Stored and the former interrupted
 // claims serving hits.
+// THE LAST ROW IS THE NAMESPACE-XL-4 FIXTURE INGEST, SHARED BY TWO CLAIM FILES. Floor run
+// 34730467598 refused v2.test.claim.reference_derived_graph_call_arg_tree and
+// v2.test.claim.reference_derived_graph_production_ingest as ENROLMENT-MARGIN-REFUSED /
+// interrupted_before_verdict at the 500ms per-claim CPU ceiling -- the class
+// gunbc.recurring_failure_mode.shared_precondition_re_derived_once_per_claim_frame. Re-derive with
+// claim_batch --entry on those files plus the run's [floor-shared-fill] ledger. ONE producer, consumed
+// by both files. THE SEAM IS THE INGEST: those claims name the collector and the edge fold, so sharing
+// collection would hand each claim a precomputed answer. Parse trees and located roots travel on the
+// same nullary value so parse-tree probes do not re-tokenize.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -436,7 +445,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.where_refinement_clause_parse.where_refinement_bare_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
-  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed"
+  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.test.claim.reference_derived_graph_fixture.xl4_fixture_trees"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

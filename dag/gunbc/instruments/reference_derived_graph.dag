@@ -35,10 +35,6 @@ data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_
 
 data consumer_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
 
-data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
-
-data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
-
 type ReferenceImportEdgeDiff
   = SharedEdge { path: String, target_module: String }
   | ReferenceOnlyEdge { path: String, target_module: String }
@@ -49,10 +45,6 @@ type ReferenceDerivedGraphReport {
   reference_edges: List<ModuleDependencyEdge>
   import_edges: List<ModuleDependencyEdge>
   diffs: List<ReferenceImportEdgeDiff>
-}
-
-fn edge_identity_eq(a: ModuleDependencyEdge, b: ModuleDependencyEdge) -> Bool {
-  a.path == b.path && a.target_module == b.target_module
 }
 
 fn has_identity(edges: List<ModuleDependencyEdge>, path: String, target_module: String) -> Bool {
