@@ -41,6 +41,22 @@ import extdeps.pricing.ubicloud { ubicloud_arm_linux_offer }
 // and is not modelled as ARM Linux shapes. Hetzner CAX (extdeps.cloud.hetzner) is ARM
 // supply, not a CI-runner seller, and is not enrolled here; CAX was unread as
 // orderable on three dated readings.
+//
+// CONSUMPTION (DESIGN §3c). This change's executing consumer is
+// test.claim.arm_ci_seller_census_witness: two-way identity joins over
+// surveyed_arm_linux_offers, cloud_arm_reseller_offers,
+// customer_account_cloud_arm_offers, not_accepting_arm_linux_offers,
+// unread_standing_arm_linux_offers, plus the uncited-aarch64 RED.
+//
+// DECLARED FRONTIER. Named later consumer: gunbc-private economics-regrounding
+// (private #88) imports surveyed_arm_linux_offers including SellerOfferStanding.
+// Trigger: this module present on public origin/main (that tree composes
+// gunb-ai/gunbc@main; it will not pin a PR head). Second named later consumer:
+// strategy.node_rental SupplierHypothesis folding the wholesale question
+// ArmCapacityChannel states (reseller of scarce cloud ARM as a candidate
+// Ampere buyer). Trigger: that module imports surveyed_arm_linux_offers or
+// cloud_arm_reseller_offers. Until those imports exist, the joins are
+// observation plus the witness, not a sourcing decision.
 fn surveyed_arm_linux_offers() -> List<SellerArmLinuxOffer> {
   [
     blacksmith_arm_linux_offer,
