@@ -8,6 +8,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome, RestOk }
+import std.encoding { Standard, base64_decode, utf8_decode_bytes }
+import std.bytes { octets_bytes }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -85,6 +87,39 @@ type RepositoryFileContent {
 
 data contents_base64_encoding: String = "base64"
 data contents_absent_encoding: String = "none"
+
+// THE BASE64 THIS ENDPOINT SERVES IS LINE-WRAPPED. Observed 2026-09-13 on
+// biomejs/biome .github/workflows/labels.yml at 3835945f0638c88162351318b7bc8b64c5f2fba7: `content`
+// carries a line feed after every 60 base64 characters, the MIME transfer-encoding line length
+// (RFC 2045 section 6.8 wraps at 76; GitHub wraps at 60). RFC 4648 section 3.3 has the decoder refuse
+// characters outside the alphabet, which std.encoding base64_decode does, so the wrapping is removed
+// here - in the module that owns this wire format - and nowhere else.
+//
+// THE DECLARED SIZE IS CHECKED AGAINST THE DECODED OCTETS. `size` is the blob's byte count and the
+// decode is the only independent count of the bytes that arrived, so a disagreement means the body
+// that was served is not the blob it names, and no text is produced from it. UTF-8 decoding is the
+// host's strict decode: invalid UTF-8 is a runtime refusal, not a replacement character.
+type RepositoryFileTextRead
+  = RepositoryFileText { text: String }
+  | RepositoryFileNotBase64Encoded { encoding: String }
+  | RepositoryFileBase64Invalid
+  | RepositoryFileSizeDisagrees { declared: Int, decoded: Int }
+
+fn repository_file_text(file: RepositoryFileContent) -> RepositoryFileTextRead {
+  if file.encoding != contents_base64_encoding {
+    RepositoryFileNotBase64Encoded { encoding: file.encoding }
+  } else {
+    match base64_decode(s: replace(file.content, "\n", ""), variant: Standard) {
+      Absent => RepositoryFileBase64Invalid
+      Present { value: octets } =>
+        if count(octets) != file.size {
+          RepositoryFileSizeDisagrees { declared: file.size, decoded: count(octets) }
+        } else {
+          RepositoryFileText { text: utf8_decode_bytes(payload: octets_bytes(o: octets)) }
+        }
+    }
+  }
+}
 
 data hermetic_repository_file_path: String = ".github/workflows/main.yml"
 data hermetic_repository_file_name: String = "main.yml"

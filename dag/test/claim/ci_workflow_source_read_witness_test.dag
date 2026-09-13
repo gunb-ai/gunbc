@@ -190,7 +190,7 @@ data observed_file: RepositoryFileContent = RepositoryFileContent {
 
 test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
   match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
-    HitCanonicalized { identity } =>
+    HitCanonicalized { identity, file: _ } =>
       identity.ref == fixture_ref
         && identity.blob_sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
         && identity.workflow_path == ".github/workflows/premerge.yaml"
@@ -210,7 +210,7 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
 // that refused only the oversized one would still fabricate on an unrecognized encoding.
 test fn an_unread_file_never_becomes_an_identity() -> Bool {
   let oversized_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: oversized_response)) {
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitFileUnreadable { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
@@ -219,7 +219,7 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
   let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: unknown_encoding_response)) {
     HitFileUnreadable { repository_full_name, path, cause } =>
       repository_full_name == "llvm/llvm-project"
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
@@ -322,7 +322,7 @@ fn refused_status(read: WorkflowSourceRead) -> Int {
         RestExchangeStatusRefused { status, body } => status
         other => 0
       }
-    HitCanonicalized { identity } => 0
+    HitCanonicalized { identity, file: _ } => 0
     HitFileUnreadable { repository_full_name, path, cause } => 0
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => 0
     HitRefNotExact { repository_full_name, path, ref, cause } => 0
@@ -349,7 +349,7 @@ test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
         RestExchangeUnreached { cause } => repository_full_name == "llvm/llvm-project"
         other => false
       }
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitFileUnreadable { repository_full_name, path, cause } => false
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
@@ -372,7 +372,7 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: foreign_repo_request, file: observed_file },
   ) {
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
       match disagreement {
         RepositoryDiffersFromHit { hit_repository, read_repository } => read_repository == "biomejs/biome"
@@ -396,7 +396,7 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
             && requested_path == ".github/workflows/main.yml"
         other => false
       }
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitFileUnreadable { repository_full_name, path, cause } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => false
     HitReadRefused { repository_full_name, path, performance } => false
@@ -405,7 +405,7 @@ test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
   ) {
-    HitCanonicalized { identity } => identity.repository_full_name == "llvm/llvm-project"
+    HitCanonicalized { identity, file: _ } => identity.repository_full_name == "llvm/llvm-project"
     other => false
   }
   foreign_repo_refused && foreign_path_refused && coherent_admitted
@@ -421,7 +421,7 @@ test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool {
     ref: "1111111111111111111111111111111111111111",
   }
   match canonicalize_hit(hit: fixture_hit, read: WorkflowSourceObserved { request: other_ref_request, file: observed_file }) {
-    HitCanonicalized { identity } =>
+    HitCanonicalized { identity, file: _ } =>
       identity.ref == "1111111111111111111111111111111111111111" && identity.ref != fixture_ref
     other => false
   }
@@ -446,7 +446,7 @@ test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: coherent_request, file: response_naming_another_file },
   ) {
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
       match disagreement {
         ResponsePathDiffersFromRequest { requested_path, response_path } =>
@@ -475,7 +475,7 @@ test fn a_branch_name_is_refused_as_a_ref() -> Bool {
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: branch_ref_request, file: observed_file },
   ) {
-    HitCanonicalized { identity } => false
+    HitCanonicalized { identity, file: _ } => false
     HitRefNotExact { repository_full_name, path, ref, cause } => ref == "main"
     HitFileUnreadable { repository_full_name, path, cause } => false
     HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
@@ -485,7 +485,7 @@ test fn a_branch_name_is_refused_as_a_ref() -> Bool {
     hit: fixture_hit,
     read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
   ) {
-    HitCanonicalized { identity } => true
+    HitCanonicalized { identity, file: _ } => true
     other => false
   }
   branch_refused && sha_admitted
@@ -612,7 +612,7 @@ test fn a_file_changed_since_indexing_canonicalizes_to_the_blob_actually_read() 
     repository: fixture_hit.repository,
   }
   let changed = match canonicalize_hit(hit: stale_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
-    HitCanonicalized { identity } =>
+    HitCanonicalized { identity, file: _ } =>
       identity.blob_sha == observed_file.sha && identity.blob_sha != stale_hit.sha
     other => false
   }
@@ -620,7 +620,7 @@ test fn a_file_changed_since_indexing_canonicalizes_to_the_blob_actually_read() 
     name: fixture_hit.name, path: fixture_hit.path, sha: observed_file.sha, repository: fixture_hit.repository,
   }
   let unchanged = match canonicalize_hit(hit: current_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
-    HitCanonicalized { identity } => identity.blob_sha == current_hit.sha
+    HitCanonicalized { identity, file: _ } => identity.blob_sha == current_hit.sha
     other => false
   }
   changed && unchanged

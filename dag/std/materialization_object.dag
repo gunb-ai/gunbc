@@ -11,6 +11,7 @@ import std.content_hash {
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.object_store {
+  percent_encode_payload, percent_decode_payload,
   StoreFault, StoreObjectRead, StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
   StoreObjectPublish, StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
 }
@@ -118,11 +119,8 @@ fn payload_for(payloads: List<ArtifactPayload>, id: ArtifactOutputId) -> Artifac
 //   payload <output id> <percent-encoded payload>       (one per manifest part, manifest order)
 //   end
 //
-// Payload text is percent-encoded for exactly three code points -- "%" as %25, line feed as %0A,
-// space as %20 (RFC 3986 percent-encoding, restricted to the delimiters this format uses) -- so
-// every line splits into a fixed number of space-separated fields and no payload can forge a line.
-// Decoding replaces %0A and %20 before %25; since every encoded "%" is followed by "25", "0A" or
-// "20", no decoded escape can be manufactured by an earlier replacement.
+// Payload text is escaped with std.object_store percent_encode_payload, so every line splits into a
+// fixed number of space-separated fields and no payload can forge a line.
 
 data store_object_magic: String = "gunbc-materialization-object v1"
 
@@ -130,13 +128,6 @@ fn store_object_name(key: ContentHash) -> String {
   concat(serialize_content_hash(hash: key) as String, ".materialization")
 }
 
-fn percent_encode_payload(s: String) -> String {
-  replace(replace(replace(s, "%", "%25"), "\n", "%0A"), " ", "%20")
-}
-
-fn percent_decode_payload(s: String) -> String {
-  replace(replace(replace(s, "%0A", "\n"), "%20", " "), "%25", "%")
-}
 
 fn store_object_part_line(o: CarriedOutput) -> String {
   join(["part", o.id as String, o.digest.digest as String, to_string(measure_count(m: o.bytes))], " ")

@@ -55,6 +55,24 @@ type StoreObjectListing
   | StoreObjectsListUnavailable { fault: StoreFault }
 
 // ---------------------------------------------------------------------------------------------
+// Line-format fields.
+//
+// A stored object that is line-oriented with space-separated fields needs exactly three code points
+// escaped so no field can forge a line or a field boundary: "%" as %25, line feed as %0A, space as
+// %20 (RFC 3986 percent-encoding restricted to the delimiters those formats use). Decoding replaces
+// %0A and %20 before %25; since every encoded "%" is followed by "25", "0A" or "20", no decoded escape
+// can be manufactured by an earlier replacement. One authority for every line-format object, rather
+// than a copy per format.
+
+fn percent_encode_payload(s: String) -> String {
+  replace(replace(replace(s, "%", "%25"), "\n", "%0A"), " ", "%20")
+}
+
+fn percent_decode_payload(s: String) -> String {
+  replace(replace(replace(s, "%0A", "\n"), "%20", " "), "%25", "%")
+}
+
+// ---------------------------------------------------------------------------------------------
 // Immutable records: a key, canonical bytes, and a put that never overwrites.
 //
 // The record's NAME is derived from its key alone, so every writer of one key writes one name, and

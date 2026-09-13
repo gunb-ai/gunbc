@@ -167,6 +167,10 @@ func perform_workflow_source_read(
 // as an argument precisely so that no caller can promote a hint without naming one.
 // -------------------------------------------------------------------------------------
 
+// THE CANONICALIZED ARM CARRIES THE FILE IT CANONICALIZED. An identity without its bytes forces a
+// consumer that interprets the workflow to read it a second time, and a second read at the same ref
+// is a second observation that could disagree with the first (a force-push between them rewrites
+// what the ref names). The bytes that justified the identity travel with it.
 type WorkflowSourceIdentity {
   repository_full_name: String
   repository_id: Int
@@ -211,7 +215,7 @@ type SubjectDisagreement
 // subject disagreement is a caller pairing the wrong things and carries WHICH pair disagreed; a
 // non-exact ref is a caller supplying a branch name; a refusal never reached the bytes at all.
 type HitCanonicalization
-  = HitCanonicalized { identity: WorkflowSourceIdentity }
+  = HitCanonicalized { identity: WorkflowSourceIdentity, file: RepositoryFileContent }
   | HitFileUnreadable { repository_full_name: String, path: String, cause: NonEmptyStr }
   | HitSubjectsDisagree { repository_full_name: String, path: String, disagreement: SubjectDisagreement, cause: NonEmptyStr }
   | HitRefNotExact { repository_full_name: String, path: String, ref: CommitSha, cause: NonEmptyStr }
@@ -279,6 +283,7 @@ fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonica
             workflow_path: file.path,
             blob_sha: file.sha,
           },
+          file: file,
         }
       }
     WorkflowSourceTooLargeForContentsApi { file, cause } => HitFileUnreadable {

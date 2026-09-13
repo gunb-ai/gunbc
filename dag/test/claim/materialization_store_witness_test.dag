@@ -17,6 +17,7 @@ import std.materialization_provider {
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import std.object_store {
+  percent_encode_payload, percent_decode_payload,
   StoreFault, StoreFaultUnreachable,
   StoreObjectPresent, StoreObjectAbsent, StoreObjectUnavailable,
   StoreObjectPublished, StoreObjectOccupied, StoreObjectPublishRefused,
@@ -30,7 +31,7 @@ import std.materialization_object {
   store_commit_prepare, store_commit_settle, store_lookup_decide,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
-  encode_store_object, percent_encode_payload, percent_decode_payload,
+  encode_store_object,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemPermissionDenied,
