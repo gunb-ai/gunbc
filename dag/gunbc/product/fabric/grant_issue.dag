@@ -505,6 +505,7 @@ fn issue_grant<P, Q, S>(
                         maximum_liability: money_request.maximum_liability,
                       },
                       evidence: evidence,
+                      permit: permit,
                       resource_reservations: c.resources,
                       money_reservation: c.money,
                     },
