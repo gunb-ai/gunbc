@@ -38,7 +38,7 @@ pub struct NativeDriverProducer {
 pub struct NativeDriverProducerCount {
     pub producer: String,
     pub executions: i64,
-    pub nanos: i64,
+    pub nanos: Nanosecond,
 }
 
 pub fn native_driver_producer_roster() -> Rc<Vec<Rc<NativeDriverProducer>>> {
