@@ -585,6 +585,7 @@ fn runner_slot_converge_verdict(
   deploy: RunnerHostDeploy,
   artifact: ActionsRunnerBinaryArtifact,
   observation: RunnerSlotObservation,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> RunnerSlotConvergeVerdict {
   match observation {
     RunnerSlotsUnobserved { reason: r } =>
@@ -592,7 +593,12 @@ fn runner_slot_converge_verdict(
     RunnerSlotsObserved { members: obs } =>
       RunnerSlotConvergePlanned {
         host: host,
-        plan: runner_slot_provision_plan(deploy: deploy, artifact: artifact, observed: obs),
+        plan: runner_slot_provision_plan(
+          deploy: deploy,
+          artifact: artifact,
+          observed: obs,
+          retirement_evidence: retirement_evidence,
+        ),
       }
   }
 }

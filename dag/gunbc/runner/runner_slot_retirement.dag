@@ -4,6 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host }
+import gunbc.runner_width_transition { required_retirees_for_host }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
@@ -13,6 +14,7 @@ import gunbc.host_operation_exec {
   CgroupReadInterfaceFile,
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcome,
   host_operation_exec,
 }
 import gunbc.host_converge { gunbc_cgroup_v2_root }
@@ -286,53 +288,24 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
-// OBLIGATION AND PERMISSION ARE DIFFERENT FACTS, AND DERIVING ONE FROM THE OTHER LOST THE OBLIGATION.
+// THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.
 //
-// An earlier revision produced the required-retiree set by filtering the srv4 interruption
-// authorization's scope to this host. That made the OBLIGATION a projection of the PERMISSION, with
-// three consequences, of which the third is a hole rather than a limitation:
+// Two earlier revisions derived the required set here: first by filtering the srv4 interruption
+// scope, then by unioning that scope with the current census surplus. Both made PERMISSION an input
+// to OBLIGATION. The union closed the orphan escape for srv4's exact enumeration and still forked the
+// moment the two disagreed -- an authorization broader than the transition manufactures required
+// retirees, and one narrower leaves an identity required only while the census can still see it.
 //
-//   1. srv1 and srv3 -- which also narrow -- got an empty required set, because nobody had written
-//      them an authorization. They have a real population to retire and no permission to interrupt it;
-//      that is a refused actuation, not an absent obligation.
-//   2. A later srv4 width change would still have produced the frozen 13..21 enumeration, regardless
-//      of what the new target actually required.
-//   3. THE ORPHAN ESCAPE. The argument for (1) being safe was that the census blocks while surplus
-//      units remain visible. That covers PRESENCE and not COMPLETION: once a unit stops being listed,
-//      an empty required set means no standing is ever read for it, so
-//      `required = [] , census still_present = [] , standings = []` ADMITS THE RAISE while a process
-//      survives under its former cgroup. That is the exact state the required-evidence set was
-//      introduced to prevent, reachable through the door the projection left open.
+// `gunbc.runner_width_transition` now owns the obligation, derived from a DECLARED prior population
+// minus the model's target. It is durable across passes by construction, because nothing in it reads
+// an observation. What remains here is the relation the review asked for:
 //
-// SO THE OBLIGATION IS THE TRANSITION DELTA, AND IT IS TAKEN FROM TWO SOURCES BECAUSE NEITHER ALONE
-// IS BOTH COMPLETE AND STABLE.
-//
-//   THE OBSERVED SURPLUS makes the obligation real for every narrowing host, including srv1 and srv3
-//   which have a population to retire and no interruption permission at all. This is what the
-//   permission projection could not express: a real requirement plus a refused actuation.
-//
-//   THE DECLARED SCOPE makes it STABLE ACROSS PASSES. A set re-derived from the latest census shrinks
-//   the moment a unit stops being listed -- which is exactly when its orphan is least visible -- so the
-//   requirement would discharge itself by the unit disappearing. The declared enumeration cannot
-//   shrink, so once a transition names 13..21 those identities stay required until a standing reports
-//   each one complete, whatever any later listing shows.
-//
-// THE UNION IS THEREFORE NOT A CONVENIENCE. Census-only reopens the orphan escape; scope-only leaves
-// unauthorized hosts with no obligation. The declared scope appears here as a stable MINIMUM of the
-// obligation, never as its definition -- which is why an unpermitted retiree below is a refusal rather
-// than an omission.
-fn transition_required_retiring(
-  host: HostIdentity,
-  census: SurplusSlotObservation,
-) -> List<NonEmptyStr> {
-  let declared = srv4_transition_interruption_authorization.scope
-    |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
-  let observed = match census {
-    SurplusSlotsUnobserved { cause: _ } => []
-    SurplusSlotsObserved { retired: _, still_present: sp } =>
-      sp |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
-  }
-  concat(declared, observed |> filter(o => !any(declared, d => (d as String) == (o as String))))
+//     transition authority -> which retirees are required
+//     authorization        -> which of those required retirees may be interrupted
+//     census               -> what is presently visible, and where the two disagree
+//     retirement readback  -> completion, per required identity
+fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
+  required_retirees_for_host(host: host)
 }
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the
@@ -548,19 +521,39 @@ fn retirement_active_state_is_running(state: String) -> Bool {
   state == "active" || state == "activating" || state == "deactivating" || state == "reloading"
 }
 
-// THE WORKLOAD IS READ AT THE CGROUP, NOT THROUGH A SYSTEMD PROXY.
-//
-// `TasksCurrent` was the convenient reading and it is the wrong authority twice over: it answers
-// `[not set]` for exactly the stopped units this module judges, and it is a systemd projection of a
-// kernel fact rather than the fact. The cgroup itself distinguishes the states that matter --
-// the directory is gone (systemd removed it when the unit stopped), or it exists and `cgroup.procs`
-// is empty, or it exists and names surviving pids.
-//
-// AN ABSENT CGROUP IS A POSITIVE ANSWER ONLY BECAUSE THE PATH WAS READ FROM THE UNIT ITSELF. The path
-// comes from the unit's own `ControlGroup` property, so "no such directory" is a statement about this
-// slot's cgroup and not about a path someone guessed. A refused property read yields `CgroupUnobserved`
-// rather than `CgroupAbsent`, because not knowing where to look is not the same as looking and finding
-// nothing.
+fn cgroup_occupancy_from_reads(
+  directory_test: HostOperationOutcome,
+  procs_read: HostOperationOutcome,
+) -> CgroupOccupancy {
+  match directory_test {
+    HostOperationRefused { operation: _, reason: why } =>
+      CgroupUnobserved { cause: join(["the slot cgroup directory test refused: ", why], "") }
+    HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
+      if !exists {
+        CgroupAbsent
+      } else {
+        match procs_read {
+          HostOperationRefused { operation: _, reason: why } =>
+            CgroupUnobserved { cause: join(["cgroup.procs could not be read: ", why], "") }
+          HostOperationObserved { stdout: procs, success: ok, stderr: _ } =>
+            if !ok {
+              CgroupUnobserved { cause: "reading cgroup.procs exited unsuccessfully, so occupancy is unknown" }
+            } else {
+              let pids = split(s: trim(s: procs), delimiter: "\n") |> filter(l => trim(s: l) != "")
+              if list_length(items: pids) == 0 {
+                CgroupObservedEmpty
+              } else {
+                CgroupObservedPopulated { count: list_length(items: pids) }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE I/O HALF. It performs at most two reads and decides nothing: the second read is skipped when the
+// directory test says the cgroup is gone, because there is no file to read and a refusal there would
+// be reported as doubt about a question already answered.
 fn observe_slot_cgroup_occupancy(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
@@ -574,44 +567,27 @@ fn observe_slot_cgroup_occupancy(
         CgroupUnobserved { cause: "the unit reported an empty ControlGroup path, so its workload cgroup identity is unknown" }
       } else {
         let cgroup_path = join([gunbc_cgroup_v2_root, relative], "") as NonEmptyStr
-        match host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path }) {
-          HostOperationRefused { operation: _, reason: why } =>
-            CgroupUnobserved { cause: join(["the slot cgroup directory test refused: ", why], "") }
-          HostOperationObserved { stdout: present, success: ok, stderr: _ } =>
-            if !ok || trim(s: present) != "true" {
-              CgroupAbsent
+        let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
+        match dir {
+          HostOperationRefused { operation: _, reason: _ } =>
+            cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
+          HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
+            if !exists {
+              cgroup_occupancy_from_reads(directory_test: dir, procs_read: dir)
             } else {
-              slot_cgroup_procs_occupancy(transport: transport, cgroup_path: cgroup_path)
+              cgroup_occupancy_from_reads(
+                directory_test: dir,
+                procs_read: host_operation_exec(
+                  transport: transport,
+                  operation: CgroupReadInterfaceFile {
+                    file_path: cgroup_v2_child_path(parent: cgroup_path, child: "cgroup.procs" as NonEmptyStr),
+                  },
+                ),
+              )
             }
         }
       }
     }
-  }
-}
-
-fn slot_cgroup_procs_occupancy(
-  transport: HostEffectTransport,
-  cgroup_path: NonEmptyStr,
-) -> CgroupOccupancy {
-  match host_operation_exec(
-    transport: transport,
-    operation: CgroupReadInterfaceFile {
-      file_path: cgroup_v2_child_path(parent: cgroup_path, child: "cgroup.procs" as NonEmptyStr),
-    },
-  ) {
-    HostOperationRefused { operation: _, reason: why } =>
-      CgroupUnobserved { cause: join(["cgroup.procs could not be read: ", why], "") }
-    HostOperationObserved { stdout: procs, success: ok, stderr: _ } =>
-      if !ok {
-        CgroupUnobserved { cause: "reading cgroup.procs exited unsuccessfully, so occupancy is unknown" }
-      } else {
-        let pids = split(s: trim(s: procs), delimiter: "\n") |> filter(l => trim(s: l) != "")
-        if list_length(items: pids) == 0 {
-          CgroupObservedEmpty
-        } else {
-          CgroupObservedPopulated { count: list_length(items: pids) }
-        }
-      }
   }
 }
 
@@ -811,5 +787,108 @@ func perform_authorized_retirement(
             )
           }
       }
+  }
+}
+
+
+// ── THE TRANSACTION OWNER: ONE PASS, FOUR ORDERED OBLIGATIONS, NO SECOND REMOVER ──────────────
+//
+// The two halves of this change were built and left uncomposed. The pure fleet planner holds the
+// `MemberRemoved` identities and the existing remover but always supplies
+// `SlotRetirementEvidenceAbsent`, so it can delete nothing. The live-deploy realizer holds the host
+// transport and the retirement readback but only READS -- it decides whether caps may move and never
+// actuates. So the source described a complete transaction that nothing performed: no production route
+// obtained retirement evidence and returned it to the remover.
+//
+// THIS IS THAT OWNER, AND IT DELIBERATELY DOES NOT DELETE ANYTHING ITSELF. It produces evidence. The
+// single tree-removal path stays where it already is -- `runner_slot_provision_plan`'s teardown arm,
+// reached through `slot_removal_realization` -- and this function's whole output is the
+// `SlotRetirementEvidence` that route consumes. A second `RemoveDirectoryTree` emitted here would be
+// exactly the parallel authority the review forbade, and it would be the easier thing to write.
+//
+// THE ORDER IS THE SAFETY PROPERTY, AND EACH STEP REFUSES RATHER THAN WIDENING:
+//
+//   1. The obligation comes from the transition authority, never from permission or from the census.
+//   2. Permission is checked as COVERAGE over that obligation. An uncovered required retiree makes the
+//      whole transaction refuse: acting on the covered subset while a required unit is untouchable
+//      would retire half a population and then raise ceilings against the other half.
+//   3. `mask --now` runs only for covered identities, and its own outcome is consumed -- a refused or
+//      failed actuation contributes no completion.
+//   4. The postcondition is read INDEPENDENTLY, per identity, after actuation. Actuation success is
+//      never evidence of retirement.
+//
+// WHY ACTUATION AND TEARDOWN CANNOT SHARE A PASS. Step 4 reads a host that step 3 has just changed, so
+// a `RemoveDirectoryTree` derived from it would rest on an observation taken inside the same
+// transaction that caused it. The evidence returned here is consumed by the NEXT plan, whose standings
+// are read fresh; a unit that regresses between passes simply stops authorizing its own deletion.
+type RetirementTransactionOutcome
+  = RetirementTransactionRefused { host: HostIdentity, cause: String }
+  | RetirementTransactionEvidence {
+      host: HostIdentity,
+      attempts: List<RetirementAttempt>,
+      evidence: SlotRetirementEvidence,
+    }
+
+func perform_transition_retirement(
+  transport: HostEffectTransport,
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+) -> RetirementTransactionOutcome
+  uses net: Network
+{
+  let required = transition_required_retiring(host: host)
+  if list_length(items: required) == 0 {
+    RetirementTransactionEvidence {
+      host: host,
+      attempts: [],
+      evidence: SlotRetirementEvidencePresent { authorization: auth, standings: [] },
+    }
+  } else {
+    match transition_interruption_coverage(auth: auth, required: required) {
+      TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
+        RetirementTransactionRefused {
+          host: host,
+          cause: join(
+            [
+              "this transition requires retiring units the operator has not authorized interrupting: ",
+              join(map(u, x => x as String), " "),
+              "; retiring only the covered subset would release ceilings against a population that is still running",
+            ],
+            "",
+          ),
+        }
+      TransitionFullyPermitted { units: permitted } => {
+        let attempts = permitted
+          |> map(u => perform_authorized_retirement(transport: transport, auth: auth, unit: u))
+        RetirementTransactionEvidence {
+          host: host,
+          attempts: attempts,
+          evidence: SlotRetirementEvidencePresent {
+            authorization: auth,
+            standings: observe_retirement_standings(transport: transport, units: permitted),
+          },
+        }
+      }
+    }
+  }
+}
+
+// THE EVIDENCE A LATER PASS CONSUMES, WITHOUT RE-ACTUATING. A converge that has already masked its
+// surplus needs to READ the postcondition and hand it to the remover; running `mask --now` again to
+// obtain the same reading would make every pass destructive and would reset nothing it has not already
+// ended. So the observation-only route is a separate entry point rather than a flag on the actuator.
+func observe_transition_retirement_evidence(
+  transport: HostEffectTransport,
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+) -> SlotRetirementEvidence
+  uses net: Network
+{
+  SlotRetirementEvidencePresent {
+    authorization: auth,
+    standings: observe_retirement_standings(
+      transport: transport,
+      units: transition_required_retiring(host: host),
+    ),
   }
 }

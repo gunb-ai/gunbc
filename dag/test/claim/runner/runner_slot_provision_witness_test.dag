@@ -290,6 +290,7 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
         deploy: srv1_runner_host_deploy,
         artifact: artifact,
         observation: unobserved_fixture,
+        retirement_evidence: no_retirement_evidence(),
       ) {
         RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
         RunnerSlotConvergePlanned { host: _, plan: _ } => false
@@ -309,6 +310,7 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
         deploy: srv1_runner_host_deploy,
         artifact: artifact,
         observation: observed_two_fixture,
+        retirement_evidence: no_retirement_evidence(),
       ) {
         RunnerSlotConvergePlanned { host: _, plan: p } =>
           runner_slot_provision_has_width_increase(plan: p)
@@ -523,6 +525,20 @@ test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool {
     && !runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-40-x" as NonEmptyStr)
 }
 
+// THE PRIVILEGED SEAM IS STILL THE ONE THE GRANT ROSTER SPELLS -- AND REACHING IT NOW REQUIRES
+// RETIREMENT EVIDENCE, WHICH IS THE WHOLE POINT OF THE CHANGE.
+//
+// This claim asserted that an unregistered, inactive, disabled in-grammar member produced exactly one
+// `rm -rf` naming its tree. That is the pre-retirement behaviour the new signature exists to prohibit,
+// so the claim is REPOINTED rather than handed permissive evidence to keep it green: mechanically
+// passing `SlotRetirementEvidencePresent` with a fabricated completion would have preserved the green
+// while deleting the property.
+//
+// What it pins now is the seam itself, on the only input that may reach it: with an exact
+// `RetirementComplete` for this unit, the emitted removal is still the roster's own
+// `RemoveDirectoryTree` argv naming this tree -- and with no evidence, the same member emits no `-rf`
+// at all. Both halves are asserted here, so the row fails if the seam changes OR if the gate stops
+// gating.
 test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
@@ -531,10 +547,13 @@ test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
         name: "wfix-40",
         p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
       )
-      let plan = runner_slot_provision_plan(deploy: fixture_five_slot_deploy(), artifact: artifact, observed: [retired])
-      (plan.teardown_scripts |> count) == 1
-        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "/opt/actions-runner/wfix-40")))
-        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "-rf")))
+      let withheld = runner_slot_provision_plan(
+        deploy: fixture_five_slot_deploy(),
+        artifact: artifact,
+        observed: [retired],
+        retirement_evidence: no_retirement_evidence(),
+      )
+      (withheld.teardown_scripts |> all(s => !string_contains(s: s, pattern: "-rf")))
     }
   }
 }

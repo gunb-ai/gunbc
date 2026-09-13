@@ -3908,7 +3908,7 @@ fn realize_live_deploy_apply_on_host(
     let census = surplus_observation(
       census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
     )
-    let required = transition_required_retiring(host: host, census: census)
+    let required = transition_required_retiring(host: host)
     realize_shell_on_host(
       script: retained_srvn(
         body: live_deploy_apply_script_for(
