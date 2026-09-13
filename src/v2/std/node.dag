@@ -818,6 +818,12 @@ fn combine_hash(a: Fnv1a64Structural, b: Fnv1a64Structural) -> Fnv1a64Structural
   content_hash_combine_structural(left: a, right: b)
 }
 
+// The one Symbol equality, owned by the module that owns Symbol. Consumers that need an `eq`
+// callback (contains, dedup, ...) take this; a module-local `*_symbol_eq` alias re-mints it.
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
 fn symbol_identity_digest(sym: Symbol) -> Hash {
   content_hash_atom(value: sym)
 }

@@ -94,8 +94,7 @@ fn production_edge_count(path: String, target: String) -> Int {
         Present { value: pair } =>
           length(
             xs: reference_derived_edges_from_located_roots(
-              items: pair,
-              include_import_syntax: false
+              items: pair
             ).edges |> filter(e => e.path == path && e.target_module == target)
           )
       }

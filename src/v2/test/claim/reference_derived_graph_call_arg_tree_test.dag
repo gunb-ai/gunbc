@@ -62,8 +62,7 @@ fn ca_edges_from_pair(
     items: [
       LocatedModuleRoot { path: provider_path, root: provider_root },
       LocatedModuleRoot { path: consumer_path, root: consumer_root }
-    ],
-    include_import_syntax: false
+    ]
   ).edges
 }
 

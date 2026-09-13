@@ -33,7 +33,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_eq }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_to_dotted_string
@@ -266,10 +266,6 @@ fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool
   any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
 }
 
-fn reference_derived_symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
-
 fn source_refs_from_declared(declared: List<ModuleDeclarationFact>) -> List<SourceRef> {
   fold_list(
     xs: declared,
@@ -307,12 +303,12 @@ fn located_roots_from_source_root_ingest(
 }
 
 fn site_is_import_syntax_mention(site: ReferenceSite) -> Bool {
-  contains(xs: site.position, item: ^dag_surface_import_decl, eq: reference_derived_symbol_eq)
-    || contains(xs: site.position, item: ^dag_surface_import_block, eq: reference_derived_symbol_eq)
+  contains(xs: site.position, item: ^dag_surface_import_decl, eq: symbol_eq)
+    || contains(xs: site.position, item: ^dag_surface_import_block, eq: symbol_eq)
     || contains(
       xs: site.position,
       item: ^dag_surface_import_decl_qualified_name,
-      eq: reference_derived_symbol_eq
+      eq: symbol_eq
     )
 }
 
@@ -381,30 +377,38 @@ fn load_reference_derived_pool(
   )
 }
 
-fn sites_for_reference_edge_fold(
-  root: Node,
-  include_import_syntax: Bool
-) -> ReferenceSiteCollection {
+// The production site selection: every mention the collector yields MINUS import-syntax
+// mentions. It is a fixed composition, not a mode - an unused import must never mint a
+// reference-derived edge, and that property is not caller-selectable (DESIGN 3 meaning fork,
+// DESIGN 5 escape hatch). The discriminating mutant that re-admits import mentions is
+// composed at the test boundary from collect_module_reference_sites and
+// reference_edges_for_located_root_sites, never through a flag here (review 65639).
+fn sites_for_reference_edge_fold(root: Node) -> ReferenceSiteCollection {
   let collected = collect_module_reference_sites(root: root)
   ReferenceSiteCollection {
-    sites: if include_import_syntax {
-      collected.sites
-    } else {
-      reference_sites_excluding_import_syntax(sites: collected.sites)
-    },
+    sites: reference_sites_excluding_import_syntax(sites: collected.sites),
     unreadable_roots: collected.unreadable_roots
   }
 }
 
 fn emit_reference_edges_for_located_root(
   item: LocatedModuleRoot,
-  pool: ReferenceDerivedPool,
-  include_import_syntax: Bool
+  pool: ReferenceDerivedPool
 ) -> ReferenceDerivedEdgeFold {
-  let collected = sites_for_reference_edge_fold(
-    root: item.root,
-    include_import_syntax: include_import_syntax
+  reference_edges_for_located_root_sites(
+    item: item,
+    pool: pool,
+    collected: sites_for_reference_edge_fold(root: item.root)
   )
+}
+
+// Edge derivation over an already-selected site collection. Consumed by the production
+// composition above and by the test-boundary mutant.
+fn reference_edges_for_located_root_sites(
+  item: LocatedModuleRoot,
+  pool: ReferenceDerivedPool,
+  collected: ReferenceSiteCollection
+) -> ReferenceDerivedEdgeFold {
   match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: item.path) {
     Absent =>
       ReferenceDerivedEdgeFold {
@@ -464,19 +468,14 @@ fn reference_derived_pool_from_located_roots(
 }
 
 fn reference_derived_edges_from_located_roots(
-  items: List<LocatedModuleRoot>,
-  include_import_syntax: Bool
+  items: List<LocatedModuleRoot>
 ) -> ReferenceDerivedEdgeFold {
   let pool = reference_derived_pool_from_located_roots(items: items)
   fold_list(
     xs: items,
     empty: empty_reference_derived_edge_fold,
     cons: fn(acc, item) {
-      let piece = emit_reference_edges_for_located_root(
-        item: item,
-        pool: pool,
-        include_import_syntax: include_import_syntax
-      )
+      let piece = emit_reference_edges_for_located_root(item: item, pool: pool)
       ReferenceDerivedEdgeFold {
         edges: list_append(left: acc.edges, right: piece.edges),
         unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
@@ -509,8 +508,7 @@ fn emit_reference_edges_for_importer(
       outcome_accepted(
         value: emit_reference_edges_for_located_root(
           item: LocatedModuleRoot { path: fact.path, root: root },
-          pool: pool,
-          include_import_syntax: false
+          pool: pool
         )
       )
   }
