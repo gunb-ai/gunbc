@@ -3542,6 +3542,7 @@ pub fn parse_with_table_in_occurrence_scope(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_allocator: OccurrenceIdAllocator,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ParseWithTableResult> {
     parse_with_table_at(
         tokens.clone(),
@@ -3551,7 +3552,7 @@ pub fn parse_with_table_in_occurrence_scope(
             occurrence_allocator.clone(),
         ),
         false,
-        dag_parse_environment(),
+        env.clone(),
     )
 }
 
