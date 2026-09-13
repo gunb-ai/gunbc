@@ -6,7 +6,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
 import std.types { NonEmptyStr }
-import std.measure { Millisecond, millisecond_count, EvalStepCount, eval_step_count_value }
+import std.measure { Millisecond, millisecond_count, EvalStepCount, eval_step_count, eval_step_count_value }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
   ClaimPreemptionReachability, CooperativelyPollable,
@@ -69,13 +69,13 @@ fn tier_probe_steps() -> Int {
 }
 
 test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Bool {
-  int_gt(a: tier_probe_steps(), b: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
-    && int_gt(a: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}), b: tier_probe_steps())
+  int_gt(a: tier_probe_steps(), b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})))
+    && int_gt(a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})), b: tier_probe_steps())
     && match claim_safety_outcome(
       reached_verdict: true,
       observed_cpu_ms: 3,
       observed_wall_ms: 42,
-      observed_eval_steps: tier_probe_steps(),
+      observed_eval_steps: eval_step_count(count: tier_probe_steps()),
       eval_step_budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
       wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
       raised_by: "",
@@ -93,7 +93,7 @@ test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool {
     reached_verdict: true,
     observed_cpu_ms: 3,
     observed_wall_ms: 42,
-    observed_eval_steps: tier_probe_steps(),
+    observed_eval_steps: eval_step_count(count: tier_probe_steps()),
     eval_step_budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
@@ -259,12 +259,12 @@ test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier
     && cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
 }
 
-fn cpu_does_not_gate(budget: Int) -> Bool {
+fn cpu_does_not_gate(budget: EvalStepCount) -> Bool {
   match claim_safety_outcome(
     reached_verdict: true,
     observed_cpu_ms: 4000,
     observed_wall_ms: 4200,
-    observed_eval_steps: 2884,
+    observed_eval_steps: eval_step_count(count: 2884),
     eval_step_budget: budget,
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
@@ -283,7 +283,7 @@ test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool 
     reached_verdict: true,
     observed_cpu_ms: 4000,
     observed_wall_ms: int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1),
-    observed_eval_steps: 2884,
+    observed_eval_steps: eval_step_count(count: 2884),
     eval_step_budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
@@ -314,8 +314,8 @@ test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> 
     && (millisecond_count(m: claim_ceiling_envelope_ms(tier: NewWitnessTier {}))
      == millisecond_count(m: required_floor_new_witness_envelope_ms()))
     && int_gt(
-         a: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
-         b: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+         a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})),
+         b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
        )
 }
 
@@ -325,13 +325,23 @@ test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> 
 // every fixture above green.
 test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool {
   match claim_eval_step_standing(
-    observed_eval_steps: int_add(a: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}), b: 1),
+    observed_eval_steps: eval_step_count(
+      count: int_add(
+        a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+        b: 1,
+      ),
+    ),
     budget_steps: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
   ) {
     EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
     EvalStepsOverBudget { observed_steps: observed, budget_steps: budget } =>
-      (observed == int_add(a: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}), b: 1))
-        && (budget == claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+      (eval_step_count_value(s: observed)
+         == int_add(
+              a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+              b: 1,
+            ))
+        && (eval_step_count_value(s: budget)
+         == eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})))
         && claim_eval_step_standing_blocks(
              standing: EvalStepsOverBudget { observed_steps: observed, budget_steps: budget }
            )

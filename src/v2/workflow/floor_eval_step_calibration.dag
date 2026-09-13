@@ -186,8 +186,10 @@ data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibratio
 // THE POLICY INPUT IS MILLISECONDS OF WORK and the output is eval steps. Both tiers call this: the
 // grandfathered ceiling passes 500, the new-witness ceiling passes 100. Neither budget is a literal
 // anywhere, so the two cannot drift apart or be raised independently of the policy they project.
-fn eval_step_budget_for(calibration: EvalStepCalibration, envelope: Millisecond) -> Int {
-  int_mul(a: millisecond_count(m: envelope), b: calibration_rate(calibration: calibration))
+fn eval_step_budget_for(calibration: EvalStepCalibration, envelope: Millisecond) -> EvalStepCount {
+  eval_step_count(
+    count: int_mul(a: millisecond_count(m: envelope), b: calibration_rate(calibration: calibration)),
+  )
 }
 
 // THE ONE ACCESSOR, so every consumer reaches the rate through a match on the carrier rather than

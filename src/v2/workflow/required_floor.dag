@@ -34,10 +34,12 @@ import std.nat { Nat }
 import std.measure {
   Millisecond,
   ByteSize,
+  EvalStepCount,
   millisecond,
   millisecond_count,
   byte_size,
   byte_size_count,
+  eval_step_count_value,
 }
 import std.types { NonEmptyStr }
 
@@ -1113,9 +1115,14 @@ fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
 // takes. Carrying the magnitude as a raw scalar and re-minting it into the carrier at the consumer
 // is the re-invention DESIGN section 2's test names and the second home section 3 forbids; it also
 // contradicted this lane's own dissolution note, which asserts that the millisecond gap in the
-// sibling file was CLOSED. The eval-step fields stay scalars for a reason that does NOT apply here:
-// `std.measure`'s Quantity roster has no arm for interpreter evaluation steps, while it has carried
-// Time since before this lane existed.
+// sibling file was CLOSED.
+//
+// THE EVAL-STEP SURFACES NOW CARRY `EvalStepCount` FOR THE SAME REASON, and an earlier revision of
+// this annotation said they stayed scalars because the roster had no arm for evaluation steps
+// (review 65531). That sentence was true on main and FALSE at this head: the same change adds the
+// arm. Leaving it standing would have made the module that DECIDES refusals the one place the new
+// carrier is not consumed, on the strength of a sentence the diff itself repeals -- and an
+// annotation that states something the tree contradicts is worse than none (DESIGN section 4c).
 fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Millisecond {
   match tier {
     GrandfatheredTier => required_floor_claim_work_envelope_ms()
@@ -1127,7 +1134,7 @@ fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Millisecond {
 // tier's policy milliseconds put through `v2.workflow.floor_eval_step_calibration`, so they cannot
 // drift apart, and neither can be raised without moving a policy figure or the pinned rate -- both
 // of which have executing checks over them.
-fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> Int {
+fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> EvalStepCount {
   eval_step_budget_for(
     calibration: floor_eval_step_calibration,
     envelope: claim_ceiling_envelope_ms(tier: tier),
@@ -1136,7 +1143,7 @@ fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> Int {
 
 // THE CEILING FOR ONE IDENTITY, WHICH IS THE ONLY ENTRY POINT A CALLER SHOULD REACH FOR. It joins
 // the two steps above so no caller can select a tier for one identity and a budget for another.
-fn claim_eval_step_budget_for_identity(identity: String) -> Int {
+fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: claim_ceiling_tier(identity: identity))
 }
 
@@ -1174,11 +1181,17 @@ fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
 // times over are the same `true` and have nothing else in common. It is the same reason
 // `ClaimSafetyOutcome` carries its observations into its arms.
 type ClaimEvalStepStanding =
-    EvalStepsWithinBudget { observed_steps: Int, budget_steps: Int }
-  | EvalStepsOverBudget { observed_steps: Int, budget_steps: Int }
+    EvalStepsWithinBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
+  | EvalStepsOverBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
 
-fn claim_eval_step_standing(observed_eval_steps: Int, budget_steps: Int) -> ClaimEvalStepStanding {
-  if int_gt(a: observed_eval_steps, b: budget_steps) {
+fn claim_eval_step_standing(
+  observed_eval_steps: EvalStepCount,
+  budget_steps: EvalStepCount,
+) -> ClaimEvalStepStanding {
+  if int_gt(
+    a: eval_step_count_value(s: observed_eval_steps),
+    b: eval_step_count_value(s: budget_steps),
+  ) {
     EvalStepsOverBudget { observed_steps: observed_eval_steps, budget_steps: budget_steps }
   } else {
     EvalStepsWithinBudget { observed_steps: observed_eval_steps, budget_steps: budget_steps }
@@ -1486,8 +1499,8 @@ fn claim_safety_outcome(
   reached_verdict: Bool,
   observed_cpu_ms: Int,
   observed_wall_ms: Int,
-  observed_eval_steps: Int,
-  eval_step_budget: Int,
+  observed_eval_steps: EvalStepCount,
+  eval_step_budget: EvalStepCount,
   wall_limit_ms: Int,
   raised_by: String,
   preemption: ClaimPreemptionReachability,
@@ -1852,10 +1865,10 @@ data floor_preparation_host_mirror_dissolve_on: DissolutionCondition = unbound_d
 // THEY ARE NOT A THIRD AND FOURTH BUDGET. Each is `claim_ceiling_eval_step_budget` at one tier, so
 // the model and the seed cannot disagree about what a tier costs, and the tier SELECTION stays in
 // `claim_ceiling_tier` where the roster is the only input.
-fn required_floor_grandfathered_eval_step_budget() -> Int {
+fn required_floor_grandfathered_eval_step_budget() -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})
 }
 
-fn required_floor_new_witness_eval_step_budget() -> Int {
+fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
 }

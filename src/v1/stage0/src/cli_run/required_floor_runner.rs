@@ -5390,10 +5390,15 @@ pub fn run_required_floor(
         }
         out
     };
+    // MEASURE-TYPED SINCE THE BUDGETS BECAME `EvalStepCount`, so they are read with the Measure
+    // reader rather than the bare-Int one. `floor_required_int` demands a bare `Int` and would
+    // refuse the single-field record a `std.measure` carrier arrives as -- loudly, which is the
+    // point: the host unwraps exactly one level to reach the magnitude it compares, and a constant
+    // that stops being a Measure fails here instead of being read as some other number.
     let grandfathered_eval_step_budget =
-        floor_required_int(&hermetic, "required_floor_grandfathered_eval_step_budget")?;
+        floor_required_measure_count(&hermetic, "required_floor_grandfathered_eval_step_budget")?;
     let new_witness_eval_step_budget =
-        floor_required_int(&hermetic, "required_floor_new_witness_eval_step_budget")?;
+        floor_required_measure_count(&hermetic, "required_floor_new_witness_eval_step_budget")?;
     // THE TIGHTER BUDGET MUST BE TIGHTER. If the two ever read equal or inverted, the tier
     // distinction has silently stopped existing while every claim still reports a tier — the
     // inert-wall shape DESIGN §4b names, cited as coverage while deciding nothing.
