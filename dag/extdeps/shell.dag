@@ -195,6 +195,10 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
+// shell.Test.IsSymbolicLink is POSIX test -h (pubs.opengroup.org/onlinepubs/9699919799/utilities/
+// test.html): true when the path names a symbolic link, WITHOUT following it - unlike -d and -f, which
+// resolve the link and answer about its target. False covers both "not a symbolic link" and "missing",
+// so a caller that needs "a real directory" pairs it with IsDirectory rather than reading false as either.
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }
@@ -237,6 +241,17 @@ service shell.Test {
     exit {
       0 => Unit "Path is a directory"
       1 => Unit "Path is missing or not a directory"
+    }
+  }
+
+  operation IsSymbolicLink {
+    input { path: FilePath }
+    output { is_symbolic_link: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-h", "{path}"] }
+    exit {
+      0 => Unit "Path is a symbolic link"
+      1 => Unit "Path is missing or not a symbolic link"
     }
   }
 

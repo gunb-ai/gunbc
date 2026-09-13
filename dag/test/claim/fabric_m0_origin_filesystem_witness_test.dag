@@ -7,11 +7,20 @@ import extdeps.filesystem.filesystem_io { filesystem_listing_observation, filesy
 import gunbc.fabric_m0_origin_readback {
   OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginFetchOutcome, OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
+  OriginReadingTaken, OriginReadingUnavailable, read_origin_staged_file, origin_reading_digest,
 }
+import gunbc.fabric_m0_completion {
+  ObligationVerdict, ObligationSatisfied, ObligationUnsatisfied, ObligationUndetermined, ObligationUnenumerable,
+  readback_digest_verdict,
+}
+import gunbc.fabric_m0_origin_commit { object_readback_of_origin_put }
 import gunbc.fabric_m0_origin_filesystem {
   OriginKeyAdmission, OriginKeyAdmitted, OriginKeyRefused, admit_origin_key, content_addressed_origin_key,
+  OriginDirectoryStanding, OriginDirectoryEstablished, OriginDirectoryNotEstablished, OriginDirectoryIsSymbolicLink,
+  origin_directory_standing,
   OriginLinkObservation, OriginLinkInstalled, OriginLinkFailed, filesystem_put_decide,
-  OriginKeyPresence, OriginKeyListed, OriginKeyNotListed, OriginKeyIndeterminate,
+  OriginObjectListing, OriginObjectListed, OriginObjectNotListed, OriginObjectListingIndeterminate,
+  OriginStabilization, OriginStabilized, OriginNotStabilized,
   OriginCopyObservation, OriginCopyStaged, OriginCopyFailed, filesystem_fetch_decide,
 }
 
@@ -23,13 +32,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data fixture_staged_object: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
 
 // HERMETIC CONTROLS FOR THE FILESYSTEM ORIGIN'S DECISIONS: key admission, the content-addressed key,
-// what a link and the listing after it mean, and what a segment walk and a copy mean for a fetch.
-// Every listing is built through extdeps.filesystem.filesystem_io's own observation, so absence here
-// is established the same way the realization establishes it. What these do NOT establish is that
-// ln, sync, cp or a listing behave this way on a host; that is
+// what an observed directory is, what a link and the listing after it mean, and what listing,
+// stabilization and a copy mean for a fetch - including the composition with
+// gunbc.fabric_m0_origin_commit object_readback_of_origin_put and readback_digest_verdict, which is
+// where an unknown put would be laundered into a confirmation if the fetch confirmed visibility rather
+// than durability. Every listing is built through extdeps.filesystem.filesystem_io's own observation.
+// What these do NOT establish is that ln, sync, cp, test or a listing behave this way on a host; that is
 // test.claim.fabric_m0_origin_filesystem_wet_witness_test.
 
-fn key() -> NonEmptyStr { "sha256/ab/cd/abcdef" as NonEmptyStr }
+fn key() -> NonEmptyStr { "sha256/abcdef" as NonEmptyStr }
 
 fn put_arm(p: OriginPutOutcome) -> String {
   match p {
@@ -48,11 +59,18 @@ fn fetch_arm(f: OriginFetchOutcome) -> String {
   }
 }
 
-fn listed_with(entries: String) -> String { entries }
+fn verdict_arm(v: ObligationVerdict) -> String {
+  match v {
+    ObligationSatisfied => "satisfied"
+    ObligationUnsatisfied { subject: _, cause: _ } => "unsatisfied"
+    ObligationUndetermined { subject: _, cause: _ } => "undetermined"
+    ObligationUnenumerable { subject: _, cause: _ } => "unenumerable"
+  }
+}
 
 test fn a_key_is_admitted_only_when_every_segment_is_an_entry_name() -> Bool {
-  let ok = match admit_origin_key(key: "sha256/ab/cd/abcdef") {
-    OriginKeyAdmitted { key: _, segments } => count(segments) == 4
+  let ok = match admit_origin_key(key: "sha256/abcdef") {
+    OriginKeyAdmitted { key: _, segments } => count(segments) == 2
     OriginKeyRefused { key: _, cause: _ } => false
   }
   let refused = all(["", "a/../b", "../escape", "a//b", "./a"], k => match admit_origin_key(key: k) {
@@ -62,11 +80,25 @@ test fn a_key_is_admitted_only_when_every_segment_is_an_entry_name() -> Bool {
   ok && refused
 }
 
-test fn the_content_addressed_key_fans_out_on_the_digest_prefix() -> Bool {
+test fn the_content_addressed_key_lives_directly_under_one_established_directory() -> Bool {
   match sha256_hex_digest(hex: "e06a945171c115274945744f65948a07f52e16f2e06a945171c115274945744f") {
-    Present { value: d } => content_addressed_origin_key(digest: d) == "sha256/e0/6a/e06a945171c115274945744f65948a07f52e16f2e06a945171c115274945744f"
+    Present { value: d } => content_addressed_origin_key(digest: d) == "sha256/e06a945171c115274945744f65948a07f52e16f2e06a945171c115274945744f"
     Absent => false
   }
+}
+
+fn standing_arm(s: OriginDirectoryStanding) -> String {
+  match s {
+    OriginDirectoryEstablished => "established"
+    OriginDirectoryNotEstablished { path: _ } => "not_established"
+    OriginDirectoryIsSymbolicLink { path: _ } => "symbolic_link"
+  }
+}
+
+test fn a_directory_is_established_only_when_it_is_a_real_directory() -> Bool {
+  standing_arm(s: origin_directory_standing(path: "/o/objects", is_directory: true, is_symbolic_link: false)) == "established"
+    && standing_arm(s: origin_directory_standing(path: "/o/objects", is_directory: false, is_symbolic_link: false)) == "not_established"
+    && standing_arm(s: origin_directory_standing(path: "/o/objects", is_directory: true, is_symbolic_link: true)) == "symbolic_link"
 }
 
 test fn a_durable_link_is_stored_and_an_unsynced_one_is_unknown() -> Bool {
@@ -76,7 +108,7 @@ test fn a_durable_link_is_stored_and_an_unsynced_one_is_unknown() -> Bool {
 
 // The failed link's meaning comes from the listing, never from ln's exit status.
 test fn a_failed_link_is_occupied_only_when_the_directory_lists_the_name() -> Bool {
-  let dir = "/srv/origin/objects/sha256/ab/cd"
+  let dir = "/srv/origin/objects/sha256"
   let occupied = filesystem_entry_presence(listing: filesystem_listing_observation(directory: dir, success: true, entries: "abcdef\nother", error: ""), name: "abcdef")
   let not_there = filesystem_entry_presence(listing: filesystem_listing_observation(directory: dir, success: true, entries: "other", error: ""), name: "abcdef")
   let unlistable = filesystem_entry_presence(listing: filesystem_listing_observation(directory: dir, success: false, entries: "", error: "permission denied"), name: "abcdef")
@@ -86,11 +118,29 @@ test fn a_failed_link_is_occupied_only_when_the_directory_lists_the_name() -> Bo
 }
 
 test fn a_fetch_is_absent_only_when_a_listing_established_it() -> Bool {
-  fetch_arm(f: filesystem_fetch_decide(key: key(), presence: OriginKeyNotListed { missing_under: "/srv/origin/objects/sha256" }, copy: OriginCopyFailed)) == "absent"
-    && fetch_arm(f: filesystem_fetch_decide(key: key(), presence: OriginKeyIndeterminate { cause: "permission denied" }, copy: OriginCopyFailed)) == "unavailable"
-    && fetch_arm(f: filesystem_fetch_decide(key: key(), presence: OriginKeyListed, copy: OriginCopyFailed)) == "unavailable"
+  fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectNotListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "absent"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListingIndeterminate { cause: "permission denied" }, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
 }
 
 test fn a_listed_object_whose_copy_was_staged_is_read_through_the_sole_mint() -> Bool {
-  fetch_arm(f: filesystem_fetch_decide(key: key(), presence: OriginKeyListed, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "staged"
+  fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "staged"
+}
+
+// THE LAUNDERING COUNTEREXAMPLE, AND ITS RECONCILIATION. A put whose directory fsync failed is unknown;
+// the object is still visible and readable. A fetch that could not establish durability must leave the
+// obligation undetermined; a later fetch that did establish it is the reconciliation, and satisfies.
+test fn an_unknown_put_is_never_confirmed_by_a_visible_but_unstabilized_object() -> Bool {
+  match read_origin_staged_file(staged_path: fixture_staged_object) {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading } => {
+      let recorded = origin_reading_digest(reading: reading)
+      let unknown_put = filesystem_put_decide(key: key(), link: OriginLinkInstalled { durable: false })
+      let unstabilized = filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginNotStabilized { cause: "the object's directory could not be fsynced" }, copy: OriginCopyStaged { staged_path: fixture_staged_object })
+      let stabilized = filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })
+      put_arm(p: unknown_put) == "unknown"
+        && verdict_arm(v: readback_digest_verdict(subject: key(), recorded: recorded, readback: object_readback_of_origin_put(put: unknown_put, fetch: unstabilized))) == "undetermined"
+        && verdict_arm(v: readback_digest_verdict(subject: key(), recorded: recorded, readback: object_readback_of_origin_put(put: unknown_put, fetch: stabilized))) == "satisfied"
+    }
+  }
 }

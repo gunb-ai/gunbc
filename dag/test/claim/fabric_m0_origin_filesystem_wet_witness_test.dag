@@ -20,11 +20,12 @@ import gunbc.fabric_m0_origin_filesystem {
 }
 
 // WET CONTROLS FOR THE FILESYSTEM ORIGIN, against a real throwaway root. Each test makes its own
-// /tmp/gunbc_fsorigin.* directory with objects/ and staging/, writes local files, drives the real put
-// and fetch - mktemp, cp, sync, mkdir, ln, rm, listings and sha256sum - and removes the root. The
-// verdicts are taken through gunbc.fabric_m0_completion readback_digest_verdict, the same judgement the
-// completion authority applies to an R2 origin, so what is shown is that this realization's answers
-// mean what that authority assumes they mean.
+// /tmp/gunbc_fsorigin.* directory, establishes (or deliberately fails to establish) objects/, sha256/
+// and staging/ the way host convergence would, drives the real put and fetch - test, mktemp, cp, sync,
+// ln, rm, listings and sha256sum - and removes the root. Verdicts are taken through
+// gunbc.fabric_m0_completion readback_digest_verdict, the judgement the completion authority applies to
+// an R2 origin. What these cannot drive is an fsync failure on a real directory; that arm is shown by
+// the hermetic witness, over the same decision function the realization calls.
 
 fn verdict_arm(v: ObligationVerdict) -> String {
   match v {
@@ -52,15 +53,22 @@ fn fetch_arm(f: OriginFetchOutcome) -> String {
   }
 }
 
-// A root with objects/ and staging/, plus a local file holding `content`.
-fn fresh_root(with_objects: Bool) -> String {
-  let base = trim(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fsorigin.XXXXXX").path as String)
-  let made = if with_objects {
-    shell.Mkdir.Parents(path: join([base, "/root/objects"], "") as FilePath).success && shell.Mkdir.Parents(path: join([base, "/root/staging"], "") as FilePath).success
-  } else {
-    shell.Mkdir.Parents(path: join([base, "/root"], "") as FilePath).success
-  }
-  if made { base } else { "" }
+fn mkdirs(paths: List<String>) -> Bool {
+  all(paths, p => shell.Mkdir.Parents(path: p as FilePath).success)
+}
+
+fn new_base() -> String {
+  trim(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fsorigin.XXXXXX").path as String)
+}
+
+// A converged root: objects/, objects/sha256/ and staging/ all established.
+fn converged_root() -> String {
+  let base = new_base()
+  if mkdirs(paths: [join([base, "/root/objects/sha256"], ""), join([base, "/root/staging"], "")]) { base } else { "" }
+}
+
+fn root_of(base: String) -> FilesystemOriginRoot {
+  FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
 }
 
 fn local_file(base: String, name: String, content: String) -> FilePath {
@@ -77,16 +85,20 @@ fn digest_of(path: FilePath) -> Sha256Digest? {
   }
 }
 
+fn lists(directory: String, name: String) -> Bool {
+  let l = Filesystem.List(path: directory)
+  l.success && string_contains(s: concat("\n", concat(l.entries, "\n")), pattern: concat("\n", concat(name, "\n")))
+}
+
 test fn a_content_addressed_put_reads_back_to_its_own_digest_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: true)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let base = converged_root()
   let local = local_file(base: base, name: "a.txt", content: "workflow bytes\n")
   let verdict = match digest_of(path: local) {
     Absent => false
     Present { value: d } => {
       let key = content_addressed_origin_key(digest: d)
-      let put = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
-      let fetched = fetch_filesystem_origin_object(root: root, key: key as String)
+      let put = put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: key)
+      let fetched = fetch_filesystem_origin_object(root: root_of(base: base), key: key)
       put_arm(p: put) == "stored"
         && fetch_arm(f: fetched) == "staged"
         && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetched))) == "satisfied"
@@ -96,31 +108,27 @@ test fn a_content_addressed_put_reads_back_to_its_own_digest_by_real_execution()
   base != "" && verdict && removed.success
 }
 
-test fn the_same_bytes_twice_are_already_present_and_still_satisfy_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: true)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+test fn the_same_bytes_twice_are_already_present_and_staging_is_left_empty_by_real_execution() -> Bool {
+  let base = converged_root()
   let local = local_file(base: base, name: "a.txt", content: "workflow bytes\n")
   let verdict = match digest_of(path: local) {
     Absent => false
     Present { value: d } => {
       let key = content_addressed_origin_key(digest: d)
-      let first = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
-      let second = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
+      let first = put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: key)
+      let second = put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: key)
       put_arm(p: first) == "stored"
         && put_arm(p: second) == "already_present"
-        && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root, key: key as String)))) == "satisfied"
+        && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root_of(base: base), key: key)))) == "satisfied"
     }
   }
-  let staging_empty = match Filesystem.List(path: join([base, "/root/staging"], "")) {
-    l => l.success && trim(l.entries) == ""
-  }
+  let staging = Filesystem.List(path: join([base, "/root/staging"], ""))
   let removed = shell.Remove.RecursiveForce(path: base)
-  base != "" && verdict && staging_empty && removed.success
+  base != "" && verdict && staging.success && trim(staging.entries) == "" && removed.success
 }
 
 test fn different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_verdict_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: true)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let base = converged_root()
   let original = local_file(base: base, name: "a.txt", content: "original bytes\n")
   let impostor = local_file(base: base, name: "b.txt", content: "different bytes\n")
   let verdict = match digest_of(path: original) {
@@ -129,9 +137,9 @@ test fn different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_ve
       Absent => false
       Present { value: other } => {
         let key = content_addressed_origin_key(digest: d)
-        let first = put_filesystem_origin_object(root: root, local_path: original, key: key as String)
-        let second = put_filesystem_origin_object(root: root, local_path: impostor, key: key as String)
-        let readback = origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root, key: key as String))
+        let first = put_filesystem_origin_object(root: root_of(base: base), local_path: original, key: key)
+        let second = put_filesystem_origin_object(root: root_of(base: base), local_path: impostor, key: key)
+        let readback = origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root_of(base: base), key: key))
         put_arm(p: first) == "stored"
           && put_arm(p: second) == "already_present"
           && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: readback)) == "satisfied"
@@ -143,31 +151,55 @@ test fn different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_ve
   base != "" && verdict && removed.success
 }
 
-test fn a_key_whose_directories_do_not_exist_is_absent_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: true)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
-  let arm = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "sha256/00/11/0011223344556677889900112233445566778899001122334455667788990011"))
+test fn a_key_absent_from_an_established_directory_is_absent_by_real_execution() -> Bool {
+  let base = converged_root()
+  let arm = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "sha256/0011223344556677889900112233445566778899001122334455667788990011" as NonEmptyStr))
   let removed = shell.Remove.RecursiveForce(path: base)
   base != "" && arm == "absent" && removed.success
 }
 
-test fn a_root_without_its_objects_directory_is_unavailable_never_absent_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: false)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
-  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "sha256/00/11/abc"))
+// Counterexample A: staging/ exists and objects/ does not. The put must refuse and must not found objects/.
+test fn a_put_never_creates_the_objects_directory_by_real_execution() -> Bool {
+  let base = new_base()
+  let made = mkdirs(paths: [join([base, "/root/staging"], "")])
   let local = local_file(base: base, name: "a.txt", content: "bytes\n")
-  let put = put_arm(p: put_filesystem_origin_object(root: root, local_path: local, key: "sha256/00/11/abc"))
+  let put = put_arm(p: put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: "sha256/abc" as NonEmptyStr))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "sha256/abc" as NonEmptyStr))
+  let founded = lists(directory: join([base, "/root"], ""), name: "objects")
   let removed = shell.Remove.RecursiveForce(path: base)
-  base != "" && fetch == "unavailable" && put == "refused" && removed.success
+  base != "" && made && put == "refused" && fetch == "unavailable" && !founded && removed.success
 }
 
-test fn a_key_that_escapes_the_root_is_refused_before_any_effect_by_real_execution() -> Bool {
-  let base = fresh_root(with_objects: true)
-  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+// A key directory convergence never established is unavailable, never absent, and is not created.
+test fn a_key_directory_that_was_never_established_is_unavailable_and_not_created_by_real_execution() -> Bool {
+  let base = converged_root()
   let local = local_file(base: base, name: "a.txt", content: "bytes\n")
-  let put = put_arm(p: put_filesystem_origin_object(root: root, local_path: local, key: "../outside"))
-  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "../a.txt"))
-  let outside = Filesystem.List(path: base)
+  let put = put_arm(p: put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: "manifests/slot-1" as NonEmptyStr))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "manifests/slot-1" as NonEmptyStr))
+  let created = lists(directory: join([base, "/root/objects"], ""), name: "manifests")
   let removed = shell.Remove.RecursiveForce(path: base)
-  base != "" && put == "refused" && fetch == "unavailable" && !string_contains(s: concat("\n", concat(outside.entries, "\n")), pattern: "\noutside\n") && removed.success
+  base != "" && put == "refused" && fetch == "unavailable" && !created && removed.success
+}
+
+// Counterexample C: an intermediate component that is a symbolic link to a directory outside the root.
+test fn a_symbolically_linked_key_directory_is_refused_and_nothing_lands_outside_by_real_execution() -> Bool {
+  let base = new_base()
+  let made = mkdirs(paths: [join([base, "/root/objects"], ""), join([base, "/root/staging"], ""), join([base, "/outside"], "")])
+  let linked = shell.Symlink.AtomicReplace(target: join([base, "/outside"], "") as FilePath, link: join([base, "/root/objects/sha256"], "") as FilePath).success
+  let local = local_file(base: base, name: "a.txt", content: "bytes\n")
+  let put = put_arm(p: put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: "sha256/abc" as NonEmptyStr))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "sha256/abc" as NonEmptyStr))
+  let leaked = lists(directory: join([base, "/outside"], ""), name: "abc")
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && made && linked && put == "refused" && fetch == "unavailable" && !leaked && removed.success
+}
+
+test fn a_key_that_escapes_lexically_is_refused_before_any_effect_by_real_execution() -> Bool {
+  let base = converged_root()
+  let local = local_file(base: base, name: "a.txt", content: "bytes\n")
+  let put = put_arm(p: put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: "../outside" as NonEmptyStr))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "../a.txt" as NonEmptyStr))
+  let escaped = lists(directory: join([base, "/root"], ""), name: "outside")
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && put == "refused" && fetch == "unavailable" && !escaped && removed.success
 }
