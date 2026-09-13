@@ -4,7 +4,10 @@ import std.types { Bool, Int, Seconds, List, NonEmptyStr, String }
 import std.integer { UInt8 }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.goal_assessment { ObservationAttempt }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.tools.sha256sum
+import extdeps.crypto.hash { sha256sum_line_digest }
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
 import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
 
@@ -113,4 +116,17 @@ type MemoryEvaluationEvidence {
   mixture: ObservationAttempt<MemoryMixtureFinding, NonEmptyStr>
   qualifications: List<ConfigurationQualificationReceipt>
   training_failures: List<PlatformTrainingFailure>
+}
+
+// Hash the same captured value returned to the recognizer. A later path read
+// cannot certify these bytes, even when it observes the expected digest.
+func verify_memory_capture_content(content: String, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
+  let hash = sha256sum.Sha256.DigestStdin(content: content, expect: OutcomeIsData)
+  if !hash.success { ObservationRefused { cause: "capture digest process failed" } }
+  else { match sha256sum_line_digest(line: hash.line) {
+    Absent => ObservationRefused { cause: "capture digest process returned no digest" }
+    Present { value: digest } =>
+      if digest.hex == expected_sha256 { ObservationEstablished { observed: content } }
+      else { ObservationRefused { cause: "consumed capture bytes differ from committed digest" } }
+  } }
 }

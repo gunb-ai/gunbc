@@ -43,3 +43,13 @@ ctrl-build --local -- /cargo-target/release/gunbc run \
 The expected command result is a production admission refusal with the located byte-6 counterexample. This is a read-only replay, not a new boot attempt. `explain_mtcollins_memory_change` returns the full structured assessment and rendered explanation to model consumers; the command wrapper maps the admission result to `ProcessExit`.
 
 Scoped controls live in `test.claim.memory_change_evaluation_witness`, alongside the migrated fulfillment and selection witnesses. Controlled transcripts there are simulation inputs. They are not evidence that this test session operated the host. Required CI remains a separate outcome: a refusal before claim evaluation is UNEVALUATED, not an assertion failure and not a pass.
+
+## Admission-boundary corrections from review
+
+`memory_assessment_coverage_present` now requires unique required identities, exactly one result for each, and no result outside the required set. It still checks the independent mandatory roster. Cardinality equality is not used as a correspondence proof. The public-carrier controls include duplicate-required/unrelated-result and count-preserving identity loss, alongside an admissible positive control. This repairs an admission-boundary weakness; the normal evaluator did not produce the malformed lists.
+
+The replay now hashes the captured content through `verify_memory_capture_content`, using `sha256sum.Sha256.DigestStdin`, and returns that same content to recognition only on a matching digest. It no longer hashes a separately reopened path. The real-process known-answer, changed-content and added-newline control is enrolled in `local_repo_wet_schedule`, after measured execution and explicit admission of the local SHA-256 stdin effect. `BinWitnessWet` is not cited as execution: that cadence remains unrealized. No capture replacement incident is asserted.
+
+The 74 scoped assessment, fulfillment, selection and digest controls pass through `claim_batch --wet` with complete import closures. Restoring the old coverage predicate makes `w_coverage_duplicate_requirement_and_unrelated_result_refuse` fail; restoring the repaired predicate returns it to pass. The malformed input preserves the total count and minimum membership, isolating the missing identity correspondence.
+
+The committed-capture replay through the repaired content verifier still exits 1 with the expected J9/MCU4, 145/0, firmware-210525 counterexample. Hermetic execution of the digest control reaches `DigestStdin` / `NoMockResponse`, not a verdict; `floor_route_gap_expectations` records that observed boundary while the active wet schedule requires its real terminal.

@@ -23,11 +23,10 @@ import gunbc.memory_configuration {
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
 }
-import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population }
+import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population, verify_memory_capture_content }
 import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
 import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 
 // The capture is owned by the observing layer. The replay reads its bytes,
 // verifies the committed artifact identity, and joins catalog and layout facts.
@@ -159,17 +158,15 @@ func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessme
     PopulationRolesResolved { roles } => {
       let configuration = mtcollins_witnessed_configuration(roles: roles)
       let read = Filesystem.Read(path: mtcollins_training_capture_path as String)
-      let hash = sha256sum_file_digest_via_shell(path: mtcollins_training_capture_path)
-      let valid_hash = match hash {
-        Sha256FileDigest { digest } => digest.hex == mtcollins_training_capture_sha256
-        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      let verified = if read.success {
+        verify_memory_capture_content(content: read.content, expected_sha256: mtcollins_training_capture_sha256)
+      } else { ObservationRefused { cause: "committed capture could not be read" } }
+      let evidence = match verified {
+        ObservationEstablished { observed: payload } => mtcollins_memory_evidence_from_capture(configuration: configuration, payload: payload)
+        ObservationRefused { cause } => MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
+          mixture: ObservationRefused { cause: cause }, qualifications: [], training_failures: [],
+        }
       }
-      let evidence = if read.success && valid_hash {
-        mtcollins_memory_evidence_from_capture(configuration: configuration, payload: read.content)
-      } else { MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-        mixture: ObservationRefused { cause: "committed capture could not be read and verified" },
-        qualifications: [], training_failures: [],
-      } }
       ObservationEstablished { observed: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence) }
     }
   }

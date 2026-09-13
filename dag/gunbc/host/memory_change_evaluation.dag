@@ -104,9 +104,11 @@ type MemoryPurchasePurpose
 
 fn memory_assessment_coverage_present(a: MemoryConfigurationAssessment) -> Bool {
   fold(memory_operating_obligations, init: true, f: (ok, obligation) => ok && any(a.required, r => r == obligation))
-    && count(a.required) == count(a.results)
     && fold(a.required, init: true, f: (ok, required) => ok
+      && count(filter(a.required, r => r == required)) == 1
       && count(filter(a.results, r => r.obligation == required)) == 1)
+    && fold(a.results, init: true, f: (ok, result) => ok
+      && any(a.required, required => required == result.obligation))
 }
 
 fn memory_configuration_admission_refusal(a: MemoryConfigurationAssessment, purpose: MemoryPurchasePurpose) -> NonEmptyStr? {
