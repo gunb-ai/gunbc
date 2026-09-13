@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use im::HashMap;
 use std::rc::Rc;
 use v1_compiler::cli_run;
+use v1_compiler::gunbc_cli_dispatch_surface;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
 use v1_compiler::v1_std_core::{
@@ -509,7 +510,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // never ran, so `resolved 0 sources` would report a resolve that did not
                         // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
-                        std::process::exit(cli_run::COMPILE_CLI_EXIT_NOT_EXECUTED);
+                        std::process::exit(
+                            gunbc_cli_dispatch_surface::compile_cli_exit_not_executed() as i32,
+                        );
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(

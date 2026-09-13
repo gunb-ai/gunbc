@@ -302,8 +302,8 @@ fn dcc_fixture_perturb_compile_report(module_file: String, source: String) -> Dc
 
 // Enrolled RED (DESIGN §4b meta-obligation 4): stage OUTSIDE the workspace root on purpose
 // (shell.Mktemp.Dir). This control INVOKES the compiler — it is the agreement check between
-// dcc_staged_under_workspace and cli_run's root-admission (including the seed
-// COMPILE_CLI_EXIT_NOT_EXECUTED spelling of compile_cli_exit_not_executed). Production
+// dcc_staged_under_workspace and cli_run's root-admission (main.rs exits
+// gunbc.cli_dispatch_surface compile_cli_exit_not_executed). Production
 // transports must not invoke on this path. Host faults stay instrument-phase so they cannot
 // satisfy a witness that requires the CLI not-executed status. Must not satisfy
 // dcc_subject_expectation_holds as an expected failure.

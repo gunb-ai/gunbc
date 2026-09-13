@@ -6761,10 +6761,6 @@ pub enum CompileDisposition {
     },
 }
 
-/// Process status for `gunbc compile` when the disposition is `NotExecuted`.
-/// Authority: `gunbc.cli_dispatch_surface` `compile_cli_exit_not_executed`.
-pub const COMPILE_CLI_EXIT_NOT_EXECUTED: i32 = 3;
-
 impl CompileDisposition {
     /// The single word every rendering of this run carries, so one line is self-describing.
     pub fn tag(&self) -> &'static str {
