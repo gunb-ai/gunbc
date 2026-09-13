@@ -26,7 +26,8 @@ import v2.workflow.legacy_repair_observation {
   LegacyRepairObservation,
   LegacyRepairObservationRow,
   LegacyRepairObservationSubject,
-  repair_site_roster_identity
+  repair_site_roster_identity,
+  repair_subject_field_label
 }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
