@@ -35,9 +35,11 @@ import gunbc.public_workload_census {
   effect_disposition, CoverageUpload, WorkflowArtifactUpload,
   RemovedFromBothRealizations, RetainedAndTimed,
   workload_census, selected_workloads, correctness_admitted_workloads,
-  rejected_candidates, unresolved_candidates,
+  rejected_candidates, unresolved_candidates, census_contains_subject,
   candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
-  candidate_openobserve_amd64, candidate_biome_blob_mismatch_control,
+  candidate_openobserve_amd64, candidate_openobserve_manifest,
+  candidate_biome_test_windows, candidate_biome_test_macos, candidate_openobserve_summary,
+  candidate_biome_blob_mismatch_control,
   candidate_biome_matrix_selector_mismatch_control,
   candidate_biome_job_key_mismatch_control,
   candidate_biome_job_key_titlecase_uninspected_control,
@@ -89,9 +91,15 @@ test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
 }
 
 test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
-  count(rejected_candidates()) >= 2
-    && count(unresolved_candidates()) >= 2
-    && count(workload_census) == count(selected_workloads()) + count(rejected_candidates()) + count(unresolved_candidates())
+  census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_amd64)
+    && census_contains_subject(rows: rejected_candidates(), needle: candidate_openobserve_manifest)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_biome_test_windows)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_biome_test_macos)
+    && census_contains_subject(rows: unresolved_candidates(), needle: candidate_openobserve_summary)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_biome_test)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_pdns_dnsdist_arm)
+    && census_contains_subject(rows: selected_workloads(), needle: candidate_openobserve_arm_build)
+    && !census_contains_subject(rows: selected_workloads(), needle: candidate_biome_blob_mismatch_control)
 }
 
 test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {

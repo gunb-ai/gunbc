@@ -1283,8 +1283,9 @@ data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidat
   replay: ReplayAdmitted { note: replay_derivation_note },
   spend: SpendUnobserved { obligation: spend_unobserved_note },
   trial: trial_authorization_from_census(),
-  selection: CandidateRejected {
-    reason: "identity-join RED: observed head differs from inspected_commit and the workflow blob at that head is not the inspected blob",
+  selection: SelectedWorkload {
+    rank: 99,
+    complementarity: "identity-join RED: an authored SelectedWorkload on a mismatched run must not enter selected_workloads",
   },
 }
 
@@ -1500,9 +1501,42 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_biome_multi_label_control,
 ]
 
+fn observed_run_is_the_inspected_workload(c: WorkloadCandidate) -> Bool {
+  match candidate_run_identity(c: c) {
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => true
+    WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } => true
+    RunIdentityMismatched { cause } => false
+    RunIdentityUnresolved { cause } => false
+  }
+}
+
+fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandidate) -> Bool {
+  count(filter(rows, r =>
+    (r.repository as String) == (needle.repository as String)
+      && (r.job_key as String) == (needle.job_key as String)
+      && (r.workflow_path as String) == (needle.workflow_path as String)
+      && r.inspected_commit == needle.inspected_commit
+      && r.matrix_selector == needle.matrix_selector
+      && (r.workflow_blob_sha as String) == (needle.workflow_blob_sha as String)
+      && (r.job_display_name as String) == (needle.job_display_name as String)
+      && match r.observed {
+        JobRunObserved { job: rj, repository: _, workflow_path: _, workflow_blob_sha_at_head: rb, head_sha: rh, correctness: _ } =>
+          match needle.observed {
+            JobRunObserved { job: nj, repository: _, workflow_path: _, workflow_blob_sha_at_head: nb, head_sha: nh, correctness: _ } =>
+              (rb as String) == (nb as String) && rh == nh && rj.id == nj.id
+            NoRunObserved { obligation } => false
+          }
+        NoRunObserved { obligation: a } => match needle.observed {
+          NoRunObserved { obligation: b } => a == b
+          JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => false
+        }
+      }
+  )) == 1
+}
+
 fn selected_workloads() -> List<WorkloadCandidate> {
   filter(workload_census, c => match c.selection {
-    SelectedWorkload { rank, complementarity } => true
+    SelectedWorkload { rank, complementarity } => observed_run_is_the_inspected_workload(c: c)
     CandidateRejected { reason } => false
     CandidateUnresolved { obligation } => false
   })
