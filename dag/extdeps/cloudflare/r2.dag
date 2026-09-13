@@ -31,6 +31,41 @@ data r2_s3_api_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data r2_data_location_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/reference/data-location"
+  }
+}
+
+data r2_how_r2_works_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/how-r2-works"
+  }
+}
+
+data r2_us_jurisdiction_changelog_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/changelog/post/2026-08-17-r2-us-jurisdiction"
+  }
+}
+
+data r2_create_bucket_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create"
+  }
+}
+
+data r2_get_bucket_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/get"
+  }
+}
+
 data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
 
 // THE READ ID IS THE ONE PERMISSION GROUP ID THIS MODULE PINS, AND THE WRITE ID IS DELIBERATELY NOT
@@ -99,12 +134,22 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [r2_s3_api_citation]
+  further_citations: [
+    r2_s3_api_citation,
+    r2_data_location_authority,
+    r2_how_r2_works_authority,
+    r2_us_jurisdiction_changelog_authority,
+    r2_create_bucket_authority,
+    r2_get_bucket_authority,
+  ]
 }
+// THE FIVE ARMS ARE THE CREATE/GET BUCKET JURISDICTION VALUE SET (r2_create_bucket_location_hint_reading,
+// r2_get_bucket_location_reading). Host suffixes follow the same wire token as eu/us/fedramp.
 type R2Jurisdiction
   = R2JurisdictionDefault
   | R2JurisdictionEu
   | R2JurisdictionFedramp
+  | R2JurisdictionFedrampHigh
   | R2JurisdictionUs
 
 fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
@@ -112,6 +157,7 @@ fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
     R2JurisdictionDefault => "default"
     R2JurisdictionEu => "eu"
     R2JurisdictionFedramp => "fedramp"
+    R2JurisdictionFedrampHigh => "fedramp-high"
     R2JurisdictionUs => "us"
   }
 }
@@ -126,6 +172,7 @@ fn r2_s3_endpoint_host(endpoint: R2S3Endpoint) -> String {
     R2JurisdictionDefault => join([endpoint.account_id, ".r2.cloudflarestorage.com"], "")
     R2JurisdictionEu => join([endpoint.account_id, ".eu.r2.cloudflarestorage.com"], "")
     R2JurisdictionFedramp => join([endpoint.account_id, ".fedramp.r2.cloudflarestorage.com"], "")
+    R2JurisdictionFedrampHigh => join([endpoint.account_id, ".fedramp-high.r2.cloudflarestorage.com"], "")
     R2JurisdictionUs => join([endpoint.account_id, ".us.r2.cloudflarestorage.com"], "")
   }
 }
@@ -329,9 +376,116 @@ fn r2_object_url(locator: R2ObjectLocator) -> String {
   )
 }
 
+// LOCATION AND RESIDENCY TRANSCRIPTIONS FOR THIS SAME PRODUCT. They were briefly a second module
+// (extdeps.cloudflare.r2_data_location) whose subject was a wrapper around one reading. R2 is one
+// independently versioned product; DESIGN section 3's external-upstream rule does not mint a
+// second module authority per documentation page. The tokens-page default-jurisdiction sentence
+// cites this module's existing anchor rather than a parallel ExternalAuthority for the same URI.
+//
+// THERE IS NO CloudflarePublishedReading. Dated attestation is FactCitation (fact + authority);
+// the transcription is the cited NonEmptyStr. A second as-of record would remint the carrier
+// r2_tokens_doc_as_of's frontier already named. Company DPA and subprocessors live on
+// extdeps.vendor.cloudflare, not under R2S3Endpoint.
+data r2_data_location_reading: NonEmptyStr = "When you create a new bucket, the data location is set to Automatic by default. Currently, this option chooses a bucket location in the closest available region to the create bucket request based on the location of the caller. Location Hints are optional parameters you can provide during bucket creation to indicate the primary geographical location you expect data will be accessed from. Location Hints are a best effort and not a guarantee, and they should only be used as a way to optimize performance. Available hints: wnam Western North America, enam Eastern North America, weur Western Europe, eeur Eastern Europe, apac Asia-Pacific, oc Oceania. Jurisdictional Restrictions guarantee objects in a bucket are stored within a specific jurisdiction. Use Jurisdictional Restrictions when you need to ensure data is stored and processed within a jurisdiction to meet data residency requirements. Available jurisdictions: eu European Union, fedramp FedRAMP, us United States. The following services do not interact with R2 resources with assigned jurisdictions: Logpush. Once an R2 bucket is created, the jurisdiction cannot be changed. Page last updated Aug 19, 2026. Read 2026-09-12."
+
+data r2_data_location_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_data_location_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_data_location_authority,
+}
+
+data r2_how_r2_works_reading: NonEmptyStr = "R2 Gateway: The entry point for all API requests that handles authentication and routing logic. This service is deployed across Cloudflare's global network via Cloudflare Workers. Metadata Service: A distributed layer built on Durable Objects used to store and manage object metadata. Distributed Storage Infrastructure: The underlying infrastructure that persistently stores encrypted object data. On write, the Gateway determines which storage cluster to write the encrypted data to within the location set for the bucket. The encrypted data is written and stored in the distributed storage infrastructure, and replicated within the region (e.g. ENAM) for durability. On read, if the object is not in the tiered read cache, it retrieves the object from one of the distributed storage data centers within the region that holds the object data. Page last updated Apr 21, 2026. Read 2026-09-12."
+
+data r2_how_r2_works_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_how_r2_works_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_how_r2_works_authority,
+}
+
+data r2_us_jurisdiction_changelog_reading: NonEmptyStr = "New us jurisdiction for R2. R2 now supports a us jurisdiction, which guarantees that bucket data is stored and processed within the United States. Use this jurisdiction when you need explicit US data residency guarantees. Use the jurisdiction-specific S3 endpoint https://<ACCOUNT_ID>.us.r2.cloudflarestorage.com. Once an R2 bucket is created, its jurisdiction cannot be changed. Posted 2026-08-17. Read 2026-09-12."
+
+data r2_us_jurisdiction_changelog_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_us_jurisdiction_changelog_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_us_jurisdiction_changelog_authority,
+}
+
+data r2_tokens_default_jurisdiction_reading: NonEmptyStr = "A specific bucket is represented as com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>. JURISDICTION: The jurisdiction where the R2 bucket lives. For buckets not created in a specific jurisdiction this value will be default. Read 2026-09-12."
+
+data r2_tokens_default_jurisdiction_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_tokens_default_jurisdiction_reading",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor,
+}
+
+data r2_create_bucket_location_hint_reading: NonEmptyStr = "Create Bucket POST /accounts/\{account_id\}/r2/buckets. Body parameter locationHint, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Header cf-r2-jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
+
+data r2_create_bucket_location_hint_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_create_bucket_location_hint_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_create_bucket_authority,
+}
+
+data r2_get_bucket_location_reading: NonEmptyStr = "Get Bucket GET /accounts/\{account_id\}/r2/buckets/\{bucket_name\}. Result field location, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Result field jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
+
+data r2_get_bucket_location_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "r2_get_bucket_location_reading",
+    field: WholeDeclaration
+  },
+  authority: r2_get_bucket_authority,
+}
+
+// THE READINGS ARE ONE CLOSURE. product.supplier.cloudflare_r2 hashes these lists (and
+// r2_tokens_doc_as_of) into ProviderRouteFacts.facts_revision, so a changed transcription would
+// be a different facts row rather than a silent edit behind a pinned string. That hash is not
+// a production consumer of the pin: no origin ProviderRoute is minted, so the as-of frontier
+// row remains. Automatic placement is recorded IN r2_data_location_reading; it is not a second
+// model-scope subject and not a value of ProviderRoute.region.
+fn r2_published_location_readings() -> List<NonEmptyStr> {
+  [
+    r2_data_location_reading,
+    r2_how_r2_works_reading,
+    r2_us_jurisdiction_changelog_reading,
+    r2_tokens_default_jurisdiction_reading,
+    r2_create_bucket_location_hint_reading,
+    r2_get_bucket_location_reading,
+  ]
+}
+
+fn r2_published_location_citations() -> List<FactCitation> {
+  [
+    r2_data_location_citation,
+    r2_how_r2_works_citation,
+    r2_us_jurisdiction_changelog_citation,
+    r2_tokens_default_jurisdiction_citation,
+    r2_create_bucket_location_hint_citation,
+    r2_get_bucket_location_citation,
+  ]
+}
+
+
 // THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
 // r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the
-// consumer the row named. The list is the membership of what remains.
+// consumer the row named. The list is the membership of what remains. r2_tokens_doc_as_of stays:
+// the digest that cites it is reached only from the dead ProviderRouteObserved arm and the claim
+// witness, which is the unread-outside-witness condition the row already recorded.
 data cloudflare_r2_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
