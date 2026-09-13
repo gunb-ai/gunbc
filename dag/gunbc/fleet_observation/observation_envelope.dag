@@ -249,42 +249,73 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
                 CoverageGapContinuityShortOfRange { verified_through: verified, requested_end: asked }
               ContinuityPositionsIncomparable { left: left, right: right } =>
                 CoverageGapPositionsIncomparable { left: left, right: right }
-              ContinuityCoversRange =>
+              ContinuityCoversRange { reach: reach } =>
                 match compare_positions(a: envelope.chunk.range.first, b: requested.first) {
                   PositionIncomparable { left: left, right: right } =>
                     CoverageGapPositionsIncomparable { left: left, right: right }
                   PositionAfter =>
                     CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
                   PositionBefore =>
-                    if chunk_byte_count(chunk: envelope.chunk) > 0 {
-                      match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
-                        PositionIncomparable { left: l2, right: r2 } =>
-                          CoverageGapPositionsIncomparable { left: l2, right: r2 }
-                        PositionAfter =>
-                          CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-                        PositionBefore => SourceBytesObserved { digest: envelope.chunk.payload_digest }
-                        PositionSame => SourceBytesObserved { digest: envelope.chunk.payload_digest }
-                      }
-                    } else {
-                      SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
-                    }
+                    payload_fact_for_covered_start(envelope: envelope, requested: requested, requested_end: requested_end, reach: reach)
                   PositionSame =>
-                    if chunk_byte_count(chunk: envelope.chunk) > 0 {
-                      match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
-                        PositionIncomparable { left: l2, right: r2 } =>
-                          CoverageGapPositionsIncomparable { left: l2, right: r2 }
-                        PositionAfter =>
-                          CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-                        PositionBefore => SourceBytesObserved { digest: envelope.chunk.payload_digest }
-                        PositionSame => SourceBytesObserved { digest: envelope.chunk.payload_digest }
-                      }
-                    } else {
-                      SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
-                    }
+                    payload_fact_for_covered_start(envelope: envelope, requested: requested, requested_end: requested_end, reach: reach)
                 }
             }
         }
       }
+  }
+}
+
+// THE SAME END CHECK ON BOTH BRANCHES, WHICH IT USED TO HAVE ON ONLY ONE.
+//
+// A non-empty chunk was required to cover the requested end; an EMPTY one was not, so a zero-length
+// chunk took the silence arm on the strength of envelope.continuity alone. That is the hole this whole
+// lane exists to close, reached the long way round: silence licensed by a SEPARATELY AUTHORED field
+// rather than by this chunk accounting for the range asked about. The seal on SilenceProof only stops
+// the arm being SPELLED; it never bound the evidence to the chunk.
+//
+// AND THE CONSEQUENCE IS WORTH STATING BECAUSE IT LOOKS LIKE A LIMITATION AND IS ACTUALLY THE MODEL
+// BEING HONEST: offsets here ARE byte positions, so a range of length L that is covered necessarily
+// CONTAINS L bytes. A zero-length chunk can therefore only cover a zero-length range, and
+// SourceProducedNoBytesInRange over a wider one is not something a single-chunk envelope can support.
+// It never could; the missing check was hiding that rather than enabling it.
+//
+// REACH MUST EQUAL THE REQUESTED END, not merely pass it. Continuity verified FURTHER than the range
+// asked about says the stream DID advance beyond it, and those later bytes are not in this envelope --
+// so borrowing that reach to mint silence is exactly the cross-chunk fabrication found in the green
+// control. Equality is what says the committed bytes stop here.
+fn payload_fact_for_covered_start(
+  envelope: ObservationEnvelope,
+  requested: SourceStreamRange,
+  requested_end: StreamPosition,
+  reach: StreamPosition,
+) -> SourceByteFact {
+  match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
+    PositionIncomparable { left: l, right: r } =>
+      CoverageGapPositionsIncomparable { left: l, right: r }
+    PositionAfter =>
+      CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+    PositionBefore => observed_or_silent(envelope: envelope, requested: requested, requested_end: requested_end, reach: reach)
+    PositionSame => observed_or_silent(envelope: envelope, requested: requested, requested_end: requested_end, reach: reach)
+  }
+}
+
+fn observed_or_silent(
+  envelope: ObservationEnvelope,
+  requested: SourceStreamRange,
+  requested_end: StreamPosition,
+  reach: StreamPosition,
+) -> SourceByteFact {
+  if chunk_byte_count(chunk: envelope.chunk) > 0 {
+    SourceBytesObserved { digest: envelope.chunk.payload_digest }
+  } else {
+    match compare_positions(a: reach, b: requested_end) {
+      PositionSame => SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
+      PositionAfter => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+      PositionBefore => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+      PositionIncomparable { left: l, right: r } =>
+        CoverageGapPositionsIncomparable { left: l, right: r }
+    }
   }
 }
 

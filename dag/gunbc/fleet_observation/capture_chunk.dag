@@ -601,7 +601,7 @@ fn continuity_walk(
 // is worse than saying nothing, because it is a positive, plausible, actionable claim. It is the class
 // this branch filed, in the position code the branch added to fix a different instance of it.
 type ContinuityCoverage
-  = ContinuityCoversRange
+  = ContinuityCoversRange { reach: StreamPosition }
   | ContinuityNotEstablished { continuity: StreamContinuity }
   | ContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
   | ContinuityPositionsIncomparable { left: SourceStreamId, right: SourceStreamId }
@@ -614,8 +614,8 @@ fn continuity_covers(continuity: StreamContinuity, through: StreamPosition) -> C
       ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
     ContinuityEstablished { reach: reach } =>
       match compare_positions(a: through, b: reach.verified_through) {
-        PositionBefore => ContinuityCoversRange
-        PositionSame => ContinuityCoversRange
+        PositionBefore => ContinuityCoversRange { reach: reach.verified_through }
+        PositionSame => ContinuityCoversRange { reach: reach.verified_through }
         PositionAfter =>
           ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
         PositionIncomparable { left: left, right: right } =>
