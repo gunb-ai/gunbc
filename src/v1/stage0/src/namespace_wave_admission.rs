@@ -1769,57 +1769,30 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
-/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
-/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
-/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
-/// narrowing, which an admission row would have recorded as an intent -- and these two are the
-/// real transitions.
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
 ///
-/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
-/// drags the whole module into the candidate set for every name it declares, so
-/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
-/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
-/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
-/// authored region, so the removed candidate could not have won either way. What narrowed is the
-/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
 ///
-/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
-/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
-/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
-/// declaring module under no spelling at all, so the name reached its declaration only through
-/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
-/// already asserted.
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
 ///
-/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
-/// stop being producible, and CONSUMED comes due on the roster's next touch.
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &[
-                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-                "extdeps.shell",
-                "extdeps.tools.grep",
-                "extdeps.tools.sed",
-                "extdeps.tools.xorriso",
-            ],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "Filesystem",
-            expected_candidates: &["extdeps.filesystem.filesystem_io"],
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
     // gunbc#11056 BuildPathTreatment relocation (2026-09-13). The coproduct and its three
     // constructors moved from v2.compiler.self_host.ancestry to v2.compiler.self_host.generation
     // so NativeGeneration.build_path_treatment and GenerationIdentity.build_configuration hash
