@@ -425,7 +425,7 @@ fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection
         json_kv(key: "refused", value: json_bool(b: true)),
         json_kv(key: "detail", value: json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       serialize_json(v: json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
         json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),

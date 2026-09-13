@@ -30,7 +30,6 @@ import gunbc.roadmap_authority {
   AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
-  withheld_node_ids_from_live_history, WithheldNodeIdsProjected, WithheldNodeIdsProjectionRefused,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
@@ -1252,7 +1251,7 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
         ],
         launch: launch,
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: _ } =>
       roadmap_page_impl(
         doc: doc,
         merged: authored_merged_prs(),
@@ -1312,38 +1311,20 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         standings: standings,
         launch: launch,
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
-          roadmap_daily_workspace_page_impl_for_accepted(
-            doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
-            merged: [],
-            accepted_ids: [],
-            withheld: [],
-            main_prefix: [
-              dashboard_instance_banner(),
-              roadmap_authority_refusal_markup(detail: withheld_detail),
-            ],
-            attempts: attempts,
-            attempts_refused: attempts_refused,
-            standings: standings,
-            launch: launch,
-          )
-        WithheldNodeIdsProjected { ids: withheld } =>
-          roadmap_daily_workspace_page_impl_for_accepted(
-            doc: doc,
-            merged: authored_merged_prs(),
-            accepted_ids: accepted,
-            withheld: withheld,
-            main_prefix: [
-              dashboard_instance_banner(),
-            ],
-            attempts: attempts,
-            attempts_refused: attempts_refused,
-            standings: standings,
-            launch: launch,
-          )
-      }
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
+      roadmap_daily_workspace_page_impl_for_accepted(
+        doc: doc,
+        merged: authored_merged_prs(),
+        accepted_ids: accepted,
+        withheld: withheld,
+        main_prefix: [
+          dashboard_instance_banner(),
+        ],
+        attempts: attempts,
+        attempts_refused: attempts_refused,
+        standings: standings,
+        launch: launch,
+      )
   }
 }
 

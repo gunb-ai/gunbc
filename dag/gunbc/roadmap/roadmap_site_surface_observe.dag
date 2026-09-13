@@ -60,7 +60,7 @@ fn subject_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a64S
         tag: "roadmap-site-surface-subject-refused/v1" as NonEmptyStr,
         payload: content_hash_atom(value: detail as NonEmptyStr),
       )
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+    RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: _ } =>
       content_hash_combine_structural(
         left: acceptance_identity_from_accepted(accepted: accepted),
         right: content_hash_combine_structural(

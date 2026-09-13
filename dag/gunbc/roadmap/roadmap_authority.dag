@@ -3162,8 +3162,14 @@ type AcceptedRoadmapNodeIdsProjection
   = AcceptedRoadmapNodeIdsProjected { ids: List<RoadmapNodeId> }
   | AcceptedRoadmapNodeIdsProjectionRefused { detail: String }
 
+// withheld rides next to accepted so a caller-supplied plan is not re-read from the public
+// carrier (the same law the forecast fold already states for accepted).
 type RoadmapAuthorityProjection
-  = RoadmapAuthorityProjected { doc: RoadmapDocument, accepted: List<RoadmapNodeId> }
+  = RoadmapAuthorityProjected {
+      doc: RoadmapDocument,
+      accepted: List<RoadmapNodeId>,
+      withheld: List<RoadmapNodeId>,
+    }
   | RoadmapAuthorityProjectionRefused { detail: String }
 
 fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
@@ -3736,6 +3742,7 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
           ],
         },
         accepted: accepted,
+        withheld: withheld,
       }
   }
 }
@@ -3759,6 +3766,7 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
           )],
         },
         accepted: accepted,
+        withheld: withheld,
       }
   }
 }
@@ -3792,22 +3800,12 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
           section_prose(content: concat("roadmap acceptance projection refused: ", detail)),
         ],
       }
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
-          RoadmapSection {
-            title: "Active deliverables — dependency order",
-            elements: [
-              section_prose(content: concat("roadmap acceptance projection refused: ", withheld_detail)),
-            ],
-          }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          active_section_for_acceptance(
-            focus: focus,
-            accepted: accepted,
-            withheld: withheld,
-          )
-      }
+    RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: withheld } =>
+      active_section_for_acceptance(
+        focus: focus,
+        accepted: accepted,
+        withheld: withheld,
+      )
   }
 }
 
@@ -4554,7 +4552,7 @@ fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
 
 fn roadmap_authority() -> RoadmapDocument {
   match roadmap_authority_projection() {
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } => doc
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => doc
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_authority_refusal_document(detail: detail)
   }
@@ -4566,7 +4564,7 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       concat("# roadmap unavailable\n\n", concat(detail, "\n"))
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       serialize_markdown_source(
         doc: project_roadmap_to_markdown(
           doc: doc,

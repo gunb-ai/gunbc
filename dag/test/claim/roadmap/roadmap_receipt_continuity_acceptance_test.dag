@@ -357,12 +357,12 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
   match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) == 0
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) == 0
   }
     && match roadmap_authority_projection_from_carrier_text(
       text: receipt_continuity_acceptance_carrier_fixture_text,
     ) {
-      RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) > 0
+      RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
       RoadmapAuthorityProjectionRefused { detail: _ } => false
     }
 }
@@ -377,7 +377,7 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
     && string_contains(s: refused_dispatch, pattern: "\"refused\": true")
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
     && match projected {
-      RoadmapAuthorityProjected { doc: _, accepted: _ } => {
+      RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => {
         let dispatch = roadmap_dispatch_file_content_for_projection(proj: projected)
         string_contains(s: dispatch, pattern: "\"brief_template\": ")
           && string_contains(s: dispatch, pattern: "\"dispatch\": ")

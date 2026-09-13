@@ -3404,7 +3404,7 @@ fn belt_run_once_in(
           audit_outcomes: audit_outcomes,
         }
       }
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       belt_tick_for_instance(
         instance: instance,
         state: roadmap_belt_production_spawn_mode,
@@ -6030,7 +6030,7 @@ fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       AuthorityProjectionRefused { detail: detail }
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       belt_find_node_in(nodes: doc_all_nodes(doc: doc), node_id: node_id)
   }
 }
@@ -6244,7 +6244,7 @@ fn belt_launch_host_standing_for_page_over(
   let pre = belt_launch_host_standing(instance: instance)
   match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
-    RoadmapAuthorityProjected { doc, accepted: _ } => {
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => {
       let graph = launch_graph_of_document(doc: doc)
       let merged = authored_merged_prs()
       match belt_page_sessions_need(standing: pre, graph: graph, merged: merged, nodes: doc_all_nodes(doc: doc)) {
