@@ -761,7 +761,7 @@ fn refuse_if_genesis_already_executed(workspace: &Path) -> Result<(), String> {
 
 /// ONE-TIME MIGRATION GENESIS: V1SeedEmitter → NativeGeneration 0. A second genesis
 /// is a refusal. The ordinary native route never calls this.
-pub(crate) fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
+pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     let workspace = super::process_workspace_root();
     refuse_if_genesis_already_executed(&workspace)?;
     let probe_root = super::lane_emit_compile_probe_root();
