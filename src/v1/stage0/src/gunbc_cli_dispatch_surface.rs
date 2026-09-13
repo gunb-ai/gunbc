@@ -769,6 +769,50 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
+    verb: "measure-root-demand".to_string(),
+    variant: "MeasureRootDemand".to_string(),
+    doc: Rc::new(vec!["Measure a root's whole-root compile demand under an enforceable cgroup memory limit.".to_string(), "The only product is a receipt (gunbc.root_demand_measurement); no artifact, no verdict.".to_string()]),
+    operands: Rc::new(vec![]),
+    options: Rc::new(vec![Rc::new(CliOptionRow {
+    field: "source_roots".to_string(),
+    long: "source-root".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliRepeated,
+    doc: Rc::new(vec!["The primary root to measure first, then its dependency pools in order.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "repository".to_string(),
+    long: "repository".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Repository identity of the root, declared by the caller.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "receipt".to_string(),
+    long: "receipt".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Where the parent writes the measurement receipt.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "measurement_child".to_string(),
+    long: "measurement-child".to_string(),
+    value: Rc::new(CliOptionValue::CliToggleValue),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Set by the measuring parent on the child it observes; the child emits only its census line.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+})]),
+    realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
+    symbol: "measure_root_demand".to_string(),
+}),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
     doc: Rc::new(vec!["Run one target by its absolute label and report the standing its own".to_string(), "producer answers in. The label is exact: a target PATTERN refuses, and".to_string(), "an unbound or unknown target refuses rather than reporting a pass.".to_string()]),
