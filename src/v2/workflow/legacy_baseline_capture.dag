@@ -139,7 +139,7 @@ type LegacyBaselineCapturePhase
   | RepairCensusPhase
 
 type LegacyBaselineCaptureRefusal
-  = ObserverNeverReachedDecision
+  = ObserverNeverReachedDecision {}
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -368,6 +368,6 @@ fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
 
 fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
-    ObserverNeverReachedDecision => "the observer never reached its decision stage"
+    ObserverNeverReachedDecision {} => "the observer never reached its decision stage"
   }
 }
