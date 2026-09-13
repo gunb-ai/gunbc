@@ -817,11 +817,20 @@ type CarrierStanding =
 // a wall-clock number instead would be a literal with no independent referent (§5), while this
 // bound is already enforced by an executing mechanism.
 //
-// The second arm exists because the review asked for "a due event OR a deadline" and a later
-// policy may want the other one; it is not inhabited today and the row says which it uses.
+// ONE ARM, BECAUSE THERE IS ONE POLICY. An earlier head declared a second,
+// `OwedByDeadline { at: Timestamp }`, justified as "a later policy may want the other one" -- which
+// names no consumer and no trigger, so it was the dangling declaration §3c refuses, and this same
+// block refuses it two paragraphs up for the condition fields. Same test, opposite answer, same
+// file (review 65483). Deleted: the arm count follows the inhabitants, not the imagination, and a
+// policy that wants a deadline adds the arm together with the consumer that reads it.
+//
+// The type survives the deletion rather than collapsing into prose, because the runway is a STATUS
+// of this boundary and §4c puts status in a typed carrier -- it is citable, matchable, and
+// growable, which a sentence is not. Spelled with the LEADING PIPE, the form `std.content_hash`
+// `HashFamily` uses: without it a one-variant declaration parses as a type ALIAS to an undefined
+// name, which is what the first attempt at this deletion produced.
 type PendingRunway =
-    OwedByRosterNextTouch
-  | OwedByDeadline { at: Timestamp }
+  | OwedByRosterNextTouch
 
 // A CONDITION'S VERDICT, with the three answers kept apart. `NotYetDue` is the arm whose absence
 // made an earlier draft of this row forbid its own sequence.
