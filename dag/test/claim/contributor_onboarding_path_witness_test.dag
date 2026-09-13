@@ -1,0 +1,287 @@
+module test.claim.contributor_onboarding_path
+
+import gunbc.contributor_onboarding_path {
+  OnboardingStep,
+  OnboardingObstacle,
+  OnboardingBlocker,
+  SelfServe,
+  NeedsCredential,
+  NeedsOperatorDecision,
+  NeedsMachine,
+  ObstacleDisposition,
+  RemediedByDerivation,
+  DocumentedRemedy,
+  OperatorGated,
+  onboarding_steps,
+  onboarding_obstacles,
+  onboarding_design_reading,
+  DesignReading,
+  DesignReadingPriority,
+  FirstDay,
+  BeforeFirstCommit,
+  WhenItBites,
+  readings_have_a_first_day,
+  first_day_readings,
+  reading_priority_is_first_day,
+  ordinals_are_gapless,
+  step_ordinals_are_gapless,
+  obstacles_with_undeclared_step,
+  steps_blocked_on_others,
+  operator_gated_obstacles,
+  obstacles_undiscoverable_from_symptom,
+  step_id_is_declared,
+  blocker_is_self_serve,
+  disposition_is_operator_gated,
+  expected_contributor_onboarding_md
+}
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.witness_floor_workflow { witness_floor_required_bins }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  ContributorOnboardingArtifact,
+  DesignRungDropsArtifact,
+  GitignoreArtifact,
+  artifact_path,
+  artifact_location,
+  artifact_is_committed
+}
+import tools.docs_projection_gate {
+  docs_projection_producer,
+  artifact_is_docs_located,
+  artifact_has_docs_producer,
+  docs_located_artifacts,
+  committed_docs_located_artifacts,
+  docs_projection_producer_coverage_over
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn string_contains_marker(haystack: String, marker: String) -> Bool {
+  string_contains(s: haystack, pattern: marker)
+}
+
+// POSITIVE CONTROL FOR THE ORDER. Without it the discriminating arms below could pass on a
+// predicate that reported every ordering broken.
+test fn the_declared_path_is_a_gapless_total_order() -> Bool {
+  ordinals_are_gapless() && count(onboarding_steps) > 0
+}
+
+// THE DISCRIMINATING RED FOR THE ORDER. A duplicated ordinal must be refused, and the fixture
+// authors the duplicate rather than hoping the live roster contains one.
+// THE FIXTURES ARE AUTHORED, NOT SLICED OFF THE LIVE ROSTER. The predicate under test answers
+// for an arbitrary list, so the discriminating inputs are two-element lists written here: one
+// well-ordered, one with a duplicate, one with a gap. Deriving them from onboarding_steps would
+// make the RED depend on what the live roster happens to contain, which is the input the roster
+// is free to change.
+fn fixture_step(ordinal: Int, id: String) -> OnboardingStep {
+  OnboardingStep {
+    ordinal: ordinal,
+    id: id as NonEmptyStr,
+    goal: "a fixture step" as NonEmptyStr,
+    command: "",
+    verification: "a fixture verification" as NonEmptyStr,
+    blocker: SelfServe,
+  }
+}
+
+data fixture_well_ordered: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 2, id: "second"),
+]
+
+data fixture_duplicated_ordinal: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 1, id: "second"),
+]
+
+data fixture_gapped_ordinal: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 3, id: "second"),
+]
+
+// THE DISCRIMINATING RED FOR THE ORDER, with its positive control beside it so the arm cannot be
+// satisfied by a predicate that refuses everything.
+test fn a_duplicated_ordinal_is_refused() -> Bool {
+  step_ordinals_are_gapless(steps: fixture_well_ordered)
+    && !step_ordinals_are_gapless(steps: fixture_duplicated_ordinal)
+}
+
+// AND A GAP IS REFUSED TOO, which a duplicate check alone does not establish: two steps numbered
+// 1 and 3 are distinct and still leave a reader unable to tell whether they missed one.
+test fn a_gap_in_the_ordinals_is_refused() -> Bool {
+  !step_ordinals_are_gapless(steps: fixture_gapped_ordinal)
+}
+
+// EVERY OBSTACLE IS REACHABLE FROM THE PATH. An identity join over step ids, not a count: an
+// obstacle filed against a step that does not exist is invisible exactly when it fires, and a
+// count of obstacles cannot see it.
+test fn every_obstacle_names_a_declared_step() -> Bool {
+  count(obstacles_with_undeclared_step()) == 0 && count(onboarding_obstacles) > 0
+}
+
+// THE DISCRIMINATING RED FOR THE JOIN. A step id that is not declared must not answer true, or
+// the arm above is satisfied by a predicate that accepts everything.
+test fn an_undeclared_step_id_is_not_accepted() -> Bool {
+  !step_id_is_declared(id: "no-such-step") && step_id_is_declared(id: "build")
+}
+
+// THE BUS-FACTOR CENSUS IS NON-EMPTY AND IS REPORTED RATHER THAN ASSERTED AWAY.
+//
+// This arm deliberately does NOT assert that the path is fully self-serve, because it is not:
+// pushing needs a credential and merging is an operator decision. A witness asserting zero
+// blocked steps would be a witness that had to be deleted the moment it told the truth. What it
+// asserts is that the census is populated and that every blocked step carries the KIND of help it
+// needs -- a blocked step whose blocker said only "blocked" would answer one number to a question
+// that needs three.
+test fn the_bus_factor_census_is_populated_and_typed() -> Bool {
+  let blocked = steps_blocked_on_others()
+  let gated = operator_gated_obstacles()
+  count(blocked) > 0
+    && count(gated) > 0
+    && fold(blocked, init: true, f: fn(acc, s) { acc && !blocker_is_self_serve(b: s.blocker) })
+    && fold(gated, init: true, f: fn(acc, o) { acc && disposition_is_operator_gated(d: o.disposition) })
+}
+
+// THE UNDISCOVERABLE OBSTACLES ARE THE POINT OF THE ROSTER, so the roster must contain some. An
+// obstacle whose error text explains itself costs minutes; one whose text points elsewhere costs
+// a day and a message to the operator. If this population were empty the roster would be
+// recording only the cheap half.
+test fn the_roster_carries_obstacles_the_error_text_does_not_explain() -> Bool {
+  count(obstacles_undiscoverable_from_symptom()) > 0
+    && count(obstacles_undiscoverable_from_symptom()) <= count(onboarding_obstacles)
+}
+
+// THE BUILD COMMAND IS THE AUTHORITY'S, REACHED THROUGH THE PROJECTION THE READER GETS.
+//
+// This is not a measure-equals-measure change detector: it drives the RENDERED DOCUMENT, which is
+// what a newcomer actually reads, and asserts the argv the build authority produces appears in it.
+// A projection that dropped the build step, or rendered a step with an empty command, goes red
+// here while every arm above stays green.
+test fn the_rendered_page_carries_the_authority_build_argv() -> Bool {
+  let md = expected_contributor_onboarding_md()
+  let argv = repo_self_build_command(bins: witness_floor_required_bins)
+  string_contains_marker(haystack: md, marker: argv)
+}
+
+// AND THE PAGE NAMES EVERY STEP IT DECLARES. A projection that renders nine of ten steps leaves a
+// reader stopping at the gap with no way to know a step was missing.
+test fn the_rendered_page_names_every_declared_step() -> Bool {
+  let md = expected_contributor_onboarding_md()
+  fold(onboarding_steps, init: true, f: fn(acc, s) {
+    acc && string_contains_marker(haystack: md, marker: (s.id as String))
+  })
+}
+
+// THE READING ORDER COVERS THE FIRST DAY AT ALL. The item's obstacle is that DESIGN.md is not a
+// first-day document; a reading order with nothing marked first-day would restate the problem.
+// THE FIRST-DAY ARM, WITH A DISCRIMINATING FIXTURE (review 64627). The previous form asserted
+// only that the roster was non-empty, so a reading order with nothing marked first-day stayed
+// green -- which is the exact state the item's obstacle describes, passed off as covered.
+data fixture_readings_without_a_first_day: List<DesignReading> = [
+  DesignReading {
+    section: "a fixture section" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "needed before a first commit" as NonEmptyStr,
+  },
+  DesignReading {
+    section: "another fixture section" as NonEmptyStr,
+    priority: WhenItBites,
+    why: "deferrable" as NonEmptyStr,
+  },
+]
+
+data fixture_readings_with_a_first_day: List<DesignReading> = [
+  DesignReading {
+    section: "a first-day section" as NonEmptyStr,
+    priority: FirstDay,
+    why: "needed before a build" as NonEmptyStr,
+  },
+]
+
+test fn the_reading_order_has_a_first_day() -> Bool {
+  readings_have_a_first_day(readings: onboarding_design_reading)
+    && count(first_day_readings()) > 0
+}
+
+test fn a_reading_order_with_no_first_day_is_refused() -> Bool {
+  readings_have_a_first_day(readings: fixture_readings_with_a_first_day)
+    && !readings_have_a_first_day(readings: fixture_readings_without_a_first_day)
+    && count(fixture_readings_without_a_first_day) > 0
+}
+
+// AND THE PRIORITY DISCRIMINATOR ITSELF IS NOT TRUE-FOR-EVERYTHING, which is what would make
+// both arms above satisfiable by a predicate that answers first-day to any row.
+test fn only_the_first_day_priority_answers_first_day() -> Bool {
+  reading_priority_is_first_day(pr: FirstDay)
+    && !reading_priority_is_first_day(pr: BeforeFirstCommit)
+    && !reading_priority_is_first_day(pr: WhenItBites)
+}
+
+// DERIVED MEMBERSHIP: THE POSITIVE CONTROL AND ITS DISCRIMINATING RED, OVER AN AUTHORED
+// POPULATION (enrolment margin, run 34711672318).
+//
+// The previous form folded the LIVE registry, which resolved every plan, autoinstall spec and
+// sudoers row to answer a question about three, and the required floor refused its enrolment as
+// measured over margin. It was also unable to go red: every docs-located variant has a producer,
+// so no hermetic input could falsify it. Handing the fold an authored population fixes both at
+// once -- the three real docs artifacts must be covered, and a non-docs artifact must REFUSE,
+// which is the arm that would have caught a producer match answering Absent for a docs path.
+//
+// What is NOT weakened: production still derives its population from the registry, and
+// docs_projection_producer_coverage refuses on the real acceptance path. This tests the predicate
+// production calls, with an input production cannot be handed.
+//
+// THE POPULATION IS ONE ROW ON PURPOSE. Asking whether a producer exists RENDERS the document,
+// because the producer match returns the bytes -- so each artifact in a fixture costs its own
+// projection. Two rows measured 110ms against the 2ms of the red below, and the enrolment margin
+// is the thing that refused this arm's predecessor. One row pairs with the red, which is all the
+// positive control owes; the claim that EVERY docs-located artifact is covered belongs to
+// production, which derives that population and refuses on the real acceptance path.
+test fn an_authored_docs_population_is_fully_covered() -> Bool {
+  match docs_projection_producer_coverage_over(artifacts: [ContributorOnboardingArtifact]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn an_artifact_with_no_producer_is_refused() -> Bool {
+  match docs_projection_producer_coverage_over(artifacts: [GitignoreArtifact]) {
+    ExitFailure { code: _, reason: _ } => true
+    ExitSuccess => false
+  }
+}
+
+// DERIVED MEMBERSHIP: THE DISCRIMINATING RED. A non-docs artifact must NOT be admitted to the
+// docs population, and must have no docs producer. Without this arm the predicate above is
+// satisfied by one that answers true for everything -- which would put .gitignore in the docs
+// comparison and report coverage it does not have.
+test fn a_non_docs_artifact_is_not_in_the_docs_population() -> Bool {
+  !artifact_is_docs_located(a: GitignoreArtifact)
+    && !artifact_has_docs_producer(a: GitignoreArtifact)
+    && artifact_is_docs_located(a: DesignRungDropsArtifact)
+}
+
+// THE NEW PROJECTION IS ACTUALLY ENROLLED, BY THE DERIVATION AND NOT BY A LITERAL. It is
+// docs-located, committed, has a producer, and therefore appears in the population main compares.
+// This is the arm that would have gone red on the state the failure-mode row predicted: an
+// artifact that compiles, ships, and is compared by nothing.
+test fn the_onboarding_projection_is_in_the_compared_population() -> Bool {
+  let a = ContributorOnboardingArtifact
+  let committed = committed_docs_located_artifacts()
+  artifact_is_docs_located(a: a)
+    && artifact_is_committed(a: a)
+    && artifact_has_docs_producer(a: a)
+    && fold(committed, init: false, f: fn(acc, c) { acc || artifact_path(a: c) == artifact_path(a: a) })
+}
+
+// THE COMPARED POPULATION IS NARROWER THAN THE WRITTEN ONE, AND THAT ASYMMETRY IS DELIBERATE.
+// regen writes every docs-located projection; main agrees only the committed ones, because
+// agreeing a NotCommitted projection would be permanently green. If these two ever became equal
+// by accident the failure-mode ledger would either be compared against absent bytes or dropped
+// from regeneration.
+test fn regen_writes_more_than_main_agrees() -> Bool {
+  count(docs_located_artifacts()) > count(committed_docs_located_artifacts())
+}
