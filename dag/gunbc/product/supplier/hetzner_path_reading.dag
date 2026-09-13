@@ -1,6 +1,9 @@
 module product.supplier.hetzner_path_reading
 
 import std.types { Bool, List, NonEmptyStr }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cloud.hetzner {
   hetzner_technical_organizational_measures_page,
@@ -20,8 +23,8 @@ import extdeps.cloud.hetzner {
 // tells researched-and-unanswered from never-looked without grepping prose. Consuming these
 // rows as ProviderPathLocated.evidence would invent an answer they explicitly do not give.
 //
-// DECLARED FRONTIER (DESIGN section 3c). Nonempty consulted on a rented ProviderDataPathClosure
-// is discharged by gunbc#11188, which cites these two reading declarations.
+// Later-change consumption of these readings as unread consulted citations is
+// hetzner_path_reading_frontier_rows, not this annotation.
 
 type HetznerPathDocumentSilence
   = LogSystemCountryUnstated
@@ -87,3 +90,27 @@ fn hetzner_path_document_silence_eq(a: HetznerPathDocumentSilence, b: HetznerPat
 fn hetzner_reading_records_silence(r: HetznerPathDocumentReading, silence: HetznerPathDocumentSilence) -> Bool {
   count(filter(r.silences, s => hetzner_path_document_silence_eq(a: s, b: silence))) == 1
 }
+
+data hetzner_path_reading_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.provider_route", decl_name: "ProviderPathStanding"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; nonempty consulted is constructible here and has no production inhabitant in this tree",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with decl_refs to hetzner_technical_organizational_measures_reading and hetzner_data_protection_overview_reading, and drops its duplicate copies of those rows. SUFFICIENT FOR: a production rented-route ProviderDataPathClosure inhabits nonempty consulted citing those declarations."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
+    )
+  ),
+]
