@@ -14,7 +14,7 @@ import gunbc.repo_ruleset {
   desired_required_contexts,
   desired_ruleset_rules,
   desired_ruleset_conditions,
-  observed_ruleset_divergences,
+  observed_ruleset_divergences_for,
   render_divergences,
   gunbc_passing_ci_ruleset_name,
   desired_strict_required_status_checks_policy,
@@ -22,7 +22,7 @@ import gunbc.repo_ruleset {
   desired_ruleset_rule_types,
   desired_merge_queue,
   desired_merge_queue_policy,
-  gunbc_merge_queue_proposal,
+  merge_queue_floor_aligned_policy,
   MergeQueueUnsigned,
   MergeQueueSignedOff,
   signed_desire_projection_refusal_for,
@@ -32,10 +32,14 @@ import gunbc.repo_ruleset {
   merge_queue_check_response_timeout,
   desired_merge_queue_standing,
   desired_bypass_actors,
+  desired_bypass_roster,
+  BypassRosterSignedOff,
+  BypassRosterUnsigned,
   required_contexts_declaration_refusals,
   repo_ruleset_ensure_decision,
   ruleset_observation_satisfies_goal,
   gunbc_passing_ci_merge_queue_policy,
+  desired_repo_ruleset_goal,
   repo_ruleset_converge_entry,
   repo_ruleset_converge_function,
 }
@@ -54,6 +58,7 @@ import extdeps.github.rulesets {
   RulesetActive,
   RulesetEvaluate,
   RulesetEnforcement,
+  RulesetTarget,
   BranchTarget,
   ThisReaderCannotBypass,
   ThisReaderCanBypassAlways,
@@ -155,8 +160,33 @@ fn desired_shaped_standing() -> RequiredStatusCheckStanding {
   required_status_check_standing(rules: desired_ruleset_rules())
 }
 
+fn divergences_against_desired(
+  name: String,
+  enforcement: RulesetEnforcement,
+  target: RulesetTarget,
+  bypass: ReaderBypassStanding,
+  include: List<String>,
+  exclude: List<String>,
+  rule_types: List<RulesetRuleType>,
+  standing: RequiredStatusCheckStanding,
+  merge_queue: MergeQueueStanding,
+) -> List<RulesetDivergence> {
+  observed_ruleset_divergences_for(
+    goal: desired_repo_ruleset_goal(),
+    name: name,
+    enforcement: enforcement,
+    target: target,
+    bypass: bypass,
+    include: include,
+    exclude: exclude,
+    rule_types: rule_types,
+    standing: standing,
+    merge_queue: merge_queue,
+  )
+}
+
 fn divergences_of_desired_shaped_observation() -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -179,7 +209,7 @@ test fn w_a_desired_shaped_observation_diverges_in_nothing() -> Bool {
 // field of the observation the positive control above passes, so a green here is a claim about
 // that field rather than about the fold being non-empty.
 test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
-  length(observed_ruleset_divergences(
+  length(divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetEvaluate,
     target: BranchTarget,
@@ -193,7 +223,7 @@ test fn w_RED_enforcement_below_active_is_a_divergence() -> Bool {
 }
 
 fn divergences_for_bypass(bypass: ReaderBypassStanding) -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -252,7 +282,7 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
       do_not_enforce_on_create: desired_do_not_enforce_on_create,
     ),
   ])
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -270,7 +300,7 @@ test fn w_RED_an_extra_required_context_is_a_divergence() -> Bool {
 // empty-observation narrow: both would be [] under a projection that returned a bare roster, and
 // only one of them means "the ruleset lost the rule that gates".
 test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -281,7 +311,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
     standing: NoRequiredStatusChecksRule,
     merge_queue: desired_merge_queue_standing(),
   )
-  let empty_roster = observed_ruleset_divergences(
+  let empty_roster = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -307,7 +337,7 @@ test fn w_RED_an_absent_status_check_rule_is_its_own_divergence() -> Bool {
 // MORE THAN ONE STATUS-CHECK RULE IS A REFUSAL, NOT A MERGE. Two rules means the upstream shape
 // moved and this module's reading of which roster gates is no longer established.
 test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
-  let ds = observed_ruleset_divergences(
+  let ds = divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -332,7 +362,7 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
 test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
   let signed = match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => false
-    MergeQueueSignedOff { policy: _, ruling: _ } => true
+    MergeQueueSignedOff { policy: _, ruling: r, aligned: _, floor_alignment: _ } => (r as String) != ""
   }
   let has_policy = match desired_merge_queue_policy() {
     Absent => false
@@ -346,16 +376,17 @@ test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
 // AND IT IS NOT A VACUOUS GATE: the proposal it holds back is the one the lane argued for. If this
 // goes red, the row above is gating something other than what the module's annotation describes.
 test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
-  merge_queue_grouping_strategy_wire_label(g: gunbc_merge_queue_proposal.grouping_strategy) == "ALLGREEN"
-    && merge_queue_merge_method_wire_label(m: gunbc_merge_queue_proposal.merge_method) == "SQUASH"
-    && merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_merge) == 1
+  let p = merge_queue_floor_aligned_policy()
+  merge_queue_grouping_strategy_wire_label(g: p.grouping_strategy) == "ALLGREEN"
+    && merge_queue_merge_method_wire_label(m: p.merge_method) == "SQUASH"
+    && merge_queue_entry_count_value(p.max_entries_to_merge) == 1
 }
 
 // THE COMMISSIONING BOUND, ASSERTED SO IT CANNOT BE RAISED SILENTLY. One composition in flight is
 // what makes a failed commissioning run name which protocol step failed rather than which of
 // several candidates was involved. The row it guards carries the trigger that retires it.
 test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
-  merge_queue_entry_count_value(gunbc_merge_queue_proposal.max_entries_to_build) == 1
+  merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_build) == 1
 }
 
 // THE TIMEOUT IS AN ORDERING, NOT A NUMBER, and this is the trap the assertion exists for. A queue
@@ -364,14 +395,14 @@ test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
 // ordering rather than 210 means raising the floor lane's timeout cannot silently invert it; a
 // literal here would have gone stale on that edit with nothing going red.
 test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bool {
-  minute_count(gunbc_merge_queue_proposal.check_response_timeout) > minute_count(witness_floor_lane_timeout)
+  minute_count(merge_queue_floor_aligned_policy().check_response_timeout) > minute_count(witness_floor_lane_timeout)
 }
 
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
 // being invisible, and it must name WHICH guarantee the live queue provides -- an undeclared
 // HEADGREEN queue and an undeclared ALLGREEN one are different facts.
 fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<RulesetDivergence> {
-  observed_ruleset_divergences(
+  divergences_against_desired(
     name: gunbc_passing_ci_ruleset_name,
     enforcement: RulesetActive,
     target: BranchTarget,
@@ -604,6 +635,14 @@ test fn w_RED_an_unobserved_bypass_roster_is_an_unknown_and_not_a_divergence() -
 
 // THE POSITIVE CONTROL: an observed empty roster contributes NO divergence, so verify does not
 // invent a finding on a ruleset that genuinely grants no bypass.
+test fn w_the_bypass_roster_carries_a_signed_ruling() -> Bool {
+  match desired_bypass_roster {
+    BypassRosterUnsigned { awaiting: _ } => false
+    BypassRosterSignedOff { actors: as_, ruling: r } =>
+      length(as_) == 1 && (r as String) != ""
+  }
+}
+
 test fn w_the_declared_bypass_roster_contributes_no_divergence() -> Bool {
   length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: desired_bypass_actors() })) == 0
 }

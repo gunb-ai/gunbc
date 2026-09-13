@@ -18,6 +18,7 @@ import extdeps.github.rulesets {
   MergeQueueConfigured,
   BypassActorRosterObservation,
 }
+import v2.std.collection { Present }
 import gunbc.repo_ruleset {
   RulesetObservation,
   RulesetObserved,
@@ -29,8 +30,8 @@ import gunbc.repo_ruleset {
   desired_merge_queue_policy,
   desired_merge_queue_standing,
   desired_bypass_actors,
-  gunbc_merge_queue_proposal,
   gunbc_passing_ci_ruleset_name,
+  merge_queue_floor_aligned_policy,
   required_status_check_standing,
   merge_queue_desire_unknowns,
   observation_unknowns,
@@ -206,7 +207,7 @@ test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
 // replacement preserves the required refusal rather than erasing the distinction.
 test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool {
   let us = merge_queue_desire_unknowns(
-    policy: Present { value: gunbc_merge_queue_proposal },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
   )
   length(us) == 1

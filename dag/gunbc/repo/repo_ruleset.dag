@@ -281,7 +281,11 @@ type MergeQueuePolicy {
 
 type MergeQueueDesire
   = MergeQueueUnsigned { proposal: MergeQueuePolicy, awaiting: DissolutionCondition }
-  | MergeQueueSignedOff { policy: MergeQueuePolicy, ruling: NonEmptyStr }
+  | MergeQueueSignedOff { policy: MergeQueuePolicy, ruling: NonEmptyStr, aligned: MergeQueuePolicy, floor_alignment: DissolutionCondition }
+
+type BypassRosterDesire
+  = BypassRosterUnsigned { awaiting: DissolutionCondition }
+  | BypassRosterSignedOff { actors: List<RulesetBypassActor>, ruling: NonEmptyStr }
 
 // THE PROPOSED SETTINGS, EACH DERIVED RATHER THAN PICKED.
 //
@@ -361,28 +365,21 @@ fn merge_queue_check_response_timeout() -> Minute {
 // available without a queue -- resolve once, at the moment of landing, and let the branch sit behind
 // its base until then -- is the same discipline enforced by hand, which is why it works and why it
 // does not scale past the lanes willing to observe it.
-data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
-  grouping_strategy: AllGreenGrouping,
-  merge_method: QueueSquash,
-  check_response_timeout: merge_queue_check_response_timeout(),
-  max_entries_to_build: merge_queue_entry_count(count: 1),
-  max_entries_to_merge: merge_queue_entry_count(count: 1),
-  min_entries_to_merge: merge_queue_entry_count(count: 1),
-  min_entries_to_merge_wait: minute(count: 5),
+fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
+  MergeQueuePolicy {
+    grouping_strategy: AllGreenGrouping,
+    merge_method: QueueSquash,
+    check_response_timeout: merge_queue_check_response_timeout(),
+    max_entries_to_build: merge_queue_entry_count(count: 1),
+    max_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge_wait: minute(count: 5),
+  }
 }
 
-// LIVE READ 2026-09-13, GET /repos/gunb-ai/gunbc/rulesets/16178731 (this session; no PUT).
-// Rules: deletion, non_fast_forward, required_status_checks (context witnesses,
-// integration_id 15368, strict false, do_not_enforce_on_create false), merge_queue
-// { merge_method SQUASH, max_entries_to_build 1, min_entries_to_merge 1,
-// max_entries_to_merge 1, min_entries_to_merge_wait_minutes 1, grouping_strategy ALLGREEN,
-// check_response_timeout_minutes 90 }. enforcement active, target branch, include
-// ~DEFAULT_BRANCH, current_user_can_bypass never. bypass_actors KEY OMITTED. updated_at
-// 2026-09-13T02:37:39.085Z. The in-force policy is these numbers so the first Noop is
-// against a read. The floor-derived proposal above (timeout 180+30, wait 5) remains the
-// alignment trigger, not tonight's live values. This GET omitted bypass_actors. The Maintain
-// always-allow grant is declared below as the operator emergency path, not as a fact this
-// GET established.
+data merge_queue_in_force_to_floor_alignment: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: operator ruling that gunbc_passing_ci_merge_queue_policy is replaced by merge_queue_floor_aligned_policy (timeout from merge_queue_check_response_timeout, wait 5). Until then the signed in-force policy is what observe_repo_ruleset / passing_ci_ruleset_observation read on 2026-09-13 for ruleset 16178731.")
+
+// In-force signed policy. Re-derive from passing_ci_ruleset_observation, not from this comment.
 data gunbc_passing_ci_merge_queue_policy: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
@@ -395,24 +392,27 @@ data gunbc_passing_ci_merge_queue_policy: MergeQueuePolicy = MergeQueuePolicy {
 
 data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
   policy: gunbc_passing_ci_merge_queue_policy,
-  ruling: "Operator direction 2026-09-13: converge branch ruleset via dag workflows after they enabled merge queue by hand on passing CI. In-force parameters are the GET of that night, not the floor-derived proposal." as NonEmptyStr,
+  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand." as NonEmptyStr,
+  aligned: merge_queue_floor_aligned_policy(),
+  floor_alignment: merge_queue_in_force_to_floor_alignment,
 }
 
-// THE BYPASS ROSTER IS AN OPERATOR DECISION, NOT A LANE DEFAULT. An empty desired roster
-// would, on the first Apply that can see bypass_actors, strip Maintain always-allow -- the
-// emergency path the operator set and used (bypass merge of #11205). Until they rule to drop
-// it, the desired roster is that grant: operator emergency path; a bypass merge is a landing
-// the composed run cannot vouch for -- recorded, not forbidden. gunbc.merge_queue_admission
-// still answers Exclusive as FALSE while this grant exists; this row does not contradict that
-// observation, it records the path. Dropping it is a one-row change once they say so.
-fn desired_bypass_actors() -> List<RulesetBypassActor> {
-  [
+data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
+  actors: [
     RulesetBypassActor {
       actor_type: github_ruleset_bypass_actor_type_repository_role,
       actor_id: github_repository_role_id_maintain,
       bypass_mode: github_ruleset_bypass_mode_always,
     }
-  ]
+  ],
+  ruling: "Operator emergency path; a bypass merge is a landing the composed run cannot vouch for — recorded, not forbidden. royal-eagle-761 2026-09-13: keep Maintain always-allow as desired until the operator rules to drop it, so the first converge is a Noop rather than stripping the path." as NonEmptyStr,
+}
+
+fn desired_bypass_actors() -> List<RulesetBypassActor> {
+  match desired_bypass_roster {
+    BypassRosterUnsigned { awaiting: _ } => []
+    BypassRosterSignedOff { actors: as_, ruling: _ } => as_
+  }
 }
 
 // THE DECLARED GOAL AS ONE VALUE. The desired side used to be reached by nullary calls from inside
@@ -435,7 +435,7 @@ fn desired_repo_ruleset_goal() -> RepositoryRulesetGoal {
 fn desired_merge_queue_policy() -> MergeQueuePolicy? {
   match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => none
-    MergeQueueSignedOff { policy: p, ruling: _ } => Present { value: p }
+    MergeQueueSignedOff { policy: p, ruling: _, aligned: _, floor_alignment: _ } => Present { value: p }
   }
 }
 
@@ -1072,31 +1072,6 @@ fn observed_ruleset_divergences_for(
     ],
     init: name_divergences(observed: name),
     f: fn(acc, more) { append(acc, items: more) },
-  )
-}
-
-fn observed_ruleset_divergences(
-  name: String,
-  enforcement: RulesetEnforcement,
-  target: RulesetTarget,
-  bypass: ReaderBypassStanding,
-  include: List<String>,
-  exclude: List<String>,
-  rule_types: List<RulesetRuleType>,
-  standing: RequiredStatusCheckStanding,
-  merge_queue: MergeQueueStanding,
-) -> List<RulesetDivergence> {
-  observed_ruleset_divergences_for(
-    goal: desired_repo_ruleset_goal(),
-    name: name,
-    enforcement: enforcement,
-    target: target,
-    bypass: bypass,
-    include: include,
-    exclude: exclude,
-    rule_types: rule_types,
-    standing: standing,
-    merge_queue: merge_queue,
   )
 }
 
