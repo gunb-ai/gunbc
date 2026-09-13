@@ -735,8 +735,20 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 //   Discharged  the follow-up landed and removed the rows. Both conditions Met; the boundary is
 //               spent.
 //   Failed      condition one was not met at the eligibility decision, or the follow-up closed
-//               unmerged, or it landed without deleting the rows. Only Failed returns the rows to
-//               the refused class.
+//               unmerged, or it landed without deleting the rows, OR THE RUNWAY EXPIRED -- the
+//               roster was touched after the carrier landed while the rows were still present.
+//               Only Failed returns the rows to the refused class.
+//
+// SO Pending IS BOUNDED AND NOT MERELY UNFAILED. Without the runway a deletion PR left open
+// forever would hold the admission forever, which is the permanent admission this boundary
+// refuses by name -- an exception whose escape is "not yet" rather than "never".
+//
+// AND Eligible NEEDS NO RUNWAY, which is the neighbouring question and is asymmetric for a
+// reason rather than by oversight: a carrier may sit Eligible indefinitely, but during Eligible
+// NO ADMISSION ROWS ARE ON MAIN. There is no exception being preserved, nothing is exempted from
+// anything, and the carrier is simply a PR nobody has enqueued. The runway exists to bound an
+// exception that EXISTS, and one only exists once the rows have landed -- which is exactly the
+// Eligible/Pending boundary. Discharged and Failed are terminal and bound nothing.
 //
 // WHO IS IN THIS LIFECYCLE: carriers adjudicated UNDER this boundary, and today that is exactly
 // one -- the gunbc#11214 specimen, Eligible. The gunbc#10940 and gunbc#11156 specimens carry
@@ -769,6 +781,25 @@ type CarrierStanding =
     Merged { as: CommitSha, at: Timestamp }
   | NotEnqueued
 
+// HOW LONG Pending MAY LAST, because an exception with no runway is not an exception. Review
+// 65465: Pending was excluded from failure and given no due event, so a deletion PR left open
+// indefinitely would preserve the admission indefinitely -- which contradicts this same row's
+// refusal of PERMANENT admissions. DESIGN §4b(3): "A compatibility exemption is not bootstrap
+// glue; it is a visible safety regression with a FINITE RUNWAY."
+//
+// THE DUE EVENT IS NOT AN INVENTED DEADLINE, it is the rule the roster already states and the
+// floor already executes: "deletion is owed on landing or the roster's NEXT TOUCH". That event
+// happens, is observed, and is reported -- every run whose base carries consumed rows prints them
+// as due for correction or deletion. Both closed specimens were in fact collected by it. Choosing
+// a wall-clock number instead would be a literal with no independent referent (§5), while this
+// bound is already enforced by an executing mechanism.
+//
+// The second arm exists because the review asked for "a due event OR a deadline" and a later
+// policy may want the other one; it is not inhabited today and the row says which it uses.
+type PendingRunway =
+    OwedByRosterNextTouch
+  | OwedByDeadline { at: Timestamp }
+
 // A CONDITION'S VERDICT, with the three answers kept apart. `NotYetDue` is the arm whose absence
 // made an earlier draft of this row forbid its own sequence.
 type BoundaryConditionVerdict =
@@ -800,6 +831,7 @@ type RefusalClassBoundary {
   disposition: NonEmptyStr
   condition_authored_before_enqueue: NonEmptyStr
   condition_follow_up_lands: NonEmptyStr
+  pending_runway: PendingRunway
   on_condition_failure: NonEmptyStr
   enforcement: NonEmptyStr
   consumer: NonEmptyStr
@@ -835,8 +867,10 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
 
   condition_authored_before_enqueue: "The deletion follow-up PR is AUTHORED BEFORE the carrying PR is enqueued. Before, not after: a follow-up written once the rows are already on main is indistinguishable from a cleanup somebody may or may not get to, and the obligation has to exist while the carrying change can still be refused for lacking it." as NonEmptyStr,
 
-  condition_follow_up_lands: "That follow-up LANDS. An authored-but-unlanded deletion discharges nothing -- the rows sit on main exactly as a permanent admission would, and the only difference is a promise." as NonEmptyStr,
+  condition_follow_up_lands: "That follow-up LANDS. An authored-but-unlanded deletion discharges nothing -- the rows sit on main exactly as a permanent admission would, and the only difference is a promise. AND THE PROMISE HAS A RUNWAY: see `pending_runway`. The deletion is owed by the roster's NEXT TOUCH after the carrier lands, which is the rule the roster already states and the floor already reports on every run whose base carries consumed rows. A follow-up still open at that point has not merely not-yet-landed; it is overdue, and the specimen is Failed." as NonEmptyStr,
 
+
+  pending_runway: OwedByRosterNextTouch,
 
   on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the `Failed` arm of `TransitionAdmissionLifecycleState` and never `Eligible` or `Pending`, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
 
