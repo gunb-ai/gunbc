@@ -323,7 +323,7 @@ import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.srv3_boot_once_cd {
   srv3_boot_once_apply_read_back_sleep,
 }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }

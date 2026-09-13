@@ -7,7 +7,7 @@ import std.content_hash { content_hash_atom }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import extdeps.languages.json.emit {
   JsonValue,
   json_string,

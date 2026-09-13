@@ -1,6 +1,11 @@
 module v2.lens.identity_captured_navigation.roster_gate
 
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.lens.common.source_analysis_standing {
@@ -10,6 +15,7 @@ import v2.lens.common.source_analysis_standing {
   SourceParseRejected,
   SourceUnreadable
 }
+import std.types { List }
 
 // The fast inline-source controls are required-floor witnesses at
 // src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag. The five file_gate corpus
