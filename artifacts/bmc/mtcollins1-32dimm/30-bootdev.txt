@@ -1,0 +1,14 @@
+==== 22:23:50 set bootdev cdrom options=efiboot (one-shot)
+Set Boot Device to cdrom
+==== readback
+Boot parameter version: 1
+Boot parameter 5 is valid/unlocked
+Boot parameter data: a014000000
+ Boot Flags :
+   - Boot Flag Valid
+   - Options apply to only next boot
+   - BIOS EFI boot 
+   - Boot Device Selector : Force Boot from CD/DVD
+   - BIOS verbosity : System Default
+   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)
+   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST

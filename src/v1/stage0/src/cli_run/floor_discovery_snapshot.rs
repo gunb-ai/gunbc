@@ -341,6 +341,11 @@ fn verify_floor_worktree_matches_subject(request: &FloorDiscoveryRequest) -> Res
 const NAMING_AUTHORITY_PATHS: &[&str] = &[
     "src/v2/workflow/floor_naming_hygiene.dag",
     "src/v2/workflow/floor_discovery_producer.dag",
+    // The per-file authority and the row vocabulary were split out of the two files above; a
+    // digest that named only their old homes would stop noticing the files that now DECIDE what
+    // discovery enrols, which is the fail-open this digest exists to prevent.
+    "src/v2/workflow/floor_discovery_source_authority.dag",
+    "src/v2/workflow/floor_discovery_row.dag",
     "src/v2/workflow/floor_discovery.dag",
     "dag/gunbc/test_module_hygiene.dag",
     "src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs",

@@ -1,7 +1,9 @@
 module v2.test.compile_door_ledger_ownership
 
+import v2.workflow.compile_door_cause_ownership {
+  cause_ownership_lookup, HeadGrain, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned
+}
 import v2.workflow.compile_door_ledger {
-  cause_ownership_lookup, HeadGrain, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned,
   affected_ledger_from_diff, AffectedDiffRefused, AffectedLedgered, ledger_refused_count
 }
 import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }

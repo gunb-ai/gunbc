@@ -1,0 +1,724 @@
+module test.claim.machine_intake.pre_os_bringup_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.scoped_authorization { AttemptIdentity }
+import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.bmc.ipmi_sel {
+  FirmwareHang,
+  FirmwareProgress,
+  OemSelPayload,
+  SystemRestart,
+}
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  OemDecodeControllerDeclaredUnknown,
+  OemDecodeNotProbed,
+  OemDecodeRenderedUncited,
+  LocalizationUnavailableFromExposedTelemetry,
+  PerSlotLocalizationExposed,
+  PreOsObservationCapabilities,
+  ConsoleObservationCapability,
+  SolAbsent,
+  SolPresentEmitting,
+  SelRawOnly,
+  ManagedAcActuatorDeclared,
+  WebEventLogDecodeObservation,
+  oem_sel_decode_capability_of_web_log,
+}
+import gunbc.machine_intake_pre_os_bringup_attempt {
+  BmcControllerReset,
+  ChassisPowerCycle,
+  CollectorNotProven,
+  ConsoleDeadlineNotAfterAliveInstant,
+  CollectorStanding,
+  CollectorProvenRunning,
+  ConsoleLeaseNotHeld,
+  ConsoleSessionHeldPastActivation,
+  ControllerColdReset,
+  ControllerLivenessWatch,
+  ControllerObservedReachable,
+  ActuationAccepted,
+  ActuatorRequest,
+  AcPowerCycle,
+  DeclaredAcActuator,
+  HumanAttendedRequest,
+  EvidenceSinkAbsent,
+  EvidenceSinkMissing,
+  EvidenceSinkPresent,
+  HostWarmReset,
+  Issued,
+  NotReady,
+  Ready,
+  SelCursorRecorded,
+  collectors_ready,
+  power_actuation_outcome,
+  power_actuation_request,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  BootRestart,
+  BringupUndetermined,
+  FirmwareProgressObserved,
+  FirmwareProgressRecord,
+  LocalizableFrom,
+  FirmwareEmittedUndecodedErrorCodes,
+  FirmwareStatedUnrecognizedError,
+  NoRestartInWindow,
+  SelStandardDecodeUnavailable,
+  NothingObservedBeyondActivation,
+  SolBytesUnattributedToHost,
+  SolCaptureUnreadable,
+  ConsoleCaptureUnreadable,
+  SolHostBytesObserved,
+  ConsoleBytesUnattributedToHost,
+  sol_capture_reading,
+  OemPayloadAbsentFromWindow,
+  OemTimestamped,
+  PhysicalRemediationRequired,
+  oem_sel_empirical_association,
+  RestartsBelowTerminalThreshold,
+  SelWindowEvent,
+  SolBannerOnly,
+  boot_cycles,
+  firmware_console_report,
+  NoTerminalStated,
+  UndecodedErrorCodesOnly,
+  TrainingRefusedByFirmware,
+  pre_os_bringup_verdict,
+}
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+  check_bounded_terminal,
+  check_collectors_before_actuation,
+  check_console_silence_is_not_a_terminal,
+  check_opaque_oem_stays_opaque,
+  mtcollins1_ac_cycle_attempt,
+  mtcollins1_console_lease_epoch,
+  mtcollins1_pre_os_capabilities,
+  mtcollins1_sel_window,
+  mtcollins1_sol_idle_capture,
+  mtcollins1_sol_reading,
+}
+
+// THE REGRESSION CORPUS, RUN AS WITNESSES. Each of the observation module's four checks is a test
+// here so a red names the law; the fixtures below then add the discriminating inputs the corpus
+// cannot supply -- an emitting console, an exposed localization source, a window one restart
+// short of the threshold -- so that each arm is shown to move.
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn law_one_collectors_before_actuation_over_the_corpus() -> Bool {
+  exit_ok(e: check_collectors_before_actuation())
+}
+
+test fn law_two_console_silence_is_not_a_terminal_over_the_corpus() -> Bool {
+  exit_ok(e: check_console_silence_is_not_a_terminal())
+}
+
+test fn bounded_terminal_over_the_corpus() -> Bool {
+  exit_ok(e: check_bounded_terminal())
+}
+
+test fn law_three_opaque_oem_stays_opaque_over_the_corpus() -> Bool {
+  exit_ok(e: check_opaque_oem_stays_opaque())
+}
+
+// ── law 1, the arms the corpus does not reach ──────────────────────────────────────────────────
+
+fn proven_collectors() -> List<CollectorStanding> {
+  [
+    CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 5, terminate_deadline: 900 } },
+    CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+    CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
+  ]
+}
+
+test fn an_absent_evidence_sink_refuses_before_the_lease_is_consulted() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkAbsent,
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseAbsent),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: EvidenceSinkMissing } => true
+    _ => false
+  }
+}
+
+test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 5, terminate_deadline: 900 } },
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+    ],
+  ) {
+    NotReady { gap: CollectorNotProven { kind: ControllerLivenessWatch } } => true
+    _ => false
+  }
+}
+
+// THE DEADLINE IS CONSUMED BY collectors_ready ITSELF: the positive fixture admits, and the same
+// fixture with the deadline moved to or before the alive instant refuses.
+test fn a_console_deadline_not_after_the_alive_instant_refuses_readiness() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 900, terminate_deadline: 900 } },
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
+    ],
+  ) {
+    NotReady { gap: ConsoleDeadlineNotAfterAliveInstant { client_alive_at: 900, terminate_deadline: 900 } } => true
+    _ => false
+  }
+}
+
+test fn a_stale_console_lease_refuses_even_with_every_proof_present() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: ConsoleLeaseNotHeld { verdict: _ } } => true
+    _ => false
+  }
+}
+
+test fn the_positive_console_fixture_with_a_later_deadline_admits() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    Ready { ready: _ } => true
+    _ => false
+  }
+}
+
+test fn an_accepted_actuator_request_mints_an_issued_receipt_and_nothing_stronger() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: _ } => false
+    Ready { ready: r } =>
+      match power_actuation_outcome(request: power_actuation_request(ready: r, profile: mtcollins1_pre_os_capabilities, kind: BmcControllerReset), ack: ActuationAccepted { at: 7 }) {
+        Issued { issued: i } =>
+          i.acknowledged_at == 7
+            && match i.request {
+              ActuatorRequest { ready: _, kind: _, realization: ControllerColdReset } => true
+              _ => false
+            }
+        _ => false
+      }
+  }
+}
+
+fn profile_with(console: ConsoleObservationCapability) -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+// THE PROFILE DECIDES WHICH COLLECTORS ARE REQUIRED AND WHETHER A LEASE IS: with no console, an
+// honestly ABSENT lease is not a gap and readiness admits on the two controller-side collectors.
+test fn a_platform_with_no_console_does_not_require_a_console_collector() -> Bool {
+  let no_console = profile_with(console: SolAbsent {
+    established_by: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "profile_with", field: WholeDeclaration },
+  })
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: no_console,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseAbsent),
+    collectors: [
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
+    ],
+  ) {
+    Ready { ready: _ } => true
+    _ => false
+  }
+}
+
+// THE PROFILE DECIDES WHETHER AN AC CYCLE IS AN ACTUATOR REQUEST: only a declared actuator turns
+// it into one, and it carries the declared realization, never an outlet.
+test fn a_declared_ac_actuator_turns_the_ac_cycle_into_an_actuator_request() -> Bool {
+  let with_ac = PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: ManagedAcActuatorDeclared {
+      realization: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "profile_with", field: WholeDeclaration },
+    },
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: with_ac,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: _ } => false
+    Ready { ready: r } =>
+      match power_actuation_request(ready: r, profile: with_ac, kind: AcPowerCycle) {
+        ActuatorRequest { ready: _, kind: _, realization: DeclaredAcActuator { realization: d } } => d.decl_name == "profile_with"
+        _ => false
+      }
+  }
+}
+
+// A RAW-ONLY SEL CANNOT HAVE PRODUCED DECODED RESTART ROWS, so the window is refused as
+// undetermined rather than read.
+test fn a_raw_only_sel_profile_refuses_the_window_as_undetermined() -> Bool {
+  let raw = PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: SelRawOnly,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: raw,
+  ) {
+    BringupUndetermined { cause: SelStandardDecodeUnavailable } => true
+    _ => false
+  }
+}
+
+// ── law 2 and the bounded terminal, the arms the corpus does not reach ─────────────────────────
+
+fn restart(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: BootRestart { offset: SystemRestart } }
+}
+
+fn progress(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: FirmwareProgressRecord { offset: FirmwareProgress { progress_rendering: "System boot initiated" } } }
+}
+
+fn hang(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: FirmwareProgressRecord { offset: FirmwareHang } }
+}
+
+fn oem(id: Int) -> SelWindowEvent {
+  SelWindowEvent { record_id: id, bmc_clock_rendering: "t", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } }
+}
+
+test fn two_restarts_without_progress_is_below_the_threshold_and_undetermined() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: 2 } } => true
+    _ => false
+  }
+}
+
+test fn a_firmware_hang_record_is_not_progress() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), hang(id: 2), restart(id: 3), hang(id: 4), restart(id: 5), hang(id: 6), restart(id: 7)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: _ } => true
+    _ => false
+  }
+}
+
+test fn oem_records_carry_no_weight_in_the_verdict() -> Bool {
+  let with_oem = pre_os_bringup_verdict(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5), oem(id: 6), restart(id: 7)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  let without_oem = pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 3), restart(id: 5), restart(id: 7)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  match with_oem {
+    PhysicalRemediationRequired { restarts_without_progress: a, localization: _ } =>
+      match without_oem {
+        PhysicalRemediationRequired { restarts_without_progress: b, localization: _ } => a == b
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn progress_after_one_restart_reads_as_progress_even_beside_oem_records() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), oem(id: 3)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 0 } => true
+    _ => false
+  }
+}
+
+// MIXED HISTORY: one good boot followed by a sustained failure run must still reach the terminal
+// (review 64164); a good boot followed by a run BELOW the bound still reads as progress.
+test fn an_early_good_boot_does_not_outvote_a_trailing_failure_run() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4), restart(id: 5), restart(id: 6)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: _ } => true
+    _ => false
+  }
+}
+
+test fn a_trailing_run_below_the_bound_after_progress_still_reads_as_progress() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 1 } => true
+    _ => false
+  }
+}
+
+test fn the_whole_corpus_window_uncut_reaches_the_terminal_despite_the_early_good_boot() -> Bool {
+  match pre_os_bringup_verdict(
+    window: mtcollins1_sel_window(),
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 19, localization: _ } => true
+    _ => false
+  }
+}
+
+fn emitting_console_profile() -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: SolPresentEmitting {
+      established_by: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "emitting_console_profile", field: WholeDeclaration },
+    },
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    dimm_localization: PerSlotLocalizationExposed {
+      source: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "emitting_console_profile", field: WholeDeclaration },
+    },
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+fn unlocalizable_profile() -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    dimm_localization: LocalizationUnavailableFromExposedTelemetry,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+// A PLATFORM THAT EXPOSES NO PER-SLOT EVIDENCE GETS THE HONEST ARM, and nothing else.
+test fn a_platform_with_no_per_slot_evidence_reports_localization_unavailable() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: unlocalizable_profile(),
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: UnavailableFromExposedTelemetry } => true
+    _ => false
+  }
+}
+
+test fn a_platform_that_exposes_per_slot_evidence_localizes_by_pointer_never_by_slot() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: emitting_console_profile(),
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: LocalizableFrom { source: s } } => s.decl_name == "emitting_console_profile"
+    _ => false
+  }
+}
+
+test fn the_corpus_window_holds_twenty_closed_cycles_one_with_progress_and_one_open_pending() -> Bool {
+  let cycles = boot_cycles(window: mtcollins1_sel_window())
+  list_length(items: cycles.closed) == 20
+    && list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen)) == 1
+    && match cycles.open {
+      Present { value: c } => c.restart_record_id == 1102 && c.progress_seen == false
+      Absent => false
+    }
+}
+
+// THE OPEN CYCLE IS PENDING, NOT FAILED: two closed failures plus a restart the window cut off
+// stay below the bound (review 64203), while progress already seen in the open cycle counts.
+test fn a_restart_cut_off_by_the_window_end_does_not_count_toward_the_bound() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: 2 } } => true
+    _ => false
+  }
+}
+
+test fn progress_in_the_open_cycle_resets_the_trailing_run() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4), progress(id: 5)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 3 } => true
+    _ => false
+  }
+}
+
+// ── the OEM association, the arms the corpus does not reach ────────────────────────────────────
+
+// A CANDIDATE THE WINDOW NEVER SHOWS IS REPORTED ABSENT, NOT "NEVER BESIDE"; a payload the window
+// never shows has no first-seen record at all (review 64221).
+test fn a_candidate_absent_from_the_window_is_not_reported_as_never_beside() -> Bool {
+  let ghost = OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "ffffffffffff" }
+  let assoc = oem_sel_empirical_association(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4)],
+    payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" },
+    never_beside_candidates: [ghost],
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  list_length(items: assoc.never_within_same_cycle_as) == 0 && list_length(items: assoc.candidates_absent_from_window) == 1
+}
+
+test fn a_payload_absent_from_the_window_has_no_first_seen_record() -> Bool {
+  let assoc = oem_sel_empirical_association(
+    window: [restart(id: 1), restart(id: 2)],
+    payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" },
+    never_beside_candidates: [],
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  match assoc.observed {
+    OemPayloadAbsentFromWindow { payload: _ } => true
+    _ => false
+  }
+}
+
+// A BANNER-ONLY CAPTURE IS "NOTHING OBSERVED" ON EVERY PLATFORM, emitting or not, because the
+// banner is the client's; host bytes that state no terminal beside an empty window are "no restart".
+test fn banner_only_beside_an_empty_window_is_nothing_observed_even_on_an_emitting_console() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: emitting_console_profile(),
+  ) {
+    BringupUndetermined { cause: NothingObservedBeyondActivation } => true
+    _ => false
+  }
+}
+
+test fn host_bytes_stating_no_terminal_beside_an_empty_window_are_no_restart() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: NoTerminalStated },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: NoRestartInWindow } => true
+    _ => false
+  }
+}
+
+// BYTES BEYOND THE BANNER THAT NO FIRMWARE LINE SHAPE EXPLAINS ARE NOT HOST OUTPUT (review 64441):
+// the keystroke probe's own `done rc=0` differs from the banner by digest and is nobody's evidence.
+test fn bytes_beyond_the_banner_with_no_recognized_firmware_line_are_unattributed() -> Bool {
+  match sol_capture_reading(
+    capture_path: "22-sol-probe.log",
+    bytes: byte_size(count: 96),
+    digest: Sha256Hash(Sha256Digest { hex: "e24f9ed8d9cedff87e6d11327c602c31fd7c3d9e2ba16e7e1ab0f8a91cdfe41e" }),
+    banner_digest: Sha256Hash(Sha256Digest { hex: "3aea4368b8745ae7bdca3c7ec052a324032974f7b849bca460e7d0e14f5e0871" }),
+    lines: ["tcgetattr: Inappropriate ioctl for device", "[SOL Session operational.  Use ~? for help]", "done rc=0"],
+  ) {
+    SolBytesUnattributedToHost { capture_path: _, bytes: _ } => true
+    _ => false
+  }
+}
+
+test fn unattributed_console_bytes_beside_an_empty_window_are_their_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolBytesUnattributedToHost { capture_path: "x", bytes: byte_size(count: 96) },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: ConsoleBytesUnattributedToHost } => true
+    _ => false
+  }
+}
+
+// AN UNREADABLE CAPTURE IS ITS OWN CAUSE, never "no restart" (review 64498).
+test fn an_unreadable_console_capture_is_its_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: SolCaptureUnreadable { capture_path: "x.log" },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: ConsoleCaptureUnreadable { capture_path: p } } => p == "x.log"
+    _ => false
+  }
+}
+
+// ── the firmware statement ─────────────────────────────────────────────────────────────────────
+
+// `ERR:` code lines alone state no terminal -- they are undecoded hex, handled exactly like the
+// OEM payload; only an `ERROR:` statement does, and the locus comes from the firmware's own
+// SK[]/MC[] lines with Absent where it named none.
+test fn err_code_lines_without_a_statement_are_undecoded_codes_not_no_terminal() -> Bool {
+  match firmware_console_report(lines: ["ERR: 84f05923", "ERR: 8ff0c500", "CP: 3ff00800"]) {
+    UndecodedErrorCodesOnly { err_lines: 2 } => true
+    _ => false
+  }
+}
+
+test fn checkpoints_alone_state_no_terminal() -> Bool {
+  match firmware_console_report(lines: ["NOTICE:  DRAM FW version 210525", "CP: 0ff00900", "CP: 3ff00800"]) {
+    NoTerminalStated => true
+    _ => false
+  }
+}
+
+// UNDECODED CODES BESIDE AN EMPTY WINDOW ARE NOT "NO RESTART" -- that would read like a pass.
+test fn undecoded_err_codes_beside_an_empty_window_are_their_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: UndecodedErrorCodesOnly { err_lines: 3 } },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: FirmwareEmittedUndecodedErrorCodes { err_lines: 3 } } => true
+    _ => false
+  }
+}
+
+// AN `ERROR:` STATEMENT THIS GRAMMAR HAS NOT SEEN IS NOT A TRAINING REFUSAL (review 64457).
+test fn an_unrecognized_error_statement_is_undetermined_not_a_training_refusal() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: firmware_console_report(lines: ["ERROR: unable to read boot device"]) },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } } => st == "ERROR: unable to read boot device"
+    _ => false
+  }
+}
+
+// LOCUS LINES WITH NO RECOGNISED STATEMENT ARE STILL AN ERROR THE FIRMWARE STATED (review 64514):
+// the two exact line shapes of the cited capture, alone, must not read as "said nothing".
+test fn locus_lines_without_a_recognised_statement_are_an_unrecognised_error_not_nothing() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   SK[0]: 00110010", "ERROR:     MC[4]: 00f10081"]) {
+    FirmwareErrorStatementUnrecognized { statement: st } => st == "ERROR:   SK[0]: 00110010"
+    _ => false
+  }
+}
+
+test fn a_statement_without_locus_lines_carries_an_absent_locus() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   Non-identical DIMM mixture NOT supported!"]) {
+    TrainingRefusedByFirmware { statement: _, locus: l } =>
+      match l.socket { Absent => match l.memory_controller { Absent => true  _ => false }  _ => false }
+    _ => false
+  }
+}
+
+test fn a_malformed_locus_line_yields_absent_not_a_guess() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   SK[x]: 00110010", "ERROR: Non-identical DIMM mixture NOT supported!"]) {
+    TrainingRefusedByFirmware { statement: _, locus: l } => match l.socket { Absent => true  _ => false }
+    _ => false
+  }
+}
+
+// ── the web-log decode derivation ──────────────────────────────────────────────────────────────
+
+fn web_log(oem_records: Int, description: String, oem_bytes_empty: Bool) -> WebEventLogDecodeObservation {
+  WebEventLogDecodeObservation {
+    artifact_path: "fixture.json",
+    digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+    records_served: 500,
+    oem_records_served: oem_records,
+    advanced_event_description_uniformly: description as NonEmptyStr,
+    oem_sel_data_empty: oem_bytes_empty,
+  }
+}
+
+// THE DECLINE IS READ FROM THE DESCRIPTION AND THE EMPTY BYTES, not from the record count
+// (review 64251): a surface that rendered a description is carried as uncited, and a surface
+// that served no OEM records was not probed.
+test fn a_uniform_unknown_with_empty_oem_bytes_is_the_controller_declining() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "unknown", oem_bytes_empty: true)) {
+    OemDecodeControllerDeclaredUnknown => true
+    _ => false
+  }
+}
+
+test fn a_rendered_description_is_carried_as_uncited_not_as_unknown() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "memory training failure", oem_bytes_empty: false)) {
+    OemDecodeRenderedUncited { rendering: r } => r == "memory training failure"
+    _ => false
+  }
+}
+
+test fn unknown_beside_present_oem_bytes_is_not_a_decline_either() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "unknown", oem_bytes_empty: false)) {
+    OemDecodeRenderedUncited { rendering: _ } => true
+    _ => false
+  }
+}
+
+test fn no_oem_records_served_is_not_a_probe() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 0, description: "unknown", oem_bytes_empty: true)) {
+    OemDecodeNotProbed => true
+    _ => false
+  }
+}
