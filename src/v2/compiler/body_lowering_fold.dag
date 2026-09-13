@@ -812,10 +812,21 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_surface_punct_token(id: Symbol) -> Bool {
+  (id == ^dag_token_lbrace)
+    || (id == ^dag_token_rbrace)
+    || (id == ^dag_token_lparen)
+    || (id == ^dag_token_rparen)
+    || (id == ^dag_token_comma)
+    || (id == ^dag_token_colon)
+}
+
 fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) {
+      if body_lower_surface_punct_token(id: id) {
+        optional_absent()
+      } else if dag_lex_token_symbol(sym: id) {
         optional_present(
           value: node_synthetic(
             kind: TypeNode { connective: Atom { identity: id } },
@@ -2264,22 +2275,35 @@ fn body_lower_arg_expr_optional(expr: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_arg_operand_optional(arg_capture: Node) -> Optional<Node> {
-  match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
-    ParseSubtreeFound { captured: expr } => body_lower_arg_expr_optional(expr: expr)
-    ParseSubtreeAbsent =>
-      match parse_production_emitted_identity_optional(node: arg_capture) {
-        Present { value: emitted } =>
-          if emitted == ^dag_surface_expr {
-            match parse_production_captured_child_optional(node: arg_capture) {
-              Present { value: captured } => body_lower_arg_expr_optional(expr: captured)
-              Absent => Absent
-            }
-          } else {
-            body_lower_arg_expr_optional(expr: arg_capture)
-          }
-        Absent => body_lower_arg_expr_optional(expr: arg_capture)
+fn body_lower_before_comma_node(node: Node) -> Node {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => stripped
+    Present { value: pair } =>
+      match body_lower_after_comma_tail_optional(node: pair.right) {
+        Present { value: _ } => body_lower_deep_unwrap_optional(node: pair.left)
+        Absent => stripped
       }
+  }
+}
+
+fn body_lower_arg_operand_local_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_before_comma_node(node: node)
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: emitted } =>
+      if (emitted == ^dag_surface_expr)
+        || (emitted == ^dag_surface_arg)
+        || (emitted == ^dag_surface_primary_expr)
+        || (emitted == ^dag_surface_postfix_expr)
+        || (emitted == ^dag_surface_binary_expr) {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => body_lower_arg_operand_local_optional(node: captured)
+          Absent => body_lower_arg_expr_optional(expr: stripped)
+        }
+      } else {
+        body_lower_arg_expr_optional(expr: stripped)
+      }
+    Absent => body_lower_arg_expr_optional(expr: stripped)
   }
 }
 
@@ -2309,7 +2333,7 @@ fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
               match node_atom_identity_optional(node: after_name.left) {
                 Present { value: colon } =>
                   if colon == ^dag_token_colon {
-                    body_lower_arg_operand_optional(arg_capture: after_name.right)
+                    body_lower_arg_operand_local_optional(node: after_name.right)
                   } else {
                     optional_absent()
                   }
@@ -2318,15 +2342,6 @@ fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
           }
       }
   }
-}
-
-fn body_lower_surface_punct_token(id: Symbol) -> Bool {
-  (id == ^dag_token_lbrace)
-    || (id == ^dag_token_rbrace)
-    || (id == ^dag_token_lparen)
-    || (id == ^dag_token_rparen)
-    || (id == ^dag_token_comma)
-    || (id == ^dag_token_colon)
 }
 
 fn body_lower_node_is_punct_atom(node: Node) -> Bool {
@@ -2348,7 +2363,7 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
   match body_lower_named_arg_value_optional(arg_capture: arg_capture) {
     Present { value: operand } => body_lower_call_value_optional(operand: operand)
     Absent =>
-      match body_lower_arg_operand_optional(arg_capture: arg_capture) {
+      match body_lower_arg_operand_local_optional(node: arg_capture) {
         Present { value: operand } => body_lower_call_value_optional(operand: operand)
         Absent => optional_absent()
       }
@@ -2359,11 +2374,26 @@ fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node>
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Present { value: pair } =>
-      match body_lower_call_arg_edge_optional(
-        arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
-      ) {
-        Present { value: operand } => [operand]
-        Absent => Empty
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: id } =>
+          if id == ^dag_token_comma {
+            match body_lower_call_arg_edge_optional(
+              arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
+            ) {
+              Present { value: operand } => [operand]
+              Absent => Empty
+            }
+          } else {
+            match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
+              Present { value: operand } => [operand]
+              Absent => Empty
+            }
+          }
+        Absent =>
+          match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
+            Present { value: operand } => [operand]
+            Absent => Empty
+          }
       }
     Absent =>
       match body_lower_call_arg_edge_optional(arg_capture: stripped) {
@@ -2468,12 +2498,18 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
   match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
     Present { value: _ } => optional_present(value: stripped)
     Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_primary_call_suffix_optional(root: e.target)
-        }
-      })
+      match sugar_sequence_pair_optional(node: stripped) {
+        Present { value: pair } =>
+          match body_lower_postfix_call_suffix_args(call_suffix: pair.left) {
+            Present { value: _ } => optional_present(value: pair.left)
+            Absent => body_lower_primary_call_suffix_optional(root: pair.left)
+          }
+        Absent =>
+          match parse_production_captured_child_optional(node: stripped) {
+            Present { value: captured } => body_lower_primary_call_suffix_optional(root: captured)
+            Absent => optional_absent()
+          }
+      }
   }
 }
 
@@ -2525,8 +2561,10 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
     Present { value: pair } =>
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
         Present { value: left_id } =>
-          if left_id == ^dag_token_lbrace {
+          if (left_id == ^dag_token_lbrace) || (left_id == ^dag_token_lparen) {
             body_lower_try_primary_ident_call(node: pair.right)
+          } else if body_lower_surface_punct_token(id: left_id) {
+            outcome_accepted(value: optional_absent())
           } else {
             body_lower_try_primary_ident_call_from_pair(
               callee_left: pair.left,

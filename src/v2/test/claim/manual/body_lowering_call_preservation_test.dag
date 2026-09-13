@@ -95,7 +95,16 @@ fn tree_has_punct_call_operator(root: Node, punct: Symbol) -> Bool {
   })
 }
 
-fn call_args_include_punct(root: Node, callee: Symbol, punct: Symbol) -> Bool {
+fn call_arg_identity_at(root: Node, callee: Symbol, index: Int) -> Optional<Symbol> {
+  match search_call_named(root: root, callee: callee) {
+    Absent => Absent
+    Present { value: call } =>
+      match list_at_optional(xs: call_argument_targets(node: call), index: index) {
+        Absent => Absent
+        Present { value: arg } => node_atom_identity_optional(node: arg)
+      }
+  }
+}
   match search_call_named(root: root, callee: callee) {
     Absent => false
     Present { value: call } =>
@@ -209,6 +218,14 @@ test fn call_preservation_two_named_args_keep_values_not_comma_token() -> Bool {
       !tree_has_lbrace_operator(root: root)
         && (call_arity_named(root: root, callee: ^list_append) == 2)
         && !call_args_include_punct(root: root, callee: ^list_append, punct: ^dag_token_comma)
+        && match call_arg_identity_at(root: root, callee: ^list_append, index: 0) {
+          Present { value: a0 } => a0 == ^x
+          Absent => false
+        }
+        && match call_arg_identity_at(root: root, callee: ^list_append, index: 1) {
+          Present { value: a1 } => a1 == ^acc
+          Absent => false
+        }
   }
 }
 
@@ -217,8 +234,10 @@ test fn call_preservation_sole_body_named_step_fold_keeps_fold_callee_not_lbrace
     Absent => false
     Present { value: root } =>
       !tree_has_lbrace_operator(root: root)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_comma)
         && (call_arity_named(root: root, callee: ^fold) >= 1)
         && !call_args_include_punct(root: root, callee: ^fold, punct: ^dag_token_comma)
+        && call_args_include_punct(root: root, callee: ^fold, punct: ^step)
   }
 }
 
