@@ -277,16 +277,8 @@ type ObservedLabelStanding
   | JobResourceCarriedNoLabels { job_id: Int }
   | JobResourceCarriedMultipleLabels { labels: List<String> }
 
-// first() here is the head of a join; skip(1) folds the rest into the same string. It does not
-// select a runner. Multi-label jobs are JobResourceCarriedMultipleLabels before this rendering.
 fn observed_label_set_rendering(labels: List<String>) -> String {
-  match labels.first() {
-    Absent => ""
-    Present { value: head } =>
-      fold(labels.skip(n: 1), init: head, f: fn(acc, l) {
-        concat(acc, concat(", ", l))
-      })
-  }
+  join(labels, ", ")
 }
 
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
@@ -297,10 +289,7 @@ fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
       if count(labels) == 0 {
         JobResourceCarriedNoLabels { job_id: job.id }
       } else if count(labels) == 1 {
-        match labels.first() {
-          Present { value: l } => ObservedLabel { label: l }
-          Absent => JobResourceCarriedNoLabels { job_id: job.id }
-        }
+        ObservedLabel { label: join(labels, "") }
       } else {
         JobResourceCarriedMultipleLabels { labels: labels }
       }

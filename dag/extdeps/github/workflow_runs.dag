@@ -168,16 +168,7 @@ data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = Tran
 }
 
 fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
-  concat(" (", concat(
-    match values.first() {
-      Absent => ""
-      Present { value: head } =>
-        fold(values.skip(n: 1), init: head as String, f: fn(acc, v) {
-          concat(acc, concat(", ", v as String))
-        })
-    },
-    ")"
-  ))
+  concat(" (", concat(join(map(values, v => v as String), ", "), ")"))
 }
 
 fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {
