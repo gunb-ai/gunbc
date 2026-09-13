@@ -4,7 +4,8 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.list { list_member, list_cover }
 import std.measure { PartsPerMillion }
-import extdeps.tax.statutory_rate { StatutoryRate }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
 import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
@@ -21,14 +22,24 @@ import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 // marketplace collection, and an unrecorded treatment are different states with different
 // next reads. Collapsing them is the defect this type exists to make unwritable as a Bool.
 
+// A JURISDICTION IS A CITED DECLARATION, NOT A STRING, and this corpus settled that before this
+// module existed. gunbc.product.fabric.provider_route carries jurisdiction: DeclarationRef and
+// says why in its own header: jurisdictions are open declaration references with deliberately no
+// central enum, because "Asia" is not a jurisdiction and adding Germany must be a row in a
+// population rather than an edit to a generic type. These rows minted a parallel stringly
+// authority beside that decision, which is the nickname DESIGN section 3 forbids - and a string
+// leaf hiding a named part is the anemic modeling section 2 names.
+//
+// The reference cites the taxing authority's own declaration, so the jurisdiction and the rate it
+// publishes cannot drift apart: they are the same module.
 type CollectedTaxRateStanding
   = RateTranscribedFromNamedReceiptLine {
-      jurisdiction: NonEmptyStr
+      jurisdiction: DeclarationRef
       rate: PartsPerMillion
       receipt_line_label: NonEmptyStr
     }
   | RateDerivedFromReceiptBaseAndTax {
-      jurisdiction: NonEmptyStr
+      jurisdiction: DeclarationRef
       rate: PartsPerMillion
     }
 
@@ -38,9 +49,17 @@ type CollectedTaxRateStanding
 // from" date is not a property it has. The destination rate is a PUBLISHED STATUTORY FIGURE that a
 // residual is measured AGAINST, so a superseded version would misstate every residual computed
 // from it, silently and uniformly. Only the second one needs the version, so only it carries it.
+// THE RESIDUAL CARRIES NO SEPARATE JURISDICTION FIELD, because the rate now carries the
+// jurisdiction ITSELF and the destination is PROJECTED out of it by residual_destination_jurisdiction
+// below. The distinction matters and the first attempt got it wrong: that attempt deleted the
+// sibling field while StatutoryRate still held only a figure and a version, on the premise that
+// evaluating a module's data row retains the module it came from. It does not - a record value
+// carries no trace of its declaration site - so the deletion would have erased the destination
+// rather than derived it. royal-koi-731 caught that before it landed; the repair was to put the
+// DeclarationRef inside StatutoryRate, which is what makes the premise true rather than assumed.
+// One fact, one place, and a second field beside it could no longer drift because there is none.
 type UseTaxResidualStanding
   = ResidualUseTaxOwed {
-      destination_jurisdiction: NonEmptyStr
       destination_combined_rate: StatutoryRate
     }
   | ResidualUseTaxNone
@@ -52,7 +71,7 @@ type LotSalesTaxStanding
       residual: UseTaxResidualStanding
     }
   | SalesTaxAttestedIncluded {
-      jurisdiction: NonEmptyStr
+      jurisdiction: DeclarationRef
       residual: UseTaxResidualStanding
       attestation: NonEmptyStr
     }
@@ -79,9 +98,28 @@ fn lot_tax_residual_is_owed(standing: LotSalesTaxStanding) -> Bool {
 
 fn residual_is_owed(residual: UseTaxResidualStanding) -> Bool {
   match residual {
-    ResidualUseTaxOwed { destination_jurisdiction: _, destination_combined_rate: _ } => true
+    ResidualUseTaxOwed { destination_combined_rate: _ } => true
     ResidualUseTaxNone => false
     ResidualUseTaxUnread { read_obligation: _ } => false
+  }
+}
+
+// THE CONSUMER OF StatutoryRate's jurisdiction field (DESIGN section 3c: a declaration nothing
+// consumes is the red one). This is the projection that replaced the deleted sibling field - a
+// caller asking where a residual is owed gets the answer FROM the rate, so the two can never
+// disagree. The unread and none arms have no destination to name, which is why the answer is an
+// arm rather than a bare reference.
+type ResidualDestinationReading
+  = DestinationCitedByRate { jurisdiction: DeclarationRef }
+  | DestinationNotApplicableNoResidual
+  | DestinationUnreadWithResidualStanding
+
+fn residual_destination_jurisdiction(residual: UseTaxResidualStanding) -> ResidualDestinationReading {
+  match residual {
+    ResidualUseTaxOwed { destination_combined_rate: r } =>
+      DestinationCitedByRate { jurisdiction: statutory_rate_jurisdiction(r: r) }
+    ResidualUseTaxNone => DestinationNotApplicableNoResidual
+    ResidualUseTaxUnread { read_obligation: _ } => DestinationUnreadWithResidualStanding
   }
 }
 

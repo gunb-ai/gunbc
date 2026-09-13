@@ -3,6 +3,7 @@ module extdeps.tax.statutory_rate
 import std.types { NonEmptyStr, Bool }
 import std.measure { PartsPerMillion }
 import extdeps.publication { SpecificationDocumentDate }
+import std.decl_ref { DeclarationRef }
 
 // THE SHARED SHAPE OF A PUBLISHED STATUTORY TAX RATE, and nothing about any jurisdiction.
 //
@@ -35,16 +36,39 @@ fn effective_date_is_read(v: StatutoryRateEffectiveVersion) -> Bool {
   }
 }
 
-// The rate and its version travel together, so a consumer cannot take one without the other.
-// Splitting them into two declarations would let a caller read the figure and never learn which
-// version it is - which is the state this carrier exists to make unwritable.
+// The rate, its version AND ITS JURISDICTION travel together, so a consumer cannot take one
+// without the others. Splitting them into separate declarations would let a caller read the figure
+// and never learn which version it is - which is the state this carrier exists to make unwritable.
+//
+// WHY THE JURISDICTION IS IN HERE AND NOT BESIDE THE RATE AT EACH USE SITE. A consumer that holds
+// a rate and, in a sibling field, a separate name for where the rate came from holds two sources
+// for one fact: repoint the rate at a different authority's module and the sibling goes on saying
+// what it always said, with nothing to catch it. The first attempt at this fix deleted the sibling
+// field on the premise that evaluating a module's data row retains the module it came from - it
+// does not; a record value carries no trace of its declaration site, so that deletion would have
+// erased the destination rather than derived it (royal-koi-731, review of this change). Carrying
+// the reference in the rate itself is the construction that premise assumed: ONE field, authored
+// once beside the figure it qualifies, and a consumer PROJECTS the destination instead of
+// restating it.
+//
+// It is a DeclarationRef and deliberately not an enum - DESIGN section 3's external-upstream rule
+// forbids this hub from enumerating jurisdictions, and the corpus already settled the shape at
+// gunbc.product.fabric.provider_route, whose header states that jurisdictions are open declaration
+// references with no central enum.
 type StatutoryRate {
   rate: PartsPerMillion
   effective: StatutoryRateEffectiveVersion
+  jurisdiction: DeclarationRef
 }
 
 fn statutory_rate_value(r: StatutoryRate) -> PartsPerMillion {
   r.rate
+}
+
+// The projection that makes a sibling destination field unnecessary: a consumer holding the rate
+// can always say which authority published it.
+fn statutory_rate_jurisdiction(r: StatutoryRate) -> DeclarationRef {
+  r.jurisdiction
 }
 
 fn statutory_rate_version_is_read(r: StatutoryRate) -> Bool {

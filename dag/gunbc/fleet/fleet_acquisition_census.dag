@@ -72,7 +72,6 @@ data fleet_acquisition_census_standing: AcquisitionCensusStanding = CensusFloor 
 }
 
 data nyc_use_tax_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
-  destination_jurisdiction: "New York City" as NonEmptyStr,
   destination_combined_rate: nyc_combined_sales_tax,
 }
 
@@ -300,7 +299,7 @@ data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: dgx_spark_micro_center_lot.identity,
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
-      jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_uez_reduced_sales_tax"),
       rate: parts_per_million(count: 33100),
     },
     residual: nyc_use_tax_residual,
@@ -329,7 +328,7 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: mt_collins_lot_identity,
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
-      jurisdiction: "New Jersey statewide" as NonEmptyStr,
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
       rate: parts_per_million(count: 66250),
     },
     residual: nyc_use_tax_residual,
@@ -339,7 +338,7 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
 data q80_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: q80_lot_identity,
   standing: SalesTaxAttestedIncluded {
-    jurisdiction: "New York" as NonEmptyStr,
+    jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     residual: ResidualUseTaxNone,
     attestation: "Operator attests New York tax was paid. The private corpus also has an all-in planning figure that divides by the NYC rate; that is not a receipt tax line" as NonEmptyStr,
   },
@@ -348,7 +347,7 @@ data q80_lot_tax: LotTaxEvidence = LotTaxEvidence {
 data altrad8ud_board_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: altrad8ud_board_lot_identity,
   standing: SalesTaxAttestedIncluded {
-    jurisdiction: "New York" as NonEmptyStr,
+    jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     residual: ResidualUseTaxNone,
     attestation: "Operator attests New York tax was paid. The private corpus states in its own words that whether the displayed Newegg total includes tax was not recorded; a receipt reading has not been done" as NonEmptyStr,
   },

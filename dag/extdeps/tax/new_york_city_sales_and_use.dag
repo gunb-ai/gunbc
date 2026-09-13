@@ -48,6 +48,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // component split (4 + 4.5 + 0.375) is exactly the kind of composition a legislature revises one
 // piece at a time.
 data nyc_combined_sales_tax: StatutoryRate = StatutoryRate {
+  jurisdiction: DeclarationRef {
+    module_path: "extdeps.tax.new_york_city_sales_and_use",
+    decl_name: "nyc_pub718_authority",
+    field: WholeDeclaration
+  },
   rate: parts_per_million(count: 88750),
   effective: EffectiveDateUnread {
     obligation: "Read the date from which the 8.875 percent combined rate applies, from Publication 718 or the Department's rate-change notices. Capture the component effective dates too if they differ - the state, city and MCTD pieces can move independently." as NonEmptyStr,

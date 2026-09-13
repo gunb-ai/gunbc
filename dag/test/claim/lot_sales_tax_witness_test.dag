@@ -26,12 +26,18 @@ import product.lot_sales_tax {
   lot_tax_is_attested_not_read,
   lot_tax_residual_is_owed,
   lot_tax_jurisdiction_is_unread,
+  residual_destination_jurisdiction,
+  DestinationCitedByRate,
+  DestinationNotApplicableNoResidual,
+  DestinationUnreadWithResidualStanding,
+  ResidualDestinationReading,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
   LedgerMissingTax,
   TaxWithoutLedger,
   LotTaxJoinRepeatedLot,
 }
+import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq }
 import std.measure { parts_per_million, parts_per_million_count, parts_per_million_scale_million }
 import extdeps.tax.statutory_rate { statutory_rate_value, statutory_rate_version_is_read }
 import extdeps.tax.new_jersey_sales_and_use {
@@ -57,7 +63,6 @@ data tax_alloc_after_attested: InventoryLotAllocator = mint_inventory_lot_identi
 data lot_unrecorded: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_alloc_after_attested).id
 
 data nyc_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
-  destination_jurisdiction: "New York City" as NonEmptyStr,
   destination_combined_rate: nyc_combined_sales_tax,
 }
 
@@ -66,7 +71,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
-        jurisdiction: "New Jersey statewide" as NonEmptyStr,
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
         rate: statutory_rate_value(r: nj_statewide_sales_tax),
       },
       residual: nyc_residual,
@@ -76,7 +81,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_spark_uez,
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
-        jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_uez_reduced_sales_tax"),
         rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
@@ -92,7 +97,7 @@ data fixture_population: List<LotTaxEvidence> = [
   LotTaxEvidence {
     lot: lot_attested_ny,
     standing: SalesTaxAttestedIncluded {
-      jurisdiction: "New York" as NonEmptyStr,
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
       residual: ResidualUseTaxNone,
       attestation: "operator attests New York tax was paid; no tax line has been read" as NonEmptyStr,
     },
@@ -116,6 +121,56 @@ test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
   statutory_rate_version_is_read(r: nj_statewide_sales_tax)
     && !statutory_rate_version_is_read(r: nj_uez_reduced_sales_tax)
     && !statutory_rate_version_is_read(r: nyc_combined_sales_tax)
+}
+
+// THE DESTINATION IS PROJECTED OUT OF THE RATE, WHICH IS THE WHOLE POINT OF DELETING THE SIBLING
+// FIELD. An earlier revision of this change dropped ResidualUseTaxOwed's destination_jurisdiction
+// claiming the rate already determined it, while StatutoryRate carried only a figure and a version
+// and therefore determined nothing - the destination would simply have been gone. This pins the
+// repaired version: the residual built from the New York City rate reports NEW YORK CITY, and it
+// reports it by reading the rate rather than by a second field an author typed.
+//
+// THE DISCRIMINATING RED: point nyc_residual at nj_statewide_sales_tax instead and the first
+// conjunct reds, because the projection follows the rate. Under the deleted-field premise there
+// would have been nothing left to red. The second and third conjuncts hold the arms apart so a
+// projection that answered DestinationCitedByRate for every residual cannot pass.
+test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
+  match residual_destination_jurisdiction(residual: nyc_residual) {
+    DestinationCitedByRate { jurisdiction: j } =>
+      declaration_ref_eq(
+        a: j,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_york_city_sales_and_use",
+          decl_name: "nyc_pub718_authority",
+        ),
+      )
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => false
+  }
+  && destination_is_none(reading: residual_destination_jurisdiction(residual: ResidualUseTaxNone))
+  && destination_is_unread(
+    reading: residual_destination_jurisdiction(
+      residual: ResidualUseTaxUnread {
+        read_obligation: "probe arm; no destination to project" as NonEmptyStr,
+      },
+    ),
+  )
+}
+
+fn destination_is_none(reading: ResidualDestinationReading) -> Bool {
+  match reading {
+    DestinationCitedByRate { jurisdiction: _ } => false
+    DestinationNotApplicableNoResidual => true
+    DestinationUnreadWithResidualStanding => false
+  }
+}
+
+fn destination_is_unread(reading: ResidualDestinationReading) -> Bool {
+  match reading {
+    DestinationCitedByRate { jurisdiction: _ } => false
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => true
+  }
 }
 
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
@@ -164,7 +219,7 @@ test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
 test fn w_unread_residual_is_not_a_known_owe() -> Bool {
   !lot_tax_residual_is_owed(standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
-      jurisdiction: "elsewhere" as NonEmptyStr,
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
       rate: parts_per_million(count: 1),
       receipt_line_label: "tax" as NonEmptyStr,
     },
