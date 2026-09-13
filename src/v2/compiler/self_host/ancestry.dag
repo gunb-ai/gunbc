@@ -366,6 +366,16 @@ data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolut
   description: "delete GenesisFromSeed, GenesisStanding and admit_genesis when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, EXECUTED rather than fixtured. Unbound deliberately: the condition is one execution verifying by read-back, which no declaration appearing or retiring can stand for — binding it to a decl ref would be a checkable trigger impersonating a decision, and would report fired on the day the decl was written." as NonEmptyStr
 )
 
+// HOST WRITER of SucceedsNative (review 64952, DESIGN §3c). acquire_native_compiler asks for the
+// stored generation and native_generation_from_store reconstructs SucceedsNative when that
+// number is not genesis. No host in this closure writes generation N+1 or the parent_artifact /
+// produced_by_execution_of files that reconstruction requires. TRIGGER: the same executed
+// V2EmitterNative(N) -> N+1 capability as genesis_migration_deletion_trigger. Until then
+// run_native_genesis is the only store writer (generation 0 / GenesisFromSeed).
+data native_generation_succession_host_writer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "host writer of SucceedsNative store rows (generation N+1, parent_artifact, produced_by_execution_of) from an executed V2EmitterNative(N) emit, not a fixture and not genesis rewriting generation 0. Unbound: the trigger is that write executing." as NonEmptyStr
+)
+
 // ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. See native_route_acquisition_frontier.
 //
 // The shape: it asks for generation N, and the answer is either that generation or a refusal

@@ -473,15 +473,26 @@ type NativeRouteMalformedControl
 // THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
 // only that this path held no file while the native spawns ran; the stronger property — no v1
 // emitter or interpreter reachable at all, the closure admitted by native ancestry — is
-// OldRouteAbsentByConstruction, which the native ancestry acquisition lane introduces together
-// with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
-// arm can assert the stronger fact instead, at which point this arm deletes rather than being
-// relabelled.
+// OldRouteAbsentByConstruction. Production mint of that arm is a declared frontier
+// (`native_route_old_route_absent_by_construction_production_frontier`): generation 0's producer
+// is the seed, so claiming AbsentByConstruction on the genesis store would be a fabricated
+// native closure. DISSOLVE-ON: that frontier's trigger fires and every consumer of this
+// window arm asserts the stronger fact instead, at which point this arm deletes rather than
+// being relabelled.
 // THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
 // module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
 // stating this one only in a `//` block would leave the condition invisible to every Accepted
 // program, which is the same defect one file over.
-data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — the native ancestry acquisition lane lands a producer that establishes OldRouteAbsentByConstruction (no v1 emitter or interpreter reachable at all, the closure admitted by native ancestry). At that point every consumer of this arm asserts the stronger fact and this arm DELETES rather than being relabelled: the two say different things, and keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — delete this arm when OldRouteAbsentByConstruction is minted on the production native-lane receipt from an admitted native producer closure of a SucceedsNative generation, EXECUTED (native_route_old_route_absent_by_construction_production_frontier). Until then the window arms are the production observation. The two say different things: keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+
+// PRODUCTION CONSUMER of OldRouteAbsentByConstruction (review 64952, DESIGN §3c). The arm is
+// folded by native_route_old_route_closed and by v2.test.v2_native_route fixture receipts. The
+// emitted decoder (05_emit_rust native-lane host facts) still matches only withdrawn /
+// not_present_at_window. TRIGGER: that decoder grows the arm AND write_host_facts emits
+// disposition absent_by_construction carrying a v2_emitter-admitted closure of a SucceedsNative
+// generation, EXECUTED. Unbound: binding this row to a declaration would report fired on the
+// day the row was written.
+data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from an admitted native producer closure of a SucceedsNative generation, EXECUTED rather than fixtured. Until then dag tests are the only consumers of the arm; the live receipt uses the window arms.")
 
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }

@@ -152,10 +152,6 @@ fn ancestry_closure_identity_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("closure_identity")
 }
 
-fn ancestry_producer_closure_path(workspace: &Path) -> PathBuf {
-    ancestry_dir(workspace).join("producer_closure")
-}
-
 fn ancestry_generation_closure_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("generation_closure")
 }
@@ -206,10 +202,6 @@ fn ancestry_produced_by_path(workspace: &Path) -> PathBuf {
 
 fn ancestry_artifact_digest_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("artifact_sha512")
-}
-
-fn ancestry_readback_digest_path(workspace: &Path) -> PathBuf {
-    ancestry_dir(workspace).join("readback_sha512")
 }
 
 fn write_ancestry_text(path: &Path, text: &str) -> Result<(), String> {
@@ -672,14 +664,26 @@ fn native_generation_from_store(
 fn available_generation(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
-) -> Result<(Value, Option<PathBuf>, String, String), String> {
+) -> Result<(Value, Option<PathBuf>, String, String, i64), String> {
     let generation_path = ancestry_generation_path(workspace);
     if !generation_path.is_file() {
-        return Ok((optional_absent(ctx), None, String::new(), String::new()));
+        return Ok((
+            optional_absent(ctx),
+            None,
+            String::new(),
+            String::new(),
+            ANCESTRY_GENERATION_ZERO as i64,
+        ));
     }
     let binary_path = ancestry_compiler_path(workspace);
     if !binary_path.is_file() {
-        return Ok((optional_absent(ctx), None, String::new(), String::new()));
+        return Ok((
+            optional_absent(ctx),
+            None,
+            String::new(),
+            String::new(),
+            ANCESTRY_GENERATION_ZERO as i64,
+        ));
     }
     let generation_text = std::fs::read_to_string(&generation_path).map_err(|e| {
         format!(
@@ -709,19 +713,21 @@ fn available_generation(
         Some(binary_path),
         closure_identity,
         binary_identity,
+        generation,
     ))
 }
 
-/// PREPARATION ACQUIRES THE PRIOR NATIVE GENERATION. The seed is never the miss path:
-/// a missing, damaged or unverified ancestor is a typed refusal naming the generation
-/// expected. `compile_entry_emission` is not reachable from this function. The cause is
-/// `acquire_native_ancestor`'s, evaluated, not a string assembled beside it.
+/// PREPARATION ACQUIRES THE STORED NATIVE GENERATION. expected_generation is the number the
+/// store wrote, not a hardcoded zero: a SucceedsNative row would otherwise be unverified as
+/// "not the generation expected". The host writer of N+1 is
+/// `native_generation_succession_host_writer_frontier`. `compile_entry_emission` is not
+/// reachable from this function.
 fn acquire_native_compiler(
     workspace: &Path,
     source_roots: &[String],
 ) -> Result<EmittedPreparation, String> {
     let ctx = eval_entry_context(source_roots, ANCESTRY_AUTHORITY_ENTRY)?;
-    let (available, binary_path, closure_identity, binary_identity) =
+    let (available, binary_path, closure_identity, binary_identity, expected_generation) =
         available_generation(&ctx, workspace)?;
     let acquisition = eval_named(
         &ctx,
@@ -729,7 +735,7 @@ fn acquire_native_compiler(
         &[
             (
                 Some("expected_generation".to_string()),
-                Value::Int(ANCESTRY_GENERATION_ZERO as i64),
+                Value::Int(expected_generation),
             ),
             (Some("available".to_string()), available),
         ],
@@ -881,7 +887,6 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
         &ancestry_artifact_digest_path(&workspace),
         &materialized_hex,
     )?;
-    write_ancestry_text(&ancestry_readback_digest_path(&workspace), &readback_hex)?;
     let seed_exe = std::env::current_exe().map_err(|e| {
         format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — current_exe: {e}")
     })?;
@@ -904,10 +909,6 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )?;
     let generation_paths =
         emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?;
-    write_ancestry_lines(
-        &ancestry_producer_closure_path(&workspace),
-        &generation_paths,
-    )?;
     write_ancestry_lines(
         &ancestry_generation_closure_path(&workspace),
         &generation_paths,
@@ -947,8 +948,9 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
 /// therefore carries which control held, and the receipt records the authority's own arm:
 /// `OldRouteWithdrawn` when a file was moved aside, `OldRouteNotPresentAtWindow` when the path
 /// held nothing for the whole spawn window. Neither claims the stronger
-/// `OldRouteAbsentByConstruction` — no v1 emitter or interpreter reachable at all — which the
-/// native ancestry acquisition lane introduces with the producer that can establish it.
+/// `OldRouteAbsentByConstruction` — no v1 emitter or interpreter reachable at all. Generation 0
+/// is produced by the seed, so this harness must not mint that arm from genesis provenance.
+/// Production mint is `native_route_old_route_absent_by_construction_production_frontier`.
 struct OldRouteWithdrawalGuard {
     original: PathBuf,
     withdrawn: Option<PathBuf>,
