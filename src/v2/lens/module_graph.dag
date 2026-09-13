@@ -526,12 +526,26 @@ fn reference_derived_edges_from_located_roots(
   )
 }
 
+// The pool is keyed from the same declared list the importer fold iterates, so an importer absent
+// from it is a broken invariant (e.g. declared-path and ingest-path spellings disagree), never an
+// importer with no references. It refuses with a typed, located cause rather than contributing an
+// empty edge fold (review 64967 on gunbc#11202; DESIGN 5).
+fn importer_absent_from_reference_pool() -> Outcome<ReferenceDerivedEdgeFold> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^reference_derived_importer_absent_from_pool,
+      at: Textual { file: ^reference_derived_importer_absent_from_pool, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
 fn emit_reference_edges_for_importer(
   fact: ModuleDeclarationFact,
   pool: ReferenceDerivedPool
 ) -> Outcome<ReferenceDerivedEdgeFold> {
   match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
-    Absent => outcome_accepted(value: empty_reference_derived_edge_fold)
+    Absent => importer_absent_from_reference_pool()
     Present { value: root } =>
       outcome_accepted(
         value: emit_reference_edges_for_located_root(

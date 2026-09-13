@@ -96,31 +96,27 @@ fn report(source_roots: List<String>) -> Outcome<ReferenceDerivedGraphReport> {
     exclude_substrings: instrument_exclude
   ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: reference_edges, diagnostics: pending } =>
+    Accepted { value: reference_edges, diagnostics: pending } => {
+      let import_edges = dependency_edges_from_import_facts(
+        edges: import_resolution_facts_live(
+          pool_roots: source_roots,
+          importer_roots: source_roots,
+          exclude_substrings: instrument_exclude
+        )
+      )
       Accepted {
         value: ReferenceDerivedGraphReport {
           source_roots: source_roots,
           reference_edges: reference_edges,
-          import_edges: dependency_edges_from_import_facts(
-            edges: import_resolution_facts_live(
-              pool_roots: source_roots,
-              importer_roots: source_roots,
-              exclude_substrings: instrument_exclude
-            )
-          ),
+          import_edges: import_edges,
           diffs: diff_against_import(
             reference_edges: reference_edges,
-            import_edges: dependency_edges_from_import_facts(
-              edges: import_resolution_facts_live(
-                pool_roots: source_roots,
-                importer_roots: source_roots,
-                exclude_substrings: instrument_exclude
-              )
-            )
+            import_edges: import_edges
           )
         },
         diagnostics: pending
       }
+    }
   }
 }
 
