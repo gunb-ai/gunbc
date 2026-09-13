@@ -571,6 +571,16 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "engram-materialization-placement",
+    primary_work: DeclarationRef { module_path: "extdeps.deepseek.deepseek_v4_1_flash", decl_name: "deepseek_v4_1_flash_engram", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.materialization_ladder", decl_name: "ProviderTier", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ArtifactFootprint", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "gunbc.fabric.engram_materialization lands and the placement of this component is decided by a consumed select_realization fold whose result the serving subject reads, so its subject deepseek_v4_1_flash_engram is placed by shipped behavior rather than by a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "entry-graph-union-slice2-typecheck-attribution",
     primary_work: DeclarationRef { module_path: "std.interface_summary", decl_name: "module_key", field: WholeDeclaration },
     additional_works: [
