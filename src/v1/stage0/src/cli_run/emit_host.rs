@@ -524,7 +524,7 @@ pub fn compile_dag_multi_module_fixture(
     }
 }
 
-/// Resolved-registry projection for the Rust emit target: one row per `FnItem` / `FuncItem` in
+/// Resolved-registry projection for the Rust emit target: one row per `FnItem` in
 /// each `TypedModule.item_registry` (not the bare-name-merged `ResolvedGraph.item_registry`).
 /// `ordered_parameter_names` applies `emit_ident(..., Rust)` on authored params and resource-use
 /// names, then `service_var_name` per service, concatenated in that order — the same per-arm
@@ -567,7 +567,7 @@ fn project_resolved_rust_fn_signatures(
     let mut bare_fn_module_count: HashMap<String, usize> = HashMap::new();
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
-            if matches!(local.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            if matches!(local.kind, ItemKind::FnItem) {
                 *bare_fn_module_count.entry(local.name.clone()).or_insert(0) += 1;
             }
         }
@@ -576,7 +576,7 @@ fn project_resolved_rust_fn_signatures(
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
             match local.kind {
-                ItemKind::FnItem | ItemKind::FuncItem => {
+                ItemKind::FnItem => {
                     if bare_fn_module_count.get(&local.name).copied().unwrap_or(0) > 1 {
                         continue;
                     }
@@ -1348,7 +1348,7 @@ pub fn transport_script_position_facts_for_path(
     let mut facts = Vec::new();
     for item in items.iter() {
         let kind = item_kind(item.clone());
-        if !matches!(kind, ItemKind::FuncItem | ItemKind::FnItem) {
+        if !matches!(kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = item.body.as_ref() else {

@@ -2,7 +2,9 @@ module gunbc.principal_projection
 
 import std.types { NonEmptyStr }
 import extdeps.auth.jwt { JwtStringOrUri }
-import extdeps.auth.oidc { OidcIdTokenClaims }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import product.data_category { PersonalIdentity }
+import product.data_class { Classified, classify_personal_identity }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalObservation, effective_posix_principal_name,
 }
@@ -21,12 +23,51 @@ type GunbcPrincipal
   = OidcPrincipal { principal: OidcProjectedPrincipal }
   | PosixPrincipal { principal: PosixProjectedPrincipal }
 
+// THE OIDC INGEST BOUNDARY (product.data_class). An ID token's standard claims -- email,
+// email_verified, name -- are the identity of the account or admin principal who signed in, and
+// this is where they enter our program. The projection no longer carries the raw
+// OidcIdTokenClaims onward: the pseudonymous principal identity (issuer, subject) is carried in the
+// clear, because it is what a principal IS to every consumer, and the standard claims are carried
+// as Classified<PersonalIdentity, OidcStandardClaims>, minted here and only here
+// (classify_personal_identity is admit_callers-sealed to oidc_projection). A consumer
+// that wants an email out of a projection cannot spell it (test.probe.bare_string_from_boundary_probe);
+// it must admit a data effect and hold the permit. The upstream schema in extdeps is untouched:
+// the wall is at OUR ingest, not in the vendor's carrier.
+//
+// Whether the subject claim is itself personal identity is a policy question the data-handling map
+// answers, not this module: it is a stable pseudonymous identifier the product cannot function
+// without, and it is left in the clear here on that basis, stated rather than assumed.
+type OidcProjection {
+  issuer: JwtStringOrUri
+  subject: JwtStringOrUri
+  standard: Classified<PersonalIdentity, OidcStandardClaims>
+}
+
 type PrincipalProjection
-  = OidcProjection { claims: OidcIdTokenClaims }
+  = OidcProjected { projection: OidcProjection }
   | PosixProjection { observation: EffectivePosixPrincipalObservation }
 
+// THE BOUNDARY RETURNS THE NARROW TYPE, AND THE BOUNDARY IS OPEN (review 65270): oidc_projection
+// is the admitted caller of classify_personal_identity -- the mint is reachable only through it --
+// but it is itself an exported function over any OidcIdTokenClaims, so any importer holding a
+// claim set can mint Classified<PersonalIdentity, _> by calling it, as the probes and witnesses
+// do. The label establishes "these claims entered through the OIDC projection", not that a
+// verified ID token produced them; that becomes a construction fact when a production ID-token
+// decoder (none exists on main) is this function's sole admitted caller. It answers OidcProjection
+// directly, so a consumer that holds OIDC
+// claims never has to eliminate the posix arm of PrincipalProjection to reach the classified
+// claims -- an arm oidc_principal_projection can never produce (review 65254: an unreachable arm
+// realised by hand at every call site is a fabricated answer waiting to be reached).
+fn oidc_projection(claims: OidcIdTokenClaims) -> OidcProjection {
+  OidcProjection {
+    issuer: claims.issuer,
+    subject: claims.subject,
+    standard: classify_personal_identity(value: claims.standard),
+  }
+}
+
 fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
-  OidcProjection { claims: claims }
+  OidcProjected { projection: oidc_projection(claims: claims) }
 }
 
 fn posix_principal_projection(
@@ -37,9 +78,9 @@ fn posix_principal_projection(
 
 fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
   match projection {
-    OidcProjection { claims: claims } => OidcPrincipal { principal: OidcProjectedPrincipal {
-      issuer: claims.issuer,
-      subject: claims.subject,
+    OidcProjected { projection: projection } => OidcPrincipal { principal: OidcProjectedPrincipal {
+      issuer: projection.issuer,
+      subject: projection.subject,
     } }
     PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
       effective_name: effective_posix_principal_name(observation: observation),
