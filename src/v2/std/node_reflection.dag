@@ -205,12 +205,41 @@ fn coproduct_arm_keys_checked(
   )
 }
 
-// THE ROUTE THAT MAKES A CALLER SAY WHICH MODULE IT MEANT. `resolve_type_node_checked` refuses an
-// ambiguous spelling but cannot resolve one; a caller that legitimately means one of several
-// same-spelled types names it by citation instead, reusing `std.decl_ref` DeclarationRef -- the
-// corpus's existing carrier for "this declaration, in this module" -- so no second spelling of a
+// THE ARM-KEY READING OF THE CITATION ROUTE, declared because the spelling route has one and a
+// caller that cites its module needs the same answer shape. It binds over resolve_type_node_at
+// exactly as coproduct_arm_keys_checked binds over resolve_type_node_checked, so the two routes
+// differ in how the declaration is NAMED and in nothing else -- no second arm-key law.
+// Consumer: the conformance claims in v2.test.manual.scoped_type_reflection_conformance that read
+// a forked spelling through each of its declaring modules.
+fn coproduct_arm_keys_at(
+  pool_roots: List<String>,
+  ref: DeclarationRef
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: resolve_type_node_at(pool_roots: pool_roots, ref: ref),
+    f: fn(node) {
+      outcome_accepted(value: coproduct_arm_key_list_from_node(node: node))
+    }
+  )
+}
+
+// THE ROUTE THAT MAKES A CALLER SAY WHICH MODULE IT MEANT, and the one that can RESOLVE what the
+// spelling route can only refuse. `resolve_type_node_checked` refuses an ambiguous spelling because
+// a bare name does not say which declaration was meant; a caller that legitimately means one of
+// several same-spelled types names it by citation instead, reusing `std.decl_ref` DeclarationRef --
+// the corpus's existing carrier for "this declaration, in this module" -- so no second spelling of a
 // scoped type identity is minted here. When PR #11264 lands its occurrence bindings, this is the
 // declaration whose parameter becomes that binding: the citation is refined in place, not forked.
+//
+// IT ASKS ONLY WHETHER THE CITED NAME RESOLVES, and review 65649 is why that is worth stating. An
+// earlier revision also required the BARE spelling to be globally unique, and refused otherwise on
+// an invariant naming the bare host seam. That prohibition was true when the accept path still
+// delegated to the seam, which could not be told which module to read -- and it outlived its own
+// premise by one commit: once `accept_sole_declaration` began returning the node the KEYED read
+// already carries, nothing in this module consults load order, so a qualified key is exact and a
+// cited type in a forked spelling is perfectly resolvable. Keeping the conjunct would have forbidden
+// more than the evidence supports (DESIGN section 4d) and would have made the citation route unable
+// to serve the only case it exists for.
 fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcome<Node> {
   let wanted = logical_qualified_name_from_module(
     module_name: ref.module_path as String,
@@ -219,13 +248,7 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
   let type_name = symbol_intern_lexeme(lexeme: ref.decl_name as String)
   let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
   let scoped = filter(xs: candidates, predicate: fn(qn) { qn == wanted })
-  if length(xs: scoped) == 1 && length(xs: candidates) == 1 {
-    accept_sole_declaration(
-      pool_roots: pool_roots,
-      type_name: type_name,
-      sole_qualified_name: wanted
-    )
-  } else if length(xs: scoped) == 0 {
+  if length(xs: scoped) == 0 {
     outcome_rejected(
       d: scoped_type_reflection_diagnostic(
         type_name: type_name,
@@ -233,11 +256,10 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
       )
     )
   } else {
-    outcome_rejected(
-      d: scoped_type_reflection_diagnostic(
-        type_name: type_name,
-        invariant: ^cited_type_unreachable_through_bare_host_seam
-      )
+    accept_sole_declaration(
+      pool_roots: pool_roots,
+      type_name: type_name,
+      sole_qualified_name: wanted
     )
   }
 }

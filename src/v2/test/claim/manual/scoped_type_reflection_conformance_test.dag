@@ -6,6 +6,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node_reflection {
+  coproduct_arm_keys_at,
   coproduct_arm_keys_checked,
   resolve_type_node_at,
   resolve_type_node_checked
@@ -102,11 +103,8 @@ test fn absent_type_spelling_refuses() -> Bool {
   )
 }
 
-// THE CITATION ROUTE. Naming the module resolves a unique spelling; it does NOT yet rescue an
-// ambiguous one, because the bare host seam it delegates to cannot be told which module to read
-// -- so that case refuses too, and says so on its own arm rather than guessing. Shrinking that
-// refusal is what consuming #11264's occurrence binding buys, and this claim is where the change
-// will show.
+// THE CITATION ROUTE, AND THE CLAIM THAT SAYS WHAT IT IS FOR. Naming the module resolves the cited
+// declaration whether or not the bare spelling is forked -- that is the whole point of citing one.
 test fn cited_unique_type_resolves_through_its_module() -> Bool {
   outcome_is_accepted(
     o: resolve_type_node_at(
@@ -120,16 +118,41 @@ test fn cited_unique_type_resolves_through_its_module() -> Bool {
   )
 }
 
-test fn cited_ambiguous_type_refuses_until_the_seam_is_scope_carrying() -> Bool {
-  outcome_is_rejected(
-    o: resolve_type_node_at(
+// THE DISCRIMINATING PAIR, AND IT IS ONE SPELLING READ TWO WAYS. `Representation` is a closed
+// coproduct in BOTH v2.lens.intent_linearity and v2.std.integer, with DISJOINT arm sets. The bare
+// route must refuse it -- no bare spelling can say which was meant -- and the cited route must
+// resolve it to exactly the arms of the module named, not to the other module's. Asserting the ARM
+// KEYS rather than mere acceptance is what makes this a test of the answer: a citation route that
+// resolved through load order would still be Accepted here and would return the wrong arm set.
+//
+// This claim previously asserted the opposite -- that the cited route REFUSES -- which enrolled an
+// over-refusal as required behaviour (review 65649). It was true of an earlier revision whose accept
+// path still delegated to the bare host seam, and it outlived that premise by one commit.
+test fn cited_forked_spelling_resolves_to_the_module_named() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
       pool_roots: scoped_reflection_pool_roots,
       ref: DeclarationRef {
         module_path: "v2.std.integer",
         decl_name: "Representation",
         field: WholeDeclaration
       }
-    )
+    ),
+    expected: [^TwosComplement, ^OnesComplement, ^SignMagnitude]
+  )
+}
+
+test fn cited_forked_spelling_resolves_to_the_other_module_named() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.lens.intent_linearity",
+        decl_name: "Representation",
+        field: WholeDeclaration
+      }
+    ),
+    expected: [^TermChain, ^TypeForest, ^ImportGraph, ^DeclForest]
   )
 }
 
