@@ -18,7 +18,7 @@ fn callback_inference_error_count(source: String) -> Int {
   }
 }
 
-data list_callback_source: String = "module probe_generic_collection_callback\nimport std.algebra { FreeMonoid }\nimport std.types { Int, List }\ntype Element { value: Int }\nfn collect<T>(xs: FreeMonoid<T>, f: fn(T) -> Int) -> Int { fold(xs, init: 0, f: fn(total, item) { total + f(item) }) }\nfn asks(xs: List<Element>) -> Int { collect(xs: xs, f: item => item.value) }\n"
+data list_callback_source: String = "module probe_generic_collection_callback\nimport std.algebra { FreeMonoid }\nimport std.types { Int, List }\ntype Element { value: Int }\nfn collect<T>(xs: FreeMonoid<T>, f: fn(T) -> Int) -> Int { fold(xs, init: 0, f: fn(total, item) { total + f(item) }) }\ntype Population { elements: List<Element> }\nfn asks(population: Population) -> Int { collect(xs: population.elements, f: item => item.value) }\n"
 
 data direct_callback_source: String = "module probe_generic_collection_callback\nimport std.algebra { FreeMonoid }\nimport std.types { Int, List }\ntype Element { value: Int }\nfn collect<T>(xs: FreeMonoid<T>, f: fn(T) -> Int) -> Int { fold(xs, init: 0, f: fn(total, item) { total + f(item) }) }\nfn asks(xs: FreeMonoid<Element>) -> Int { collect(xs: xs, f: item => item.value) }\n"
 
@@ -48,3 +48,15 @@ test fn missing_field_callback_refuses() -> Bool {
   callback_inference_error_count(source: missing_field_callback_source) >= 1
 }
 
+
+data imported_list_source: String = "module probe_generic_collection_imported\nimport std.algebra { FreeMonoid }\nimport std.types { Int, List }\nimport test.claim.generic_collection_callback_fixture { collect_imported }\ntype Element { value: Int }\ntype Population { elements: List<Element> }\nfn asks(population: Population) -> Int { collect_imported(xs: population.elements, f: item => item.value) }\n"
+
+test fn imported_list_binds() -> Bool {
+  callback_inference_error_count(source: imported_list_source) == 0
+}
+
+data imported_direct_source: String = "module probe_generic_collection_imported\nimport std.algebra { FreeMonoid }\nimport std.types { Int, List }\nimport test.claim.generic_collection_callback_fixture { collect_imported }\ntype Element { value: Int }\nfn asks(xs: FreeMonoid<Element>) -> Int { collect_imported(xs: xs, f: item => item.value) }\n"
+
+test fn imported_direct_binds() -> Bool {
+  callback_inference_error_count(source: imported_direct_source) == 0
+}

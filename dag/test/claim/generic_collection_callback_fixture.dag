@@ -1,0 +1,10 @@
+module test.claim.generic_collection_callback_fixture
+
+import std.algebra { FreeMonoid }
+import std.types { Int }
+
+// Imported by the callback binding witness's authored programs to exercise
+// declaration-bound generic substitution across a module boundary.
+fn collect_imported<T>(xs: FreeMonoid<T>, f: fn(T) -> Int) -> Int {
+  fold(xs, init: 0, f: fn(total, item) { total + f(item) })
+}
