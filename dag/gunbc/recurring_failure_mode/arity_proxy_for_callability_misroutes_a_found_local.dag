@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.arity_proxy_for_callability_misroutes_a_found_local
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data arity_proxy_for_callability_misroutes_a_found_local: RecurringFailureMode = RecurringFailureMode {
+  identity: "arity_proxy_for_callability_misroutes_a_found_local" as NonEmptyStr,
+
+  receipts: [
+    "**a callability question answered by counting parameters** (the v1 seed's direct-call seam in `v1.compiler.infer` decided whether a body-scope binding could be applied by asking whether its resolved type had MORE THAN ZERO parameters, so every nullary function value -- `fn() -> R` as a parameter, a let-bound `fn() { ... }`, a parameter typed by an alias of `fn() -> R` -- was classified as not callable, discarded, and the call retried as a GLOBAL name.)",
+
+    "INVALID STATE: a local binding whose type is a function type classified as non-callable at the call seam because its parameter list is empty.",
+
+    "HARM, stated as the diagnostic the author receives rather than only the resolution that failed: `function 'pick' not found in scope`, located at the call, about a binding that IS in scope and IS callable. The census keys it as class InternalError, subject function:pick -- so the refusal is not only wrong about the subject, it is typed as a compiler-internal fault. A misdirected refusal is worse than a plain one: it sends the author to search for a missing declaration that exists, and the only moves it suggests are dodges -- give the function a parameter, rename it, hoist it to module scope -- each of which would have laundered a floor defect into the corpus. gunbc#11317's mode/disposition selector hit it and stopped rather than dodging, which is why it arrived here clean.",
+
+    "DISCOVERED BY quick-moth-77 while compiling gunbc#11317; this row is filed by the repairing lane, which holds the executed evidence.",
+
+    "DISTINGUISHING FACTS. (1) Arity was a PROXY, not a guard to delete: `scope.locals` also carries entries that are genuinely not callable -- coproduct-arm owners (connective Disj) bound for variant-constructor calls, and value-typed bindings -- and `params |> count > 0` did screen those out. It screened out every nullary function type with them, because the property it stood in for is the type's CONNECTIVE: every callable value type is minted as an Arrow node (`v1.compiler.types` `make_callable_type`, `v1.compiler.parse` `parse_callable_type_expr`), and a nullary one has an empty parameter list. The repair names that thing -- `v1.compiler.infer` `local_binding_type_is_callable` -- and all three call-seam sites consume it. (2) The same proxy selected whether a body local's type is expanded through its alias chain before the question is asked; with arity as the test, an alias of a nullary arrow and an already-structural nullary arrow were both sent down the expansion path, and only the structural unary case skipped it. (3) A THIRD `> 0` guard, in `function_value_call_named_arg_diags`, skipped the positional-surplus check whenever the callable had no parameters. It was unreachable while no nullary callable reached it; widening the seam alone would have admitted `pick(3)` against `fn() -> Int` silently, so it was removed in the same change -- the forked-logic trap DESIGN section 6 names, caught by asking what the widened value's consumers would now see.",
+
+    "RUNG FOUND AT: 1, mitigatable in the loud-but-misdirected form -- every specimen refused, located, with the wrong cause.",
+
+    "EXECUTED EVIDENCE, named rather than transcribed: `test.claim.infer_nullary_local_callable_witness_test`, admitted to the required floor by the `test.claim.infer_` prefix in `v2.workflow.required_floor` `required_gate_prefixes`. Its three nullary cells (parameter, let-bound, alias-typed parameter) and its surplus cell are the discriminating REDs -- each refused with InternalError function:pick against the seed before the repair; its nullary-global and unary-local cells are the accepted positive controls, green before and after.",
+
+    "RUNG NOW: 3, structurally guaranteed on the ExprCall bare-name path for body-scope bindings whose type is a structural or alias-expanded function type -- the accepted corpus cannot contain a found nullary local reported as not found, nor a nullary local applied to a surplus positional argument, on the floor's acceptance path.",
+
+    "CEILING: 3. Callability is decidable from the modeled type, so the class cannot honestly sit lower; it cannot reach 4 while the call seam receives a binding by spelling and asks of it afterwards, rather than receiving a callable-typed carrier by construction.",
+
+    "WHAT IS NOT CLOSED, and it is the same root -- a body local the seam rejects RETRIES THE NAME GLOBALLY -- reached through a binding that genuinely is not callable. Executed against the seed before this repair and unchanged by it: `fn host(pick: Int) -> Int { pick() }` refuses with the same misdirected `function 'pick' not found in scope`; and with `fn pick() -> Int { 7 }` declared beside it, the same body COMPILES WITH ZERO BLOCKING DIAGNOSTICS, the call bound past the shadowing parameter to the global declaration. That second specimen is silent wrongness, below the ladder. It is not claimed closed here because refusing it needs a decidable NOT-callable test that must not fire on type-variable-typed bindings (lambda parameters, generic higher-order parameters), and that discrimination was not measured in this change.",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a call-seam refusal for a body-scope binding whose modeled type is decidably not a function type, sufficient that no rejected body local is ever retried as a global name -- with the shadowing specimen above as its discriminating RED and a type-variable-typed higher-order parameter as its positive control.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "local_binding_type_is_callable", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_nullary_local_callable_witness_test", decl_name: "nullary_parameter_callable_resolves", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_nullary_local_callable_witness_test", decl_name: "nullary_local_refuses_a_surplus_argument", field: WholeDeclaration },
+  ],
+}

@@ -5000,6 +5000,17 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
   concat(concat(concat(unknown_label_diags, surplus_diags), concat(duplicate_label_diags, deficit_diags)), formal_identity_duplicate_diags)
 }
 
+// WHETHER A LOCAL BINDING CAN BE APPLIED IS A FACT ABOUT ITS TYPE'S CONNECTIVE, NOT ITS ARITY.
+// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
+// and the parameter list of a nullary `fn() -> R` is empty. The three call-seam tests this replaces
+// asked `params |> count > 0`, which conflated "is a function type" with "takes an argument": it
+// correctly screened out the non-callable entries scope.locals also carries -- coproduct-arm owners
+// (connective Disj) and value bindings -- but it screened out every nullary callable with them, and
+// the call then fell through to global lookup and reported a found local as "not found in scope".
+fn local_binding_type_is_callable(resolved: Node) -> Bool {
+  resolved.connective == Arrow
+}
+
 fn function_value_call_named_arg_diags(
   func_name: String,
   typed_args: List<Node>,
@@ -5022,22 +5033,20 @@ fn function_value_call_named_arg_diags(
       let arity_diags = match callable_type {
         Present { value: callable } =>
           let param_count = callable.params |> count
-          if param_count > 0 {
-            let supplied = typed_args |> count
-            if supplied > param_count {
-              match typed_args |> skip(param_count) |> first {
-                Present { value: overflow } =>
-                  [make_error_node(
-                    diagnostic: CallPositionalSurplus {
-                      callee: func_name,
-                      supplied: supplied,
-                      capacity: param_count,
-                      span: overflow.span
-                    },
-                    module_name: module_name)]
-                Absent => []
-              }
-            } else { [] }
+          let supplied = typed_args |> count
+          if supplied > param_count {
+            match typed_args |> skip(param_count) |> first {
+              Present { value: overflow } =>
+                [make_error_node(
+                  diagnostic: CallPositionalSurplus {
+                    callee: func_name,
+                    supplied: supplied,
+                    capacity: param_count,
+                    span: overflow.span
+                  },
+                  module_name: module_name)]
+              Absent => []
+            }
           } else { [] }
         Absent => []
       }
@@ -6739,7 +6748,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let local_call_view = if sig != none { none } else { match map_get(scope.locals, func_name) {
-        Present { value: binding } => Present { value: if binding.resolved.params |> count > 0 || !map_has(scope.body_locals, func_name) {
+        Present { value: binding } => Present { value: if local_binding_type_is_callable(resolved: binding.resolved) || !map_has(scope.body_locals, func_name) {
             NodeResolveResult { resolved: binding.resolved, diagnostics: [] }
           } else {
             expand_type_for_field_access(n: binding.resolved, env: scope.type_env, module_name: scope.module_name)
@@ -6754,7 +6763,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let local_call_refused = local_call_diags |> any(d => is_error_diagnostic(d: d.diagnostic))
       let callable_local = if local_call_refused { none } else {
         match local_call_view {
-          Present { value: view } => if view.resolved.params |> count > 0 { Present { value: view.resolved } } else { none }
+          Present { value: view } => if local_binding_type_is_callable(resolved: view.resolved) { Present { value: view.resolved } } else { none }
           Absent => none
         }
       }
@@ -7088,12 +7097,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
             Present { value: carried } =>
-              if carried.resolved.params |> count > 0 { Present { value: carried.resolved } }
+              if local_binding_type_is_callable(resolved: carried.resolved) { Present { value: carried.resolved } }
               else { none }
             Absent =>
               match map_get(scope.locals, func_name) {
                 Present { value: binding } =>
-                  if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+                  if local_binding_type_is_callable(resolved: binding.resolved) { Present { value: binding.resolved } }
                   else { none }
                 Absent => none
               }
