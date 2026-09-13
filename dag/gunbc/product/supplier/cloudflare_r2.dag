@@ -2,7 +2,7 @@ module product.supplier.cloudflare_r2
 
 import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.content_hash { as_content_hash_structural }
+import std.content_hash { as_content_hash_structural, content_hash_atom, content_hash_combine_structural, Fnv1a64Structural }
 import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathUnread,
@@ -131,6 +131,25 @@ fn cloudflare_r2_downstream() -> DownstreamProviderPopulation {
   }
 }
 
+fn cloudflare_r2_location_readings_digest() -> Fnv1a64Structural {
+  fold(
+    r2_published_location_readings(),
+    init: content_hash_atom(value: "product.supplier.cloudflare_r2.location-readings" as NonEmptyStr),
+    f: fn(acc, reading) {
+      content_hash_combine_structural(
+        left: acc,
+        right: content_hash_combine_structural(
+          left: content_hash_atom(value: reading.authority.decl_name),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: reading.read_on),
+            right: content_hash_atom(value: reading.statement),
+          ),
+        ),
+      )
+    },
+  )
+}
+
 fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: route,
@@ -138,7 +157,7 @@ fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
     data_paths: cloudflare_r2_data_paths(),
     downstream: cloudflare_r2_downstream(),
     observed_at: "2026-09-12T00:00:00Z",
-    facts_revision: as_content_hash_structural(structural: r2_published_location_readings()),
+    facts_revision: as_content_hash_structural(structural: cloudflare_r2_location_readings_digest()),
   }
 }
 
