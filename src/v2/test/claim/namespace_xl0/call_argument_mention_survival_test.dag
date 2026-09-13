@@ -64,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the collector is blind to this tree generally and the probe is uninformative.
 data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
 
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
 
 fn xl0_provider_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -346,7 +346,27 @@ test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() 
     && !fold_list(xs: fixture_import_sites(), empty: false, cons: fn(acc, site) { true })
 }
 
-test fn a_type_position_name_reaches_the_collector_holds() -> Bool {
+test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "Bool")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+}
+
+// IS A BARE FIELD TYPE ITS OWN MISSING CLASS? The three-class rule this PR states -- bare reaches,
+// qualified does not, calls erase their contents -- was measured on PARAMETER and BODY positions.
+// XL-3 reported a field-type case absent and grouped it with the dotted rows, but their fixture's
+// spelling leaves it open whether FIELD POSITION or QUALIFICATION is doing the work. If a BARE
+// field type were absent, field position would be a fourth class and this PR's table would be
+// wrong.
+//
+// `Xl0FieldOnly` is declared here, spelled BARE, and used in exactly one place: the field type of
+// Xl0Wrapper. No dot, no parameter, no body. It isolates field position from qualification.
+//
+// IT IS ABSENT, SO FIELD POSITION IS A FOURTH CLASS AND NOT A DOTTED CASE. That matters for
+// everyone's trigger: XL-3 measured a field-type miss and grouped it with the qualified rows, and
+// this fixture shows qualification is not what is doing the work -- a BARE field type is missing
+// too. A type-position claim that does not say WHICH type position is therefore too coarse: the
+// same bare name reaches from a parameter and does not reach from a field.
+test fn a_bare_field_type_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
     && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }

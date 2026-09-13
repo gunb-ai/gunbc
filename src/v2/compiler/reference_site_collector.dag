@@ -37,13 +37,38 @@ import v2.extdeps.languages.dag {
 // one witness, which makes a well-shaped module dangling in DESIGN section 3c's exact sense: a
 // declaration whose consumers are described rather than executed. This module is that producer.
 //
-// ONE COLLECTOR, TWO STAGES. NAMESPACE-XL's XL-0 denominator and XL-4's reference-derived graph
-// ask the same question of the tree -- where is every mention, and at what containment position --
-// and differ only in what they fold the answers into. Two collectors would be the section 3 fork
-// with the widest possible blast radius, because a mention this one misses is silently absent from
-// both a denominator and a dependency edge. So the site enumeration is here, once, and both stages
-// consume it.
+// ONE COLLECTOR, TWO STAGES -- AND THAT CLAIM WAS FALSE AS FIRST WRITTEN, SO IT IS RESTATED HERE
+// RATHER THAN QUIETLY DROPPED.
 //
+// This header said "the site enumeration is here, once, and both stages consume it". It is not
+// once. v2.lens.reference_deps reference_sites_collect_node ALREADY enumerates reference sites,
+// from the PARSED tree, via ^dag_surface_qualified_name productions -- and its own dissolution note
+// describes the successor in terms that name this module's territory: "dissolves when
+// symbol_index_fill projects reference edges from the filled containment tree and non-import
+// qualified-name sites require the parsed census path". I did not find it before writing this
+// module, which is the section 6 move -- DFS the concept DAG before inventing vocabulary -- skipped
+// at the one point it mattered most.
+//
+// THE OVERLAP IS REAL BUT NARROWER THAN I FIRST WROTE, AND I CHECKED THE SECOND TIME. I claimed
+// the lens recognises "exactly the class this collector misses -- a qualified cross-module
+// reference in a body". THAT IS FALSE. The lens keys on ^dag_surface_qualified_name and the import
+// productions and NOTHING ELSE -- it carries no dot or field-access handling at all. A qualified
+// reference in a BODY parses as a field access, not a qualified-name production, so the lens misses
+// it too. What the lens does see is a qualified name in a TYPE position, where the production
+// survives.
+//
+// SO NEITHER INSTRUMENT SEES A QUALIFIED BODY REFERENCE, and the overlap between them is the
+// type-position qualified name rather than the whole qualified class. That is also why
+// warm-ibex-518's deleted parse walk was genuinely a duplicate: it keyed on the same production.
+//
+// THE CONSOLIDATION IS RULED AND IT IS NOT "CONSUME THE LENS". The authority for reference sites is
+// the collector over the tree THE RESOLVER CONSUMES -- a site must be something resolution
+// resolves, and the lens reads the parse tree. The lens is itself a declared SCAFFOLD whose own
+// dissolution names a symbol_index_fill-derived projection, so consuming its recogniser would be
+// building on a scaffold. Its disposition is repointed at this module instead, and the overlap is
+// recorded as a DECLARED FRONTIER rather than as consolidated: two enumerators stand today, on two
+// trees, and this one becomes the single authority when it covers qualified sites -- which waits on
+// the dotted-reference capability, still under verification and NOT escalated to another lane.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
 // declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
 // Named { name } edges and indexes edge.target as the declaration), so a declared name never
