@@ -11,6 +11,8 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import gunbc.fleet_host_assembly {
+  chassis_srv1,
+  chassis_srv2,
   srv_assembly_components,
   srv_assembly_containments,
   board_srv1,
@@ -23,6 +25,7 @@ import gunbc.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -47,6 +50,24 @@ test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
       Absent => false
       Present { value: c } => first_containment_is_chassis(c: c)
     }
+}
+
+// THE CHASSIS EDGE MUST BE THE RIGHT EDGE, not merely present. Admitting ChassisContainsHost in
+// the row fold could have been a hole: a fold that accepts "some chassis edge exists anywhere"
+// would pass a roster whose chassis is bound to the WRONG host. This varies exactly that - the
+// real containments discharge, and a containment list whose srv1 chassis edge names srv2's host
+// does not.
+test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
+  assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+    && !assembly_containments_join(
+      rows: srv_assembly_components,
+      containments: [
+        ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 },
+        ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
+        ChassisContainsHost { chassis: chassis_srv3, host: operator_host_srv3 },
+        ChassisContainsHost { chassis: chassis_srv4, host: operator_host_srv4 },
+      ]
+    )
 }
 
 test fn w_omitting_a_rostered_component_refuses_cover() -> Bool {
