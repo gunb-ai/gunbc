@@ -11,7 +11,7 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -156,10 +156,6 @@ fn fixture_collection() -> ReferenceSiteCollection {
 
 fn fixture_sites() -> FreeMonoid<ReferenceSite> {
   fixture_collection().sites
-}
-
-fn fixture_import_sites() -> FreeMonoid<ReferenceSite> {
-  fixture_collection().import_sites
 }
 
 fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
@@ -346,33 +342,27 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
   reference_site_collection_is_total(collection: fixture_collection())
 }
 
-// IMPORTS DO NOT REACH THIS ROUTE, SO THE IMPORT ARM IS EMPTY BY CONSTRUCTION HERE -- MEASURED,
-// AND THE MEASUREMENT RETRACTS AN EXPLANATION I GAVE EARLIER IN THIS FILE.
+// IMPORTS DO NOT REACH THIS ROUTE, AND THE ASSERTION THAT SAID SO WAS ITSELF A DECORATION.
 //
-// The arm was added because a type-position row of mine was believed to be green on an
-// `import ... { Bool }` line. It was not, and it could not have been: `Absent` is imported by the
-// consumer fixture and used NOWHERE else, so it exists at exactly one point in the source, and it
-// appears in NEITHER `sites` NOR `import_sites`. Import statements are consumed before the
-// normalized tree the collector walks, so there is no import surface here to pollute a denominator
-// with and none to classify.
+// WHAT THIS MEASURES AND WHY IT IS WORTH AN ENROLLED ROW. `Absent` is imported by the consumer
+// fixture and used NOWHERE else, so it exists at exactly one point in the source: an import line.
+// It reaches the collector not at all. That is the fact that retires an explanation I gave earlier
+// in this file and told two sibling lanes -- that a type-position row of mine had been green on an
+// `import ... { Bool }` line. It could not have been: import statements are consumed before the
+// normalized tree this collector walks, so the `Bool` mentions in `sites` are real type positions.
 //
-// WHAT THAT MEANS FOR THE TYPE-POSITION ROW: the `Bool` mentions in `sites` are the real type
-// positions, not import lines, and the row that asserted a type-position name reaches the collector
-// was correct as originally written. I renamed it on a hypothesis I never tested and told two
-// sibling lanes the same thing.
-//
-// THE ARM IS KEPT AND ITS CONTROLS ARE NOT. A control that can only be green on a route where
-// imports survive is unauthorable HERE, and DESIGN section 4b calls a permanently-red-or-
-// permanently-green check a decoration rather than a weak wall -- worse than absent, because it
-// gets cited as coverage. What is enrolled instead is the MEASUREMENT: the arm is empty, and the
-// reason is that imports never arrive, so no reader mistakes an empty arm for "this corpus has no
-// imports". The classification itself stays, because a consumer walking a PARSE tree does see
-// import productions and should not have to invent its own policy -- which is the fork the arm was
-// asked to close.
-test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() -> Bool {
-  !sites_mention(sites: fixture_import_sites(), spelling: "Absent")
-    && !sites_mention(sites: fixture_sites(), spelling: "Absent")
-    && is_empty(xs: fixture_import_sites())
+// WHAT WAS REMOVED, AND IT IS THE SAME RULE THIS FILE APPLIES ELSEWHERE. The row used to also
+// assert `is_empty(xs: fixture_import_sites())` against a second classified arm on the collector.
+// Since no input on this route can populate that arm, the conjunct was PERMANENTLY GREEN BY
+// CONSTRUCTION -- DESIGN section 4b's decoration, worse than absent because it gets cited as
+// coverage. The header above it had already declined to author a control for exactly that reason
+// and then enrolled the assertion anyway, which is the inconsistency rather than a second one. The
+// arm is gone from v2.compiler.reference_site_collector, so what remains here is the measurement
+// that actually discriminates: a spelling that exists ONLY on an import line reaches the collector
+// in no form at all, and that row reds the moment imports begin surviving into this tree.
+test fn an_import_only_spelling_does_not_reach_this_route_holds() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "Absent")
+    && sites_mention(sites: fixture_sites(), spelling: "Bool")
 }
 
 test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
