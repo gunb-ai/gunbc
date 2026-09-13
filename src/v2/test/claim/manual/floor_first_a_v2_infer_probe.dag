@@ -1,0 +1,144 @@
+module floor_first_a.v2_infer_probe
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.compile { compile_ingest_staging }
+import v2.extdeps.languages.rust {
+  rust_binding_spellings,
+  rust_fn_add_lex,
+  rust_target_model_node
+}
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  InvariantPortLocus,
+  Locus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import std.process { ProcessExit, exit_failure }
+
+data probe_target_authority: String = "floor_first_a_v2_infer_probe"
+
+data probe_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
+  bundle: rust_target_model_node(),
+  lex: rust_fn_add_lex(),
+  binding_spellings: rust_binding_spellings(),
+  token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: probe_target_authority,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+fn locus_label(at: Locus) -> String {
+  match at {
+    Textual { file: file, extent: _ } => "textual:" + symbol_lexeme(sym: file)
+    NodeLocus { anchor: _ } => "node"
+    SourcePortLocus { anchor: anchor, file: file, extent: _ } =>
+      "port:" + symbol_lexeme(sym: anchor.at) + "@" + symbol_lexeme(sym: file)
+    InvariantPortLocus { anchor: anchor, invariant: invariant } =>
+      "invariant:" + symbol_lexeme(sym: anchor.at) + "/" + symbol_lexeme(sym: invariant)
+  }
+}
+
+fn diagnostic_line(d: Diagnostic) -> String {
+  symbol_lexeme(sym: d.reason) + " @ " + locus_label(at: d.at)
+}
+
+fn render_outcome(o: Outcome<Medium<String>>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: ds } =>
+      "REJECTED|" + diagnostic_line(d: ds.head) + fold_list(
+        xs: ds.tail,
+        empty: "",
+        cons: fn(acc, d) { acc + " || " + diagnostic_line(d: d) }
+      )
+  }
+}
+
+fn compile_probe(source: Medium<String>) -> String {
+  render_outcome(o: compile_ingest_staging(source: source, target: probe_target))
+}
+
+fn probe_exit(source: Medium<String>) -> ProcessExit {
+  exit_failure(reason: compile_probe(source: source))
+}
+
+// RFM direct_generic_application_admits_a_distinct_phantom_argument specimen (gunbc#11236).
+data marker_red_direct_source: Medium<String> = Medium {
+  carried: "module probe.marker.direct\n\ntype PersonalIdentity {\n}\ntype JobLog {\n}\ntype Sealed<C, T> {\n  value: T\n}\n\nfn mint_pii() -> Sealed<PersonalIdentity, String> = Sealed { value: \"x\" }\nfn take(v: Sealed<JobLog, String>) -> Int = 0\nfn bad() -> Int = take(v: mint_pii())\n",
+  fidelity: Lossless
+}
+
+data marker_red_admit_source: Medium<String> = Medium {
+  carried: "module probe.marker.admit\n\ntype PersonalIdentity {\n}\ntype JobLog {\n}\ntype Sealed<C, T> {\n  value: T\n}\ntype Sink<C> {\n}\n\nfn mint_pii() -> Sealed<PersonalIdentity, String> = Sealed { value: \"x\" }\nfn log_sink() -> Sink<JobLog> = Sink {}\nfn admit<C, T>(c: Sealed<C, T>, s: Sink<C>) -> Int = 0\nfn bad() -> Int = admit(c: mint_pii(), s: log_sink())\n",
+  fidelity: Lossless
+}
+
+data marker_control_string_at_sealed_source: Medium<String> = Medium {
+  carried: "module probe.marker.control_string\n\ntype JobLog {\n}\ntype Sealed<C, T> {\n  value: T\n}\n\nfn take(v: Sealed<JobLog, String>) -> Int = 0\nfn bad() -> Int = take(v: \"x\")\n",
+  fidelity: Lossless
+}
+
+data marker_control_identical_source: Medium<String> = Medium {
+  carried: "module probe.marker.control_ok\n\ntype JobLog {\n}\ntype Sealed<C, T> {\n  value: T\n}\n\nfn mint() -> Sealed<JobLog, String> = Sealed { value: \"x\" }\nfn take(v: Sealed<JobLog, String>) -> Int = 0\nfn ok() -> Int = take(v: mint())\n",
+  fidelity: Lossless
+}
+
+// RFM refined_alias_argument_exempt_from_declared_type_inhabitance specimen.
+data alias_red_filepath_param_source: Medium<String> = Medium {
+  carried: "module probe.alias.filepath_param\n\ntype Wrapped {\n  inner: String\n}\ntype FilePath = String where non_empty\n\nfn take(v: Wrapped) -> Int = 0\nfn bad(p: FilePath) -> Int = take(v: p)\n",
+  fidelity: Lossless
+}
+
+data alias_red_filepath_cast_source: Medium<String> = Medium {
+  carried: "module probe.alias.filepath_cast\n\ntype Wrapped {\n  inner: String\n}\ntype FilePath = String where non_empty\n\nfn take(v: Wrapped) -> Int = 0\nfn bad() -> Int = take(v: \"x\" as FilePath)\n",
+  fidelity: Lossless
+}
+
+data alias_control_literal_source: Medium<String> = Medium {
+  carried: "module probe.alias.literal\n\ntype Wrapped {\n  inner: String\n}\n\nfn take(v: Wrapped) -> Int = 0\nfn bad() -> Int = take(v: \"x\")\n",
+  fidelity: Lossless
+}
+
+data alias_control_string_param_source: Medium<String> = Medium {
+  carried: "module probe.alias.string_param\n\ntype Wrapped {\n  inner: String\n}\n\nfn take(v: Wrapped) -> Int = 0\nfn bad(s: String) -> Int = take(v: s)\n",
+  fidelity: Lossless
+}
+
+data alias_control_int_param_source: Medium<String> = Medium {
+  carried: "module probe.alias.int_param\n\ntype Wrapped {\n  inner: String\n}\n\nfn take(v: Wrapped) -> Int = 0\nfn bad(i: Int) -> Int = take(v: i)\n",
+  fidelity: Lossless
+}
+
+data alias_control_foreign_record_source: Medium<String> = Medium {
+  carried: "module probe.alias.foreign_record\n\ntype Wrapped {\n  inner: String\n}\ntype Other {\n  inner: String\n}\n\nfn take(v: Wrapped) -> Int = 0\nfn bad(o: Other) -> Int = take(v: o)\n",
+  fidelity: Lossless
+}
+
+data a4_style_nominal_mismatch_source: Medium<String> = Medium {
+  carried: "module probe.a4.nominal\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n",
+  fidelity: Lossless
+}
+
+fn a4_style_nominal_mismatch() -> ProcessExit { probe_exit(source: a4_style_nominal_mismatch_source) }
+fn marker_red_admit() -> ProcessExit { probe_exit(source: marker_red_admit_source) }
+fn marker_control_string() -> ProcessExit { probe_exit(source: marker_control_string_at_sealed_source) }
+fn marker_control_ok() -> ProcessExit { probe_exit(source: marker_control_identical_source) }
+fn alias_red_filepath_param() -> ProcessExit { probe_exit(source: alias_red_filepath_param_source) }
+fn alias_red_filepath_cast() -> ProcessExit { probe_exit(source: alias_red_filepath_cast_source) }
+fn alias_control_literal() -> ProcessExit { probe_exit(source: alias_control_literal_source) }
+fn alias_control_string() -> ProcessExit { probe_exit(source: alias_control_string_param_source) }
+fn alias_control_int() -> ProcessExit { probe_exit(source: alias_control_int_param_source) }
+fn alias_control_foreign() -> ProcessExit { probe_exit(source: alias_control_foreign_record_source) }
