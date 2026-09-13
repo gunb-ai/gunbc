@@ -6,10 +6,13 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
+  IpmiChannelCensusMember,
   IpmiChannelNumber,
   IpmiControllerChannelCensus,
   IpmiMedium8023Lan,
   IpmiMediumSerialAsync,
+  IpmiPrivilegeAdministrator,
+  IpmiPrivilegeNoAccess,
   ipmi_controller_channel_census,
   ipmi_lan_channel_member,
   ipmi_non_lan_channel_member,
@@ -96,6 +99,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialAccountObservation,
   PublishedCredentialCensusMemberUnprobed,
   PublishedCredentialCensusNotTaken,
+  PublishedCredentialChannelAccessNotClosed,
   PublishedCredentialDisabledNotRetired,
   PublishedCredentialLanMemberUnaddressed,
   PublishedCredentialLanProbe,
@@ -158,27 +162,57 @@ data channel_two: IpmiChannelNumber = 2
 data channel_seven: IpmiChannelNumber = 7
 data channel_eight: IpmiChannelNumber = 8
 
+fn lan_member_admin(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
+  ipmi_lan_channel_member(
+    channel: channel,
+    medium: IpmiMedium8023Lan,
+    address: address,
+    published_user_access: IpmiPrivilegeAdministrator,
+  )
+}
+
+fn lan_member_no_access(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
+  ipmi_lan_channel_member(
+    channel: channel,
+    medium: IpmiMedium8023Lan,
+    address: address,
+    published_user_access: IpmiPrivilegeNoAccess,
+  )
+}
+
 data census_two_lan: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
-  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+  lan_member_admin(channel: channel_one, address: lan_228),
+  lan_member_admin(channel: channel_eight, address: lan_231),
 ])
 
 data census_empty: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [])
 
-data census_with_unaddressed: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
-  ipmi_lan_channel_member(channel: channel_seven, medium: IpmiMedium8023Lan, address: lan_unspecified),
-  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+data census_unaddressed_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  lan_member_admin(channel: channel_one, address: lan_228),
+  lan_member_admin(channel: channel_seven, address: lan_unspecified),
+  lan_member_admin(channel: channel_eight, address: lan_231),
+])
+
+data census_unaddressed_no_access: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  lan_member_admin(channel: channel_one, address: lan_228),
+  lan_member_no_access(channel: channel_seven, address: lan_unspecified),
+  lan_member_admin(channel: channel_eight, address: lan_231),
 ])
 
 data census_with_serial: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  ipmi_lan_channel_member(channel: channel_one, medium: IpmiMedium8023Lan, address: lan_228),
-  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
-  ipmi_lan_channel_member(channel: channel_eight, medium: IpmiMedium8023Lan, address: lan_231),
+  lan_member_admin(channel: channel_one, address: lan_228),
+  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeNoAccess),
+  lan_member_admin(channel: channel_eight, address: lan_231),
+])
+
+data census_serial_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
+  lan_member_admin(channel: channel_one, address: lan_228),
+  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeAdministrator),
+  lan_member_admin(channel: channel_eight, address: lan_231),
 ])
 
 data census_serial_only: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
+  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeNoAccess),
 ])
 
 data managed_secret: SecretRef = SecretRef {
@@ -545,7 +579,9 @@ test fn serial_only_census_is_not_vacuous_secure() -> Bool {
   )
 }
 
-test fn unaddressed_lan_member_is_not_a_rejection() -> Bool {
+// Discriminating pair: unaddressed LAN + ADMINISTRATOR refuses (the channel
+// would expose the factory account the moment it got an address).
+test fn unaddressed_lan_with_administrator_access_refuses() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -553,7 +589,7 @@ test fn unaddressed_lan_member_is_not_a_rejection() -> Bool {
     reference: managed_reference,
     applied_at: rotation_at,
     managed: managed_accepted,
-    census: census_with_unaddressed,
+    census: census_unaddressed_administrator,
     probes: both_lan_rejecting(),
     account: published_account_retired,
   )
@@ -563,7 +599,27 @@ test fn unaddressed_lan_member_is_not_a_rejection() -> Bool {
   )
 }
 
-test fn serial_channel_stays_in_census_and_does_not_block_lan_secure() -> Bool {
+// Discriminating pair: unaddressed LAN + NO ACCESS closes. Unit 1 channel 7.
+test fn unaddressed_lan_with_no_access_secures() -> Bool {
+  let standing = derive_bmc_secure(
+    subject: intake_subject,
+    observation: rotation_observed(
+      subj: intake_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      census: census_unaddressed_no_access,
+      probes: both_lan_rejecting(),
+      account: published_account_retired,
+    ),
+    environment: DevelopmentAndTest,
+  )
+  is_secured(standing: standing)
+}
+
+test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
   let standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -580,6 +636,24 @@ test fn serial_channel_stays_in_census_and_does_not_block_lan_secure() -> Bool {
     environment: DevelopmentAndTest,
   )
   is_secured(standing: standing)
+}
+
+test fn serial_channel_with_administrator_access_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_serial_administrator,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialChannelAccessNotClosed { channel: channel_two },
+  )
 }
 
 test fn disabled_not_retired_is_a_secured_residual() -> Bool {
@@ -899,6 +973,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialCensusNotTaken,
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
+  PublishedCredentialChannelAccessNotClosed { channel: channel_two },
   PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
   PublishedCredentialProbeDuplicate { channel: channel_one },
   PublishedCredentialProbeUnmatched { channel: channel_eight },
@@ -939,12 +1014,13 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialCensusNotTaken => 12
     PublishedCredentialNoAddressableLanMember => 13
     PublishedCredentialLanMemberUnaddressed { channel: _ } => 14
-    PublishedCredentialCensusMemberUnprobed { channel: _ } => 15
-    PublishedCredentialProbeDuplicate { channel: _ } => 16
-    PublishedCredentialProbeUnmatched { channel: _ } => 17
-    PublishedCredentialRetainedNotAdmittedForProduction => 18
-    PublishedCredentialNotRetained { channel: _ } => 19
-    PromotionRequiresFreshBmcSecure => 20
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => 15
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => 16
+    PublishedCredentialProbeDuplicate { channel: _ } => 17
+    PublishedCredentialProbeUnmatched { channel: _ } => 18
+    PublishedCredentialRetainedNotAdmittedForProduction => 19
+    PublishedCredentialNotRetained { channel: _ } => 20
+    PromotionRequiresFreshBmcSecure => 21
   }
 }
 

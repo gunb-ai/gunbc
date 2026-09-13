@@ -14,6 +14,7 @@ import extdeps.bmc.ipmi_channel {
   IpmiLanIpv4Unassigned,
   IpmiNonLanChannelMember,
   ipmi_channel_number_eq,
+  ipmi_channel_privilege_is_no_access,
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -261,6 +262,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialCensusNotTaken
   | PublishedCredentialNoAddressableLanMember
   | PublishedCredentialLanMemberUnaddressed { channel: IpmiChannelNumber }
+  | PublishedCredentialChannelAccessNotClosed { channel: IpmiChannelNumber }
   | PublishedCredentialCensusMemberUnprobed { channel: IpmiChannelNumber }
   | PublishedCredentialProbeDuplicate { channel: IpmiChannelNumber }
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
@@ -293,6 +295,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialCensusNotTaken => BmcAccess
     PublishedCredentialNoAddressableLanMember => BmcAccess
     PublishedCredentialLanMemberUnaddressed { channel: _ } => BmcAccess
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => OperatorAction
     PublishedCredentialCensusMemberUnprobed { channel: _ } => BmcAccess
     PublishedCredentialProbeDuplicate { channel: _ } => QualificationPolicy
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
@@ -318,7 +321,8 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the published credential readback precedes the rotation it claims to verify"
     PublishedCredentialCensusNotTaken => "no controller channel census was taken; a single-address probe cannot adjudicate retirement"
     PublishedCredentialNoAddressableLanMember => "the channel census contained no addressable LAN member to probe"
-    PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and is not a rejecting probe"
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and the published account still has access on that channel"
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => "the published account still has channel access (not NO ACCESS) on a census member"
     PublishedCredentialCensusMemberUnprobed { channel: _ } => "a census LAN member has no matching published-credential probe"
     PublishedCredentialProbeDuplicate { channel: _ } => "more than one published-credential probe matched the same census LAN member"
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
@@ -468,8 +472,8 @@ fn assigned_lan_members(members: List<IpmiChannelCensusMember>) -> List<IpmiChan
     init: [],
     f: (acc, m) =>
       match m {
-        IpmiNonLanChannelMember { channel: _, medium: _ } => acc
-        IpmiLanChannelMember { channel: _, medium: _, ipv4: cfg } =>
+        IpmiNonLanChannelMember { channel: _, medium: _, published_user_access: _ } => acc
+        IpmiLanChannelMember { channel: _, medium: _, ipv4: cfg, published_user_access: _ } =>
           match cfg {
             IpmiLanIpv4Unassigned => acc
             IpmiLanIpv4Assigned { address: _ } => concat(acc, [m])
@@ -487,8 +491,8 @@ fn probe_match_count_against_assigned(
     init: 0,
     f: (acc, m) =>
       match m {
-        IpmiNonLanChannelMember { channel: _, medium: _ } => acc
-        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
+        IpmiNonLanChannelMember { channel: _, medium: _, published_user_access: _ } => acc
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: _ } =>
           match cfg {
             IpmiLanIpv4Unassigned => acc
             IpmiLanIpv4Assigned { address: a } =>
@@ -607,11 +611,20 @@ fn join_census_member(
     CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
     CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw } =>
       match member {
-        IpmiNonLanChannelMember { channel: _, medium: _ } =>
-          CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw }
-        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
+        IpmiNonLanChannelMember { channel: ch, medium: _, published_user_access: access } =>
+          if ipmi_channel_privilege_is_no_access(limit: access) {
+            CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw }
+          } else {
+            CensusJoinClosed { cause: PublishedCredentialChannelAccessNotClosed { channel: ch } }
+          }
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: access } =>
           match cfg {
-            IpmiLanIpv4Unassigned => CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
+            IpmiLanIpv4Unassigned =>
+              if ipmi_channel_privilege_is_no_access(limit: access) {
+                CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: saw }
+              } else {
+                CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
+              }
             IpmiLanIpv4Assigned { address: a } =>
               join_assigned_lan_member(
                 progress: CensusJoinOpen { evidence: ev, latest_rejected_at: latest, saw_addressable_lan: true },
@@ -655,18 +668,15 @@ fn unmatched_published_probe_cause(
   )
 }
 
-// THE PUBLISHED-CREDENTIAL READBACK IS A FOLD OVER THE CONTROLLER LAN CENSUS.
-// BmcSecured is constructible only when every ADDRESSABLE LAN census member
-// rejects the published credential, each matched by channel or address
-// identity. Count equality of probes and members is not coverage.
-//
-// DECLARED BOUNDARY — NON-LAN CHANNELS. Serial, IPMB and other non-LAN
-// members remain in the census (they are not dropped). They are outside this
-// conjunct's probe obligation: this phase certifies that the published
-// credential does not authenticate on a LAN address the controller reports.
-// A factory account still ADMINISTRATOR on a serial channel is therefore
-// visible on the census and is not silently skipped, and it is not treated
-// as a LAN rejection. Closing a serial session is a different surface.
+// THE PUBLISHED-CREDENTIAL READBACK IS A FOLD OVER THE CONTROLLER CHANNEL
+// CENSUS. Assigned LAN members still require an identity-joined login probe.
+// Unaddressed LAN (0.0.0.0) and non-LAN members join on Get User Access for the
+// published account: NO ACCESS closes the member; any other privilege refuses.
+// That is the unit-1 fact: channel 7 is 802.3 with a permanent unspecified
+// address, and the rotation set admin to NO ACCESS on ch2, ch7 and ch8.
+// Treating unaddressed as unconditionally open would refuse that controller
+// forever (DESIGN §4d over-prohibition). An unaddressed channel that still
+// holds ADMINISTRATOR is the exposure the moment it gets an address.
 //
 // MUTATION THAT TURNS RED 1: in published_probe_refusal, change the
 // CredentialAccepted arm to `none`. The split-address specimen then mints
@@ -674,7 +684,11 @@ fn unmatched_published_probe_cause(
 // CensusNotTaken return with the retired single-host path (if the sole
 // supplied probe is CredentialRejected, mint BmcSecured). Deleting the
 // return so the fold proceeds still refuses NoAddressableLanMember — that
-// mutant is VOID. A parse failure of either mutant is VOID, not a passed red.
+// mutant is VOID. MUTATION THAT TURNS unaddressed+ADMINISTRATOR RED into
+// GREEN: in join_census_member, treat IpmiLanIpv4Unassigned as always Open.
+// MUTATION THAT TURNS unaddressed+NO ACCESS GREEN into RED: delete the
+// no-access arm so Unassigned always refuses LanMemberUnaddressed.
+// A parse failure of either mutant is VOID, not a passed red.
 fn adjudicate_published_census(
   endpoint: BmcControllerEndpoint,
   reference: ManagedCredentialReference,
