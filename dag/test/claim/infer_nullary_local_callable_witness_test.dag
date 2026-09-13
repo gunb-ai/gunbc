@@ -23,7 +23,7 @@ import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_c
 
 data nullary_parameter_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host(pick: fn() -> Int) -> Int { pick() }\n"
 
-data nullary_let_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host() -> Int {\n  let pick = fn() { 7 }\n  pick()\n}\n"
+data nullary_argument_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn apply(pick: fn() -> Int) -> Int { pick() }\nfn host() -> Int { apply(pick: fn() { 7 }) }\n"
 
 data nullary_alias_parameter_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\ntype NullaryPicker = fn() -> Int\nfn host(pick: NullaryPicker) -> Int { pick() }\n"
 
@@ -42,8 +42,8 @@ test fn nullary_parameter_callable_resolves() -> Bool {
   resolves_clean(source: nullary_parameter_source)
 }
 
-test fn nullary_let_bound_callable_resolves() -> Bool {
-  resolves_clean(source: nullary_let_source)
+test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool {
+  resolves_clean(source: nullary_argument_source)
 }
 
 test fn nullary_alias_typed_parameter_resolves() -> Bool {
