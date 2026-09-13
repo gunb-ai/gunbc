@@ -304,13 +304,11 @@ fn reader_bypass_standing_wire_label(b: ReaderBypassStanding) -> String {
   }
 }
 
-// THE ROSTER IS NOT DECODED FROM THIS RESPONSE, AND THAT IS A REFUSAL RATHER THAN AN OMISSION.
-// Adding a `bypass_actors` field to RulesetWire would decode an absent key to an empty list, which
-// is exactly the conflation the type above exists to prevent -- and no field in the response says
-// whether the reader was authorized to see the roster. So every observation built from this
-// endpoint is Unavailable, carrying who asked and why the answer is not established. An
-// authorized read is a different observation with its own producer, and it is what may mint
-// BypassRosterObserved.
+// OPTIONAL DECODE, NOT A MISSING FIELD. RulesetWire.bypass_actors is List<RulesetBypassActor>?,
+// so an omitted key is Absent and a JSON array (including []) is Present. Absent still conflates
+// empty-and-omitted with unauthorized-and-omitted -- GitHub's GET carries nothing that separates
+// those two -- so this helper mints BypassRosterUnavailable. Present is BypassRosterObserved;
+// observe_repo_ruleset matches on that coproduct rather than treating every GET as Unavailable.
 fn bypass_roster_unavailable_from_get(reader: NonEmptyStr) -> BypassActorRosterObservation {
   BypassRosterUnavailable {
     reader: reader,
