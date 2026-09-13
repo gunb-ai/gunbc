@@ -1,0 +1,407 @@
+module v2.test.claim.declaring_identity_spelling.production_ingest
+
+import v2.compiler.declaring_identity_spelling_census {
+  DeclaringIdentitySpellingCensus,
+  spelling_census_from_ingest
+}
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.compiler.resolution_provenance {
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  resolve_reference_provenance
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name {
+  qualified_name_last_segment,
+  qualified_name_snoc,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.test.claim.provenance.cross_file_provenance {
+  cfp_index,
+  cfp_own_module_site,
+  cfp_roster
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.declaring_identity_spelling {
+  IdentityUnbound,
+  IdentityAmbiguous,
+  IdentityOwnerless,
+  ResolvedSpelling,
+  UnresolvableSpelling
+}
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// FILE FIXTURES ARE THE AUTHORITY. Ingest reads those bytes via filesystem_read; there is
+// no second inline copy of the same source.
+
+data value_outside_call_path: String = "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag"
+
+data shorter_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
+
+data unresolvable_path: String = "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag"
+
+data call_only_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
+
+data matched_type_vs_value_path: String = "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag"
+
+data field_vs_parameter_path: String = "src/v2/test/fixture/declaring_identity_spelling/field_vs_parameter.dag"
+
+data cross_provider_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag"
+
+data cross_consumer_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag"
+
+data qualified_cross_module_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.Probe"
+
+data qualified_type_position_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker"
+
+data qualified_field_type_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker"
+
+fn fixture_read(path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: unit,
+      file_path: path
+    },
+    compilation_unit: unit,
+    source_root: V2Tree
+  }
+}
+
+fn authored_unbound(census: DeclaringIdentitySpellingCensus, spelling: String) -> Bool {
+  fold_list(
+    xs: census.rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || match row {
+        UnresolvableSpelling { authored: authored, cause: cause } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+            && match cause {
+              IdentityUnbound => true
+              IdentityAmbiguous => false
+              IdentityOwnerless => false
+            }
+        ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: _ } => false
+      }
+    }
+  )
+}
+
+fn ingest_of(path: String, unit: Symbol) -> SourceRootIngest {
+  Cons {
+    head: fixture_read(path: path, unit: unit),
+    tail: Empty
+  }
+}
+
+fn census_of(path: String, unit: Symbol) -> Optional<DeclaringIdentitySpellingCensus> {
+  match spelling_census_from_ingest(
+    ingest: ingest_of(path: path, unit: unit),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: census, diagnostics: _ } => Present { value: census }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn census_unreadable_roots_empty(census: DeclaringIdentitySpellingCensus) -> Bool {
+  is_empty(xs: census.unreadable_roots)
+}
+
+fn authored_is(census: DeclaringIdentitySpellingCensus, spelling: String) -> Bool {
+  fold_list(
+    xs: census.rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || match row {
+        ResolvedSpelling { authored: authored, declaring: _, canonical: _, path_verdict: _ } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+        UnresolvableSpelling { authored: authored, cause: _ } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+      }
+    }
+  )
+}
+
+test fn value_outside_call_ingests_holds() -> Bool {
+  match spelling_census_from_ingest(
+    ingest: ingest_of(
+      path: value_outside_call_path,
+      unit: ^xl3_value_outside_call
+    ),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: census, diagnostics: _ } => census_unreadable_roots_empty(census: census)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
+  match census_of(
+    path: value_outside_call_path,
+    unit: ^xl3_value_outside_call
+  ) {
+    Present { value: census } => authored_is(census: census, spelling: "marker")
+    Absent => false
+  }
+}
+
+// CONTROL: the enrolled two-module provenance witness binds a same-module name
+// on resolve_reference_provenance. If this is green, IdentityUnbound on the
+// ingest census is not "v2 cannot compile a local name".
+test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
+  match resolve_reference_provenance(
+    index: cfp_index,
+    roster: cfp_roster,
+    site: cfp_own_module_site
+  ) {
+    ProvenanceResolved { site: _, target: _, owner: _ } => true
+    ProvenanceOwnerless { site: _, target: _ } => false
+    ProvenanceAmbiguous { site: _ } => false
+    ProvenanceUnbound { site: _ } => false
+  }
+}
+
+fn value_outside_call_roots() -> Optional<FreeMonoid<Node>> {
+  match module_roots_from_source_root_ingest(
+    ingest: ingest_of(
+      path: value_outside_call_path,
+      unit: ^xl3_value_outside_call
+    ),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      Present { value: normalized_tree_roots_to_nodes(roots: normalized) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn marker_site_fill_lookup_is_present(roots: FreeMonoid<Node>) -> Bool {
+  let collected = collect_reference_sites(roots: roots)
+  let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots)
+  fold_list(
+    xs: collected.sites,
+    empty: false,
+    cons: fn(acc, site) {
+      acc || (
+        qualified_name_to_dotted_string(qn: site.spelling) == "marker"
+          && match qualified_name_last_segment(qn: site.spelling) {
+            Absent => false
+            Present { value: name } =>
+              match symbol_index_lookup(
+                index: index,
+                qualified_path: qualified_name_snoc(qn: site.position, segment: name)
+              ) {
+                Present { value: _ } => true
+                Absent => false
+              }
+          }
+      )
+    }
+  )
+}
+
+// INDEX-PATH ONLY, not a fact about 03_resolve. Parser-keyed fill lookup at the
+// collector site's position. Green means fill never inserted `marker`; that is
+// the step that makes the census row IdentityUnbound.
+test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
+  match value_outside_call_roots() {
+    Present { value: roots } => !marker_site_fill_lookup_is_present(roots: roots)
+    Absent => false
+  }
+}
+
+// Retracted as a compiler fact. Kept as an index-path measurement: the census
+// row is Unbound because fill missed, not because the name cannot compile.
+test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
+  match census_of(
+    path: value_outside_call_path,
+    unit: ^xl3_value_outside_call
+  ) {
+    Present { value: census } => authored_unbound(census: census, spelling: "marker")
+    Absent => false
+  }
+}
+
+// BARE type name in PARAMETER position (fixture 1: `x: Marker`). Reaches.
+// "Type position" is too coarse: a bare FIELD type does not reach.
+test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
+  match census_of(
+    path: shorter_path,
+    unit: ^xl3_shorter
+  ) {
+    Present { value: census } => authored_is(census: census, spelling: "Marker")
+    Absent => false
+  }
+}
+
+test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
+  match census_of(
+    path: unresolvable_path,
+    unit: ^xl3_unresolvable
+  ) {
+    Present { value: census } =>
+      authored_unbound(census: census, spelling: "ThisNameIsNotDeclaredInThisFixture")
+    Absent => false
+  }
+}
+
+test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
+  match census_of(
+    path: call_only_path,
+    unit: ^xl3_call_only
+  ) {
+    Present { value: census } =>
+      census_unreadable_roots_empty(census: census)
+        && authored_is(census: census, spelling: "LocalParam")
+        && !authored_is(census: census, spelling: "helper")
+    Absent => false
+  }
+}
+
+// Census-row spelling "Int": kernel types have no corpus declaration. Not a
+// type-position collector miss and not a lowering class.
+test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
+  match census_of(
+    path: value_outside_call_path,
+    unit: ^xl3_value_outside_call
+  ) {
+    Present { value: census } =>
+      authored_is(census: census, spelling: "marker")
+        && !authored_is(census: census, spelling: "Int")
+    Absent => false
+  }
+}
+
+fn matched_census() -> Optional<DeclaringIdentitySpellingCensus> {
+  census_of(
+    path: matched_type_vs_value_path,
+    unit: ^xl3_matched_type_vs_value
+  )
+}
+
+// Same module, no call. User type_only in PARAMETER position REACHES. Imported
+// Bool as a census-row spelling may still be absent here; that is not a collector
+// parameter-type miss and is not a reason to hold fixtures 1-3.
+test fn matched_value_only_mention_reaches_the_census_today() -> Bool {
+  match matched_census() {
+    Present { value: census } => authored_is(census: census, spelling: "value_only")
+    Absent => false
+  }
+}
+
+test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
+  match matched_census() {
+    Present { value: census } => authored_is(census: census, spelling: "type_only")
+    Absent => false
+  }
+}
+
+test fn matched_imported_kernel_type_position_is_absent_from_the_census_today() -> Bool {
+  match matched_census() {
+    Present { value: census } =>
+      authored_is(census: census, spelling: "value_only")
+        && !authored_is(census: census, spelling: "Bool")
+    Absent => false
+  }
+}
+
+fn two_module_ingest() -> SourceRootIngest {
+  Cons {
+    head: fixture_read(
+      path: cross_provider_path,
+      unit: ^xl3_cross_provider
+    ),
+    tail: Cons {
+      head: fixture_read(
+        path: cross_consumer_path,
+        unit: ^xl3_cross_consumer
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn two_module_census() -> Optional<DeclaringIdentitySpellingCensus> {
+  match spelling_census_from_ingest(ingest: two_module_ingest(), lm: dag_language_model()) {
+    Accepted { value: census, diagnostics: _ } => Present { value: census }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn two_module_usable_class_probe(census: DeclaringIdentitySpellingCensus) -> Bool {
+  census_unreadable_roots_empty(census: census)
+    && authored_is(census: census, spelling: "LocalParam")
+}
+
+// THE USABLE CLASS: a qualified cross-module value mention outside any call, and
+// nothing else in the ingest can produce that spelling. Absent today. A bare
+// same-module name is not this row. Goes red when the mention reaches the census.
+// LocalParam is the positive control: Rejected ingest cannot green these.
+test fn a_qualified_cross_module_mention_is_absent_from_the_census_today() -> Bool {
+  match two_module_census() {
+    Present { value: census } =>
+      two_module_usable_class_probe(census: census)
+        && !authored_is(census: census, spelling: qualified_cross_module_spelling)
+    Absent => false
+  }
+}
+
+// QUALIFIED parameter-type, no call. Same ingest as the value-position Probe miss.
+// Absent while bare LocalParam reaches: this miss is qualification, not field position.
+test fn a_qualified_type_position_mention_is_absent_from_the_census_today() -> Bool {
+  match two_module_census() {
+    Present { value: census } =>
+      two_module_usable_class_probe(census: census)
+        && !authored_is(census: census, spelling: qualified_type_position_spelling)
+    Absent => false
+  }
+}
+
+// QUALIFIED field type. Absent for two independent reasons (qualification AND
+// field position) so it cannot discriminate. The discriminator is field_vs_parameter.
+test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
+  match two_module_census() {
+    Present { value: census } =>
+      two_module_usable_class_probe(census: census)
+        && !authored_is(census: census, spelling: qualified_field_type_spelling)
+    Absent => false
+  }
+}
+
+fn field_vs_parameter_census() -> Optional<DeclaringIdentitySpellingCensus> {
+  census_of(
+    path: field_vs_parameter_path,
+    unit: ^xl3_field_vs_parameter
+  )
+}
+
+// SAME ingest, BARE names, no dots. Parameter type reaches; field type does not.
+// Qualification is not what the field miss measures.
+test fn a_bare_parameter_type_reaches_while_a_bare_field_type_does_not() -> Bool {
+  match field_vs_parameter_census() {
+    Present { value: census } =>
+      census_unreadable_roots_empty(census: census)
+        && authored_is(census: census, spelling: "ParamOnly")
+        && !authored_is(census: census, spelling: "FieldOnly")
+    Absent => false
+  }
+}

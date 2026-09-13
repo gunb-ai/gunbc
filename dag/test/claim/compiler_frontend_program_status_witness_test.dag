@@ -51,6 +51,7 @@ import gunbc.namespace_cut_stage {
   StageXL0Denominator,
   StageXL1BaselineCapture,
   StageXL2RootDeletionRehearsal,
+  StageXL3DeclaringIdentitySpelling,
   StageXL4ReferenceDerivedGraph,
   StageAct0ActivationGate,
   stage_prerequisites,
@@ -517,6 +518,16 @@ test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bo
     && any(stages_awaiting(i: RepairInputOriginRosterProducer),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
     && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
+}
+
+// XL-3 stays NotDerivable while the usable class -- qualified cross-module
+// mentions -- is invisible on the production ingest route. Bare PARAMETER
+// type names are not that class: they reach. Bare FIELD type names are a
+// fourth missing class, not a dotted case, and are also not the usable class.
+test fn xl3_is_not_derivable_while_qualified_cross_module_mentions_are_invisible() -> Bool {
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL3DeclaringIdentitySpelling))
+    && any(stages_awaiting(i: DeclaringIdentitySpellingCensus),
+         l => l == namespace_cut_stage_label(s: StageXL3DeclaringIdentitySpelling))
 }
 
 // F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT
