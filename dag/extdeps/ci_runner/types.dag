@@ -7,6 +7,7 @@ import extdeps.toolchain.types { Aarch64, Architecture }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import std.measure {
   ByteSize,
+  CreditsPerMinute,
   Gibibyte,
   Gigabyte,
   HardwareThreadCount,
@@ -278,7 +279,7 @@ type ArmCapacityChannel
 type ArmListPriceStanding
   = ArmUsdPerMinute { per_minute: MoneyPerMinute }
   | ArmUsdPerVcpuMinute { per_vcpu_minute: MoneyPerMinute }
-  | ArmCreditsPerMinute { credits: Nat }
+  | ArmCreditsPerMinute { per_minute: CreditsPerMinute }
   | ArmUsdPerMonth { per_month: MoneyPerMonth }
   | ArmUsdPerJob { per_job: MoneyOnce }
   | ArmListPriceUnread
