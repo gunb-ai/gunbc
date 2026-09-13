@@ -687,7 +687,7 @@ pub const ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX: &str = "root-demand-measurement
 pub fn parse_root_demand_measurement_census(stdout: &str) -> Option<RootDemandMeasurementCensus> {
     stdout.lines().find_map(|line| {
         let rest = line.strip_prefix(ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX)?;
-        let mut parts = rest.trim().split_whitespace();
+        let mut parts = rest.split_whitespace();
         Some(RootDemandMeasurementCensus {
             source_count: parts.next()?.parse().ok()?,
             source_bytes: parts.next()?.parse().ok()?,
