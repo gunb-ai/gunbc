@@ -1,6 +1,13 @@
 module test.claim.dag_compile_clean_perturb_receipts
 
 import tools.dag_compile_clean_transport {
+  SubjectGreen,
+  SubjectRed,
+  RefusedBeforeSubject,
+  dcc_compile_staged_outside_workspace_root,
+  dcc_fixture_perturb_compile_report,
+  dcc_subject_expectation_holds,
+  perturb_fixture_green_module_source,
   run_perturb_optional_skew_fixture_red_receipt,
   run_perturb_unresolved_import_fixture_red_receipt,
   run_perturb_fixture_green_receipt,
@@ -26,4 +33,33 @@ test fn perturb_unresolved_import_fixture_red_holds() -> Bool {
 
 test fn perturb_fixture_green_holds() -> Bool {
   run_perturb_fixture_green_receipt()
+}
+
+// Enrolled RED control: stage outside the workspace root on purpose. Must be
+// RefusedBeforeSubject, not SubjectGreen and not an expected-failure SubjectRed.
+
+test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
+  match dcc_compile_staged_outside_workspace_root() {
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => true
+    SubjectGreen => false
+    SubjectRed => false
+  }
+}
+
+test fn outside_workspace_root_does_not_satisfy_expected_failure() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_compile_staged_outside_workspace_root(),
+    expect_success: false
+  )
+}
+
+test fn under_workspace_root_green_fixture_reaches_subject() -> Bool {
+  match dcc_fixture_perturb_compile_report(
+    module_file: "_perturb_compile_clean_fixture_green.dag",
+    source: perturb_fixture_green_module_source
+  ) {
+    SubjectGreen => true
+    SubjectRed => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
 }

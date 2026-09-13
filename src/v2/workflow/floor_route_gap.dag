@@ -147,6 +147,12 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.dag_compile_clean_perturb_receipts.perturb_unresolved_import_fixture_red_holds",
       tail: Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_does_not_satisfy_expected_failure",
+      tail: Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_staging_is_refused_before_subject",
+      tail: Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.under_workspace_root_green_fixture_reaches_subject",
+      tail: Cons {
       head: "test.claim.dag_compile_clean_seam_witness.cross_shard_seam_preservation_holds_on_live_tree",
       tail: Cons {
       head: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green",
@@ -183,6 +189,9 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_substituted_identity_by_real_execution",
       tail: Empty {}
+    }
+    }
+    }
     }
     }
     }

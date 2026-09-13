@@ -1,0 +1,64 @@
+module test.claim.dag_compile_clean_report_coproduct
+
+import tools.dag_compile_clean_transport {
+  SubjectGreen,
+  SubjectRed,
+  RefusedBeforeSubject,
+  dcc_compile_report_from_bin,
+  dcc_subject_expectation_holds,
+}
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Hermetic classification of the compile CLI's two CompileDisposition print templates
+// (main.rs match): "gunbc compile: {earlier_phase}:" is NotExecuted / RefusedBeforeSubject.
+// A nonzero exit without that template is SubjectRed. Does not parse the workspace-root cause sentence.
+
+test fn dcc_report_classifies_refused_at_as_subject_red() -> Bool {
+  match dcc_compile_report_from_bin(
+    success: false,
+    stdout: "",
+    stderr: "gunbc compile: refused at typecheck: subject diagnostic"
+  ) {
+    SubjectRed => true
+    SubjectGreen => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+test fn dcc_report_classifies_root_admission_as_refused_before_subject() -> Bool {
+  match dcc_compile_report_from_bin(
+    success: false,
+    stdout: "",
+    stderr: "gunbc compile: root-admission: not the subject"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == "root-admission"
+    SubjectRed => false
+    SubjectGreen => false
+  }
+}
+
+test fn expected_failure_does_not_hold_on_refused_before_subject() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_compile_report_from_bin(
+      success: false,
+      stdout: "",
+      stderr: "gunbc compile: root-admission: not the subject"
+    ),
+    expect_success: false
+  )
+}
+
+test fn cause_sentence_does_not_override_refused_at_template() -> Bool {
+  match dcc_compile_report_from_bin(
+    success: false,
+    stdout: "",
+    stderr: "gunbc compile: refused at typecheck: outside the workspace root is not this arm"
+  ) {
+    SubjectRed => true
+    SubjectGreen => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}

@@ -7,15 +7,15 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.ci_gate { GateReceipt }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
-import gunbc.output_policy { ExpectFailure, ExpectSuccess }
+import gunbc.output_policy { OutcomeIsData }
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 // Compile-clean gate transports, typed. Each receipt is a composition of typed service operations
-// (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on the gunbc binary,
-// shell.Remove.RecursiveForce) - no bash is serialized or executed. The former ShellProgram
-// builders, their serialize-shape witnesses (shell_serializes_dcc_common_compile_invocation and the
-// marker rows), and the two RealizationDispatch scaffold rows dissolved with the flip: the
+// (shell.Mktemp.DirWithTemplate under the workspace target/, Filesystem.Write, gunbc.WitnessBin.Run
+// on the gunbc binary, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former
+// ShellProgram builders, their serialize-shape witnesses (shell_serializes_dcc_common_compile_invocation
+// and the marker rows), and the two RealizationDispatch scaffold rows dissolved with the flip: the
 // invocation facts are now carried by the typed args construction itself, so the spelling-drift
 // class those witnesses validated is unwritable (DESIGN 5, construction over validation).
 
@@ -28,6 +28,89 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // unresolved_import) need only a single-module fixture closure (dcc_fixture_only_compile_args);
 // cross_tree_import and dag_shell_primary_precedence need the live-tree pool and ride
 // falsifier_rehomed_bin_wet_entries.
+
+// THE REPORT COPRODUCT. WitnessBin.Run answers a process record (success/stdout/stderr); it does
+// not return cli_run CompileDisposition. Folding that record to Bool made a workspace-root
+// admission refusal (compile_not_executed, earlier_phase root-admission / entry-admission)
+// indistinguishable from a subject verdict. DFS: gunbc.ci_gate GateReceipt already splits
+// GateObserved / GateNotRun / GateNotApplicable, but it is the CI-gate owner, not a compile
+// transaction. CompileDisposition (Completed / Refused / NotExecuted) is the compile owner;
+// RefusedBeforeSubject reuses NotExecuted's earlier_phase+cause fields. Classification matches
+// the NotExecuted print template (`gunbc compile: {earlier_phase}:`). A nonzero exit without
+// that template is SubjectRed. Never parse the cause sentence "outside the workspace root".
+// Citing folds must match all three; an ExpectFailure perturb arm is
+// dcc_subject_expectation_holds and is never true on RefusedBeforeSubject.
+
+type DccCompileReport
+  = SubjectGreen
+  | SubjectRed
+  | RefusedBeforeSubject { earlier_phase: String, cause: String }
+
+data dcc_compile_not_executed_prefix: String = "gunbc compile: "
+data dcc_not_executed_phases: List<String> = [
+  "root-admission",
+  "entry-admission",
+  "target-admission",
+  "subject-admission",
+  "admission",
+  "source-discovery",
+  "subject-read",
+  "entry-read"
+]
+data dcc_stage_template_suffix: String = "/target/dcc_stage_XXXXXX"
+data dcc_perturb_fixture_template_suffix: String = "/target/dcc_perturb_fixture_XXXXXX"
+data dcc_instrument_earlier_phase: String = "instrument"
+
+fn dcc_earlier_phase_from_compile_output(out: String) -> String {
+  fold(
+    dcc_not_executed_phases,
+    init: "",
+    f: (acc, phase) => if acc != "" {
+      acc
+    } else if string_contains(
+      s: out,
+      pattern: concat(dcc_compile_not_executed_prefix, concat(phase, ":"))
+    ) {
+      phase
+    } else {
+      acc
+    }
+  )
+}
+
+fn dcc_compile_report_from_bin(success: Bool, stdout: String, stderr: String) -> DccCompileReport {
+  if success {
+    SubjectGreen
+  } else {
+    let out = concat(stdout, stderr)
+    let phase = dcc_earlier_phase_from_compile_output(out: out)
+    if phase != "" {
+      RefusedBeforeSubject { earlier_phase: phase, cause: out }
+    } else {
+      SubjectRed
+    }
+  }
+}
+
+fn dcc_host_refused_before_subject(cause: String) -> DccCompileReport {
+  RefusedBeforeSubject { earlier_phase: dcc_instrument_earlier_phase, cause: cause }
+}
+
+fn dcc_subject_expectation_holds(report: DccCompileReport, expect_success: Bool) -> Bool {
+  match report {
+    SubjectGreen => expect_success
+    SubjectRed => !expect_success
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+fn dcc_report_is_subject_red(report: DccCompileReport) -> Bool {
+  match report {
+    SubjectRed => true
+    SubjectGreen => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
 
 fn dcc_source_root_args() -> List<String> {
   fold(compile_clean_source_roots(), init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
@@ -73,18 +156,33 @@ fn dcc_gunbc_path(root: String) -> String {
   witness_bin_release_path(root: root, bin_name: "gunbc")
 }
 
+fn dcc_ensure_workspace_target(root: String) -> Bool {
+  shell.Mkdir.Parents(path: concat(root, "/target")).success
+}
+
 fn run_clean_tree_compile_typed() -> Bool {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let out = shell.Mktemp.Dir()
+  if dcc_gunbc_ready(root: root.path) && dcc_ensure_workspace_target(root: root.path) {
+    let out = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, "/target/dcc_clean_out_XXXXXX")
+    )
     if out.success {
       let compile = gunbc.WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_clean_tree_compile_args(out_dir: out.path)
+        args: dcc_clean_tree_compile_args(out_dir: out.path),
+        expect: OutcomeIsData
       )
       let cleaned = shell.Remove.RecursiveForce(path: out.path)
-      compile.success && cleaned.success
+      match dcc_compile_report_from_bin(
+        success: compile.success,
+        stdout: compile.stdout,
+        stderr: compile.stderr
+      ) {
+        SubjectGreen => cleaned.success
+        SubjectRed => false
+        RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+      }
     } else {
       false
     }
@@ -119,34 +217,52 @@ fn dcc_perturb_compile_with_args(
   tmp_path: String,
   compile_args: List<String>,
   module_file: String,
-  source: String,
-  expect_success: Bool
-) -> Bool {
+  source: String
+) -> DccCompileReport {
   let wrote = Filesystem.Write(
     path: concat(tmp_path, concat("/", module_file)),
     content: source
   )
   let root = git.Inspect.Toplevel()
-  let compile = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: dcc_gunbc_path(root: root.path),
-    args: compile_args,
-    expect: if expect_success { ExpectSuccess } else { ExpectFailure }
-  )
-  let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
-  wrote.success && cleaned.success && (compile.success == expect_success)
+  if wrote.success && dcc_gunbc_ready(root: root.path) {
+    let compile = gunbc.WitnessBin.Run(
+      workdir: root.path,
+      bin_path: dcc_gunbc_path(root: root.path),
+      args: compile_args,
+      expect: OutcomeIsData
+    )
+    let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
+    if cleaned.success {
+      dcc_compile_report_from_bin(
+        success: compile.success,
+        stdout: compile.stdout,
+        stderr: compile.stderr
+      )
+    } else {
+      dcc_host_refused_before_subject(cause: "stage cleanup failed")
+    }
+  } else {
+    let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
+    if cleaned.success {
+      dcc_host_refused_before_subject(cause: "fixture write or gunbc binary not ready")
+    } else {
+      dcc_host_refused_before_subject(cause: "fixture write or gunbc binary not ready, and stage cleanup failed")
+    }
+  }
 }
 
 fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let tmp = shell.Mktemp.Dir()
+  if dcc_gunbc_ready(root: root.path) && dcc_ensure_workspace_target(root: root.path) {
+    let tmp = shell.Mktemp.DirWithTemplate(template: concat(root.path, dcc_stage_template_suffix))
     if tmp.success {
-      dcc_perturb_compile_with_args(
-        tmp_path: tmp.path,
-        compile_args: dcc_perturb_compile_args(tmp: tmp.path),
-        module_file: module_file,
-        source: source,
+      dcc_subject_expectation_holds(
+        report: dcc_perturb_compile_with_args(
+          tmp_path: tmp.path,
+          compile_args: dcc_perturb_compile_args(tmp: tmp.path),
+          module_file: module_file,
+          source: source
+        ),
         expect_success: expect_success
       )
     } else {
@@ -159,16 +275,18 @@ fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_suc
 
 fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
+  if dcc_gunbc_ready(root: root.path) && dcc_ensure_workspace_target(root: root.path) {
     let tmp = shell.Mktemp.DirWithTemplate(
-      template: concat(root.path, "/target/dcc_perturb_fixture_XXXXXX")
+      template: concat(root.path, dcc_perturb_fixture_template_suffix)
     )
     if tmp.success {
-      dcc_perturb_compile_with_args(
-        tmp_path: tmp.path,
-        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
-        module_file: module_file,
-        source: source,
+      dcc_subject_expectation_holds(
+        report: dcc_perturb_compile_with_args(
+          tmp_path: tmp.path,
+          compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+          module_file: module_file,
+          source: source
+        ),
         expect_success: expect_success
       )
     } else {
@@ -176,6 +294,51 @@ fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, ex
     }
   } else {
     false
+  }
+}
+
+fn dcc_fixture_perturb_compile_report(module_file: String, source: String) -> DccCompileReport {
+  let root = git.Inspect.Toplevel()
+  if dcc_gunbc_ready(root: root.path) && dcc_ensure_workspace_target(root: root.path) {
+    let tmp = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, dcc_perturb_fixture_template_suffix)
+    )
+    if tmp.success {
+      dcc_perturb_compile_with_args(
+        tmp_path: tmp.path,
+        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+        module_file: module_file,
+        source: source
+      )
+    } else {
+      dcc_host_refused_before_subject(cause: "workspace-root stage mkdir/mktemp failed")
+    }
+  } else {
+    dcc_host_refused_before_subject(cause: "gunbc binary not ready")
+  }
+}
+
+// Enrolled RED: stage OUTSIDE the workspace root on purpose (shell.Mktemp.Dir, the path that
+// compile_not_executed refuses at root-admission). Must produce RefusedBeforeSubject. Must not
+// satisfy dcc_subject_expectation_holds as an expected failure. Keep enrolled after the under-root
+// staging fix (DESIGN §4b meta-obligation 4).
+
+fn dcc_compile_staged_outside_workspace_root() -> DccCompileReport {
+  let root = git.Inspect.Toplevel()
+  if dcc_gunbc_ready(root: root.path) {
+    let tmp = shell.Mktemp.Dir()
+    if tmp.success {
+      dcc_perturb_compile_with_args(
+        tmp_path: tmp.path,
+        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+        module_file: "_perturb_compile_clean_fixture_green.dag",
+        source: perturb_fixture_green_module_source
+      )
+    } else {
+      dcc_host_refused_before_subject(cause: "outside-root mktemp failed")
+    }
+  } else {
+    dcc_host_refused_before_subject(cause: "gunbc binary not ready")
   }
 }
 
