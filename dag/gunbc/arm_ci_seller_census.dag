@@ -410,24 +410,8 @@ fn offer_has_provider(offer: SellerArmLinuxOffer, provider: DeclarationRef) -> B
   declaration_ref_eq(a: offer.provider, b: provider)
 }
 
-fn surveyed_includes_provider(provider: DeclarationRef) -> Bool {
-  any(surveyed_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
-}
-
-fn reseller_includes_provider(provider: DeclarationRef) -> Bool {
-  any(cloud_arm_reseller_offers(), o => offer_has_provider(offer: o, provider: provider))
-}
-
-fn customer_account_includes_provider(provider: DeclarationRef) -> Bool {
-  any(customer_account_cloud_arm_offers(), o => offer_has_provider(offer: o, provider: provider))
-}
-
-fn not_accepting_includes_provider(provider: DeclarationRef) -> Bool {
-  any(not_accepting_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
-}
-
-fn unread_standing_includes_provider(provider: DeclarationRef) -> Bool {
-  any(unread_standing_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
+fn offers_include_provider(offers: List<SellerArmLinuxOffer>, provider: DeclarationRef) -> Bool {
+  any(offers, o => offer_has_provider(offer: o, provider: provider))
 }
 
 fn provider_in(provider: DeclarationRef, identities: List<DeclarationRef>) -> Bool {

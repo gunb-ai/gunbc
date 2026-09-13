@@ -13,7 +13,6 @@ import std.measure {
   HardwareThreadCount,
   MoneyOnce,
   MoneyPerMinute,
-  MoneyPerMonth,
   byte_size,
   gibibyte_count,
   gigabyte_count,
@@ -294,7 +293,6 @@ type ArmListPriceStanding
       per_minute: CreditsPerMinute,
       priced_label: NonEmptyStr,
     }
-  | ArmUsdPerMonth { per_month: MoneyPerMonth }
   | ArmUsdPerJob { per_job: MoneyOnce }
   | ArmListPriceUnread
   | ArmSellerNotOffering { cause: NonEmptyStr }

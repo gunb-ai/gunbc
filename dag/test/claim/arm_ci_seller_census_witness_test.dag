@@ -38,15 +38,11 @@ import gunbc.arm_ci_seller_census {
   arm_ci_seller_census_later_consumer_frontier_rows,
   cloud_arm_reseller_offers,
   customer_account_cloud_arm_offers,
-  customer_account_includes_provider,
   not_accepting_arm_linux_offers,
-  not_accepting_includes_provider,
+  offers_include_provider,
   provider_in,
-  reseller_includes_provider,
   surveyed_arm_linux_offers,
-  surveyed_includes_provider,
   unread_standing_arm_linux_offers,
-  unread_standing_includes_provider,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -178,7 +174,10 @@ fn expected_unread_standing_identities() -> List<DeclarationRef> {
 }
 
 test fn every_expected_seller_is_surveyed() -> Bool {
-  all(expected_seller_identities(), p => surveyed_includes_provider(provider: p))
+  all(
+    expected_seller_identities(),
+    p => offers_include_provider(offers: surveyed_arm_linux_offers(), provider: p),
+  )
 }
 
 test fn every_surveyed_offer_provider_is_an_expected_seller() -> Bool {
@@ -197,7 +196,10 @@ test fn every_surveyed_aarch64_shape_carries_a_cited_label() -> Bool {
 }
 
 test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
-  all(expected_reseller_identities(), p => reseller_includes_provider(provider: p))
+  all(
+    expected_reseller_identities(),
+    p => offers_include_provider(offers: cloud_arm_reseller_offers(), provider: p),
+  )
     && all(
       cloud_arm_reseller_offers(),
       o => provider_in(provider: o.provider, identities: expected_reseller_identities()),
@@ -205,7 +207,10 @@ test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
 }
 
 test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
-  all(expected_customer_account_identities(), p => customer_account_includes_provider(provider: p))
+  all(
+    expected_customer_account_identities(),
+    p => offers_include_provider(offers: customer_account_cloud_arm_offers(), provider: p),
+  )
     && all(
       customer_account_cloud_arm_offers(),
       o => provider_in(provider: o.provider, identities: expected_customer_account_identities()),
@@ -213,7 +218,10 @@ test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
 }
 
 test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
-  all(expected_not_accepting_identities(), p => not_accepting_includes_provider(provider: p))
+  all(
+    expected_not_accepting_identities(),
+    p => offers_include_provider(offers: not_accepting_arm_linux_offers(), provider: p),
+  )
     && all(
       not_accepting_arm_linux_offers(),
       o => provider_in(provider: o.provider, identities: expected_not_accepting_identities()),
@@ -221,7 +229,10 @@ test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
 }
 
 test fn unread_standing_join_is_price_page_or_sku_unread() -> Bool {
-  all(expected_unread_standing_identities(), p => unread_standing_includes_provider(provider: p))
+  all(
+    expected_unread_standing_identities(),
+    p => offers_include_provider(offers: unread_standing_arm_linux_offers(), provider: p),
+  )
     && all(
       unread_standing_arm_linux_offers(),
       o => provider_in(provider: o.provider, identities: expected_unread_standing_identities()),
