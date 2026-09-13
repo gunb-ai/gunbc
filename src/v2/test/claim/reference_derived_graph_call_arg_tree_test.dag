@@ -41,9 +41,9 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // COLLECTOR-ROUTE DEFICIENCY PROBES. The production edge producer is the collector, not a
-// parse-tree qualified-name walk. Call-argument == 0 is tree-side (eager-raven-113). Type-position
-// here is a qualified name; do not hold it on XL-0's retracted "type-position never reaches the
-// collector" claim. The parse-QN walk below is an oracle only — never the edge producer.
+// parse-tree qualified-name walk (parent ruling A on #11202). Call-argument == 0 is tree-side
+// (eager-raven-113). Qualified type-position here is the dotted-reference capability, not
+// lowering. The parse-QN walk below is an oracle only — never the edge producer.
 
 data ca_provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\n"
 
