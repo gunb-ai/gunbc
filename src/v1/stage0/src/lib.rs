@@ -136,6 +136,17 @@ pub mod gunbc_namespace_reference_derived_closure_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_reference_derived_candidate;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
     unused_imports,
