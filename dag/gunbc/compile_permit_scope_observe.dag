@@ -5,9 +5,9 @@ import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.placement_supply { HostIdentity }
-import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty }
+import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty, SystemdUnitProperty }
 import extdeps.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
-import extdeps.jobserver { jobserver_fifo_path_from_makeflags }
+import extdeps.jobserver { jobserver_fifo_path_from_makeflags, jobserver_makeflags_env_name }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
@@ -31,6 +31,7 @@ import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
 import gunbc.runner_slot_allocation { committed_slot_identities }
+import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
 
 data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
 
@@ -134,33 +135,12 @@ type PermitScopePropertyRead
   = PermitScopePropertyText { text: String }
   | PermitScopePropertyUnreadable { cause: NonEmptyStr }
 
-fn read_environment(
+fn read_permit_scope_property(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
+  property: SystemdUnitProperty,
 ) -> PermitScopePropertyRead {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: EnvironmentProperty) {
-    SystemdPropertyCaptured { value: raw } => PermitScopePropertyText { text: trim(raw) }
-    SystemdPropertyCaptureRefused { reason: why } =>
-      PermitScopePropertyUnreadable { cause: why as NonEmptyStr }
-  }
-}
-
-fn read_after(
-  transport: HostEffectTransport,
-  unit: NonEmptyStr,
-) -> PermitScopePropertyRead {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: AfterProperty) {
-    SystemdPropertyCaptured { value: raw } => PermitScopePropertyText { text: trim(raw) }
-    SystemdPropertyCaptureRefused { reason: why } =>
-      PermitScopePropertyUnreadable { cause: why as NonEmptyStr }
-  }
-}
-
-fn read_wants(
-  transport: HostEffectTransport,
-  unit: NonEmptyStr,
-) -> PermitScopePropertyRead {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: WantsProperty) {
+  match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: raw } => PermitScopePropertyText { text: trim(raw) }
     SystemdPropertyCaptureRefused { reason: why } =>
       PermitScopePropertyUnreadable { cause: why as NonEmptyStr }
@@ -195,8 +175,8 @@ fn realization_from_unit_text(
   let after_tokens = split(s: after, delimiter: " ")
   let wants_tokens = split(s: wants, delimiter: " ")
   let daemon = gunbc_runner_jobserver_service
-  let fifo_env = env_assignment_value(tokens: env_tokens, key: "CTRL_JOBSERVER_FIFO")
-  let makeflags = env_assignment_value(tokens: env_tokens, key: "MAKEFLAGS")
+  let fifo_env = env_assignment_value(tokens: env_tokens, key: runner_unit_ctrl_jobserver_fifo_env_name)
+  let makeflags = env_assignment_value(tokens: env_tokens, key: jobserver_makeflags_env_name)
   let after_daemon = word_present(tokens: after_tokens, word: daemon)
   let wants_daemon = word_present(tokens: wants_tokens, word: daemon)
   match makeflags {
@@ -252,15 +232,15 @@ fn observe_slot_realization(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> SlotRealizationRead {
-  match read_environment(transport: transport, unit: unit) {
+  match read_permit_scope_property(transport: transport, unit: unit, property: EnvironmentProperty) {
     PermitScopePropertyUnreadable { cause: why } =>
       SlotRealizationUnreadable { cause: why }
     PermitScopePropertyText { text: environment } =>
-      match read_after(transport: transport, unit: unit) {
+      match read_permit_scope_property(transport: transport, unit: unit, property: AfterProperty) {
         PermitScopePropertyUnreadable { cause: why } =>
           SlotRealizationUnreadable { cause: why }
         PermitScopePropertyText { text: after } =>
-          match read_wants(transport: transport, unit: unit) {
+          match read_permit_scope_property(transport: transport, unit: unit, property: WantsProperty) {
             PermitScopePropertyUnreadable { cause: why } =>
               SlotRealizationUnreadable { cause: why }
             PermitScopePropertyText { text: wants } =>
