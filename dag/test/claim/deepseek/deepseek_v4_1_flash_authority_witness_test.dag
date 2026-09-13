@@ -19,6 +19,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
   deepseek_v4_1_flash_frontier, deepseek_v4_1_flash_frontier_dsv41_1,
   deepseek_v4_1_flash_frontier_dsv41_2, deepseek_v4_1_flash_frontier_harness_wire,
+  deepseek_v4_1_flash_frontier_dsv41_10,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
   deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
@@ -81,6 +82,7 @@ test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() ->
   frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_1)
     && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_2)
     && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_harness_wire)
+    && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_10)
     && match frontier_rows_keyed_roster_build(rows: deepseek_v4_1_flash_frontier) {
       KeyedRosterBuilt { rows: _ } => true
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
@@ -93,6 +95,8 @@ test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() ->
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_engram")
     && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_1, decl_name: "deepseek_v4_1_flash_engram")
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_effort_preamble")
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_10, decl_name: "deepseek_v4_1_flash_engram_population")
+    && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_engram_population")
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_system_token")
     && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_system_token")
 }

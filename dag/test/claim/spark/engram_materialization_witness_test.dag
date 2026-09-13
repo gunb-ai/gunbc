@@ -3,11 +3,17 @@ module test.claim.spark.engram_materialization_witness_test
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.content_hash { Sha256Digest, Sha256DigestHex, as_content_hash_cryptographic }
 import std.realization { Placement, LocalInProcess, LocalFilesystem, RemoteNetwork, LocalAccelerator }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.roster_frontier {
+  FrontierRow,
+  frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
+  fold_frontier_expiry, frontier_expiry_clean,
+}
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import std.decision {
   HardConstraint, UniqueSurvivorRequired,
@@ -114,7 +120,7 @@ import gunbc.fabric.engram_materialization {
   component_resident_share,
   ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementExcluded, ComponentPlacementOpen,
   component_route_placement_standing,
-  engram_component_identity, engram_component_standing, engram_routes,
+  engram_component_identity, engram_component_standing, engram_routes, engram_materialization_frontier,
   engram_route_a_resident, engram_route_b_host_nvme, engram_route_c_nfs_token_time, engram_route_d_nfs_fill_then_nvme,
   engram_route_a_identity, engram_route_b_identity, engram_route_c_identity, engram_route_d_identity,
   engram_origin_provider, engram_origin_provider_id, engram_nfs_provider, engram_nfs_provider_id,
@@ -1624,6 +1630,41 @@ fn published_realization() -> FaithfulComponentRealization {
     standing: engram_component_standing,
     artifact: engram_published_artifact,
     evidence: engram_published_faithfulness)
+}
+
+// ── THE DEFERRAL ACCOUNT IS FOLDED, NOT MERELY DECLARED ───────────────────────────────────────
+//
+// `engram_materialization_frontier` carries this module's entire deferral account -- the unmeasured
+// route axes, the unread non-resident mechanism, the unified-memory placement question and the
+// unestablished route subject closure -- and a first cut DECLARED it and nothing read it. Four rows
+// with no executing consumer is section 3c's only red, and it is worse than an ordinary dangling
+// declaration because these rows are the thing this cut POINTS AT when it says a question is deferred
+// rather than answered: section 7 requires a retained row to be countable and never a silent escape
+// hatch, and a row no fold reaches is not countable. So the same three checks the DeepSeek authority
+// witness runs over its own groups run here: each row well formed, the keyed roster free of duplicate
+// subjects, and the expiry fold clean with no row already fired while its subject still stands.
+test fn the_engram_deferral_account_is_well_formed_and_unexpired() -> Bool {
+  let expiry = fold_frontier_expiry(rows: engram_materialization_frontier, present_decls: [])
+  frontier_rows_well_formed(rows: engram_materialization_frontier)
+    && match frontier_rows_keyed_roster_build(rows: engram_materialization_frontier) {
+      KeyedRosterBuilt { rows: built } => count(built) == count(engram_materialization_frontier)
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && frontier_expiry_clean(report: expiry)
+    && expiry.pending_count == 0
+    && expiry.fired_still_present_count == 0
+    && expiry.unbound_count == count(engram_materialization_frontier)
+    && engram_frontier_names(decl_name: "engram_route_evidence_rows")
+    && engram_frontier_names(decl_name: "component_route_assessment")
+}
+
+fn engram_frontier_names(decl_name: String) -> Bool {
+  let want = declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "gunbc.fabric.engram_materialization" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+  any(frontier_path_subjects(rows: engram_materialization_frontier), k => k == want)
 }
 
 // ── A DIGEST OBSERVATION IS ABOUT THE BYTES IT READ ───────────────────────────────────────────

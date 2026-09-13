@@ -373,6 +373,7 @@ data deepseek_v4_1_flash_frontier: List<FrontierRow> = concat_frontier_row_group
   deepseek_v4_1_flash_frontier_dsv41_1,
   deepseek_v4_1_flash_frontier_dsv41_2,
   deepseek_v4_1_flash_frontier_harness_wire,
+  deepseek_v4_1_flash_frontier_dsv41_10,
 ])
 
 // ===========================================================================================
