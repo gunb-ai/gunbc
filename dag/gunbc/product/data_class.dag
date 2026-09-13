@@ -218,9 +218,10 @@ type DataOperation
 // requested operation against them, and the permit then carries all three as ADMITTED facts
 // rather than as whatever the caller wrote on the sink. Purposes and recipients are open
 // DeclarationRefs into the authoring lane's rows: gunbc-private strategy.data_map's
-// ProcessingPurpose (a declared frontier there, constructed and never matched) is exactly what a
-// row's purposes cite, and its recipients are that lane's transfer counterparties. An empty list
-// admits nothing -- there is no wildcard arm.
+// ProcessingPurpose rows are what a row's purposes CITE, and its recipients are that lane's
+// transfer counterparties. The fold judges purposes by reference identity; it never eliminates
+// that coproduct's arms, so that lane's "never matched" frontier on ProcessingPurpose is not
+// retired by this consumer. An empty list admits nothing -- there is no wildcard arm.
 type DataHandlingRow {
   category: DeclarationRef
   sink: SinkKind
