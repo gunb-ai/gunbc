@@ -1042,8 +1042,3 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
       }
   }
 }
-
-// Both projections consume the same admitted, screened build resolution.
-fn max_constructible(build: BuildResolution) -> ConstructibleCeiling {
-  build.ceiling
-}

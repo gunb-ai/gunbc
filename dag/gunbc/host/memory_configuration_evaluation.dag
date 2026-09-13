@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
 import std.algebra { FreeSemigroup }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsPopulationRoleRefusal, MtCollinsChannelPopulationRoleStanding,
@@ -14,7 +14,7 @@ import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationEstablished, ObservationRefused }
 import gunbc.memory_configuration {
   CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_capacity,
-  MemoryConfiguration, MemoryChangeProposal, MemoryPosition, PositionedMemoryModule,
+  MemoryConfiguration, MemoryPosition, PositionedMemoryModule,
   MemoryOperatingObligation, MemoryPlacement, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
   AdditionalMemoryRequirement, memory_operating_obligations,
