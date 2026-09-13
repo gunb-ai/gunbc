@@ -55,8 +55,15 @@ type SpawnOutcome
 // cannot distinguish a child that emitted nothing from one whose output was never read, and a full
 // pipe stalls the writer, so the collector can cause the silence it then reports. DrainNotObserved
 // is the honest state when nobody watched the pipe while it was live; it is NOT zero bytes.
+// WATCHING AND RECEIVING ARE TWO FACTS AND THE CARRIER USED TO HOLD ONLY ONE OF THEM.
+// DrainedDuringOperation carried last_progress_at alone -- WHEN BYTES LAST ARRIVED -- and nothing said
+// how long anyone was WATCHING. Those come apart exactly where it matters: a pipe that delivered its
+// last byte at three seconds and was then abandoned has a last_progress_at of three seconds and no
+// watch coverage at all, which is indistinguishable from a pipe watched to the deadline that simply
+// went quiet after three seconds. watched_until is the bound that answers coverage; last_progress_at
+// is retained because it is a real observation about the SUBJECT, and it is never used as a watch bound.
 type DrainProgress
-  = DrainedDuringOperation { bytes: ByteSize, last_progress_at: ObservationInstant }
+  = DrainedDuringOperation { bytes: ByteSize, watched_until: ObservationInstant, last_progress_at: ObservationInstant }
   | DrainObservedEmpty { watched_until: ObservationInstant }
   | DrainNotObserved
 
@@ -74,7 +81,7 @@ type DrainProgress
 // so their order is not a fact anyone holds. Defaulting that to ClosedAsExpected would fabricate
 // the very claim this module exists to refuse.
 type SupervisionDisposition
-  = ClosedAtDeadline { termination: ProcessTermination, drained: DrainProgress }
+  = ClosedAtDeadline { termination: ProcessTermination, drained: DrainProgress, deadline: ObservationInstant }
   | InterruptedBeforeDeadline { termination: ProcessTermination, drained: DrainProgress }
   | TerminationNotObserved { drained: DrainProgress }
   | NeverSpawned { cause: NonEmptyStr }
@@ -126,12 +133,14 @@ fn supervision_disposition(
             order: compare_instants(a: observed_end, b: deadline),
             termination: termination,
             drained: drained,
+            deadline: deadline,
           )
         ProcessSignaled { signal: _ } =>
           disposition_by_order(
             order: compare_instants(a: observed_end, b: deadline),
             termination: termination,
             drained: drained,
+            deadline: deadline,
           )
       }
   }
@@ -144,14 +153,15 @@ fn disposition_by_order(
   order: InstantOrder,
   termination: ProcessTermination,
   drained: DrainProgress,
+  deadline: ObservationInstant,
 ) -> SupervisionDisposition {
   match order {
     InstantBefore =>
       InterruptedBeforeDeadline { termination: termination, drained: drained }
     InstantSame =>
-      ClosedAtDeadline { termination: termination, drained: drained }
+      ClosedAtDeadline { termination: termination, drained: drained, deadline: deadline }
     InstantAfter =>
-      ClosedAtDeadline { termination: termination, drained: drained }
+      ClosedAtDeadline { termination: termination, drained: drained, deadline: deadline }
     InstantIncomparable { left: left, right: right } =>
       SupervisionUndecidable { deadline_domain: right, observed_domain: left }
   }
@@ -172,6 +182,8 @@ fn disposition_by_order(
 type SupervisionCoverage
   = WindowCovered
   | WindowNotCoveredPipeUnread { disposition: SupervisionDisposition }
+  | WindowNotCoveredPipeUnwatchedToDeadline { watched_until: ObservationInstant, deadline: ObservationInstant }
+  | WindowCoverageUndecidable { watch_domain: ClockDomain, deadline_domain: ClockDomain }
   | WindowNotCoveredSupervision { disposition: SupervisionDisposition }
 
 // DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the coverage answer in
@@ -184,13 +196,15 @@ type SupervisionCoverage
 // witnesses -- stated here rather than left for a reader to discover.
 fn supervision_coverage(disposition: SupervisionDisposition) -> SupervisionCoverage {
   match disposition {
-    ClosedAtDeadline { termination: termination, drained: drained } =>
+    ClosedAtDeadline { termination: termination, drained: drained, deadline: deadline } =>
       match drained {
-        DrainedDuringOperation { bytes: _, last_progress_at: _ } => WindowCovered
-        DrainObservedEmpty { watched_until: _ } => WindowCovered
+        DrainedDuringOperation { bytes: _, watched_until: watched_until, last_progress_at: _ } =>
+          watch_reaches_deadline(watched_until: watched_until, deadline: deadline)
+        DrainObservedEmpty { watched_until: watched_until } =>
+          watch_reaches_deadline(watched_until: watched_until, deadline: deadline)
         DrainNotObserved =>
           WindowNotCoveredPipeUnread {
-            disposition: ClosedAtDeadline { termination: termination, drained: drained }
+            disposition: ClosedAtDeadline { termination: termination, drained: drained, deadline: deadline }
           }
       }
     InterruptedBeforeDeadline { termination: t, drained: d } =>
@@ -203,5 +217,27 @@ fn supervision_coverage(disposition: SupervisionDisposition) -> SupervisionCover
       WindowNotCoveredSupervision { disposition: CleanupFailed { detail: detail } }
     SupervisionUndecidable { deadline_domain: a, observed_domain: b } =>
       WindowNotCoveredSupervision { disposition: SupervisionUndecidable { deadline_domain: a, observed_domain: b } }
+  }
+}
+
+// THE CHILD RUNNING TO ITS DEADLINE IS NOT THE PIPE BEING WATCHED TO IT, and conflating those was this
+// lane's FOUNDING DEFECT reappearing inside the module written to make it unwritable. ClosedAtDeadline
+// establishes that the DEADLINE ENDED THE CHILD. It says nothing about how long anyone read the pipe,
+// so a watcher that gave up at three seconds of a four-hundred-and-twenty-second window used to answer
+// WindowCovered -- three seconds of four hundred and twenty, reported as all of them, which is the
+// original 2026-09-11 failure exactly.
+//
+// The watch bound is compared against the deadline through std.measure compare_instants, so clocks
+// with no shared origin yield WindowCoverageUndecidable rather than a fabricated verdict in either
+// direction. An undecidable comparison is NOT coverage and is also NOT a failure of the collector; it
+// is the honest state when the two readings cannot be ordered.
+fn watch_reaches_deadline(watched_until: ObservationInstant, deadline: ObservationInstant) -> SupervisionCoverage {
+  match compare_instants(a: watched_until, b: deadline) {
+    InstantSame => WindowCovered
+    InstantAfter => WindowCovered
+    InstantBefore =>
+      WindowNotCoveredPipeUnwatchedToDeadline { watched_until: watched_until, deadline: deadline }
+    InstantIncomparable { left: left, right: right } =>
+      WindowCoverageUndecidable { watch_domain: left, deadline_domain: right }
   }
 }
