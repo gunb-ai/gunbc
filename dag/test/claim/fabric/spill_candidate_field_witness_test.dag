@@ -22,6 +22,7 @@ import product.fabric.isolation { IsolationProfile }
 import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts, CompliancePostureRevision,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders,
 }
 import product.fabric.provider_admission {
@@ -556,6 +557,66 @@ test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool {
       requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
     ),
     tag: "facts-name-another-route",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// THE SAME ROUTE, READ TWO DIFFERENT WAYS. One row has every path located; this one leaves EXECUTION
+// unread. Both name the identical route, so a check asking only "do these rows disagree about the
+// route" sees no conflict at all - and the two rows are the difference between admitting and
+// refusing, which is why the pair below is the discriminating input rather than a duplicate of the
+// sibling-region red.
+fn s_facts_execution_unread(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_contract_terms"),
+    data_paths: ProviderDataPathClosure {
+      execution: ProviderPathUnread { obligation: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_read_obligation") },
+      durable_storage: s_located(),
+      backups: s_located(),
+      logs: s_located(),
+      telemetry: s_located(),
+      control_plane: s_located(),
+      support_access: s_located(),
+      administrative_access: s_located(),
+      spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_spill_path") },
+    },
+    downstream: NoDownstreamProviders { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_downstream") },
+    observed_at: "2026-09-13T00:00:00Z",
+    facts_revision: s_hash(seed: "spill-witness-facts-execution-unread-r1"),
+  }
+}
+
+fn s_two_reading_field(first: ProviderRouteFacts, second: ProviderRouteFacts) -> CandidateField<NonEmptyStr> {
+  s_field(
+    routes: [
+      OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: first },
+      OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: second },
+    ],
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+  )
+}
+
+// RED - TWO ROWS THAT AGREE ON THE ROUTE AND DISAGREE ON THE FACTS STILL REFUSE. This is the case an
+// ambiguity check keyed on route disagreement cannot see: both rows name the same route, so nothing
+// about the ROUTE conflicts, and the two readings differ only in whether the execution path was
+// read. One of them admits and the other refuses, so taking the first would let roster order decide
+// whether this work runs at all.
+test fn w_two_readings_of_one_route_refuse_rather_than_admitting_the_first() -> Bool {
+  s_excluded_keys(
+    field: s_two_reading_field(first: s_facts(route: s_hetzner_route()), second: s_facts_execution_unread(route: s_hetzner_route())),
+    tag: "route-ambiguous",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// RED - AND IT REFUSES IN EITHER ROSTER ORDER, which is the claim rather than a repetition of it.
+// Under the previous fold these two orders gave DIFFERENT answers - admitted when the fully-read row
+// came first, refused when it came second - and both were reported as a decision. An order-dependent
+// compliance answer is the failure; one order being correct is not a defence.
+test fn w_the_two_readings_refuse_in_either_roster_order() -> Bool {
+  s_excluded_keys(
+    field: s_two_reading_field(first: s_facts_execution_unread(route: s_hetzner_route()), second: s_facts(route: s_hetzner_route())),
+    tag: "route-ambiguous",
   ) == ["spill-hetzner-cax41"]
 }
 
