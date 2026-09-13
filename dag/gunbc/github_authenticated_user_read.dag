@@ -31,7 +31,7 @@ type GitHubAuthenticatedUserRead
   | GitHubAuthenticatedUserRefused { performance: RestExchangePerformance }
   | GitHubAuthenticatedUserLoginAbsent { user: GitHubUser }
 
-func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
+fn perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
   let got = github.Users.GetAuthenticatedUser(auth_token: auth_token)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
     RestExchangeSucceeded =>
