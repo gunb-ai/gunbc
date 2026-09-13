@@ -1,7 +1,8 @@
 module std.declaring_identity_spelling
 
 import std.types { Bool }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.algebra { is_prefix_of, list_reverse }
 import v2.std.qualified_name { QualifiedName }
 
@@ -27,6 +28,22 @@ import v2.std.qualified_name { QualifiedName }
 // A bare same-module name resolves inside its own module, so it is not the XL-3
 // population. The usable class is the qualified cross-module mention, absent with
 // no call anywhere; a trigger naming only body-lowering (#11207) does not cover it.
+
+// ResolvedSpelling.declaring is consumed TODAY from
+// v2.compiler.repair_input_origin_roster carrier_provenance (RepairInputDeclared).
+// That DeclarationRef is spelling-derived (owner-prefix drop + dotted render) and is a
+// DECLARED FRONTIER on that producer -- repair_input_declared_binding_frontier_dissolve_on.
+// This census inherits that frontier: when that row retires, this field is DERIVED from
+// std.occurrence_binding OccurrenceBindingResult over ScopedOccurrenceRef (gunbc#11264's
+// surviving authority) and must never be a third minted identity here. canonical is
+// ProvenanceResolved.target and is unaffected.
+data declaring_identity_spelling_declared_binding_frontier_dissolve_on: DissolutionCondition =
+  retires_dissolution(
+    ref: decl_ref(
+      module_path: "v2.compiler.repair_input_origin_roster",
+      decl_name: "repair_input_declared_binding_frontier_dissolve_on"
+    )
+  )
 
 type UnresolvableCause
   = IdentityAmbiguous
