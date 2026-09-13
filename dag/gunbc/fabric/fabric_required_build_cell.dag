@@ -87,7 +87,7 @@ type AllocationSlotAdmission
   | AllocationSlotRefusedUnreadable { path: NonEmptyStr }
   | AllocationSlotRefusedUndecodable { path: NonEmptyStr, generation: Int }
 
-func fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> AllocationSlotAdmission {
+fn fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> AllocationSlotAdmission {
   match prestate {
     AllocationSlotAbsent { path: p } => AllocationSlotAdmitted { path: p }
     AllocationSlotFree { path: p, generation: _ } => AllocationSlotAdmitted { path: p }
@@ -100,7 +100,7 @@ func fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> Allocat
 // The canonical lifecycle advances exactly twice: reserve commits Held, then release commits Free.
 // An append-only store may not return byte-empty, and a merely monotone comparison would admit an
 // unrelated writer's extra generation.
-func fci1_exact_allocation_restoration(
+fn fci1_exact_allocation_restoration(
   prestate: AllocationSlotPrestate,
   held_generation: Int,
   poststate: AllocationSlotPrestate,
@@ -265,7 +265,7 @@ fn required_build_cell_members_hash(members: List<FabricCellMember>) -> ContentH
 
 // Production join: callers select a Work/Demand/Offer/slot, but cannot state the reservation or
 // host facts. Both are acquired here from the canonical CAS and converged-cell producers.
-func observe_required_build_cell_wet(
+fn observe_required_build_cell_wet(
   root: NonEmptyStr,
   host: HostIdentity,
   slot: RunnerSlotIdentity,

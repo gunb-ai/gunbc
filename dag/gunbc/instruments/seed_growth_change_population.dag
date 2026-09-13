@@ -164,7 +164,7 @@ fn coverage_refusal_reason(verdict: RosterCoverageVerdict) -> String {
 
 // A refusal to OBSERVE is a refusal here too, never an empty population reported as coverage --
 // that is the absorbing fallback DESIGN section 5 forbids.
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   match observe_rust_item_change_against(base_ref: gunbc_merge_target_ref as String) {
     RustItemChangeHostRefused { detail: d } =>
       exit_failure(reason: concat("the change population was not observed: ", d))

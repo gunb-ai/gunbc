@@ -101,7 +101,7 @@ type ProbeCredential
   = ProbeCredentialReady { source: AccessTokenSource }
   | ProbeCredentialUnavailable { cause: NonEmptyStr }
 
-func probe_token_source() -> ProbeCredential {
+fn probe_token_source() -> ProbeCredential {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: cause } =>
       ProbeCredentialUnavailable { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
@@ -110,7 +110,7 @@ func probe_token_source() -> ProbeCredential {
   }
 }
 
-func fetch_absent() -> ProcessExit uses net: Network {
+fn fetch_absent() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } =>
@@ -150,7 +150,7 @@ fn put_cause(put: OriginPut) -> String {
   }
 }
 
-func roundtrip() -> ProcessExit uses net: Network {
+fn roundtrip() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
@@ -286,11 +286,11 @@ fn write_refusal_reason(standing: OriginWritePermitStanding) -> String {
   }
 }
 
-func canary_ending() -> ProcessExit uses net: Network {
+fn canary_ending() -> ProcessExit uses net: Network {
   canary_ending_under(handling_map: public_fabric_map(), posture: public_fabric_posture())
 }
 
-func canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostureRevision) -> ProcessExit uses net: Network {
+fn canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostureRevision) -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {

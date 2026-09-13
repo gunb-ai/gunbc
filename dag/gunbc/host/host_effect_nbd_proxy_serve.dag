@@ -20,7 +20,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   nbd_proxy_serve_websocat_unit_name,
   nbd_proxy_serve_session_fingerprint,
 }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import gunbc.session_lease {
   ProcessPortScope,
