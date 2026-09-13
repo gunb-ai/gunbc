@@ -153,23 +153,11 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   }
 }
 
-fn inhabitance_inhabits_homomorphism(
-  verdict: InhabitanceVerdict
-) -> Optional<HomomorphismWitness> {
-  match verdict {
-    Inhabits { homomorphism: h } => Present { value: h }
-    InhabitanceRefused { find_witness_reason: _ } => Absent
-    InhabitanceUndecidable { reason: _ } => Absent
-  }
-}
-
-fn inhabitance_undecidable_reason(
-  verdict: InhabitanceVerdict
-) -> Optional<InhabitanceUndecidableReason> {
-  match verdict {
-    InhabitanceUndecidable { reason: r } => Present { value: r }
-    Inhabits { homomorphism: _ } => Absent
-    InhabitanceRefused { find_witness_reason: _ } => Absent
+fn inhabitance_application_refusal_reason(find_witness_reason: Symbol) -> Symbol {
+  if find_witness_reason == ^find_witness_reason_no_candidate {
+    ^application_argument_does_not_inhabit
+  } else {
+    find_witness_reason
   }
 }
 
@@ -209,10 +197,11 @@ fn inhabitance_undecidable_diagnostic(
 }
 
 fn application_argument_does_not_inhabit_diagnostic(
-  obligation: DeclaredTypeObligation
+  obligation: DeclaredTypeObligation,
+  find_witness_reason: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: ^application_argument_does_not_inhabit,
+    reason: inhabitance_application_refusal_reason(find_witness_reason: find_witness_reason),
     at: node_locus(node: obligation.application),
     correction: Suggested {
       node: Node {
@@ -228,6 +217,10 @@ fn application_argument_does_not_inhabit_diagnostic(
           },
           Edge {
             label: Named { name: ^inhabitance_produced_type },
+            target: obligation.produced
+          },
+          Edge {
+            label: Named { name: find_witness_reason },
             target: obligation.produced
           }
         ],

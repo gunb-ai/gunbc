@@ -52,11 +52,10 @@ import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceFormal,
   InhabitanceUndecidableReason,
+  InhabitanceVerdict,
   application_argument_does_not_inhabit_diagnostic,
   declared_type_inhabitance,
-  inhabitance_inhabits_homomorphism,
   inhabitance_undecidable_diagnostic,
-  inhabitance_undecidable_reason,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
   undecidable_arity_shape_unmodeled,
@@ -1666,21 +1665,20 @@ fn infer_judge_application_argument(
             produced: produced,
             application: application
           }
-          let verdict = declared_type_inhabitance(obligation: obligation)
-          match inhabitance_inhabits_homomorphism(verdict: verdict) {
-            Present { value: _ } => Accepted { value: true, diagnostics: None }
-            Absent =>
-              match inhabitance_undecidable_reason(verdict: verdict) {
-                Present { value: reason } =>
-                  infer_inhabitance_undecidable_accepted(
-                    application: obligation.application,
-                    reason: reason
-                  )
-                Absent =>
-                  outcome_rejected(
-                    application_argument_does_not_inhabit_diagnostic(obligation: obligation)
-                  )
-              }
+          match declared_type_inhabitance(obligation: obligation) {
+            Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
+            InhabitanceUndecidable { reason: reason } =>
+              infer_inhabitance_undecidable_accepted(
+                application: obligation.application,
+                reason: reason
+              )
+            InhabitanceRefused { find_witness_reason: fw_reason } =>
+              outcome_rejected(
+                application_argument_does_not_inhabit_diagnostic(
+                  obligation: obligation,
+                  find_witness_reason: fw_reason
+                )
+              )
           }
       }
   }
