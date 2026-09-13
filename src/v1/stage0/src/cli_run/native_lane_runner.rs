@@ -702,7 +702,8 @@ fn native_generation_from_store(
             (
                 ctx.sym("read_back"),
                 // Host file hashes are copy integrity, not the artifact reporting itself
-                // (ancestry.dag ReadBackReceipt; review 65238).
+                // (ancestry.dag ReadBackReceipt; review 65238). Climb is
+                // `native_generation_read_back_self_report_frontier`.
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
                     variant_name: ctx.sym("ReadBackUnperformed"),
@@ -781,7 +782,8 @@ fn available_generation(
 /// PREPARATION ACQUIRES THE STORED NATIVE GENERATION. expected_generation is the number the
 /// store wrote, not a hardcoded zero: a SucceedsNative row would otherwise be unverified as
 /// "not the generation expected". The host writer of N+1 is
-/// `native_generation_succession_host_writer_frontier`. `compile_entry_emission` is not
+/// `native_generation_succession_host_writer_frontier`. Read-back stays Unperformed until
+/// `native_generation_read_back_self_report_frontier`. `compile_entry_emission` is not
 /// reachable from this function.
 fn acquire_native_compiler(
     workspace: &Path,
