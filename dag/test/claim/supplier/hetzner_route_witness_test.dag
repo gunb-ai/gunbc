@@ -241,6 +241,10 @@ test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
   t_denied_with(
     a: t_decide(facts: t_helsinki_facts_with_support(support: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+      ],
     })),
     tag: "facts-incomplete",
     located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),

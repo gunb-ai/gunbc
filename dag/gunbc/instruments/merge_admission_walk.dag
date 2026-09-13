@@ -114,7 +114,7 @@ fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> MergeAdmission
 // is the §4b climb from mitigatable (a law someone must remember) toward structural (the value
 // has to come from the measurement). The zero-argument form is retained for the existing
 // success-stage claim, where the constant remains true by that stage's own reachability.
-func stamp_tested_floor_with_conclusion(conclusion: CheckConclusion) -> Bool {
+fn stamp_tested_floor_with_conclusion(conclusion: CheckConclusion) -> Bool {
   match capture_walk_attempt_id() {
     Absent => false
     Present { value: attempt_id } =>
@@ -142,11 +142,11 @@ func stamp_tested_floor_with_conclusion(conclusion: CheckConclusion) -> Bool {
 // The exit-code entry, for a caller that holds a process result rather than a modeled conclusion.
 // It routes through gunbc.merge_admission_produce floor_exit_to_check_conclusion rather than
 // re-deciding what a zero exit means, so there is one place that answers that question.
-func stamp_tested_floor_for_exit_code(exit_code: Int) -> Bool {
+fn stamp_tested_floor_for_exit_code(exit_code: Int) -> Bool {
   stamp_tested_floor_with_conclusion(conclusion: floor_exit_to_check_conclusion(exit_code: exit_code))
 }
 
-func stamp_tested_floor() -> Bool {
+fn stamp_tested_floor() -> Bool {
   stamp_tested_floor_with_conclusion(conclusion: Success)
 }
 
@@ -219,7 +219,7 @@ data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admiss
 // that parses it. Not repaired here, because with no producer and no consumer the fix would be a
 // format change to a channel with no ends.
 
-func refresh_wire_path() -> FilePath {
+fn refresh_wire_path() -> FilePath {
   let root = git.Inspect.Toplevel().path as String
   concat(concat(root, "/"), merge_admission_refresh_refusal_wire_relpath) as FilePath
 }
@@ -243,7 +243,7 @@ data merge_admission_refresh_ratchet_off_widening_disposition: Disposition = Sca
   }
 }
 
-func merge_target_refresh() -> MergeTargetRefresh {
+fn merge_target_refresh() -> MergeTargetRefresh {
   let parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
   let fetched = git.Core.FetchNoTags(
     remote: parts.remote,
@@ -289,7 +289,7 @@ func merge_target_refresh() -> MergeTargetRefresh {
   }
 }
 
-func refresh_current_target_and_gate() -> Bool {
+fn refresh_current_target_and_gate() -> Bool {
   let _ = shell.Remove.RecursiveForce(path: refresh_wire_path())
   match merge_target_refresh() {
     MergeTargetRefreshed => true

@@ -585,7 +585,7 @@ fn convergence_unit_doc(
 // is indistinguishable from a unit that never started, and those have different repairs -- one is a
 // misconfigured placement, the other a systemd failure. The deploy must be able to tell them apart,
 // so the refusals are REPORTED rather than merely exited.
-func placement_finish(receipt_path: String, receipt: ConvergencePlacementReceipt) -> ProcessExit {
+fn placement_finish(receipt_path: String, receipt: ConvergencePlacementReceipt) -> ProcessExit {
   let written = Filesystem.Write(
     path: receipt_path,
     content: placement_receipt_text(receipt: receipt),
@@ -632,7 +632,7 @@ fn placement_receipt_of_convergence(
   }
 }
 
-func placement_converge_with_operands(
+fn placement_converge_with_operands(
   receipt_path: String,
   operands: ConvergencePlacementOperands,
 ) -> ProcessExit {
@@ -650,7 +650,7 @@ func placement_converge_with_operands(
   )
 }
 
-func placement_converge_admitted(
+fn placement_converge_admitted(
   spec: DeploymentSpec,
   candidate: String,
   object_source: String,
@@ -671,7 +671,7 @@ func placement_converge_admitted(
   }
 }
 
-func placement_converge_for_spec(
+fn placement_converge_for_spec(
   spec: DeploymentSpec,
   candidate: String,
   object_source: String,
@@ -707,7 +707,7 @@ func placement_converge_for_spec(
 // renders it from the spec through convergence_receipt_path, so production never spells it; it
 // remains a parameter so the acceptance matrix can point one execution at a scratch location
 // without a second entry point that differs from the production one in any other way.
-func repository_converge_srv1_owner_wet(
+fn repository_converge_srv1_owner_wet(
   candidate: String,
   object_source: String,
   receipt: String,
@@ -754,7 +754,7 @@ fn convergence_readback_of_text(text: String) -> ConvergenceReadback {
   }
 }
 
-func read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
+fn read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
   let read = Filesystem.Read(path: receipt_path)
   if !read.success {
     ConvergenceReadbackRefused {
@@ -771,7 +771,7 @@ func read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
 // the cases that matter: a unit that started and then refused for a typed reason exits nonzero here
 // with that reason NAMED, and a unit that appeared to succeed while writing no receipt is refused
 // rather than assumed.
-func repository_convergence_readback_wet(receipt: String) -> ProcessExit {
+fn repository_convergence_readback_wet(receipt: String) -> ProcessExit {
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the readback has no subject without it")
   } else {

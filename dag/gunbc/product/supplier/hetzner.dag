@@ -92,13 +92,13 @@ fn hetzner_nuremberg_route() -> ProviderRoute {
 // documents read, so one row each is the honest grain; a per-region copy would present one unread
 // document as two independent findings.
 
-data hetzner_log_system_location_obligation: NonEmptyStr = "Where the Hetzner Cloud log system stores and processes its records is UNREAD. extdeps.cloud.hetzner hetzner_technical_organizational_measures_reading establishes that a log system saves logins and administrative changes within the customer account and that records are kept under a company deletion plan, and it names no country, no location and no operating entity for that system; no other document read on 2026-09-12 answers it either. RESOLVED BY a Hetzner document that states which location or which legal entity operates the log store for a given server location -- at which point this path takes the located arm with that entity as operator. It is NOT resolved by the location of the server, because a log record is written by the platform and not by the customer's instance."
+data hetzner_log_system_location_obligation: NonEmptyStr = "Where the Hetzner Cloud log system stores and processes its records is UNREAD. product.supplier.hetzner_path_reading hetzner_technical_organizational_measures_reading records that a log system saves logins and administrative changes within the customer account and that records are kept under a company deletion plan, and it records LogSystemCountryUnstated; no other document read on 2026-09-12 answers it either. RESOLVED BY a Hetzner document that states which location or which legal entity operates the log store for a given server location -- at which point this path takes the located arm with that entity as operator. It is NOT resolved by the location of the server, because a log record is written by the platform and not by the customer's instance."
 
 data hetzner_telemetry_location_obligation: NonEmptyStr = "Whether Hetzner Cloud collects telemetry about a customer server, what it carries, and where it goes, is UNREAD. Nothing in the documents read on 2026-09-12 -- the locations page, the backup and snapshot FAQ, Appendix 3 of the Data Protection Agreement, the technical and organizational measures page, the data-protection overview or the Terms and Conditions -- describes a telemetry or usage-reporting path for a cloud server. THE ABSENT ARM IS DELIBERATELY NOT TAKEN: nobody has stated that no such collection exists, and a silence read as a denial is the exact collapse product.fabric.provider_route keeps the two arms apart to prevent. RESOLVED BY a Hetzner statement about platform telemetry for cloud servers, in either direction: an explicit none makes this path Absent with that document as its evidence, and a described collection makes it Located at whoever receives it."
 
 data hetzner_control_plane_location_obligation: NonEmptyStr = "Where the Hetzner Cloud control plane -- the Console and the Cloud API that create, start, rescue and image a server -- runs, and under whose jurisdiction, is UNREAD. The control plane reaches customer material without appearing in the customer-visible topology, which is why product.fabric.provider_route carries it as a path of its own; the documents read on 2026-09-12 place the SERVERS in Falkenstein, Nuremberg and Helsinki and say nothing about where the service that administers them runs. RESOLVED BY a Hetzner document naming the location or the operating entity of the Console and Cloud API for a given server location."
 
-data hetzner_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to a Hetzner Cloud server is exercised is UNREAD, although WHO exercises it is read. extdeps.cloud.hetzner hetzner_technical_organizational_measures_reading states that only authorized Hetzner employees have administrative access, within the scope of the agreed service, via multi-level authentication and cryptographic protection -- that is the operator, and it is the one component of three this path can fill. It names no country for those employees and mentions Finland and Helsinki nowhere. THE SUPPORT STATEMENT DOES NOT ANSWER IT: the locations page's sentence about a team of technicians in Germany is about CUSTOMER SUPPORT, and reading it as an answer about administrative access would join two documents at a seam neither of them draws. RESOLVED BY a Hetzner statement of where administrative access to a given server location is exercised from."
+data hetzner_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to a Hetzner Cloud server is exercised is UNREAD, although WHO exercises it is read. product.supplier.hetzner_path_reading hetzner_technical_organizational_measures_reading records that only authorized Hetzner employees have administrative access, within the scope of the agreed service, via multi-level authentication and cryptographic protection -- that is the operator, and it is the one component of three this path can fill. It records AdministrativeAccessJurisdictionUnstated and FinlandOrHelsinkiUnmentioned. THE SUPPORT STATEMENT DOES NOT ANSWER IT: the locations page's sentence about a team of technicians in Germany is about CUSTOMER SUPPORT, and reading it as an answer about administrative access would join two documents at a seam neither of them draws. RESOLVED BY a Hetzner statement of where administrative access to a given server location is exercised from."
 
 data hetzner_spill_location_obligation: NonEmptyStr = "Where customer material may SPILL on a Hetzner Cloud route -- swap, crash dumps, hypervisor or host scratch, storage reclaimed without erasure, diagnostic captures -- is UNREAD. The technical and organizational measures page read on 2026-09-12 describes hardware destruction at Falkenstein and access control, and describes no spill surface for a running cloud server; no other document read answers it. RESOLVED BY a Hetzner statement about host-side scratch, swap or dump handling for cloud servers, which as with telemetry may resolve this path in either direction."
 
@@ -173,28 +173,95 @@ fn hetzner_nuremberg_support_path() -> ProviderPathStanding {
 fn hetzner_helsinki_data_paths() -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: hetzner_helsinki_execution_path(),
-    durable_storage: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_durable_storage_obligation") },
+    durable_storage: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_durable_storage_obligation"),
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+      ],
+    },
     backups: hetzner_helsinki_backups_path(),
-    logs: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation") },
-    telemetry: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation") },
-    control_plane: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation") },
-    support_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation") },
-    administrative_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation") },
-    spill: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation") },
+    logs: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
+    telemetry: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+      ],
+    },
+    control_plane: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation"),
+      consulted: [],
+    },
+    support_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+      ],
+    },
+    administrative_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
+    spill: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
   }
 }
 
 fn hetzner_nuremberg_data_paths() -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: hetzner_nuremberg_execution_path(),
-    durable_storage: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_durable_storage_obligation") },
+    durable_storage: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_durable_storage_obligation"),
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+      ],
+    },
     backups: hetzner_nuremberg_backups_path(),
-    logs: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation") },
-    telemetry: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation") },
-    control_plane: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation") },
+    logs: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
+    telemetry: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+      ],
+    },
+    control_plane: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation"),
+      consulted: [],
+    },
     support_access: hetzner_nuremberg_support_path(),
-    administrative_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation") },
-    spill: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation") },
+    administrative_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
+    spill: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation"),
+      consulted: [
+        decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+      ],
+    },
   }
 }
 

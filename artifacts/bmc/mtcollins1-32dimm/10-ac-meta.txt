@@ -1,0 +1,26 @@
+2026-09-11T22:13:23.054Z watcher armed; waiting for BMC to GO DOWN first
+2026-09-11T22:13:43.167Z BMC down (ipmi no answer) after 1s
+192.168.1.228 dev enP3p3s0f1 lladdr 28:c1:3c:8a:d6:4c REACHABLE 
+2026-09-11T22:14:13.580Z BMC back after 2s
+192.168.1.228 dev enP3p3s0f1 lladdr 28:c1:3c:8a:d6:4c REACHABLE 
+System Power         : on
+Power Overload       : false
+Power Interlock      : inactive
+Main Power Fault     : false
+Power Control Fault  : false
+Power Restore Policy : always-on
+Last Power Event     : ac-failed 
+Chassis Intrusion    : inactive
+Front-Panel Lockout  : inactive
+Drive Fault          : false
+Cooling/Fan Fault    : false
+Sleep Button Disable : allowed
+Diag Button Disable  : allowed
+Reset Button Disable : allowed
+Power Button Disable : allowed
+Sleep Button Disabled: false
+Diag Button Disabled : false
+Reset Button Disabled: false
+Power Button Disabled: false
+2026-09-11T22:14:14.733Z attaching SOL
+sol_pid=4144491

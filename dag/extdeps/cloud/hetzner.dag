@@ -18,6 +18,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Published-page URIs only. Whether those pages answer a data-path question is a receipt in
+// product.supplier.hetzner_path_reading, not an Unobserved arm on this module.
+data hetzner_technical_organizational_measures_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/"
+  }
+}
+
+data hetzner_data_protection_overview_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/"
+  }
+}
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
@@ -271,11 +287,6 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
   [ cax11_listed, cax21_listed, cax31_listed, cax41_listed,
     cx23_listed, cx33_listed, cx43_listed, cx53_listed ]
 }
-
-
-
-
-
 // ---------------------------------------------------------------------------------------------
 // WHAT THIS VENDOR PUBLISHES ABOUT ITS DATA PATHS, AS OPPOSED TO ITS PRICES.
 //
@@ -284,7 +295,9 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
 // given location actually sit -- and the answer is in a different set of the vendor's documents.
 // They are read here rather than in the product layer for the reason DESIGN section 3 gives: an
 // independently governed upstream owns its own facts, and what we are willing to do with them is a
-// fact about us.
+// fact about us. Silences against the nine-path questions live in
+// product.supplier.hetzner_path_reading, citing the page URIs at the top of this file; they are not
+// restated as a second HetznerPublishedReading.
 //
 // EACH ROW CARRIES THE DOCUMENT, THE DATE IT WAS READ, AND THE SENTENCE IT WAS READ FOR. The
 // statement field is a TRANSCRIPTION of upstream's own words, not commentary about them: it is the
@@ -317,22 +330,10 @@ data hetzner_subcontractor_appendix_reading: HetznerPublishedReading = HetznerPu
   statement: "Appendix 3 of the Data Protection Agreement: Approved Subcontractors, classification Open, Date and Version 1.0, - August 08, 2024. Hetzner Online GmbH (the Supplier) uses services of third parties (subcontractors) while processing data on behalf of its customers (the Client). These subcontractors process data on behalf of Hetzner Online GmbH. The following is a list of approved subcontractors. The table is keyed by SERVER LOCATION and its columns are Server location, Subcontractor, Subcontractor's address, Type of service. The document closes: If you have chosen a server location within the EU, your data will only be processed within the EU. The technical and customer support services for all server locations are provided within the EU.",
 }
 
-data hetzner_technical_organizational_measures_reading: HetznerPublishedReading = HetznerPublishedReading {
-  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" } },
-  read_on: "2026-09-12",
-  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees. WHAT THE PAGE DOES NOT SAY, read for and not found: it names no country for the log system, states no jurisdiction from which administrative access is exercised, and does not mention Finland or Helsinki anywhere.",
-}
-
 data hetzner_terms_and_conditions_reading: HetznerPublishedReading = HetznerPublishedReading {
   authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "www.hetzner.com/legal/terms-and-conditions/" } },
   read_on: "2026-09-12",
   statement: "Terms and Conditions of Hetzner Online GmbH, version 2.0.0, last updated 27 October 2021. These Terms and Conditions and the contractual relationship between us and the Customer are governed by the laws of the Federal Republic of Germany, excluding the UN Convention on Contracts for the International Sale of Goods and international private law. The international and exclusive place of jurisdiction for all disputes arising from this contractual relationship is our registered office in Gunzenhausen.",
-}
-
-data hetzner_data_protection_overview_reading: HetznerPublishedReading = HetznerPublishedReading {
-  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" } },
-  read_on: "2026-09-12",
-  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
 }
 
 // THE LEGAL ENTITIES THE DOCUMENTS NAME. A route's operator slot needs a party, and a party is a
