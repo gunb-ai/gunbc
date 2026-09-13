@@ -15,6 +15,7 @@ import std.upsert_decision {
   UpsertClassification,
 }
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.cloud.gcp.auth_print_access_token {
   gcloud_stderr_auth_deficit,
 }
@@ -58,8 +59,8 @@ type AccessTokenResolution
 // it mints; what was absent was any way for ensure_access_token to SAY so. With the arm present the
 // typed effects run under the run's own identity, and the preludes have somewhere to dissolve into.
 //
-// THE TOKEN ARRIVES BY VALUE HERE, AND THAT IS A DEPARTURE WORTH STATING. gunbc.auth.gcp_secret_access
-// takes its operator token by PATH because an environment variable holding a secret leaks into any
+// THE TOKEN ARRIVES BY VALUE HERE, AND THAT IS A DEPARTURE WORTH STATING. The OperatorSuppliedToken
+// realizer below takes its token by PATH because an environment variable holding a secret leaks into any
 // diagnostic that dumps the environment. That rule is not relaxed: the hazard it was written against
 // is argv and receipts, and gunbc.credential_argv_exposure measures the concrete incident -- a
 // `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"` whose shell expansion put the token in a
@@ -177,3 +178,160 @@ func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
 }
 
 data ensure_access_token_eager_bootstrap_fork_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second §3 authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wra")
+
+// THE TOKEN ARRIVES BY PATH, NEVER BY VALUE, for the reason gunbc.spark.grant_privileged_operation
+// spark_grant_credential_path_env states: an environment
+// variable holding a SECRET leaks into any diagnostic that dumps the environment, and this
+// repository's receipts do dump argv. A token is a bearer credential for the whole project, so it
+// gets the administrator password's treatment: the environment carries a PATH, the file carries
+// the bytes, and the value never reaches argv or a receipt.
+//
+// THIS IS THE REALIZER OF THE OperatorSuppliedToken ARM, AND IT NOW LIVES BESIDE THE ARM. It was
+// authored in gunbc.auth.gcp_secret_access, whose own annotation said it "realizes the
+// OperatorSuppliedToken arm, which gunbc.auth.access_token_source already carries" -- a realizer
+// one module away from the coproduct it inhabits, which is why every entry that wanted an operator
+// token imported it from the GRANT ENSURE's module to build a source the ensure never sees. The
+// consequence was mechanical: eight entry points each re-authored read_supplied_access_token() ->
+// OperatorSuppliedToken, so no run could resolve any OTHER arm, and the workload arm below was
+// unreachable from every one of them. With the realizer here, select_access_token_source is
+// authorable at all.
+//
+// It lets a token arrive where gcloud does not exist -- a container, a CI runner -- rather than
+// only on a workstation.
+data secret_access_token_path_env: NonEmptyStr = "GUNBC_GCP_ACCESS_TOKEN_FILE" as NonEmptyStr
+
+type SuppliedTokenResolution
+  = SuppliedTokenReady { token: Secret }
+  | SuppliedTokenUnavailable { cause: NonEmptyStr }
+
+fn classify_supplied_token(success: Bool, error: String, content: String) -> SuppliedTokenResolution {
+  if success == false {
+    SuppliedTokenUnavailable {
+      cause: join(["the access token file could not be read: ", error], "") as NonEmptyStr,
+    }
+  } else {
+    let token = trim(s: content)
+    if token == "" {
+      SuppliedTokenUnavailable {
+        cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr,
+      }
+    } else {
+      SuppliedTokenReady { token: token as Secret }
+    }
+  }
+}
+
+func read_supplied_access_token() -> SuppliedTokenResolution {
+  match shell.Env.Get(name: secret_access_token_path_env).value {
+    Absent =>
+      SuppliedTokenUnavailable {
+        cause: join([
+          "no ", secret_access_token_path_env as String,
+          " in the environment: this entry needs a path to a file holding an access token",
+        ], "") as NonEmptyStr,
+      }
+    Present { value: raw } => {
+      let path = trim(s: raw)
+      if path == "" {
+        SuppliedTokenUnavailable {
+          cause: join([
+            secret_access_token_path_env as String, " is set but empty, which is not a path",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        let read = Filesystem.Read(path: path)
+        classify_supplied_token(success: read.success, error: read.error, content: read.content)
+      }
+    }
+  }
+}
+
+// ── WHICH ARM A RUN HAS, DECIDED ONCE ────────────────────────────────────────────────────────
+// THE SELECTION IS THE FACT THAT WAS MISSING, NOT THE ARMS. ensure_access_token has carried three
+// realizers for some time, and no entry point in the tree could reach more than one of them,
+// because every entry chose its arm by CONSTRUCTION: read_supplied_access_token() then
+// OperatorSuppliedToken, spelled at eight call sites. An arm chosen at the call site is not a
+// selection, it is a binding, so a workflow run and a workstation run of the same entry were two
+// different programs and only one of them existed.
+//
+// This fold is the selection. It reads the environment the run is actually in and names the arm
+// that environment supports, and every entry that wants "whatever credential this run has" calls
+// it instead of re-deriving one. GcloudPrintToken is deliberately NOT reachable from here: it is
+// an INTERACTIVE authentication, correct for an operator ceremony that binds itself by name (see
+// gunbc.spark.secret_access_ensure spark_secret_access_converge), and an automatic fold that could
+// fall back to it would make an unattended run block on a human prompt it cannot answer.
+//
+// THE WORKLOAD ARM WINS ON PRESENCE, NOT ON SUCCESS, and that is what keeps this fail-closed (§5).
+// WIF_ACCESS_TOKEN is exported by the Workload Identity Federation auth step and by nothing else,
+// so its presence IS the statement "this is a federated workflow run". If it is present and empty
+// the run refuses through the workload arm rather than reaching for an operator file: a workflow
+// run must never resolve an operator credential, and a fallback here would be the absorbing
+// fallback -- a broken federation silently answered by whatever else happened to be on the runner.
+type AccessTokenSourceSelection
+  = AccessTokenSourceSelected { source: AccessTokenSource }
+  | AccessTokenSourceUnavailable { cause: NonEmptyStr }
+
+fn no_access_token_source_cause() -> NonEmptyStr {
+  join([
+    "this run has no access token source: neither ", workload_identity_token_env as String,
+    " (set by the Workload Identity Federation auth step of a federated workflow run) nor ",
+    secret_access_token_path_env as String,
+    " (a path to a file holding an operator access token) is in the environment. A workflow run is missing its auth step; a session run needs an operator token written to a file and that variable set to its path.",
+  ], "") as NonEmptyStr
+}
+
+// THE DECISION IS PURE AND THE READS ARE NOT, SPLIT FOR THE REASON STATED ABOVE
+// workload_identity_token_resolution: an arm nothing can exercise without arranging an environment
+// is an arm nobody can trust. This function is the whole selection; the func below it is two
+// environment reads and a delegation.
+fn selected_access_token_source(
+  workload_present: Bool,
+  supplied: SuppliedTokenResolution?,
+) -> AccessTokenSourceSelection {
+  if workload_present {
+    AccessTokenSourceSelected { source: WorkloadIdentityToken }
+  } else {
+    match supplied {
+      Absent => AccessTokenSourceUnavailable { cause: no_access_token_source_cause() }
+      Present { value: resolution } =>
+        match resolution {
+          SuppliedTokenUnavailable { cause: c } => AccessTokenSourceUnavailable { cause: c }
+          SuppliedTokenReady { token: t } =>
+            AccessTokenSourceSelected { source: OperatorSuppliedToken { token: t } }
+        }
+    }
+  }
+}
+
+func select_access_token_source() -> AccessTokenSourceSelection {
+  match shell.Env.Get(name: workload_identity_token_env).value {
+    Present { value: _ } => selected_access_token_source(workload_present: true, supplied: none)
+    Absent =>
+      match shell.Env.Get(name: secret_access_token_path_env).value {
+        Absent => selected_access_token_source(workload_present: false, supplied: none)
+        Present { value: _ } =>
+          selected_access_token_source(
+            workload_present: false,
+            supplied: Present { value: read_supplied_access_token() },
+          )
+      }
+  }
+}
+
+// SELECT THEN REALIZE, COMPOSED ONCE. Every caller that wants "whatever credential this run has,
+// realized" wants exactly this composition, and the first two to want it wrote it out separately --
+// the same select -> ensure -> three arms, differing only in which two-arm wrapper each declared
+// around the result. That is this module's own thesis one level up: a resolution COMPOSED at the
+// call site, twice, forks the same way an arm chosen at the call site does, and a fourth realizer
+// added to the ladder would reach both callers only while the copies agreed.
+//
+// The result is AccessTokenResolution rather than a new coproduct, because it already carries
+// exactly the arms a caller has to distinguish, and an unavailable SOURCE is a refused ENSURE from
+// where a caller stands: nothing downstream acts differently on "no variable was set" than on "the
+// variable was set and empty", and both must refuse rather than proceed.
+func resolve_access_token() -> AccessTokenResolution uses net: Network {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: cause } => AccessTokenEnsureRefused { reason: cause }
+    AccessTokenSourceSelected { source: source } => ensure_access_token(source: source)
+  }
+}

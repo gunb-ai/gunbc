@@ -1,4 +1,6 @@
 module gunbc.ci_spec
+import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
+import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
@@ -749,6 +751,25 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+// THE R2 WRITE MINT AND ITS PREFLIGHT ARE TWO TARGETS, AND THE ORDER IS THE SAFETY ARGUMENT.
+// gunbc.cloudflare.r2_token_mint_run issues cloudflare.AccountTokens.Create, which is
+// non-idempotent and whose value is returned exactly once: a run that mints and then cannot reach
+// Secret Manager has left a live credential on the account that nobody holds. So the reachability
+// of the two hosts the mint depends on -- secretmanager.googleapis.com for the bootstrap read and
+// its own writes, api.cloudflare.com for the token API -- is OBSERVED by a read-only listing first
+// (gunbc.cloudflare.r2_permission_group_observe), which touches both and mutates neither. Dispatched
+// before the operator's IAM grant lands, that preflight is also where the pre-grant refusal is read
+// with nothing spent.
+data gunbc_ci_r2_mint_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_permission_group_observe.dag",
+  function: "observe_account_permission_groups_wet",
+}
+
+data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_object_write",
+}
+
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
 // this repository's ordering law is what keeps them apart: an observation reports a host's standing
 // and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
@@ -971,6 +992,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
+    gunbc_ci_r2_mint_preflight_target,
+    gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
@@ -1713,7 +1736,7 @@ fn gunbc_ci_app_control_plane_converge_invoke() -> String {
     entry: "dag/gunbc/fleet/app_control_plane_converge.dag",
     function: "app_control_plane_converge_wet",
     claim_run: false,
-    receipt_rel: Present { value: "target/app-control-plane-observation-receipt.txt" }
+    receipt_rel: Present { value: app_control_plane_receipt_path }
   )
 }
 
@@ -1723,6 +1746,33 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_actions_converge_target.entry,
     function: gunbc_ci_org_actions_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+// THE MINT RUNS AS THE RUN'S OWN FEDERATED IDENTITY, AND THERE IS NO PRELUDE HERE ON PURPOSE.
+// The org-actions and App control-plane steps carry shell preludes because they mint credentials
+// the typed effects could not reach; this pair needs none. gunbc.auth.access_token_source
+// select_access_token_source reads WIF_ACCESS_TOKEN in-process and resolves WorkloadIdentityToken,
+// so the token is never interpolated into a command line -- the argv exposure
+// gunbc.credential_argv_exposure measures. The only thing the step supplies is the variable the WIF
+// auth step already exports.
+fn gunbc_ci_r2_mint_preflight_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_mint_preflight_target.entry,
+    function: gunbc_ci_r2_mint_preflight_target.function,
+    claim_run: false,
+    receipt_rel: r2_mint_preflight_receipt_path
+  )
+}
+
+fn gunbc_ci_r2_object_write_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_object_write_mint_target.entry,
+    function: gunbc_ci_r2_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
   )

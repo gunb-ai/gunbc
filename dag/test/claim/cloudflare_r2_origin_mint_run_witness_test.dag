@@ -1,6 +1,9 @@
 module test.claim.cloudflare_r2_origin_mint_run
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Secret }
+import extdeps.cloudflare.account_api_tokens {
+  CreatedAccountToken, CreateAccountTokenRequest, TokenActive,
+}
 import std.human_intervention { FleetOnce, human_intervention_frequency_eq }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
@@ -71,6 +74,11 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintAccountUnallocated,
   R2MintOriginUnallocated,
   R2MintAdmissionRefused,
+  R2MintCustodyContainerAbsent,
+  R2MintContainerAdmission, ContainerAdmitted, ContainerAbsent,
+  r2_mint_custody_container_intervention,
+  r2_orphan_receipt_content,
+  r2_mint_receipt_path,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
 }
@@ -91,6 +99,7 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
     account: fleet_cloudflare_account_standing(),
     custody: BootstrapCustodyUnrecorded { intervention: cloudflare_bootstrap_custody_intervention() },
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
       human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
@@ -98,6 +107,47 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
           s: intervention.instruction as String,
           pattern: cloudflare_bootstrap_custody_secret_id as String)
     R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
+  }
+}
+
+// THE CUSTODY CONTAINER IS DECIDED BEFORE THE CREATE, AND THIS IS THE RED THAT SAYS SO. Until the
+// 2026-09-12 ruling the container was CREATED by store_minted_token, after cloudflare.AccountTokens.Create
+// had already minted a token whose value is returned exactly once -- so a run without permission to
+// create it would have left a live credential on the account that nothing in this tree could name.
+// gunbc#10947 never saw it because the operator's identity held project-wide secretmanager.secrets.create.
+//
+// The arm is first in the ladder, so this probe also pins the ORDER: it hands a ladder that is
+// otherwise entirely satisfiable -- real account, real pinned custody, real allocated origin -- and
+// requires the container refusal to win anyway. Move the check back below the Create and this goes
+// red. The class is
+// gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect.
+test fn r2_origin_mint_refuses_before_the_create_when_the_custody_container_is_absent() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectWrite,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+    container: ContainerAbsent {
+      intervention: r2_mint_custody_container_intervention(
+        secret_id: fabric_durable_origin_write_secret_id,
+        cause: "the custody container could not be read: NOT_FOUND" as NonEmptyStr,
+      ),
+    },
+  ) {
+    R2MintCustodyContainerAbsent { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+        && string_contains(
+             s: intervention.instruction as String,
+             pattern: fabric_durable_origin_write_secret_id as String)
+        && string_contains(
+             s: intervention.instruction as String,
+             pattern: "NOTHING WAS CREATED AT CLOUDFLARE")
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
@@ -114,6 +164,7 @@ test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: _, bootstrap_locus: locus, request: _ } =>
       (locus.secret as String) == (cloudflare_bootstrap_custody_secret_id as String)
@@ -123,6 +174,7 @@ test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -147,6 +199,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
       (account_id as String) == (fleet_cloudflare_account_id as String)
@@ -166,6 +219,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -183,6 +237,7 @@ test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
     },
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintAccountUnallocated { intervention: intervention } =>
       human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
@@ -190,6 +245,7 @@ test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
     R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -320,6 +376,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
+    container: ContainerAdmitted,
   ) {
     R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
       string_contains(s: request.name, pattern: "-object-write")
@@ -339,6 +396,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
     R2MintAccountUnallocated { intervention: _ } => false
     R2MintOriginUnallocated { purpose: _ } => false
     R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
   }
 }
 
@@ -431,3 +489,61 @@ test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool {
   }
 }
 
+// ── THE ORPHAN RECEIPT CARRIES THE ID, WHICH IS THE ONLY THING THAT MAKES THE DAMAGE RECOVERABLE ──
+// cloudflare.AccountTokens.Create returns a token value exactly once, so a store refusal after it
+// leaves a live credential on the account. The refusal text demands "the token must be revoked", and
+// a revocation is performed BY ID -- so a receipt for that run which omits the id records the
+// disaster without recording the one fact needed to undo it. This is the discriminating red for that
+// path: it goes red if the id is dropped from the orphan receipt, which is the state this PR shipped
+// for one revision.
+test fn the_orphan_receipt_names_the_live_token_id() -> Bool {
+  let content = r2_orphan_receipt_content(
+    token: CreatedAccountToken {
+      id: "3f43e1c7f8fbcfc97139cb5d9dc4e984" as NonEmptyStr,
+      name: "witness-object-write",
+      status: TokenActive,
+      value: "unused" as Secret,
+      expires_on: none,
+      not_before: none,
+    },
+    cause: "THE TOKEN WAS MINTED BUT ITS VERSION WAS REFUSED: 403" as NonEmptyStr,
+  )
+  string_contains(s: content, pattern: "token_id=3f43e1c7f8fbcfc97139cb5d9dc4e984")
+    && string_contains(s: content, pattern: "stored=no")
+    && string_contains(s: content, pattern: "REVOKE THIS TOKEN")
+}
+
+// THE SECRET VALUE IS NEVER IN THE RECEIPT. The receipt is uploaded as a workflow artifact, so a
+// token value reaching it would publish the credential to everyone who can read the run. The id is
+// not a secret -- it is what the account's own token listing shows -- and it is the only field here
+// that could be confused for one.
+test fn the_orphan_receipt_carries_no_secret_value() -> Bool {
+  let content = r2_orphan_receipt_content(
+    token: CreatedAccountToken {
+      id: "abc123" as NonEmptyStr,
+      name: "witness-object-write",
+      status: TokenActive,
+      value: "v1.0-SUPERSECRETTOKENVALUE" as Secret,
+      expires_on: none,
+      not_before: none,
+    },
+    cause: "refused" as NonEmptyStr,
+  )
+  !string_contains(s: content, pattern: "SUPERSECRETTOKENVALUE")
+}
+
+// BOTH ARMS WRITE THE SAME PATH, BECAUSE THE UPLOADER GLOBS ONE PATH. An orphan receipt written
+// anywhere else is invisible to exactly the run it was written for.
+test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool {
+  let path = r2_mint_receipt_path(
+    request: CreateAccountTokenRequest {
+      name: "fabric-durable-origin-object-write",
+      policies: [],
+      not_before: none,
+      expires_on: none,
+    },
+  )
+  string_contains(s: path, pattern: "/tmp/r2-")
+    && string_contains(s: path, pattern: "-object-write")
+    && string_contains(s: path, pattern: "-mint-receipt.txt")
+}
