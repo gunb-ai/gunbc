@@ -148,7 +148,11 @@ type SparkServingReadiness
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
   | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation }
-  | ServingRouteServiceUnidentified { allocation: OperatorAllocation, obligation: NonEmptyStr }
+  | ServingRouteServiceUnidentified {
+      allocation: OperatorAllocation,
+      cause: SparkRealizationIdentity,
+      obligation: NonEmptyStr,
+    }
   | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
 
 // THE SINGLE PLACE THE STANDING IS RECORDED, which is why the 2026-09-11 restoration replaced one
@@ -278,6 +282,7 @@ fn spark_serving_route_standing(realization: SparkServingRealization) -> SparkSe
     } else {
       ServingRouteServiceUnidentified {
         allocation: spark_fleet_site_allocation.allocation,
+        cause: spark_realization_identity(realization: realization),
         obligation: join([
           "the operator's dated site allocation covers every host of this realization, so the REGION is established and is not in question. The SERVICE is not. ",
           spark_serving_route_service_identity_obligation as String,
@@ -325,7 +330,7 @@ fn bind_spark_serving_offer<P>(
   match route {
     ServingRouteRegionUnobserved { obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
-    ServingRouteServiceUnidentified { allocation: _, obligation: why } =>
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
     ServingRouteOperatorAsserted { route: asserted, allocation: _ } =>
       bind_spark_serving_offer_on_route(

@@ -205,7 +205,7 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
     ServingRouteRegionUnobserved { obligation: _ } => false
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
-    ServingRouteServiceUnidentified { allocation: a, obligation: o } =>
+    ServingRouteServiceUnidentified { allocation: a, cause: _, obligation: o } =>
       (a.decided_on as String) == "2026-09-11"
         && string_contains(s: o as String, pattern: "the REGION is established")
   }
@@ -237,8 +237,17 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // supposed to have populated it -- two producers, a real join -- rather than against a copy of the
 // sentence, which would agree with itself through any rewording. ServingRouteServiceUnidentified
 // transports its diagnosis as text, so the output boundary is where this can be checked at all; a
-// typed diagnosis field on that carrier would let the arm carry it structurally instead, and that is
-// the shape to reach for if this needs to get stronger.
+// THE ARM NOW CARRIES THE TYPED CAUSE, so these helpers read a VALUE the standing handed them rather
+// than grepping the sentence it rendered. An earlier spelling of this note said a typed diagnosis
+// field "is the shape to reach for if this needs to get stronger" -- naming the right construction
+// and then not building it, with no trigger and no owner, which is how a conceded gap becomes
+// permanent. It cost nothing: spark_realization_identity was already computed on that path.
+//
+// WHAT EACH CHECK IS FOR, since they are no longer interchangeable. The variant match says WHICH
+// situation the standing found. The obligation comparison says the refusal it RETURNED actually
+// carries that situation's rendered diagnosis -- a join against spark_realization_identity_cause's
+// own output, so it fails if the renderer and the arm ever disagree. Dropping the first leaves you
+// grepping prose; dropping the second leaves you trusting a neighbouring producer.
 //
 // THE TYPED HELPER STAYS because it pins WHICH cause obtained without depending on wording, and the
 // string join stays because it pins that the refusal actually reported it. Fragile-about-wording and
@@ -250,19 +259,30 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // case mismatch in that pattern already cost a floor run on this branch. What still uses a substring
 // is the SERVICE-IDENTITY obligation itself, and that is compared against the producer's own row
 // rather than a literal, so it cannot drift into agreeing with a copy of itself.
-fn t_cause_is_readback_unresolved(realization: SparkServingRealization) -> Bool {
-  match spark_realization_identity(realization: realization) {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } => false
+
+fn t_cause_is_matched_configuration(cause: SparkRealizationIdentity) -> Bool {
+  match cause {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
     RealizationDeclaredPathUnpinned => false
-    RealizationReadbackUnresolved => true
+    RealizationReadbackUnresolved => false
   }
 }
 
-fn t_cause_is_configuration_matched(realization: SparkServingRealization) -> Bool {
-  match spark_realization_identity(realization: realization) {
-    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
+fn t_cause_is_unresolved_readback(cause: SparkRealizationIdentity) -> Bool {
+  match cause {
+    RealizationReadbackUnresolved => true
+    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
     RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+  }
+}
+
+fn t_cause_is_reported_path_differs(cause: SparkRealizationIdentity) -> Bool {
+  match cause {
+    RealizationReportedPathDiffers { reported: rep, declared: dec } =>
+      (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
+    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
     RealizationDeclaredPathUnpinned => false
     RealizationReadbackUnresolved => false
   }
@@ -273,8 +293,8 @@ test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bo
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
-    ServingRouteServiceUnidentified { allocation: _, obligation: o } =>
-      t_cause_is_configuration_matched(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: o } =>
+      t_cause_is_matched_configuration(cause: c)
         && string_contains(s: o as String, pattern: spark_serving_route_service_identity_obligation as String)
         && string_contains(
              s: o as String,
@@ -294,7 +314,7 @@ test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bo
 // forwards a different refusal, and it cannot drift into agreeing with a copy of itself.
 fn t_service_refusal_cause_matches_the_standing(realization: SparkServingRealization) -> Bool {
   match spark_serving_route_standing(realization: realization) {
-    ServingRouteServiceUnidentified { allocation: _, obligation: o } =>
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: o } =>
       match t_bind(route: spark_serving_route_standing(realization: realization)) {
         SparkOfferBound { bound: _ } => false
         SparkOfferBindingRefused { group_wire: _, cause: c } => (c as String) == (o as String)
@@ -318,7 +338,7 @@ test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
   match spark_serving_route_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv1])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
-    ServingRouteServiceUnidentified { allocation: _, obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteRegionUnobserved { obligation: o } =>
       string_contains(s: o as String, pattern: "srv1")
         && !string_contains(s: o as String, pattern: "srv5")
@@ -333,7 +353,7 @@ test fn an_unreadable_group_membership_refuses() -> Bool {
   match spark_serving_route_standing(realization: t_realization(hosts: [] as List<HostIdentity>)) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
-    ServingRouteServiceUnidentified { allocation: _, obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteRegionUnobserved { obligation: o } =>
       (o as String) == (spark_serving_route_hosts_unreadable_obligation as String)
   }
@@ -357,10 +377,10 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
-    ServingRouteServiceUnidentified { allocation: a, obligation: o } =>
+    ServingRouteServiceUnidentified { allocation: a, cause: c, obligation: o } =>
       (a.decided_on as String) == "2026-09-11"
         && string_contains(s: o as String, pattern: "the REGION is established")
-        && t_cause_is_readback_unresolved(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+        && t_cause_is_unresolved_readback(cause: c)
         && string_contains(
              s: o as String,
              pattern: spark_realization_identity_cause(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6])) as String,
@@ -394,12 +414,11 @@ test fn a_different_reported_path_refuses_the_service_without_claiming_a_differe
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
-    ServingRouteServiceUnidentified { allocation: a, obligation: o } =>
+    ServingRouteServiceUnidentified { allocation: a, cause: c, obligation: o } =>
       (a.decided_on as String) == "2026-09-11"
+        && t_cause_is_reported_path_differs(cause: c)
         && string_contains(s: o as String, pattern: "the REGION is established")
         && string_contains(s: o as String, pattern: "does not establish the specific service")
-        && !string_contains(s: o as String, pattern: "configuration agreement and not identity")
-        && !string_contains(s: o as String, pattern: "did not resolve")
   }
 }
 
