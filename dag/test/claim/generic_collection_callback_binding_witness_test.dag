@@ -47,3 +47,11 @@ data state_direct_node_source: String = "module probe_generic_state_callback\nim
 test fn state_direct_node_binds() -> Bool {
   callback_inference_error_count(source: state_direct_node_source) == 0
 }
+
+// Consumed by the seed substitution repair: a concrete applied alias must retain
+// its argument identity when it is substituted into another collection.
+data applied_alias_return_source: String = "module probe\n\ntype FreeMonoid<T> = Empty | Cons { head: T, tail: FreeMonoid<T> }\ntype Names = FreeMonoid<String>\nfn keep<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> { xs }\nfn asks(xs: List<Names>, item: Names) -> List<Names> {\n  if true { xs } else { keep(xs: xs, item: item) }\n}\n"
+
+test fn applied_alias_return_binds() -> Bool {
+  callback_inference_error_count(source: applied_alias_return_source) == 0
+}
