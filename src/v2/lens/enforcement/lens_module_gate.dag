@@ -32,7 +32,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -87,12 +87,8 @@ type VerdictRemedyPair {
   remedy: LensInvariantRemedy
 }
 
-fn lens_module_gate_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn lens_module_gate_string_member(xs: List<String>, x: String) -> Bool {
-  contains(xs: xs, item: x, eq: lens_module_gate_string_eq)
+  contains(xs: xs, item: x, eq: string_eq)
 }
 
 fn lens_module_gate_verdict_authority_eq(a: LensVerdictAuthority, b: LensVerdictAuthority) -> Bool {

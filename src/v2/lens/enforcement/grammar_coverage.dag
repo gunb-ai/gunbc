@@ -49,6 +49,28 @@ data grammar_coverage_file_anchor: Symbol = ^grammar_coverage_file_anchor
 
 data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 
+// THE ONE SURVIVING string_eq CLONE IN v2.lens, AND IT IS NOT A DIFFERENT CONCEPT -- it is
+// byte-identical to v2.std.text string_eq, and collapsing it is the same one-line delete that
+// retired the twelve others. It stays because the collapse was ATTEMPTED HERE AND MEASURED, and
+// the premise behind "one delete plus an import" is false for this file specifically.
+//
+// THIS MODULE DECLARES NO IMPORTS AT ALL. Every name it uses -- dedupe_snoc, tokenize,
+// parse_module and the rest -- reaches its declaration through the shared name slot rather than
+// through anything this file wrote. Adding the single import line the collapse needs turns on the
+// listed-import requirement for the whole file, and those names stop resolving: measured at 6
+// blocking errors before and 10 after, the four new ones being dedupe_snoc, tokenize and
+// parse_module unresolved plus one downstream effect-summary refusal each.
+//
+// So the honest collapse of this clone is the qualification of this module's whole surface --
+// naming v2.lens.coverage, v2.compiler.tokenize and v2.compiler.parse as the sources they already
+// resolve to -- which is a different change with a different blast radius from retiring a
+// duplicate function, and it belongs to the bare-name qualification campaign rather than to this
+// one. Doing it here under a string_eq collapse would hide a resolution-regime change inside a
+// DRY cleanup.
+//
+// TRIGGER: this clone goes when v2.lens.enforcement.grammar_coverage names its own imports. The
+// instrument is the same one the rest of this cohort was measured with: grep for `fn` followed by
+// any prefixed string_eq under src/v2/lens, which returns exactly this one.
 fn grammar_coverage_string_eq(a: String, b: String) -> Bool {
   a == b
 }

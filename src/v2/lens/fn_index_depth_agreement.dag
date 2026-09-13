@@ -10,7 +10,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count }
 import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 import v2.std.fn_index {
   FnArrowDecl,
   atom_identities_in_node,
@@ -102,12 +102,8 @@ fn legacy_atoms(node: Node) -> List<Symbol> {
   }
 }
 
-fn agreement_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn decl_named(decls: List<FnArrowDecl>, name: String) -> Bool {
-  any(xs: decls, predicate: fn(d) { agreement_string_eq(a: d.name, b: name) })
+  any(xs: decls, predicate: fn(d) { string_eq(a: d.name, b: name) })
 }
 
 fn param_collides_with_a_declaration(
