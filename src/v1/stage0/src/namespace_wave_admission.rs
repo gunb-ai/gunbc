@@ -1775,21 +1775,85 @@ pub struct TransitionAdmission {
 /// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
 /// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
 /// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
-/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written; the required
-/// floor on this branch then reported exactly those two as `CONSUMED ADMISSION ... already
-/// satisfied at the base`. Trigger, floor report and merge agree, which is what distinguishes a
-/// discharged debt from a row swept up by whoever the wall stopped.
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
 ///
-/// BOTH WERE MY OWN ROWS, which is why this lane pays rather than passing it on: the roster's rule
-/// puts a consumed row's deletion on its next touch, and the alternative -- another lane deleting
-/// admissions it did not author -- is how an unexamined deletion gets made on someone else's
-/// judgement.
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
 ///
-/// A RECEIPT THIS RUN ALSO PROVIDES, worth recording because it answers a question rather than
-/// restating one: this branch's own content did not change between the run that reported 181
-/// consumed rows and the run that reported these 2. Only the base moved. So the 181 were the whole
-/// of this branch's earlier `namespace-wave-admission` red, measured rather than assumed.
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
 ///
+/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
+/// change makes, one per call site the required floor enumerated.
+///
+/// NOTHING IS RETIRED BY THIS ENTRY. This change was authored believing it owed both the
+/// `gunbc#11137` row and the three `gunbc#11071` consumed-row deletions; other branches reached
+/// the roster first and paid them, and main carries that history above. The original claims are
+/// retracted rather than carried: a ledger recording one deletion twice is worse than one
+/// recording it once, and a cohort header carrying an already-satisfied trigger is how the wrong
+/// rows get retired on the next roster touch (§4b(3)).
+///
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared NINE
+/// times, byte-identical, across `v2.lens`. Those nine are deleted and an authority is landed in
+/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
+/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
+/// `string_eq` is the `eq` argument to `contains`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
+/// both sides at every one of the 37 sites below, and what changed is which declaration it
+/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
+/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// `AuthoredReferenceResolution`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. THE NINE DELETED BODIES WERE
+/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
+/// it denoted at the base. A body differing anywhere would have made this a semantic change
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so all nine
+/// were compared before the collapse rather than assumed equal from the shared spelling.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than the
+/// nine copies this change deletes.
+///
+/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
+/// enumeration in this file is a transcription that rots -- and the first attempt at one was
+/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
+/// under. Re-derive with:
+///
+///   grep -rn '^fn [a-z_]*string_eq[a-z_]*(' --include=*.dag dag/ src/v2
+///
+/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
+/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
+///
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: four survivors are in `v2.lens`
+/// itself -- `grammar_coverage`, `lens_module_gate`, `fn_index_depth_agreement`,
+/// `module_impact_query` -- all byte-identical, all under NICKNAMED spellings. So this change
+/// does not clear even its own stated scope: it collapsed the copies spelled exactly `string_eq`
+/// and left the ones spelled otherwise, which is §3's NICKNAME surviving precisely because a
+/// name-shaped search does not find it.
+///
+/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
+/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
+/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
+/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
+/// inflation this phrasing exists to avoid.
+///
+/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
+/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
+/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
+/// and one that deserves its own evidence.
+///
+/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
+/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
+/// next touch -- adjudicated by the declaring-module join, not by this sentence.
 const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
