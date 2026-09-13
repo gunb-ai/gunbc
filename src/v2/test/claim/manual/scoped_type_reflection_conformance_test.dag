@@ -128,3 +128,19 @@ test fn forked_spelling_answered_today_by_the_bare_seam_refuses_when_guarded() -
     )
   )
 }
+
+// THE REVIEWER'S SPECIMEN, ENROLLED RATHER THAN ARGUED. review 65546 found that the guard
+// established uniqueness of the SPELLING without establishing that the sole declaration is a
+// closed coproduct: decl_facts kind TypeItem covers records too, so a spelling declared exactly
+// once as a record passed the uniqueness arm and reached the bare host seam, which answers with an
+// untyped host error rather than a typed located refusal. DeclFact is such a spelling -- one
+// declaration, a record, in v2.std.decl_index. Before the shape arm this claim diverged; it now
+// refuses on its own arm, which is the contract this module's annotation already asserted.
+test fn unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^DeclFact
+    )
+  )
+}
