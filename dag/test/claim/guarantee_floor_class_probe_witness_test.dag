@@ -205,8 +205,9 @@ test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control()
   }
 }
 
-test fn floor_field_through_generics_is_still_silently_accepted() -> Bool {
-  silent_hole_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
+test fn floor_field_through_generics_type_variable_refuses() -> Bool {
+  row_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
+    && blocking_count(source: field_through_generics_hole_source, wanted: "InternalError") >= 1
 }
 
 test fn floor_field_through_generics_declared_record_control_refuses() -> Bool {
@@ -335,7 +336,6 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_field_through_generics_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
   ]

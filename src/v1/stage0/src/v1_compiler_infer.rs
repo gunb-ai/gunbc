@@ -10030,11 +10030,14 @@ Rc::new(InferResult {
                                     })
                                 }
                                 std::option::Option::None => {
-                                    let base_is_type_var = is_deferred_field_access_base(
-                                        resolved_base.clone(),
-                                        scope.type_env.clone(),
-                                    );
-                                    if base_is_type_var.clone() {
+                                    let unconstrained_tv =
+                                        is_unconstrained_type_variable_base(resolved_base.clone());
+                                    let deferred_uninstantiated_generic =
+                                        is_deferred_field_access_base(
+                                            resolved_base.clone(),
+                                            scope.type_env.clone(),
+                                        ) && (!unconstrained_tv.clone());
+                                    if deferred_uninstantiated_generic.clone() {
                                         {
                                             let fa_texpr = crate::v1_std_core::make_named_expr_node(
                                                 texpr.occurrence_identity.clone(),
@@ -10077,7 +10080,7 @@ Rc::new(InferResult {
 })
 },
     std::option::Option::None => {
-                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), resolved_base.clone())), "'".to_string());
+                                let error_message = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no field '".to_string(), field_name.clone()), "' on type '".to_string()), type_node_label(resolved_base.clone(), scope.type_env.clone().source_indices.clone())), "'".to_string());
 let fa_texpr = crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::SemanticExprError, error_message.clone(), span.clone());
 Rc::new(InferResult {
     typed: fa_texpr.clone(),
@@ -12937,10 +12940,15 @@ pub fn infer_variant_constructor_call(
     }
 }
 
+pub fn is_unconstrained_type_variable_base(n: Rc<Node>) -> bool {
+    match n.inferred.clone() {
+        Some(inf) => is_type_variable(inf.clone()),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn is_deferred_field_access_base(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if ((n.inferred.clone() != std::option::Option::None)
-        && is_type_variable(n.inferred.clone().clone().unwrap()))
-    {
+    if is_unconstrained_type_variable_base(n.clone()) {
         true
     } else {
         if (((n.connective.clone() == Connective::NoConnective)

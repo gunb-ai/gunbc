@@ -635,9 +635,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_field_through_generics_hole_probe,
       class: floor_field_through_generics_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a field access on a bare type parameter names a field no type declares and compiles with zero diagnostics" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_generic_instantiation_green_probe,

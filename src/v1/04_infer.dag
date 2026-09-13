@@ -6579,8 +6579,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(base_diags, resolved_base_diags)
           }
         Absent =>
-          let base_is_type_var = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
-          if base_is_type_var {
+          let unconstrained_tv = is_unconstrained_type_variable_base(n: resolved_base)
+          let deferred_uninstantiated_generic = is_deferred_field_access_base(n: resolved_base, env: scope.type_env) && !unconstrained_tv
+          if deferred_uninstantiated_generic {
             let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: field_name,
               expr_data: ExprFieldAccess { summary: Present { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
@@ -6609,7 +6610,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   diagnostics: concat(base_diags, resolved_base_diags)
                 }
               Absent =>
-                let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
+                let error_message = concat("no field '", field_name, "' on type '", type_node_label(n: resolved_base, source_indices: scope.type_env.source_indices), "'")
                 let fa_texpr = make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
@@ -8016,8 +8017,26 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
   }
 }
 
+// is_deferred_field_access_base answers two different questions. An unconstrained type
+// variable (inferred TypeVariable, including a generic parameter with no field-carrying
+// bound) will never grow fields in a later pass of THIS infer_expr — the two-round
+// generic-argument fold re-runs infer_expr from the AST once substitution exists
+// (test.claim.generic_lambda_parameter_binding_witness
+// a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields). Fabricating
+// field_of_type_var on that arm is DESIGN §5 silent acceptance. The remaining true arm
+// is an uninstantiated generic constructor (bare name, params>0, inferred=none) whose
+// fields are not yet on the node; expansion still skips it. ExprFieldAccess therefore
+// refuses the type-variable miss with the existing "no field 'F' on type 'T'" InternalError
+// and keeps field_of_type_var only for that uninstantiated-constructor miss.
+fn is_unconstrained_type_variable_base(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent => false
+  }
+}
+
 fn is_deferred_field_access_base(n: Node, env: TypeEnv) -> Bool {
-  if n.inferred != none && is_type_variable(inferred: n.inferred.value) { true }
+  if is_unconstrained_type_variable_base(n: n) { true }
   else if n.connective == NoConnective && n.children |> count == 0 && n.inferred == none {
     let name = authored_name_at(source_indices: env.source_indices, node: n)
     match lookup_type_by_name(env: env, name: name) {
