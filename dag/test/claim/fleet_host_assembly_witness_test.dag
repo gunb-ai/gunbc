@@ -52,22 +52,34 @@ test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
     }
 }
 
-// THE CHASSIS EDGE MUST BE THE RIGHT EDGE, not merely present. Admitting ChassisContainsHost in
-// the row fold could have been a hole: a fold that accepts "some chassis edge exists anywhere"
-// would pass a roster whose chassis is bound to the WRONG host. This varies exactly that - the
-// real containments discharge, and a containment list whose srv1 chassis edge names srv2's host
-// does not.
+// THE CHASSIS EDGE MUST BE THE RIGHT EDGE, not merely present, and this control has to vary ONE
+// THING to say so. An earlier version replaced the whole containment graph with four chassis
+// edges - which also deleted every board and component edge, so its refusal could have come from
+// those absences rather than from the wrong host. A negative that changes several things at once
+// isolates none of them, and reads as evidence anyway.
+//
+// So the negative graph is DERIVED FROM THE REAL ONE: every containment is kept except srv1's
+// chassis edge, which is re-pointed at srv2's host. One edge differs; everything else is
+// identical; the refusal can only be about that edge.
+fn containment_is_srv1_chassis_edge(c: PhysicalContainment) -> Bool {
+  match c {
+    ChassisContainsHost { chassis: ch, host: h } => physical_asset_identity_eq(a: ch, b: chassis_srv1)
+    SiteContainsRoom { site: s, room: r } => false
+    RoomContainsRack { room: r, rack: k } => false
+    RackContainsPlacement { rack: k, asset: a } => false
+    HostContainsComponent { host: h, component: comp } => false
+  }
+}
+
+data srv_containments_with_srv1_chassis_mishosted: List<PhysicalContainment> = srv_assembly_containments.filter(c => !containment_is_srv1_chassis_edge(c: c)).append(ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 })
+
 test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && !assembly_containments_join(
       rows: srv_assembly_components,
-      containments: [
-        ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 },
-        ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
-        ChassisContainsHost { chassis: chassis_srv3, host: operator_host_srv3 },
-        ChassisContainsHost { chassis: chassis_srv4, host: operator_host_srv4 },
-      ]
+      containments: srv_containments_with_srv1_chassis_mishosted
     )
+    && srv_containments_with_srv1_chassis_mishosted.length() == srv_assembly_containments.length()
 }
 
 test fn w_omitting_a_rostered_component_refuses_cover() -> Bool {
