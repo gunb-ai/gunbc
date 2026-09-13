@@ -164,6 +164,9 @@ type RetainedCredentialKind
 // THE PUBLISHED ACCOUNT'S STANDING ON THE CONTROLLER, independent of whether
 // a LAN probe rejected. Rejected-on-LAN and deleted-from-the-user-list are
 // different facts: a disabled user still exists, and BmcSecured must say so.
+// observed_at is ordered against rotation applied_at in adjudicate_published_census
+// (PublishedCredentialAccountPrecedesRotation); a pre-rotation user-list cannot
+// label the post-rotation standing.
 // RetainedByPolicy is a third arm: it satisfies the BMC-secure conjunct
 // ONLY under DevelopmentAndTest. Production refuses it; that refusal is the
 // discriminating control for the day a machine is promoted.
@@ -266,6 +269,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialRetirementUnestablished { detail: NonEmptyStr }
   | PublishedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
   | PublishedCredentialAccessPrecedesRotation { channel: IpmiChannelNumber, applied_at: EpochMs, observed_at: EpochMs }
+  | PublishedCredentialAccountPrecedesRotation { applied_at: EpochMs, observed_at: EpochMs }
   | PublishedCredentialCensusNotTaken
   | PublishedCredentialNoAddressableLanMember
   | PublishedCredentialLanMemberUnaddressed { channel: IpmiChannelNumber }
@@ -299,6 +303,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialRetirementUnestablished { detail: _ } => BmcAccess
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
     PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => QualificationPolicy
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => QualificationPolicy
     PublishedCredentialCensusNotTaken => BmcAccess
     PublishedCredentialNoAddressableLanMember => BmcAccess
     PublishedCredentialLanMemberUnaddressed { channel: _ } => BmcAccess
@@ -326,6 +331,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialRetirementUnestablished { detail: _ } => "the published factory credential readback did not establish whether it still authenticates"
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the published credential readback precedes the rotation it claims to verify"
     PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => "the published-account access reading precedes the rotation it claims to verify"
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => "the published-account user-list reading precedes the rotation it claims to verify"
     PublishedCredentialCensusNotTaken => "no controller channel census was taken; a single-address probe cannot adjudicate retirement"
     PublishedCredentialNoAddressableLanMember => "the channel census contained no addressable LAN member to probe"
     PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and the published account still has access on that channel"
@@ -429,6 +435,14 @@ fn published_account_evidence(account: PublishedCredentialAccountObservation) ->
     PublishedCredentialRetired { evidence: e, observed_at: _ } => e
     PublishedCredentialDisabledNotRetired { restore_path: _, evidence: e, observed_at: _ } => e
     PublishedCredentialRetainedByPolicy { retention: _, evidence: e, observed_at: _ } => e
+  }
+}
+
+fn published_account_observed_at(account: PublishedCredentialAccountObservation) -> EpochMs {
+  match account {
+    PublishedCredentialRetired { evidence: _, observed_at: at } => at
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: at } => at
+    PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: at } => at
   }
 }
 
@@ -805,7 +819,13 @@ fn adjudicate_published_census(
   published_account: PublishedCredentialAccountObservation,
   environment: MachineOperatingEnvironment,
 ) -> BmcSecureOutcome {
-  match published_account {
+  let account_at = published_account_observed_at(account: published_account)
+  if account_at < applied_at {
+    BmcSecureRefused {
+      cause: PublishedCredentialAccountPrecedesRotation { applied_at: applied_at, observed_at: account_at },
+    }
+  } else {
+    match published_account {
     PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: _ } =>
       match environment {
         Production => BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedForProduction }
@@ -852,6 +872,7 @@ fn adjudicate_published_census(
         probes: probes,
         published_account: published_account,
       )
+  }
   }
 }
 

@@ -112,6 +112,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialProbeDuplicate,
   PublishedCredentialProbePrecedesRotation,
   PublishedCredentialAccessPrecedesRotation,
+  PublishedCredentialAccountPrecedesRotation,
   PublishedCredentialProbeUnmatched,
   PublishedCredentialRetired,
   PublishedCredentialRetirementUnestablished,
@@ -699,6 +700,31 @@ test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
   )
 }
 
+// review 65539: user-list observed_at was declared and never ordered. A Retired
+// label taken before rotation plus post-rotation rejecting LAN probes must not
+// mint BmcSecured. MUTATION: drop the account_at < applied_at arm in
+// adjudicate_published_census and this witness greens while still claiming Retired.
+test fn published_account_before_rotation_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: both_lan_rejecting(),
+    account: PublishedCredentialRetired {
+      evidence: evidence(label: "user-list-absent-early"),
+      observed_at: 1788000002000,
+    },
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialAccountPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
+  )
+}
+
 test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
   let standing = derive_bmc_secure(
     subject: intake_subject,
@@ -1078,6 +1104,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
   PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
   PublishedCredentialAccessPrecedesRotation { channel: channel_seven, applied_at: rotation_at, observed_at: 1788000002000 },
+  PublishedCredentialAccountPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   PublishedCredentialCensusNotTaken,
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
@@ -1119,15 +1146,16 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialRetirementUnestablished { detail: _ } => 10
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 11
     PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => 12
-    PublishedCredentialCensusNotTaken => 13
-    PublishedCredentialNoAddressableLanMember => 14
-    PublishedCredentialLanMemberUnaddressed { channel: _ } => 15
-    PublishedCredentialChannelAccessNotClosed { channel: _ } => 16
-    PublishedCredentialCensusMemberUnprobed { channel: _ } => 17
-    PublishedCredentialProbeDuplicate { channel: _ } => 18
-    PublishedCredentialProbeUnmatched { channel: _ } => 19
-    PublishedCredentialRetainedNotAdmittedForProduction => 20
-    PublishedCredentialNotRetained { channel: _ } => 21
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => 13
+    PublishedCredentialCensusNotTaken => 14
+    PublishedCredentialNoAddressableLanMember => 15
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => 16
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => 17
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => 18
+    PublishedCredentialProbeDuplicate { channel: _ } => 19
+    PublishedCredentialProbeUnmatched { channel: _ } => 20
+    PublishedCredentialRetainedNotAdmittedForProduction => 21
+    PublishedCredentialNotRetained { channel: _ } => 22
   }
 }
 
