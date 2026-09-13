@@ -81,10 +81,20 @@ type CompilerEntryDriver
 //
 // RELAY EMIT IS THE PER-MODULE RECEIPT LINE, and it was outside every span. The loop prints one
 // [native-prepare-split] line per unique module to stderr, which the host runner drains through a
-// pipe, and that write was paid inside parent_span with no row over it. Three folds on three heads
-// put the residual at 334.0, 342.9 and 334.5 microseconds per unique module -- a per-module
-// constant, stable across different host loads, which is the signature of fixed per-iteration work
-// rather than contention.
+// pipe, and that write was paid inside parent_span with no row over it.
+//
+// WHAT THE FOLDS MEASURED, BY FOLD, FROM THE [native-cost-partition] LINE OF EACH RUN. The figure
+// is remainder_nanos divided by unique_modules on that same line; re-derive it by reading the line
+// rather than trusting this list:
+//   SUCC3  45a9105101   238,500,502 ns / 714 = 334.0 us per unique module
+//   SUCC6  4011bf9d     244,833,742 ns / 714 = 342.9 us
+//   #11256 f5e8a568     238,817,913 ns / 714 = 334.5 us
+//   #11202 a3157d6a     276,596,559 ns / 717 = 385.8 us
+// THAT IS A 15.5% SPREAD AND NOT A CONSTANT. An earlier version of this paragraph called it a
+// per-module constant on the first three folds; the fourth refutes that, and calling it constant
+// would repeat in this very annotation the defect the paragraph above it records. The spread is
+// consistent with a pipe write whose cost tracks line length and the reader's drain rate, and
+// consistent-with is not established-by: relay_emit exists to settle it by measurement.
 //
 // BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
 // as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
