@@ -215,23 +215,21 @@ fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
 }
 
-fn edge_is_qualified_name_spine_label(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: sym } =>
-      (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
-    Positional => false
-  }
-}
-
-// O(1) gate for the fold below: a Conj with exactly the head/tail spine
-// qualified_name_from_node recognises. Walkers that skip the fold on other
-// trees must call this, not re-spell the labels.
-fn qualified_name_shape_precondition(node: Node) -> Bool {
-  match node.kind {
+// THE O(1) SHAPE GATE LIVES INSIDE THE FOLD'S OWN ENTRY, NOT BESIDE IT. fold_node is a
+// bottom-up catamorphism with no pruning, so a walker that folded every Conj re-folded every
+// subtree it then descended into. The gate is the fold's first step so that no second surface
+// re-spells which labels form the spine: a root that is not a two-child head/tail Conj is
+// refused with ^qualified_name_shape_absent before any child is folded, and the walker keys on
+// the Outcome, never on a Bool of its own.
+fn qualified_name_spine_shape_present(root: Node) -> Bool {
+  match root.kind {
     TypeNode { connective: Conj } =>
-      if count(node.children) == 2 {
-        fold(node.children, init: true, f: fn(acc, edge) {
-          acc && edge_is_qualified_name_spine_label(edge: edge)
+      if count(root.children) == 2 {
+        fold(root.children, init: true, f: fn(acc, edge) {
+          acc && (match edge.label {
+            Named { name: sym } => (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
+            Positional => false
+          })
         })
       } else {
         false
@@ -241,20 +239,20 @@ fn qualified_name_shape_precondition(node: Node) -> Bool {
 }
 
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
-      match acc {
-        QnFoldDone { qn: qn } => outcome_accepted(value: qn)
-        QnFoldError { diag: d } => outcome_rejected(d: d)
-        _ => outcome_rejected(d: Diagnostic {
-          reason: ^qualified_name_structure_invalid,
-          at: node_locus(node: root),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        })
-      }
-    _ => outcome_rejected(d: Diagnostic {
-      reason: ^qualified_name_structure_invalid,
+  if qualified_name_spine_shape_present(root: root) {
+    let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
+    match acc {
+      QnFoldDone { qn: qn } => outcome_accepted(value: qn)
+      QnFoldError { diag: d } => outcome_rejected(d: d)
+      _ => outcome_rejected(d: Diagnostic {
+        reason: ^qualified_name_structure_invalid,
+        at: node_locus(node: root),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    }
+  } else {
+    outcome_rejected(d: Diagnostic {
+      reason: ^qualified_name_shape_absent,
       at: node_locus(node: root),
       correction: Unavailable { reason: ExternalContractUnknown }
     })

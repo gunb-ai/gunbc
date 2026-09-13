@@ -20,7 +20,6 @@ import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,
-  qualified_name_shape_precondition,
   qualified_name_snoc
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
@@ -92,12 +91,12 @@ import v2.extdeps.languages.dag {
 // beneath it was then walked again. DESIGN section 6 rules a proven cost-shape defect is ALWAYS
 // fixed regardless of the realised n, because "n is small here" is not a time-stable fact.
 //
-// A genuine authored qualified spelling is the fold-list shape: a Conj with exactly two children,
-// labelled head and tail. Both are O(1) to check, and they live on v2.std.qualified_name
-// (qualified_name_shape_precondition) beside the fold they gate, so a later admission of a new
-// spine shape cannot drop mentions here in silence. Nodes that fail it cannot be qualified
-// names, so the expensive fold never runs on them; nodes that pass it are emitted as ONE site
-// and never descended into, so no subtree is ever both folded and walked.
+// The O(1) shape gate is the fold's own first step (qualified_name_from_node refuses a root that
+// is not a two-child head/tail Conj with ^qualified_name_shape_absent before folding any child),
+// so this walk carries no spine-label knowledge of its own: it dispatches on the connective only
+// and keys on the fold's Outcome. A Conj the fold rejects is walked as an ordinary tree; a Conj it
+// accepts is emitted as ONE site and never descended into, so no subtree is ever both folded and
+// walked, and a later admission of a new spine shape lands in one place.
 
 fn reference_sites_in_edge(
   acc: FreeMonoid<ReferenceSite>,
@@ -147,36 +146,34 @@ fn reference_sites_in_node(
   position: QualifiedName,
   node: Node
 ) -> FreeMonoid<ReferenceSite> {
-  if qualified_name_shape_precondition(node: node) {
-    match qualified_name_from_node(root: node) {
-      Accepted { value: qn, diagnostics: _ } =>
-        if is_empty(xs: qn) {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match qualified_name_from_node(root: node) {
+        Accepted { value: qn, diagnostics: _ } =>
+          if is_empty(xs: qn) {
+            reference_sites_in_children(acc: acc, position: position, node: node)
+          } else {
+            list_snoc_item(
+              xs: acc,
+              item: ReferenceSite { position: position, spelling: qn }
+            )
+          }
+        Rejected { diagnostics: _ } =>
           reference_sites_in_children(acc: acc, position: position, node: node)
-        } else {
-          list_snoc_item(
-            xs: acc,
-            item: ReferenceSite { position: position, spelling: qn }
-          )
-        }
-      Rejected { diagnostics: _ } =>
-        reference_sites_in_children(acc: acc, position: position, node: node)
-    }
-  } else {
-    match node.kind {
-      TypeNode { connective: Atom { identity: sym } } =>
-        if dag_node_is_int_literal_atom(node: node) {
-          acc
-        } else {
-          list_snoc_item(
-            xs: acc,
-            item: ReferenceSite {
-              position: position,
-              spelling: Cons { head: sym, tail: Empty }
-            }
-          )
-        }
-      _ => reference_sites_in_children(acc: acc, position: position, node: node)
-    }
+      }
+    TypeNode { connective: Atom { identity: sym } } =>
+      if dag_node_is_int_literal_atom(node: node) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: ReferenceSite {
+            position: position,
+            spelling: Cons { head: sym, tail: Empty }
+          }
+        )
+      }
+    _ => reference_sites_in_children(acc: acc, position: position, node: node)
   }
 }
 
