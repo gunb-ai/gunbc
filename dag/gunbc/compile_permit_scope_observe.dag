@@ -104,6 +104,10 @@ fn read_wants(
   }
 }
 
+// WHAT WAS READ, NOT THE SLOT'S DESIRED WIDTH. Completely absent fifo evidence is
+// InvocationLocalCargo only when CARGO_BUILD_JOBS is present in the unit text. Filling
+// jobs_per_slot from gunbc_runner_cores_per_slot would mint Observed from a model row the
+// host never advertised, which is a Safe-capable fabricated default (review 65466).
 fn local_jobs_from_environment(tokens: List<String>) -> HardwareThreadCount? {
   match env_assignment_value(
     tokens: tokens,
