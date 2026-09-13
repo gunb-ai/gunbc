@@ -236,3 +236,82 @@ fn resolved_rust_fn_lookup(
 fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_name: String) -> Bool {
   signature.ordered_parameter_names |> any(n => n == parameter_name)
 }
+
+// BUILDING A CLAIM SCOPE OVER THE SAME MANIFEST, which is a different question from compiling it.
+//
+// `compile_fixture` above stops at `compile_to_resolved`. The bare-name-ambiguity refusal lives
+// in `claim_scope_for` -- the scope builder the required floor calls once per claim module, and
+// the same call whose `ambiguous_reads` vector the floor's census lines are printed from. So a
+// control written over `compile_fixture` cannot see that refusal at all, and the refusal's
+// discriminating RED is not authorable in the CORPUS either: a module carrying a deliberately
+// ambiguous read would refuse the whole floor rather than sit in it as a probe. DESIGN section 4b
+// answers exactly that shape -- a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and declining to enrol it there is
+// specification-without-execution.
+//
+// ONE DETECTOR, NOT TWO. The host builtin behind this calls `claim_scope_for_with_memos`, the
+// same function the floor's own entry point calls. It does not re-derive the ambiguity
+// population, so the refusal a control observes IS the refusal the corpus floor raises, from one
+// computation. A second copy here -- even a faithful one -- would be the second authority the
+// census exists to prevent, and would be free to drift from it silently. What differs from the
+// floor's call is the memo arguments, which is a caching decision rather than a semantic one.
+//
+// THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
+// `cause` is `NonEmptyStr`, matching `MultiModuleCompileFixtureOutcome`'s arm one screen up
+// rather than weakening to bare `String` for the same fact. Every producer builds a non-empty
+// literal, so the brand costs nothing and makes an empty cause unwritable instead of merely
+// unwritten -- §5's construction over validation, applied to a refusal whose whole value is the
+// text it carries.
+type ClaimScopeFixtureOutcome
+  = ClaimScopeInstrumentRefused { cause: NonEmptyStr }
+  | ClaimScopeCompileRefused { blocking_count: Int }
+  | ClaimScopeRefused { cause: NonEmptyStr }
+  | ClaimScopeAccepted { module_count: Int }
+
+fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_dag_multi_module_fixture(
+    fixture.sources |> map(s => s.path as String),
+    fixture.sources |> map(s => s.content),
+    entry_module_path
+  )
+}
+
+// AND WHICH REFUSAL IT WAS -- the only refusal reader this instrument offers, deliberately.
+//
+// A reader that answered "did the scope builder refuse" would say nothing about WHY, and a probe
+// satisfied by ANY refusal goes green the day an unrelated one starts firing first, and would
+// then be cited as coverage for a cause it never observed. One was written here and deleted
+// rather than shipped beside this: two readers, one of them strictly weaker, is an invitation to
+// reach for the weaker.
+//
+// So this reader matches the arm AND requires the cause to name the expected refusal: a red has
+// to be the red the caller meant.
+//
+// Containment through `string_contains`, the corpus authority for this predicate (declared at
+// `std.methods` `string_contains_method`, and what the sibling instruments in this directory
+// already call). An earlier revision hand-rolled it as `split(..) |> count > 1` and defended that
+// as "the idiom the corpus already uses" -- true of the weaker idiom only, and §2's re-invention:
+// net concepts must not grow when an authority exists. `cause` is coerced to `String` at the call
+// because the `NonEmptyStr` brand establishes no method surface of its own; the brand is worth
+// keeping on the FIELD, where it makes an empty cause unwritable, and costs one ascription here.
+fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
+  match o {
+    ClaimScopeRefused { cause: c } => string_contains(s: c as String, pattern: cause_marker)
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// ACCEPTANCE IS SILENT ABOUT AMBIGUITY. The scope builder COLLECTS ambiguous bare-name reads onto
+// the accepted scope; it does not refuse on them. So this reader answers "the entry resolved and
+// the scope built", and NOT "the scope is unambiguous" -- a row asserting it establishes nothing
+// about that class, and must not be cited as coverage for a refusal that is not in this change.
+fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
+  match o {
+    ClaimScopeAccepted { module_count: n } => true
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
