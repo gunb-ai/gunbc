@@ -846,7 +846,8 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
         crate_dir.display(),
         NATIVE_BUILD_CANONICAL_PREFIX
     );
-    let rustflags = super::emitted_closure_compile_host::rustflags_with_remap_prefix(&remap_flag);
+    let spawn_rustflags =
+        super::emitted_closure_compile_host::rustflags_with_remap_prefix(&remap_flag);
     eprintln!(
         "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); cargo build with path remap",
         crate_dir.display()
@@ -869,7 +870,7 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
             "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {} (argv={:?} RUSTFLAGS={:?} rustc={rustc})",
             super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
             invocation.argv,
-            rustflags,
+            spawn_rustflags,
         ));
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
@@ -890,7 +891,7 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     };
     let build = EmittedBuildObserved {
         cargo_argv: invocation.argv,
-        rustflags,
+        rustflags: super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS.to_string(),
         compiler_path: invocation.compiler_path,
         rustc_identity: rustc,
         exit_status,
