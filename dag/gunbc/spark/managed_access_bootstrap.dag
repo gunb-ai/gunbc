@@ -242,6 +242,22 @@ type SparkManagedGrant
 // reason to think before granting: inspect prints Config.Env, so the serving container's
 // environment becomes readable by gunbc-automation. That environment is exactly the telemetry
 // configuration the usage-stats wall needs, and it is also everything else the launch put there.
+//
+// WHAT "EVERYTHING ELSE" IS, read rather than assumed (2026-09-13, anonymous registry read, no host
+// privilege). The container is created from the local tag
+// extdeps.docker.images.sparkrun_vllm_ds4_gb10 gunbc_spark_pair_runtime_image_tag, which is NOT
+// pinned by digest: it is built on the host from gunbc_spark_pair_runtime_dockerfile, whose FROM is
+// the digest-pinned base (sparkrun_vllm_ds4_gb10_pinned_reference, manifest sha256:f869281d...b630f,
+// re-hashed on read) and whose only other instructions are RUN pip and CMD, so it adds no ENV and its
+// Config.Env is the base's. The base config blob sha256:b2eb4e6e...9f2d carries 50 ENV entries:
+// interface and RDMA endpoint names, NCCL/UCX/OMP tuning, HF/vLLM/Triton/TorchInductor cache paths
+// under /cache/huggingface, HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1, CUDA toolchain paths, and
+// micromamba's user and prefix variables. No entry is a token, key, password or credential, and
+// none is resolved from a SecretRef; spark_pair_container_env adds none either. The one residue is
+// NODE_IP, the upstream build host's private address, which every create overrides. Labels are
+// micromamba-docker's OCI labels. This is a reading of the declared base, so it holds for the
+// running container only while the local tag was built from this Dockerfile; the tag being unpinned
+// is the weaker link, not the environment.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
