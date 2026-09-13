@@ -8,7 +8,6 @@ use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
-use v1_compiler::std_types::container_param_name;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
     compile_sources, compile_to_resolved, PipelineResult, ResolvedPipelineResult, SourceFile,
@@ -22,8 +21,9 @@ use v1_compiler::v1_compiler_infer_patterns::{self, NodeLookupStatus};
 use v1_compiler::v1_compiler_infer_resolve::resolve_node;
 use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
 use v1_compiler::v1_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible,
-    nominal_type_ref, resolved_type, type_resolution_verdict, TypeResolutionVerdict,
+    bare_map_node, is_fully_resolved, make_container_type, make_map_type, node_is_keyed_collection,
+    node_type_compatible, nominal_type_ref, resolved_type, type_resolution_verdict,
+    TypeResolutionVerdict,
 };
 use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
@@ -193,130 +193,21 @@ fn leaf_node(name: String) -> Rc<Node> {
 }
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
-    let param_name = match container_param_name(kind_name.clone(), 0) {
-        Some(n) => n,
-        None => kind_name.clone(),
-    };
-    let sp = no_span();
-    Rc::new(Node {
-        occurrence_identity: Rc::new(
-            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
-        ),
-        name: kind_name.clone(),
-        ident: None,
-        span: sp.clone(),
-        ident_span: default_ident_span(kind_name, sp.clone()),
-        children: Rc::new(vec![Rc::new(Node {
-            occurrence_identity: Rc::new(
-                v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
-            ),
-            name: param_name.clone(),
-            ident: None,
-            span: sp.clone(),
-            ident_span: default_ident_span(param_name, sp.clone()),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-        })]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: None,
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
-        properties: Rc::new(vec![]),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-        expr_data: Rc::new(ExprData::NoExprData),
-    })
+    let built = make_container_type(kind_name, element);
+    assert!(
+        built.diagnostics.is_empty(),
+        "fixture container profile must exist"
+    );
+    built.ty.clone()
 }
 
 fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    let key_name = container_param_name("Map".to_string(), 0)
-        .expect("kernel Map should resolve K from PartialFunction profile");
-    let val_name = container_param_name("Map".to_string(), 1)
-        .expect("kernel Map should resolve V from PartialFunction profile");
-    let sp = no_span();
-    Rc::new(Node {
-        occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "Map".to_string(),
-        ident: None,
-        span: sp.clone(),
-        ident_span: Some(sp.clone()),
-        children: Rc::new(vec![
-            Rc::new(Node {
-                occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-                name: key_name,
-                ident: None,
-                span: sp.clone(),
-                ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
-            }),
-            Rc::new(Node {
-                occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-                name: val_name,
-                ident: None,
-                span: sp.clone(),
-                ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
-            }),
-        ]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: None,
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
-        properties: Rc::new(vec![]),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
-    })
+    let built = make_map_type(key, value);
+    assert!(
+        built.diagnostics.is_empty(),
+        "fixture Map profile must exist"
+    );
+    built.ty.clone()
 }
 
 fn zero_span() -> Rc<SourceSpan> {
