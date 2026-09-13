@@ -1,0 +1,148 @@
+module test.claim.public_workload_scan_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.code_search { CodeSearchPage, CodeSearchHit, CodeSearchRepository }
+import extdeps.transports.rest { RestExchangeUnreached }
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead, CodeSearchPageComplete, CodeSearchPageTruncated, CodeSearchPageRefused,
+  HitReadAtResolvedRevision, HitRevisionUnaddressable, HitRepositoryReadRefused,
+  HitRepositoryDisagrees, HitBranchReadRefused, HitBranchHeadNotExact,
+}
+import gunbc.public_workload_scan {
+  WorkloadScanPolicy, WorkloadScanPolicyAdmitted, WorkloadScanPolicyRefused, admit_workload_scan_policy,
+  ScanQueryStop, ScanQueryPagesExhausted, ScanQueryPageLimit, ScanQueryHitLimit, ScanQueryTruncated, ScanQueryPageRefused,
+  ScanWalkState, ScanPageStep, ScanPageContinue, ScanPageStop, scan_page_step,
+  WorkloadScan, WorkloadScanCompleted, WorkloadScanNotStarted, perform_workload_scan,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR THE BOUNDED SEARCH WALK. The page decision is driven directly with constructed
+// pages, so every stop arm executes; the whole scan is then driven once through the published GitHub
+// mocks, which serve the same single hit for every page, so the walk's own bounds are the only thing
+// that can end it. What these do NOT establish is how the real endpoint paginates.
+
+fn hit(repo_id: Int, path: String) -> CodeSearchHit {
+  CodeSearchHit {
+    name: "main.yml",
+    path: path,
+    sha: "0000000000000000000000000000000000000000",
+    repository: CodeSearchRepository { id: repo_id, name: "r", full_name: "o/r", private: false, fork: false },
+  }
+}
+
+fn page(items: List<CodeSearchHit>) -> CodeSearchPage {
+  CodeSearchPage { total_count: 250, incomplete_results: false, items: items }
+}
+
+fn complete(items: List<CodeSearchHit>) -> CodeSearchPageRead {
+  CodeSearchPageComplete { page: page(items: items), hits_read: count(items) }
+}
+
+fn policy(per_page: Int, max_pages: Int, max_hits: Int) -> WorkloadScanPolicy {
+  WorkloadScanPolicy { queries: ["runs-on depot-ubuntu-24.04-arm" as NonEmptyStr], per_page: per_page, max_pages_per_query: max_pages, max_distinct_hits: max_hits }
+}
+
+fn empty_state() -> ScanWalkState {
+  ScanWalkState { pages: [], seen: [] }
+}
+
+fn stop_arm(step: ScanPageStep) -> String {
+  match step {
+    ScanPageContinue { state: _ } => "continue"
+    ScanPageStop { state: _, stop } => match stop {
+      ScanQueryPagesExhausted => "pages_exhausted"
+      ScanQueryPageLimit => "page_limit"
+      ScanQueryHitLimit => "hit_limit"
+      ScanQueryTruncated { page: _, cause: _ } => "truncated"
+      ScanQueryPageRefused { page: _, performance: _ } => "page_refused"
+    }
+  }
+}
+
+fn step_hits(step: ScanPageStep) -> Int {
+  match step {
+    ScanPageContinue { state } => count(state.seen)
+    ScanPageStop { state, stop: _ } => count(state.seen)
+  }
+}
+
+// ---- policy
+
+test fn a_policy_that_bounds_nothing_is_refused_before_any_request() -> Bool {
+  let no_queries = match admit_workload_scan_policy(policy: WorkloadScanPolicy { queries: [], per_page: 10, max_pages_per_query: 1, max_distinct_hits: 1 }) {
+    WorkloadScanPolicyRefused { cause: _ } => true
+    WorkloadScanPolicyAdmitted { policy: _ } => false
+  }
+  let over_page = match admit_workload_scan_policy(policy: policy(per_page: 101, max_pages: 1, max_hits: 1)) {
+    WorkloadScanPolicyRefused { cause: _ } => true
+    WorkloadScanPolicyAdmitted { policy: _ } => false
+  }
+  let ok = match admit_workload_scan_policy(policy: policy(per_page: 100, max_pages: 10, max_hits: 50)) {
+    WorkloadScanPolicyAdmitted { policy: _ } => true
+    WorkloadScanPolicyRefused { cause: _ } => false
+  }
+  no_queries && over_page && ok
+}
+
+// ---- page decision: each stop, with the continue control
+
+test fn a_full_page_below_every_bound_continues() -> Bool {
+  stop_arm(step: scan_page_step(policy: policy(per_page: 2, max_pages: 5, max_hits: 10), page: 1, before: empty_state(), read: complete(items: [hit(repo_id: 1, path: "a"), hit(repo_id: 2, path: "a")]))) == "continue"
+}
+
+test fn a_short_page_exhausts_the_query() -> Bool {
+  stop_arm(step: scan_page_step(policy: policy(per_page: 2, max_pages: 5, max_hits: 10), page: 1, before: empty_state(), read: complete(items: [hit(repo_id: 1, path: "a")]))) == "pages_exhausted"
+}
+
+test fn a_full_page_at_the_page_bound_stops_on_the_policy_not_on_exhaustion() -> Bool {
+  stop_arm(step: scan_page_step(policy: policy(per_page: 2, max_pages: 1, max_hits: 10), page: 1, before: empty_state(), read: complete(items: [hit(repo_id: 1, path: "a"), hit(repo_id: 2, path: "a")]))) == "page_limit"
+}
+
+test fn the_hit_bound_stops_mid_page_without_overshooting() -> Bool {
+  let step = scan_page_step(policy: policy(per_page: 3, max_pages: 5, max_hits: 2), page: 1, before: empty_state(), read: complete(items: [hit(repo_id: 1, path: "a"), hit(repo_id: 2, path: "a"), hit(repo_id: 3, path: "a")]))
+  stop_arm(step: step) == "hit_limit" && step_hits(step: step) == 2
+}
+
+test fn a_repeated_file_is_one_hit_and_does_not_spend_the_hit_bound() -> Bool {
+  let step = scan_page_step(policy: policy(per_page: 3, max_pages: 5, max_hits: 3), page: 1, before: empty_state(), read: complete(items: [hit(repo_id: 1, path: "a"), hit(repo_id: 1, path: "a"), hit(repo_id: 2, path: "a")]))
+  stop_arm(step: step) == "continue" && step_hits(step: step) == 2
+}
+
+test fn a_truncated_page_keeps_what_it_delivered_and_stops_the_query() -> Bool {
+  let step = scan_page_step(policy: policy(per_page: 2, max_pages: 5, max_hits: 10), page: 3, before: empty_state(), read: CodeSearchPageTruncated { page: page(items: [hit(repo_id: 1, path: "a"), hit(repo_id: 2, path: "a")]), hits_read: 2, cause: "incomplete_results" })
+  stop_arm(step: step) == "truncated" && step_hits(step: step) == 2
+}
+
+test fn a_refused_page_stops_the_query_and_admits_nothing() -> Bool {
+  let step = scan_page_step(policy: policy(per_page: 2, max_pages: 5, max_hits: 10), page: 2, before: empty_state(), read: CodeSearchPageRefused { performance: RestExchangeUnreached { cause: "rate limited" } })
+  stop_arm(step: step) == "page_refused" && step_hits(step: step) == 0
+}
+
+// ---- whole scan over the published mocks
+
+test fn the_scan_over_mocks_is_bounded_by_policy_and_resolves_its_one_distinct_hit() -> Bool {
+  match perform_workload_scan(auth_token: "hermetic" as Secret, policy: WorkloadScanPolicy { queries: ["q1" as NonEmptyStr, "q2" as NonEmptyStr], per_page: 1, max_pages_per_query: 3, max_distinct_hits: 5 }) {
+    WorkloadScanNotStarted { cause: _ } => false
+    WorkloadScanCompleted { receipt } => {
+      let stops_on_pages = all(receipt.queries, q => count(q.pages) == 3 && match q.stop {
+        ScanQueryPageLimit => true
+        ScanQueryPagesExhausted => false
+        ScanQueryHitLimit => false
+        ScanQueryTruncated { page: _, cause: _ } => false
+        ScanQueryPageRefused { page: _, performance: _ } => false
+      })
+      let one_hit_six_sightings = count(receipt.hits) == 1 && all(receipt.hits, h => h.sightings == 6)
+      let resolved = all(receipt.hits, h => match h.resolution {
+        HitReadAtResolvedRevision { hit: _, repository: _, head: _, canonicalization: _ } => true
+        HitRevisionUnaddressable { hit: _, address: _ } => false
+        HitRepositoryReadRefused { hit: _, performance: _ } => false
+        HitRepositoryDisagrees { hit: _, disagreement: _ } => false
+        HitBranchReadRefused { hit: _, repository: _, performance: _ } => false
+        HitBranchHeadNotExact { hit: _, repository: _, observed: _, cause: _ } => false
+      })
+      count(receipt.queries) == 2 && stops_on_pages && one_hit_six_sightings && resolved
+    }
+  }
+}

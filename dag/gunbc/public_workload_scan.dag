@@ -1,0 +1,241 @@
+module gunbc.public_workload_scan
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.resources { Network }
+import extdeps.github.github { max_per_page }
+import extdeps.github.code_search { CodeSearchHit, CodeSearchPage }
+import extdeps.transports.rest { RestExchangePerformance }
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead, CodeSearchPageComplete, CodeSearchPageTruncated, CodeSearchPageRefused,
+  HitRevisionResolution,
+  perform_code_search_page, perform_hit_revision_resolution,
+}
+
+// A BOUNDED, READ-ONLY WALK OF GITHUB CODE SEARCH, AND THE RECEIPT THAT SAYS WHAT IT COVERED.
+//
+// Code search is a declared-incomplete instrument (extdeps.github.code_search): a query is capped
+// upstream, a page may come back truncated, and the index lags the repositories it points at. So
+// the output of a walk is never "the repositories that match". It is a population produced under a
+// stated policy, and the receipt is what lets a reader tell a small population from a short walk:
+// every query records exactly why it stopped, every page records how many items it actually
+// delivered, and every distinct hit carries its resolution outcome, including the ones that refused.
+//
+// NOTHING HERE CONTACTS ANYONE OR RUNS ANYTHING. It pages search, then for each distinct hit
+// resolves the repository's default-branch head and reads the workflow file at that exact commit
+// (gunbc.ci_workflow_source_read perform_hit_revision_resolution). No outreach admission, trial
+// authorization or third-party execution is reachable from this module.
+//
+// A HIT THAT DID NOT COME BACK IS NOT A FACT ABOUT ITS REPOSITORY. A consumer comparing two
+// receipts must not conclude that a repository missing from the later one stopped using a runner:
+// the later walk may have stopped earlier, been truncated, or been served a different slice of the
+// index. The receipt carries the stops precisely so that conclusion is refused rather than drawn.
+
+type WorkloadScanPolicy {
+  queries: List<NonEmptyStr>
+  per_page: Int
+  max_pages_per_query: Int
+  max_distinct_hits: Int
+}
+
+// WHY A QUERY STOPPED. Each arm has a different reading of the population it left behind:
+//   PagesExhausted  -- a page delivered fewer items than asked for; the walk reached the end of what
+//                      the endpoint would serve for this query (itself capped upstream);
+//   PageLimit       -- the policy's page bound was reached with pages still being delivered full;
+//   HitLimit        -- the policy's distinct-hit bound was reached, possibly mid-page;
+//   Truncated       -- upstream said it gave up (incomplete_results); what came back is a lower
+//                      bound of unknown tightness and the walk does not page past it;
+//   PageRefused     -- the request itself failed; nothing is known past the last delivered page.
+type ScanQueryStop
+  = ScanQueryPagesExhausted
+  | ScanQueryPageLimit
+  | ScanQueryHitLimit
+  | ScanQueryTruncated { page: Int, cause: NonEmptyStr }
+  | ScanQueryPageRefused { page: Int, performance: RestExchangePerformance }
+
+type ScanPageReceipt {
+  page: Int
+  items_delivered: Int
+}
+
+type ScanQueryReceipt {
+  query: NonEmptyStr
+  pages: List<ScanPageReceipt>
+  stop: ScanQueryStop
+}
+
+// A hit appears once per distinct (repository id, path); a repeat from a later page or another query
+// is counted, never silently dropped, because a walk that sees the same file many times has covered
+// less than its item count suggests.
+type ScanHitReceipt {
+  resolution: HitRevisionResolution
+  sightings: Int
+}
+
+type WorkloadScanReceipt {
+  policy: WorkloadScanPolicy
+  queries: List<ScanQueryReceipt>
+  hits: List<ScanHitReceipt>
+}
+
+// A policy that cannot bound anything is refused before any request is made.
+type WorkloadScanPolicyAdmission
+  = WorkloadScanPolicyAdmitted { policy: WorkloadScanPolicy }
+  | WorkloadScanPolicyRefused { cause: NonEmptyStr }
+
+fn admit_workload_scan_policy(policy: WorkloadScanPolicy) -> WorkloadScanPolicyAdmission {
+  if count(policy.queries) == 0 {
+    WorkloadScanPolicyRefused { cause: "a scan with no queries has nothing to walk" }
+  } else if policy.per_page < 1 || policy.per_page > max_per_page {
+    WorkloadScanPolicyRefused { cause: join(["per_page must be between 1 and the endpoint's maximum of ", to_string(value: max_per_page), "; got ", to_string(value: policy.per_page)], "") as NonEmptyStr }
+  } else if policy.max_pages_per_query < 1 {
+    WorkloadScanPolicyRefused { cause: "max_pages_per_query must be at least 1" }
+  } else if policy.max_distinct_hits < 1 {
+    WorkloadScanPolicyRefused { cause: "max_distinct_hits must be at least 1" }
+  } else {
+    WorkloadScanPolicyAdmitted { policy: policy }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Distinct hits.
+
+fn hit_identity_eq(a: CodeSearchHit, b: CodeSearchHit) -> Bool {
+  a.repository.id == b.repository.id && a.path == b.path
+}
+
+type DistinctHit {
+  hit: CodeSearchHit
+  sightings: Int
+}
+
+fn record_sighting(seen: List<DistinctHit>, hit: CodeSearchHit) -> List<DistinctHit> {
+  if any(seen, d => hit_identity_eq(a: d.hit, b: hit)) {
+    map(seen, d => if hit_identity_eq(a: d.hit, b: hit) { DistinctHit { hit: d.hit, sightings: d.sightings + 1 } } else { d })
+  } else {
+    concat(seen, [DistinctHit { hit: hit, sightings: 1 }])
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// One page, decided. PURE: the walk's every stop is a function of the policy, the state before the
+// page, and what the page read observed, so a witness drives each stop through the real decision.
+
+type ScanWalkState {
+  pages: List<ScanPageReceipt>
+  seen: List<DistinctHit>
+}
+
+type ScanPageStep
+  = ScanPageContinue { state: ScanWalkState }
+  | ScanPageStop { state: ScanWalkState, stop: ScanQueryStop }
+
+// Items are admitted one at a time against the distinct-hit bound, so a bound reached mid-page stops
+// there rather than admitting the rest of the page and overshooting the policy.
+fn admit_page_items(policy: WorkloadScanPolicy, seen: List<DistinctHit>, items: List<CodeSearchHit>) -> List<DistinctHit> {
+  fold(items, init: seen, f: fn(acc, hit) {
+    if any(acc, d => hit_identity_eq(a: d.hit, b: hit)) {
+      record_sighting(seen: acc, hit: hit)
+    } else if count(acc) >= policy.max_distinct_hits {
+      acc
+    } else {
+      record_sighting(seen: acc, hit: hit)
+    }
+  })
+}
+
+// Over the population ALREADY admitted from this page, so the admission runs once per page.
+fn page_left_hits_unadmitted(admitted: List<DistinctHit>, items: List<CodeSearchHit>) -> Bool {
+  any(items, hit => !any(admitted, d => hit_identity_eq(a: d.hit, b: hit)))
+}
+
+fn scan_page_step(policy: WorkloadScanPolicy, page: Int, before: ScanWalkState, read: CodeSearchPageRead) -> ScanPageStep {
+  match read {
+    CodeSearchPageRefused { performance } =>
+      ScanPageStop { state: before, stop: ScanQueryPageRefused { page: page, performance: performance } }
+    CodeSearchPageTruncated { page: p, hits_read, cause } => {
+      let after = ScanWalkState {
+        pages: concat(before.pages, [ScanPageReceipt { page: page, items_delivered: hits_read }]),
+        seen: admit_page_items(policy: policy, seen: before.seen, items: p.items),
+      }
+      ScanPageStop { state: after, stop: ScanQueryTruncated { page: page, cause: cause } }
+    }
+    CodeSearchPageComplete { page: p, hits_read } => {
+      let after = ScanWalkState {
+        pages: concat(before.pages, [ScanPageReceipt { page: page, items_delivered: hits_read }]),
+        seen: admit_page_items(policy: policy, seen: before.seen, items: p.items),
+      }
+      if page_left_hits_unadmitted(admitted: after.seen, items: p.items) {
+        ScanPageStop { state: after, stop: ScanQueryHitLimit }
+      } else if hits_read < policy.per_page {
+        ScanPageStop { state: after, stop: ScanQueryPagesExhausted }
+      } else if page >= policy.max_pages_per_query {
+        ScanPageStop { state: after, stop: ScanQueryPageLimit }
+      } else if count(after.seen) >= policy.max_distinct_hits {
+        ScanPageStop { state: after, stop: ScanQueryHitLimit }
+      } else {
+        ScanPageContinue { state: after }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The walk. Pages are numbered from 1, as the endpoint numbers them.
+
+type ScanQueryWalk {
+  receipt: ScanQueryReceipt
+  seen: List<DistinctHit>
+}
+
+func walk_query_from(auth_token: Secret, policy: WorkloadScanPolicy, query: NonEmptyStr, page: Int, state: ScanWalkState) -> ScanQueryWalk uses net: Network {
+  let read = perform_code_search_page(auth_token: auth_token, q: query as String, per_page: policy.per_page, page: page)
+  match scan_page_step(policy: policy, page: page, before: state, read: read) {
+    ScanPageStop { state: s, stop } =>
+      ScanQueryWalk { receipt: ScanQueryReceipt { query: query, pages: s.pages, stop: stop }, seen: s.seen }
+    ScanPageContinue { state: s } =>
+      walk_query_from(auth_token: auth_token, policy: policy, query: query, page: page + 1, state: s)
+  }
+}
+
+// A query begun after the distinct-hit bound was already reached makes no request: it is recorded
+// as stopped by that bound with no pages, which is exactly what happened to it.
+func walk_query(auth_token: Secret, policy: WorkloadScanPolicy, query: NonEmptyStr, seen: List<DistinctHit>) -> ScanQueryWalk uses net: Network {
+  if count(seen) >= policy.max_distinct_hits {
+    ScanQueryWalk { receipt: ScanQueryReceipt { query: query, pages: [], stop: ScanQueryHitLimit }, seen: seen }
+  } else {
+    walk_query_from(auth_token: auth_token, policy: policy, query: query, page: 1, state: ScanWalkState { pages: [], seen: seen })
+  }
+}
+
+// Queries share one distinct-hit population: a file found by two queries is one hit with two
+// sightings, and the bound counts it once.
+type ScanWalkAccumulated {
+  receipts: List<ScanQueryReceipt>
+  seen: List<DistinctHit>
+}
+
+type WorkloadScan
+  = WorkloadScanCompleted { receipt: WorkloadScanReceipt }
+  | WorkloadScanNotStarted { cause: NonEmptyStr }
+
+func perform_workload_scan(auth_token: Secret, policy: WorkloadScanPolicy) -> WorkloadScan uses net: Network {
+  match admit_workload_scan_policy(policy: policy) {
+    WorkloadScanPolicyRefused { cause } => WorkloadScanNotStarted { cause: cause }
+    WorkloadScanPolicyAdmitted { policy: admitted } => {
+      let walked = fold(admitted.queries, init: ScanWalkAccumulated { receipts: [], seen: [] }, f: fn(acc, q) {
+        let w = walk_query(auth_token: auth_token, policy: admitted, query: q, seen: acc.seen)
+        ScanWalkAccumulated { receipts: concat(acc.receipts, [w.receipt]), seen: w.seen }
+      })
+      WorkloadScanCompleted {
+        receipt: WorkloadScanReceipt {
+          policy: admitted,
+          queries: walked.receipts,
+          hits: map(walked.seen, d => ScanHitReceipt {
+            resolution: perform_hit_revision_resolution(auth_token: auth_token, hit: d.hit),
+            sightings: d.sightings,
+          }),
+        },
+      }
+    }
+  }
+}
