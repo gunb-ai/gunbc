@@ -1,0 +1,98 @@
+==== capture.sh (sha256 c9ab0c0b5625d734896fe57f699d539467ae8876952f1b8c404eef0b5a9a6b73)
+#!/bin/bash
+cd ~/mtc1-32dimm
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+$B sol deactivate >/dev/null 2>&1
+sleep 2
+setsid $B sol activate > 04-sol-post.log 2>&1 &
+SOLPID=$!
+echo "sol_pid=$SOLPID" > 04-meta.txt
+sleep 5
+echo "==== $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) power cycle issued" >> 04-meta.txt
+$B chassis power cycle >> 04-meta.txt 2>&1
+sleep 400
+kill $SOLPID 2>/dev/null
+$B sol deactivate >/dev/null 2>&1
+echo "==== $(date -u +%Y-%m-%dT%H:%M:%S.%3NZ) capture ended" >> 04-meta.txt
+wc -c 04-sol-post.log >> 04-meta.txt
+
+==== acwatch.sh (sha256 c9c2a5ac2a3327cc1be9072a1a3f991d982a2d5a831bd64ff3e585cac4e1f3ca)
+#!/bin/bash
+cd ~/mtc1-32dimm
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+M=10-ac-meta.txt
+ts(){ date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+echo "$(ts) watcher armed; waiting for BMC to GO DOWN first" > $M
+# phase 1: wait for the controller to actually disappear (max 30 min)
+for i in $(seq 1 1800); do
+  if ! $B mc info >/dev/null 2>&1; then echo "$(ts) BMC down (ipmi no answer) after ${i}s" >> $M; break; fi
+  sleep 1
+done
+ip neigh show 192.168.1.228 >> $M 2>&1
+# phase 2: wait for return
+for i in $(seq 1 1200); do
+  if $B mc info >/dev/null 2>&1; then echo "$(ts) BMC back after ${i}s" >> $M; break; fi
+  sleep 2
+done
+ip neigh show 192.168.1.228 >> $M 2>&1
+$B chassis status >> $M 2>&1
+# phase 3: attach SOL immediately and record
+$B sol deactivate >/dev/null 2>&1
+sleep 1
+echo "$(ts) attaching SOL" >> $M
+setsid $B sol activate > 11-ac-sol.log 2>&1 &
+SP=$!
+echo "sol_pid=$SP" >> $M
+sleep 900
+kill $SP 2>/dev/null
+$B sol deactivate >/dev/null 2>&1
+echo "$(ts) capture ended" >> $M
+wc -c 11-ac-sol.log >> $M
+$B sel elist 2>&1 | tail -25 > 12-ac-sel.txt
+
+==== probe.sh (sha256 1b14dbd4ea119fb998e03c34c65392c1e1684e4bfb959446b8d28969c1a42e63)
+#!/bin/bash
+cd /home/briansrls/mtc1-32dimm
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
+sleep 1
+$B sol deactivate >/dev/null 2>&1
+sleep 2
+(printf "\r\n"; sleep 20; printf "\r\n"; sleep 10) | $B sol activate > 22-sol-probe.log 2>&1
+echo "done rc=$?" >> 22-sol-probe.log
+
+==== boot.sh (sha256 ee4064815741c788e7da10f0d704def14c4280fa66fc7c3eff45d0f169195cde)
+#!/bin/bash
+cd /home/briansrls/mtc1-32dimm
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
+sleep 1
+$B sol deactivate >/dev/null 2>&1
+sleep 2
+setsid $B sol activate > 31-boot-sol.log 2>&1 < /dev/null &
+SP=$!
+echo "sol_pid=$SP $(date -u +%H:%M:%S.%3NZ)" > 31-meta.txt
+sleep 4
+echo "$(date -u +%H:%M:%S.%3NZ) reset issued" >> 31-meta.txt
+$B chassis power reset >> 31-meta.txt 2>&1
+sleep 900
+kill $SP 2>/dev/null
+echo "$(date -u +%H:%M:%S.%3NZ) ended" >> 31-meta.txt
+wc -c 31-boot-sol.log >> 31-meta.txt
+
+==== mon.sh (sha256 7ad105818e2ab251e1df874ba58fa8965049eaff5b9b811d1241d012cf510970)
+#!/bin/bash
+cd /home/briansrls/mtc1-32dimm
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
+sleep 1
+$B sol deactivate >/dev/null 2>&1
+sleep 2
+setsid $B sol activate > 60-reseat-sol.log 2>&1 < /dev/null &
+echo "$(date -u +%H:%M:%S) sol attached" > 60-mon.txt
+for i in $(seq 1 40); do
+  sleep 30
+  L=$($B sel elist 2>/dev/null | tail -1)
+  echo "$(date -u +%H:%M:%S) t+$((i*30))s | sol=$(wc -c < 60-reseat-sol.log) | $L" >> 60-mon.txt
+done
+
