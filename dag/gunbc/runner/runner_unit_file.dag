@@ -501,10 +501,11 @@ fn gunbc_runner_unit_fragment_for_host(host: HostIdentity) -> RunnerUnitTextRend
 
 // THE TEARDOWN REACHES THE FLEET AS A DROP-IN. Depriv is a second drop-in from this same module:
 // User= from deploy.unit_user, the job-user env, the CI sccache instance env, and the job user's
-// rootless docker endpoint (uid from fleet_ci_runner_reported_contradiction on that host, else
-// refuse). Those facts used to live only in a hand-placed file.
-// The fragment still names deploy.runner_user, not root — a missing depriv drop-in must not run
-// job code as root with the App key readable.
+// rootless docker endpoint (uid from a host-bound PosixAccountObservation, else refuse). Those
+// facts used to live only in a hand-placed file. Installing the fragment without that drop-in
+// would keep those facts in force only because a file the model has never read happens to
+// override the render. The fragment still names deploy.runner_user, not root — a missing depriv
+// drop-in must not run job code as root with the App key readable.
 //
 // ONE AUTHORITY, TWO ARTIFACTS. The teardown pair comes from runner_unit_teardown_directives, the
 // same function the fragment render uses. The `70-` prefix sorts after every numbered drop-in the
