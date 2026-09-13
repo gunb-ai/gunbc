@@ -11477,15 +11477,15 @@ fn refine_generic_constraint(established: Node, incoming: Node, span: SourceSpan
     GenericConstraintRefinement { refined: if incoming_variable { established } else { incoming }, diagnostics: [] }
   } else if incoming_variable {
     GenericConstraintRefinement { refined: established, diagnostics: [] }
-  } else if is_fully_resolved(n: established, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: incoming, source_indices: scope.type_env.source_indices) {
-    if node_type_equals(left: established, right: incoming, source_indices: scope.type_env.source_indices) {
-      GenericConstraintRefinement { refined: established, diagnostics: [] }
-    } else { generic_constraint_refusal(established: established, span: span, scope: scope) }
   } else if type_node_label(n: established, source_indices: scope.type_env.source_indices) != type_node_label(n: incoming, source_indices: scope.type_env.source_indices)
     || established.connective != incoming.connective
     || count(established.children) != count(incoming.children)
     || count(established.params) != count(incoming.params) {
-    generic_constraint_refusal(established: established, span: span, scope: scope)
+    if is_fully_resolved(n: established, source_indices: scope.type_env.source_indices)
+      && is_fully_resolved(n: incoming, source_indices: scope.type_env.source_indices)
+      && node_type_equals(left: established, right: incoming, source_indices: scope.type_env.source_indices) {
+      GenericConstraintRefinement { refined: established, diagnostics: [] }
+    } else { generic_constraint_refusal(established: established, span: span, scope: scope) }
   } else {
     let child_results = established.children |> enumerate |> map(pair =>
       match incoming.children |> skip(pair.first) |> first {
