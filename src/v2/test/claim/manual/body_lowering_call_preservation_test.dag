@@ -34,6 +34,10 @@ data imported_callee_call_source: String = "module callcount\n\nimport v2.std.al
 
 data imported_callee_import_only_source: String = "module callcount\n\nimport v2.std.algebra { length }\n\nfn caller(xs: List<Int>) -> Int { 0 }\n"
 
+data same_module_decl_and_call_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
+
+data same_module_decl_no_call_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { 0 }\n"
+
 fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
   if node_is_call(node: root) {
     match call_callee_target(node: root) {
@@ -245,28 +249,62 @@ fn count_named_edges_with_name(root: Node, name: Symbol) -> Int {
   })
 }
 
-fn imported_callee_positional_call_delta() -> Int {
-  match normalize_unprepared(src: imported_callee_call_source, file: ^imp_call) {
+fn positional_call_delta(with_call: String, without_call: String, callee: Symbol, with_file: Symbol, without_file: Symbol) -> Int {
+  match normalize_unprepared(src: with_call, file: with_file) {
     Absent => 0 - 1
-    Present { value: with_call } =>
-      match normalize_unprepared(src: imported_callee_import_only_source, file: ^imp_only) {
+    Present { value: a } =>
+      match normalize_unprepared(src: without_call, file: without_file) {
         Absent => 0 - 1
-        Present { value: import_only } =>
-          count_positional_calls_to(root: with_call, callee: ^length)
-            - count_positional_calls_to(root: import_only, callee: ^length)
+        Present { value: b } =>
+          count_positional_calls_to(root: a, callee: callee)
+            - count_positional_calls_to(root: b, callee: callee)
       }
   }
+}
+
+fn named_edge_delta(with_call: String, without_call: String, name: Symbol, with_file: Symbol, without_file: Symbol) -> Int {
+  match normalize_unprepared(src: with_call, file: with_file) {
+    Absent => 0 - 1
+    Present { value: a } =>
+      match normalize_unprepared(src: without_call, file: without_file) {
+        Absent => 0 - 1
+        Present { value: b } =>
+          count_named_edges_with_name(root: a, name: name)
+            - count_named_edges_with_name(root: b, name: name)
+      }
+  }
+}
+
+fn imported_callee_positional_call_delta() -> Int {
+  positional_call_delta(
+    with_call: imported_callee_call_source,
+    without_call: imported_callee_import_only_source,
+    callee: ^length,
+    with_file: ^imp_call,
+    without_file: ^imp_only
+  )
 }
 
 test fn imported_callee_normalize_call_site_count_is_one_above_import_only() -> Bool {
   imported_callee_positional_call_delta() == 1
 }
 
-test fn imported_callee_is_positional_not_named_edge_channel() -> Bool {
-  match normalize_unprepared(src: imported_callee_call_source, file: ^imp_named) {
-    Absent => false
-    Present { value: root } =>
-      (count_positional_calls_to(root: root, callee: ^length) == 1)
-        && (count_named_edges_with_name(root: root, name: ^length) == 0)
-  }
+test fn imported_callee_call_site_adds_no_named_edge_for_callee() -> Bool {
+  named_edge_delta(
+    with_call: imported_callee_call_source,
+    without_call: imported_callee_import_only_source,
+    name: ^length,
+    with_file: ^imp_named,
+    without_file: ^imp_named_only
+  ) == 0
+}
+
+test fn same_module_declaration_call_site_count_is_one_above_decl_only() -> Bool {
+  positional_call_delta(
+    with_call: same_module_decl_and_call_source,
+    without_call: same_module_decl_no_call_source,
+    callee: ^g,
+    with_file: ^sm_call,
+    without_file: ^sm_decl
+  ) == 1
 }
