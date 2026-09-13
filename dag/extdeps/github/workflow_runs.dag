@@ -134,6 +134,12 @@ type WorkflowRunList {
 // nothing read it, in this change or in the one that consumes the other two. Interesting is not a
 // consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
 // declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
+// `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object has
+// no workflow YAML job key and no matrix object; GitHub renders a matrix combination into
+// `name` (custom `name:` template or the job key, then a parenthetical of the combination
+// values). Binding a census row's job_key and matrix selector to an observed job is therefore
+// rendered-name equivalence, not a stronger payload join. See
+// gunbc.public_workload_census github_jobs_api_matrix_parenthetical.
 type WorkflowJobRun {
   id: Int
   run_id: Int

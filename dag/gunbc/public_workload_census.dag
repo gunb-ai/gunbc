@@ -287,13 +287,52 @@ type BaselineAdmission
     }
   | BaselineRefused { cause: NonEmptyStr }
 
+type MatrixAxisAssignment {
+  axis: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type JobMatrixIdentity
+  = NoMatrix
+  | MatrixCombination { axes: List<MatrixAxisAssignment> }
+
+// Jobs REST exposes only the rendered job `name` (no YAML job key, no matrix object). GitHub's
+// matrix rendering is a parenthetical of the combination VALUES in axis order, appended to the
+// evaluated job name (the YAML key when `name:` is unset). A non-matrix job's API name is the
+// job key. Binding is that rendering, not a silent copy of the candidate's matrix into the
+// standing. DESIGN §4d: this is not a deduction that the payload carries key+matrix.
+fn github_jobs_api_matrix_parenthetical(axes: List<MatrixAxisAssignment>) -> String {
+  concat(" (", concat(
+    fold(axes, init: "", f: fn(acc, a) {
+      if acc == "" {
+        a.value as String
+      } else {
+        concat(acc, concat(", ", a.value as String))
+      }
+    }),
+    ")"
+  ))
+}
+
+fn observed_job_binds_inspected_leg(
+  job_name: String,
+  job_key: NonEmptyStr,
+  matrix: JobMatrixIdentity,
+) -> Bool {
+  match matrix {
+    NoMatrix => job_name == (job_key as String)
+    MatrixCombination { axes } =>
+      ends_with(s: job_name, suffix: github_jobs_api_matrix_parenthetical(axes: axes))
+  }
+}
+
 type RunIdentityStanding
   = ObservedAtInspectedRevision {
       repository: NonEmptyStr
       revision: CommitSha
       workflow_path: NonEmptyStr
       job_key: NonEmptyStr
-      matrix_selector: NonEmptyStr
+      matrix_selector: JobMatrixIdentity
     }
   | WorkflowBlobEquivalent {
       repository: NonEmptyStr
@@ -302,7 +341,7 @@ type RunIdentityStanding
       workflow_path: NonEmptyStr
       workflow_blob_sha: NonEmptyStr
       job_key: NonEmptyStr
-      matrix_selector: NonEmptyStr
+      matrix_selector: JobMatrixIdentity
     }
   | RunIdentityMismatched { cause: NonEmptyStr }
   | RunIdentityUnresolved { cause: NonEmptyStr }
@@ -433,7 +472,7 @@ type WorkloadCandidate {
   workflow_blob_sha: NonEmptyStr
   job_key: NonEmptyStr
   job_display_name: NonEmptyStr
-  matrix_selector: NonEmptyStr
+  matrix_selector: JobMatrixIdentity
   declared_runner: DeclaredRunner
   observed: ObservedExecution
   observation_time: Rfc3339Timestamp
@@ -467,6 +506,14 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
         RunIdentityMismatched { cause: "observed repository is not the inspected repository" }
       } else if (workflow_path as String) != (c.workflow_path as String) {
         RunIdentityMismatched { cause: "observed workflow path is not the inspected workflow" }
+      } else if !observed_job_binds_inspected_leg(
+        job_name: job.name,
+        job_key: c.job_key,
+        matrix: c.matrix_selector,
+      ) {
+        RunIdentityMismatched {
+          cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
+        }
       } else if job.name != (c.job_display_name as String) {
         RunIdentityMismatched { cause: "observed job name is not the inspected job display name" }
       } else if c.inspected_commit == head_sha {
@@ -576,14 +623,6 @@ fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
   }))
 }
 
-fn observed_job_attempt(o: ObservedExecution) -> Int? {
-  match o {
-    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
-      Present { value: observed_job_run_attempt(job: job) }
-    NoRunObserved { obligation } => Absent
-  }
-}
-
 // -------------------------------------------------------------------------------------
 // EXAMINED POPULATION. Every inspected job stays visible. Complementary selected three:
 // managed Rust tests (Depot), native C++ sanitizers (GitHub-hosted Arm, provider by expression),
@@ -598,7 +637,9 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
   job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
-  matrix_selector: "os=depot-ubuntu-24.04-arm-16",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
   declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -652,7 +693,13 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
   job_key: "build-dnsdist",
   job_display_name: "build dnsdist (asan+ubsan, full, -arm)",
-  matrix_selector: "sanitizers=asan+ubsan, features=full, architecture_suffix=-arm",
+  matrix_selector: MatrixCombination {
+    axes: [
+      MatrixAxisAssignment { axis: "sanitizers", value: "asan+ubsan" },
+      MatrixAxisAssignment { axis: "features", value: "full" },
+      MatrixAxisAssignment { axis: "architecture_suffix", value: "-arm" },
+    ],
+  },
   declared_runner: DeclaredExpression {
     expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
     alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
@@ -723,7 +770,7 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_arm64",
   job_display_name: "build_pr_image_arm64",
-  matrix_selector: "no matrix - single job",
+  matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -793,7 +840,7 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_amd64",
   job_display_name: "build_pr_image_amd64",
-  matrix_selector: "no matrix - single job",
+  matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-8" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -847,7 +894,7 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build",
   job_display_name: "build",
-  matrix_selector: "no matrix - single job",
+  matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -899,7 +946,9 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
   job_display_name: "Test (depot-windows-2022-16)",
-  matrix_selector: "os=depot-windows-2022-16",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-windows-2022-16" }],
+  },
   declared_runner: DeclaredLabel { label: "depot-windows-2022-16" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -945,7 +994,9 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
   job_display_name: "Test (depot-macos-latest)",
-  matrix_selector: "os=depot-macos-latest",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-macos-latest" }],
+  },
   declared_runner: DeclaredLabel { label: "depot-macos-latest" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -991,7 +1042,7 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_summary",
   job_display_name: "build_pr_image_summary",
-  matrix_selector: "no matrix - single job",
+  matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubuntu-latest" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -1037,7 +1088,9 @@ data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidat
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
   job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
-  matrix_selector: "os=depot-ubuntu-24.04-arm-16",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
   declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
   observed: JobRunObserved {
     job: WorkflowJobRun {
@@ -1076,6 +1129,55 @@ data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidat
   },
 }
 
+data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same Jobs API name and observation as the Arm test leg, but the inspected matrix selector is a different combination",
+  },
+}
+
 data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test,
   candidate_pdns_dnsdist_arm,
@@ -1086,6 +1188,7 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test_macos,
   candidate_openobserve_summary,
   candidate_biome_blob_mismatch_control,
+  candidate_biome_matrix_selector_mismatch_control,
 ]
 
 fn selected_workloads() -> List<WorkloadCandidate> {

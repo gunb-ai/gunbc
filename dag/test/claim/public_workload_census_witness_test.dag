@@ -21,6 +21,7 @@ import gunbc.public_workload_census {
   baseline_admission, BaselineAdmitted, BaselineRefused,
   candidate_run_identity, ObservedAtInspectedRevision, WorkflowBlobEquivalent,
   RunIdentityMismatched, RunIdentityUnresolved,
+  observed_job_binds_inspected_leg,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
   candidate_declared_architecture, candidate_baseline,
@@ -32,6 +33,7 @@ import gunbc.public_workload_census {
   rejected_candidates, unresolved_candidates,
   candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
   candidate_openobserve_amd64, candidate_biome_blob_mismatch_control,
+  candidate_biome_matrix_selector_mismatch_control,
 }
 
 fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
@@ -90,7 +92,7 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
       revision == c.inspected_commit
         && (repository as String) == (c.repository as String)
         && (job_key as String) == (c.job_key as String)
-        && (matrix_selector as String) == (c.matrix_selector as String)
+        && matrix_selector == c.matrix_selector
     WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
       inspected_commit == c.inspected_commit
         && (workflow_blob_sha as String) == (c.workflow_blob_sha as String)
@@ -226,6 +228,31 @@ test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
   }
 }
 
+test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
+  let same_display_and_observation =
+    (candidate_biome_matrix_selector_mismatch_control.job_display_name as String)
+      == (candidate_biome_test.job_display_name as String)
+      && (candidate_biome_matrix_selector_mismatch_control.job_key as String)
+        == (candidate_biome_test.job_key as String)
+      && candidate_biome_matrix_selector_mismatch_control.matrix_selector
+        != candidate_biome_test.matrix_selector
+      && !observed_job_binds_inspected_leg(
+        job_name: "Test (depot-ubuntu-24.04-arm-16)",
+        job_key: candidate_biome_matrix_selector_mismatch_control.job_key,
+        matrix: candidate_biome_matrix_selector_mismatch_control.matrix_selector,
+      )
+  same_display_and_observation
+    && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
+      RunIdentityMismatched { cause } => match candidate_baseline(c: candidate_biome_matrix_selector_mismatch_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+      WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } => false
+      RunIdentityUnresolved { cause } => false
+    }
+}
+
 test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
   match candidate_openobserve_arm_build.observed {
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => match correctness {
@@ -254,6 +281,7 @@ fn all_claims_hold() -> Bool {
     && witness_effect_disposition_is_derived_from_kind()
     && witness_admitted_same_revision_and_blob_equivalent_hold()
     && witness_blob_mismatch_is_refused_even_when_tests_ran()
+    && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
     && witness_a_green_job_without_tests_is_not_a_baseline()
 }
 
