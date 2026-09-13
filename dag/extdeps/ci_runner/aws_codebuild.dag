@@ -1,0 +1,102 @@
+module extdeps.ci_runner.aws_codebuild
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { gibibyte, hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CatalogSnapshot,
+  CloudOperatorIsTheSeller,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  QuotedBinaryGibibytes,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.aws_codebuild",
+      decl_name: "aws_codebuild_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "aws.amazon.com/codebuild/pricing" },
+    },
+  ],
+}
+
+data aws_codebuild_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data aws_codebuild_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.aws_codebuild",
+  decl_name: "aws_codebuild_catalog_authority",
+)
+
+fn aws_codebuild_arm_shape(label: NonEmptyStr, vcpus: Nat, gib: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: aws_codebuild_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedBinaryGibibytes { value: gibibyte(count: gib) },
+  }
+}
+
+data aws_codebuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    aws_codebuild_arm_shape(label: "reserved.arm.2cpu.4gib", vcpus: 2, gib: 4),
+    aws_codebuild_arm_shape(label: "reserved.arm.4cpu.8gib", vcpus: 4, gib: 8),
+    aws_codebuild_arm_shape(label: "reserved.arm.8cpu.16gib", vcpus: 8, gib: 16),
+    aws_codebuild_arm_shape(label: "reserved.arm.16cpu.32gib", vcpus: 16, gib: 32),
+    aws_codebuild_arm_shape(label: "reserved.arm.32cpu.64gib", vcpus: 32, gib: 64),
+  ],
+}
+
+data aws_codebuild_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Reserved-capacity ARM compute instance type names from the CodeBuild compute-types page (memory as GiB). On-demand ARM_CONTAINER BUILD_GENERAL1_* SKUs and Lambda ARM are on the same page and not modelled here. The page says ARM-based processors and does not name a Graviton generation.",
+}
+
+data aws_codebuild_compute_type_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.aws_codebuild",
+  decl_name: "aws_codebuild_compute_type_surface",
+)
+
+data aws_codebuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.aws_codebuild", decl_name: "aws_codebuild_label_catalog"),
+  provider: aws_codebuild_provider_identity,
+  selection_surface: aws_codebuild_compute_type_surface,
+  snapshot: aws_codebuild_catalog_snapshot,
+  availability: aws_codebuild_runner_catalog,
+)
+
+data aws_codebuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: aws_codebuild_provider_identity,
+  snapshot: aws_codebuild_catalog_snapshot,
+  shapes: aws_codebuild_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CloudOperatorIsTheSeller { vendor_words: "AWS CodeBuild" },
+  list_price: ArmListPriceUnread,
+}

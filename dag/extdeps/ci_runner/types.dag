@@ -3,13 +3,16 @@ module extdeps.ci_runner.types
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
-import extdeps.toolchain.types { Architecture }
+import extdeps.toolchain.types { Aarch64, Architecture }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import std.measure {
   ByteSize,
   Gibibyte,
   Gigabyte,
   HardwareThreadCount,
+  MoneyOnce,
+  MoneyPerMinute,
+  MoneyPerMonth,
   byte_size,
   gibibyte_count,
   gigabyte_count,
@@ -244,6 +247,70 @@ type RunnerLabelCatalog {
 
 fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -> Bool {
   declaration_ref_eq(a: catalog.selection_surface, b: surface)
+}
+
+// WHAT SILICON AN ARM LINUX RUNNER IS BACKED BY, WHEN THE SELLER STATES IT.
+//
+// A family name inferred from a price, a cloud, or a neighbouring x64 page is
+// not a citation. The unread arm is the common one: most CI catalogs publish
+// labels and sizes and withhold the processor. A quoted string is the seller's
+// own words; a catalog DeclarationRef is used only when this repository already
+// carries the named SKU (Ampere Altra Q80-30) and the seller names that SKU.
+type ArmSiliconStanding
+  = ArmSiliconCitedSku { cpu: DeclarationRef }
+  | ArmSiliconCitedWords { quoted_family: NonEmptyStr }
+  | ArmSiliconUnread
+
+// WHO PROVISIONS THE ARM CAPACITY, IN THE SELLER'S OWN WORDS. The wholesale
+// question (a reseller of scarce cloud ARM is a candidate buyer of dedicated
+// Ampere) is a JOIN over these arms, not a second guess about hardware.
+type ArmCapacityChannel
+  = SellerOwnMetalStated
+  | ResoldNamedCloud { vendor_words: NonEmptyStr }
+  | CustomerAccountNamedCloud { vendor_words: NonEmptyStr }
+  | CloudOperatorIsTheSeller { vendor_words: NonEmptyStr }
+  | SoftwareOnCustomerHosts
+  | CapacityChannelUnread
+
+// A PUBLISHED ARM LINUX LIST PRICE, IN THE UNIT THE SELLER PRINTED. Credits
+// stay credits; a monthly seat is not a per-minute rate; a per-job fee is not
+// a vCPU-minute. Absence is unread, never a fabricated USD conversion.
+type ArmListPriceStanding
+  = ArmUsdPerMinute { per_minute: MoneyPerMinute }
+  | ArmUsdPerVcpuMinute { per_vcpu_minute: MoneyPerMinute }
+  | ArmCreditsPerMinute { credits: Nat }
+  | ArmUsdPerMonth { per_month: MoneyPerMonth }
+  | ArmUsdPerJob { per_job: MoneyOnce }
+  | ArmListPriceUnread
+  | ArmSellerNotOffering { cause: NonEmptyStr }
+
+// THE TYPED PER-SELLER ARM LINUX OFFER. The hub names the shape; which sellers
+// inhabit it is an observation in gunbc, never a roster here.
+type SellerArmLinuxOffer {
+  provider: DeclarationRef
+  snapshot: CatalogSnapshot
+  shapes: RunnerCatalogAvailability
+  silicon: ArmSiliconStanding
+  capacity: ArmCapacityChannel
+  list_price: ArmListPriceStanding
+}
+
+fn aarch64_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {
+  filter(runner_shape_rows(availability: availability), r => shape_is_architecture(row: r, architecture: Aarch64))
+}
+
+fn aarch64_row_label_is_cited(row: RunnerShapeRow, cited_labels: List<NonEmptyStr>) -> Bool {
+  fold(cited_labels, init: false, f: (acc, label) => acc || row.label == label)
+}
+
+fn aarch64_rows_missing_cited_label(
+  availability: RunnerCatalogAvailability,
+  cited_labels: List<NonEmptyStr>,
+) -> List<RunnerShapeRow> {
+  filter(
+    aarch64_shape_rows(availability: availability),
+    r => !aarch64_row_label_is_cited(row: r, cited_labels: cited_labels),
+  )
 }
 
 // The projection every provider whose published sizes are visibility-free uses, so that

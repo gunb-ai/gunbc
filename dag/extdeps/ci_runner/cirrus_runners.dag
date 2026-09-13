@@ -1,0 +1,102 @@
+module extdeps.ci_runner.cirrus_runners
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { MoneyPerMonth, hardware_thread_count, money_amount_micro }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
+import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmUsdPerMonth,
+  CatalogSnapshot,
+  DedicatedPhysicalCore,
+  label_catalog_of_shapes,
+  QuotedWithoutBasis,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+  SellerOwnMetalStated,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cirrus-runners.app/setup",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.cirrus_runners",
+      decl_name: "cirrus_runners_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "cirrus-runners.app/pricing" },
+    },
+  ],
+}
+
+data cirrus_runners_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data cirrus_runners_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.cirrus_runners",
+  decl_name: "cirrus_runners_catalog_authority",
+)
+
+fn cirrus_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: cirrus_runners_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: DedicatedPhysicalCore,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data cirrus_runners_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-sm", vcpus: 2, quoted_numeral: 6),
+    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-md", vcpus: 4, quoted_numeral: 12),
+    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-lg", vcpus: 8, quoted_numeral: 24),
+  ],
+}
+
+data cirrus_runners_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Linux Arm resource classes from cirrus-runners.app/setup only (sm/md/lg). macOS, Linux x86 and GPU classes on the same page are excluded as a different market or architecture.",
+}
+
+data cirrus_runners_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.cirrus_runners", decl_name: "cirrus_runners_label_catalog"),
+  provider: cirrus_runners_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: cirrus_runners_catalog_snapshot,
+  availability: cirrus_runners_runner_catalog,
+)
+
+data cirrus_runners_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: cirrus_runners_provider_identity,
+  snapshot: cirrus_runners_catalog_snapshot,
+  shapes: cirrus_runners_runner_catalog,
+  silicon: ArmSiliconCitedWords { quoted_family: "Apple Silicon CPUs" },
+  capacity: SellerOwnMetalStated,
+  list_price: ArmUsdPerMonth {
+    per_month: MoneyPerMonth {
+      amount: money_amount_micro(count: 150000000),
+      currency: Usd,
+    },
+  },
+}

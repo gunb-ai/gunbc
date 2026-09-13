@@ -1,0 +1,75 @@
+module extdeps.ci_runner.runs_on
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CatalogSnapshot,
+  CustomerAccountNamedCloud,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerLabelRow,
+  RunnerShapesUnavailable,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "runs-on.com/runners/linux",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.runs_on",
+      decl_name: "runs_on_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data runs_on_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data runs_on_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.runs_on",
+  decl_name: "runs_on_catalog_authority",
+)
+
+data runs_on_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "runs-on.com/runners/linux (read 2026-09-13) names Flex presets 2cpu-linux-arm64 and 4cpu-linux-arm64 and says most users tailor CPU/memory/family on AWS EC2, without a closed RAM table for those presets.",
+}
+
+data runs_on_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Linux arm64 Flex preset names from runs-on.com/runners/linux. Custom family= labels, Fleet Terraform shapes, and GPU g5g Graviton are not modelled as the hosted size table.",
+}
+
+data runs_on_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
+  catalog: decl_ref(module_path: "extdeps.ci_runner.runs_on", decl_name: "runs_on_label_catalog"),
+  provider: runs_on_provider_identity,
+  selection_surface: github_actions_runs_on_surface,
+  snapshot: runs_on_catalog_snapshot,
+  rows: [
+    RunnerLabelRow { provider: runs_on_provider_identity, label: "2cpu-linux-arm64", architecture: Aarch64 },
+    RunnerLabelRow { provider: runs_on_provider_identity, label: "4cpu-linux-arm64", architecture: Aarch64 },
+  ],
+}
+
+data runs_on_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: runs_on_provider_identity,
+  snapshot: runs_on_catalog_snapshot,
+  shapes: runs_on_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CustomerAccountNamedCloud { vendor_words: "self-host GitHub Actions runners on AWS" },
+  list_price: ArmListPriceUnread,
+}

@@ -2,11 +2,14 @@ module extdeps.ci_runner.blacksmith
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { hardware_thread_count }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
+  ArmSiliconUnread,
+  ArmUsdPerMinute,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -15,6 +18,8 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
+  SellerArmLinuxOffer,
+  SellerOwnMetalStated,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -102,3 +107,21 @@ data blacksmith_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: blacksmith_catalog_snapshot,
   availability: blacksmith_runner_catalog,
 )
+
+// ARM Linux list price live-fetched 2026-09-13 from www.blacksmith.sh/pricing: Ubuntu ARM
+// 2 vCPU is $0.0025/min. Silicon for ARM is unread: the overview names a bare-metal
+// gaming-CPU fleet and an own homogenous pool versus hyperscalers, which is a host
+// statement, not a named ARM SKU.
+data blacksmith_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: blacksmith_provider_identity,
+  snapshot: blacksmith_catalog_snapshot,
+  shapes: blacksmith_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: SellerOwnMetalStated,
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 2500),
+      currency: Usd,
+    },
+  },
+}

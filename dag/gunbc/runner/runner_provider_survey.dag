@@ -19,6 +19,12 @@ import extdeps.ci_runner.github_actions {
   github_actions_runner_catalog, github_actions_label_catalog, github_actions_provider_identity,
 }
 import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog, warpbuild_label_catalog }
+import extdeps.ci_runner.namespace { namespace_runner_catalog, namespace_label_catalog }
+import extdeps.ci_runner.cirrus_runners { cirrus_runners_runner_catalog, cirrus_runners_label_catalog }
+import extdeps.ci_runner.buildkite { buildkite_runner_catalog, buildkite_label_catalog }
+import extdeps.ci_runner.gitlab { gitlab_runner_catalog, gitlab_label_catalog }
+import extdeps.ci_runner.aws_codebuild { aws_codebuild_runner_catalog, aws_codebuild_label_catalog }
+import extdeps.ci_runner.semaphore { semaphore_runner_catalog, semaphore_label_catalog }
 import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes, ubicloud_label_catalog }
 
 // WHICH CI RUNNER PROVIDERS THIS REPOSITORY HAS READ. One roster, and it lives here rather than
@@ -41,6 +47,12 @@ fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
     depot_runner_catalog,
     warpbuild_runner_catalog,
     circleci_runner_catalog,
+    namespace_runner_catalog,
+    cirrus_runners_runner_catalog,
+    buildkite_runner_catalog,
+    gitlab_runner_catalog,
+    aws_codebuild_runner_catalog,
+    semaphore_runner_catalog,
   ]
 }
 
@@ -55,6 +67,12 @@ fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
     depot_label_catalog,
     warpbuild_label_catalog,
     circleci_label_catalog,
+    namespace_label_catalog,
+    cirrus_runners_label_catalog,
+    buildkite_label_catalog,
+    gitlab_label_catalog,
+    aws_codebuild_label_catalog,
+    semaphore_label_catalog,
     github_hosted_standard_label_catalog,
   ]
 }
