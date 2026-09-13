@@ -88,9 +88,14 @@ fn join_host_slot_realizations(
       }
     } else {
       match reads.first() {
-        SlotRealizationUnreadable { cause: why } =>
+        Absent =>
+          HostCancellationUnreadable {
+            host: host,
+            cause: "committed runner-slot population was empty; refusing a host standing with no slots" as NonEmptyStr,
+          }
+        Present { value: SlotRealizationUnreadable { cause: why } } =>
           HostCancellationUnreadable { host: host, cause: why }
-        SlotRealizationObserved { realization: first } =>
+        Present { value: SlotRealizationObserved { realization: first } } =>
           if any(reads, r => match r {
             SlotRealizationObserved { realization: other } => !realizations_agree(a: first, b: other)
             SlotRealizationUnreadable { cause: _ } => true
