@@ -1,7 +1,7 @@
 ==== capture.sh (sha256 c9ab0c0b5625d734896fe57f699d539467ae8876952f1b8c404eef0b5a9a6b73)
 #!/bin/bash
 cd ~/mtc1-32dimm
-B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default>"
 $B sol deactivate >/dev/null 2>&1
 sleep 2
 setsid $B sol activate > 04-sol-post.log 2>&1 &
@@ -19,7 +19,7 @@ wc -c 04-sol-post.log >> 04-meta.txt
 ==== acwatch.sh (sha256 c9c2a5ac2a3327cc1be9072a1a3f991d982a2d5a831bd64ff3e585cac4e1f3ca)
 #!/bin/bash
 cd ~/mtc1-32dimm
-B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default>"
 M=10-ac-meta.txt
 ts(){ date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 echo "$(ts) watcher armed; waiting for BMC to GO DOWN first" > $M
@@ -53,7 +53,7 @@ $B sel elist 2>&1 | tail -25 > 12-ac-sel.txt
 ==== probe.sh (sha256 1b14dbd4ea119fb998e03c34c65392c1e1684e4bfb959446b8d28969c1a42e63)
 #!/bin/bash
 cd /home/briansrls/mtc1-32dimm
-B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default>"
 for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
 sleep 1
 $B sol deactivate >/dev/null 2>&1
@@ -64,7 +64,7 @@ echo "done rc=$?" >> 22-sol-probe.log
 ==== boot.sh (sha256 ee4064815741c788e7da10f0d704def14c4280fa66fc7c3eff45d0f169195cde)
 #!/bin/bash
 cd /home/briansrls/mtc1-32dimm
-B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default>"
 for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
 sleep 1
 $B sol deactivate >/dev/null 2>&1
@@ -83,7 +83,7 @@ wc -c 31-boot-sol.log >> 31-meta.txt
 ==== mon.sh (sha256 7ad105818e2ab251e1df874ba58fa8965049eaff5b9b811d1241d012cf510970)
 #!/bin/bash
 cd /home/briansrls/mtc1-32dimm
-B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin"
+B="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default>"
 for p in $(pgrep -f "sol activate"); do kill -9 $p 2>/dev/null; done
 sleep 1
 $B sol deactivate >/dev/null 2>&1

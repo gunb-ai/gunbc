@@ -1,7 +1,7 @@
 GUNBC-SEL-READ mtcollins1 host_utc=2026-09-12T03:55:50Z
-argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin sel time get
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> sel time get
 09/11/2026 11:55:50 PM UTC
-argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin sel list
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> sel list
    1 | 02/18/2022 | 10:27:56 AM UTC | Event Logging Disabled #0xd6 | Log area reset/cleared | Asserted
    2 | 02/18/2022 | 10:29:51 AM UTC | System Boot Initiated #0xd5 | System Restart | Asserted
    3 | 02/18/2022 | 10:31:00 AM UTC | System Firmwares #0xde | System boot initiated | Asserted
