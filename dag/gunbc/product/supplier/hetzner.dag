@@ -190,13 +190,19 @@ fn hetzner_helsinki_data_paths() -> ProviderDataPathClosure {
     telemetry: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation"),
       consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
         decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
         decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
       ],
     },
     control_plane: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+      ],
     },
     support_access: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
@@ -241,13 +247,19 @@ fn hetzner_nuremberg_data_paths() -> ProviderDataPathClosure {
     telemetry: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation"),
       consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
         decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
         decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
       ],
     },
     control_plane: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation"),
-      consulted: [],
+      consulted: [
+        decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+      ],
     },
     support_access: hetzner_nuremberg_support_path(),
     administrative_access: ProviderPathUnread {
