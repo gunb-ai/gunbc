@@ -2774,6 +2774,26 @@ pub fn run_required_wave_admission(
             })
         }
     };
+    run_wave_admission_between(&workspace, &base, &head, head_index)
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules.
+pub fn run_wave_admission_between(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<WaveAdmissionOutcome, String> {
+    let base = base.to_string();
+    let head = head.to_string();
+    let workspace = workspace.to_path_buf();
     if base == head {
         if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
             return Ok(WaveAdmissionOutcome::NoSubject { head });
@@ -3164,27 +3184,40 @@ pub fn blob_id_at(
     }
 }
 
-/// Materialize one revision's `dag/` tree under `dest`, in a single git invocation.
+/// Materialize one revision's ENVIRONMENT CLOSURE under `dest`, in a single git invocation.
 ///
-/// `git archive | tar -x` rather than a read per file: the cost of acquiring a revision's corpus
-/// must not scale with the corpus, and section 6's bare-minimum-cost rule does not wait for the
-/// realized n to hurt. `dest` is the caller's to create and remove.
-fn materialize_dag_tree_at(
+/// ONLY THE CLOSURE, NEVER THE WHOLE TREE, and the reason is the class this loader exists to
+/// repair, met one level down. The module index that resolves the environment parses every `.dag`
+/// file it is shown with THIS binary's grammar. Materializing the whole `dag/` tree therefore
+/// parsed every base-side file under the head's grammar in order to learn the base's grammar --
+/// and a base file written in the base's grammar refused inside the loader before the environment
+/// was ever evaluated. The grammar-differs witness caught exactly that. So the index is shown only
+/// the files the environment's declaring closure consists of.
+///
+/// THE HONEST BOUNDARY THIS DRAWS: the loader can read a base whose grammar differs from the head's
+/// so long as the base's ENVIRONMENT CLOSURE is itself readable under the head's grammar. A change
+/// that alters the grammar AND uses the altered grammar inside `std.syntax`'s own closure is outside
+/// any head-built loader's reach -- the same bootstrap boundary the compiler itself has -- and it
+/// refuses as `ClosureNotEvaluable`, never answering under the wrong rules.
+///
+/// `git archive | tar -x` over the named paths rather than a read per file: acquisition cost must
+/// not scale with the corpus (section 6, bare minimum cost). `dest` is the caller's to remove.
+fn materialize_environment_closure_at(
     repo: &std::path::Path,
     revision: &str,
     dest: &std::path::Path,
+    closure_paths: &BTreeSet<String>,
 ) -> Result<(), EnvironmentLoadRefusal> {
     std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
         revision: revision.to_string(),
         step: "create materialization directory".to_string(),
         cause: e.to_string(),
     })?;
-    let archive = git_capture(
-        repo,
-        revision,
-        "archive",
-        &["archive", "--format=tar", revision, DAG_SOURCE_ROOT],
-    )?;
+    let mut args: Vec<&str> = vec!["archive", "--format=tar", revision];
+    for path in closure_paths {
+        args.push(path.as_str());
+    }
+    let archive = git_capture(repo, revision, "archive", &args)?;
     let tar_path = dest.join("dag-tree.tar");
     std::fs::write(&tar_path, &archive).map_err(|e| {
         EnvironmentLoadRefusal::RevisionUnreadable {
@@ -3321,7 +3354,14 @@ pub fn load_parse_environment_at(
         super::workspace_root()
             .join("target")
             .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
-    let outcome = materialize_dag_tree_at(repo, revision, &dest)
+    // The closure is asked of the resolver at the LIVE tree, then read from `repo` at `revision`.
+    // If the base's closure has a member the head's does not, the materialized set is incomplete
+    // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
+    let closure = match environment_closure_paths() {
+        Ok(paths) => paths,
+        Err(e) => return Err(e),
+    };
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, &closure)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
