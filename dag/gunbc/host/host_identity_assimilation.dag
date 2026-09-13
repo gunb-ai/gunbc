@@ -252,13 +252,13 @@ fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> P
   }
 }
 
-func host_identity_assimilate_srv1_wet() -> ProcessExit {
+fn host_identity_assimilate_srv1_wet() -> ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   let target = host_identity_assimilation_target_srv1(transport: srv1_host_identity_ssh_transport())
   host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))
 }
 
-func host_identity_assimilate_srv2_wet() -> ProcessExit {
+fn host_identity_assimilate_srv2_wet() -> ProcessExit {
   let probed_at = host_identity_observed_probed_at()
   let target = host_identity_assimilation_target_srv2(transport: srv2_host_identity_ssh_transport())
   host_identity_assimilate_exit(receipt: host_identity_converge_from_base(target: target, probed_at: probed_at))

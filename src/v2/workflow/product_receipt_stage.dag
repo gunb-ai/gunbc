@@ -259,7 +259,7 @@ type ProductReceiptCandidate {
   ledger: B4EvidenceOutcome
 }
 
-func product_receipt_candidate(
+fn product_receipt_candidate(
   txn: String,
   candidate_dir: String,
   population_digest: ArtifactIdentity
@@ -290,7 +290,7 @@ func product_receipt_candidate(
 // re-running the emitter would be a second observation of a second run, and
 // the whole argument of this lane is that a boundary's evidence has to be the
 // artifact the boundary actually produced.
-func product_receipt_candidate_refused(
+fn product_receipt_candidate_refused(
   txn: String,
   ds: NonEmptyDiagnostics,
   population_digest: ArtifactIdentity
@@ -315,7 +315,7 @@ func product_receipt_candidate_refused(
   }
 }
 
-func product_receipt_candidate_materialize(
+fn product_receipt_candidate_materialize(
   candidate_dir: String,
   population_digest: ArtifactIdentity,
   emitted_source: String
@@ -378,7 +378,7 @@ fn product_receipt_tail_not_exercised() -> ProductReceiptTail {
   }
 }
 
-func product_receipt_cargo_tail(
+fn product_receipt_cargo_tail(
   root: String,
   candidate_dir: String,
   b5: BoundaryObservation,
@@ -431,7 +431,7 @@ func product_receipt_cargo_tail(
   }
 }
 
-func product_receipt_tail(
+fn product_receipt_tail(
   root: String,
   entry: String,
   candidate_dir: String,
@@ -489,7 +489,7 @@ func product_receipt_tail(
   }
 }
 
-func run_product_receipt_stage(txn: String, manifest_identity: String, entry: String) -> ProcessExit {
+fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: String) -> ProcessExit {
   let manifest_path = concat(txn, product_receipt_stage_manifest_rel)
   let candidate_dir = concat(txn, product_receipt_stage_candidate_rel)
   let root = git.Inspect.Toplevel()

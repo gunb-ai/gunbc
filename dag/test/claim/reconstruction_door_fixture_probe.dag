@@ -25,27 +25,27 @@ service DoorProbe {
 }
 
 // Case 1 (positive control): recorded response is untampered.
-func witness_id_equals_positive_control() -> Bool {
+fn witness_id_equals_positive_control() -> Bool {
   DoorProbe.Fetch().id == "positive-control"
 }
 
 // Case 2 (predicate bypass, no `__type` tamper): fixture's `id.value` field
 // is overwritten to "" before hermetic replay, violating NonEmptyStr's
 // `non_empty` predicate.
-func witness_id_equals_empty() -> Bool {
+fn witness_id_equals_empty() -> Bool {
   DoorProbe.Fetch().id == ""
 }
 
 // Case 3 (undeclared-type fabrication): fixture's `response.__type` is
 // overwritten to a name with no corresponding declaration anywhere in the
 // source roots, `id.value` overwritten to "whatever-value".
-func witness_id_equals_whatever() -> Bool {
+fn witness_id_equals_whatever() -> Bool {
   DoorProbe.Fetch().id == "whatever-value"
 }
 
 // Case 4 (Variant-arm fabrication): fixture's `response` is replaced wholesale
 // with a `__tag: "Variant"` shape naming a fabricated `__type`/`__variant`
 // pair, carrying an `id` field of "variant-value".
-func witness_id_equals_variant_value() -> Bool {
+fn witness_id_equals_variant_value() -> Bool {
   DoorProbe.Fetch().id == "variant-value"
 }
