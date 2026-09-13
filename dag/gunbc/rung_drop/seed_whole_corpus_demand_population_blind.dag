@@ -1,7 +1,7 @@
 module gunbc.rung_drop.seed_whole_corpus_demand_population_blind
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-13 (session nimble-badger-98, direction vivid-bee-814 / fierce-lark-661). The
@@ -25,6 +25,15 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // src/v1 landing stales every closure receipt taken before it, and the seed's landing is slotted by
 // v1 seed maintenance between receipt re-takes.
 
+// STILL STANDING AFTER THE SEED LANDED THE JOIN, AND WHY (review 65569 on gunbc#11265). The seed now
+// admits on the root's own row: it performs the join, refuses an unmeasured root with the recipe, and
+// reads the rows as data from the repository's generated projection, which the generated-artifact drift
+// gate holds to the .dag rows -- that pin EXECUTES, on every merge candidate, structurally. What does
+// NOT yet execute on the acceptance path is the trigger's other half: the seed's discriminating red and
+// positive control are v1_compiler.memory_governor unit tests, and cargo unit tests run on no CI step
+// (gunbc.rung_drop rust_unit_tests_off_the_merge_path). Retiring this drop on evidence that lives inside
+// another standing drop's population would report a rung the executed evidence does not establish, so it
+// stays Standing until that half executes on the acceptance path.
 data seed_whole_corpus_demand_population_blind_population: List<String> = [
   "v1_compiler.memory_governor whole_corpus_compile_admission — every whole-root (PrimaryRoot) compile admitted or refused by v1_compiler.cli_run compile_emission",
   "test.claim.seed_mirror_constant_lens_witness_test seed_mirror_constant_rows — the DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES row, whose authority_symbol still spells the deleted whole_corpus_compile_measured_peak_demand",
@@ -37,9 +46,7 @@ data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
 
   declared: "2026-09-13",
 
-  standing: Retired {
-    trigger_fired: "The seed admits on the root's own row: v1_compiler.cli_run compile_emission builds the root identity from the declared --repository, the primary root and the ordered pools, reads the repository's generated projection (gunbc.whole_corpus_compile_demand_projection) from --measured-root-demands, refuses an unmeasured root or another repository's projection before indexing, and compares the budget only to that root's peak; v1_compiler.memory_governor tests execute the unmeasured-root red beside the at-peak and one-byte-below controls against the committed projection. The bare seed constant and its lens row are deleted, not re-pinned: the pinning check is the seed tests reading the committed projection, and the projection is held to the rows by the generated-artifact drift gate. THE TRIGGER TEXT WAS REWORDED IN THE SAME CHANGE THAT RETIRES IT, AND SAYS SO: as declared with the model it named the pinning check as the seed-mirror lens joining the seed row to whole_corpus_compile_public_root_demand, which assumed the seed would keep a compiled-in row. The direction ruling on gunbc#11265 (the seed reads the repository projection; the constant and lens row are deleted) removed that artifact; the capability the clause stood for -- an executing check pinning the seed to the row -- is kept and is what fired" as NonEmptyStr,
-  },
+  standing: Standing,
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
