@@ -348,18 +348,39 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
 
 // ── THE CONTRACT'S PRODUCTION INSTANCE, NOT ONLY ITS FIXTURES ──────────────────────────────
 //
-// The roster carries four declared removals: this lane's own witnesses, renamed or deleted between
-// the roster cut and the landing head. They were found by the identity join `G \ L` over the frozen
-// roster and floor run 34733276548's measured population, not by reading the file.
+// THE CONTRACT HAS TWO HALVES AND THEY ARE DIFFERENT QUESTIONS. This witness covers ONE of them,
+// and says which, because a consumer that checked one and reported "the contract holds" would be
+// the vacuous pass the contract exists to prevent:
 //
-// THIS ASSERTS THE JOIN DIRECTION THAT MATTERS: every declared removal names an identity that IS in
-// the roster. A disposition naming something the roster never held would be a removal of nothing —
-// it would satisfy `roster_change_verdict` while retiring no row, which is the contract passing
-// vacuously. The complement direction (a roster row absent from the tree with no disposition) is
-// what `a_removal_without_a_typed_disposition_refuses` covers at fixture scale.
+//   (a) EVERY DECLARED REMOVAL NAMES A REAL ROSTER MEMBER -- what this witness asserts. A
+//       disposition naming something the roster never held retires nothing while satisfying
+//       `roster_change_verdict`, so the verdict would pass over a list of fictions.
+//
+//   (b) EVERY REMOVED MEMBER HAS A VALID DISPOSITION -- the complement, and NOT checkable here.
+//       It quantifies over the LIVE MEASURED POPULATION, which is a run artifact and not a
+//       declaration: no `.dag` fold can see which roster rows have no live identity. It is
+//       supplied by the identity join `G \ L` over a floor run's own measured population, and
+//       `first_undisposed_removal` is the fold that decides it once a caller can hand it both
+//       sides. `a_removal_without_a_typed_disposition_refuses` exercises that arm at fixture
+//       scale, where both sides ARE declarations.
+//
+// NO COUNT STANDS IN FOR EITHER HALF. An earlier revision of this witness asserted
+// `removal_count(...) == 4` beside (a), which is exactly the substitution DESIGN section 5
+// forbids -- "Completeness is an identity join, not a count equality". Four is not a property of
+// the contract; it is how many rows happened to leave in this change, and the assertion would go
+// red on a fifth honest removal while passing over four wrong ones. What replaces it is a
+// NON-VACUITY check: the list is non-empty, so (a) is asserted over a real population rather than
+// being trivially true over nothing.
 test fn every_declared_removal_names_a_row_the_roster_actually_holds() -> Bool {
-  all_removals_name_roster_members(removals: floor_grandfathered_removals)
-    && (removal_count(removals: floor_grandfathered_removals) == 4)
+  removals_are_present(removals: floor_grandfathered_removals)
+    && all_removals_name_roster_members(removals: floor_grandfathered_removals)
+}
+
+fn removals_are_present(removals: List<GrandfatheredRemoval>) -> Bool {
+  match removals {
+    Empty {} => false
+    Cons { head: _, tail: _ } => true
+  }
 }
 
 fn all_removals_name_roster_members(removals: List<GrandfatheredRemoval>) -> Bool {
@@ -371,12 +392,5 @@ fn all_removals_name_roster_members(removals: List<GrandfatheredRemoval>) -> Boo
       } else {
         false
       }
-  }
-}
-
-fn removal_count(removals: List<GrandfatheredRemoval>) -> Int {
-  match removals {
-    Empty {} => 0
-    Cons { head: _, tail: t } => int_add(a: 1, b: removal_count(removals: t))
   }
 }
