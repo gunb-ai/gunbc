@@ -169,7 +169,7 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
     })
     && {
       let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
-        ownership: FollowerReadOnly { session: t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
         local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
       match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
         ObservationRefused { cause } => contains(cause as String, "FollowerReadOnly")
