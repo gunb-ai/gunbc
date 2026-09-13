@@ -1,0 +1,90 @@
+module extdeps.github.branches
+
+import std.types { Bool, String, Secret }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome, RestOk }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/branches/branches#get-a-branch"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.branches",
+      decl_name: "github.Branches",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A BRANCH IS A MOVING NAME AND THIS READ IS WHAT PINS IT. The response's commit.sha is the head at
+// the instant of the read; the name it was read under is not a revision anyone can return to.
+//
+// `sha` IS THE WIRE STRING, NOT A CommitSha, and deliberately so: CommitSha is an unvalidated String
+// alias on this tree, so declaring the field that way would assert an exactness nothing checked.
+// A consumer that needs an exact commit runs std.types.commit_sha_text_holds over it and owns the
+// refusal when it does not hold.
+type BranchCommit {
+  sha: String
+}
+
+type BranchWithProtection {
+  name: String
+  commit: BranchCommit
+  protected: Bool
+}
+
+data hermetic_branch: BranchWithProtection = BranchWithProtection {
+  name: "main",
+  commit: BranchCommit { sha: "745ff71c706f6a55c7fa1cda660860925e0b2739" },
+  protected: true,
+}
+
+data hermetic_branch_outcome: RestOutcome = RestOk
+
+service github.Branches {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation Get {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      branch: String
+    }
+    output {
+      branch: BranchWithProtection
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/branches/\{branch\}"
+    }
+    response {
+      200 => BranchWithProtection
+      301 => GitHubErrorShape
+      404 => GitHubErrorShape
+    }
+    mock_response {
+      200 => {
+        branch: hermetic_branch,
+        outcome: hermetic_branch_outcome
+      } "hermetic decoded-200 shape for the get-a-branch read: the real 2026-09-13 reading of llvm/llvm-project main. The head is whatever main pointed at on that day and is not a revision any other fixture was read at"
+    }
+  }
+}

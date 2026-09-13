@@ -18,6 +18,8 @@ import extdeps.github.repository_contents {
   contents_api_inline_ceiling, contents_api_supported_ceiling,
 }
 import std.measure { byte_size_count }
+import extdeps.github.repositories { FullRepository }
+import extdeps.github.branches { BranchWithProtection }
 
 // THE READ HALF OF A PUBLIC CI-WORKFLOW SCAN, AND NOTHING ELSE.
 //
@@ -306,6 +308,192 @@ fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonica
     }
     WorkflowSourceRefused { performance } => HitReadRefused {
       repository_full_name: hit.repository.full_name, path: hit.path, performance: performance,
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// A HIT NAMES NO REVISION, SO THE READ ABOVE CANNOT BE REACHED FROM ONE WITHOUT CHOOSING ONE.
+// perform_workflow_source_read requires an exact ref and canonicalize_hit takes the identity's ref
+// from that request, so neither acquires a commit for the caller. The chain below is the only route
+// from a hint to a file read that names one: the repository's default branch, that branch's head at
+// the instant of the read, and the file at exactly that head.
+//
+// EACH LINK IS A SEPARATE OBSERVATION WITH ITS OWN REFUSAL, AND THE ARMS SPLIT BY REPAIR. A refused
+// repository read and a refused branch read carry their performances, because a 404 on a deleted
+// repository and a 403 rate limit have opposite remedies. A repository that answered about a
+// different subject is a join refusal, not a read refusal. A head that is not a 40-character
+// commit sha is refused BEFORE any file is fetched at it, since fetching at a moving name is the
+// thing the chain exists to prevent.
+// -------------------------------------------------------------------------------------
+
+// THE ADDRESS A HIT IMPLIES. CodeSearchRepository carries name and full_name but no owner, and the
+// REST paths need the owner as its own segment. It is recovered from full_name only when full_name
+// is exactly owner/name for the hit's own name - anything else is a hit whose two naming fields
+// disagree, and choosing one of them would be a guess about which subject was meant.
+type HitRepositoryAddress
+  = HitRepositoryAddressed { owner: String, repo: String }
+  | HitRepositoryUnaddressable { full_name: String, name: String, cause: NonEmptyStr }
+
+fn hit_repository_address(hit: CodeSearchHit) -> HitRepositoryAddress {
+  let parts = split(s: hit.repository.full_name, delimiter: "/")
+  let unaddressable = HitRepositoryUnaddressable {
+    full_name: hit.repository.full_name,
+    name: hit.repository.name,
+    cause: join(["the hit's repository full_name '", hit.repository.full_name,
+      "' is not exactly owner/name for its name '", hit.repository.name,
+      "', so no owner segment can be recovered without choosing between the two fields"], "") as NonEmptyStr,
+  }
+  if count(parts) != 2 {
+    unaddressable
+  } else {
+    match parts.first() {
+      Absent => unaddressable
+      Present { value: owner } =>
+        match parts.skip(n: 1).first() {
+          Absent => unaddressable
+          Present { value: repo } =>
+            if owner == "" || repo != hit.repository.name {
+              unaddressable
+            } else {
+              HitRepositoryAddressed { owner: owner, repo: repo }
+            }
+        }
+    }
+  }
+}
+
+// WHICH SUBJECT THE REPOSITORY READ DISAGREED ABOUT. The id is the join key and the name is not:
+// two different repositories can hold one full_name across a delete-and-recreate, so a matching
+// name with a different id is a different repository. The converse - same id, different name - is
+// the SAME repository renamed or transferred since the index saw it; it is still refused, because
+// canonicalize_hit and the identity it mints both key on the hit's full_name, and minting an
+// identity under a name the repository no longer answers to would record a stale subject.
+type RepositoryObservationDisagreement
+  = RepositoryIdDiffersFromHit { hit_id: Int, observed_id: Int, full_name: String }
+  | RepositoryRenamedSinceIndex { id: Int, hit_full_name: String, observed_full_name: String }
+
+type RepositoryResolution
+  = RepositoryResolved { repository: FullRepository }
+  | RepositoryReadRefused { performance: RestExchangePerformance }
+  | RepositoryDisagreesWithHit { disagreement: RepositoryObservationDisagreement }
+
+fn classify_repository_observation(
+  hit: CodeSearchHit,
+  performance: RestExchangePerformance,
+  repository: FullRepository,
+) -> RepositoryResolution {
+  match performance {
+    RestExchangeSucceeded =>
+      if repository.id != hit.repository.id {
+        RepositoryDisagreesWithHit {
+          disagreement: RepositoryIdDiffersFromHit {
+            hit_id: hit.repository.id, observed_id: repository.id, full_name: repository.full_name,
+          },
+        }
+      } else if repository.full_name != hit.repository.full_name {
+        RepositoryDisagreesWithHit {
+          disagreement: RepositoryRenamedSinceIndex {
+            id: repository.id,
+            hit_full_name: hit.repository.full_name,
+            observed_full_name: repository.full_name,
+          },
+        }
+      } else {
+        RepositoryResolved { repository: repository }
+      }
+    other => RepositoryReadRefused { performance: other }
+  }
+}
+
+type BranchHeadResolution
+  = BranchHeadResolved { head: CommitSha }
+  | BranchReadRefused { performance: RestExchangePerformance }
+  | BranchHeadNotExact { observed: String, cause: NonEmptyStr }
+
+fn classify_branch_head(
+  performance: RestExchangePerformance,
+  branch: BranchWithProtection,
+) -> BranchHeadResolution {
+  match performance {
+    RestExchangeSucceeded =>
+      if commit_sha_text_holds(head: branch.commit.sha) {
+        BranchHeadResolved { head: branch.commit.sha as CommitSha }
+      } else {
+        BranchHeadNotExact {
+          observed: branch.commit.sha,
+          cause: join(["the branch '", branch.name, "' reported head '", branch.commit.sha,
+            "', which is not a 40-character lowercase hex commit sha; no file is read at it, because a read at a ref that is not a commit cannot be returned to"], "") as NonEmptyStr,
+        }
+      }
+    other => BranchReadRefused { performance: other }
+  }
+}
+
+// THE OUTCOME OF THE WHOLE CHAIN. Every arm before the file read names the link that stopped it; the
+// one arm that reached the file read carries canonicalize_hit's own answer rather than re-deriving
+// its arms here, so a read that came back unusable or about another file is refused by the one
+// function that owns that decision.
+//
+// THE HIT TRAVELS BESIDE THE IDENTITY AND NEVER INSIDE IT. hit.sha is the blob GitHub's index held
+// at some unrecorded revision; identity.blob_sha is the blob actually read at the resolved head. The
+// index lags the branch, so the two need not agree and disagreement is not a refusal - but they are
+// different facts, and the discovery provenance is kept so a consumer can tell a file that changed
+// since indexing from one that did not.
+type HitRevisionResolution
+  = HitReadAtResolvedRevision {
+      hit: CodeSearchHit,
+      repository: FullRepository,
+      head: CommitSha,
+      canonicalization: HitCanonicalization,
+    }
+  | HitRevisionUnaddressable { hit: CodeSearchHit, address: HitRepositoryAddress }
+  | HitRepositoryReadRefused { hit: CodeSearchHit, performance: RestExchangePerformance }
+  | HitRepositoryDisagrees { hit: CodeSearchHit, disagreement: RepositoryObservationDisagreement }
+  | HitBranchReadRefused { hit: CodeSearchHit, repository: FullRepository, performance: RestExchangePerformance }
+  | HitBranchHeadNotExact { hit: CodeSearchHit, repository: FullRepository, observed: String, cause: NonEmptyStr }
+
+func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> HitRevisionResolution uses net: Network {
+  match hit_repository_address(hit: hit) {
+    HitRepositoryUnaddressable { full_name, name, cause } =>
+      HitRevisionUnaddressable {
+        hit: hit,
+        address: HitRepositoryUnaddressable { full_name: full_name, name: name, cause: cause },
+      }
+    HitRepositoryAddressed { owner, repo } => {
+      let got_repository = github.Repositories.Get(auth_token: auth_token, owner: owner, repo: repo)
+      match classify_repository_observation(
+        hit: hit,
+        performance: classify_rest_outcome(standing: RestReadExchange { rest: got_repository.outcome }),
+        repository: got_repository.repository,
+      ) {
+        RepositoryReadRefused { performance } => HitRepositoryReadRefused { hit: hit, performance: performance }
+        RepositoryDisagreesWithHit { disagreement } => HitRepositoryDisagrees { hit: hit, disagreement: disagreement }
+        RepositoryResolved { repository } => {
+          let got_branch = github.Branches.Get(
+            auth_token: auth_token, owner: owner, repo: repo, branch: repository.default_branch)
+          match classify_branch_head(
+            performance: classify_rest_outcome(standing: RestReadExchange { rest: got_branch.outcome }),
+            branch: got_branch.branch,
+          ) {
+            BranchReadRefused { performance } =>
+              HitBranchReadRefused { hit: hit, repository: repository, performance: performance }
+            BranchHeadNotExact { observed, cause } =>
+              HitBranchHeadNotExact { hit: hit, repository: repository, observed: observed, cause: cause }
+            BranchHeadResolved { head } =>
+              HitReadAtResolvedRevision {
+                hit: hit,
+                repository: repository,
+                head: head,
+                canonicalization: canonicalize_hit(
+                  hit: hit,
+                  read: perform_workflow_source_read(
+                    auth_token: auth_token, owner: owner, repo: repo, path: hit.path, ref: head),
+                ),
+              }
+          }
+        }
+      }
     }
   }
 }

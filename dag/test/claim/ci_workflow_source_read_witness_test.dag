@@ -23,11 +23,21 @@ import gunbc.ci_workflow_source_read {
   SubjectDisagreement, RepositoryDiffersFromHit, RequestedPathDiffersFromHit, ResponsePathDiffersFromRequest,
   WorkflowSourceRequest, request_repository_full_name,
   WorkflowSourceIdentity,
+  HitRepositoryAddress, HitRepositoryAddressed, HitRepositoryUnaddressable, hit_repository_address,
+  RepositoryObservationDisagreement, RepositoryIdDiffersFromHit, RepositoryRenamedSinceIndex,
+  RepositoryResolution, RepositoryResolved, RepositoryReadRefused, RepositoryDisagreesWithHit,
+  classify_repository_observation,
+  BranchHeadResolution, BranchHeadResolved, BranchReadRefused, BranchHeadNotExact, classify_branch_head,
+  HitRevisionResolution, HitReadAtResolvedRevision, HitRevisionUnaddressable, HitRepositoryReadRefused,
+  HitRepositoryDisagrees, HitBranchReadRefused, HitBranchHeadNotExact,
+  perform_hit_revision_resolution,
 }
+import extdeps.github.repositories { FullRepository, hermetic_full_repository }
+import extdeps.github.branches { BranchWithProtection, BranchCommit, hermetic_branch }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused,
   classify_rest_outcome, RestReadExchange,
-  RestExchangeStatusRefused, RestExchangeUnreached,
+  RestExchangeStatusRefused, RestExchangeUnreached, RestExchangeSucceeded, RestExchangePerformance,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -479,4 +489,163 @@ test fn a_branch_name_is_refused_as_a_ref() -> Bool {
     other => false
   }
   branch_refused && sha_admitted
+}
+
+// -------------------------------------------------------------------------------------
+// FROM A HIT TO A REVISION. Every link of perform_hit_revision_resolution is a total classifier the
+// effectful func calls, so these claims drive the arms the production chain takes. Each refusal is
+// paired with the admitting case over the same function, so a classifier that refused everything
+// would fail the control and one that admitted everything would fail the refusal.
+// -------------------------------------------------------------------------------------
+
+data succeeded: RestExchangePerformance = RestExchangeSucceeded
+
+fn status_refused(status: Int) -> RestExchangePerformance {
+  classify_rest_outcome(standing: RestReadExchange { rest: RestStatusRefused { status: status, body: "refused" } })
+}
+
+fn performance_status(p: RestExchangePerformance) -> Int {
+  match p {
+    RestExchangeStatusRefused { status, body } => status
+    other => 0
+  }
+}
+
+test fn a_hit_is_addressed_only_when_its_full_name_is_owner_slash_its_own_name() -> Bool {
+  let addressed = match hit_repository_address(hit: fixture_hit) {
+    HitRepositoryAddressed { owner, repo } => owner == "llvm" && repo == "llvm-project"
+    HitRepositoryUnaddressable { full_name, name, cause } => false
+  }
+  let disagreeing_hit = CodeSearchHit {
+    name: fixture_hit.name, path: fixture_hit.path, sha: fixture_hit.sha,
+    repository: CodeSearchRepository {
+      id: 75821432, name: "clang", full_name: "llvm/llvm-project", private: false, fork: false,
+    },
+  }
+  let refused = match hit_repository_address(hit: disagreeing_hit) {
+    HitRepositoryUnaddressable { full_name, name, cause } => name == "clang"
+    HitRepositoryAddressed { owner, repo } => false
+  }
+  addressed && refused
+}
+
+// THE ID IS THE JOIN KEY. The repository below carries the hit's exact full_name and a different id -
+// a delete-and-recreate under one name - so a join that compared names would admit it.
+test fn a_repository_with_the_hits_name_and_another_id_is_not_the_hits_repository() -> Bool {
+  let recreated = FullRepository {
+    id: 99999999, name: "llvm-project", full_name: "llvm/llvm-project",
+    private: false, fork: false, default_branch: "main",
+  }
+  let refused = match classify_repository_observation(hit: fixture_hit, performance: succeeded, repository: recreated) {
+    RepositoryDisagreesWithHit { disagreement } =>
+      match disagreement {
+        RepositoryIdDiffersFromHit { hit_id, observed_id, full_name } =>
+          hit_id == 75821432 && observed_id == 99999999
+        RepositoryRenamedSinceIndex { id, hit_full_name, observed_full_name } => false
+      }
+    RepositoryResolved { repository } => false
+    RepositoryReadRefused { performance } => false
+  }
+  let admitted = match classify_repository_observation(hit: fixture_hit, performance: succeeded, repository: hermetic_full_repository) {
+    RepositoryResolved { repository } => repository.id == fixture_hit.repository.id && repository.default_branch == "main"
+    other => false
+  }
+  refused && admitted
+}
+
+test fn the_same_repository_under_a_new_name_is_refused_as_renamed() -> Bool {
+  let renamed = FullRepository {
+    id: 75821432, name: "llvm-project", full_name: "llvm-archive/llvm-project",
+    private: false, fork: false, default_branch: "main",
+  }
+  match classify_repository_observation(hit: fixture_hit, performance: succeeded, repository: renamed) {
+    RepositoryDisagreesWithHit { disagreement } =>
+      match disagreement {
+        RepositoryRenamedSinceIndex { id, hit_full_name, observed_full_name } =>
+          observed_full_name == "llvm-archive/llvm-project" && hit_full_name == "llvm/llvm-project"
+        RepositoryIdDiffersFromHit { hit_id, observed_id, full_name } => false
+      }
+    RepositoryResolved { repository } => false
+    RepositoryReadRefused { performance } => false
+  }
+}
+
+// A REFUSED REPOSITORY READ KEEPS ITS STATUS, and the decoded body beside it is never consulted: the
+// fixture repository passed alongside the 404 is the hit's own, so a classifier that looked at the
+// body instead of the performance would resolve it.
+test fn a_refused_repository_read_carries_its_status_and_ignores_the_body() -> Bool {
+  match classify_repository_observation(hit: fixture_hit, performance: status_refused(status: 404), repository: hermetic_full_repository) {
+    RepositoryReadRefused { performance } => performance_status(p: performance) == 404
+    RepositoryResolved { repository } => false
+    RepositoryDisagreesWithHit { disagreement } => false
+  }
+}
+
+test fn a_branch_head_is_admitted_only_as_an_exact_commit() -> Bool {
+  let moving = BranchWithProtection { name: "main", commit: BranchCommit { sha: "main" }, protected: true }
+  let refused = match classify_branch_head(performance: succeeded, branch: moving) {
+    BranchHeadNotExact { observed, cause } => observed == "main"
+    BranchHeadResolved { head } => false
+    BranchReadRefused { performance } => false
+  }
+  let admitted = match classify_branch_head(performance: succeeded, branch: hermetic_branch) {
+    BranchHeadResolved { head } => head == "745ff71c706f6a55c7fa1cda660860925e0b2739"
+    other => false
+  }
+  let read_refused = match classify_branch_head(performance: status_refused(status: 403), branch: hermetic_branch) {
+    BranchReadRefused { performance } => performance_status(p: performance) == 403
+    BranchHeadResolved { head } => false
+    BranchHeadNotExact { observed, cause } => false
+  }
+  refused && admitted && read_refused
+}
+
+// THE INDEXED BLOB IS PROVENANCE, NOT THE OBSERVATION. The hit below says the index held one blob and
+// the read at the resolved head returned another, which is what a file changed since indexing looks
+// like. It canonicalizes, and the identity carries the blob that was READ - so a join that refused
+// on the mismatch, or that copied the hit's sha into the identity, goes red here. The equal-blob
+// case is the control that the admission is not specific to a mismatch.
+test fn a_file_changed_since_indexing_canonicalizes_to_the_blob_actually_read() -> Bool {
+  let stale_hit = CodeSearchHit {
+    name: fixture_hit.name, path: fixture_hit.path,
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    repository: fixture_hit.repository,
+  }
+  let changed = match canonicalize_hit(hit: stale_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
+    HitCanonicalized { identity } =>
+      identity.blob_sha == observed_file.sha && identity.blob_sha != stale_hit.sha
+    other => false
+  }
+  let current_hit = CodeSearchHit {
+    name: fixture_hit.name, path: fixture_hit.path, sha: observed_file.sha, repository: fixture_hit.repository,
+  }
+  let unchanged = match canonicalize_hit(hit: current_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
+    HitCanonicalized { identity } => identity.blob_sha == current_hit.sha
+    other => false
+  }
+  changed && unchanged
+}
+
+// THE WHOLE CHAIN OVER THE PUBLISHED MOCKS. The search, repository and branch mocks are llvm/llvm-project
+// with one id, so the join resolves and the head comes from the branch read. The contents mock is
+// Biome's main.yml, a different file from the hit's premerge.yaml, so the file stage refuses as a
+// response about another file - which shows the chain reached the read at the resolved head and
+// handed the answer to canonicalize_hit rather than minting an identity itself.
+test fn the_chain_resolves_a_head_then_delegates_the_file_stage_to_canonicalization() -> Bool {
+  match perform_hit_revision_resolution(auth_token: fixture_token, hit: fixture_hit) {
+    HitReadAtResolvedRevision { hit, repository, head, canonicalization } =>
+      head == hermetic_branch.commit.sha
+        && repository.id == fixture_hit.repository.id
+        && hit.sha == fixture_hit.sha
+        && match canonicalization {
+          HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+            match disagreement {
+              ResponsePathDiffersFromRequest { requested_path, response_path } =>
+                requested_path == fixture_hit.path && response_path == hermetic_repository_file_path
+              other => false
+            }
+          other => false
+        }
+    other => false
+  }
 }
