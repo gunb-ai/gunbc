@@ -140,7 +140,6 @@ type LegacyBaselineCapturePhase
 
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision
-  | LiveRepairObservationTapAbsent
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -338,9 +337,9 @@ fn capture_legacy_baseline<O, R>(
 // The executing producer is v2.workflow.legacy_repair_tap persist_named_base_from_primary_root_tap:
 // it materializes CheckoutMaterialization.requested (a GitObjectId) through
 // emit_rust_reference_derived_rows_bridge into LegacyRepairObservation + RepairSiteRoster and the
-// tap's binding rows. LiveRepairObservationTapAbsent is retained as a refuse cause; capability
-// does not report it while that entry is the consumer. CaptureAvailable is not ACT-0's
-// BaselineCaptureReceipt and is not a corpus-oracle claim.
+// tap's binding rows. CaptureAvailable is not ACT-0's BaselineCaptureReceipt and is not a
+// corpus-oracle claim. CaptureBlocked remains the typed arm for a later producer loss;
+// ObserverNeverReachedDecision is the remaining refuse cause.
 type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
@@ -370,6 +369,5 @@ fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
 fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
     ObserverNeverReachedDecision => "the observer never reached its decision stage"
-    LiveRepairObservationTapAbsent => "no executing producer yields LegacyRepairObservation for a live named base"
   }
 }
