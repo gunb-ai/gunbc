@@ -213,7 +213,7 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self, value_binding_expr_type_node,
+    template_return_is_receiver_self, type_argument_node,
 };
 pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -1625,7 +1625,7 @@ pub fn conformance_ground_element_collection(
         let required = (n.return_cardinality.clone() == Cardinality::Required);
         let element_ground = match n.children.clone().first().cloned() {
             Some(el) => conformance_ground_kernel_scalar(
-                crate::v1_compiler_infer_types::child_type_node(el.clone()),
+                crate::v1_compiler_infer_types::type_argument_node(el.clone()),
                 source_indices.clone(),
             ),
             std::option::Option::None => false,
@@ -1710,8 +1710,8 @@ pub fn declared_type_kernel_inhabitance_mismatch_at_element(
                 Some(dl) => match produced.children.clone().first().cloned() {
                     std::option::Option::None => false,
                     Some(pr) => declared_type_kernel_inhabitance_mismatch(
-                        crate::v1_compiler_infer_types::child_type_node(dl.clone()),
-                        crate::v1_compiler_infer_types::child_type_node(pr.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(dl.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(pr.clone()),
                         scope.clone(),
                     ),
                 },
@@ -2043,7 +2043,8 @@ pub fn record_lit_expected_coproduct(
             ) {
                 match resolved.children.clone().first().cloned() {
                     Some(elem) => {
-                        let elem_ty = crate::v1_compiler_infer_types::child_type_node(elem.clone());
+                        let elem_ty =
+                            crate::v1_compiler_infer_types::type_argument_node(elem.clone());
                         match crate::v1_compiler_infer_env::lookup_type_for(
                             scope.type_env.clone(),
                             elem_ty.clone(),
@@ -2201,7 +2202,7 @@ pub fn record_lit_instantiated_fields(
                                             let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                         let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
-    Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
+    Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::type_argument_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
@@ -2327,7 +2328,7 @@ pub fn set_element_type_from_receiver(
         receiver_type.clone(),
         scope.type_env.clone(),
     ) {
-        Some(elem_slot) => Some(crate::v1_compiler_infer_types::child_type_node(
+        Some(elem_slot) => Some(crate::v1_compiler_infer_types::type_argument_node(
             elem_slot.clone(),
         )),
         std::option::Option::None => std::option::Option::None,
@@ -3927,7 +3928,7 @@ pub fn equality_operand_admission(
                                                         if extensional.clone() {
                                                             peeled.children.clone().iter().cloned().fold(std::option::Option::None, |acc: _, ch: Rc<Node>| match acc.clone() {
     Some(_) => acc.clone(),
-    std::option::Option::None => equality_operand_admission(crate::v1_compiler_infer_types::child_type_node(ch.clone()), scope.clone(), visited2.clone(), (depth.clone() + 1)),
+    std::option::Option::None => equality_operand_admission(crate::v1_compiler_infer_types::type_argument_node(ch.clone()), scope.clone(), visited2.clone(), (depth.clone() + 1)),
 })
                                                         } else {
                                                             equality_refused(name.clone(), "open-support carrier: extensional equality is not enumerable".to_string(), true)
@@ -5145,7 +5146,7 @@ pub fn collection_at_scalar_declared_type(
                     Some(base) => {
                         crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
                             scope.type_env.clone().source_indices.clone(),
-                            crate::v1_compiler_infer_types::child_type_node(base.clone()),
+                            crate::v1_compiler_infer_types::type_argument_node(base.clone()),
                         ))
                     }
                     std::option::Option::None => false,
@@ -5445,8 +5446,8 @@ pub fn applied_type_argument_conflicts(
             false
         } else {
             {
-                let d = crate::v1_compiler_infer_types::child_type_node(declared_arg.clone());
-                let p = crate::v1_compiler_infer_types::child_type_node(produced_arg.clone());
+                let d = crate::v1_compiler_infer_types::type_argument_node(declared_arg.clone());
+                let p = crate::v1_compiler_infer_types::type_argument_node(produced_arg.clone());
                 let d_name =
                     crate::v1_std_core::authored_name_at(source_indices.clone(), d.clone());
                 let p_name =
@@ -6419,12 +6420,12 @@ let actual = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 if ((((exposure_is_application(exposure_view_for_node(app.formal.clone().declared_type.clone(), source_indices.clone())) && exposure_is_application(exposure_view_for_node(actual.clone(), source_indices.clone()))) && ((app.formal.clone().declared_type.clone().children.clone().len() as i64) > 0)) && ((app.formal.clone().declared_type.clone().children.clone().len() as i64) == (actual.children.clone().len() as i64))) && (crate::v1_std_core::authored_name_at(source_indices.clone(), app.formal.clone().declared_type.clone()) == crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone()))) {
                 Rc::new({ let mut __result = Vec::new(); for declared_pair in Rc::new(app.formal.clone().declared_type.clone().children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.extend((*match app.formal.clone().substitution_basis.clone().children.clone().iter().cloned().skip(declared_pair.0.clone() as usize).next() {
     Some(raw_declared_child) => match actual.children.clone().iter().cloned().skip(declared_pair.0.clone() as usize).next() {
-    Some(produced_child) => if (applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(raw_declared_child.clone())), scope.clone()) && applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(produced_child.clone())), scope.clone())) {
+    Some(produced_child) => if (applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::type_argument_node(raw_declared_child.clone())), scope.clone()) && applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::type_argument_node(produced_child.clone())), scope.clone())) {
                     declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionGenericTypeArgument,
     subject: app.formal.clone().parameter_identity.clone(),
-    declared: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(declared_pair.1.clone()), scope.type_env.clone(), scope.module_name.clone()),
-    produced: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::child_type_node(produced_child.clone()), scope.type_env.clone(), scope.module_name.clone()),
+    declared: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::type_argument_node(declared_pair.1.clone()), scope.type_env.clone(), scope.module_name.clone()),
+    produced: crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(crate::v1_compiler_infer_types::type_argument_node(produced_child.clone()), scope.type_env.clone(), scope.module_name.clone()),
     span: actual_expr.span.clone(),
 }), scope.clone())
                 } else {
@@ -6468,12 +6469,12 @@ pub fn container_element_nominal_brand_mismatch(
             Some(formal_ch) => match actual.children.clone().first().cloned() {
                 Some(actual_ch) => {
                     let formal_el = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                        crate::v1_compiler_infer_types::child_type_node(formal_ch.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(formal_ch.clone()),
                         type_env.clone(),
                         module_name.clone(),
                     );
                     let actual_el = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                        crate::v1_compiler_infer_types::child_type_node(actual_ch.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(actual_ch.clone()),
                         type_env.clone(),
                         module_name.clone(),
                     );
@@ -6517,7 +6518,11 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
                     let mut __found = false;
                     for ch in n.children.clone().iter().cloned() {
                         if direct_call_formal_has_unbound_type_variable_at(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            if (n.connective.clone() == Connective::NoConnective) {
+                                crate::v1_compiler_infer_types::type_argument_node(ch.clone())
+                            } else {
+                                crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                            },
                             (depth.clone() + 1),
                         ) {
                             __found = true;
@@ -7452,7 +7457,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                             match typed_args.clone().iter().cloned().skip(1 as usize).next() {
     Some(other_arg) => match crate::v1_std_core::arg_value(other_arg.clone()).inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: other_type, .. }) => match crate::v1_compiler_infer_lookup::set_element_type_in_env(other_type.clone(), scope.type_env.clone()) {
-    Some(elem_slot) => Some(crate::v1_compiler_infer_types::child_type_node(elem_slot.clone())),
+    Some(elem_slot) => Some(crate::v1_compiler_infer_types::type_argument_node(elem_slot.clone())),
     std::option::Option::None => std::option::Option::None,
 },
     _ => std::option::Option::None,
@@ -11963,7 +11968,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         scope.type_env.clone().source_indices.clone(),
                     ) {
                         match exp.children.clone().first().cloned() {
-                            Some(elem) => Some(crate::v1_compiler_infer_types::child_type_node(
+                            Some(elem) => Some(crate::v1_compiler_infer_types::type_argument_node(
                                 elem.clone(),
                             )),
                             std::option::Option::None => std::option::Option::None,
@@ -12041,7 +12046,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         ) {
                             match exp.children.clone().first().cloned() {
                                 Some(elem) => {
-                                    crate::v1_compiler_infer_types::child_type_node(elem.clone())
+                                    crate::v1_compiler_infer_types::type_argument_node(elem.clone())
                                 }
                                 std::option::Option::None => unit_type(),
                             }
@@ -20234,10 +20239,7 @@ pub fn unify_generics(
                     Some(fc) => match actual.children.clone().first().cloned() {
                         Some(ac) => {
                             let __tco_0 = fc.clone();
-                            let __tco_1 =
-                                crate::v1_compiler_infer_types::value_binding_expr_type_node(
-                                    ac.clone(),
-                                );
+                            let __tco_1 = ac.clone();
                             formal = __tco_0;
                             actual = __tco_1;
                             continue;
@@ -21767,7 +21769,7 @@ pub fn application_argument_identities(
         let mut __result = Vec::new();
         for ch in arguments.iter().cloned() {
             __result.push(type_reference_identity(
-                crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                crate::v1_compiler_infer_types::type_argument_node(ch.clone()),
                 source_indices.clone(),
             ));
         }

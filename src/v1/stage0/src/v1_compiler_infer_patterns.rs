@@ -18,7 +18,9 @@ pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
     substitute_type_slots_scoped,
 };
-pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};
+pub use crate::v1_compiler_infer_types::{
+    child_type_node, extract_optional_inner_node, type_argument_node,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -354,7 +356,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
 pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
-            Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
+            Some(child) => crate::v1_compiler_infer_types::type_argument_node(child.clone()),
             std::option::Option::None => error_type(),
         };
         let value_field = Rc::new(Node {

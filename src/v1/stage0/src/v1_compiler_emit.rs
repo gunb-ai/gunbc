@@ -79,7 +79,7 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
-    resolved_type,
+    resolved_type, type_argument_node,
 };
 use crate::v1_compiler_languages::CharSanitization::{EmojiEscape, NoCharSanitization};
 use crate::v1_compiler_languages::IfValueForm::{ConditionalTernary, IfExpression, IfStatement};
@@ -903,8 +903,9 @@ pub fn has_nested_records_node(
                 if is_map.clone() {
                     match n.children.clone().iter().cloned().skip(1 as usize).next() {
                         Some(val_child) => {
-                            let __tco_0 =
-                                crate::v1_compiler_infer_types::child_type_node(val_child.clone());
+                            let __tco_0 = crate::v1_compiler_infer_types::type_argument_node(
+                                val_child.clone(),
+                            );
                             n = __tco_0;
                             continue;
                         }
@@ -917,7 +918,7 @@ pub fn has_nested_records_node(
                         match n.children.clone().first().cloned() {
                             Some(el) => {
                                 let __tco_0 =
-                                    crate::v1_compiler_infer_types::child_type_node(el.clone());
+                                    crate::v1_compiler_infer_types::type_argument_node(el.clone());
                                 n = __tco_0;
                                 continue;
                             }
@@ -2140,7 +2141,7 @@ pub fn render_node_type(
             {
                 let k = match n.children.clone().first().cloned() {
                     Some(kn) => render_node_type(
-                        crate::v1_compiler_infer_types::child_type_node(kn.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(kn.clone()),
                         target.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
@@ -2149,7 +2150,7 @@ pub fn render_node_type(
                 };
                 let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
-                        crate::v1_compiler_infer_types::child_type_node(vn.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(vn.clone()),
                         target.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
@@ -2182,7 +2183,7 @@ pub fn render_node_type(
             {
                 let child_str = match n.children.clone().first().cloned() {
                     Some(child) => render_node_type(
-                        crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(child.clone()),
                         target.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
@@ -2228,7 +2229,7 @@ pub fn render_node_type(
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
                 __result.push(render_node_type(
-                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                    crate::v1_compiler_infer_types::type_argument_node(c.clone()),
                     target.clone(),
                     shared_types.clone(),
                     source_indices.clone(),

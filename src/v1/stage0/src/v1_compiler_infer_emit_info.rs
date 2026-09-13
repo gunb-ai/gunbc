@@ -13,6 +13,7 @@ pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
+    type_argument_node,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -151,7 +152,11 @@ pub fn collect_type_node_import_surface_occurrences(
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
                     (*collect_type_node_import_surface_occurrences(
-                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                        if (peeled.connective.clone() == Connective::NoConnective) {
+                            crate::v1_compiler_infer_types::type_argument_node(ch.clone())
+                        } else {
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                        },
                         children_are_applied_arguments.clone(),
                         source_indices.clone(),
                     ))
