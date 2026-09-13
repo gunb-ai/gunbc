@@ -1,0 +1,46 @@
+module gunbc.rung_drop.floor_cost_debt_straddling_affected_set_universe
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+
+// ITS OWN ROW, NOT A WIDENING OF `floor_cost_debt_straddling_produced_decl`. That row's identity,
+// subject and trigger arm (a) -- the produced-decl consumers stop rebuilding the rust TargetModel
+// per claim -- are facts about produced-declaration emission witnesses, and this identity is a
+// claim-universe witness that never touches a TargetModel. One name over both populations would be
+// a section 3 meaning fork, and the widened row's trigger would have an arm that can fire while this
+// identity stays withheld, which is the section 4b(3) failure of a trigger naming less than the
+// capability it restores. So one row per retirement condition, and this row has exactly one arm.
+//
+// TYPED, FOR THE SAME REASON THE PRECEDENT ROW IS: the population is one identity, the reason is a
+// deletion of coverage with nothing standing in its place on an ordinary floor, and the trigger is a
+// capability. `DeletedWithoutReplacement` and not `ReplacementStaged`: the changed-witness override
+// (`v2.workflow.required_floor` `changed_witness_cost_policy`) runs this identity for its verdict
+// when a change touches it, and is silent for every OTHER change -- a gate added to gunbc.ci_spec,
+// a process row dropped from the lens -- that could break the agreement it asserts. Calling that a
+// staged replacement would inflate what remains.
+//
+// THE EVIDENCE, BOTH CLOCKS, IS CARRIED BESIDE THE ROSTER LINE at
+// `v2.workflow.floor_cost_debt` `floor_cost_debt_straddling_chunk_01` and is not transcribed twice.
+// The shape in one line: eval_steps=2884 on every observation, charged CPU 340..568ms at that one
+// count, and on one head (gunbc#11173, 26a02cab, run 34730761129) cross, cross, pass with content
+// and tree held fixed by construction.
+data floor_cost_debt_straddling_affected_set_universe: RungDrop = RungDrop {
+  identity: "floor_cost_debt_straddling_affected_set_universe" as NonEmptyStr,
+
+  subject: "one passing claim-universe witness -- the affected-set lens's CI-gate processes joined by identity to the declared gates -- whose charged CPU straddles the required floor's 500ms per-claim ceiling at a constant eval_steps",
+
+  declared: "2026-09-13",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "v2.test.claim.affected_set_universe.affected_set_universe_gate_processes_match_declared_gates",
+    ],
+    restoration_trigger: "ONE ARM, A CAPABILITY AND NOT AN ARTIFACT: the operative required floor ceiling is denominated in CALIBRATED eval_steps, with CPU observed-only, so a claim's cost is qualified on a measure that IS a stable property of the claim rather than on the slot it landed in -- the capability gunbc.rung_drop floor_cost_claim_qualification_unavailable is waiting on, and the one that retires it. gunbc#11195 is the lane currently carrying that capability and is cited here as such; the merge of #11195 is NOT the trigger, because a trigger naming less than the capability it restores is satisfied while the capability stays dead. WHAT THIS TRIGGER IS SUFFICIENT FOR, stated because 4b(3) requires it: after it, this identity executes on every ordinary required floor and is decided by a figure that does not change between two runs of one tree -- its 2884 steps, not its runner. WHY THIS IS BOUNDED DEBT AND NOT A CLASS REMEDY: the bound is one named identity, one treatment (withheld on ordinary floors, verdict-only under ChangedCostDebtVerdictOnly when touched) and this one retirement condition, not the distance of the carrying lane; the same row shape was refused as a class remedy for gunbc#10994, whose witness carried a real 618,109-step cost, because a row there would have hidden a genuine cost-shape defect, and this identity's tree-side cost is constant while its clock-side cost is the runner's. DELETING THE ROSTER LINE FROM v2.workflow.floor_cost_debt, EMPTYING THAT ROSTER, OR SHRINKING THE GATE UNIVERSE THE WITNESS JOINS OVER SATISFIES THE TRIGGER NOT AT ALL -- the first two return the flapping, and the third would shrink the subject to buy the budget.",
+  }
+}

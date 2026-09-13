@@ -825,6 +825,88 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
   Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_module_folds_declarations_in_order", tail: Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order", tail: Empty {} } }
 }
 
+// A SECOND STRADDLER, IN A DIFFERENT MODULE AND WITH ITS OWN DROP ROW (2026-09-13). One identity
+// in `v2.test.claim.affected_set_universe`:
+// `affected_set_universe_gate_processes_match_declared_gates`. It is the same class as the two
+// produced_decl rows above and nothing in the class argument is re-made here -- the ceiling is not
+// raised, the expected-red roster is not used, and the evidence is `eval_steps` and not a clock.
+// Only what is specific to THIS identity is stated.
+//
+// BOTH CLOCKS, AS EVERY COST CLAIM IN THIS PROGRAM MUST STATE THEM. Read from the floor's own
+// `[over-cost]` and per-claim cost lines across eight or more observations on several heads:
+//
+//   eval_steps = 2884 on EVERY observation -- the deterministic work measure did not move once
+//   observed_cpu_ms 340 .. 568 at that one step count
+//   passing baselines at the same 2884: 455 and 456-464
+//   gunbc#11173 head 26a02cab, run 34730761129, SAME HEAD, SAME CONTENT, SAME TREE:
+//     attempt 1 crossed at 562, attempt 2 crossed at 556, attempt 3 PASSED
+//   attempt 2: wall 2435ms at 556ms CPU -- about 1.9s NOT computing, which is contention, not work
+//   run-wide mean on that run: 11.8ms over 3789 claims -- an outlier by slot, not by shape
+//   ceiling: `required_floor_claim_cpu_safety_limit_ms` = 500; the floor printed
+//     COMPLETED-OVER-COST-REQUIREMENT and refused with blockers=1 while claims_failed=0
+//
+// The step count is the unit, run after run; the charge moved by up to 67% across the same 2884
+// steps. The three attempts on one head are the strongest form of the finding: content and tree
+// held fixed BY CONSTRUCTION, and the verdict still went cross, cross, pass -- slot-dependence
+// observed directly rather than inferred from a cross-head spread. What moved is which runner the
+// job landed on. That is `gunbc.rung_drop floor_cost_claim_qualification_unavailable` observed at
+// identity grain, exactly as it was for the two rows above.
+//
+// THE SAME PHENOMENON, NOT ENROLLED: the sibling `affected_set_universe_includes_meta_self` went
+// over once at 520ms (eval_steps=235, passing baselines 406 and 437) and passed at 486ms on the next
+// attempt. It is named here so the next reader recognises the module rather than the identity as
+// the site of the slot sensitivity, and it is NOT enrolled: one observation over the line is not
+// the straddling pattern, and the roster grows one identity per demonstrated straddle, never by
+// module. `affected_set_universe_is_complete` and `affected_set_universe_incomplete_fails_closed`
+// likewise stay on the floor as the executing controls that the universe still folds and still
+// refuses an uncovered role; a withhold that took the module would be a module going dark.
+//
+// WHAT IS GIVEN UP, FOR THIS IDENTITY. On ordinary required floors in steady state, nobody checks
+// that the affected-set lens's CI-gate process universe (`v2.lens.affected_set` `ci_gate_processes`)
+// is in identity-bag agreement with the declared gates (`gunbc.ci_spec` `gunbc_ci_gates` and
+// `gunbc_ci_falsifier_gates`). A gate added to `gunbc.ci_spec` without a process row in the lens,
+// or a process the lens carries for a gate that no longer exists, lands on main unobserved until a
+// change touches this identity. That coverage is GONE in steady state, not deferred. It is recovered
+// on any change that TOUCHES the identity, which executes it under `ChangedCostDebtVerdictOnly` --
+// it must PASS, and the 500ms line is observed and published rather than gating -- so the debt
+// cannot smuggle an unverified edit to the witness it withholds.
+//
+// WHY THE ROW IS ADMITTED NOW, WRITTEN SO NOBODY RE-DERIVES IT. The debt is BOUNDED because it
+// names one identity, admits one treatment (withheld on ordinary floors, verdict-only when
+// touched), and ends on one stated capability -- the bound is the authorised identity and
+// treatment together with the actual retirement condition, and NOT the distance of the lane that
+// carries the capability: an unknown delivery horizon does not itself make debt bounded, and an
+// earlier draft of this sentence said it did (refused by the operator, 2026-09-13). What the
+// horizon decides is only whether IMMEDIATE MIGRATION is an available remedy instead of a row: a
+// trigger already in flight and hours away would make a new debt row ceremony, and gunbc#11195,
+// the lane carrying the capability, is a DRAFT at +2335/-266 with a FAILING floor at this writing,
+// so migration is unavailable today and the alternative for the wait is a required lane whose
+// verdict on this identity is decided by hardware. That is the admission; the trigger below
+// describes how the debt ENDS and authorises none of it (DESIGN section 5).
+//
+// WHY THIS IS NOT THE REMEDY REFUSED FOR gunbc#10994. A cost-debt row was refused there as a CLASS
+// remedy, because that witness carried a real 618,109-step cost and a debt row would have hidden a
+// genuine cost-shape defect. This is one identity whose tree-side cost is constant at 2884 steps
+// and whose clock-side cost is the runner's. The roster exists for precisely that and for nothing
+// else.
+//
+// TRIGGER, A CAPABILITY AND NOT A ROSTER ERASURE, AND THIS ROW HAS ONE ARM ONLY. Rostered as a
+// DESIGN section 4b(3) drop at `gunbc.rung_drop.floor_cost_debt_straddling_affected_set_universe`,
+// its own row rather than a widening of the produced_decl row above: that row's arm (a) is a fact
+// about produced-decl consumers rebuilding the rust `TargetModel`, which this identity never does,
+// so one name over both populations would be a section 3 meaning fork with a trigger half of which
+// can fire while this identity stays withheld. The single arm is arm (b): the operative required
+// floor ceiling is denominated in CALIBRATED `eval_steps`, with CPU observed-only, so a claim's cost
+// is qualified on a stable property of the claim rather than on the slot it landed in -- at which point
+// `floor_cost_claim_qualification_unavailable` retires and this row is decided by its work. gunbc#11195
+// is the lane currently carrying that capability and is cited as such; the merge of #11195 is NOT
+// the trigger, the capability is, and a trigger naming less than the capability it restores would be
+// satisfied while the capability stayed dead. Deleting this line, emptying the roster, or shrinking
+// the gate universe the witness joins over satisfies the trigger not at all.
+fn floor_cost_debt_straddling_chunk_01() -> List<String> {
+  Cons { head: "v2.test.claim.affected_set_universe.affected_set_universe_gate_processes_match_declared_gates", tail: Empty {} }
+}
+
 // THIS ROW WITHHOLDS REAL COVERAGE IN STEADY STATE. The claim remains authored, with two
 // reversed-order controls and a missing-marker control, but is withheld from ordinary required
 // floors while enrolled here. A change that touches the identity OVERRIDES that withhold: the
@@ -1008,7 +1090,7 @@ fn floor_cost_debt_censored_roster() -> List<String> {
 }
 
 fn floor_cost_debt_straddling_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_straddling_chunk_00(), tail: Empty {} }
+  Cons { head: floor_cost_debt_straddling_chunk_00(), tail: Cons { head: floor_cost_debt_straddling_chunk_01(), tail: Empty {} } }
 }
 
 fn floor_cost_debt_straddling_roster() -> List<String> {
