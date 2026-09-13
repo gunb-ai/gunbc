@@ -13,6 +13,11 @@ import tools.dag_compile_clean_transport {
 
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 
+// The staged copy keeps the entry's file name, so the --entry path inside the stage is that name.
+fn staged_file_name(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: path, f: (acc, part) => part)
+}
+
 fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
   let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
@@ -25,7 +30,7 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
       let compile = gunbc.WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_fixture_only_compile_args(tmp: stage.path)
+        args: dcc_fixture_only_compile_args(tmp: stage.path, entry_file: staged_file_name(path: entry_rel_path))
       )
       let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
       staged.success && compile.success && cleaned_stage.success
