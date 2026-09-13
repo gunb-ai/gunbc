@@ -35,7 +35,8 @@ import extdeps.safetensors.format {
   SafetensorsIndexMember, safetensors_index_member,
   SafetensorsShardedEntry, safetensors_sharded_entry, safetensors_sharded_entries,
   MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
-  safetensors_shard_file, safetensors_membership_defects,
+  safetensors_shard_file, safetensors_membership_defects, safetensors_shard_names,
+  safetensors_shard_bounds_obligations, safetensors_shard_bounds_defects,
   SafetensorsShardAgreement, ShardPayloadMatchesPopulation, ShardPayloadDisagreesWithPopulation, ShardPayloadUnderivable,
   safetensors_shard_payload_agreement, safetensors_shard_payload, SafetensorsShardPayload,
   ShardPayloadDeclared, ShardHeaderExceedsFile, safetensors_shard_payload_defects,
@@ -1211,16 +1212,34 @@ fn fixture_closure() -> MembershipClosure {
   MembershipScopedToReadRows { read_rows: 12, unenumerated: "fixture: the index is not enumerated" as NonEmptyStr }
 }
 
+// THE BOUND ROWS THESE FIXTURES SUPPLY ARE DELIBERATELY ROOMY, and that is isolation rather than
+// laziness. Each of these populations exists to exercise ONE defect -- a duplicate subject, a span
+// disagreeing with its shape, a membership mismatch -- and a tight payload figure would make every one
+// of those controls ALSO an extent control, so a regression in either would be reported by both and
+// located by neither. The extent bound has its own fixture below with its own exact payload. What these
+// rows may not be is absent: an occupied shard with no bound row is an evidence obligation now, so
+// omitting them would turn these refusal controls into incomplete ones.
+fn roomy_bounds(shard: NonEmptyStr) -> List<SafetensorsShardFile> {
+  [safetensors_shard_file(
+    path: shard,
+    header_bytes: byte_size(count: 8),
+    file_bytes: byte_size(count: 1000000000000))]
+}
+
 fn shard_population(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> SafetensorsPopulationStanding {
   safetensors_population_standing(
     members: map(entries, e => safetensors_index_member(name: e.name, shard: shard)),
-    shards: [],
+    shards: roomy_bounds(shard: shard),
     closure: fixture_closure(),
     reading: PopulationScanned { entries: safetensors_sharded_entries(shard: shard, entries: entries) })
 }
 
 fn fixture_population(members: List<SafetensorsIndexMember>, entries: List<SafetensorsShardedEntry>) -> SafetensorsPopulationStanding {
-  safetensors_population_standing(members: members, shards: [], closure: fixture_closure(), reading: PopulationScanned { entries: entries })
+  safetensors_population_standing(
+    members: members,
+    shards: flat_map(safetensors_shard_names(entries: entries), n => roomy_bounds(shard: n)),
+    closure: fixture_closure(),
+    reading: PopulationScanned { entries: entries })
 }
 
 // ── SHIFTING EVERY OFFSET BY ONE BYTE RECONCILES AND STILL DOES NOT FIT ───────────────────────
@@ -1244,15 +1263,48 @@ fn extent_entries(shift: Nat) -> List<SafetensorsEntry> {
 }
 
 fn extent_population(shift: Nat) -> SafetensorsPopulationStanding {
+  extent_population_with_bounds(shift: shift, shards: [extent_shard()])
+}
+
+fn extent_population_with_bounds(shift: Nat, shards: List<SafetensorsShardFile>) -> SafetensorsPopulationStanding {
   safetensors_population_standing(
     members: map(extent_entries(shift: shift), e =>
       safetensors_index_member(name: e.name, shard: "fixture.safetensors" as NonEmptyStr)),
-    shards: [extent_shard()],
+    shards: shards,
     closure: fixture_closure(),
     reading: PopulationScanned {
       entries: safetensors_sharded_entries(
         shard: "fixture.safetensors" as NonEmptyStr, entries: extent_entries(shift: shift)),
     })
+}
+
+// ── AND THE CHECK IS NOT REMOVABLE BY DELETING ITS OWN INPUT ───────────────────────────────────
+//
+// This is the negative that has to sit beside the out-of-bounds one. A first cut folded the extent check
+// over the SUPPLIED bound rows, so the very population below -- offsets shifted one byte past the
+// payload -- was reported as ESTABLISHED simply by omitting that shard's bounds row, and an empty bounds
+// list disabled the check for every shard at once. The occupied shard identities are reconciled against
+// the bound rows first: absent bounds are an obligation, two bounds for one shard refuse, and only an
+// exact resolution permits the comparison.
+test fn omitting_a_shards_bounds_leaves_an_obligation_rather_than_disabling_the_extent_check() -> Bool {
+  let shifted = safetensors_sharded_entries(
+    shard: "fixture.safetensors" as NonEmptyStr, entries: extent_entries(shift: 1))
+  count(safetensors_shard_bounds_obligations(shards: [], entries: shifted)) == 1
+    && count(safetensors_shard_bounds_obligations(shards: [extent_shard()], entries: shifted)) == 0
+    && count(safetensors_shard_bounds_defects(shards: [extent_shard(), extent_shard()], entries: shifted)) == 1
+    && count(safetensors_shard_bounds_defects(shards: [extent_shard()], entries: shifted)) == 0
+    && match extent_population_with_bounds(shift: 1, shards: []) {
+      PopulationIncomplete { obligation: o, partial_entries: es } =>
+        count(es) == 1 && string_contains(s: o as String, pattern: "no bound row states that shard")
+      PopulationEstablished { population: _ } => false
+      PopulationRefused { defects: _ } => false
+    }
+    && match extent_population_with_bounds(shift: 1, shards: [extent_shard(), extent_shard()]) {
+      PopulationRefused { defects: ds } =>
+        any(ds, d => string_contains(s: d as String, pattern: "bound rows"))
+      PopulationEstablished { population: _ } => false
+      PopulationIncomplete { obligation: _, partial_entries: _ } => false
+    }
 }
 
 test fn a_population_that_reconciles_may_still_not_fit_the_shard_it_names() -> Bool {
@@ -1451,6 +1503,49 @@ test fn a_relation_must_name_the_exact_bytes_it_mapped_from_and_produced() -> Bo
     evidence: StructurePreservingTransform { relation: silent }) {
     RealizationEvidenceMissing { subject: _, obligation: o } =>
       string_contains(s: o as String, pattern: "does not say which bytes it produced")
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => false
+    RealizationUnfaithful { subject: _, defects: _ } => false
+  }
+}
+
+// ── THE ACTUAL SOURCE BYTES PARTICIPATE TOO ───────────────────────────────────────────────────
+//
+// Everything in these two calls is identical -- same relation, same declared source and target
+// identities, same preserved set, same established ground, same artifact with a matching established
+// target identity -- except the SUBJECT'S OWN published identity, which moves from established-and-
+// matching to unestablished. A first cut reached RealizationFaithful in the second case, because the
+// obligation fold examined only the relation's two DECLARED ends and the grounded path re-checked only
+// the artifact's actual target. Nothing joined the relation's declared source to the subject's actual
+// published bytes. The end standings are three-valued over BOTH operands, so the second case is now an
+// evidence need naming which side is missing.
+fn subject_with_published_identity(i: EncodingIdentity) -> ComponentSubjectStanding {
+  establish_component_subject(subject: component_subject(
+    identity: engram_component_identity,
+    label: "fixture: the Engram subject with a substituted published identity" as NonEmptyStr,
+    upstream_revision: "fixture-revision" as NonEmptyStr,
+    population: deepseek_v4_1_flash_engram_population,
+    published_encoding: engram_published_encoding,
+    published_identity: i,
+    population_standing: deepseek_v4_1_flash_engram_population_standing,
+  ))
+}
+
+test fn an_unestablished_actual_source_identity_is_an_obligation_rather_than_faithful() -> Bool {
+  let rel = relation_with_target(t: repacked_artifact().identity)
+  match component_realization_standing(r: realize_component(
+    standing: subject_with_published_identity(i: engram_published_identity),
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform { relation: rel })) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  } && match realize_component(
+    standing: subject_with_published_identity(i: EncodingIdentityUnestablished {
+      obligation: "fixture: nobody has established an identity for the published bytes" as NonEmptyStr }),
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform { relation: rel }) {
+    RealizationEvidenceMissing { subject: _, obligation: o } =>
+      string_contains(s: o as String, pattern: "has no established identity to compare it against")
     RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => false
     RealizationUnfaithful { subject: _, defects: _ } => false
   }

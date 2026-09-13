@@ -543,40 +543,111 @@ fn realize_by_relation(
 // THE CONTENTS PARTICIPATE HERE AND NOWHERE ELSE. An unestablished identity on EITHER end is an
 // open question, not a mismatch: nobody has said what the relation maps from or to, so the artifact
 // defers rather than being declared unfaithful. A different established identity IS a mismatch.
+// EACH END IS THREE-VALUED OVER BOTH OPERANDS, and the second operand is why. A first cut compared
+// the relation's DECLARED source and target against the actual bytes, treating "either side
+// unestablished" as no mismatch -- correct only if the missing side then became an obligation. But the
+// obligation fold examined only the two DECLARED ends, and the grounded path separately re-checked the
+// artifact's actual TARGET while nothing ever asked about `sub.published_identity`, the actual SOURCE.
+// So a subject whose own published identity was unestablished, with both declared ends established and
+// the actual target established and matching, reached RealizationFaithful with NOTHING joining the
+// relation's declared source bytes to the subject's actual published bytes.
+//
+// One fold per end now answers all three cases over the pair, so there is no arm where an unestablished
+// operand is neither compared nor carried: either side unestablished yields a located obligation naming
+// WHICH side is missing, both established and unequal is a mismatch, both established and equal is the
+// only satisfying case.
+type RelationEndStanding
+  = RelationEndAgrees
+  | RelationEndDisagrees { cause: NonEmptyStr }
+  | RelationEndUnestablished { obligation: NonEmptyStr }
+
+fn relation_end_standing(
+  end: String,
+  declared_role: String,
+  actual_role: String,
+  declared: EncodingIdentity,
+  actual: EncodingIdentity,
+  relation: DeclarationRef,
+) -> RelationEndStanding {
+  match encoding_identity_established(i: declared) {
+    false => RelationEndUnestablished {
+      obligation: join([
+        "the relation ", declaration_ref_display_key(ref: relation),
+        " does not say which bytes it ", end, ", so nothing binds it to ", actual_role,
+      ], "") as NonEmptyStr,
+    }
+    true => match encoding_identity_established(i: actual) {
+      false => RelationEndUnestablished {
+        obligation: join([
+          "the relation ", declaration_ref_display_key(ref: relation), " ", end, " ",
+          encoding_identity_render(i: declared), ", and ", actual_role,
+          " has no established identity to compare it against, so the relation is not bound to this realization",
+        ], "") as NonEmptyStr,
+      }
+      true =>
+        if encoding_identity_eq(a: declared, b: actual) {
+          RelationEndAgrees
+        } else {
+          RelationEndDisagrees {
+            cause: join([
+              "the relation ", declaration_ref_display_key(ref: relation), " ", end, " ",
+              encoding_identity_render(i: declared), ", and ", actual_role, " is ",
+              encoding_identity_render(i: actual),
+            ], "") as NonEmptyStr,
+          }
+        }
+    }
+  }
+}
+
+// BOTH ENDS, EACH PAIRING THE RELATION'S CLAIM WITH THE BYTES IT IS SUPPOSED TO BE ABOUT. The source
+// end's actual operand is the SUBJECT's published identity and the target end's is the ARTIFACT's, so
+// neither actual identity can go unexamined.
+fn relation_end_standings(
+  r: FaithfulnessRelation,
+  sub: ComponentSubject,
+  artifact: MaterializedComponentArtifact,
+) -> List<RelationEndStanding> {
+  [
+    relation_end_standing(
+      end: "maps from",
+      declared_role: "the relation's source",
+      actual_role: join(["this subject's published encoding ", physical_encoding_key(e: sub.published_encoding)], ""),
+      declared: r.source_identity,
+      actual: sub.published_identity,
+      relation: r.relation),
+    relation_end_standing(
+      end: "produced",
+      declared_role: "the relation's target",
+      actual_role: join(["the artifact this route places, ", physical_encoding_key(e: artifact.encoding)], ""),
+      declared: r.target_identity,
+      actual: artifact.identity,
+      relation: r.relation),
+  ]
+}
+
+fn relation_end_disagreements(ss: List<RelationEndStanding>) -> List<NonEmptyStr> {
+  flat_map(ss, x => match x {
+    RelationEndDisagrees { cause: c } => [c]
+    RelationEndAgrees => []
+    RelationEndUnestablished { obligation: _ } => []
+  })
+}
+
+fn relation_end_unestablished(ss: List<RelationEndStanding>) -> List<NonEmptyStr> {
+  flat_map(ss, x => match x {
+    RelationEndUnestablished { obligation: o } => [o]
+    RelationEndAgrees => []
+    RelationEndDisagrees { cause: _ } => []
+  })
+}
+
 fn relation_identity_mismatches(
   r: FaithfulnessRelation,
   sub: ComponentSubject,
   artifact: MaterializedComponentArtifact,
 ) -> List<NonEmptyStr> {
-  concat(
-    relation_end_mismatch(
-      end: "maps from", declared: r.source_identity, actual: sub.published_identity, relation: r.relation),
-    relation_end_mismatch(
-      end: "produced", declared: r.target_identity, actual: artifact.identity, relation: r.relation))
-}
-
-fn relation_end_mismatch(
-  end: String,
-  declared: EncodingIdentity,
-  actual: EncodingIdentity,
-  relation: DeclarationRef,
-) -> List<NonEmptyStr> {
-  match encoding_identity_established(i: declared) {
-    false => []
-    true => match encoding_identity_established(i: actual) {
-      false => []
-      true =>
-        if encoding_identity_eq(a: declared, b: actual) {
-          []
-        } else {
-          [join([
-            "the relation ", declaration_ref_display_key(ref: relation), " ", end, " ",
-            encoding_identity_render(i: declared), ", and this realization's corresponding bytes are ",
-            encoding_identity_render(i: actual),
-          ], "") as NonEmptyStr]
-        }
-    }
-  }
+  relation_end_disagreements(ss: relation_end_standings(r: r, sub: sub, artifact: artifact))
 }
 
 fn encoding_identity_established(i: EncodingIdentity) -> Bool {
@@ -585,28 +656,6 @@ fn encoding_identity_established(i: EncodingIdentity) -> Bool {
     ShardSetIdentity { shards: _ } => true
     SingleObjectIdentity { digest: _ } => true
   }
-}
-
-// MISSING FAITHFULNESS SURVIVES A SUPPLIED TARGET DIGEST. The grounded arm used to ask only whether
-// the ARTIFACT had an identity, so handing it one discharged the whole obligation. The relation's own
-// two ends are asked separately: if the relation cannot say what it mapped from or what it produced,
-// the realization stays open however well identified the artifact is.
-fn relation_end_obligations(r: FaithfulnessRelation) -> List<NonEmptyStr> {
-  concat(
-    match encoding_identity_established(i: r.source_identity) {
-      true => []
-      false => [join([
-        "the relation ", declaration_ref_display_key(ref: r.relation),
-        " does not say which bytes it maps from, so nothing binds it to this subject's published encoding",
-      ], "") as NonEmptyStr]
-    },
-    match encoding_identity_established(i: r.target_identity) {
-      true => []
-      false => [join([
-        "the relation ", declaration_ref_display_key(ref: r.relation),
-        " does not say which bytes it produced, so nothing binds it to the artifact this route places",
-      ], "") as NonEmptyStr]
-    })
 }
 
 // THE RESIDUAL AND ITS READING ARE THE SAME THREE-VALUED FACT read in two directions, so they cannot
@@ -618,39 +667,35 @@ fn membership_closure_reading(s: ComponentSubjectStanding) -> AxisReading? {
   }
 }
 
+// THE GROUNDED ARM ASKS THE TWO ENDS AND NOTHING ELSE. A first cut ALSO switched separately on
+// `artifact.identity`, which is the target end's own actual operand -- so the artifact was examined
+// twice and the subject's published identity not at all. The end standings subsume that switch: an
+// unestablished artifact identity is the target end reporting `RelationEndUnestablished`, and it is
+// carried with the located obligation the end already builds rather than by a second code path.
 fn realize_by_grounded_relation(
   sub: ComponentSubject,
   artifact: MaterializedComponentArtifact,
   r: FaithfulnessRelation,
 ) -> FaithfulComponentRealization {
   {
-    let ends = relation_end_obligations(r: r)
-    match artifact.identity {
-      EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing {
-        subject: sub.identity,
-        obligation: join(concat([o as String], map(ends, e => join(["; ", e as String], ""))), "") as NonEmptyStr,
+    let standings = relation_end_standings(r: r, sub: sub, artifact: artifact)
+    let open = relation_end_unestablished(ss: standings)
+    let disagreeing = relation_end_disagreements(ss: standings)
+    if count(disagreeing) > 0 {
+      RealizationUnfaithful { subject: sub.identity, defects: disagreeing }
+    } else {
+      if count(open) > 0 {
+        RealizationEvidenceMissing {
+          subject: sub.identity,
+          obligation: join(map(open, e => e as String), "; ") as NonEmptyStr,
+        }
+      } else {
+        RealizationFaithful {
+          subject: sub.identity,
+          artifact_identity: artifact.identity,
+          evidence: StructurePreservingTransform { relation: r },
+        }
       }
-      ShardSetIdentity { shards: _ } => realization_from_relation_ends(sub: sub, artifact: artifact, r: r, ends: ends)
-      SingleObjectIdentity { digest: _ } => realization_from_relation_ends(sub: sub, artifact: artifact, r: r, ends: ends)
-    }
-  }
-}
-
-fn realization_from_relation_ends(
-  sub: ComponentSubject,
-  artifact: MaterializedComponentArtifact,
-  r: FaithfulnessRelation,
-  ends: List<NonEmptyStr>,
-) -> FaithfulComponentRealization {
-  if count(ends) > 0 {
-    RealizationEvidenceMissing {
-      subject: sub.identity,
-      obligation: join(map(ends, e => e as String), "; ") as NonEmptyStr,
-    }
-  } else {
-    RealizationFaithful {
-      subject: sub.identity, artifact_identity: artifact.identity,
-      evidence: StructurePreservingTransform { relation: r },
     }
   }
 }

@@ -412,32 +412,120 @@ type SafetensorsPopulationStanding
 
 // RECONCILIATION DOES NOT BOUND THE PAYLOAD, AND THAT IS THE GAP THIS FOLD CLOSES. Membership asks
 // which names are present and in which shard; the entry defects ask whether spans are well formed and
-// non-overlapping WITHIN the population. Shift every offset in one shard up by a single byte and all
-// of that still holds -- same names, same shards, same lengths, same non-overlap -- while the last
-// tensor now ends one byte past the payload the shard's own header declares. The extent is therefore
-// compared against the shard file's derived payload, which is the only figure that can refuse it, and
-// a shard whose payload is not derivable reports THAT rather than passing.
+// non-overlapping WITHIN the population. Shift every offset in one shard up by a single byte and all of
+// that still holds -- same names, same shards, same lengths, same non-overlap -- while the last tensor
+// now ends one byte past the payload the shard's own header declares.
+//
+// THE CHECK IS DRIVEN BY THE SHARDS THE ENTRIES OCCUPY, NOT BY THE ROWS SOMEONE SUPPLIED. A first cut
+// folded over the supplied bound rows, so the validation was REMOVABLE BY DELETING ITS OWN INPUT: shift
+// one shard's offsets and omit that shard's bounds row, and no extent check ran at all. An empty bounds
+// list was the extreme case -- every shard unchecked, reported as established. So the occupied shard
+// identities are reconciled against the bound-row identities FIRST, and only an exact one-to-one
+// resolution permits the comparison. Missing bounds are an evidence obligation; duplicate bounds are a
+// defect, because two payload figures for one shard mean neither is the shard's payload.
+//
+// Supplying bounds for shards the entries do NOT occupy is allowed and is not an error: a component
+// occupying two shards of forty-eight needs those two reconciled, not all forty-eight enumerated.
+type ShardBoundsResolution
+  = ShardBoundsResolved { shard: NonEmptyStr, file: SafetensorsShardFile }
+  | ShardBoundsDuplicated { shard: NonEmptyStr, rows: Nat }
+  | ShardBoundsAbsent { shard: NonEmptyStr }
+
+fn safetensors_shard_bounds_resolution(
+  shards: List<SafetensorsShardFile>,
+  shard: NonEmptyStr,
+) -> ShardBoundsResolution {
+  let rows = filter(shards, sh => (sh.path as String) == (shard as String))
+  if count(rows) == 1 {
+    match first(rows) {
+      Present { value: f } => ShardBoundsResolved { shard: shard, file: f }
+      Absent => ShardBoundsAbsent { shard: shard }
+    }
+  } else {
+    if count(rows) == 0 {
+      ShardBoundsAbsent { shard: shard }
+    } else {
+      ShardBoundsDuplicated { shard: shard, rows: count(rows) }
+    }
+  }
+}
+
+fn safetensors_shard_bounds_resolutions(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<ShardBoundsResolution> {
+  map(
+    safetensors_shard_names(entries: entries),
+    n => safetensors_shard_bounds_resolution(shards: shards, shard: n))
+}
+
+// A DUPLICATE BOUND ROW IS A DEFECT AND REFUSES. Two payload figures for one shard identity means the
+// input contradicts itself, and picking either would be the absorbing fallback DESIGN section 5 names.
+fn safetensors_shard_bounds_defects(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsDuplicated { shard: sd, rows: n } =>
+      [join([
+        "safetensors shard ", sd as String, " has ", to_string(n),
+        " bound rows, so it carries that many payload figures and none of them is the shard's payload",
+      ], "") as NonEmptyStr]
+    ShardBoundsResolved { shard: _, file: _ } => []
+    ShardBoundsAbsent { shard: _ } => []
+  })
+}
+
+// A MISSING BOUND ROW IS AN OBLIGATION, NOT A PASS. The entries occupy a shard nobody stated the size
+// of, so the extent comparison has no second operand -- which is a thing not yet read rather than a
+// thing found wrong, and it keeps the population off `PopulationEstablished` either way.
+fn safetensors_shard_bounds_obligations(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsAbsent { shard: sd } =>
+      [join([
+        "the admitted entries occupy safetensors shard ", sd as String,
+        ", and no bound row states that shard's header and file size, so nothing bounds where those tensors end",
+      ], "") as NonEmptyStr]
+    ShardBoundsResolved { shard: _, file: _ } => []
+    ShardBoundsDuplicated { shard: _, rows: _ } => []
+  })
+}
+
 fn safetensors_shard_extent_defects(
   shards: List<SafetensorsShardFile>,
   entries: List<SafetensorsShardedEntry>,
 ) -> List<NonEmptyStr> {
-  flat_map(shards, sh =>
-    match safetensors_shard_payload(shard: sh) {
-      ShardHeaderExceedsFile { path: _, declared_overhead: _, file_bytes: _ } =>
-        safetensors_shard_payload_defects(shard: sh)
-      ShardPayloadDeclared { bytes: payload } =>
-        if safetensors_shard_extent(entries: entries, shard: sh.path) > byte_size_count(b: payload) {
-          [join([
-            "safetensors shard ", sh.path as String, " carries tensors reaching byte ",
-            to_string(safetensors_shard_extent(entries: entries, shard: sh.path)),
-            " while the shard's own header declares a payload of only ",
-            to_string(byte_size_count(b: payload)),
-            " bytes; names, lengths and non-overlap all reconcile and the population still does not fit the file",
-          ], "") as NonEmptyStr]
-        } else {
-          []
-        }
-    })
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsResolved { shard: sd, file: f } => safetensors_extent_within_payload(shard: sd, file: f, entries: entries)
+    ShardBoundsDuplicated { shard: _, rows: _ } => []
+    ShardBoundsAbsent { shard: _ } => []
+  })
+}
+
+fn safetensors_extent_within_payload(
+  shard: NonEmptyStr,
+  file: SafetensorsShardFile,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  match safetensors_shard_payload(shard: file) {
+    ShardHeaderExceedsFile { path: _, declared_overhead: _, file_bytes: _ } =>
+      safetensors_shard_payload_defects(shard: file)
+    ShardPayloadDeclared { bytes: payload } =>
+      if safetensors_shard_extent(entries: entries, shard: shard) > byte_size_count(b: payload) {
+        [join([
+          "safetensors shard ", shard as String, " carries tensors reaching byte ",
+          to_string(safetensors_shard_extent(entries: entries, shard: shard)),
+          " while the shard's own header declares a payload of only ",
+          to_string(byte_size_count(b: payload)),
+          " bytes; names, lengths and non-overlap all reconcile and the population still does not fit the file",
+        ], "") as NonEmptyStr]
+      } else {
+        []
+      }
+  }
 }
 
 fn safetensors_shard_extent(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> Nat {
@@ -474,7 +562,9 @@ fn safetensors_population_defects(
         map(
           safetensors_membership_defects(members: members, entries: entries),
           d => safetensors_membership_defect_display(d: d)),
-        safetensors_shard_extent_defects(shards: shards, entries: entries))))
+        concat(
+          safetensors_shard_extent_defects(shards: shards, entries: entries),
+          safetensors_shard_bounds_defects(shards: shards, entries: entries)))))
 }
 
 fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
@@ -490,6 +580,11 @@ fn safetensors_population_bytes_in_shard(entries: List<SafetensorsShardedEntry>,
   safetensors_population_total(entries: filter(entries, se => (se.shard as String) == (shard as String)))
 }
 
+// DEFECTS ARE DECIDED BEFORE OBLIGATIONS, so a population with a real defect still REFUSES even when
+// its shard bounds were never supplied. Reversing the two would let a missing bound row downgrade a
+// duplicate tensor subject from refused to merely incomplete -- an absorbing arm that answers with less
+// than it knows, and one that would have quietly weakened every existing refusal control here.
+//
 // THE ONLY PRODUCER OF AN ESTABLISHED POPULATION. Membership is reconciled against the index rows
 // read at the same revision, and the total is DERIVED from the entries that reconciliation admitted
 // -- there is no parameter here for a size summary, so a caller cannot supply one.
@@ -503,18 +598,28 @@ fn safetensors_population_standing(
     PopulationUnscanned { obligation: o } => PopulationIncomplete { obligation: o, partial_entries: [] }
     PopulationPartiallyScanned { entries: es, unread: u } =>
       PopulationIncomplete { obligation: u, partial_entries: es }
-    PopulationScanned { entries: es } =>
-      if count(safetensors_population_defects(members: members, shards: shards, entries: es)) == 0 {
-        PopulationEstablished {
-          population: SafetensorsPopulation {
-            members: es,
-            declared_bytes: safetensors_population_total(entries: es),
-            closure: closure,
-          },
-        }
+    PopulationScanned { entries: es } => {
+      let defects = safetensors_population_defects(members: members, shards: shards, entries: es)
+      if count(defects) > 0 {
+        PopulationRefused { defects: defects }
       } else {
-        PopulationRefused { defects: safetensors_population_defects(members: members, shards: shards, entries: es) }
+        let bounds_open = safetensors_shard_bounds_obligations(shards: shards, entries: es)
+        if count(bounds_open) > 0 {
+          PopulationIncomplete {
+            obligation: join(map(bounds_open, o => o as String), "; ") as NonEmptyStr,
+            partial_entries: es,
+          }
+        } else {
+          PopulationEstablished {
+            population: SafetensorsPopulation {
+              members: es,
+              declared_bytes: safetensors_population_total(entries: es),
+              closure: closure,
+            },
+          }
+        }
       }
+    }
   }
 }
 

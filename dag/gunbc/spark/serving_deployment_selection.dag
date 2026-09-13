@@ -2406,10 +2406,33 @@ type SelectedServingDeployment sole_constructor {
   snapshot_key: String
 }
 
+// THE UNRESOLVED RETURNS CARRY THE CHILD'S TYPED OUTCOME TOO, NOT ONLY THE SELECTED ONE. Route standings
+// reached `SelectedServingDeployment` and stopped there, so on the two arms this subject ACTUALLY
+// RETURNS today -- needs-evidence and needs-policy -- the only surviving trace of a component's route
+// question was the rendered `AxisGap` sentence. A machine consumer had to parse prose to recover
+// `PlacementNeedsPolicy`'s survivor list, which is a typed value the child already computed: text is a
+// lossy re-encoding of a distinction the type exists to preserve, and it is the arm we are on.
+//
+// The standings travel scoped to their candidate, and `ComponentRouteStanding` already carries the
+// component and the context it was decided under, so the tuple the child decided is recoverable whole.
+// They are deliberately NOT merged into `survivors`: that field is the deployment decision's own
+// candidate namespace, and route identities are a different decision's field.
+type CandidateComponentRoutes sole_constructor {
+  candidate: DeclarationRef
+  routes: List<ComponentRouteStanding>
+}
+
+fn candidate_component_routes_of(routed: List<RoutedCandidate>) -> List<CandidateComponentRoutes> {
+  map(routed, rc => CandidateComponentRoutes {
+    candidate: rc.candidate.identity,
+    routes: rc.route_standings,
+  })
+}
+
 type ServingDeploymentSelection
   = ServingDeploymentSelected { selected: SelectedServingDeployment }
-  | ServingDeploymentNeedsEvidence { needs: List<SelectionEvidenceNeed> }
-  | ServingDeploymentNeedsPolicy { survivors: List<DeclarationRef> }
+  | ServingDeploymentNeedsEvidence { needs: List<SelectionEvidenceNeed>, component_routes: List<CandidateComponentRoutes> }
+  | ServingDeploymentNeedsPolicy { survivors: List<DeclarationRef>, component_routes: List<CandidateComponentRoutes> }
   | NoFeasibleServingDeployment { causes: List<NonEmptyStr> }
   | ServingDeploymentSelectionRefused { defects: List<NonEmptyStr> }
 
@@ -2462,8 +2485,14 @@ fn select_over_routed(input: ServingDeploymentDecisionInput, routed: List<Routed
               },
             }
           }
-        SelectionNeedsEvidence { needs: n } => ServingDeploymentNeedsEvidence { needs: n }
-        SelectionNeedsPolicy { survivors: s } => ServingDeploymentNeedsPolicy { survivors: s }
+        SelectionNeedsEvidence { needs: n } => ServingDeploymentNeedsEvidence {
+          needs: n,
+          component_routes: candidate_component_routes_of(routed: routed),
+        }
+        SelectionNeedsPolicy { survivors: s } => ServingDeploymentNeedsPolicy {
+          survivors: s,
+          component_routes: candidate_component_routes_of(routed: routed),
+        }
         NoFeasibleRealization { causes: c } => NoFeasibleServingDeployment { causes: c }
         RealizationSelectionRefused { defects: d } => ServingDeploymentSelectionRefused { defects: d }
         CandidateFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
