@@ -12275,13 +12275,47 @@ fn claim_scope_fixture_value(
             "ClaimScopeInstrumentRefused",
             vec![(ctx.sym("cause"), str_value(cause))],
         ),
-        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => variant(
-            "ClaimScopeCompileRefused",
-            vec![(
-                ctx.sym("blocking_count"),
-                Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
-            )],
-        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => {
+            // THE ROWS, NOT JUST THE COUNT, AND THE .dag TYPE IS WHY THIS IS NOT OPTIONAL.
+            // `ClaimScopeCompileRefused` declares `diagnostics: List<CompileDiagnosticCensusRow>`,
+            // so a projection that sets only `blocking_count` leaves that field NULL and any
+            // reader folding over it fails at runtime -- measured on this branch as
+            // `type error: filter expects a list, got Null` from
+            // `claim_scope_compile_refusal_has_class`. A field a type declares and a projection
+            // never sets is not a smaller answer; it is an unwritable one.
+            //
+            // Carrying the rows is also what makes the instrument able to say WHY a manifest
+            // failed to compile, rather than only THAT it did: diagnosing one otherwise means
+            // reproducing the compile by hand outside the instrument, and a guessed cause is what
+            // DESIGN §4d calls asserting as deduced what is only inferred.
+            let rows = list_value(
+                diagnostics
+                    .iter()
+                    .map(|row| Value::Record {
+                        type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                        fields: Rc::new(sorted_fields(vec![
+                            (
+                                ctx.sym("diagnostic_class"),
+                                str_value(row.diagnostic_class.clone()),
+                            ),
+                            (ctx.sym("subject_name"), str_value(row.subject_name.clone())),
+                            (ctx.sym("blocking"), Value::Bool(row.blocking)),
+                            (ctx.sym("count"), Value::Int(row.count)),
+                        ])),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            variant(
+                "ClaimScopeCompileRefused",
+                vec![
+                    (
+                        ctx.sym("blocking_count"),
+                        Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
+                    ),
+                    (ctx.sym("diagnostics"), rows),
+                ],
+            )
+        }
         crate::cli_run::ClaimScopeFixtureOutcome::ScopeRefused { cause } => variant(
             "ClaimScopeRefused",
             vec![(ctx.sym("cause"), str_value(cause))],
