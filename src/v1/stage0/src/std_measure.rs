@@ -438,6 +438,8 @@ pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
+pub type EvalStepCount = Rc<Measure<Count, One, i64>>;
+
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, i64>>;
@@ -1161,6 +1163,17 @@ pub fn parameter_count(millions: Nat) -> ParameterCount {
 
 pub fn parameter_count_value(p: ParameterCount) -> Nat {
     measure_count(p.clone())
+}
+
+pub fn eval_step_count(count: Nat) -> EvalStepCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_step_count_value(s: EvalStepCount) -> Nat {
+    measure_count(s.clone())
 }
 
 pub fn token_count(count: Nat) -> TokenCount {
