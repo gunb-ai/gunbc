@@ -9665,6 +9665,16 @@ mod changed_witness_projection_tests {
     /// FLOOR-CHANGED-COST-0 host arms. The model fold is witnessed in
     /// `v2.test.floor_changed_witness`; these assert that the HOST realization joins the same
     /// two populations onto it, which is the seam the .dag fold cannot reach.
+    /// The figure production actually puts in this field, named once so the fixture cannot drift
+    /// from its source again. It minted a bare `500` -- the CPU ceiling that no longer exists --
+    /// while production had been re-pointed to `required_floor_claim_cost_line_ms`, so nothing in
+    /// this module reddened on that divergence (review 65443).
+    ///
+    /// A literal is still a literal; what this buys is that the two READ AS ONE FACT at the only
+    /// grain a unit test can reach. The authority is the `.dag` function, and the host's real
+    /// value is loaded from it at `claim_cost_line_ms`.
+    const FIXTURE_COST_LINE_MS: u64 = 100;
+
     fn observation(cpu: u64) -> HashMap<String, ChangedWitnessCostObservation> {
         let mut map = HashMap::new();
         map.insert(
@@ -9672,7 +9682,7 @@ mod changed_witness_projection_tests {
             ChangedWitnessCostObservation {
                 cpu_clock_nanos: u128::from(cpu) * 1_000_000,
                 wall_clock_nanos: u128::from(cpu + 15) * 1_000_000,
-                cpu_line_ms: 500,
+                cpu_line_ms: FIXTURE_COST_LINE_MS,
             },
         );
         map
