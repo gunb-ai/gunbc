@@ -9099,7 +9099,7 @@ pub fn scope_with_unbound_call_generics(
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
         unbound_call_generic_names: generic_names.iter().cloned().fold(
-            Rc::new(vec![]),
+            scope.unbound_call_generic_names.clone(),
             |acc: Rc<Vec<String>>, g: String| match v1_rt::map_get(&subst, g.clone()) {
                 Some(_) => acc.clone(),
                 std::option::Option::None => v1_rt::concat(acc.clone(), Rc::new(vec![g.clone()])),

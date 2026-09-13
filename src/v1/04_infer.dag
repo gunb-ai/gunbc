@@ -5971,7 +5971,7 @@ fn scope_with_unbound_call_generics(scope: InferScope, generic_names: List<Strin
     item_registry: scope.item_registry,
     caller_decl_name: scope.caller_decl_name,
     lambda_param_provenance: scope.lambda_param_provenance,
-    unbound_call_generic_names: fold(generic_names, init: [], f: (acc, g) =>
+    unbound_call_generic_names: fold(generic_names, init: scope.unbound_call_generic_names, f: (acc, g) =>
       match map_get(subst, g) {
         Present { value: _ } => acc
         Absent => concat(acc, [g])
@@ -8060,8 +8060,12 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
 // Enclosing-generic membership is NOT "the TypeVariable id equals an enclosing param
 // spelling". Callee generics are stamped with the same authored names (T/K/V), so a
 // caller<T> calling apply_to<T>(f: p => p.px, v: …) would lose the deferral arm on the
-// first round. The in-flight call carries the callee names not yet in subst
-// (unbound_call_generic_names); those stay deferred even when they share a spelling.
+// first round. Nested generic calls inside a lambda argument extend that list
+// (scope_with_unbound_call_generics seeds from the outer in-flight names); they
+// must not replace it, or p.px in apply_to(f: p => inner<U>(g: q => p.px, …), v: …)
+// would see only inner's U and refuse enclosing T. The in-flight call carries the
+// callee names not yet in subst (unbound_call_generic_names); those stay deferred
+// even when they share a spelling.
 fn is_unconstrained_type_variable_base(n: Node) -> Bool {
   match n.inferred {
     Present { value: inf } => is_type_variable(inferred: inf)
