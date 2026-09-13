@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import product.fabric.provider_route { ProviderRoute, provider_route_eq, CompliancePostureRevision }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
 import product.data_category {
   PersonalIdentity, BuildOutput,
   personal_identity_ref, build_output_ref,
@@ -282,36 +282,17 @@ type DataEffectAdmission<C, T>
   = DataEffectAdmitted { permit: DataEffectPermit<C, T> }
   | DataEffectRefused { cause: DataEffectRefusal }
 
+// A row matches a sink when its kind is the same kind and, for a durable origin, the same route.
+// That is structural equality on SinkKind -- a coproduct whose only payload is a ProviderRoute of
+// three DeclarationRefs, no function member anywhere -- so it is `==`, admitted by the checker's
+// equality wall, and not a hand-rolled walk of the same arms (DESIGN 2: net concepts must not
+// grow by re-invention). Classified, by contrast, holds a fn and is never compared.
 fn sink_kind_matches(row: SinkKind, sink: SinkKind) -> Bool {
-  match row {
-    DurableOrigin { route: r } =>
-      match sink {
-        DurableOrigin { route: s } => provider_route_eq(a: r, b: s)
-        other => false
-      }
-    LogChannel =>
-      match sink {
-        LogChannel => true
-        other => false
-      }
-    Telemetry =>
-      match sink {
-        Telemetry => true
-        other => false
-      }
-    SheetCell =>
-      match sink {
-        SheetCell => true
-        other => false
-      }
-    SupportExport =>
-      match sink {
-        SupportExport => true
-        other => false
-      }
-  }
+  row == sink
 }
 
+// Same family: two durable origins on different routes are the same KIND of sink, which is what
+// separates "no durable row at all" from "a durable row on another route" in the refusal.
 fn sink_kind_same_family(row: SinkKind, sink: SinkKind) -> Bool {
   match row {
     DurableOrigin { route: _ } =>
@@ -319,7 +300,7 @@ fn sink_kind_same_family(row: SinkKind, sink: SinkKind) -> Bool {
         DurableOrigin { route: _ } => true
         other => false
       }
-    other => sink_kind_matches(row: row, sink: sink)
+    other => row == sink
   }
 }
 
