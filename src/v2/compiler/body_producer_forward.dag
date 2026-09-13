@@ -1,9 +1,118 @@
 module v2.compiler.body_producer_forward
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 data body_producer_forward_note: String = "General body producer forward fold (general-body-producer-design §3, wave2_prep_design §3): production-identity-keyed GrammarRelationRow selection at the normalize/body-producer seam — the forward reading of the same rows the emitter reads backward. First consumer of ObligationForwardDeterminism (exactly-one row per surface identity) and the production-identity selection helper grammar_relation_row_forward_production_selection. Behavior lowering (match/if/let/loop/…) dispatches through body_lower_fold in v2.compiler.body_lowering_fold until Slice 4 deletes that interim module wholesale. dissolve-on: body_lowering_fold.dag absent — this module owns the full forward slot-map apply."
 
 type BodyProducerForwardRow {
   surface_identity: Symbol
+}
+
+// Why this is not an eighth BodyProducerForwardRow: dag grammar has no emitted call identity
+// (call is an optional postfix_call_suffix on primary ident / dotted postfix). Minting a
+// surface_identity would fail ObligationForwardDeterminism; registering ^dag_surface_primary_expr
+// would steal literals and bare idents. Call apply therefore inhabits the existing primary_expr
+// and postfix_expr productions. fold_call_lowering still reads parse sequence-left and must keep
+// that seam or switch onto call_callee_target — do not invert try-fold-loop vs primary-ident-call
+// without that switch (#11314/#11315; crisp-carp decline-shape freeze on this fold).
+type BodyProducerCallSurface
+  = CallSurfacePrimaryIdentSuffix
+  | CallSurfacePostfixProjectionSuffix
+
+type BodyProducerCallForwardStanding
+  = CallApplyOnExistingPrimaryAndPostfixProductions
+
+data body_producer_call_forward_standing: BodyProducerCallForwardStanding = CallApplyOnExistingPrimaryAndPostfixProductions
+
+data body_producer_call_surface_primary: BodyProducerCallSurface = CallSurfacePrimaryIdentSuffix
+
+data body_producer_call_surface_postfix: BodyProducerCallSurface = CallSurfacePostfixProjectionSuffix
+
+fn body_producer_call_surfaces() -> List<BodyProducerCallSurface> {
+  [
+    body_producer_call_surface_primary,
+    body_producer_call_surface_postfix
+  ]
+}
+
+data body_producer_call_carrier_classifier: DeclarationRef = DeclarationRef {
+  module_path: "v2.std.node_query",
+  decl_name: "node_is_call",
+  field: WholeDeclaration
+}
+
+data body_producer_call_callee_edge: DeclarationRef = DeclarationRef {
+  module_path: "v2.std.node_query",
+  decl_name: "call_callee_target",
+  field: WholeDeclaration
+}
+
+data body_producer_call_argument_edges: DeclarationRef = DeclarationRef {
+  module_path: "v2.std.node_query",
+  decl_name: "call_argument_targets",
+  field: WholeDeclaration
+}
+
+data body_producer_call_interim_constructor: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.body_lowering_fold",
+  decl_name: "body_lower_transform_call",
+  field: WholeDeclaration
+}
+
+data body_producer_call_primary_surface_apply: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.body_lowering_fold",
+  decl_name: "body_lower_primary_expr",
+  field: WholeDeclaration
+}
+
+data body_producer_call_postfix_surface_apply: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.body_lowering_fold",
+  decl_name: "body_lower_postfix_expr",
+  field: WholeDeclaration
+}
+
+data body_producer_call_resolve_consumer: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.resolve",
+  decl_name: "resolve_transform_children",
+  field: WholeDeclaration
+}
+
+data body_producer_call_eval_consumer: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.eval",
+  decl_name: "eval_transform_has_callee_reference",
+  field: WholeDeclaration
+}
+
+data body_producer_call_fold_desugar_consumer: DeclarationRef = DeclarationRef {
+  module_path: "v2.compiler.fold_lowering",
+  decl_name: "fold_call_lowering",
+  field: WholeDeclaration
+}
+
+data body_producer_call_complexity_consumer: DeclarationRef = DeclarationRef {
+  module_path: "v2.lens.complexity_accumulator_copy.analyze",
+  decl_name: "analyze_lowered_transform_call",
+  field: WholeDeclaration
+}
+
+fn body_producer_call_producers() -> List<DeclarationRef> {
+  [
+    body_producer_call_interim_constructor,
+    body_producer_call_primary_surface_apply,
+    body_producer_call_postfix_surface_apply
+  ]
+}
+
+fn body_producer_call_consumers() -> List<DeclarationRef> {
+  [
+    body_producer_call_carrier_classifier,
+    body_producer_call_callee_edge,
+    body_producer_call_argument_edges,
+    body_producer_call_resolve_consumer,
+    body_producer_call_eval_consumer,
+    body_producer_call_fold_desugar_consumer,
+    body_producer_call_complexity_consumer
+  ]
 }
 
 data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
