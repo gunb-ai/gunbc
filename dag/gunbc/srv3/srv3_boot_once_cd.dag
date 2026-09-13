@@ -3,7 +3,7 @@ module gunbc.srv3_boot_once_cd
 import std.measure { Second, second }
 import extdeps.bmc.http
 import std.scoped_authorization { ScopedAuthorization }
-import std.types { Timestamp }
+import std.types { Timestamp, Unit }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workflow_escalation {
   workflow_destructive_step_refusal_reason
@@ -37,6 +37,7 @@ import gunbc.tools.bmc_onboard {
   boot_override_body,
   reset_body
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
 
