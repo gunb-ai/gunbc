@@ -11,11 +11,9 @@ import v2.compiler.source_authority {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse {
   ParseArtifact,
-  ParseMemoStats,
   ParseProductionMeasured,
   PreparedGrammar,
   parse_memo_stats_empty,
-  parse_module_prepared,
   parse_module_prepared_measured,
   prepare_grammar
 }
