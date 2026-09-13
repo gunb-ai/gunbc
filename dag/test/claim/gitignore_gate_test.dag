@@ -31,19 +31,43 @@ test fn witness_gitignore_gate_drift_receipt() -> Bool {
     && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
 }
 
-// The private-material rows are not ordinary hygiene rows: they are the only reason arm whose
-// absence is a DISCLOSURE rather than a dirty tree, so they carry their own witness rather than
-// riding on witness_clean_does_not_drift. The negative half is what discriminates: a path that
-// merely CONTAINS the word private must not be ignored, so the wall is the declared directory
-// names and not a substring sweep.
-test fn witness_private_material_rows_are_emitted() -> Bool {
+// THE DERIVED NON-WORLD-READABLE ARM, witnessed in BOTH directions, because a filter that always
+// passes and a filter that never fires emit the same green. The private rows must appear, a
+// materialisation of a PUBLIC repository must produce no row at all, and a path that merely
+// contains the word private must stay trackable.
+test fn witness_private_material_rows_are_derived() -> Bool {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: "private_repo/")
     && string_contains(s: eg, pattern: "private_overlay/")
     && string_contains(s: eg, pattern: "base_overlay/")
     && string_contains(s: eg, pattern: "wb62_overlay/")
     && string_contains(s: eg, pattern: "privdag/")
-    && string_contains(s: eg, pattern: "private material of another repository; MUST NEVER be tracked here")
+    && string_contains(s: eg, pattern: "gunb-ai/gunbc-private is private — never tracked by this repository")
+}
+
+data public_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
+  source: gunbc_public_repository,
+  prefix: "public_overlay_probe/",
+  method: FileCopy,
+  meaning: "a materialisation of the PUBLIC repository, which must derive no ignore row",
+}
+
+data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
+  source: gunbc_private_repository,
+  prefix: "private_overlay_probe/",
+  method: FileCopy,
+  meaning: "a materialisation of the PRIVATE repository, which must derive one ignore row",
+}
+
+// The discriminating positive: same function, same shape of row, opposite verdicts, decided only
+// by the source repository's visibility. Were the visibility ignored, both would survive.
+test fn witness_public_source_derives_no_ignore_row() -> Bool {
+  let both = [public_sourced_materialisation, private_sourced_materialisation]
+  let kept = untracked_materialisations(all: both)
+  count(kept) == 1
+    && !materialisation_must_not_be_tracked(m: public_sourced_materialisation)
+    && materialisation_must_not_be_tracked(m: private_sourced_materialisation)
+    && !string_contains(s: expected_gitignore(), pattern: "public_overlay_probe/")
 }
 
 test fn witness_private_material_paths_are_ignored() -> Bool {

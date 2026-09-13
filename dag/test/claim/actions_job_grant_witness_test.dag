@@ -1,5 +1,6 @@
 module test.claim.actions_job_grant_witness
 
+import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
 import extdeps.github.app {
@@ -43,9 +44,6 @@ import extdeps.github.actions_token {
   ActionsRepositoryPolicyObservation,
   ActionsRepositoryPolicyUnobserved,
   ActionsRepositoryPolicyObserved,
-  RepositoryVisibility,
-  PublicRepository,
-  PrivateRepository,
   fork_write_tokens_reachable,
   ActionsGrantResolution,
   ActionsGrantResolved,

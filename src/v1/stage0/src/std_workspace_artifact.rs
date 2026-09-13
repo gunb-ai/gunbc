@@ -22,7 +22,22 @@ pub enum IgnoreReason {
     MayContainSecrets,
     OutsideSubstrate,
     SupersededAuthority { canonical: String },
-    ForeignPrivateMaterial { owner_repository: String },
+}
+impl IgnoreReason {
+    pub fn canonical(&self) -> String {
+        match self {
+            IgnoreReason::RegenerableFromSource => panic!("no canonical on unit variant"),
+            IgnoreReason::LocalCacheState => panic!("no canonical on unit variant"),
+            IgnoreReason::PerDeveloperState => panic!("no canonical on unit variant"),
+            IgnoreReason::HostOsMetadata => panic!("no canonical on unit variant"),
+            IgnoreReason::SessionRuntimeState => panic!("no canonical on unit variant"),
+            IgnoreReason::MayContainSecrets => panic!("no canonical on unit variant"),
+            IgnoreReason::OutsideSubstrate => panic!("no canonical on unit variant"),
+            IgnoreReason::SupersededAuthority {
+                canonical: __val, ..
+            } => __val.clone(),
+        }
+    }
 }
 
 pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> String {
@@ -39,14 +54,6 @@ pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> String {
         IgnoreReason::SupersededAuthority { canonical: c, .. } => {
             v1_rt::concat("superseded; canonical home: ".to_string(), c.clone())
         }
-        IgnoreReason::ForeignPrivateMaterial {
-            owner_repository: r,
-            ..
-        } => v1_rt::concat(
-            "private material of another repository; MUST NEVER be tracked here — owner: "
-                .to_string(),
-            r.clone(),
-        ),
     }
 }
 

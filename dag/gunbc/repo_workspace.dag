@@ -5,8 +5,7 @@ import std.workspace_artifact {
   WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance,
   CitedUpstream, RepoTool,
   RegenerableFromSource, LocalCacheState, PerDeveloperState, HostOsMetadata,
-  SessionRuntimeState, MayContainSecrets, OutsideSubstrate, SupersededAuthority,
-  ForeignPrivateMaterial
+  SessionRuntimeState, MayContainSecrets, OutsideSubstrate, SupersededAuthority
 }
 import extdeps.cargo { cargo_workspace_footprint }
 import extdeps.cargo_tarpaulin { tarpaulin_report_footprint }
@@ -135,16 +134,6 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       artifacts: [
         WorkspaceArtifact { pattern: ".claim-map/", meaning: "claim execution map output", reason: RegenerableFromSource },
         WorkspaceArtifact { pattern: "src/v2/test/claim/manual/sg2_scratch_probe.dag", meaning: "scratch probe written by manual claim runs", reason: SessionRuntimeState }
-      ]
-    },
-    WorkspaceFootprint {
-      provenance: RepoTool { display: "Private-repository material inside a public worktree", owner_module: "gunbc.repo_workspace" },
-      artifacts: [
-        WorkspaceArtifact { pattern: "private_repo/", meaning: "nested clone of the private repository, the shape that stages a gitlink", reason: ForeignPrivateMaterial { owner_repository: "gunbc-private" } },
-        WorkspaceArtifact { pattern: "private_overlay/", meaning: "unversioned COPY of the private tree made by the private-witness step (cp -a ../dag <name>_overlay/dag); the shape that stages full file content", reason: ForeignPrivateMaterial { owner_repository: "gunbc-private" } },
-        WorkspaceArtifact { pattern: "base_overlay/", meaning: "overlay copy under the first observed recipe argument; a name, not a shape", reason: ForeignPrivateMaterial { owner_repository: "gunbc-private" } },
-        WorkspaceArtifact { pattern: "wb62_overlay/", meaning: "overlay copy under a third observed recipe argument, which is why this row set is a list of spellings and not a wall", reason: ForeignPrivateMaterial { owner_repository: "gunbc-private" } },
-        WorkspaceArtifact { pattern: "privdag/", meaning: "private .dag source root materialised beside the public one", reason: ForeignPrivateMaterial { owner_repository: "gunbc-private" } }
       ]
     },
     WorkspaceFootprint {

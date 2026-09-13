@@ -158,23 +158,23 @@ out.txt
 # session/runtime state; not source-of-truth — scratch probe written by manual claim runs
 src/v2/test/claim/manual/sg2_scratch_probe.dag
 
-# --- Private-repository material inside a public worktree [owner: gunbc.repo_workspace] ---
-# private material of another repository; MUST NEVER be tracked here — owner: gunbc-private — nested clone of the private repository, the shape that stages a gitlink
-private_repo/
-# private material of another repository; MUST NEVER be tracked here — owner: gunbc-private — unversioned COPY of the private tree made by the private-witness step (cp -a ../dag <name>_overlay/dag); the shape that stages full file content
-private_overlay/
-# private material of another repository; MUST NEVER be tracked here — owner: gunbc-private — overlay copy under the first observed recipe argument; a name, not a shape
-base_overlay/
-# private material of another repository; MUST NEVER be tracked here — owner: gunbc-private — overlay copy under a third observed recipe argument, which is why this row set is a list of spellings and not a wall
-wb62_overlay/
-# private material of another repository; MUST NEVER be tracked here — owner: gunbc-private — private .dag source root materialised beside the public one
-privdag/
-
 # --- Superseded planning scratch directories [owner: gunbc.plan] ---
 # superseded; canonical home: docs/plans/ (generated PlanArtifact) and DESIGN.md — pre-plan-carrier planning scratch
 /gunbc-planning/
 # superseded; canonical home: docs/plans/ (generated PlanArtifact) and DESIGN.md — pre-plan-carrier fixture scratch
 /scripts/fixtures/
+
+# --- Material from a repository that is not world-readable (derived from gunbc.workspace_repository_materialisation and each source repository's visibility) ---
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by gitlink (160000): a commit sha and a path, with a warning — nested clone of the private repository beside the public checkout
+private_repo/
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy made by the private-witness step (cp -a of the private dag tree)
+private_overlay/
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under the first observed recipe argument
+base_overlay/
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under a third observed recipe argument, which is why this roster is a list of spellings
+wb62_overlay/
+# gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — private .dag source root materialised beside the public one
+privdag/
 
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).

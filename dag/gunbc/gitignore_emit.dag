@@ -6,6 +6,10 @@ import std.workspace_artifact {
   footprint_display, ignore_reason_label
 }
 import gunbc.repo_workspace { repo_workspace_footprints }
+import gunbc.workspace_repository_materialisation {
+  WorkspaceMaterialisation, workspace_materialisations, untracked_materialisations,
+  materialisation_ignore_reason
+}
 import gunbc.generated_artifact {
   GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
 }
@@ -71,6 +75,8 @@ fn expected_gitignore() -> String {
     gitignore_header_doc(),
     footprints_doc(footprints: repo_workspace_footprints()),
     doc_blank(),
+    non_world_readable_section_doc(),
+    doc_blank(),
     generated_artifacts_section_doc()
   ])
   render(doc: body, proto: gitignore_protocol)
@@ -86,7 +92,8 @@ fn footprint_patterns(f: WorkspaceFootprint) -> List<String> {
 
 fn ignore_patterns() -> List<String> {
   let tool_patterns = fold(repo_workspace_footprints(), init: [], f: fn(acc, f) { concat(acc, footprint_patterns(f: f)) })
-  concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
+  let with_private = concat(tool_patterns, map(non_world_readable_materialisations(), m => m.prefix))
+  concat(with_private, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 
 fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
@@ -95,6 +102,27 @@ fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
 
 fn non_committed_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
+}
+
+// THE NON-WORLD-READABLE ARM. It is a THIRD derived arm beside the tool footprints and the
+// generated-artifact rows, and it authors nothing: the patterns are the prefixes of
+// gunbc.workspace_repository_materialisation, the membership test is the source repository's
+// visibility, and the comment text is derived from that same visibility. A new overlay spelling is
+// a compose row over there, and its ignore row appears here by construction.
+fn non_world_readable_materialisations() -> List<WorkspaceMaterialisation> {
+  untracked_materialisations(all: workspace_materialisations())
+}
+
+fn materialisation_doc(m: WorkspaceMaterialisation) -> Doc {
+  doc_concat(parts: [
+    gitignore_comment_line(text: materialisation_ignore_reason(m: m)),
+    doc_line_of(text: m.prefix)
+  ])
+}
+
+fn non_world_readable_section_doc() -> Doc {
+  let header = gitignore_section_header(title: "Material from a repository that is not world-readable (derived from gunbc.workspace_repository_materialisation and each source repository's visibility)")
+  doc_concat(parts: append([header], items: map(non_world_readable_materialisations(), m => materialisation_doc(m: m))))
 }
 
 fn generated_artifacts_section_doc() -> Doc {

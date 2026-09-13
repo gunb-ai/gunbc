@@ -1,0 +1,128 @@
+module gunbc.workspace_repository_materialisation
+
+import std.types { String, List, Bool }
+import extdeps.github.repository {
+  RepositoryVisibilityStanding, repository_standing_slug, standing_is_world_readable,
+  repository_visibility_label
+}
+import gunbc.repo_identity { gunbc_private_repository }
+
+// THE COMPOSE CONTRACT OF THIS WORKSPACE: which repository is materialised under which prefix of
+// the public checkout, and by what method. It is the PUBLIC half of a contract whose private half
+// is the private repository's own strategy.private_witness_workflow overlay_local_method — cited
+// here BY NAME and deliberately not imported, because a public module may not take a build
+// dependency on a private one, and because the two halves are separately governed: the private
+// side decides that it needs an overlay, this side decides what the public repository does about
+// a prefix that appears.
+//
+// WHY THIS IS A FACT OF THE REALIZATION AND NOT AN IGNORE ROW (DESIGN §3). "This directory must
+// not be tracked" is not a primitive: it is a CONSEQUENCE of two facts that live elsewhere — the
+// source repository's visibility (gunbc.repo_identity, from extdeps.github.repository) and the
+// fact that the compose step lands that repository at a prefix inside a public working tree. Both
+// halves exist independently of git, so authoring the consequence as a hand-declared ignore reason
+// would be a second representation of a privacy fact the corpus already models, free to disagree
+// with it. gunbc.gitignore_emit DERIVES the ignore rows from the join, so adding an overlay
+// spelling is a row here and the ignore follows by construction.
+
+// HOW the material lands, which is what decides the STAGED SHAPE git gives it. The two arms are
+// not naming preferences: they were separated by measurement. A nested clone carries its own .git,
+// so `git add -A` records a gitlink — a commit sha and a path, with a warning on stderr. A copy
+// carries no .git, so the same command records every file's full content, mode 100644, silently.
+// The silent arm is the dangerous one and it is the one the overlay recipe produces.
+type MaterialisationMethod
+  = NestedClone
+  | FileCopy
+
+type StagedShape
+  = StagedGitlink
+  | StagedFullContent
+
+// Shape is DERIVED from method rather than authored beside it: a row carrying both could declare a
+// clone that stages full content, which no git does.
+fn materialisation_staged_shape(method: MaterialisationMethod) -> StagedShape {
+  match method {
+    NestedClone => StagedGitlink
+    FileCopy => StagedFullContent
+  }
+}
+
+fn staged_shape_label(shape: StagedShape) -> String {
+  match shape {
+    StagedGitlink => "gitlink (160000): a commit sha and a path, with a warning"
+    StagedFullContent => "full file content (100644), silently"
+  }
+}
+
+type WorkspaceMaterialisation {
+  source: RepositoryVisibilityStanding
+  prefix: String
+  method: MaterialisationMethod
+  meaning: String
+}
+
+// THE OBSERVED PREFIXES. Every row's source is a repository standing, never a visibility restated
+// here. The overlay prefix is an ARGUMENT of the producing recipe, so these are the spellings that
+// have been OBSERVED and not the set that can occur — which is why the guard this feeds is
+// path-shaped against a content-shaped hazard, and is recorded as such on the
+// recurring_failure_mode row rather than claimed away here.
+fn workspace_materialisations() -> List<WorkspaceMaterialisation> {
+  [
+    WorkspaceMaterialisation {
+      source: gunbc_private_repository,
+      prefix: "private_repo/",
+      method: NestedClone,
+      meaning: "nested clone of the private repository beside the public checkout"
+    },
+    WorkspaceMaterialisation {
+      source: gunbc_private_repository,
+      prefix: "private_overlay/",
+      method: FileCopy,
+      meaning: "overlay copy made by the private-witness step (cp -a of the private dag tree)"
+    },
+    WorkspaceMaterialisation {
+      source: gunbc_private_repository,
+      prefix: "base_overlay/",
+      method: FileCopy,
+      meaning: "overlay copy under the first observed recipe argument"
+    },
+    WorkspaceMaterialisation {
+      source: gunbc_private_repository,
+      prefix: "wb62_overlay/",
+      method: FileCopy,
+      meaning: "overlay copy under a third observed recipe argument, which is why this roster is a list of spellings"
+    },
+    WorkspaceMaterialisation {
+      source: gunbc_private_repository,
+      prefix: "privdag/",
+      method: FileCopy,
+      meaning: "private .dag source root materialised beside the public one"
+    }
+  ]
+}
+
+// THE DERIVATION EVERY CONSUMER READS: a materialisation whose source repository is not
+// world-readable must never be tracked by the public repository. A materialisation of a PUBLIC
+// repository yields nothing here, which is what makes the derivation discriminating rather than a
+// filter that always passes.
+fn materialisation_must_not_be_tracked(m: WorkspaceMaterialisation) -> Bool {
+  !standing_is_world_readable(standing: m.source)
+}
+
+fn untracked_materialisations(all: List<WorkspaceMaterialisation>) -> List<WorkspaceMaterialisation> {
+  filter(all, m => materialisation_must_not_be_tracked(m: m))
+}
+
+// The reason text a reader sees in .gitignore, DERIVED from the source repository's visibility and
+// the method's staged shape. No row authors a reason.
+fn materialisation_ignore_reason(m: WorkspaceMaterialisation) -> String {
+  concat(
+    concat(
+      concat(repository_standing_slug(standing: m.source), " is "),
+      concat(repository_visibility_label(visibility: m.source.visibility), " — never tracked by this repository; ")
+    ),
+    concat(
+      concat("materialised here by ", staged_shape_label(shape: materialisation_staged_shape(method: m.method))),
+      concat(" — ", m.meaning)
+    )
+  )
+}
