@@ -142,6 +142,7 @@ import gunbc.roadmap_belt_actuate {
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap_belt { ManualReady }
+import v2.std.node_reflection { coproduct_arm_keys }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
@@ -705,8 +706,27 @@ fn band_key_for_label(label: String) -> String {
   }
 }
 
+// COVERAGE IS AN IDENTITY JOIN OVER THE ARMS, NOT A COUNT OF THE ROWS. This witness pinned
+// `belt_dispatch_label_band_rows().length() == 22` while the roster had grown to 25 -- a count says
+// a NUMBER moved and never says WHICH vocabulary went unpinned, so the repair is always to bump the
+// literal, which is the change detector DESIGN 5 names. Joining the coproduct's own arm keys against
+// the exemplars instead means a new LaunchRefusal arm reds this by NAMING the arm that carries no
+// exemplar, and the fix is to exemplify it rather than to edit a number.
+//
+// The three LaunchNotAgentWork modes are pinned separately BELOW rather than by this join, because
+// one arm produces THREE wire labels through launch_non_agent_work_wire_label -- so arm coverage is
+// necessary and not sufficient for vocabulary coverage, and the mode labels need their own rows.
+fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
+  let arms = coproduct_arm_keys(type_name: ^LaunchRefusal)
+  count(arms) > 0
+    && all(arms, k => any(launch_refusal_exemplars(), r => discriminant(v: r) == k))
+}
+
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 22
+  every_launch_refusal_arm_has_an_exemplar()
+    && band_key_for_label(label: "operator_exclusive") == "fail"
+    && band_key_for_label(label: "external_lead") == "fail"
+    && band_key_for_label(label: "calendar_observation") == "fail"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
