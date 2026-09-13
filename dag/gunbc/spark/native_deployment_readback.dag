@@ -240,6 +240,18 @@ fn rank_unknowns(desired: ArmNodeLaunch, observed: RankObservation) -> List<Depl
 // THIS MATTERS MOST TO WHAT CONSUMES THE VERDICT. An incarnation receipt built on "all ranks agree"
 // must not mean "each planned rank had a row we liked": a fifth process serving different weights on
 // the same group is exactly the case where a turn would be placed on an engine nobody observed.
+// THE PLANNED SIDE IS NOT CHECKED HERE BECAUSE ITS CONSTRUCTOR ALREADY SEALS IT. A bijection needs
+// uniqueness on both sides, and only the observed side is a population this module receives:
+// gunbc.spark.serving_arm_launch arm_node_step assigns node_rank from a fold accumulator and
+// increments it per host, so planned ranks are 0,1,2,... strictly increasing by construction and a
+// DuplicatePlannedRank arm would be a check whose red no caller could author -- the decoration DESIGN
+// section 4b forbids at the top rung.
+//
+// WHAT THAT SEAL DOES NOT COVER IS HOST UNIQUENESS, and this says so rather than implying a stronger
+// guarantee: arm_ordered_hosts places the head first and filters it from the tail, so the head cannot
+// repeat, but two ranks landing on one host would require gunbc.spark.fabric_switch_observed
+// fabric_group_hosts to answer a host twice. That is an invariant of the observed group membership and
+// belongs to the planner if it is ever violated, not to a second check inside this assessment.
 fn observations_for_rank(observed: List<RankObservation>, rank: Nat) -> List<RankObservation> {
   filter(observed, o => o.node_rank == rank)
 }
