@@ -27,7 +27,7 @@ import gunbc.public_workload_census {
   baseline_admission, BaselineAdmitted, BaselineRefused,
   candidate_run_identity, ObservedAtInspectedRevision, WorkflowBlobEquivalent,
   RunIdentityMismatched, RunIdentityUnresolved,
-  observed_job_binds_inspected_leg,
+  inspected_leg_binding, InspectedLegBound, InspectedLegUninspected, InspectedLegNameMismatch,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   WorkloadCandidate, MatrixCombination, MatrixAxisAssignment, DeclaredLabel,
   JobRunObserved, TestsExecuted, ReplayAdmitted, SpendUnobserved,
@@ -500,13 +500,17 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
       == candidate_biome_test.matrix_selector
       && (candidate_biome_job_key_mismatch_control.job_key as String)
         != (candidate_biome_test.job_key as String)
-      && !observed_job_binds_inspected_leg(
+      && match inspected_leg_binding(
         job_name: "Test (depot-ubuntu-24.04-arm-16)",
         job_key: candidate_biome_job_key_mismatch_control.job_key,
         matrix: candidate_biome_job_key_mismatch_control.matrix_selector,
         repository: candidate_biome_job_key_mismatch_control.repository,
         workflow_path: candidate_biome_job_key_mismatch_control.workflow_path,
-      )
+      ) {
+        InspectedLegUninspected { cause } => true
+        InspectedLegBound => false
+        InspectedLegNameMismatch => false
+      }
   same_matrix_different_key
     && match candidate_run_identity(c: candidate_biome_job_key_mismatch_control) {
       RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_mismatch_control) {
@@ -557,13 +561,17 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
       == (candidate_biome_test.job_key as String)
       && candidate_biome_matrix_selector_mismatch_control.matrix_selector
         != candidate_biome_test.matrix_selector
-      && !observed_job_binds_inspected_leg(
+      && match inspected_leg_binding(
         job_name: "Test (depot-ubuntu-24.04-arm-16)",
         job_key: candidate_biome_matrix_selector_mismatch_control.job_key,
         matrix: candidate_biome_matrix_selector_mismatch_control.matrix_selector,
         repository: candidate_biome_matrix_selector_mismatch_control.repository,
         workflow_path: candidate_biome_matrix_selector_mismatch_control.workflow_path,
-      )
+      ) {
+        InspectedLegNameMismatch => true
+        InspectedLegBound => false
+        InspectedLegUninspected { cause } => false
+      }
   same_key_different_matrix
     && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
       RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_matrix_selector_mismatch_control) {

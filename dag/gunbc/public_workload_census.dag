@@ -482,26 +482,6 @@ fn inspected_leg_binding(
   }
 }
 
-fn observed_job_binds_inspected_leg(
-  job_name: String,
-  job_key: NonEmptyStr,
-  matrix: JobMatrixIdentity,
-  repository: NonEmptyStr,
-  workflow_path: NonEmptyStr,
-) -> Bool {
-  match inspected_leg_binding(
-    job_name: job_name,
-    job_key: job_key,
-    matrix: matrix,
-    repository: repository,
-    workflow_path: workflow_path,
-  ) {
-    InspectedLegBound => true
-    InspectedLegUninspected { cause } => false
-    InspectedLegNameMismatch => false
-  }
-}
-
 type RunIdentityStanding
   = ObservedAtInspectedRevision {
       repository: NonEmptyStr
