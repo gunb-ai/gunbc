@@ -215,6 +215,175 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
     CompileDiagnosticCensus::Observed(compile_diagnostic_census_rows(&result.diagnostics))
 }
 
+/// BUILD A CLAIM SCOPE over a caller-authored fixture manifest, and report what the scope
+/// builder said.
+///
+/// The manifest validation is deliberately the SAME shape as
+/// `compile_dag_multi_module_fixture`'s, because the failure modes it rejects are properties of
+/// a manifest and not of what one later does with it.
+///
+/// `entry_module_path` is a MODULE PATH (`amb.user`), not a file path: `claim_scope_for` is
+/// keyed on the module whose scope is being built, which is what the floor passes it.
+pub fn claim_scope_dag_multi_module_fixture(
+    paths: &[String],
+    contents: &[String],
+    entry_module_path: &str,
+) -> crate::cli_run::ClaimScopeFixtureOutcome {
+    use crate::cli_run::ClaimScopeFixtureOutcome as Outcome;
+    if paths.len() != contents.len() {
+        return Outcome::InstrumentRefused {
+            cause: format!(
+                "claim_scope_dag_multi_module_fixture: manifest is {} paths against {} contents; \
+                 a source is a (path, content) pair and a ragged manifest names no subject",
+                paths.len(),
+                contents.len()
+            ),
+        };
+    }
+    if paths.is_empty() {
+        return Outcome::InstrumentRefused {
+            cause: "claim_scope_dag_multi_module_fixture: empty manifest — an empty subject \
+                    builds a scope over nothing, which is could-not-measure wearing the \
+                    subject's verdict"
+                .to_string(),
+        };
+    }
+    let mut seen: HashSet<&str> = HashSet::new();
+    for path in paths.iter() {
+        if path.trim().is_empty() {
+            return Outcome::InstrumentRefused {
+                cause: "claim_scope_dag_multi_module_fixture: a supplied source has an empty path"
+                    .to_string(),
+            };
+        }
+        if !seen.insert(path.as_str()) {
+            return Outcome::InstrumentRefused {
+                cause: format!(
+                    "claim_scope_dag_multi_module_fixture: path '{path}' supplied twice; which \
+                     bytes are at that path is then undecidable"
+                ),
+            };
+        }
+    }
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+    }));
+    let resolved = match compiled {
+        Ok(resolved) => resolved,
+        Err(_) => {
+            return Outcome::InstrumentRefused {
+                cause: "claim_scope_dag_multi_module_fixture: the compile panicked before \
+                        producing a graph"
+                    .to_string(),
+            };
+        }
+    };
+    let rows = compile_diagnostic_census_rows(&resolved.diagnostics);
+    let Some(graph) = resolved.graph.clone() else {
+        return Outcome::CompileRefused { diagnostics: rows };
+    };
+    if rows.iter().any(|row| row.blocking) {
+        return Outcome::CompileRefused { diagnostics: rows };
+    }
+    let module_count = graph.modules.len() as i64;
+    let source_indices = v1_compiler_compile::dag_graph_source_indices(graph.clone());
+    // THE SAME CARRIER THE FLOOR PASSES. Every field is supplied from this manifest rather than
+    // from a corpus: `full_inventory` and `discovery_exclusions` are empty because a fixture has
+    // no discovery step, and the counts describe this manifest. No corpus root is read, which is
+    // what keeps the subject under the calling test's control.
+    // A REAL DIGEST, NOT AN EMPTY STRING. The per-subject memos are keyed by this value, so an
+    // empty digest is not merely uninformative -- every fixture would collide with every other
+    // fixture and with anything else that left the field blank, and a scope would consume an
+    // index built from a different graph.
+    let subject_digest = multi_module_fixture_source_digest(
+        &paths
+            .iter()
+            .zip(contents.iter())
+            .map(|(path, content)| MultiModuleFixtureSource {
+                path: path.clone(),
+                content: content.clone(),
+            })
+            .collect::<Vec<MultiModuleFixtureSource>>(),
+        entry_module_path,
+    );
+    let prepared = crate::cli_run::PreparedRepository {
+        graph,
+        source_indices,
+        subject_digest,
+        modules_resolved: module_count as usize,
+        modules_excluded: 0,
+        full_inventory: Vec::new(),
+        discovery_exclusions: HashMap::new(),
+    };
+    // THE FIXTURE BUILDS ITS OWN REFERENCE-CLOSURE INDEX AND REGISTERS NOTHING.
+    //
+    // `reference_closure_index` memoizes in a `thread_local!` keyed by `subject_digest` and
+    // bounded at `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`; a subject beyond that population is
+    // refused. The required floor already holds both slots -- the corpus subject and the
+    // `policy_prepared` subject built for `REQUIRED_FLOOR_POLICY_MODULE` -- so a fixture going
+    // through the cache is the THIRD subject and is refused, for a reason that says nothing about
+    // the manifest. This subject is one module and is discarded immediately, so it has no business
+    // in a cache sized for the floor's own long-lived subjects; it builds its index directly and
+    // hands it to scope construction, occupying no slot and evicting nothing.
+    //
+    // RAISING THE BOUND IS NOT THE REMEDY. It is a stated production cost wall, and widening it so
+    // a test instrument fits is the instrument dictating production limits.
+    //
+    // WHY THIS IS NOT A TUNING DETAIL. The memo is thread-LOCAL and the floor evaluates claims
+    // across several workers, so an instrument that reaches it is order- and thread-dependent BY
+    // CONSTRUCTION: which worker picks a claim up can decide its verdict, and a local run holding
+    // only one subject cannot see that at all. Anyone building another floor-resident instrument
+    // should read that before trusting a green. The receipt is the required floor's own
+    // `required-witnesses-floor` job on this branch, whose control rows re-derive it; it is named
+    // rather than transcribed, because a copied observation rots without anyone touching either
+    // end (DESIGN §6).
+    //
+    // The Err that survives here is `ExprVarReconciliationMismatch`, which IS about the supplied
+    // graph, so it is reported as a scope refusal rather than an instrument one.
+    let reference_index = match crate::cli_run::build_reference_closure_index(&prepared) {
+        Ok(index) => index,
+        Err(cause) => return Outcome::ScopeRefused { cause },
+    };
+    // WITHOUT MEMOS, deliberately: `claim_scope_for` reaches per-subject memo caches bounded at
+    // `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`, and a fixture subject -- synthesized here, one
+    // module wide, discarded immediately -- must neither read from nor write to them, because
+    // occupying one of that bounded population would refuse the next real subject. So this calls the SAME
+    // `claim_scope_for_with_memos` the floor's entry point calls, passing `None` for the fragment
+    // cache and a scope-private order index. That is a caching decision rather than a semantic
+    // one: it is one function computing one scope, which is what keeps this instrument and the
+    // corpus floor on a single detector.
+    //
+    // `claim_scope_for_without_memos` is the obvious spelling and is NOT used: it is gated behind
+    // `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function
+    // and this instrument has to run in one.
+    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::cli_run::claim_scope_for_with_memos(
+            &prepared,
+            entry_module_path,
+            None,
+            crate::cli_run::build_scope_order_index(&prepared),
+            Some(reference_index),
+        )
+    }));
+    match built {
+        Err(_) => Outcome::InstrumentRefused {
+            cause: "claim_scope_dag_multi_module_fixture: scope construction panicked".to_string(),
+        },
+        Ok(Err(cause)) => Outcome::ScopeRefused { cause },
+        Ok(Ok(_scope)) => Outcome::ScopeAccepted { module_count },
+    }
+}
+
 /// Host realization backing the `compile_dag_multi_module_fixture` builtin: compile a
 /// CALLER-AUTHORED SET of `.dag` modules through the v1 pipeline to the Rust render target, with
 /// NO corpus roots, NO module index, and no filesystem read of any kind.
