@@ -1,0 +1,41 @@
+module extdeps.tax.statutory_rate
+
+import std.types { NonEmptyStr }
+import std.measure { PartsPerMillion }
+import extdeps.publication { SpecificationDocumentDate }
+
+// THE SHARED SHAPE OF A PUBLISHED STATUTORY TAX RATE, and nothing about any jurisdiction.
+//
+// DESIGN section 3's external-upstream decomposition governs the split: each independently
+// governed taxing authority - New Jersey, New York City, and whoever comes next - owns its own
+// module and its own rows, and this hub owns only the agnostic shape they inhabit. It enumerates
+// no jurisdiction, carries no rate, and dispatches among none; adding a third state must not
+// widen anything here.
+//
+// WHY A RATE IS NOT JUST A NUMBER. A statutory rate is a figure that was true from a date, under
+// a citable instrument, and the date is the part that rots silently: a rate row carrying its
+// effective date in a COMMENT reads as current forever, because nothing in the type can tell a
+// later reader that the comment describes a superseded version. New Jersey publishes 6.625 percent
+// on and after 2018-01-01 - that qualifier is load-bearing, and it belonged in the carrier rather
+// than beside it.
+//
+// AND AN UNKNOWN EFFECTIVE DATE IS AN ARM, NOT A BLANK. Some rates here were transcribed from a
+// publication that states the rate without stating when it took effect. That is a real epistemic
+// state and it is not the same as a rate known to be current; DESIGN section 4d forbids asserting
+// as deduced what is only inferred, so the unread arm carries what would ground it.
+
+type StatutoryRateEffectiveVersion
+  = EffectiveFrom { date: SpecificationDocumentDate, instrument: NonEmptyStr }
+  | EffectiveDateUnread { obligation: NonEmptyStr }
+
+// The rate and its version travel together, so a consumer cannot take one without the other.
+// Splitting them into two declarations would let a caller read the figure and never learn which
+// version it is - which is the state this carrier exists to make unwritable.
+type StatutoryRate {
+  rate: PartsPerMillion
+  effective: StatutoryRateEffectiveVersion
+}
+
+fn statutory_rate_value(r: StatutoryRate) -> PartsPerMillion {
+  r.rate
+}

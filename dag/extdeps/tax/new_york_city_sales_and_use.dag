@@ -1,0 +1,56 @@
+module extdeps.tax.new_york_city_sales_and_use
+
+import std.measure { PartsPerMillion, parts_per_million }
+import extdeps.tax.statutory_rate { StatutoryRate, EffectiveDateUnread, statutory_rate_value }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// Combined New York City sales and use tax on ordinary tangible personal property.
+// Separate authority from New Jersey's statewide rate. The combined figure is the
+// destination rate a New York use-tax residual is measured against; it is not a
+// dollar amount and it is not a lot's collected tax.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nyc.gov/site/finance/business/business-nys-sales-tax.page"
+  }
+}
+
+data nyc_pub718_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.tax.ny.gov/pdf/publications/sales/pub718.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tax.new_york_city_sales_and_use",
+      decl_name: "nyc_combined_sales_tax",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [nyc_pub718_authority]
+}
+
+// NYC Department of Finance / Pub 718: 8.875 percent combined
+// (4 percent state + 4.5 percent city + 0.375 percent MCTD), reporting code 8081.
+// Percent is whole points; this is that published rate at Micro scale.
+//
+// THE EFFECTIVE DATE IS UNREAD AND THE ARM SAYS SO. Publication 718 states the rate and the
+// reporting code; the transcription did not capture from what date this combined figure applies.
+// That matters here more than it looks: this is the rate a New York use-tax residual is measured
+// AGAINST, so a superseded figure would misstate every residual computed from it, and the
+// component split (4 + 4.5 + 0.375) is exactly the kind of composition a legislature revises one
+// piece at a time.
+data nyc_combined_sales_tax: StatutoryRate = StatutoryRate {
+  rate: parts_per_million(count: 88750),
+  effective: EffectiveDateUnread {
+    obligation: "Read the date from which the 8.875 percent combined rate applies, from Publication 718 or the Department's rate-change notices. Capture the component effective dates too if they differ - the state, city and MCTD pieces can move independently." as NonEmptyStr,
+  },
+}
+

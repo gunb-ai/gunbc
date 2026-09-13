@@ -507,13 +507,16 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/google/sheets.dag",
   "dag/extdeps/common_paper/cloud_service_agreement.dag",
   "dag/extdeps/bonterms/cloud_terms.dag",
-  "dag/extdeps/moonshot/kimi_code.dag"
+  "dag/extdeps/moonshot/kimi_code.dag",
+  "dag/extdeps/tax/new_jersey_sales_and_use.dag",
+  "dag/extdeps/tax/new_york_city_sales_and_use.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/external_authority.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/publication.dag",
+  "dag/extdeps/tax/statutory_rate.dag",
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
   "dag/extdeps/cron/mock_corpus.dag",
