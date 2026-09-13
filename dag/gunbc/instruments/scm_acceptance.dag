@@ -1019,23 +1019,23 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
 // directory could not be removed" in place of a real scenario failure would replace the answer with
 // an unrelated one; silently dropping it would leak a release binary with no signal.
 
-func scm_acceptance() -> ProcessExit {
+fn scm_acceptance() -> ProcessExit {
   scm_acceptance_acquisition_exit(acquisition: acquire_scm_acceptance_binary())
 }
 
-func scm_acceptance_publication(binary: ScmAcceptanceBinary) -> ProcessExit {
+fn scm_acceptance_publication(binary: ScmAcceptanceBinary) -> ProcessExit {
   scm_acceptance_exit(
     outcome: scm_scenario_in_fresh_workspace(scenario: PublicationScenario, binary: binary)
   )
 }
 
-func scm_acceptance_merge(binary: ScmAcceptanceBinary) -> ProcessExit {
+fn scm_acceptance_merge(binary: ScmAcceptanceBinary) -> ProcessExit {
   scm_acceptance_exit(
     outcome: scm_scenario_in_fresh_workspace(scenario: MergeScenario, binary: binary)
   )
 }
 
-func scm_acceptance_conflict(binary: ScmAcceptanceBinary) -> ProcessExit {
+fn scm_acceptance_conflict(binary: ScmAcceptanceBinary) -> ProcessExit {
   scm_acceptance_exit(
     outcome: scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary)
   )

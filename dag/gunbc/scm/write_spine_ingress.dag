@@ -67,7 +67,7 @@ type WorkspaceAdd
 // and a parent-directory segment. `gunbc.scm.object_store.CorpusManifestEntry` already carries that
 // same trigger over the same field. When it lands, this arm and that one dissolve together, because
 // the state stops being writable rather than stopping being reachable.
-func add_workspace_file(
+fn add_workspace_file(
   repository: RepositoryEnvelope,
   directory: String,
   name: String,
@@ -92,7 +92,7 @@ func add_workspace_file(
 // THE READ AND THE LISTING ARE BOTH PERFORMED, UNCONDITIONALLY, AND THEN JOINED. Neither is allowed to
 // gate the other: a listing that decided whether to read would make the read's answer depend on the
 // listing's instant, and the join exists precisely because those are two instants.
-func observe_workspace_file(
+fn observe_workspace_file(
   directory: String,
   component: FilesystemEntryName,
 ) -> FilesystemFileObservation {

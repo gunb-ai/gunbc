@@ -176,7 +176,7 @@ fn init_publication_verdict(
   }
 }
 
-func spine_init(root: String, key: String, expect: String) -> ProcessExit {
+fn spine_init(root: String, key: String, expect: String) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
     SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
@@ -192,7 +192,7 @@ func spine_init(root: String, key: String, expect: String) -> ProcessExit {
 // add -- observe one real file and stage it, preserving every path nobody touched
 // ------------------------------------------------------------------------------------------------
 
-func spine_add(
+fn spine_add(
   root: String,
   key: String,
   directory: String,
@@ -216,7 +216,7 @@ func spine_add(
   }
 }
 
-func spine_add_loaded(
+fn spine_add_loaded(
   loaded: LoadedRepositoryGeneration,
   directory: String,
   name: String,
@@ -244,7 +244,7 @@ func spine_add_loaded(
   }
 }
 
-func publish_staged(loaded: LoadedRepositoryGeneration, ingress: StageIngress) -> ProcessExit {
+fn publish_staged(loaded: LoadedRepositoryGeneration, ingress: StageIngress) -> ProcessExit {
   match ingress {
     StageCandidateRefused { cause: _ } =>
       exit_failure(reason: "add refused: the effective candidate could not be read")
@@ -261,7 +261,7 @@ func publish_staged(loaded: LoadedRepositoryGeneration, ingress: StageIngress) -
 // commit -- freeze the staged manifest, without reading the worktree
 // ------------------------------------------------------------------------------------------------
 
-func spine_commit(root: String, key: String, message: String) -> ProcessExit {
+fn spine_commit(root: String, key: String, message: String) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
     SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
@@ -273,7 +273,7 @@ func spine_commit(root: String, key: String, message: String) -> ProcessExit {
   }
 }
 
-func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) -> ProcessExit {
+fn spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) -> ProcessExit {
   match commit_staged(repository: loaded.envelope, message: message) {
     StagedCommitCandidateRefused { cause: _ } =>
       exit_failure(reason: "commit refused: the effective candidate could not be read")
@@ -321,7 +321,7 @@ fn verify_expectation(expect: String) -> VerifyExpectation {
   }
 }
 
-func spine_verify(
+fn spine_verify(
   root: String,
   key: String,
   manifest_path: String,
@@ -454,7 +454,7 @@ fn recovered_text_at(corpus: List<RecoveredSourceFile>, manifest_path: String) -
 // `checked_out` directly would skip the verb that decides whether moving the selection is ALLOWED --
 // the staged-work refusal in particular -- and this instrument must not reach a state the ordinary
 // checkout would have refused.
-func publish_merge_selected(
+fn publish_merge_selected(
   loaded: LoadedRepositoryGeneration,
   merged: RepositoryEnvelope,
   reference: RepositoryCommitRef,
@@ -479,7 +479,7 @@ func publish_merge_selected(
 // the candidate differs from its base, and that refusal reaches the exit code here rather than being
 // resolved by dropping the candidate -- a canary that quietly discarded uncommitted work to reach its
 // next step would be exercising a verb nobody would ship.
-func spine_checkout(root: String, key: String, target: String) -> ProcessExit {
+fn spine_checkout(root: String, key: String, target: String) -> ProcessExit {
   match commit_selection(text: target) {
     CommitNotAnOrdinal { given: g } =>
       exit_failure(reason: join(["checkout refused: --arg target is not a commit ordinal: ", g], ""))
@@ -496,7 +496,7 @@ func spine_checkout(root: String, key: String, target: String) -> ProcessExit {
   }
 }
 
-func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryCommitRef) -> ProcessExit {
+fn checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryCommitRef) -> ProcessExit {
   match checkout_repository_at(repo: loaded.envelope, reference: reference) {
     RepositoryCheckedOut { repository: moved, corpus: _ } =>
       publication_exit(publication: republish_repository(loaded: loaded, repo: moved))
@@ -532,7 +532,7 @@ func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryComm
 // other generation into the refusal stayed green. The generation is the SUBJECT of this claim, not
 // diagnostic decoration beside it, so the caller states which one it expects and this compares.
 // Found by external review.
-func spine_head(root: String, key: String, expect: String, at_generation: String) -> ProcessExit {
+fn spine_head(root: String, key: String, expect: String, at_generation: String) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
     SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
@@ -611,7 +611,7 @@ fn head_verdict(read: RepositorySlotRead, expect: String, at_generation: String)
 // re-publication, which is a different property. They differ by their STAGED BYTES -- two authors who
 // read the same head and wrote different content at one path. An earlier revision said they differ by
 // commit message, which described the superseded setup that derived them by committing twice.
-func spine_race(root: String, key: String, manifest_path: String) -> ProcessExit {
+fn spine_race(root: String, key: String, manifest_path: String) -> ProcessExit {
   if manifest_path == "" {
     exit_failure(reason: "race refused: --arg manifest_path is empty")
   } else {
@@ -641,7 +641,7 @@ func spine_race(root: String, key: String, manifest_path: String) -> ProcessExit
 // have each read the same head and each written different bytes at the same path is exactly the
 // situation the slot exists to arbitrate; that they differ is what makes the second publication a
 // genuine lost update rather than an idempotent re-write.
-func race_from(loaded: LoadedRepositoryGeneration, manifest_path: NonEmptyStr) -> ProcessExit {
+fn race_from(loaded: LoadedRepositoryGeneration, manifest_path: NonEmptyStr) -> ProcessExit {
   match stage_source_at_path(
     repository: loaded.envelope,
     path: manifest_path,
@@ -725,7 +725,7 @@ fn merge_expectation(expect: String) -> MergeExpectation {
   }
 }
 
-func spine_squash(
+fn spine_squash(
   root: String,
   key: String,
   target: String,
@@ -773,7 +773,7 @@ fn commit_selection(text: String) -> CommitSelection {
   }
 }
 
-func spine_squash_expecting(
+fn spine_squash_expecting(
   root: String,
   key: String,
   target: String,
@@ -801,7 +801,7 @@ func spine_squash_expecting(
   }
 }
 
-func spine_squash_admitted(
+fn spine_squash_admitted(
   root: String,
   key: String,
   target: RepositoryCommitRef,
@@ -827,7 +827,7 @@ func spine_squash_admitted(
   }
 }
 
-func squash_from(
+fn squash_from(
   loaded: LoadedRepositoryGeneration,
   target: RepositoryCommitRef,
   source: RepositoryCommitRef,
