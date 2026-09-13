@@ -8630,11 +8630,21 @@ fn eval_recompute_record_unkeyed(
         .entry(fn_ptr)
         .or_insert_with(|| Rc::from(func_name))
         .clone();
-    let site = eval_recompute_decl_site(fn_node);
+    // THE SITE IS BUILT LAZILY, ON INSERT ONLY, because it is a `format!` and therefore a heap
+    // allocation. An earlier revision of this function hoisted it out of the closure -- only
+    // because `key` is moved into `entry` -- and so paid one allocation per EVALUATION rather than
+    // per distinct key: 82,918 of them over 6,528 rows in the run this change measures, while the
+    // keyed twin `eval_recompute_record` does no per-call site allocation at all.
+    //
+    // IT IS THE SAME DEFECT AS THE `keepalive_fns` GRAIN FIXED FOUR LINES ABOVE, which is the part
+    // worth recording: the neighbour was repaired and this one was walked past in the same commit
+    // (review 65488). The closure captures `fn_node` and `name` instead, which costs nothing and
+    // restores the grain the keyed path uses. A proven cost-shape defect is fixed regardless of
+    // realized n (DESIGN section 6), and doubly so inside an instrument whose subject is cost.
     let row = t
         .unkeyed_by_fn
         .entry(key)
-        .or_insert_with(|| (0, 0, name, site));
+        .or_insert_with(|| (0, 0, name, eval_recompute_decl_site(fn_node)));
     row.0 += 1;
     row.1 += elapsed_ns;
 }
