@@ -49,6 +49,7 @@ data native_ancestry_genesis_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "observed_digest_value", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "optional_absent", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "optional_present", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "parse_stored_generation", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "read_ancestry_lines", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "read_ancestry_text", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "realized_closure_value", field: WholeDeclaration },

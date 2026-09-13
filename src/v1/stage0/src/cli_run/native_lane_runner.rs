@@ -718,6 +718,22 @@ fn native_generation_from_store(
     })
 }
 
+fn parse_stored_generation(generation_path: &Path) -> Result<i64, String> {
+    let generation_text = std::fs::read_to_string(generation_path).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified — reading {}: {e}",
+            generation_path.display()
+        )
+    })?;
+    generation_text.trim().parse().map_err(|_| {
+        acquisition_refusal(
+            "NativeAncestorUnverified",
+            ANCESTRY_GENERATION_ZERO as i64,
+            "stored generation number is not an integer",
+        )
+    })
+}
+
 fn available_generation(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
@@ -732,6 +748,7 @@ fn available_generation(
             ANCESTRY_GENERATION_ZERO as i64,
         ));
     }
+    let generation = parse_stored_generation(&generation_path)?;
     let binary_path = ancestry_compiler_path(workspace);
     if !binary_path.is_file() {
         return Ok((
@@ -739,27 +756,14 @@ fn available_generation(
             None,
             String::new(),
             String::new(),
-            ANCESTRY_GENERATION_ZERO as i64,
+            generation,
         ));
     }
-    let generation_text = std::fs::read_to_string(&generation_path).map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified — reading {}: {e}",
-            generation_path.display()
-        )
-    })?;
-    let generation: i64 = generation_text.trim().parse().map_err(|_| {
-        acquisition_refusal(
-            "NativeAncestorUnverified",
-            ANCESTRY_GENERATION_ZERO as i64,
-            "stored generation number is not an integer",
-        )
-    })?;
     let closure_identity = read_ancestry_text(&ancestry_closure_identity_path(workspace))
         .ok_or_else(|| {
             acquisition_refusal(
                 "NativeAncestorUnverified",
-                ANCESTRY_GENERATION_ZERO as i64,
+                generation,
                 "source-closure identity was not stored",
             )
         })?;
@@ -1911,5 +1915,24 @@ mod tests {
             .is_err(),
             "two profile observations must refuse rather than pick one"
         );
+    }
+
+    #[test]
+    fn a_missing_compiler_blob_names_the_stored_generation() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-native-ancestry-expected-gen-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = ancestry_dir(&dir);
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(ancestry_generation_path(&dir), "3\n").unwrap();
+        let generation = parse_stored_generation(&ancestry_generation_path(&dir)).unwrap();
+        assert_eq!(generation, 3);
+        assert!(
+            !ancestry_compiler_path(&dir).is_file(),
+            "this control is the missing-blob arm, not a present compiler"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
