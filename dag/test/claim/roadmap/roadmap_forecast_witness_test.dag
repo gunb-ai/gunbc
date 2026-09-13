@@ -502,10 +502,11 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // the real authority rather than on a fixture. The answer must be a REFUSAL naming every node it
 // could not size -- not a forecast with empty cells, and not a shorter forecast over the nodes that
 // happened to survive. A declared drop admits losing the capability; it does not license rendering
-// something that reads like a schedule. This witness is the standing control on that: it goes red
-// the moment the live graph produces a ScheduleForecastKnown, whether because the deriver started
-// answering (correct, and the drop retires) or because some later change let an unsized node
-// through (a regression this would otherwise hide).
+// something that reads like a schedule. This witness rejects ScheduleForecastKnown. Such a result
+// invalidates its stub-era expectation and requires reassessment; it does not by itself satisfy
+// roadmap_sizing_authored_to_derived's restoration trigger. The reassessment has to establish which
+// cause produced it: a deriver that has begun answering, or a later change letting an unsized node
+// through, which is a regression this control would otherwise hide.
 // THE COMPLETE LIVE POPULATION IS REFUSED, AND "COMPLETE" IS AN IDENTITY JOIN, NOT A COUNT AND NOT
 // A NON-EMPTY CHECK. The earlier form of this witness asserted only that SOME NodeUnsized refusal
 // carried a non-empty list, which a forecast that dropped every node but one would also satisfy --
