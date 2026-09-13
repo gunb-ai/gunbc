@@ -238,7 +238,7 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
           fold(n.children, init: FullyResolved, f: (acc, ch) =>
             combine_resolution_verdicts(
               acc: acc,
-              next: type_resolution_verdict(n: (if n.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }), source_indices: source_indices)
+              next: type_resolution_verdict(n: if (n.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, source_indices: source_indices)
             )
           )
         }
@@ -246,7 +246,7 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
         fold(n.children, init: FullyResolved, f: (acc, ch) =>
           combine_resolution_verdicts(
             acc: acc,
-            next: type_resolution_verdict(n: (if n.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }), source_indices: source_indices)
+            next: type_resolution_verdict(n: if (n.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, source_indices: source_indices)
           )
         )
     }

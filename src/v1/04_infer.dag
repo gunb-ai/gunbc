@@ -4734,7 +4734,7 @@ fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool 
     _ => false
   }
   here
-    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: (if n.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }), depth: depth + 1)))
+    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: if (n.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, depth: depth + 1)))
     || (n.params |> any(p => direct_call_formal_has_unbound_type_variable_at(n: param_node_type_expr(n: p), depth: depth + 1)))
   }
 }

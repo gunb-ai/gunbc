@@ -79,7 +79,7 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
   let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
   let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_occurrences(n: (if peeled.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    collect_type_node_import_surface_occurrences(n: if (peeled.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, applied_argument: children_are_applied_arguments, source_indices: source_indices)
   )
   let inferred_names = match peeled.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)

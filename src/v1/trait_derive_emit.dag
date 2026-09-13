@@ -270,7 +270,7 @@ fn v1_map_key_head_names_in_type_expr(
     KeyedMap =>
       match type_expr.children |> first {
         Present { value: key_child } =>
-          [authored_name_at(source_indices: source_indices, node: (if type_expr.connective == NoConnective { type_argument_node(ch: key_child) } else { child_type_node(ch: key_child) }))]
+          [authored_name_at(source_indices: source_indices, node: if (type_expr.connective == NoConnective) { type_argument_node(ch: key_child) } else { child_type_node(ch: key_child) })]
         Absent => []
       }
     NotKeyedMap => []
@@ -280,7 +280,7 @@ fn v1_map_key_head_names_in_type_expr(
     own,
     type_expr.children |> flat_map(ch =>
       v1_map_key_head_names_in_type_expr(
-        type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }),
+        type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) },
         source_indices: source_indices
       )
     )
@@ -294,7 +294,7 @@ fn v1_type_expr_head_names(
   concat(
     [authored_name_at(source_indices: source_indices, node: type_expr)],
     type_expr.children |> flat_map(ch =>
-      v1_type_expr_head_names(type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }), source_indices: source_indices)
+      v1_type_expr_head_names(type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, source_indices: source_indices)
     )
   )
 }
@@ -1343,7 +1343,7 @@ fn v1_type_expr_mentions_param_non_phantom(
       && type_expr.children |> any(c =>
         v1_type_expr_mentions_param_non_phantom(
           param_name: param_name,
-          type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: c) } else { child_type_node(ch: c) }),
+          type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) },
           bounds: bounds,
           type_decl_items: type_decl_items,
           source_indices: source_indices
@@ -1366,7 +1366,7 @@ fn v1_type_expr_mentions_param_non_phantom(
           type_expr.children |> any(c =>
             v1_type_expr_mentions_param_non_phantom(
               param_name: param_name,
-              type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: c) } else { child_type_node(ch: c) }),
+              type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) },
               bounds: bounds,
               type_decl_items: type_decl_items,
               source_indices: source_indices
@@ -1686,7 +1686,7 @@ fn v1_type_expr_clone_undecided_head(
         acc
       } else {
         v1_type_expr_clone_undecided_head(
-          type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: c) } else { child_type_node(ch: c) }),
+          type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) },
           type_decl_items: type_decl_items,
           source_indices: source_indices,
           item_generic_params: item_generic_params
@@ -1726,7 +1726,7 @@ fn v1_type_expr_clone_impl_needs_param(
         type_expr.children |> any(c =>
           v1_type_expr_clone_impl_needs_param(
             param_name: param_name,
-            type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: c) } else { child_type_node(ch: c) }),
+            type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) },
             bounds: bounds,
             type_decl_items: type_decl_items,
             source_indices: source_indices
@@ -1890,7 +1890,7 @@ fn v1_type_expr_wf_needs_clone_param(
     let nested = type_expr.children |> any(c =>
       v1_type_expr_wf_needs_clone_param(
         param_name: param_name,
-        type_expr: (if type_expr.connective == NoConnective { type_argument_node(ch: c) } else { child_type_node(ch: c) }),
+        type_expr: if (type_expr.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) },
         bounds: bounds,
         type_decl_items: type_decl_items,
         source_indices: source_indices
