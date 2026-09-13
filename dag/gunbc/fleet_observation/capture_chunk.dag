@@ -664,19 +664,24 @@ type StreamContinuity
   | ContinuityGap { gap: SourceStreamRange, cause: ContinuityBreakCause }
   | ContinuityUnknown { detail: NonEmptyStr }
 
+// THERE IS DELIBERATELY NO Bool OVER PositionOrder IN THIS MODULE'S SURFACE.
+//
+// range_covers and position_at_or_before stood here and are DELETED. position_at_or_before mapped
+// PositionIncomparable to `false` -- the exact collapse this branch files as a class and removed from
+// three folds -- and range_covers was its only non-test caller while having no caller of its own at
+// all. So the instrument that caused the defect was left exported, where the next caller would
+// reproduce it, and the one site cited to justify keeping it was itself dangling. Both halves of the
+// filed class in one pair of declarations: an unconsumed projection, unconsumed precisely because
+// every consumer needs the arm it discards.
+//
+// A caller that wants coverage matches compare_positions and says what an incomparable pair means for
+// its own question. That is three lines at the call site instead of one, and the three lines cannot
+// quietly answer `false` for two different streams.
+
 // WHETHER A COMMITTED CHUNK ACTUALLY COVERS A REQUESTED RANGE. Coverage is arithmetic over the
 // source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
 // lets a machine-lifetime collector license a negative observation at all. A bounded client that
 // must exit before its window closes cannot answer this question; committed bytes can.
 fn range_end(range: SourceStreamRange) -> StreamPosition {
   position_advanced_by(p: range.first, extent: range.length)
-}
-
-fn position_at_or_before(a: StreamPosition, b: StreamPosition) -> Bool {
-  match compare_positions(a: a, b: b) {
-    PositionBefore => true
-    PositionSame => true
-    PositionAfter => false
-    PositionIncomparable { left: _, right: _ } => false
-  }
 }

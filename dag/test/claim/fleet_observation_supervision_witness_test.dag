@@ -40,6 +40,8 @@ import gunbc.fleet_observation_collector_supervision {
   WindowCovered,
   WindowNotCoveredPipeUnread,
   WindowNotCoveredSupervision,
+  WindowNotCoveredPipeUnwatchedToDeadline,
+  WindowCoverageUndecidable,
   supervision_coverage,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -66,12 +68,44 @@ fn t_foreign_clock(since: Nat) -> ObservationInstant {
 
 data t_child: SpawnOutcome = SpawnProducedChild { child_identity: "synthetic-child" }
 
+// WATCHED TO THE DEADLINE, with the last byte arriving earlier. Those are separate facts and the
+// fixture keeps them separate, which is the whole point of the carrier change.
 data t_drained: DrainProgress = DrainedDuringOperation {
   bytes: byte_size(count: 4096)
+  watched_until: ObservationInstant {
+    domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
+    basis: WallClock
+    since_origin: nanosecond(count: 420)
+  }
   last_progress_at: ObservationInstant {
     domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
     basis: WallClock
     since_origin: nanosecond(count: 410)
+  }
+}
+
+// THE FOUNDING DEFECT AS A FIXTURE: the pipe was read for three seconds of a four-hundred-and-twenty
+// second window and then abandoned. last_progress_at and watched_until AGREE here, which is what makes
+// it dangerous -- nothing inside the drain observation looks wrong.
+data t_abandoned_watch: DrainProgress = DrainedDuringOperation {
+  bytes: byte_size(count: 86)
+  watched_until: ObservationInstant {
+    domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
+    basis: WallClock
+    since_origin: nanosecond(count: 3)
+  }
+  last_progress_at: ObservationInstant {
+    domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
+    basis: WallClock
+    since_origin: nanosecond(count: 3)
+  }
+}
+
+data t_watch_on_a_foreign_clock: DrainProgress = DrainObservedEmpty {
+  watched_until: ObservationInstant {
+    domain: ProcessMonotonic { process: "synthetic-other-process" }
+    basis: WallClock
+    since_origin: nanosecond(count: 420)
   }
 }
 
@@ -188,6 +222,8 @@ fn covered(c: SupervisionCoverage) -> Bool {
   match c {
     WindowCovered => true
     WindowNotCoveredPipeUnread { disposition: _ } => false
+    WindowNotCoveredPipeUnwatchedToDeadline { watched_until: _, deadline: _ } => false
+    WindowCoverageUndecidable { watch_domain: _, deadline_domain: _ } => false
     WindowNotCoveredSupervision { disposition: _ } => false
   }
 }
@@ -199,6 +235,8 @@ fn pipe_unread(c: SupervisionCoverage) -> Bool {
   match c {
     WindowNotCoveredPipeUnread { disposition: _ } => true
     WindowCovered => false
+    WindowNotCoveredPipeUnwatchedToDeadline { watched_until: _, deadline: _ } => false
+    WindowCoverageUndecidable { watch_domain: _, deadline_domain: _ } => false
     WindowNotCoveredSupervision { disposition: _ } => false
   }
 }
@@ -207,7 +245,74 @@ fn not_covered(c: SupervisionCoverage) -> Bool {
   match c {
     WindowNotCoveredSupervision { disposition: _ } => true
     WindowNotCoveredPipeUnread { disposition: _ } => true
+    WindowNotCoveredPipeUnwatchedToDeadline { watched_until: _, deadline: _ } => true
+    WindowCoverageUndecidable { watch_domain: _, deadline_domain: _ } => true
     WindowCovered => false
+  }
+}
+
+// A CHILD THAT RAN ITS FULL DEADLINE WITH A PIPE WATCHED FOR THREE SECONDS COVERED THREE SECONDS.
+//
+// This is the 2026-09-11 failure exactly, and it had reappeared inside the module written to make it
+// unwritable: supervision_coverage discarded the drain instants and answered WindowCovered whenever
+// the child closed at its deadline. ClosedAtDeadline establishes that the deadline ended the CHILD; it
+// says nothing about how long anyone read the PIPE. The two come apart here and the answer must name
+// the shortfall with both instants.
+//
+// THE DISCRIMINATING RED: if the coverage fold stopped comparing watched_until against the deadline,
+// the first conjunct goes false while the watched-to-deadline control below stays true.
+test fn w_a_pipe_watched_for_three_seconds_does_not_cover_the_window() -> Bool {
+  let abandoned = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: t_abandoned_watch,
+  )
+  let watched = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: t_drained,
+  )
+  is_closed_at_deadline(d: abandoned)
+  && unwatched_to_deadline(c: supervision_coverage(disposition: abandoned))
+  && is_closed_at_deadline(d: watched)
+  && covered(c: supervision_coverage(disposition: watched))
+}
+
+// A WATCH BOUND ON A CLOCK THAT CANNOT BE ORDERED AGAINST THE DEADLINE IS UNDECIDABLE, not covered and
+// not a collector failure. Same refusal std.measure gives for any two instants with no shared origin.
+test fn w_an_unorderable_watch_bound_is_undecidable_not_covered() -> Bool {
+  let crossed = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: t_watch_on_a_foreign_clock,
+  )
+  coverage_undecidable(c: supervision_coverage(disposition: crossed))
+  && !covered(c: supervision_coverage(disposition: crossed))
+}
+
+fn unwatched_to_deadline(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowNotCoveredPipeUnwatchedToDeadline { watched_until: _, deadline: _ } => true
+    WindowCovered => false
+    WindowNotCoveredPipeUnread { disposition: _ } => false
+    WindowCoverageUndecidable { watch_domain: _, deadline_domain: _ } => false
+    WindowNotCoveredSupervision { disposition: _ } => false
+  }
+}
+
+fn coverage_undecidable(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowCoverageUndecidable { watch_domain: _, deadline_domain: _ } => true
+    WindowCovered => false
+    WindowNotCoveredPipeUnread { disposition: _ } => false
+    WindowNotCoveredPipeUnwatchedToDeadline { watched_until: _, deadline: _ } => false
+    WindowNotCoveredSupervision { disposition: _ } => false
   }
 }
 
@@ -216,7 +321,7 @@ fn not_covered(c: SupervisionCoverage) -> Bool {
 fn is_interrupted(d: SupervisionDisposition) -> Bool {
   match d {
     InterruptedBeforeDeadline { termination: _, drained: _ } => true
-    ClosedAtDeadline { termination: _, drained: _ } => false
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => false
     TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
@@ -226,7 +331,7 @@ fn is_interrupted(d: SupervisionDisposition) -> Bool {
 
 fn is_closed_at_deadline(d: SupervisionDisposition) -> Bool {
   match d {
-    ClosedAtDeadline { termination: _, drained: _ } => true
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => true
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
     TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
@@ -238,7 +343,7 @@ fn is_closed_at_deadline(d: SupervisionDisposition) -> Bool {
 fn is_termination_unobserved(d: SupervisionDisposition) -> Bool {
   match d {
     TerminationNotObserved { drained: _ } => true
-    ClosedAtDeadline { termination: _, drained: _ } => false
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
@@ -249,7 +354,7 @@ fn is_termination_unobserved(d: SupervisionDisposition) -> Bool {
 fn is_never_spawned(d: SupervisionDisposition) -> Bool {
   match d {
     NeverSpawned { cause: _ } => true
-    ClosedAtDeadline { termination: _, drained: _ } => false
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
     TerminationNotObserved { drained: _ } => false
     CleanupFailed { detail: _ } => false
@@ -260,7 +365,7 @@ fn is_never_spawned(d: SupervisionDisposition) -> Bool {
 fn is_undecidable(d: SupervisionDisposition) -> Bool {
   match d {
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => true
-    ClosedAtDeadline { termination: _, drained: _ } => false
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
     TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
@@ -276,7 +381,7 @@ fn carries_signal(d: SupervisionDisposition, signal: Int) -> Bool {
         ProcessExited { code: _ } => false
         ProcessTerminationUnobserved => false
       }
-    ClosedAtDeadline { termination: _, drained: _ } => false
+    ClosedAtDeadline { termination: _, drained: _, deadline: _ } => false
     TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
