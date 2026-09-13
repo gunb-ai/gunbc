@@ -3357,10 +3357,7 @@ pub fn load_parse_environment_at(
     // The closure is asked of the resolver at the LIVE tree, then read from `repo` at `revision`.
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
-    let closure = match environment_closure_paths() {
-        Ok(paths) => paths,
-        Err(e) => return Err(e),
-    };
+    let closure = environment_closure_paths()?;
     let outcome = materialize_environment_closure_at(repo, revision, &dest, &closure)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
