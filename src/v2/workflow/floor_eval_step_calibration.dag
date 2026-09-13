@@ -1,7 +1,7 @@
 module v2.workflow.floor_eval_step_calibration
 
 import v2.std.logic { Bool }
-import v2.std.integer { Int, int_add, int_mul, int_ge }
+import v2.std.integer { Int, int_add, int_mul, int_ge, int_eq }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -29,11 +29,17 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //   spanning an aarch64 authoring container and a linux/amd64 CI runner, under every level of load.
 //   It is not an environmental reading and is not a bet.
 //
-//   `specimen_cpu` is ENVIRONMENTAL, and the whole reason this change exists is that such readings
-//   drift. It is recorded as the SLOWEST reading of the declared sample, never the mean and never
-//   the fastest: a slower specimen yields FEWER steps per millisecond, which makes the derived
+//   `rate_sample_cpu_ms` is ENVIRONMENTAL, and the whole reason this change exists is that such
+//   readings drift. It is recorded as the SLOWEST reading of the declared sample, never the mean and
+//   never the fastest: a slower specimen yields FEWER steps per millisecond, which makes the derived
 //   ceilings TIGHTER. The fail-closed direction is deliberate, so drift in the calibration host
 //   cannot silently widen what a claim may spend.
+//
+//   IT BELONGS TO THE RATE SAMPLE AND NOT TO THE CURRENT SPECIMEN, which is why it is a function
+//   beside `rate_sample_eval_steps` rather than a field of the row. A `specimen_cpu` field carried
+//   the depth-10000 sample's 152ms under a name promising the depth-5000 specimen's -- one field
+//   naming two subjects, read by nothing (review 5190625335). Deleting it was the repair; a field
+//   that lies and has no consumer is a DESIGN section 3c dangler twice over.
 //
 //   "SLOWEST" MEANS SLOWEST WITHIN THE DECLARED SAMPLE, NOT SLOWEST EVER OBSERVED, and that
 //   distinction is the difference between a pin and a ratchet. A row that re-pins whenever a slower
@@ -42,10 +48,19 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //   collapse it to `measure() == measure()` -- DESIGN section 5's oracle defect, and the exact
 //   shape of the two repudiated ceiling raises this file's consumer records.
 //
-// RE-PINNING IS A DELIBERATE ACT, NOT MAINTENANCE. It happens when the grounding check goes red --
-// the executing signal that the conversion has left its band -- or when the specimen changes, and
-// it is taken by re-running the named instrument rather than by adopting whatever the last floor
-// run reported.
+// RE-PINNING IS A DELIBERATE ACT, NOT MAINTENANCE. It happens when a grounding check goes red, or
+// when the specimen changes, and it is taken by re-running the named instrument rather than by
+// adopting whatever the last floor run reported.
+//
+// THERE ARE TWO GROUNDING CHECKS AND THEY WATCH DIFFERENT FAILURES, which is worth stating because
+// an earlier revision of this header claimed one check covered both and that sentence was false
+// (review 5190625335). `eval_step_rate_grounding` proves the pinned rate is the floored ratio of its
+// own sample; every figure it compares lives in this file, so it catches an inconsistent edit and
+// NOT host drift. `specimen_steps_grounding` joins the declared `specimen_eval_steps` to the step
+// count the floor OBSERVED for that identity, so it catches the specimen moving underneath the row --
+// the depth change this file warns about two paragraphs down. The second is the one with an
+// independent referent, and it is INSTRUMENT-GRADE: its input is a published artifact, so it runs
+// when re-pinning rather than blocking a merge.
 //
 // WHAT THE CONVERSION DOES AND DOES NOT CLAIM. It claims that one millisecond of PURE INTERPRETED
 // EVALUATION on the named host is about this many eval steps. It does NOT claim every step in the
@@ -59,8 +74,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // CPU clock's subject and is published as an observation rather than gated.
 // THE TWO EVAL-STEP FIELDS ARE BARE `Int` AND THAT IS A DECLARED GAP, NOT AN OVERSIGHT (review
 // 65209, BLOCKING on `steps_per_ms`). The reviewer is right that a bare scalar beside a
-// `std.measure` carrier is the re-mint DESIGN section 2's test names, and `specimen_cpu` above IS
-// the carrier -- it was the same finding one field over, and it was fixed.
+// `std.measure` carrier is the re-mint DESIGN section 2's test names, and `rate_sample_cpu_ms` below
+// IS the carrier -- it was the same finding one quantity over, and it was fixed.
 //
 // WHAT STOPS THE SAME FIX HERE IS THAT THE QUANTITY DOES NOT EXIST. `std.measure` `Quantity` is a
 // CLOSED roster of named quantities -- Time, Memory, Information, DataRate, Frequency, Count,
@@ -75,7 +90,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // `measure_clock_basis_note` exists to forbid, arriving through the fix rather than through
 // neglect.
 data eval_step_scalar_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: specimen_eval_steps and steps_per_ms convert from bare Int to std.measure carriers once std.measure's Quantity roster carries an arm for interpreter evaluation steps and a form for a steps-per-time rate. Owner: whoever owns the Quantity roster in dag/std/measure.dag; this lane consumes that roster and does not widen it. Until then the two fields are scalars whose unit lives in their names, which is exactly what the carrier exists to prevent -- recorded here so it is a tracked gap rather than an invisible one, and so the next reader does not re-derive the same refusal. The sibling gap on this file's millisecond fields was CLOSED rather than declared: specimen_cpu is a std.measure Millisecond and eval_step_budget_for takes a Millisecond envelope." as NonEmptyStr,
+  description: "dissolve-on: specimen_eval_steps and steps_per_ms convert from bare Int to std.measure carriers once std.measure's Quantity roster carries an arm for interpreter evaluation steps and a form for a steps-per-time rate. Owner: whoever owns the Quantity roster in dag/std/measure.dag; this lane consumes that roster and does not widen it. Until then the two fields are scalars whose unit lives in their names, which is exactly what the carrier exists to prevent -- recorded here so it is a tracked gap rather than an invisible one, and so the next reader does not re-derive the same refusal. The sibling gap on this file's millisecond quantities was CLOSED rather than declared: rate_sample_cpu_ms is a std.measure Millisecond and eval_step_budget_for takes a Millisecond envelope." as NonEmptyStr,
 )
 
 type EvalStepCalibration = PinnedSpecimenCalibration {
@@ -84,10 +99,34 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
   host: NonEmptyStr
   readings: Int
   specimen_eval_steps: Int
-  specimen_cpu: Millisecond
   steps_per_ms: Int
 }
 
+// IT IS A PINNED POLICY CONSTANT, AND THAT IS ITS STANDING RATHER THAN A HEDGE (ruling:
+// fierce-lark-661, 2026-09-13, on gunbc#11195). `gunbc.rung_drop`
+// `floor_cost_claim_qualification_unavailable` forbids translating the CPU line into steps using the
+// measured CPU distribution. That prohibition targets the PER-CLAIM distribution -- the run-varying,
+// position-sensitive quantity the row exists to declare -- and this row is not it. The discriminator
+// is DEPENDENCE, not unit: this figure depends on one controlled fixture measured once, so an error
+// in it mis-scales BOTH tiers ONCE AND UNIFORMLY and cannot make one claim's verdict differ between
+// two runs of the same tree. That last property is the entire purchase of the denominator change,
+// and a budget drawn from the live CPU distribution would give it straight back.
+//
+// SO A RE-PIN RESCALES EVERY BUDGET UNIFORMLY AND NEVER ONE CLAIM. There is no per-claim, per-runner
+// or per-tier adjustment reachable through this row; per-runner normalisation is refused by name in
+// the brief this lane was built under, and the shape of this constant is what makes it unreachable
+// rather than merely unwritten.
+//
+// THE RE-PIN PROTOCOL, so the act is repeatable and its inputs are named: run `instrument` on the
+// specimen named by `specimen`, on the machine that runs the floor, enough times to see the spread;
+// take the SLOWEST reading in that sample (never the mean, never the fastest, and never "slowest
+// ever seen" -- see the pin-versus-ratchet note above); recompute the floored ratio; update
+// `rate_sample_eval_steps`, `rate_sample_cpu_ms` and `steps_per_ms` TOGETHER, since the grounding
+// check below relates exactly those three. The sample standing today is recorded in `host` by
+// runner class, CPU and steps: its two CI readings were 138ms then 152ms at an identical 110,011
+// steps, and THAT ~10% SPREAD IS THE BAND -- the same band that makes a CPU ceiling refuse on runner
+// noise, recorded here as the reason the pin takes the slow end.
+//
 // THE PINNED READING. `instrument` names the producer that re-derives both figures rather than
 // transcribing a run id beside them (DESIGN section 6: name the instrument). Re-deriving this row
 // is one command over one entry; it does not require a floor run, a CI run, or the corpus.
@@ -111,7 +150,6 @@ data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibratio
   host: "RATE SAMPLE, taken at specimen depth 10000 (110,011 eval_steps): authoring container, linux aarch64, three executions at cpu=97ms, 110ms, 110ms; self-hosted CI runner, linux amd64, under the required floor's own fold, cpu=138ms then 152ms. All five returned an IDENTICAL eval_steps of 110011. The pinned rate is 110011/152 floored, the slowest reading from the machine that runs the floor. CURRENT SPECIMEN is depth 5000 (55,011 eval_steps, authoring host 56ms/57ms), reduced so it sits under the new-witness ceiling it helps derive" as NonEmptyStr,
   readings: 5,
   specimen_eval_steps: 55011,
-  specimen_cpu: millisecond(count: 152),
   steps_per_ms: 723,
 }
 
@@ -137,7 +175,7 @@ fn calibration_rate(calibration: EvalStepCalibration) -> Int {
   match calibration {
     PinnedSpecimenCalibration {
       specimen: _, instrument: _, host: _, readings: _,
-      specimen_eval_steps: _, specimen_cpu: _, steps_per_ms: r,
+      specimen_eval_steps: _, steps_per_ms: r,
     } => r
   }
 }
@@ -146,8 +184,59 @@ fn calibration_specimen_eval_steps(calibration: EvalStepCalibration) -> Int {
   match calibration {
     PinnedSpecimenCalibration {
       specimen: _, instrument: _, host: _, readings: _,
-      specimen_eval_steps: st, specimen_cpu: _, steps_per_ms: _,
+      specimen_eval_steps: st, steps_per_ms: _,
     } => st
+  }
+}
+
+fn calibration_specimen_identity(calibration: EvalStepCalibration) -> NonEmptyStr {
+  match calibration {
+    PinnedSpecimenCalibration {
+      specimen: sp, instrument: _, host: _, readings: _,
+      specimen_eval_steps: _, steps_per_ms: _,
+    } => sp
+  }
+}
+
+// THE SECOND GROUNDING, AND THE ONE THAT CAN RED FROM SOMETHING OTHER THAN THIS FILE (review
+// 5190625335, adopted). `eval_step_rate_grounding` below compares three literals that all live
+// here, so it reds only when an author edits one of them inconsistently -- real, but it cannot see
+// the failure the module header warns about, which is the SPECIMEN moving underneath the row. Change
+// `calibration_specimen_depth` to 9000 and every derived ceiling silently rescales while all three
+// literals still agree with each other.
+//
+// THE REPAIR IS A JOIN, NOT A NARROWER SENTENCE. The floor executes the specimen as a required claim
+// and publishes its `eval_steps` by identity, so the declared `specimen_eval_steps` has an
+// INDEPENDENT REFERENT -- exactly what DESIGN section 5 demands of a literal that gates. This is the
+// consumer of `calibration_specimen_eval_steps` and of `calibration_specimen_identity`.
+//
+// ITS REFERENT IS AN ARTIFACT, SO ITS EXECUTING HOME IS AN INSTRUMENT AND NOT A WITNESS, and that is
+// stated rather than glossed: a required claim cannot read its own step count, and the cost artifact
+// exists only after the run that produced it. `tools.floor_cost_distribution_instrument`
+// `calibration_specimen_grounding_report` is the executing consumer; the witness below exercises
+// both arms of this classifier on fixture readings. The gap between the two is the honest one --
+// this join is INSTRUMENT-GRADE, run when re-pinning, not a gate that blocks a merge.
+type SpecimenStepsGrounding =
+    SpecimenStepsMatchThePin
+  | SpecimenStepsDiffer { declared_steps: Int, observed_steps: Int }
+
+fn specimen_steps_grounding(calibration: EvalStepCalibration, observed_eval_steps: Int) -> SpecimenStepsGrounding {
+  let declared = calibration_specimen_eval_steps(calibration: calibration)
+  if int_eq(a: declared, b: observed_eval_steps) {
+    SpecimenStepsMatchThePin {}
+  } else {
+    SpecimenStepsDiffer { declared_steps: declared, observed_steps: observed_eval_steps }
+  }
+}
+
+// A DIFFERENCE REFUSES IN EITHER DIRECTION. There is no tolerance band and there must not be one:
+// the specimen's step count is DETERMINISTIC by construction -- identical across architectures and
+// load -- so any difference at all is the specimen having moved, not noise. A band here would be the
+// absorbing fallback DESIGN section 5 forbids, sized to hide precisely the drift being watched for.
+fn specimen_steps_grounding_holds(grounding: SpecimenStepsGrounding) -> Bool {
+  match grounding {
+    SpecimenStepsMatchThePin => true
+    SpecimenStepsDiffer { declared_steps: _, observed_steps: _ } => false
   }
 }
 
