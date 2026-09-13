@@ -1769,14 +1769,29 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// THIRTY-EIGHTH DISSOLUTION (2026-09-13, gunbc#10970). #11156 merged as d7b7ab96c1f and its two
-/// rows' own trigger -- "these rows go when #11156 merges" -- has fired: the base carries the named
-/// imports, the deltas they admitted have stopped being producible, and a consumed row's deletion
-/// comes due on the roster's next touch. This change is that touch. Checked by identity (the merge
-/// commit is an ancestor of origin/main) rather than inferred.
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
 ///
-/// EMPTY IS THE RESTING STATE, NOT A WEAKENED WALL. An empty roster admits nothing: any delta no
-/// row names still refuses as UNADJUDICATED.
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
+///
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
