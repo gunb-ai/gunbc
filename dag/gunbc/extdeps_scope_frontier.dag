@@ -514,6 +514,7 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/external_authority.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/publication.dag",
+  "dag/extdeps/tax/statutory_rate.dag",
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
   "dag/extdeps/cron/mock_corpus.dag",
