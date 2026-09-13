@@ -597,8 +597,12 @@ fn native_generation_from_store(
     let genesis_artifact_hex = read_ancestry_text(&ancestry_artifact_digest_path(workspace))
         .ok_or_else(|| unverified("genesis materialized artifact sha512 was not stored"))?;
     let live_hex = sha512_file(binary_path)?;
+    if live_hex != genesis_artifact_hex {
+        return Err(unverified(
+            "stored compiler sha512 is not the genesis-written artifact digest",
+        ));
+    }
     let observed_live = observed_digest_value(ctx, &live_hex)?;
-    let observed_genesis = observed_digest_value(ctx, &genesis_artifact_hex)?;
     let build_path = Value::Variant {
         type_name: ctx.sym("BuildPathTreatment"),
         variant_name: ctx.sym("BuildPathRemapped"),
@@ -697,10 +701,12 @@ fn native_generation_from_store(
             ),
             (
                 ctx.sym("read_back"),
+                // Host file hashes are copy integrity, not the artifact reporting itself
+                // (ancestry.dag ReadBackReceipt; review 65238).
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
-                    variant_name: ctx.sym("ReadBackReported"),
-                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed_genesis)]),
+                    variant_name: ctx.sym("ReadBackUnperformed"),
+                    fields: Rc::new(vec![]),
                 },
             ),
             (
