@@ -6,6 +6,7 @@ import gunbc.roadmap_document {
   project_roadmap_to_markdown,
 }
 import std.types { NonEmptyStr }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -3190,13 +3191,27 @@ fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
   }
 }
 
+// MEMBERSHIP IS A MAP LOOKUP, NOT A NESTED SCAN. The accepted set is indexed once per call and
+// each declared row asks it once, so the fold is |declared| + |accepted| rather than the
+// |declared| x |accepted| the earlier any()-inside-filter paid -- the quadratic fold DESIGN §6
+// fixes regardless of realized n. The index is built by a plain map_insert fold; the copied
+// accumulator that fold pays is a cost-shape defect in the PRIMITIVE, owed a bulk constructor
+// at its root, and is deliberately not routed around here.
+fn accepted_roadmap_node_index(accepted: List<RoadmapNodeId>) -> Map<RoadmapNodeId, Bool> {
+  fold(accepted, init: empty_map(), f: (acc, a) => map_insert(m: acc, key: a, value: true))
+}
+
 // THE DECLARED ROSTER IS A PARAMETER, NOT A RE-DERIVATION. Every caller of this function already
 // stands at a point where the roster is (or can be) in hand once, so deriving it again inside the
 // filter was DESIGN §2 authored duplication with a shared-state least common ancestor -- the
 // caller derives it once per fold and passes it in, and the membership algorithm below is then
 // separately reviewable from the wiring.
 fn active_roadmap_nodes_for_accepted(declared: List<RoadmapNode>, accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
-  declared |> filter(n => !(accepted |> any(a => a == n.node)))
+  let accepted_index = accepted_roadmap_node_index(accepted: accepted)
+  declared |> filter(n => match map_lookup(m: accepted_index, key: n.node) {
+    Present { value: _ } => false
+    Absent => true
+  })
 }
 
 type ActiveRoadmapNodesProjection
