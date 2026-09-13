@@ -24,7 +24,7 @@ type PreOsSelIngestion {
   payload: String
   cursor: ObservationAttempt<PreOsSelCursor, NonEmptyStr>
   new_records: List<SelWindowEvent>
-  continuity: ObservationAttempt<Bool, NonEmptyStr>
+  continuity: ObservationAttempt<SelDelta, NonEmptyStr>
 }
 
 // Retain the carrier's disagreement, including both identities. Receiver identity
@@ -138,7 +138,7 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, 
   PreOsSelIngestion {
     envelope: envelope, payload: payload, cursor: cursor,
     new_records: match delta { ObservationEstablished { observed: d } => d.events ObservationRefused { cause: _ } => [] },
-    continuity: match delta { ObservationEstablished { observed: _ } => ObservationEstablished { observed: true } ObservationRefused { cause } => ObservationRefused { cause: cause } },
+    continuity: delta,
   }
 }
 

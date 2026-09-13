@@ -31,6 +31,7 @@ test fn w_generation_change_retained_without_new_stimulus() -> Bool {
   let positive = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-a", record: "686"), payload: stimulus_text())
   let reset = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-b", record: "686"), payload: stimulus_text())
   count(first.new_records) == 0 && count(positive.new_records) == 1 && count(reset.new_records) == 0
+    && match positive.continuity { ObservationEstablished { observed: delta } => delta.events == positive.new_records _ => false }
     && reset.payload == stimulus_text()
     && match reset.continuity { ObservationRefused { cause: _ } => true _ => false }
 }

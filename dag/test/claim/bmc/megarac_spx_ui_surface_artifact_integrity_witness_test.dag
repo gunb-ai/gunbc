@@ -8,9 +8,9 @@ import gunbc.machine_intake_megarac_served_ui_catalog_observation {
   megarac_spx_ui_surface_path,
   megarac_spx_ui_surface_sha256,
 }
-import gunbc.machine_intake_megarac_pre_os_channel {
-  megarac_sol_host_payload_positive_control_path,
-  megarac_sol_host_payload_positive_control_sha256,
+import gunbc.mtcollins_memory_change {
+  mtcollins_training_capture_path,
+  mtcollins_training_capture_sha256,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -39,7 +39,7 @@ test fn committed_spx_ui_surface_redfish_absent_fru_and_aep_dimm_present() -> Bo
 
 test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {
   sha256sum_verify_via_shell(
-    path: megarac_sol_host_payload_positive_control_path,
-    expected_digest: megarac_sol_host_payload_positive_control_sha256,
+    path: mtcollins_training_capture_path,
+    expected_digest: mtcollins_training_capture_sha256,
   ) == Sha256Matches
 }
