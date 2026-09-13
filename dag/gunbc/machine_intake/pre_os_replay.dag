@@ -8,7 +8,7 @@ import gunbc.fleet_observation_observation_envelope {
   ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, NoNativeCursor,
 }
 import gunbc.fleet_observation_capture_chunk {
-  chunk_occurrence_eq, range_end, continuity_reaches, commit_attests_chunk, CommitAttestsThisChunk,
+  chunk_occurrence_eq, range_end, ContinuityCoverage, ContinuityCoversRange, continuity_covers, commit_attests_chunk, CommitAttestsThisChunk,
 }
 import gunbc.machine_intake_sel_stimulus_listener {
   SelWatermark, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
@@ -57,8 +57,8 @@ fn pre_os_same_source_generation(a: ObservationEnvelope, b: ObservationEnvelope)
 }
 
 // This is a range question, not merely a match on the continuity variant.
-fn pre_os_continuity_covers_chunk(envelope: ObservationEnvelope) -> Bool {
-  continuity_reaches(continuity: envelope.continuity, through: range_end(range: envelope.chunk.range))
+fn pre_os_chunk_continuity(envelope: ObservationEnvelope) -> ContinuityCoverage {
+  continuity_covers(continuity: envelope.continuity, through: range_end(range: envelope.chunk.range))
 }
 
 fn pre_os_commit_binds_chunk(envelope: ObservationEnvelope) -> Bool {
@@ -116,9 +116,10 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, 
       ObservationEstablished { observed: before } =>
         if !pre_os_same_source_generation(a: before.envelope, b: envelope) {
           ObservationRefused { cause: "source generation or binding changed; retain both snapshots without association" }
-        } else if !pre_os_continuity_covers_chunk(envelope: envelope) {
-          ObservationRefused { cause: "source reports a gap or insufficient verified range" }
-        } else { sel_after(watermark: before.watermark, text: payload) }
+        } else { match pre_os_chunk_continuity(envelope: envelope) {
+          ContinuityCoversRange => sel_after(watermark: before.watermark, text: payload)
+          gap => ObservationRefused { cause: to_string(gap) as NonEmptyStr }
+        } }
     }
   }
   PreOsSelIngestion {

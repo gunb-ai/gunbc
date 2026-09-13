@@ -31,6 +31,26 @@ test fn w_generation_change_retained_without_new_stimulus() -> Bool {
     && match reset.continuity { ObservationRefused { cause: _ } => true _ => false }
 }
 
+test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool {
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
+  all([ContinuityEstablished { verified_through: 10 }, ContinuityUnknown { detail: "source reset not observed" }], continuity => {
+    let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+      ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+      local_commit: base.local_commit, downstream: base.downstream, continuity: continuity }
+    let reading = pre_os_ingest_sel(previous: first.cursor, envelope: envelope, payload: stimulus_text())
+    count(reading.new_records) == 0 && reading.payload == stimulus_text()
+      && match reading.continuity {
+        ObservationEstablished { observed: _ } => false
+        ObservationRefused { cause } => match continuity {
+          ContinuityEstablished { verified_through: _ } => contains(cause as String, "ContinuityShortOfRange") && contains(cause as String, "100")
+          ContinuityUnknown { detail } => contains(cause as String, detail as String)
+          _ => false
+        }
+      }
+  })
+}
+
 test fn w_duplicate_application_is_idempotent_but_equal_payload_occurrences_survive() -> Bool {
   let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
   let b = replay_fixture(seq: 2, generation: "sel-a", record: "685")
