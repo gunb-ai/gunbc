@@ -208,9 +208,7 @@ fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
     required_status_check_row(context: c, integration_id: github_actions_app_integration_id))
 }
 
-// THE PUT IS WHOLE-RULESET. deletion and non_fast_forward protect history; required_status_checks
-// gates; merge_queue timeout is derived from witness_floor_lane_timeout, never a transcribed GET.
-fn desired_ruleset_rules() -> List<RulesetRuleWire> {
+fn desired_ruleset_rules_without_queue() -> List<RulesetRuleWire> {
   [
     parameterless_rule(t: DeletionRule),
     parameterless_rule(t: NonFastForwardRule),
@@ -219,8 +217,15 @@ fn desired_ruleset_rules() -> List<RulesetRuleWire> {
       strict: desired_strict_required_status_checks_policy,
       do_not_enforce_on_create: desired_do_not_enforce_on_create,
     ),
-    merge_queue_rule_from_policy(policy: merge_queue_floor_aligned_policy()),
   ]
+}
+
+fn desired_ruleset_rules() -> List<RulesetRuleWire> {
+  match desired_merge_queue {
+    MergeQueueUnsigned { proposal: _, awaiting: _ } => desired_ruleset_rules_without_queue()
+    MergeQueueSignedOff { policy: p, ruling: _ } =>
+      append(desired_ruleset_rules_without_queue(), items: [merge_queue_rule_from_policy(policy: p)])
+  }
 }
 
 fn merge_queue_rule_from_policy(policy: MergeQueuePolicy) -> RulesetRuleWire {
@@ -244,9 +249,9 @@ fn desired_ruleset_conditions() -> RulesetConditionsWire {
 // Strict is false BECAUSE the merge queue is the construction that establishes the same
 // invariant without re-running the floor for every pull request behind a merge. That used to
 // name a remedy no declaration carried. The queue is now MergeQueueSignedOff;
-// `desired_ruleset_rules` projects `merge_queue_rule_from_policy`. `converge` may PUT that
-// projection. The coproduct remains so flipping back to Unsigned drops the rule from the
-// projection rather than leaving a web-form queue as desired-by-omission.
+// `desired_ruleset_rules` projects `merge_queue_rule_from_policy` from the SignedOff policy,
+// and only then. `converge` may PUT that projection. Flipping back to Unsigned drops the rule
+// from the projection rather than leaving a web-form queue as desired-by-omission.
 // EVERY PARAMETER GITHUB REQUIRES, NOT A BOOLEAN. A `merge_queue_required: Bool` would say "queue
 // on" while seven unmodeled parameters decided what the queue DOES -- provider defaults standing as
 // a second authority beside our own declaration, which is the fork DESIGN section 3 forbids. So the
@@ -789,7 +794,14 @@ fn signed_desire_projection_refusal_for(
   rules: List<RulesetRuleWire>,
 ) -> NonEmptyStr? {
   match policy {
-    Absent => none
+    Absent =>
+      if length(filter(rules, r => rule_is_merge_queue(rule: r))) == 0 {
+        none
+      } else {
+        Present {
+          value: "the merge queue is unsigned but the desired projection carries a merge_queue rule, so the goal states this dimension two ways and WHICH ONE IS THE DESIRE is undetermined" as NonEmptyStr
+        }
+      }
     Present { value: p } => {
       let drift = projected_queue_drift(policy: p, rules: rules)
       if length(drift) == 0 {

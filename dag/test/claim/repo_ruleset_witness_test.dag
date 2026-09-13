@@ -360,8 +360,8 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
 // halves of that sentence separately, because getting either wrong is the whole risk: a proposal
 // nobody can see, or a proposal a converge run quietly applies to a live repository.
 
-// THE SIGN-OFF GATE. While the desire is unsigned, the projection converge sends carries no
-// merge_queue rule -- so no converge run can enable a queue on the strength of this file.
+// THE SIGN-OFF GATE. Unsigned desire projects no merge_queue rule. This corpus is SignedOff,
+// so the projection converge sends carries the signed policy's rule.
 test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
   let signed = match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => false
@@ -595,9 +595,19 @@ test fn w_the_desired_type_roster_is_derived_from_the_projected_rules() -> Bool 
 
 // THE POSITIVE CONTROL: an unsigned desire is not a refusal, or converge would be dead today.
 test fn w_an_unsigned_desire_does_not_trip_the_sign_off_refusal() -> Bool {
-  match signed_desire_projection_refusal_for(policy: none, rules: desired_ruleset_rules()) {
+  match signed_desire_projection_refusal_for(
+    policy: none,
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
+  ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+test fn w_RED_an_unsigned_desire_with_a_projected_queue_is_undetermined() -> Bool {
+  match signed_desire_projection_refusal_for(policy: none, rules: desired_ruleset_rules()) {
+    Present { value: cause } => string_contains(s: cause, pattern: "unsigned")
+    Absent => false
   }
 }
 
