@@ -37,6 +37,7 @@ import extdeps.github.push_event {
 }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.github { max_per_page }
+import extdeps.github.actions { github_event_name_merge_group }
 import gunbc.fleet_revision_acceptance {
   AcceptedFleetRevision,
   RequiredCiSucceeded,
@@ -512,9 +513,9 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
 // a revision worth asking about. The run list is read from the REST resource addressed at
 // gunbc.repository, one page at the maximum size -- a revision with more floor runs than that
 // refuses as a partial page inside the fold rather than being judged from part of its evidence.
-// A push that did not come through the queue (an operator's admin-bypass merge, a direct push)
-// has no merge_group run and refuses as RequiredCiMergeGroupRunAbsent: that is the designed loud
-// outcome for an unproven revision, not a defect in this route.
+// A push whose revision has no qualifying merge_group run refuses as RequiredCiMergeGroupRunAbsent.
+// An operator's admin-bypass merge or a direct push is one SCENARIO that produces that absent
+// evidence; the refusal reports only the absence, never a diagnosed cause.
 func admit_fleet_desired_from_push_wet() -> ProcessExit {
   match push_ref_update_from_event_path(path: fleet_desired_admission_event_payload_path) {
     PushRefUpdateObserved { update: push } =>
@@ -528,6 +529,7 @@ func admit_fleet_desired_from_push_wet() -> ProcessExit {
             owner: gunbc_repository.owner,
             repo: gunbc_repository.name,
             head_sha: revision_hex as CommitSha,
+            event: github_event_name_merge_group,
             per_page: max_per_page,
           )
           match fleet_desired_accepted_from_merge_queue(

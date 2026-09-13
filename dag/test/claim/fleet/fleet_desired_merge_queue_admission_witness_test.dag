@@ -15,8 +15,9 @@ import gunbc.fleet_revision_acceptance {
   RequiredCiAdmission, RequiredCiAdmitted, RequiredCiRefused,
   RequiredCiMergeGroupRunAbsent, RequiredCiMergeGroupRunsTruncated, RequiredCiMergeGroupRunUnconcluded,
   RequiredCiMergeGroupRunsNotSuccess, RequiredCiContradictoryRuns, CiContractEpochMismatch,
+  RequiredCiRunsNotEventScoped, RequiredCiRunAttemptHistoryUnestablished,
   DefaultBranchAdmitted, DefaultBranchRefused, BranchRefIsNotTheDefaultBranch, BranchRepositoryNotThisRepository,
-  accept_required_ci_merge_group_runs, observe_default_branch_push,
+  accept_required_ci_merge_group_runs, observe_default_branch_push, required_ci_refusal_message,
 }
 import gunbc.fleet_desired_admission {
   FleetDesiredRevisionAccepted, FleetDesiredRevisionRefused,
@@ -152,7 +153,51 @@ test fn a_push_with_no_merge_group_run_refuses_as_absent() -> Bool {
 // merge-group observation: it proves the tree passed, not that the queue proved the landing.
 test fn a_pull_request_run_offered_for_the_revision_is_not_a_merge_group_run() -> Bool {
   match ci_on_r(rs: runs(rs: [run(id: 13, event: "pull_request", head_sha: sha_r, status: Completed, conclusion: Present { value: Success })])) {
-    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: _ } } } => true
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [13]
+    _ => false
+  }
+}
+
+// THE EVENT SCOPE, CHECKED ON THE RESPONSE. A qualifying merge_group success beside an unrelated
+// push run on the same revision is what an event-unscoped read returns; it refuses rather than
+// judging completeness or agreement over a population that includes runs of another event.
+test fn a_qualifying_success_beside_a_push_run_refuses_as_an_unscoped_read() -> Bool {
+  match ci_on_r(rs: runs(rs: [
+    mg(id: 11, conclusion: Success),
+    run(id: 21, event: "push", head_sha: sha_r, status: Completed, conclusion: Present { value: Failure }),
+  ])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [21]
+    _ => false
+  }
+}
+
+fn mg_attempt(id: Int, attempt: Int, conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  let r = mg(id: id, conclusion: conclusion)
+  WorkflowRun {
+    id: r.id, name: r.name, path: r.path, head_sha: r.head_sha, head_branch: r.head_branch,
+    event: r.event, status: r.status, conclusion: r.conclusion, workflow_id: r.workflow_id,
+    run_number: r.run_number, run_attempt: attempt, actor: r.actor, triggering_actor: r.triggering_actor,
+    html_url: r.html_url, created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+// THE SAME-RUN DIFFERENT-ATTEMPT DISCRIMINATOR. Run K's attempt 1 failed and attempt 2 succeeded;
+// the list carries only attempt 2, so it looks like one success. It refuses: the earlier verdict is
+// unobserved, and the agreement policy cannot be applied to evidence the input already discarded.
+test fn a_rerun_success_whose_earlier_attempt_is_unobserved_refuses() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
+    _ => false
+  }
+    && !admits(push: main_push(after: sha_r), rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)]))
+}
+
+// A LATER CANCELLED ATTEMPT CAN HIDE AN EARLIER FAILURE THE SAME WAY, and a cancelled snapshot is
+// dropped as a non-verdict -- so attempt history is decided BEFORE that drop. Beside a success on
+// another run this would otherwise admit.
+test fn a_later_cancelled_attempt_is_judged_before_non_verdicts_are_dropped() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: Success), mg_attempt(id: 11, attempt: 2, conclusion: Cancelled)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
     _ => false
   }
 }
@@ -269,5 +314,23 @@ test fn the_emitted_fleet_desired_workflow_routes_push_and_workflow_run_to_their
         && contains(y, "--function admit_fleet_desired_from_floor_event_wet")
         && contains(y, "actions: read")
     FleetDesiredGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE REFUSAL TEXT RENDERS ONLY WHAT THE PREDICATE ESTABLISHED. Absence of a qualifying run is not a
+// diagnosis of queue bypass, and a missing verdict is not a temporal claim about the push. Restoring
+// either earlier phrasing reds this row.
+test fn the_absent_and_unconcluded_refusals_claim_only_what_they_establish() -> Bool {
+  match revision_r() {
+    Present { value: r } => {
+      let absent = required_ci_refusal_message(cause: RequiredCiMergeGroupRunAbsent { revision: r })
+      let unconcluded = required_ci_refusal_message(cause: RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: [16] })
+      contains(absent, "in the complete queried result; this producer cannot establish the required CI proposition")
+        && !contains(absent, "queue")
+        && !contains(absent, "bypass")
+        && contains(unconcluded, "supply no usable verdict under this policy; admission remains unproved")
+        && !contains(unconcluded, "arrived before")
+    }
+    none => false
   }
 }
