@@ -443,3 +443,41 @@ test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
     )
   )
 }
+
+// THE ROSTER DOES NOT GRANDFATHER THIS CHANGE'S OWN NEW WITNESSES, which is the escape hatch the
+// roster exists to deny and which it had granted (review 65549). The generating floor run was taken
+// part-way through this lane, so three claims this change ADDS were discovered as population and
+// enrolled on the day they were written -- including the calibration specimen, whose own module
+// records that it was REDUCED specifically so it would not need grandfathering.
+//
+// THIS IS THE CONSTRUCTION THAT REPLACES THE TWO PARAGRAPHS THAT SAID IT COULD NOT HAPPEN. Both the
+// roster header and the calibration header asserted the rule while the mechanism broke it, which is
+// precisely why DESIGN section 5 prefers a wall to prose. It goes red if a later re-cut of the
+// roster takes a run that post-dates a lane's own additions again.
+//
+// THE SPECIMEN IS THE SHARPEST PROBE OF THE THREE, so it is named rather than folded into a set: it
+// is deliberately the most expensive claim this lane adds, so it is the one an accidental
+// grandfathering would most flatter.
+test fn this_lane_s_own_new_witnesses_are_not_grandfathered() -> Bool {
+  (floor_grandfathered_holds(
+     name: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
+   ) == false)
+    && (floor_grandfathered_holds(
+          name: "test.claim.floor_eval_step_budget_witness_test.the_eval_step_standing_carries_both_figures_in_its_refusing_arm",
+        ) == false)
+    && (floor_grandfathered_holds(
+          name: "test.claim.floor_eval_step_budget_witness_test.the_cpu_observation_is_still_carried_when_another_limit_fires",
+        ) == false)
+}
+
+// AND THEY FACE THE NEW TIER RATHER THAN NO TIER, which is the other half: a name absent from the
+// roster must select NewWitnessTier, not fall through. Without this, striking a row would look
+// identical to deleting the tier selection.
+test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
+  match claim_ceiling_tier(
+    identity: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
+  ) {
+    GrandfatheredTier => false
+    NewWitnessTier => true
+  }
+}

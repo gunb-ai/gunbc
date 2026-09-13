@@ -1364,6 +1364,8 @@ data opaque_host_call_population_authority_dissolves_on: DissolutionCondition = 
 
 fn opaque_host_call_grandfather_population() -> List<String> {
   Cons {
+    head: "claim_scope_dag_multi_module_fixture",
+    tail: Cons {
     head: "compile_dag_rust_emit_check",
     tail: Cons {
       head: "compile_dag_diagnostic_census",
@@ -1387,7 +1389,7 @@ fn opaque_host_call_grandfather_population() -> List<String> {
         }
       }
     }
-  }
+  } }
 }
 
 // TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The
