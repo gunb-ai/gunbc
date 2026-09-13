@@ -274,3 +274,241 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
 
 
 
+
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THIS VENDOR PUBLISHES ABOUT ITS DATA PATHS, AS OPPOSED TO ITS PRICES.
+//
+// Everything above this line is catalog and tariff. A route admission asks a different question --
+// where the execution, the storage, the backups, the logs, the support and the administrators of a
+// given location actually sit -- and the answer is in a different set of the vendor's documents.
+// They are read here rather than in the product layer for the reason DESIGN section 3 gives: an
+// independently governed upstream owns its own facts, and what we are willing to do with them is a
+// fact about us.
+//
+// EACH ROW CARRIES THE DOCUMENT, THE DATE IT WAS READ, AND THE SENTENCE IT WAS READ FOR. The
+// statement field is a TRANSCRIPTION of upstream's own words, not commentary about them: it is the
+// fact, and the authority beside it is where a later reader re-reads it. A reading is therefore
+// dated and never silently refreshed -- upstream edits a page without telling anyone, so a
+// statement that no longer appears at its URI is a NEW reading with a later date, exactly as
+// TariffStanding above keeps a superseded tariff rather than overwriting it.
+
+type HetznerPublishedReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  statement: NonEmptyStr
+}
+
+data hetzner_locations_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/cloud/general/locations/" } },
+  read_on: "2026-09-12",
+  statement: "The location table maps network zone eu-central to fsn1 (DE Falkenstein), nbg1 (DE Nuremberg) and hel1 (FI Helsinki); us-east to ash (US Ashburn, VA), us-west to hil (US Hillsboro, OR) and ap-southeast to sin (SG Singapore). The page states: Hetzner owns and operates three data center parks located in Nuremberg (Germany), Falkenstein (Germany) and Helsinki (Finland). It also states: Hetzner's own team of technicians in Germany provides customer support for the Hetzner Cloud servers in Europe, the USA, and Singapore. The zone and location roster is introduced as the CURRENT one, so its closure is a fact about the read date and not a permanent one.",
+}
+
+data hetzner_backup_snapshot_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/cloud/servers/backups-snapshots/faq/" } },
+  read_on: "2026-09-12",
+  statement: "Backups are in the same location as the cloud server they were created from, but usually in a different data center. In Hillsboro and in Singapore only one data center is in use, which is why those locations are a little bit different. There, Backups are always saved in the same data center as the server. Snapshots are automatically in a different location than the cloud server they were created from. The location itself is allocated randomly and cannot be changed. The location has to be in the same network zone, which is why Ashburn, Hillsboro and Singapore are a little bit different. There Snapshots are in the same location as the server. THE PAGE THEN STATES THE DESTINATIONS OUTRIGHT, PER LOCATION, so no zone inference is needed to read them: Cloud server in Falkenstein - Snapshot is stored in Helsinki or Nuremberg. Cloud server in Helsinki - Snapshot is stored in Nuremberg or Falkenstein. Cloud server in Nuremberg - Snapshot is stored in Helsinki or Falkenstein. Cloud server in Ashburn - Snapshot is stored in Ashburn. Cloud server in Hillsboro - Snapshot is stored in Hillsboro. Cloud server in Singapore - Snapshot is stored in Singapore.",
+}
+
+data hetzner_subcontractor_appendix_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "www.hetzner.com/AV/DPA_en.pdf" } },
+  read_on: "2026-09-12",
+  statement: "Appendix 3 of the Data Protection Agreement: Approved Subcontractors, classification Open, Date and Version 1.0, - August 08, 2024. Hetzner Online GmbH (the Supplier) uses services of third parties (subcontractors) while processing data on behalf of its customers (the Client). These subcontractors process data on behalf of Hetzner Online GmbH. The following is a list of approved subcontractors. The table is keyed by SERVER LOCATION and its columns are Server location, Subcontractor, Subcontractor's address, Type of service. The document closes: If you have chosen a server location within the EU, your data will only be processed within the EU. The technical and customer support services for all server locations are provided within the EU.",
+}
+
+data hetzner_technical_organizational_measures_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" } },
+  read_on: "2026-09-12",
+  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees. WHAT THE PAGE DOES NOT SAY, read for and not found: it names no country for the log system, states no jurisdiction from which administrative access is exercised, and does not mention Finland or Helsinki anywhere.",
+}
+
+data hetzner_terms_and_conditions_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "www.hetzner.com/legal/terms-and-conditions/" } },
+  read_on: "2026-09-12",
+  statement: "Terms and Conditions of Hetzner Online GmbH, version 2.0.0, last updated 27 October 2021. These Terms and Conditions and the contractual relationship between us and the Customer are governed by the laws of the Federal Republic of Germany, excluding the UN Convention on Contracts for the International Sale of Goods and international private law. The international and exclusive place of jurisdiction for all disputes arising from this contractual relationship is our registered office in Gunzenhausen.",
+}
+
+data hetzner_data_protection_overview_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" } },
+  read_on: "2026-09-12",
+  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
+}
+
+// THE LEGAL ENTITIES THE DOCUMENTS NAME. A route's operator slot needs a party, and a party is a
+// company with a seat and a register entry, not a brand. The German-language Appendix 3 carries the
+// supplier's own letterhead, which is where the register court and number below were read.
+
+type HetznerLegalEntity {
+  legal_name: NonEmptyStr
+  registered_address: NonEmptyStr
+  country: NonEmptyStr
+  reading: HetznerPublishedReading
+}
+
+data hetzner_online_gmbh: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "Hetzner Online GmbH",
+  registered_address: "Industriestrasse 25, 91710 Gunzenhausen, Germany; Ansbach Registration Office, HRB 6089",
+  country: "Germany",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data hetzner_finland_oy: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "Hetzner Finland Oy",
+  registered_address: "Huurrekuja 10, 04360 Tuusula, Finland",
+  country: "Finland",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data hetzner_us_llc: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "Hetzner US LLC",
+  registered_address: "1500 Broadway, 19th Fl, New York, NY 10036, USA",
+  country: "United States of America",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data ntt_global_data_centers_americas: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "NTT Global Data Centers Americas, Inc.",
+  registered_address: "1625 National Drive, Sacramento, CA 95834, USA",
+  country: "United States of America",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data qts_investment_properties_hillsboro: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "QTS Investment Properties Hillsboro, LLC",
+  registered_address: "Overland Park, 12851 Foster Street, Overland Park, KS 66213, USA",
+  country: "United States of America",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data hetzner_singapore_pte_ltd: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "Hetzner Singapore Pte. Ltd.",
+  registered_address: "1 Scotts Road, #21-10 Shaw Centre, Singapore 228208",
+  country: "Singapore",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+data ntt_global_data_centers_sg1: HetznerLegalEntity = HetznerLegalEntity {
+  legal_name: "NTT Global Data Centers SG1 Pte Ltd",
+  registered_address: "8 Kallang Avenue #15-01/09, Aperia, 339509 Singapore",
+  country: "Singapore",
+  reading: hetzner_subcontractor_appendix_reading,
+}
+
+// THE APPROVED-SUBCONTRACTOR TABLE, KEYED THE WAY UPSTREAM KEYS IT. The first column is SERVER
+// LOCATION, so this roster is per-location and not per-company, and a location with no row is a
+// location upstream lists no approved subcontractor for. What that ABSENCE means is deliberately
+// not decided here: the document says which companies are approved, and it does not say that an
+// unlisted location has none. A consumer that needs the negative reads the coverage question in its
+// own layer rather than finding it pre-answered in this one.
+
+type HetznerApprovedSubcontractor {
+  server_location: NonEmptyStr
+  entity: HetznerLegalEntity
+  service: NonEmptyStr
+}
+
+data hetzner_subcontractor_finland: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "Finland",
+  entity: hetzner_finland_oy,
+  service: "Building rental, technical support",
+}
+
+data hetzner_subcontractor_us_server_rental: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "USA",
+  entity: hetzner_us_llc,
+  service: "Server rental on location in USA",
+}
+
+data hetzner_subcontractor_us_colocation_sacramento: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "USA",
+  entity: ntt_global_data_centers_americas,
+  service: "Colocation provider on location in USA",
+}
+
+data hetzner_subcontractor_us_colocation_hillsboro: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "USA",
+  entity: qts_investment_properties_hillsboro,
+  service: "Colocation provider on location in USA",
+}
+
+data hetzner_subcontractor_singapore_server_rental: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "Singapore",
+  entity: hetzner_singapore_pte_ltd,
+  service: "Server rental on location in Singapore",
+}
+
+data hetzner_subcontractor_singapore_colocation: HetznerApprovedSubcontractor = HetznerApprovedSubcontractor {
+  server_location: "Singapore",
+  entity: ntt_global_data_centers_sg1,
+  service: "Colocation provider on location in Singapore",
+}
+
+fn hetzner_approved_subcontractors() -> List<HetznerApprovedSubcontractor> {
+  [
+    hetzner_subcontractor_finland,
+    hetzner_subcontractor_us_server_rental,
+    hetzner_subcontractor_us_colocation_sacramento,
+    hetzner_subcontractor_us_colocation_hillsboro,
+    hetzner_subcontractor_singapore_server_rental,
+    hetzner_subcontractor_singapore_colocation,
+  ]
+}
+
+fn hetzner_subcontractors_for_server_location(location: NonEmptyStr) -> List<HetznerApprovedSubcontractor> {
+  filter(hetzner_approved_subcontractors(), s => s.server_location == location)
+}
+
+// THE LOCATION ROWS, WHICH ARE WHAT A ROUTE'S REGION AND A PATH'S JURISDICTION CITE. HetznerCloudRegion
+// above is a closed coproduct of the two regions this repository has read prices for; these rows add
+// the facts a route needs and a price list does not carry -- the wire code, the country the vendor
+// itself names, the network zone that bounds where a snapshot may be placed, and who operates the park.
+//
+// country IS THE VENDOR'S OWN WORD AND NOT A LOOKUP FROM THE CITY. The locations page writes
+// Helsinki (Finland) and Nuremberg (Germany) in the same sentence as owns and operates, so the
+// country is transcribed from upstream rather than derived from a place name -- which is the
+// difference between a citation and a guess.
+
+type HetznerServerLocationRow {
+  region: HetznerCloudRegion
+  location_code: NonEmptyStr
+  country: NonEmptyStr
+  network_zone: NonEmptyStr
+  operated_by: HetznerLegalEntity
+  reading: HetznerPublishedReading
+}
+
+data hetzner_location_helsinki: HetznerServerLocationRow = HetznerServerLocationRow {
+  region: Helsinki,
+  location_code: "hel1",
+  country: "Finland",
+  network_zone: "eu-central",
+  operated_by: hetzner_online_gmbh,
+  reading: hetzner_locations_reading,
+}
+
+data hetzner_location_nuremberg: HetznerServerLocationRow = HetznerServerLocationRow {
+  region: Nuremberg,
+  location_code: "nbg1",
+  country: "Germany",
+  network_zone: "eu-central",
+  operated_by: hetzner_online_gmbh,
+  reading: hetzner_locations_reading,
+}
+
+// SUPPORT IS AN ORGANISATION, NOT A LOCATION, and it is a separate row for exactly that reason. The
+// tempting shortcut is to answer a support-access question with the server's location row, which is
+// the vendor-region-label error the route model exists to refuse: the technicians are where upstream
+// says they are, which for this vendor is Germany for every location it serves.
+
+type HetznerSupportOrganisation {
+  provided_by: HetznerLegalEntity
+  country: NonEmptyStr
+  reading: HetznerPublishedReading
+}
+
+data hetzner_customer_support_organisation: HetznerSupportOrganisation = HetznerSupportOrganisation {
+  provided_by: hetzner_online_gmbh,
+  country: "Germany",
+  reading: hetzner_locations_reading,
+}
