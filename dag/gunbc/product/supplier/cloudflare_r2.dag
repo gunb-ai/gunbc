@@ -11,7 +11,15 @@ import product.fabric.provider_route {
   ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
   provider_route_from_region,
 }
-import extdeps.cloudflare.r2 { r2_published_location_readings }
+import extdeps.cloudflare.r2 {
+  r2_published_location_readings,
+  r2_published_location_citations,
+  r2_tokens_doc_as_of,
+}
+import extdeps.vendor.cloudflare {
+  cloudflare_company_document_readings,
+  cloudflare_company_document_citations,
+}
 
 // THE DURABLE-ORIGIN THIS REPOSITORY ANSWERS THE NINE-PATH CLOSURE FOR. PRODUCTION DOES NOT MINT A ROUTE.
 //
@@ -85,7 +93,7 @@ data cloudflare_r2_telemetry_location_obligation: NonEmptyStr = "Whether Cloudfl
 
 data cloudflare_r2_control_plane_location_obligation: NonEmptyStr = "Where the R2 control plane -- the Dashboard, the S3 API, the REST API that powers Wrangler, and the Metadata Service -- runs for a default-jurisdiction bucket, and under whose jurisdiction, is UNREAD. r2_how_r2_works_reading places the Gateway on the global network and the Metadata Service on Durable Objects and names no country for either. RESOLVED BY evidence sufficient for this path's OPERATOR AND JURISDICTION both. Naming an operating entity without a jurisdiction, or a jurisdiction without an operator, does not close this path."
 
-data cloudflare_r2_support_access_obligation: NonEmptyStr = "From which jurisdiction Cloudflare support reaches a default-jurisdiction R2 bucket is UNREAD. extdeps.cloudflare.r2 cloudflare_subprocessors_reading names Slack, Zendesk and Salesforce for customer support, with locations that include the United States and, for Zendesk, also the EEA, Japan and Australia. That is a company-wide support-tool list, not a statement that support access to THIS bucket's objects is exercised from those places or that it is not. RESOLVED BY evidence sufficient for this path's OPERATOR AND JURISDICTION both — a Cloudflare statement of where support access to a given R2 bucket's objects is exercised from and by whom."
+data cloudflare_r2_support_access_obligation: NonEmptyStr = "From which jurisdiction Cloudflare support reaches a default-jurisdiction R2 bucket is UNREAD. extdeps.vendor.cloudflare cloudflare_subprocessors_reading names Slack, Zendesk and Salesforce for customer support, with locations that include the United States and, for Zendesk, also the EEA, Japan and Australia. That is a company-wide support-tool list, not a statement that support access to THIS bucket's objects is exercised from those places or that it is not. RESOLVED BY evidence sufficient for this path's OPERATOR AND JURISDICTION both — a Cloudflare statement of where support access to a given R2 bucket's objects is exercised from and by whom."
 
 data cloudflare_r2_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to a default-jurisdiction R2 bucket is exercised is UNREAD. The subprocessors page states that Cloudflare Group companies may be sub-processors because employees of those affiliates may need to provide account and engineering support, and it lists subsidiaries in the United Kingdom, Singapore, Australia, Germany, Portugal, France, Japan, Canada, the Netherlands, the U.A.E., India, the United States, South Korea, Mexico, Malaysia, Sweden and Switzerland. That names WHO may provide support, not FROM WHERE administrative access to this bucket is exercised, and it does not locate this bucket. RESOLVED BY evidence sufficient for this path's OPERATOR AND JURISDICTION both."
 
@@ -132,28 +140,33 @@ fn cloudflare_r2_downstream() -> DownstreamProviderPopulation {
 }
 
 fn cloudflare_r2_location_readings_digest() -> Fnv1a64Structural {
-  fold(
-    r2_published_location_readings(),
+  let after_statements = fold(
+    concat([r2_published_location_readings(), cloudflare_company_document_readings()]),
     init: content_hash_atom(value: "product.supplier.cloudflare_r2.location-readings" as NonEmptyStr),
-    f: fn(acc, reading) {
+    f: fn(acc, statement) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: statement))
+    },
+  )
+  let after_citations = fold(
+    concat([r2_published_location_citations(), cloudflare_company_document_citations()]),
+    init: after_statements,
+    f: fn(acc, citation) {
       content_hash_combine_structural(
         left: acc,
-        right: content_hash_combine_structural(
-          left: content_hash_atom(value: reading.authority.decl_name),
-          right: content_hash_combine_structural(
-            left: content_hash_atom(value: reading.read_on),
-            right: content_hash_atom(value: reading.statement),
-          ),
-        ),
+        right: content_hash_atom(value: citation.authority.uri.locator as NonEmptyStr),
       )
     },
+  )
+  content_hash_combine_structural(
+    left: after_citations,
+    right: content_hash_atom(value: r2_tokens_doc_as_of as NonEmptyStr),
   )
 }
 
 fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: route,
-    contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "cloudflare_customer_dpa_reading"),
+    contract_terms: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_customer_dpa_reading"),
     data_paths: cloudflare_r2_data_paths(),
     downstream: cloudflare_r2_downstream(),
     observed_at: "2026-09-12T00:00:00Z",

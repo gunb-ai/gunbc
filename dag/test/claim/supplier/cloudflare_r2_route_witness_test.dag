@@ -230,7 +230,7 @@ fn t_synthetic_downstream() -> DownstreamProviderPopulation {
 fn t_facts_with_durable_storage(route: ProviderRoute, storage: ProviderPathStanding) -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: route,
-    contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "cloudflare_customer_dpa_reading"),
+    contract_terms: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare_customer_dpa_reading"),
     data_paths: t_paths_with_durable_storage(storage: storage),
     downstream: t_synthetic_downstream(),
     observed_at: "2026-09-12T00:00:00Z",
