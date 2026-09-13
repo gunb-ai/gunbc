@@ -1,0 +1,138 @@
+module test.claim.claim_scope_fixture_instrument_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  ClaimScopeFixtureOutcome,
+  FixtureSource,
+  fixture_source,
+  claim_scope_fixture,
+  claim_scope_refusal_names,
+  claim_scope_was_accepted
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: `claim_scope_fixture` BUILDS A REAL CLAIM SCOPE over a caller-authored manifest.
+//
+// `compile_fixture` stops at `compile_to_resolved`. Several refusals the corpus cares about live
+// further on, in `claim_scope_for` -- the scope builder the required floor calls once per claim
+// module. Nothing CI executes could reach those: the fixture harness could not see them, and a
+// corpus module authored to carry the offending shape would refuse the whole floor rather than sit
+// in it as a probe. This instrument closes that gap, and these rows are what say it works.
+//
+// WHAT THIS FILE DOES AND DOES NOT WITNESS. It witnesses THE INSTRUMENT: that a manifest reaches
+// scope construction at all, that an accepted scope reports `ClaimScopeAccepted`, and that a scope
+// refusal reaches the caller as `ClaimScopeRefused` carrying the refusal's own words. It does NOT
+// witness any particular wall -- the bare-name-ambiguity refusal this instrument was built for
+// lands separately and brings its own controls, because a control for a wall belongs with the wall
+// rather than ahead of it.
+//
+// NO std.types IMPORT IN ANY FIXTURE, and that is load-bearing rather than terseness. The
+// instrument compiles the supplied manifest with NO corpus roots, so `import std.types { Int }`
+// names a module the subject does not contain and would refuse the whole compile -- including the
+// row that must be ACCEPTED. `Int` needs no import: it is in kernel_type_set and every module
+// sees it.
+
+data csf_module_source: String = "module csf.user\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+
+// FOUR MORE DISTINCT SUBJECTS, each a different manifest and therefore a different
+// `subject_digest`. They exist to exercise the bound, not to vary the subject: see
+// `several_distinct_fixture_subjects_all_resolve` below.
+data csf_second_source: String = "module csf.second\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_third_source: String = "module csf.third\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_fourth_source: String = "module csf.fourth\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_fifth_source: String = "module csf.fifth\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+
+fn csf_scope_of(path: String, source: String, module_path: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_fixture(
+    fixture: MultiModuleCompileFixture {
+      sources: [fixture_source(path, source)],
+      entry: path
+    },
+    entry_module_path: module_path
+  )
+}
+
+// THE POSITIVE CONTROL. A one-module manifest whose entry names it. Scope construction must
+// succeed and the outcome must be `ClaimScopeAccepted`.
+test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool {
+  claim_scope_was_accepted(
+    o: claim_scope_fixture(
+      fixture: MultiModuleCompileFixture {
+        sources: [fixture_source("csf/user.dag", csf_module_source)],
+        entry: "csf/user.dag"
+      },
+      entry_module_path: "csf.user"
+    )
+  )
+}
+
+// THE DISCRIMINATING RED, and it is a REAL scope refusal rather than a harness error. The manifest
+// is identical and well-formed; only the entry MODULE PATH differs, naming a module the prepared
+// subject does not contain. `claim_scope_for` answers that with
+// `CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject`, which is the arm this row proves
+// reaches the caller.
+//
+// WHY THIS PAIR AND NOT A MALFORMED MANIFEST. A ragged or unparseable manifest would also come back
+// non-accepted, through `ClaimScopeInstrumentRefused` or `ClaimScopeCompileRefused` -- and both of
+// those mean the HARNESS or the SOURCE broke, not that a scope refused. A red that could be
+// satisfied by either would not discriminate the thing this instrument exists to carry. These two
+// rows differ by exactly one string, so the only variable is the scope builder's own verdict.
+test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> Bool {
+  claim_scope_refusal_names(
+    cause_marker: "EntryModuleOutsidePreparedSubject",
+    o: claim_scope_fixture(
+      fixture: MultiModuleCompileFixture {
+        sources: [fixture_source("csf/user.dag", csf_module_source)],
+        entry: "csf/user.dag"
+      },
+      entry_module_path: "csf.module_that_the_manifest_does_not_contain"
+    )
+  )
+}
+
+// CONDITION: THE FIXTURE MUST NOT COMPETE FOR THE FLOOR'S BOUNDED SUBJECT SLOTS.
+//
+// This block keeps three things apart on purpose, because an earlier draft merged them and
+// overclaimed in both halves: WHAT WAS EXECUTED, WHAT FOLLOWS FROM THE CODE, and WHAT NEITHER
+// ESTABLISHES.
+//
+// WHAT FOLLOWS FROM THE CODE. `reference_closure_index` memoizes per prepared subject in a
+// `thread_local!` bounded at `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` = 2, and the required floor
+// already holds both -- the corpus subject and the `policy_prepared` subject. An implementation
+// that registered EVERY fixture subject in that cache therefore cannot let five distinct subjects
+// all resolve on a worker whose slots are already taken: one of them is refused for a reason that
+// says nothing about its manifest. That is a bound argument, not a run.
+//
+// WHAT WAS EXECUTED, ONCE, AGAINST AN ARM THAT IS NOT IN THIS TREE. The fixture path was mutated
+// to take the registering route (`None` in place of the scope-private index), rebuilt, and this
+// row returned FALSE while `a_well_formed_manifest_builds_a_claim_scope` on the same binary
+// returned true. So the red is authorable and it discriminates -- it is not a row that reds
+// whenever anything is wrong. THAT ARM IS NOT ENROLLED and nothing in the committed tree
+// re-derives it: the observation is a receipt about one mutation on one worker, not a property
+// this file re-checks.
+//
+// WHAT NEITHER ESTABLISHES, and these are the two claims an earlier draft made and could not
+// support. FIRST, five subjects do NOT prove "the row fails if the fixture occupies even ONE
+// slot". A defect that registered only the FIRST fixture, on a worker with spare capacity, would
+// spend a slot while all five calls still accepted -- this row inspects neither occupancy nor
+// memo contents, so the universal form does not follow from it. SECOND, a green enclosing floor
+// does NOT establish that the production subjects remain usable after the fixture runs: nothing
+// here names which production subject is queried afterwards, on which worker, or whether that
+// query reaches the affected memo, and a green aggregate establishes what that run obtained
+// rather than a postcondition over every relevant thread-local.
+//
+// So what this row is: a discriminating probe over the shape the bound argument predicts, wide
+// enough (five, not two) that it cannot pass on a process that merely happened to have room. What
+// closes the remaining gap is occupancy being observable at all, which is the next rung and is not
+// what this row claims to be.
+
+test fn several_distinct_fixture_subjects_all_resolve() -> Bool {
+  claim_scope_was_accepted(o: csf_scope_of(path: "csf/user.dag", source: csf_module_source, module_path: "csf.user"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/second.dag", source: csf_second_source, module_path: "csf.second"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/third.dag", source: csf_third_source, module_path: "csf.third"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/fourth.dag", source: csf_fourth_source, module_path: "csf.fourth"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/fifth.dag", source: csf_fifth_source, module_path: "csf.fifth"))
+}
