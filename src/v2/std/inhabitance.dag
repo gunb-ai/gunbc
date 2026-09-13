@@ -1,0 +1,120 @@
+module v2.std.inhabitance
+
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Suggested,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.std.witness { HomomorphismWitness }
+
+type DeclaredTypePosition
+  = PositionDirectCallArgument
+
+type DeclaredTypeObligation {
+  position: DeclaredTypePosition
+  parameter_identity: Symbol
+  declared: Node
+  produced: Node
+  application: Node
+}
+
+type InhabitanceFormal {
+  parameter_identity: Symbol
+  declared: Node
+}
+
+type InhabitanceRefusalReason
+  = RefusedDistinctConstructor
+
+type InhabitanceVerdict
+  = Inhabits { homomorphism: HomomorphismWitness }
+  | InhabitanceRefused { reason: InhabitanceRefusalReason }
+
+fn position_direct_call_argument() -> DeclaredTypePosition {
+  PositionDirectCallArgument
+}
+
+fn inhabitance_types_equal(declared: Node, produced: Node) -> Bool {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id_a } } =>
+      match produced.kind {
+        TypeNode { connective: Atom { identity: id_b } } => id_a == id_b
+        _ => false
+      }
+    _ => declared == produced
+  }
+}
+
+fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  if inhabitance_types_equal(declared: obligation.declared, produced: obligation.produced) {
+    Inhabits {
+      homomorphism: HomomorphismWitness {
+        rule: ^homomorphism_rule_declared_type_identity,
+        evidence: obligation.produced
+      }
+    }
+  } else {
+    InhabitanceRefused { reason: RefusedDistinctConstructor }
+  }
+}
+
+fn application_argument_does_not_inhabit_diagnostic(
+  application: Node,
+  parameter_identity: Symbol,
+  argument_type: Node,
+  parameter_type: Node,
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^application_argument_does_not_inhabit,
+    at: node_locus(node: application),
+    correction: Suggested {
+      node: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: parameter_identity }, target: parameter_type },
+          Edge { label: Named { name: ^inhabitance_produced_type }, target: argument_type }
+        ],
+        occurrence_id: application.occurrence_id
+      }
+    }
+  }
+}
+
+fn application_argument_type_not_derived_diagnostic(
+  application: Node,
+  argument: Node,
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^application_argument_type_not_derived,
+    at: node_locus(node: application),
+    correction: Suggested { node: argument }
+  }
+}
+
+fn application_parameter_type_not_derived_diagnostic(application: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^application_parameter_type_not_derived,
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn application_arity_mismatch_diagnostic(application: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^application_arity_mismatch,
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}

@@ -48,6 +48,18 @@ import v2.std.constraints {
   CanonicalGroundingWitness,
   canonical_grounding_from_derived_type
 }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceFormal,
+  InhabitanceRefused,
+  Inhabits,
+  application_argument_does_not_inhabit_diagnostic,
+  application_argument_type_not_derived_diagnostic,
+  application_arity_mismatch_diagnostic,
+  application_parameter_type_not_derived_diagnostic,
+  declared_type_inhabitance,
+  position_direct_call_argument
+}
 import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -84,6 +96,7 @@ import v2.std.node {
   Named,
   Node,
   NodeFold,
+  Positional,
   Symbol,
   Transform,
   TypeNode,
@@ -1521,6 +1534,252 @@ fn infer_unify_transform_operand_types(
   }
 }
 
+type InferSkipFirstAcc {
+  skipped: Bool
+  args: List<Node>
+}
+
+fn infer_transform_argument_targets(node: Node) -> List<Node> {
+  fold(
+    node_positional_child_targets(node: node),
+    init: InferSkipFirstAcc { skipped: false, args: Empty },
+    f: fn(acc, target) {
+      if acc.skipped {
+        InferSkipFirstAcc {
+          skipped: true,
+          args: list_snoc_item(xs: acc.args, item: target)
+        }
+      } else {
+        InferSkipFirstAcc { skipped: true, args: Empty }
+      }
+    }
+  ).args
+}
+
+fn infer_list_drop_first(xs: List<Node>) -> List<Node> {
+  fold(
+    xs,
+    init: InferSkipFirstAcc { skipped: false, args: Empty },
+    f: fn(acc, target) {
+      if acc.skipped {
+        InferSkipFirstAcc {
+          skipped: true,
+          args: list_snoc_item(xs: acc.args, item: target)
+        }
+      } else {
+        InferSkipFirstAcc { skipped: true, args: Empty }
+      }
+    }
+  ).args
+}
+
+fn infer_find_arrow_by_name(root: Node, name: Symbol) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match e.label {
+              Named { name: nme } =>
+                if nme == name {
+                  match e.target.kind {
+                    TypeNode { connective: Arrow } => Present { value: e.target }
+                    _ => infer_find_arrow_by_name(root: e.target, name: name)
+                  }
+                } else {
+                  infer_find_arrow_by_name(root: e.target, name: name)
+                }
+              Positional => infer_find_arrow_by_name(root: e.target, name: name)
+            }
+        }
+      })
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => infer_find_arrow_by_name(root: e.target, name: name)
+        }
+      })
+  }
+}
+
+fn infer_operator_arrow(operator: Node, tree: Node) -> Optional<Node> {
+  match operator.kind {
+    TypeNode { connective: Arrow } => Present { value: operator }
+    TypeNode { connective: Atom { identity: id } } =>
+      infer_find_arrow_by_name(root: tree, name: id)
+    _ => Absent
+  }
+}
+
+fn infer_formals_from_domain(domain: Node) -> List<InhabitanceFormal> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: Empty, f: fn(acc, e) {
+        match e.label {
+          Named { name: nme } =>
+            list_snoc_item(
+              xs: acc,
+              item: InhabitanceFormal {
+                parameter_identity: nme,
+                declared: e.target
+              }
+            )
+          Positional => acc
+        }
+      })
+    _ => Empty
+  }
+}
+
+fn infer_add_operand_formals() -> List<InhabitanceFormal> {
+  [
+    InhabitanceFormal {
+      parameter_identity: ^infer_add_left_operand,
+      declared: infer_branch_int_binding_type_node()
+    },
+    InhabitanceFormal {
+      parameter_identity: ^infer_add_right_operand,
+      declared: infer_branch_int_binding_type_node()
+    }
+  ]
+}
+
+fn infer_application_formals(node: Node, tree: Node) -> Outcome<List<InhabitanceFormal>> {
+  if infer_transform_is_binary_infix_int_add_shape(node: node) {
+    Accepted { value: infer_add_operand_formals(), diagnostics: None }
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Absent =>
+        outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
+      Present { value: operator } =>
+        match infer_operator_arrow(operator: operator, tree: tree) {
+          Absent =>
+            outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
+          Present { value: arrow } =>
+            match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+              Absent =>
+                outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
+              Present { value: domain } =>
+                Accepted {
+                  value: infer_formals_from_domain(domain: domain),
+                  diagnostics: None
+                }
+            }
+        }
+    }
+  }
+}
+
+type InferInhabitanceZipAcc {
+  remaining: List<Node>
+  result: Outcome<Bool>
+}
+
+fn infer_judge_application_argument(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  arg: Node
+) -> Outcome<Bool> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: arg))
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } =>
+          outcome_rejected(
+            application_argument_type_not_derived_diagnostic(
+              application: application,
+              argument: arg
+            )
+          )
+        Holds { value: produced } =>
+          match declared_type_inhabitance(
+            obligation: DeclaredTypeObligation {
+              position: position_direct_call_argument(),
+              parameter_identity: formal.parameter_identity,
+              declared: formal.declared,
+              produced: produced,
+              application: application
+            }
+          ) {
+            Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
+            InhabitanceRefused { reason: _ } =>
+              outcome_rejected(
+                application_argument_does_not_inhabit_diagnostic(
+                  application: application,
+                  parameter_identity: formal.parameter_identity,
+                  argument_type: produced,
+                  parameter_type: formal.declared
+                )
+              )
+          }
+      }
+  }
+}
+
+fn infer_application_argument_inhabitance(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Outcome<Bool> {
+  match infer_application_formals(node: node, tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: formals, diagnostics: fd } =>
+      let args = infer_transform_argument_targets(node: node)
+      if length(xs: formals) != length(xs: args) {
+        outcome_rejected(application_arity_mismatch_diagnostic(application: node))
+      } else {
+        match fold(
+          formals,
+          init: InferInhabitanceZipAcc {
+            remaining: args,
+            result: Accepted { value: true, diagnostics: fd }
+          },
+          f: fn(acc, formal) {
+            match acc.result {
+              Rejected { diagnostics: r } =>
+                InferInhabitanceZipAcc { remaining: acc.remaining, result: Rejected { diagnostics: r } }
+              Accepted { value: _, diagnostics: pd } =>
+                match list_at_optional(xs: acc.remaining, index: 0) {
+                  Absent =>
+                    InferInhabitanceZipAcc {
+                      remaining: Empty,
+                      result: outcome_rejected(application_arity_mismatch_diagnostic(application: node))
+                    }
+                  Present { value: arg } =>
+                    match infer_judge_application_argument(
+                      application: node,
+                      entries: entries,
+                      formal: formal,
+                      arg: arg
+                    ) {
+                      Rejected { diagnostics: r } =>
+                        InferInhabitanceZipAcc {
+                          remaining: infer_list_drop_first(xs: acc.remaining),
+                          result: Rejected { diagnostics: r }
+                        }
+                      Accepted { value: _, diagnostics: jd } =>
+                        InferInhabitanceZipAcc {
+                          remaining: infer_list_drop_first(xs: acc.remaining),
+                          result: Accepted {
+                            value: true,
+                            diagnostics: diagnostics_merge(outer: pd, inner: jd)
+                          }
+                        }
+                    }
+                }
+            }
+          }
+        ).result {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+        }
+      }
+  }
+}
+
 fn infer_transform_binary_infix(
   node: Node,
   partials: List<Node>,
@@ -1811,14 +2070,14 @@ fn infer_gather_loop_row_on_entries(
   }
 }
 
-fn infer_gather_transform_row_on_entries(
+fn infer_gather_transform_frontier_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
   tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+  match infer_node_facts(n: node, partials: partials, tree: tree) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -1855,6 +2114,78 @@ fn infer_gather_transform_row_on_entries(
             await_transform_row: false,
             children_remaining: 0
           )
+      }
+  }
+}
+
+fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_application_argument_inhabitance(node: node, entries: entries, tree: tree) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: _, diagnostics: id } =>
+      let merged_pending = diagnostics_merge(outer: pending, inner: id)
+      if infer_transform_is_binary_infix_int_add_shape(node: node) {
+        match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: merged_pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: merged_pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(
+                    outer: diagnostics_merge(outer: merged_pending, inner: d),
+                    inner: ed
+                  ),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
+        }
+      } else {
+        infer_gather_transform_frontier_on_entries(
+          node: node,
+          entries: entries,
+          pending: merged_pending,
+          partials: partials,
+          tree: tree
+        )
       }
   }
 }
@@ -1941,20 +2272,16 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
       )
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     ComputationNode { behavior: Transform } =>
-      if infer_transform_is_binary_infix_int_add_shape(node: n) {
-        infer_gather_fold_acc_ok(
-          node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: true,
-          children_remaining: length(xs: n.children)
-        )
-      } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
-      }
+      infer_gather_fold_acc_ok(
+        node: n,
+        entries: empty_inferred_facts_entry_list(),
+        pending: None,
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: true,
+        children_remaining: length(xs: n.children)
+      )
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Conj } =>
