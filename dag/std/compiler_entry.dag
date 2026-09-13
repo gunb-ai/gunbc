@@ -135,6 +135,13 @@ type CompilerEntryDriver
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
 
+// SCRATCH BISECT ROWS (not for landing), bisect_row_accumulation and bisect_loop_setup. TWO
+// non-overlapping spans around the only work in the per-module iteration that no exclusive row
+// covers, added to read ONE full fold and find which carries the ~240 ms remainder. A third span
+// around the "iteration tail" was written and then deleted: as written it opened and closed with
+// nothing between it, so it could only ever read zero -- a decoration, and the interval it meant
+// to cover is already the tail half of bisect_loop_setup, which spans one iteration's end to the
+// next prepare open.
 type NativeDriverExclusiveRows {
   load: Nanosecond
   universe_derivation: Nanosecond
@@ -145,12 +152,6 @@ type NativeDriverExclusiveRows {
   row_serialization: Nanosecond
   module_release: Nanosecond
   relay_emit: Nanosecond
-  // SCRATCH BISECT ROWS (not for landing). TWO non-overlapping spans around the only work in the
-  // per-module iteration that no exclusive row covers, added to read ONE full fold and find which
-  // carries the ~240 ms remainder. A third span around the "iteration tail" was written and then
-  // deleted: as written it opened and closed with nothing between it, so it could only ever read
-  // zero -- a decoration, and the interval it meant to cover is already the tail half of
-  // bisect_loop_setup, which spans one iteration's end to the next prepare open.
   bisect_row_accumulation: Nanosecond
   bisect_loop_setup: Nanosecond
 }
