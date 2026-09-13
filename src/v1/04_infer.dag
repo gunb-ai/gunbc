@@ -11474,7 +11474,7 @@ fn refine_generic_constraint(established: Node, incoming: Node, span: SourceSpan
   if established.return_cardinality != incoming.return_cardinality {
     generic_constraint_refusal(established: established, span: span, scope: scope)
   } else if established_variable {
-    GenericConstraintRefinement { refined: incoming, diagnostics: [] }
+    GenericConstraintRefinement { refined: if incoming_variable { established } else { incoming }, diagnostics: [] }
   } else if incoming_variable {
     GenericConstraintRefinement { refined: established, diagnostics: [] }
   } else if is_fully_resolved(n: established, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: incoming, source_indices: scope.type_env.source_indices) {
