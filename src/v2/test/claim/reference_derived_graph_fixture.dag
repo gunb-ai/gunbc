@@ -7,7 +7,7 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.module_graph { LocatedModuleRoot }
+import v2.lens.module_graph { LocatedModuleRoot, no_located_roots }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
@@ -142,7 +142,7 @@ fn parse_one(w: DagSourceReadWitness) -> Outcome<LocatedModuleRoot> {
 fn parse_located_from_ingest(ingest: SourceRootIngest) -> Outcome<List<LocatedModuleRoot>> {
   fold_list(
     xs: ingest,
-    empty: outcome_accepted(value: []),
+    empty: outcome_accepted(value: no_located_roots),
     cons: fn(acc, w) {
       bind_outcome(
         o: acc,
@@ -171,7 +171,7 @@ fn normalize_located(item: LocatedModuleRoot) -> Outcome<LocatedModuleRoot> {
 fn locate_from_parsed(parsed: List<LocatedModuleRoot>) -> Outcome<List<LocatedModuleRoot>> {
   fold_list(
     xs: parsed,
-    empty: outcome_accepted(value: []),
+    empty: outcome_accepted(value: no_located_roots),
     cons: fn(acc, item) {
       bind_outcome(
         o: acc,

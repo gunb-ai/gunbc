@@ -2,8 +2,9 @@ module v2.test.claim.reference_derived_graph_production_ingest
 
 import std.types { Int }
 import v2.compiler.reference_site_collector { collect_module_reference_sites }
-import v2.lens.module_graph { ModuleDependencyEdge, reference_derived_edges_from_located_roots }
+import v2.lens.module_graph { ModuleDependencyEdge, no_located_roots, reference_derived_edges_from_located_roots }
 import v2.std.algebra { length }
+import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -38,6 +39,7 @@ import v2.test.claim.reference_derived_graph_fixture {
   consumer_type_imported_path,
   consumer_type_only_path,
   provider_module,
+  provider_path,
   xl4_fixture_trees,
   xl4_item_at,
 }
@@ -68,13 +70,24 @@ data local_wrapper_field_name_sym: Symbol = ^f
 
 data production_ingest_refused_count: Int = -1
 
+fn located_pair(items: List<LocatedModuleRoot>, consumer_path: String) -> List<LocatedModuleRoot> {
+  match xl4_item_at(items: items, path: provider_path) {
+    Absent => []
+    Present { value: provider } =>
+      match xl4_item_at(items: items, path: consumer_path) {
+        Absent => [provider]
+        Present { value: consumer } => [provider, consumer]
+      }
+  }
+}
+
 fn production_edge_count(path: String, target: String) -> Int {
   match xl4_fixture_trees().located {
     Rejected { diagnostics: _ } => production_ingest_refused_count
     Accepted { value: items, diagnostics: _ } =>
       length(
         xs: reference_derived_edges_from_located_roots(
-          items: items,
+          items: located_pair(items: items, consumer_path: path),
           include_import_syntax: false
         ).edges |> filter(e => e.path == path && e.target_module == target)
       )
