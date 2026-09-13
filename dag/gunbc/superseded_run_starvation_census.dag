@@ -827,3 +827,109 @@ fn count_pairs(pairs: List<SupersededRunPair>) -> Int {
     Cons { head: _, tail: rest } => 1 + count_pairs(pairs: rest)
   }
 }
+
+// BOTH PageLimitExceeded ARMS CARRY EXACTLY ONE PAGE, AND THIS NAMES THAT COUPLING RATHER THAN
+// RESTATING IT AS A LITERAL AT THE CALL SITE. collect_runs_in_window refuses in two places -- the
+// up-front data_pages > max_run_pages check and the pump's PageBudgetExhausted -- and both put
+// `first.result.workflow_runs`, the first page and nothing else, into `collected`. So the number of
+// pages represented is one whenever there is anything to represent, and zero when the first page
+// came back empty, which is the only case that could make a "1" here a lie.
+//
+// It is a function rather than a literal because the fact belongs to the producer: if a future
+// revision carries more than the first page into the refusal, this is the single place that has to
+// move, and a reader who changes that arm has a named thing to find. A bare 1 at the call site would
+// be the coincidence-maintained-by-an-author shape DESIGN 5 names, correct only for as long as
+// nobody edits the arm it silently describes.
+fn pages_in_page_limit_collection(collected: List<WorkflowRun>) -> Int {
+  match collected {
+    Empty {} => 0
+    Cons { head: _, tail: _ } => 1
+  }
+}
+
+// THE ENTRY POINT, AND WHY THE MODULE HAD NONE UNTIL NOW.
+//
+// Every piece below this module's types existed and was witnessed in isolation -- collection,
+// grouping, pairing, the job refresh, the start-standing tally, the cancellation rows -- while
+// CensusResult and its four arms had NO PRODUCER anywhere in the corpus, and neither did
+// extract_boundary_obligations, extract_pairs_from_groups or collect_cancellation_rows. That is
+// DESIGN 3c's red in its exact shape: well-modelled declarations, a witness per helper, and no
+// executing route from a question to an answer. The census could be read but not RUN, so the only
+// way to obtain the measurement it describes was to re-implement it outside the repository -- which
+// is what happened, and the transcribed figures then had no producer to be re-derived from.
+//
+// This fold is that route, and it is the whole of DESIGN 6's "name the instrument": a measurement
+// worth citing is worth an entry point, so the numbers in a PR body name THIS function rather than
+// carrying a copy of its output. Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/superseded_run_starvation_census.dag \
+//     --function superseded_run_starvation_census \
+//     --arg auth_token=<token> --arg owner=<org> --arg repo=<repo> \
+//     --arg workflow_name=witnesses.yml --arg event=pull_request \
+//     --arg created_range=<ISO8601 range> --arg max_run_pages=<n> \
+//     --arg from=<ISO8601> --arg through=<ISO8601> --arg observed_at=<ISO8601>
+//
+// THE THREE NON-COMPLETE ARMS ARE REFUSALS AND NOT DEGRADATIONS, which is the distinction DESIGN 5
+// draws between a failure arm that refuses and one that widens. A page limit reached does not return
+// the runs collected so far as though they were the window: the window was not covered, so the
+// answer is CensusPageLimitExceeded carrying the page it stopped at and the limit it hit, and the
+// caller raises the limit rather than reading a short census as a small one. A truncated job list is
+// the same move one layer in -- the rows that did refresh are carried so the truncation can be
+// located, but the result is NOT CensusComplete, because a starvation count computed over a
+// partially refreshed pair set is a real number with the wrong population.
+fn superseded_run_starvation_census(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  event: String,
+  created_range: String,
+  max_run_pages: Int,
+  from: Timestamp,
+  through: Timestamp,
+  observed_at: Timestamp,
+) -> CensusResult {
+  let window = CensusWindow { from: from, through: through, observed_at: observed_at }
+  match collect_runs_in_window(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    workflow_name: workflow_name,
+    event: event,
+    created_range: created_range,
+    max_run_pages: max_run_pages,
+  ) {
+    FoldProtocolRefused { cause: c } => CensusFoldRefused { window: window, cause: c }
+    PageLimitExceeded { collected: collected, reached_page: reached, max_pages: cap } =>
+      CensusPageLimitExceeded {
+        window: window,
+        collected_pages: pages_in_page_limit_collection(collected: collected),
+        reached_page: reached,
+        max_pages: cap,
+      }
+    CollectionComplete { runs: runs } => {
+      let groups = group_pr_runs(pr_runs: filter_pr_runs(runs: runs))
+      let obligations = extract_boundary_obligations(groups: groups, from: from)
+      let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
+      match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs) {
+        SomePairsTruncated { pairs: refreshed, truncated: ts } =>
+          CensusJobListTruncated {
+            window: window,
+            refreshed_rows: refreshed,
+            truncated: ts,
+            pair_count: count_pairs(pairs: pairs),
+          }
+        AllPairsRefreshed { pairs: refreshed } =>
+          CensusComplete {
+            window: window,
+            left_boundary_obligations: obligations,
+            pair_count: count_pairs(pairs: pairs),
+            start_standings: collect_start_standings(rows: refreshed),
+            cancellation_rows: collect_cancellation_rows(pairs: pairs, refreshed: refreshed),
+            rows: refreshed,
+          }
+      }
+    }
+  }
+}

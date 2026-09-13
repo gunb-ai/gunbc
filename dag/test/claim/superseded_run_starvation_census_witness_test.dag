@@ -14,6 +14,7 @@ import gunbc.superseded_run_starvation_census {
   filter_completed_jobs,
   earliest_started_at,
   earliest_created_at,
+  pages_in_page_limit_collection,
 }
 import extdeps.github.workflow_runs {
   WorkflowRun,
@@ -355,4 +356,18 @@ test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+// THE PAGE-COUNT HELPER HAS A RED, AND IT IS THE EMPTY-FIRST-PAGE CASE. A refusal that reported one
+// collected page when the first page came back empty would be the only way this function can lie,
+// so that is the arm worth pinning; the non-empty arm is its positive control. Both are reachable
+// as ordinary arguments because the helper takes the collection rather than reading it from the
+// producer, which is the same parameterisation the rest of this module uses to keep its refusals
+// authorable.
+test fn an_empty_page_limit_collection_represents_zero_pages() -> Bool {
+  pages_in_page_limit_collection(collected: []) == 0
+}
+
+test fn a_non_empty_page_limit_collection_represents_one_page() -> Bool {
+  pages_in_page_limit_collection(collected: [run_with_pull_request]) == 1
 }
