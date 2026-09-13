@@ -1265,6 +1265,19 @@ pub fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
     measure_count(c.clone())
 }
 
+pub type EvalStepsPerMillisecond = Rc<Measure<Frequency, Kilo, i64>>;
+
+pub fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
 
 pub fn tokens_per_second(count: Nat) -> TokensPerSecond {

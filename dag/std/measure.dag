@@ -380,10 +380,9 @@ type MergeQueueEntryCount = Measure<Count, One, Nat>
 // and under any load, while its CPU milliseconds move with the runner. A carrier that put it on a
 // Time axis would re-admit exactly the confusion `measure_clock_basis_note` exists to forbid.
 //
-// THE RATE `steps_per_ms` STILL HAS NO CARRIER and is a separate, still-open gap: `Quantity` has no
-// quotient former, so "steps per millisecond" cannot be spelled here. That half is declared at
-// `v2.workflow.floor_eval_step_calibration` `eval_step_scalar_fields_dissolve_on`; this alias
-// closes the COUNT half, which needed nothing new but this line.
+// THE RATE IS ITS OWN CARRIER AND IS NOT ON THIS AXIS: `EvalStepsPerMillisecond` below, on the
+// Frequency family. A count answers "how many" and a rate answers "how fast", and assigning one to
+// the other is the class this whole family exists to make unwritable.
 type EvalStepCount = Measure<Count, One, Nat>
 
 // A count of included power cords or other basic physical accessories. On the Count axis alongside
@@ -1223,6 +1222,38 @@ fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
 // First consumer: gunbc.model.ollama_choice, where prefill rate is a serving-admission floor. It is a rate
 // and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
 // one to the other is the class this family exists to make unwritable.
+// EVAL STEPS PER MILLISECOND -- the conversion the required floor's claim ceiling is denominated
+// through. Frequency family, period marker in the type, exactly as `EventsPerMinute` and
+// `MegatransfersPerSecond` are.
+//
+// THE SCALE CARRIES THE PERIOD AND THAT IS WHY THERE IS NO QUOTIENT FORMER HERE. The Frequency axis
+// is per-second; `Kilo` is decimal 10^3; so a count of N at Kilo is N*1000 steps per second, which
+// IS N steps per millisecond, exactly and with no rounding. `EventsPerMinute` uses the same move in
+// the other direction with the non-decimal `Sixty`. The millisecond is the period every operator
+// ruling over this ceiling is written in, so it belongs in the name for the reason that file gives:
+// a per-second and a per-millisecond figure can never be compared or assigned across without a
+// modeled conversion.
+//
+// IT WAS DECLARED BLOCKED AND WAS NOT (review 65512). `v2.workflow.floor_eval_step_calibration`
+// carried a tracked gap arguing that steps-per-millisecond could not be spelled because `Quantity`
+// has no quotient former, and cited `MegatransfersPerSecond` as the proof. That citation refutes
+// the claim it was cited for: it is a count of a domain-specific discrete thing per time, spelled
+// on Frequency with a scale and no quotient anywhere -- the template for doing exactly what the row
+// said was impossible. The gap row is deleted rather than narrowed, because its subject no longer
+// exists.
+//
+// First consumer: `v2.workflow.floor_eval_step_calibration` `EvalStepCalibration.steps_per_ms`,
+// whose pinned reading converts a declared policy in milliseconds of work into an eval-step budget.
+type EvalStepsPerMillisecond = Measure<Frequency, Kilo, Nat>
+
+fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+  Measure { count: count }
+}
+
+fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
+  measure_count(r)
+}
+
 type TokensPerSecond = Measure<Frequency, One, Nat>
 
 fn tokens_per_second(count: Nat) -> TokensPerSecond {

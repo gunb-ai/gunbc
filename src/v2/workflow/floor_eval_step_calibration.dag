@@ -2,9 +2,12 @@ module v2.workflow.floor_eval_step_calibration
 
 import v2.std.logic { Bool }
 import v2.std.integer { Int, int_add, int_mul, int_ge, int_eq }
-import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count, eval_step_count_value }
+import std.measure {
+  Millisecond, millisecond, millisecond_count,
+  EvalStepCount, eval_step_count, eval_step_count_value,
+  EvalStepsPerMillisecond, eval_steps_per_millisecond, eval_steps_per_millisecond_count,
+}
 import std.types { NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILINGS.
 //
@@ -88,34 +91,27 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // membership fold cost 400x the CPU at a LOWER step count. The conversion is sound for the quantity
 // the ceilings gate -- interpreted work -- and says nothing about host-realized cost, which is the
 // CPU clock's subject and is published as an observation rather than gated.
-// THE TWO EVAL-STEP FIELDS ARE BARE `Int` AND THAT IS A DECLARED GAP, NOT AN OVERSIGHT (review
-// 65209, BLOCKING on `steps_per_ms`). The reviewer is right that a bare scalar beside a
-// `std.measure` carrier is the re-mint DESIGN section 2's test names, and `rate_sample_cpu_ms` below
-// IS the carrier -- it was the same finding one quantity over, and it was fixed.
-//
-// WHAT STOPS THE SAME FIX HERE IS THAT THE QUANTITY DOES NOT EXIST. `std.measure` `Quantity` is a
-// CLOSED roster of named quantities -- Time, Memory, Information, DataRate, Frequency, Count,
-// Currency and so on -- and rates in it are named quantities rather than quotients
-// (`MegatransfersPerSecond = Measure<Frequency, Mega, Nat>`). There is no arm for INTERPRETER
-// EVALUATION STEPS, and no quotient former to build "steps per millisecond" out of one. So typing
-// these fields means adding a `Quantity` arm to a shared std module for a compiler-internal
-// counter, which is a modeling decision in `std.measure`'s roster and not a floor-ceiling one.
-//
-// TYPING ONLY THE DENOMINATOR WOULD BE WORSE THAN LEAVING IT. A rate declared as `Millisecond`
-// carries a name for the half of itself that is not what it measures, which is the clock fusion
-// `measure_clock_basis_note` exists to forbid, arriving through the fix rather than through
-// neglect.
-data eval_step_scalar_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: steps_per_ms converts from a bare Int to a std.measure carrier once std.measure's Quantity roster carries a form for a steps-per-time RATE. THE COUNT HALF IS CLOSED AND THIS ROW NO LONGER COVERS IT (review 65462, and the finding was right): specimen_eval_steps is a plain count, typeable on the EXISTING Count axis, and is now std.measure EvalStepCount alongside TokenCount, MergeQueueEntryCount and AllocatorBlockCount. AN EARLIER REVISION OF THIS ROW OVER-REACHED, claiming the roster had no arm for evaluation steps when what it lacks is only the QUOTIENT FORMER, and arguing that this lane may not author in that roster when the roster's own siblings each say the opposite -- MergeQueueEntryCount records that it sits with its Count siblings rather than in its consumer's module precisely so a consumer does not re-mint a local alias. A tracked gap stated wider than its cause is the shape that keeps a closable half open, which is why the correction is recorded here rather than silently narrowed. WHAT REMAINS GENUINELY BLOCKED is the rate alone: Quantity is a closed roster of named quantities whose rates are themselves named quantities rather than quotients (MegatransfersPerSecond = Measure<Frequency, Mega, Nat>), so steps-per-millisecond cannot be spelled without a quotient former, and typing only its denominator as Millisecond would name the half of the rate that is not what it measures -- the clock fusion measure_clock_basis_note forbids, arriving through the fix. OWNER, AS A PRINCIPAL AND NOT A ROLE: the REQUIRED-FLOOR CEILING LANE, currently smart-heron-867 and after it whoever holds the floor cost-ceiling work item; the owed act is a proposal to dag/std/measure.dag carrying a quotient former, and the next holder inherits it with the row." as NonEmptyStr,
-)
 
+// BOTH QUANTITIES ARE CARRIED, AND NEITHER IS A BARE SCALAR ANY MORE. `specimen_eval_steps` is a
+// `std.measure` `EvalStepCount` on the Count axis; `steps_per_ms` is an `EvalStepsPerMillisecond` on
+// the Frequency axis. A tracked gap stood here declaring both un-typeable, then narrowed to declare
+// the rate alone un-typeable, and BOTH claims were false for the same reason (reviews 65462 and
+// 65512): the roster already carried sibling aliases for each shape, added by their own consumers'
+// lanes, and this file cited one of those very siblings as proof the thing could not be done.
+//
+// SO THE ROW IS DELETED RATHER THAN NARROWED A SECOND TIME. A dissolution condition records how
+// admitted debt ends; when the debt turns out never to have existed, the honest act is to remove the
+// row, not to keep it alive around a smaller false claim. What is worth keeping is the lesson, which
+// is why it is written here and not in a ledger: the reflex that produced two wrong gaps was to
+// reason about the authority instead of reading it (DESIGN section 4d -- do not over-generalize a
+// prohibition; the cost is the thing you never did, and the failure looks like rigor).
 type EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: NonEmptyStr
   instrument: NonEmptyStr
   host: NonEmptyStr
   readings: Int
   specimen_eval_steps: EvalStepCount
-  steps_per_ms: Int
+  steps_per_ms: EvalStepsPerMillisecond
 }
 
 // IT IS A PINNED POLICY CONSTANT, AND THAT IS ITS STANDING RATHER THAN A HEDGE (ruling:
@@ -175,7 +171,7 @@ data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibratio
   host: "RATE SAMPLE, taken at specimen depth 10000 (110,011 eval_steps): authoring container, linux aarch64, three executions at cpu=97ms, 110ms, 110ms; self-hosted CI runner, linux amd64, under the required floor's own fold, cpu=138ms then 152ms. All five returned an IDENTICAL eval_steps of 110011. The pinned rate is 110011/152 floored, the slowest reading from the machine that runs the floor. CURRENT SPECIMEN is depth 5000 (55,011 eval_steps, authoring host 56ms/57ms), reduced so it sits under the new-witness ceiling it helps derive" as NonEmptyStr,
   readings: 5,
   specimen_eval_steps: eval_step_count(count: 55011),
-  steps_per_ms: 723,
+  steps_per_ms: eval_steps_per_millisecond(count: 723),
 }
 
 // THE CONVERSION, AND THE ONLY ARITHMETIC IN THIS FILE THAT A BUDGET DEPENDS ON.
@@ -201,7 +197,7 @@ fn calibration_rate(calibration: EvalStepCalibration) -> Int {
     PinnedSpecimenCalibration {
       specimen: _, instrument: _, host: _, readings: _,
       specimen_eval_steps: _, steps_per_ms: r,
-    } => r
+    } => eval_steps_per_millisecond_count(r: r)
   }
 }
 
