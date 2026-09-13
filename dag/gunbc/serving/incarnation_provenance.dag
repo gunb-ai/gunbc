@@ -1,0 +1,507 @@
+module gunbc.serving.incarnation_provenance
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import product.fabric.work { SourceManifestRef, ArtifactManifestRef }
+import product.fabric.demand { ObservationReceiptRef }
+
+// ── WHAT A SERVING INCARNATION IS MADE OF, SEPARATELY FROM WHAT RUNS IT ────────────────────────
+//
+// TWO IDENTITIES AND NOT ONE, because product.fabric.work WorkContract already carries `source` and
+// `runtime_closure` as separate fields and folding the runtime into the source would spell one fact
+// twice. A turn's semantic identity is the model package it consumes; the runtime that executes it is
+// a different coordinate that can change without changing what was asked.
+//
+// THE MEMBERSHIP RULE IS SEMANTIC, NOT LOCATIONAL: a value participates in source identity when
+// changing it changes the token sequence or the model computation for an otherwise identical request.
+// So a chat template selected once for the incarnation is SOURCE even though it is a text file, and
+// vLLM's own built-in implementation of a parser is RUNTIME even though it shapes the reply. The
+// filesystem that happened to hold an artifact decides nothing.
+//
+// AND A PER-REQUEST OVERRIDE IS NOT SOURCE. A template or tokenizer supplied by one caller for one
+// turn belongs to that turn's `inputs` manifest: source is what the LAUNCH selected, inputs are what
+// the request selected, and collapsing the two would make one caller's override change the identity
+// of every other caller's work on the same incarnation.
+
+// THE SCHEMA TAG IS PART OF THE MATERIAL SO A LATER REINTERPRETATION CANNOT REUSE AN OLD HASH. The
+// checkpoint coordinate today is revision-addressed (see ServingSourceEvidenceRung); moving it to a
+// retained per-file manifest changes what the coordinate MEANS while leaving its type identical, so
+// the domain tag is what stops two different meanings sharing one reference. A v2 is a new tag, never
+// a re-pointed v1.
+data serving_source_manifest_schema: NonEmptyStr = "gunbc.serving-source-manifest.v1" as NonEmptyStr
+
+data serving_runtime_manifest_schema: NonEmptyStr = "gunbc.serving-runtime-closure.v1" as NonEmptyStr
+
+// ── THE AXES ──────────────────────────────────────────────────────────────────────────────────
+//
+// CLOSED AND TOTAL, so an axis added later fails to compile at every projection rather than silently
+// dropping out of one of them. The roster below fixes the ORDER, which is part of the encoding.
+type ServingSourceAxis
+  = CheckpointAxis
+  | ModelConfigAxis
+  | TokenizerAxis
+  | TokenizerConfigAxis
+  | SpecialTokensAxis
+  | ChatTemplateAxis
+  | ModelSideCodeAxis
+  | GenerationDefaultsAxis
+  | ProcessorConfigAxis
+
+type ServingRuntimeAxis
+  = RuntimeImageAxis
+  | RuntimeExtensionPopulationAxis
+  | RuntimeConfigurationAxis
+
+fn serving_source_axis_name(axis: ServingSourceAxis) -> NonEmptyStr {
+  match axis {
+    CheckpointAxis => "checkpoint" as NonEmptyStr
+    ModelConfigAxis => "model-config" as NonEmptyStr
+    TokenizerAxis => "tokenizer" as NonEmptyStr
+    TokenizerConfigAxis => "tokenizer-config" as NonEmptyStr
+    SpecialTokensAxis => "special-tokens" as NonEmptyStr
+    ChatTemplateAxis => "chat-template" as NonEmptyStr
+    ModelSideCodeAxis => "model-side-code" as NonEmptyStr
+    GenerationDefaultsAxis => "generation-defaults" as NonEmptyStr
+    ProcessorConfigAxis => "processor-config" as NonEmptyStr
+  }
+}
+
+fn serving_runtime_axis_name(axis: ServingRuntimeAxis) -> NonEmptyStr {
+  match axis {
+    RuntimeImageAxis => "runtime-image" as NonEmptyStr
+    RuntimeExtensionPopulationAxis => "runtime-extensions" as NonEmptyStr
+    RuntimeConfigurationAxis => "runtime-configuration" as NonEmptyStr
+  }
+}
+
+fn serving_source_axes() -> List<ServingSourceAxis> {
+  [
+    CheckpointAxis, ModelConfigAxis, TokenizerAxis, TokenizerConfigAxis,
+    SpecialTokensAxis, ChatTemplateAxis, ModelSideCodeAxis, GenerationDefaultsAxis,
+    ProcessorConfigAxis,
+  ]
+}
+
+fn serving_runtime_axes() -> List<ServingRuntimeAxis> {
+  [RuntimeImageAxis, RuntimeExtensionPopulationAxis, RuntimeConfigurationAxis]
+}
+
+// ── THE ROSTER WAS CORRECTED BY LOOKING AT THE SNAPSHOT, NOT BY REASONING ABOUT LAYOUTS ────────
+//
+// TWO AXES CHANGED AFTER MEASURING THE MOUNTED REVISION on srv9 (eb9eb208, 2026-09-13), and neither
+// correction was available from reading documentation about what a model repository contains.
+//
+// PROCESSOR CONFIGURATION WAS MISSING ENTIRELY. processor_config.json is present in this snapshot and
+// this checkpoint is Glm5NextForConditionalGeneration -- a multimodal architecture whose engine logs
+// an encoder cache budget and profiles video items -- so the processor configuration governs how
+// non-text input becomes tokens. An identity omitting it would call two launches the same Work while
+// one of them processed images differently.
+//
+// AND THERE IS NO SEPARATE SPECIAL-TOKEN FILE IN THIS LAYOUT, which is a measurement and not a gap.
+// The special-token mapping lives inside tokenizer_config.json and the added-token population inside
+// tokenizer.json, and both of those are axes in their own right -- so the special tokens ARE covered,
+// by the coordinates that genuinely contain them. SpecialTokensAxis therefore reads
+// AbsentByObservation here, meaning "this layout carries no separate special-token file", NOT "the
+// special tokens are unaccounted for". A layout that does carry special_tokens_map.json fills it.
+//
+// LICENSE AND README.md ARE IN THE SNAPSHOT AND ARE DELIBERATELY NOT AXES, which is the membership
+// rule doing its job: neither changes the token sequence or the computation, so neither belongs in an
+// identity whose purpose is to distinguish answers.
+
+// ── A READING IS THREE-VALUED, AND THE MIDDLE VALUE IS THE WHOLE POINT ─────────────────────────
+//
+// A MODEL GENUINELY WITHOUT MODEL-SIDE CODE IS NOT A MODEL WHOSE CODE WE FAILED TO READ. Collapsing
+// those two into one empty value is the cardinality defect DESIGN section 3b names: zero members
+// inside an existing thing is not zero occurrences of that thing, and neither is "we do not know".
+// AbsentByObservation is a MEASUREMENT -- somebody looked and there was nothing -- and it is a
+// legitimate coordinate value that participates in identity. Unestablished is the absence of a
+// measurement, and it refuses rather than becoming a value.
+type ServingCoordinateReading
+  = CoordinateObserved { hash: ContentHash }
+  | CoordinateAbsentByObservation
+  | CoordinateUnestablished { obligation: NonEmptyStr }
+
+// THE ABSENT TOKEN CANNOT COLLIDE WITH A RENDERED HASH, and that is checked rather than assumed:
+// std.content_hash serialize_content_hash renders Fnv1a64 as bare hex, Sha1 as bare hex, and the
+// SHA-2 families behind a "sha256:"/"sha512:" prefix. Every one of those is drawn from [0-9a-f:],
+// so a token containing "-" is outside the rendered alphabet entirely and no hash can spell it.
+//
+// THIS DOES NOT REST ON THE FAMILY-PREFIX CLAIM. product.training.resolution justifies routing
+// through serialize_content_hash on the grounds that it "preserves the hash FAMILY"; measured, it
+// does so for SHA-2 only -- Fnv1a64 and Sha1 render bare. The encoding here is injective because the
+// alphabets and lengths differ, which is a property of what the renderings ARE rather than of what
+// that annotation says they are.
+data serving_coordinate_absent_material: NonEmptyStr = "absent-by-observation" as NonEmptyStr
+
+// A RESOLVED COORDINATE HAS NO UNESTABLISHED ARM, WHICH IS WHY THE MATERIAL FUNCTION CANNOT SPELL
+// ONE. A first cut of this gave serving_coordinate_material a third arm rendering Unestablished as the
+// absent token -- which would have made "nobody looked" and "somebody looked and there was nothing"
+// the SAME identity, the precise collapse the reading type two declarations above exists to prevent.
+// Discipline was not the fix: the resolution below is the only way to obtain a ServingCoordinate, so
+// an unestablished reading cannot reach identity material at all.
+type ServingCoordinate
+  = CoordinateContent { hash: ContentHash }
+  | CoordinateAbsent
+
+fn serving_coordinate_material(coordinate: ServingCoordinate) -> NonEmptyStr {
+  match coordinate {
+    CoordinateContent { hash: h } => serialize_content_hash(hash: h)
+    CoordinateAbsent => serving_coordinate_absent_material
+  }
+}
+
+fn serving_coordinate_of_reading(reading: ServingCoordinateReading) -> ServingCoordinate? {
+  match reading {
+    CoordinateObserved { hash: h } => Present { value: CoordinateContent { hash: h } }
+    CoordinateAbsentByObservation => Present { value: CoordinateAbsent }
+    CoordinateUnestablished { obligation: _ } => none
+  }
+}
+
+fn serving_reading_obligation(reading: ServingCoordinateReading) -> NonEmptyStr? {
+  match reading {
+    CoordinateObserved { hash: _ } => none
+    CoordinateAbsentByObservation => none
+    CoordinateUnestablished { obligation: o } => Present { value: o }
+  }
+}
+
+// ── HOW GOOD THE CHECKPOINT EVIDENCE ACTUALLY IS, CARRIED IN THE TYPE ──────────────────────────
+//
+// THE RUNG IS RECORDED SO IT CANNOT BE OVERSTATED LATER. gunbc.spark.model_snapshot_acquisition keys
+// its subject by UpstreamRevision and says so: "THE KEY IS UpstreamRevision AND NOT A CONTENT DIGEST,
+// and the combinator makes that a declared weakening rather than a silent one", with the Hub tree API
+// named as the producer that would make each shard its own content-addressed member. A reference
+// derived at that rung is revision-addressed, and calling it a per-file content manifest would be the
+// overclaim this type exists to prevent.
+//
+// THE RUNG IS DELIBERATELY NOT IN THE IDENTITY MATERIAL. Two launches of the SAME bytes, one verified
+// against the upstream authority and one against a retained manifest, loaded the same model and must
+// share one Work; evidence quality is a property of how well we know a fact, not of the fact. What
+// protects a later change is the SCHEMA TAG above: moving the checkpoint coordinate to a per-file
+// manifest changes what the coordinate denotes, which is a new domain rather than a new rung.
+type ServingSourceEvidenceRung
+  = RevisionAddressedUpstreamVerification { authority: NonEmptyStr, revision: NonEmptyStr }
+  | RetainedPerFileContentManifest { member_count: Nat }
+
+fn serving_source_rung_wire(rung: ServingSourceEvidenceRung) -> NonEmptyStr {
+  match rung {
+    RevisionAddressedUpstreamVerification { authority: a, revision: r } =>
+      join(["revision-addressed upstream verification: ", a as String, "@", r as String], "") as NonEmptyStr
+    RetainedPerFileContentManifest { member_count: n } =>
+      join(["retained per-file content manifest over ", to_string(n), " members"], "") as NonEmptyStr
+  }
+}
+
+
+// ── THE MANIFESTS, WHOSE REFERENCES ARE DERIVED AND NEVER SUPPLIED ─────────────────────────────
+//
+// NO CALLER HANDS IN A REFERENCE BESIDE THE ROWS. product.training.resolution records the identical
+// defect one level out -- a contract and a manifest accepted as independent inputs, so a caller could
+// resolve a manifest pinning one thing and pass a contract mentioning another, and the key derivation
+// read only the contract. Here the rows ARE the manifest and the reference is a projection of them,
+// so rows and reference cannot disagree because there is nothing to disagree with.
+type ServingSourceManifest sole_constructor {
+  checkpoint: ServingCoordinate
+  model_config: ServingCoordinate
+  tokenizer: ServingCoordinate
+  tokenizer_config: ServingCoordinate
+  special_tokens: ServingCoordinate
+  chat_template: ServingCoordinate
+  model_side_code: ServingCoordinate
+  generation_defaults: ServingCoordinate
+  processor_config: ServingCoordinate
+  rung: ServingSourceEvidenceRung
+}
+
+type ServingRuntimeManifest sole_constructor {
+  runtime_image: ServingCoordinate
+  runtime_extensions: ServingCoordinate
+  runtime_configuration: ServingCoordinate
+}
+
+// ONE PLACE A COORDINATE'S MATERIAL IS SPELLED, WHICH IS WHAT KEEPS IDENTITY AND AGREEMENT HONEST.
+// The reference derivation and the agreement comparator both need to know what a coordinate's value
+// IS. If each folded the manifest itself, a coordinate could enter the reference and be invisible to
+// the comparison, or the two spellings could drift, and both failures compile. This axis-keyed
+// projection is the single authority and both consumers read it.
+fn serving_source_coordinate(m: ServingSourceManifest, axis: ServingSourceAxis) -> ServingCoordinate {
+  match axis {
+    CheckpointAxis => m.checkpoint
+    ModelConfigAxis => m.model_config
+    TokenizerAxis => m.tokenizer
+    TokenizerConfigAxis => m.tokenizer_config
+    SpecialTokensAxis => m.special_tokens
+    ChatTemplateAxis => m.chat_template
+    ModelSideCodeAxis => m.model_side_code
+    GenerationDefaultsAxis => m.generation_defaults
+    ProcessorConfigAxis => m.processor_config
+  }
+}
+
+fn serving_runtime_coordinate(m: ServingRuntimeManifest, axis: ServingRuntimeAxis) -> ServingCoordinate {
+  match axis {
+    RuntimeImageAxis => m.runtime_image
+    RuntimeExtensionPopulationAxis => m.runtime_extensions
+    RuntimeConfigurationAxis => m.runtime_configuration
+  }
+}
+
+// FIELD-TAGGED AND DELIMITER-SEPARATED OVER DELIMITER-FREE RENDERINGS, the idiom
+// product.training.resolution already carries: U+001F separates an axis name from its value and
+// U+001E separates axes. Axis names are lowercase-and-hyphen, coordinate renderings are hex, "sha"
+// prefixed hex, or the absent token -- none can contain either separator -- so the encoding is
+// injective over this domain. The schema tag leads the material so two domains cannot collide even
+// if their axis rosters ever coincided.
+fn serving_source_axis_material(m: ServingSourceManifest, axis: ServingSourceAxis) -> NonEmptyStr {
+  join([
+    serving_source_axis_name(axis: axis) as String,
+    "\u{1f}",
+    serving_coordinate_material(coordinate: serving_source_coordinate(m: m, axis: axis)) as String,
+  ], "") as NonEmptyStr
+}
+
+fn serving_runtime_axis_material(m: ServingRuntimeManifest, axis: ServingRuntimeAxis) -> NonEmptyStr {
+  join([
+    serving_runtime_axis_name(axis: axis) as String,
+    "\u{1f}",
+    serving_coordinate_material(coordinate: serving_runtime_coordinate(m: m, axis: axis)) as String,
+  ], "") as NonEmptyStr
+}
+
+fn serving_source_material(m: ServingSourceManifest) -> NonEmptyStr {
+  join(
+    concat(
+      [serving_source_manifest_schema as String],
+      map(serving_source_axes(), axis => serving_source_axis_material(m: m, axis: axis) as String)),
+    "\u{1e}") as NonEmptyStr
+}
+
+fn serving_runtime_material(m: ServingRuntimeManifest) -> NonEmptyStr {
+  join(
+    concat(
+      [serving_runtime_manifest_schema as String],
+      map(serving_runtime_axes(), axis => serving_runtime_axis_material(m: m, axis: axis) as String)),
+    "\u{1e}") as NonEmptyStr
+}
+
+// THE REFERENCE IS A STRUCTURAL IDENTITY AND NOT A BYTE-INTEGRITY PROOF, and the two answer different
+// questions. std.content_hash content_hash_of_value is FNV-1a structural -- the same function
+// product.fabric.work derive_work_key already uses for computation identity -- so what it establishes
+// is that two manifests denote the same coordinates. What establishes that a member is the bytes it
+// claims to be is the MEMBER's own content identity, carried in the rows and, at the revision rung,
+// performed against the upstream authority rather than retained here.
+fn serving_source_manifest_ref(m: ServingSourceManifest) -> SourceManifestRef {
+  serialize_content_hash(hash: content_hash_of_value(value: serving_source_material(m: m))) as SourceManifestRef
+}
+
+fn serving_runtime_manifest_ref(m: ServingRuntimeManifest) -> ArtifactManifestRef {
+  serialize_content_hash(hash: content_hash_of_value(value: serving_runtime_material(m: m))) as ArtifactManifestRef
+}
+
+// ── ONE SEALED VALUE, SO NO TWO HALVES CAN BE PAIRED ACROSS OBSERVATIONS ───────────────────────
+//
+// ServingTurnRequest USED TO TAKE A SOURCE AND A RUNTIME CLOSURE AS INDEPENDENT INPUTS, which permits
+// a caller to combine one model's source manifest with another model's runtime and have every
+// downstream identity accept it. The two references stay SEPARATE in WorkContract -- they are separate
+// facts and a runtime change must not read as a source change -- but they may only be obtained
+// TOGETHER, from one observed incarnation, so the separation is in the contract and not in the
+// opportunity to mismatch.
+//
+// THE RECEIPT IS INSIDE THE SEAL FOR THE SAME REASON, AND A FIRST CUT GOT THIS WRONG. That cut carried
+// the receipt beside the closure on the consuming arm -- TurnExecutionBound { closure, receipt } --
+// which re-opened the defect one field over: the closure was unforgeable and the PAIRING was not, so a
+// caller could present a genuinely sealed closure from one launch under a receipt naming another. The
+// seal is the only place the three values meet, and it meets them where the observation happened.
+type ServingTurnExecutionClosure sole_constructor {
+  source: ServingSourceManifest
+  runtime: ServingRuntimeManifest
+  receipt: ObservationReceiptRef
+}
+
+fn serving_execution_source_ref(c: ServingTurnExecutionClosure) -> SourceManifestRef {
+  serving_source_manifest_ref(m: c.source)
+}
+
+fn serving_execution_runtime_ref(c: ServingTurnExecutionClosure) -> ArtifactManifestRef {
+  serving_runtime_manifest_ref(m: c.runtime)
+}
+
+fn serving_execution_receipt(c: ServingTurnExecutionClosure) -> ObservationReceiptRef {
+  c.receipt
+}
+
+
+// ── CONSTRUCTION IS THE GATE, AND IT REFUSES RATHER THAN SUBSTITUTING ──────────────────────────
+//
+// EVERY AXIS MUST HAVE BEEN LOOKED AT. A manifest missing one coordinate is not a smaller manifest:
+// it is a manifest whose identity omits a value that changes the answer, and every Work derived from
+// it would collide with a Work whose omitted coordinate differed. So the resolution below yields a
+// manifest only when all eight readings resolved, and otherwise carries EVERY obligation rather than
+// the first -- naming one sends a reader back seven more times.
+//
+// THE OBLIGATIONS ARE COLLECTED IN AXIS ORDER because that is the order a reader will go looking,
+// and it is the same roster the material folds, so a reader comparing a refusal against a material
+// is comparing two projections of one list rather than two hand-kept orders.
+type ServingSourceResolution
+  = SourceManifestResolved { manifest: ServingSourceManifest }
+  | SourceManifestUnestablished { obligations: List<NonEmptyStr> }
+
+type ServingRuntimeResolution
+  = RuntimeManifestResolved { manifest: ServingRuntimeManifest }
+  | RuntimeManifestUnestablished { obligations: List<NonEmptyStr> }
+
+fn serving_reading_obligations(readings: List<ServingCoordinateReading>) -> List<NonEmptyStr> {
+  flat_map(readings, r =>
+    match serving_reading_obligation(reading: r) {
+      Present { value: o } => [o]
+      Absent => []
+    })
+}
+
+fn resolve_serving_source(
+  checkpoint: ServingCoordinateReading,
+  model_config: ServingCoordinateReading,
+  tokenizer: ServingCoordinateReading,
+  tokenizer_config: ServingCoordinateReading,
+  special_tokens: ServingCoordinateReading,
+  chat_template: ServingCoordinateReading,
+  model_side_code: ServingCoordinateReading,
+  generation_defaults: ServingCoordinateReading,
+  processor_config: ServingCoordinateReading,
+  rung: ServingSourceEvidenceRung,
+) -> ServingSourceResolution {
+  let obligations = serving_reading_obligations(readings: [
+    checkpoint, model_config, tokenizer, tokenizer_config,
+    special_tokens, chat_template, model_side_code, generation_defaults, processor_config,
+  ])
+  if count(obligations) != 0 {
+    SourceManifestUnestablished { obligations: obligations }
+  } else {
+    match serving_coordinate_of_reading(reading: checkpoint) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_checkpoint } =>
+    match serving_coordinate_of_reading(reading: model_config) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_model_config } =>
+    match serving_coordinate_of_reading(reading: tokenizer) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_tokenizer } =>
+    match serving_coordinate_of_reading(reading: tokenizer_config) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_tokenizer_config } =>
+    match serving_coordinate_of_reading(reading: special_tokens) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_special_tokens } =>
+    match serving_coordinate_of_reading(reading: chat_template) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_chat_template } =>
+    match serving_coordinate_of_reading(reading: model_side_code) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_model_side_code } =>
+    match serving_coordinate_of_reading(reading: generation_defaults) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_generation_defaults } =>
+    match serving_coordinate_of_reading(reading: processor_config) {
+      Absent => SourceManifestUnestablished { obligations: obligations }
+      Present { value: c_processor_config } =>
+        SourceManifestResolved {
+          manifest: ServingSourceManifest {
+            checkpoint: c_checkpoint,
+            model_config: c_model_config,
+            tokenizer: c_tokenizer,
+            tokenizer_config: c_tokenizer_config,
+            special_tokens: c_special_tokens,
+            chat_template: c_chat_template,
+            model_side_code: c_model_side_code,
+            generation_defaults: c_generation_defaults,
+            processor_config: c_processor_config,
+            rung: rung,
+          },
+        }
+    }}}}}}}}}
+  }
+}
+
+fn resolve_serving_runtime(
+  runtime_image: ServingCoordinateReading,
+  runtime_extensions: ServingCoordinateReading,
+  runtime_configuration: ServingCoordinateReading,
+) -> ServingRuntimeResolution {
+  let obligations = serving_reading_obligations(readings: [runtime_image, runtime_extensions, runtime_configuration])
+  if count(obligations) != 0 {
+    RuntimeManifestUnestablished { obligations: obligations }
+  } else {
+    match serving_coordinate_of_reading(reading: runtime_image) {
+      Absent => RuntimeManifestUnestablished { obligations: obligations }
+      Present { value: c_image } =>
+    match serving_coordinate_of_reading(reading: runtime_extensions) {
+      Absent => RuntimeManifestUnestablished { obligations: obligations }
+      Present { value: c_extensions } =>
+    match serving_coordinate_of_reading(reading: runtime_configuration) {
+      Absent => RuntimeManifestUnestablished { obligations: obligations }
+      Present { value: c_configuration } =>
+        RuntimeManifestResolved {
+          manifest: ServingRuntimeManifest {
+            runtime_image: c_image,
+            runtime_extensions: c_extensions,
+            runtime_configuration: c_configuration,
+          },
+        }
+    }}}
+  }
+}
+
+// ── THE SEAL, WHICH IS THE ONLY WAY TO OBTAIN A PAIR ───────────────────────────────────────────
+//
+// A CLOSURE EXISTS ONLY WHERE BOTH HALVES RESOLVED FROM ONE OBSERVATION. Taking two already-built
+// manifests here would re-open the mismatch this type closes, so the seal consumes the RESOLUTIONS
+// and carries both refusals forward together: a caller that could not read the tokenizer and could
+// not read the image learns both, not whichever was matched first.
+type ServingExecutionClosureResolution
+  = ExecutionClosureResolved { closure: ServingTurnExecutionClosure }
+  | ExecutionClosureUnestablished { obligations: List<NonEmptyStr> }
+
+fn seal_serving_execution_closure(
+  source: ServingSourceResolution,
+  runtime: ServingRuntimeResolution,
+  receipt: ObservationReceiptRef,
+) -> ServingExecutionClosureResolution {
+  match source {
+    SourceManifestUnestablished { obligations: so } =>
+      match runtime {
+        RuntimeManifestUnestablished { obligations: ro } =>
+          ExecutionClosureUnestablished { obligations: concat(so, ro) }
+        RuntimeManifestResolved { manifest: _ } =>
+          ExecutionClosureUnestablished { obligations: so }
+      }
+    SourceManifestResolved { manifest: sm } =>
+      match runtime {
+        RuntimeManifestUnestablished { obligations: ro } =>
+          ExecutionClosureUnestablished { obligations: ro }
+        RuntimeManifestResolved { manifest: rm } =>
+          ExecutionClosureResolved {
+            closure: ServingTurnExecutionClosure { source: sm, runtime: rm, receipt: receipt },
+          }
+      }
+  }
+}
+
+// ── AGREEMENT IS A POPULATION OF DIFFERING AXES, NOT A BOOLEAN ─────────────────────────────────
+//
+// "THE MANIFESTS DIFFER" SENDS A READER TO EIGHT COORDINATES. Naming every axis that differs is what
+// makes a disagreement actionable, and it reads the SAME coordinate projection the reference
+// derivation reads -- so an axis cannot reach identity while being invisible to comparison, which is
+// the drift product.training.resolution names as the reason to keep one projection.
+fn serving_source_differing_axes(a: ServingSourceManifest, b: ServingSourceManifest) -> List<ServingSourceAxis> {
+  filter(serving_source_axes(), axis =>
+    (serving_coordinate_material(coordinate: serving_source_coordinate(m: a, axis: axis)) as String)
+      != (serving_coordinate_material(coordinate: serving_source_coordinate(m: b, axis: axis)) as String))
+}
+
+fn serving_runtime_differing_axes(a: ServingRuntimeManifest, b: ServingRuntimeManifest) -> List<ServingRuntimeAxis> {
+  filter(serving_runtime_axes(), axis =>
+    (serving_coordinate_material(coordinate: serving_runtime_coordinate(m: a, axis: axis)) as String)
+      != (serving_coordinate_material(coordinate: serving_runtime_coordinate(m: b, axis: axis)) as String))
+}

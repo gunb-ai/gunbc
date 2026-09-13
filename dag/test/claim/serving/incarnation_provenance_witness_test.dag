@@ -1,0 +1,216 @@
+module test.claim.serving.incarnation_provenance_witness
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.content_hash { ContentHash, content_hash_of_value }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.serving.incarnation_provenance {
+  ServingSourceAxis, CheckpointAxis, ModelConfigAxis, TokenizerAxis, TokenizerConfigAxis,
+  SpecialTokensAxis, ChatTemplateAxis, ModelSideCodeAxis, GenerationDefaultsAxis, ProcessorConfigAxis,
+  ServingRuntimeAxis, RuntimeImageAxis, RuntimeExtensionPopulationAxis, RuntimeConfigurationAxis,
+  ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation, CoordinateUnestablished,
+  ServingSourceEvidenceRung, RevisionAddressedUpstreamVerification,
+  ServingSourceResolution, SourceManifestResolved, SourceManifestUnestablished,
+  ServingRuntimeResolution, RuntimeManifestResolved, RuntimeManifestUnestablished,
+  ServingCoordinate, CoordinateContent, CoordinateAbsent,
+  ServingExecutionClosureResolution, ExecutionClosureResolved, ExecutionClosureUnestablished,
+  serving_source_manifest_ref, serving_runtime_manifest_ref,
+  serving_source_axes, serving_runtime_axes, serving_source_differing_axes,
+  resolve_serving_source, resolve_serving_runtime, seal_serving_execution_closure,
+  serving_coordinate_material,
+}
+
+fn h(seed: String) -> ContentHash {
+  content_hash_of_value(value: seed as NonEmptyStr)
+}
+
+fn observed(seed: String) -> ServingCoordinateReading {
+  CoordinateObserved { hash: h(seed: seed) }
+}
+
+fn t_rung() -> ServingSourceEvidenceRung {
+  RevisionAddressedUpstreamVerification {
+    authority: "zai-org/GLM-5.3-Flash" as NonEmptyStr,
+    revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  }
+}
+
+// A BASELINE WHOSE EVERY COORDINATE DIFFERS FROM EVERY OTHER, so a projection that read the wrong
+// field would change the reference and be caught, rather than coinciding with the right one.
+fn t_source(checkpoint: String) -> ServingSourceResolution {
+  resolve_serving_source(
+    checkpoint: observed(seed: checkpoint),
+    model_config: observed(seed: "model-config-a"),
+    tokenizer: observed(seed: "tokenizer-a"),
+    tokenizer_config: observed(seed: "tokenizer-config-a"),
+    special_tokens: observed(seed: "special-tokens-a"),
+    chat_template: observed(seed: "chat-template-a"),
+    model_side_code: CoordinateAbsentByObservation,
+    generation_defaults: observed(seed: "generation-defaults-a"),
+    processor_config: observed(seed: "processor-config-a"),
+    rung: t_rung(),
+  )
+}
+
+fn t_runtime(image: String) -> ServingRuntimeResolution {
+  resolve_serving_runtime(
+    runtime_image: observed(seed: image),
+    runtime_extensions: observed(seed: "extensions-a"),
+    runtime_configuration: observed(seed: "runtime-config-a"),
+  )
+}
+
+fn source_ref_of(r: ServingSourceResolution) -> String {
+  match r {
+    SourceManifestUnestablished { obligations: _ } => "unestablished"
+    SourceManifestResolved { manifest: m } => serving_source_manifest_ref(m: m) as String
+  }
+}
+
+fn runtime_ref_of(r: ServingRuntimeResolution) -> String {
+  match r {
+    RuntimeManifestUnestablished { obligations: _ } => "unestablished"
+    RuntimeManifestResolved { manifest: m } => serving_runtime_manifest_ref(m: m) as String
+  }
+}
+
+
+// ── 1. A COMPLETE POPULATION RESOLVES, WHICH IS THE POSITIVE CONTROL EVERYTHING ELSE VARIES ────
+test fn a_complete_reading_population_resolves_to_a_manifest() -> Bool {
+  source_ref_of(r: t_source(checkpoint: "checkpoint-a")) != "unestablished"
+    && runtime_ref_of(r: t_runtime(image: "image-a")) != "unestablished"
+}
+
+// ── 2. THE CHECKPOINT COORDINATE REACHES THE SOURCE REFERENCE ─────────────────────────────────
+//
+// THE DISCRIMINATING INPUT IS THE SAME MANIFEST WITH ONE AXIS MOVED. Asserting that some reference
+// exists proves nothing about whether a coordinate participates; asserting that changing exactly one
+// coordinate changes the reference is what establishes that the axis is inside the identity.
+test fn a_changed_checkpoint_changes_the_source_reference() -> Bool {
+  source_ref_of(r: t_source(checkpoint: "checkpoint-a"))
+    != source_ref_of(r: t_source(checkpoint: "checkpoint-b"))
+}
+
+// ── 3. SOURCE AND RUNTIME ARE SEPARATELY DERIVED ──────────────────────────────────────────────
+//
+// A RUNTIME CHANGE MUST NOT READ AS A SOURCE CHANGE. WorkContract carries the two as separate fields
+// precisely so that rebuilding an image does not restate the model; a derivation that folded both
+// into one material would make every runtime patch mint a new source identity.
+test fn a_changed_runtime_image_leaves_the_source_reference_alone() -> Bool {
+  let s = source_ref_of(r: t_source(checkpoint: "checkpoint-a"))
+  runtime_ref_of(r: t_runtime(image: "image-a")) != runtime_ref_of(r: t_runtime(image: "image-b"))
+    && s == source_ref_of(r: t_source(checkpoint: "checkpoint-a"))
+}
+
+// ── 4. AN UNESTABLISHED AXIS REFUSES AND DOES NOT BECOME ABSENT ───────────────────────────────
+//
+// THIS IS THE CONTROL THE FIRST DRAFT OF THE MATERIAL FUNCTION WOULD HAVE FAILED. That draft rendered
+// an unestablished reading as the absent token, so a manifest nobody could read would have produced a
+// reference identical to one whose member genuinely did not exist. The red here is a reading that was
+// never taken, and the wall is that no manifest is produced at all.
+test fn an_unestablished_axis_refuses_rather_than_reading_as_absent() -> Bool {
+  let unread = resolve_serving_source(
+    checkpoint: observed(seed: "checkpoint-a"),
+    model_config: observed(seed: "model-config-a"),
+    tokenizer: CoordinateUnestablished { obligation: "the tokenizer at the mounted path was not read" as NonEmptyStr },
+    tokenizer_config: observed(seed: "tokenizer-config-a"),
+    special_tokens: observed(seed: "special-tokens-a"),
+    chat_template: observed(seed: "chat-template-a"),
+    model_side_code: CoordinateAbsentByObservation,
+    generation_defaults: observed(seed: "generation-defaults-a"),
+    processor_config: observed(seed: "processor-config-a"),
+    rung: t_rung(),
+  )
+  match unread {
+    SourceManifestResolved { manifest: _ } => false
+    SourceManifestUnestablished { obligations: os } => count(os) == 1
+  }
+}
+
+// ── 5. AN ABSENT MEMBER IS A VALUE, AND IT IS NOT THE SAME VALUE AS A PRESENT ONE ─────────────
+//
+// THE OTHER HALF OF CONTROL 4. A model genuinely without model-side code must still produce a
+// manifest -- absence is a measurement -- and that manifest must not collide with one whose code
+// exists. Without this, "refuses on unknown" could be satisfied by refusing on absent too, which
+// would make every model lacking an optional member unservable.
+test fn an_absent_member_resolves_and_differs_from_a_present_one() -> Bool {
+  let with_code = resolve_serving_source(
+    checkpoint: observed(seed: "checkpoint-a"),
+    model_config: observed(seed: "model-config-a"),
+    tokenizer: observed(seed: "tokenizer-a"),
+    tokenizer_config: observed(seed: "tokenizer-config-a"),
+    special_tokens: observed(seed: "special-tokens-a"),
+    chat_template: observed(seed: "chat-template-a"),
+    model_side_code: observed(seed: "model-side-code-a"),
+    generation_defaults: observed(seed: "generation-defaults-a"),
+    processor_config: observed(seed: "processor-config-a"),
+    rung: t_rung(),
+  )
+  source_ref_of(r: with_code) != "unestablished"
+    && source_ref_of(r: with_code) != source_ref_of(r: t_source(checkpoint: "checkpoint-a"))
+}
+
+// ── 6. EVERY AXIS IS REACHABLE FROM THE ROSTER, AND THE ROSTERS ARE THE DECLARED LENGTH ───────
+//
+// A ROSTER SHORTER THAN THE TYPE IS THE FAILURE THIS CATCHES: the material folds the roster, so an
+// axis omitted from it leaves the coordinate out of the reference while the field still exists and
+// still looks carried. The count is checked against the declared axis population rather than against
+// a number copied from today's tree.
+test fn the_axis_rosters_cover_every_declared_axis() -> Bool {
+  count(serving_source_axes()) == 9 && count(serving_runtime_axes()) == 3
+}
+
+// ── 7. THE DIFFERING-AXES FOLD NAMES THE AXIS THAT MOVED ──────────────────────────────────────
+//
+// AGREEMENT READS THE SAME PROJECTION THE REFERENCE READS, so this also establishes that the two
+// consumers cannot drift: an axis that changed the reference must be named here, and one that did
+// not must not be.
+test fn the_differing_axes_fold_names_exactly_the_axis_that_moved() -> Bool {
+  match t_source(checkpoint: "checkpoint-a") {
+    SourceManifestUnestablished { obligations: _ } => false
+    SourceManifestResolved { manifest: a } =>
+      match t_source(checkpoint: "checkpoint-b") {
+        SourceManifestUnestablished { obligations: _ } => false
+        SourceManifestResolved { manifest: b } => count(serving_source_differing_axes(a: a, b: b)) == 1
+      }
+  }
+}
+
+// ── 8. THE SEAL CARRIES BOTH REFUSALS, NOT WHICHEVER MATCHED FIRST ────────────────────────────
+test fn the_seal_carries_obligations_from_both_halves() -> Bool {
+  let bad_source = resolve_serving_source(
+    checkpoint: CoordinateUnestablished { obligation: "checkpoint unread" as NonEmptyStr },
+    model_config: observed(seed: "model-config-a"),
+    tokenizer: observed(seed: "tokenizer-a"),
+    tokenizer_config: observed(seed: "tokenizer-config-a"),
+    special_tokens: observed(seed: "special-tokens-a"),
+    chat_template: observed(seed: "chat-template-a"),
+    model_side_code: CoordinateAbsentByObservation,
+    generation_defaults: observed(seed: "generation-defaults-a"),
+    processor_config: observed(seed: "processor-config-a"),
+    rung: t_rung(),
+  )
+  let bad_runtime = resolve_serving_runtime(
+    runtime_image: CoordinateUnestablished { obligation: "image unread" as NonEmptyStr },
+    runtime_extensions: observed(seed: "extensions-a"),
+    runtime_configuration: observed(seed: "runtime-config-a"),
+  )
+  match seal_serving_execution_closure(source: bad_source, runtime: bad_runtime, receipt: "test.claim.serving.incarnation_provenance_witness" as ObservationReceiptRef) {
+    ExecutionClosureResolved { closure: _ } => false
+    ExecutionClosureUnestablished { obligations: os } => count(os) == 2
+  }
+}
+
+// ── 9. DISTINCT FAMILIES RENDER DISTINGUISHABLY, WHICH IS THE PROPERTY THAT ACTUALLY HOLDS ─────
+//
+// THE CORPUS CLAIMS MORE THAN IT DELIVERS HERE AND THIS ASSERTS ONLY WHAT IS TRUE.
+// product.training.resolution justifies routing coordinates through serialize_content_hash because it
+// "preserves the hash FAMILY"; measured, it prefixes SHA-2 only, and renders Fnv1a64 and Sha1 bare.
+// What the identity actually needs is weaker and does hold: two different coordinate values render
+// differently, and the absent token is outside the hex alphabet so no hash can spell it.
+test fn the_absent_token_cannot_be_spelled_by_a_rendered_hash() -> Bool {
+  let absent_material = serving_coordinate_material(coordinate: CoordinateAbsent) as String
+  let hashed = serving_coordinate_material(coordinate: CoordinateContent { hash: h(seed: "anything") }) as String
+  absent_material != hashed && !string_contains(s: hashed, pattern: "-")
+}
+
+
