@@ -3004,7 +3004,7 @@ pub fn run_required_wave_admission(
             })
         }
     };
-    run_wave_admission_between(&workspace, &base, &head, head_index)
+    run_wave_admission_between(&workspace, &base, &head, head_index, event)
 }
 
 /// The wave adjudication over an EXPLICIT repository and revision pair.
@@ -3014,12 +3014,15 @@ pub fn run_required_wave_admission(
 /// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
 /// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
 /// base and head speak different grammars. Nothing about the adjudication differs between the two
-/// callers: the seam selects the subject, never the rules.
+/// callers: the seam selects the subject, never the rules. The CI event travels with the subject
+/// for the same reason: the consumption obligation differs by event (`AdjudicationEvent`), so the
+/// caller states which run this is rather than the seam inferring it.
 pub fn run_wave_admission_between(
     workspace: &std::path::Path,
     base: &str,
     head: &str,
     head_index: &DeclarationIndex,
+    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let base = base.to_string();
     let head = head.to_string();
