@@ -16,8 +16,9 @@ import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_fleet_site_allocation, spark_site_uncovered_units,
   SparkServingRealization,
-  spark_telemetry_unread_obligation, spark_serving_usage_stats_unread_cause,
-  SparkTelemetryUnreadCause, TelemetryConfigurationMatchedButUnread,
+  spark_realization_identity, SparkRealizationIdentity,
+  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
@@ -222,27 +223,47 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
 data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Nothing available here establishes it: host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. THE CAPABILITY THAT DISCHARGES THIS is evidence identifying the deployment that answered as the offered launch -- an observation or convergence receipt bound to that launch, not a wider comparison of what it reports. Until then the region is asserted from the operator's dated allocation and the service is refused."
 
 // THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH situation
-// obtained. The refusal is the same for all of them; the diagnosis is not, and a reader who cannot
-// tell them apart goes looking for the wrong evidence. The matched-configuration case gets its own
-// sentence here because it is the one that reads like success -- everything a consumer might mistake
-// for identity is present -- and every other case renders through the telemetry obligation, which
-// already says what it says. An earlier spelling of this note said "which of the TWO situations":
-// there are six causes now that they are typed, and the count was left behind by the change that
-// typed them.
+// obtained. The refusal is the same for all four; the diagnosis is not, and a reader who cannot tell
+// them apart goes looking for the wrong evidence. The matched-configuration case gets the longest
+// sentence because it is the one that reads like success -- everything a consumer might mistake for
+// identity is present and the service still cannot be named.
 //
-// THE CAUSE IS COMPUTED ONCE. An earlier spelling called spark_serving_usage_stats_unread_cause in
-// the scrutinee AND again inside the fallback arm, so the whole identity join ran twice to answer
-// one question -- DESIGN 2's authored duplication, and the kind that is invisible because both calls
-// return the same value.
+// IT CONSUMES THE IDENTITY JOIN AND NOT THE TELEMETRY CAUSE, WHICH IS THE REPAIR THIS REVISION
+// MAKES. An earlier spelling called gunbc.spark.first_party_serving
+// spark_serving_usage_stats_unread_cause -- the TELEMETRY cause, which is the identity join PLUS two
+// host checks that exist for the telemetry question. So a realization whose hosts are covered by the
+// allocation but one of whose hosts has no OBSERVED FABRIC LANE rendered, as the reason WHICH
+// DEPLOYMENT ANSWERED is unestablished, an obligation about reading more lanes -- while this module's
+// own spark_serving_route_service_identity_obligation says the discharging capability is evidence
+// identifying the deployment, and lane observation is not it. That is DESIGN 3's meaning fork: one
+// name, two materially different contracts. It is also the class this change files at
+// gunbc.recurring_failure_mode.diagnostic_asserts_standing_no_check_evaluated, by that row's own
+// tell -- name the producer the sentence points a reader at, then check the emitting arm: the
+// service arm pointed at telemetry evidence no service check consults.
+//
+// LATENT RATHER THAN FIRING TODAY, recorded because the distinction decides how it is filed: every
+// unit in spark_fleet_site_allocation currently has an observed lane, so the mis-rendered arm is not
+// reachable with present data. It becomes reachable the moment a unit is allocated before its lane
+// is observed -- which is what a hardware move produces, and this module exists because the operator
+// moved hardware. The sentences below are the service's own, so the two questions no longer share a
+// renderer.
 fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
-  let cause = spark_serving_usage_stats_unread_cause(realization: realization)
-  match cause {
-    TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
+  match spark_realization_identity(realization: realization) {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } =>
       join([
         "the engine reports the model path this launch is declared to serve (", p as String,
         "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
       ], "") as NonEmptyStr
-    _ => spark_telemetry_unread_obligation(cause: cause)
+    RealizationReportedPathDiffers { reported: rep, declared: dec } =>
+      join([
+        "the engine reports the model path ", rep as String,
+        ", which is not the path the pair-serving launch is declared to serve (", dec as String,
+        "), so the process that answered is not the launch this route would name",
+      ], "") as NonEmptyStr
+    RealizationDeclaredPathUnpinned =>
+      "the pair-serving snapshot is unpinned, so there is no declared configuration to compare the engine's reported one against" as NonEmptyStr
+    RealizationReadbackUnresolved =>
+      "the route's /v1/models readback did not resolve, so the process reported nothing that bears on which declared launch answered" as NonEmptyStr
   }
 }
 

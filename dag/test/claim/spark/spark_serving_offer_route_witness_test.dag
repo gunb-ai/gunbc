@@ -9,10 +9,9 @@ import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.first_party_serving {
-  SparkServingRealization, spark_serving_usage_stats_unread_cause, SparkTelemetryUnreadCause,
-  TelemetryReadbackUnresolved, TelemetryReportedPathDiffers, TelemetryDeclaredPathUnpinned,
-  TelemetryNoHostMembership, TelemetryHostsWithoutObservedLanes,
-  TelemetryConfigurationMatchedButUnread,
+  SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
+  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.vllm_observed {
@@ -207,8 +206,8 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // IT ASSERTS THE DIAGNOSIS, NOT MERELY THE ARM. A refusal that said "unreadable" here would be the
 // wrong reason and would hide that the match was the case being refused, so this pins the obligation
 // to the configuration-agreement sentence.
-// TWO CHECKS, AND NEITHER IS REDUNDANT -- READ THIS BEFORE DELETING ONE. The typed helper asks the
-// UPSTREAM producer what the cause is; the string comparison asks whether the REFUSAL THIS STANDING
+// TWO CHECKS, AND NEITHER IS REDUNDANT -- READ THIS BEFORE DELETING ONE. The typed helper asks
+// spark_realization_identity -- the join the service refusal itself consumes -- what the case is; the string comparison asks whether the REFUSAL THIS STANDING
 // RETURNED actually carries that cause's diagnosis. An earlier spelling had only the first, and it
 // was a coverage regression rather than an improvement: both helpers computed the cause from
 // spark_serving_usage_stats_unread_cause independently, joined to the route standing by nothing but
@@ -236,24 +235,20 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // is the SERVICE-IDENTITY obligation itself, and that is compared against the producer's own row
 // rather than a literal, so it cannot drift into agreeing with a copy of itself.
 fn t_cause_is_readback_unresolved(realization: SparkServingRealization) -> Bool {
-  match spark_serving_usage_stats_unread_cause(realization: realization) {
-    TelemetryReadbackUnresolved => true
-    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
-    TelemetryDeclaredPathUnpinned => false
-    TelemetryNoHostMembership => false
-    TelemetryHostsWithoutObservedLanes => false
-    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+  match spark_realization_identity(realization: realization) {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } => false
+    RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+    RealizationReadbackUnresolved => true
   }
 }
 
 fn t_cause_is_configuration_matched(realization: SparkServingRealization) -> Bool {
-  match spark_serving_usage_stats_unread_cause(realization: realization) {
-    TelemetryConfigurationMatchedButUnread { configured_model_path: p } => (p as String) == t_declared_path()
-    TelemetryReadbackUnresolved => false
-    TelemetryDeclaredPathUnpinned => false
-    TelemetryNoHostMembership => false
-    TelemetryHostsWithoutObservedLanes => false
-    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+  match spark_realization_identity(realization: realization) {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
+    RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+    RealizationReadbackUnresolved => false
   }
 }
 
