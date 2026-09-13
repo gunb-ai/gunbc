@@ -96,6 +96,9 @@ fn alternative_arm_standings(
   map(alternatives, l => arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)))
 }
 
+// DeclaredExpression.standings.first() is the nonempty probe, not the architecture. Empty
+// alternatives unresolved; every standing is classified by any() over the whole list; mixed
+// Arm/not-Arm unresolved; all-NotArm requires every alternative to share one catalog architecture.
 fn declared_architecture_standing(
   spec: DeclaredRunner,
   observed_at: Rfc3339Timestamp,
@@ -148,7 +151,18 @@ fn declared_architecture_standing(
           } else {
             match first_standing {
               NotArmConfirmed { label, architecture, snapshot } =>
-                DeclaredNotArm { via: spec, architecture: architecture }
+                if all(standings, s => match s {
+                  NotArmConfirmed { label, architecture: other, snapshot } => architecture == other
+                  ArmConfirmed { label, snapshot } => false
+                  ArmUndetermined { label, cause } => false
+                }) {
+                  DeclaredNotArm { via: spec, architecture: architecture }
+                } else {
+                  DeclaredArchitectureUnresolved {
+                    via: spec,
+                    cause: "declared alternatives resolve to more than one catalog architecture, so the workflow file does not establish a single architecture",
+                  }
+                }
               ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
               ArmUndetermined { label, cause } =>
                 DeclaredArchitectureUnresolved { via: spec, cause: cause }
@@ -176,6 +190,9 @@ fn remaining_readings_share_catalog_provider(
   })
 }
 
+// DeclaredExpression.readings.first() is the nonempty probe, not the provider. Empty
+// alternatives unresolved; any unresolved alternative unresolved; remaining_readings_share_catalog_provider
+// refuses two catalog providers.
 fn declared_provider_standing(
   spec: DeclaredRunner,
   observed_at: Rfc3339Timestamp,
@@ -260,6 +277,8 @@ type ObservedLabelStanding
   | JobResourceCarriedNoLabels { job_id: Int }
   | JobResourceCarriedMultipleLabels { labels: List<String> }
 
+// first() here is the head of a join; skip(1) folds the rest into the same string. It does not
+// select a runner. Multi-label jobs are JobResourceCarriedMultipleLabels before this rendering.
 fn observed_label_set_rendering(labels: List<String>) -> String {
   match labels.first() {
     Absent => ""
@@ -391,24 +410,37 @@ type YamlJobNameJoin
   = YamlJobNameBound { prefix: String }
   | YamlJobNameUninspected { cause: NonEmptyStr }
 
+// 0/1/many on repository+workflow_path+job_key. first() is only the unique-row read after
+// count==1; two matching rows are Uninspected naming the plurality, not a silent pick.
 fn inspected_yaml_job_name_join(
   repository: NonEmptyStr,
   workflow_path: NonEmptyStr,
   job_key: NonEmptyStr,
 ) -> YamlJobNameJoin {
-  match filter(inspected_yaml_job_names, r =>
+  let matches = filter(inspected_yaml_job_names, r =>
     (r.repository as String) == (repository as String)
       && (r.workflow_path as String) == (workflow_path as String)
       && (r.job_key as String) == (job_key as String)
-  ).first() {
-    Present { value: row } => YamlJobNameBound {
-      prefix: match row.name {
-        AuthoredName { prefix } => prefix as String
-        NameUnset => row.job_key as String
-      },
-    }
-    Absent => YamlJobNameUninspected {
+  )
+  if count(matches) == 0 {
+    YamlJobNameUninspected {
       cause: "no inspected YAML job-name row for this repository, workflow path, and job_key",
+    }
+  } else if count(matches) == 1 {
+    match matches.first() {
+      Present { value: row } => YamlJobNameBound {
+        prefix: match row.name {
+          AuthoredName { prefix } => prefix as String
+          NameUnset => row.job_key as String
+        },
+      }
+      Absent => YamlJobNameUninspected {
+        cause: "no inspected YAML job-name row for this repository, workflow path, and job_key",
+      }
+    }
+  } else {
+    YamlJobNameUninspected {
+      cause: "multiple inspected YAML job-name rows for this repository, workflow path, and job_key",
     }
   }
 }
