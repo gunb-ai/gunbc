@@ -230,7 +230,7 @@ fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
     ));
     std::fs::create_dir(&root).expect("scratch directory");
     let roster = native_driver_producer_roster();
-    assert_eq!(roster.len(), 5);
+    assert_eq!(roster.len(), 6);
     assert!(
         emit_native_producer_entry("unrelated.module".into(), "dag_language_model".into())
             .is_empty()
@@ -304,4 +304,22 @@ fn producer_observations_are_siblings_not_exclusive_rows() {
         .next()
         .expect("exclusive construction");
     assert!(!exclusive.contains("producer_counts"));
+    assert!(!exclusive.contains("ingest_receipt_cost"));
+    let digest_start = main
+        .find("let ingest_receipt_started = Instant::now();")
+        .unwrap();
+    let digest_call = main
+        .find("let ingest_receipt = native_lane_ingest_receipt(")
+        .unwrap();
+    let digest_close = main
+        .find("let ingest_receipt_nanos = span_nanos(ingest_receipt_started);")
+        .unwrap();
+    let universe_close = main
+        .find("let universe_nanos = span_nanos(universe_started);")
+        .unwrap();
+    assert!(
+        digest_start < digest_call && digest_call < digest_close && digest_close < universe_close
+    );
+    assert!(main.contains("Measured::MeasuredUnavailable"));
+    assert!(main.contains("\"ingest_receipt\": ingest_receipt"));
 }
