@@ -1577,6 +1577,25 @@ pub(crate) fn enrolment_margin_standing_for(
     }
 }
 
+/// What blocks the required floor for ONE identity, from the two gates
+/// `required_floor_outcome_is_clean` ANDs. Production and the composition controls call this
+/// same function; a test-local AND would survive a production short-circuit of the changed
+/// rows for a declared identity — the absorbing move this arm is not allowed to enable.
+pub(crate) fn required_floor_blockers_for(
+    identity: &str,
+    standing: &EnrolmentMarginStanding,
+    changed_row: &ChangedWitnessProjectionRow,
+) -> Vec<(String, String)> {
+    let mut blockers = Vec::new();
+    if standing.blocks() {
+        blockers.push((identity.to_string(), standing.cause().to_string()));
+    }
+    if changed_row.blocks {
+        blockers.push((changed_row.identity.clone(), changed_row.cause.clone()));
+    }
+    blockers
+}
+
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
@@ -8391,7 +8410,7 @@ pub fn run_required_floor(
         wet_execution,
         &prepared.subject_digest,
     )?;
-    if let Some(changed_witnesses) = changed_witnesses {
+    let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
         let rows = changed_witness_projection_rows(
             &changed_witnesses,
             &outcome.required_floor_disposition,
@@ -8412,15 +8431,10 @@ pub fn run_required_floor(
                 row.identity, row.standing
             ));
         }
-        outcome.changed_witness_blocking = rows
-            .iter()
-            .filter(|r| r.blocks)
-            .map(|r| ChangedWitnessBlocker {
-                identity: r.identity.clone(),
-                cause: r.cause.clone(),
-            })
-            .collect();
-    }
+        Some(rows)
+    } else {
+        None
+    };
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -8433,17 +8447,20 @@ pub fn run_required_floor(
     // fabricated as empty, for the reason the changed-witness sublane states above: a run that
     // could not observe the diff cannot say what the change enrols, and an empty set would be a
     // silent claim that it enrols nothing.
-    if let Some(newly_enrolled) = newly_enrolled_witnesses {
+    let mut enrolment_standing_by_identity: HashMap<String, EnrolmentMarginStanding> =
+        HashMap::new();
+    let mut enrolment_deferred = 0usize;
+    let mut enrolment_budget_ms: Option<u64> = None;
+    if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
             .required_floor_disposition
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
-        let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
-        let mut deferred = 0usize;
-        for identity in &newly_enrolled {
+        for identity in newly_enrolled {
             // Consumed from the same join `changed_witness_cost_policy` already computed:
             // roster first, else long-home via `cost_debt_verdict_only`. Not re-derived from
             // `claim_cost`.
@@ -8470,36 +8487,79 @@ pub fn run_required_floor(
                 standing,
                 EnrolmentMarginStanding::OutsideThisRunsExecution { .. }
             ) {
-                deferred += 1;
+                enrolment_deferred += 1;
             }
-            if standing.blocks() {
-                refused.push(ChangedWitnessBlocker {
-                    identity: identity.clone(),
-                    cause: standing.cause().to_string(),
-                });
-            }
+            enrolment_standing_by_identity.insert(identity.clone(), standing);
         }
-        // THE DEFERRED COUNT IS PRINTED, NEVER SILENTLY SUBTRACTED (DESIGN section 5: no silent
-        // caps). `adjudicated + deferred == newly_enrolled` is checkable on the line itself, so a
-        // gate that quietly stopped looking at most of its population cannot render as one that
-        // looked and found nothing.
-        eprintln!(
-            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
-             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
-             / 3 hosts / 398 identities at identical eval_steps; authority \
-             v2.workflow.floor_enrolment_margin)",
-            newly_enrolled.len(),
-            newly_enrolled.len() - deferred,
-            deferred,
-            refused.len()
-        );
-        outcome.enrolment_margin_blocking = refused;
     } else {
         eprintln!(
             "[enrolment-margin] GATE NOT EVALUATED (no CI diff baseline on a local run): the \
              newly enrolled set is unobservable, so this run makes no claim about it"
         );
     }
+    // ONE AUTHORITY FOR "WHAT BLOCKS". Both gates' blocking populations are taken from
+    // `required_floor_blockers_for` — the same function the composition controls call — so a
+    // production short-circuit of changed-witness for a declared identity cannot leave the
+    // tests green.
+    let mut changed_blocking: Vec<ChangedWitnessBlocker> = Vec::new();
+    let mut enrolment_blocking: Vec<ChangedWitnessBlocker> = Vec::new();
+    if let Some(rows) = &changed_projection_rows {
+        for r in rows {
+            let standing = enrolment_standing_by_identity
+                .get(&r.identity)
+                .cloned()
+                .unwrap_or(EnrolmentMarginStanding::OutsideThisRunsExecution {
+                    disposition: "not_in_newly_enrolled_set".to_string(),
+                });
+            for (id, cause) in required_floor_blockers_for(&r.identity, &standing, r) {
+                if r.blocks && cause == r.cause {
+                    changed_blocking.push(ChangedWitnessBlocker {
+                        identity: id.clone(),
+                        cause: cause.clone(),
+                    });
+                }
+                if standing.blocks() && cause == standing.cause() {
+                    enrolment_blocking.push(ChangedWitnessBlocker {
+                        identity: id,
+                        cause,
+                    });
+                }
+            }
+        }
+    }
+    if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
+        let paired: HashSet<&str> = changed_projection_rows
+            .as_ref()
+            .map(|rows| rows.iter().map(|r| r.identity.as_str()).collect())
+            .unwrap_or_default();
+        for identity in newly_enrolled {
+            if paired.contains(identity.as_str()) {
+                continue;
+            }
+            let standing = enrolment_standing_by_identity
+                .get(identity)
+                .expect("standing recorded for every newly enrolled identity");
+            if standing.blocks() {
+                enrolment_blocking.push(ChangedWitnessBlocker {
+                    identity: identity.clone(),
+                    cause: standing.cause().to_string(),
+                });
+            }
+        }
+        let budget_ms = enrolment_budget_ms.expect("budget present when newly enrolled is Some");
+        eprintln!(
+            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
+             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
+             / 3 hosts / 398 identities at identical eval_steps; authority \
+             v2.workflow.floor_enrolment_margin)",
+            newly_enrolled.len(),
+            newly_enrolled.len() - enrolment_deferred,
+            enrolment_deferred,
+            enrolment_blocking.len()
+        );
+    }
+    outcome.changed_witness_blocking = changed_blocking;
+    outcome.enrolment_margin_blocking = enrolment_blocking;
     Ok(outcome)
 }
 
@@ -9775,23 +9835,6 @@ mod changed_witness_projection_tests {
         EnrolmentAndChangedComposition { enrolment, changed }
     }
 
-    fn merge_blockers(
-        identity: &str,
-        composed: &EnrolmentAndChangedComposition,
-    ) -> Vec<(String, String)> {
-        let mut blockers = Vec::new();
-        if composed.enrolment.blocks() {
-            blockers.push((identity.to_string(), composed.enrolment.cause().to_string()));
-        }
-        if composed.changed.blocks {
-            blockers.push((
-                composed.changed.identity.clone(),
-                composed.changed.cause.clone(),
-            ));
-        }
-        blockers
-    }
-
     /// CONTROL 1. A declared identity that reaches NO VERDICT — lane cancelled, no claim-cost
     /// row, no terminal — is admitted by the enrolment arm and the RUN STILL STOPS on
     /// changed-witness, with a typed cause naming the identity. An absorbing fallback would
@@ -9812,7 +9855,8 @@ mod changed_witness_projection_tests {
             "enrolment admits; that is the per-gate fact, not the composition"
         );
         assert_eq!(composed.enrolment.cause(), "");
-        let blockers = merge_blockers(identity, &composed);
+        let blockers =
+            required_floor_blockers_for(identity, &composed.enrolment, &composed.changed);
         assert_eq!(
             blockers,
             vec![(
@@ -9844,7 +9888,8 @@ mod changed_witness_projection_tests {
         );
         assert_eq!(composed.enrolment.name(), "expensiveness_declared");
         assert!(!composed.enrolment.blocks());
-        let blockers = merge_blockers(identity, &composed);
+        let blockers =
+            required_floor_blockers_for(identity, &composed.enrolment, &composed.changed);
         assert_eq!(
             blockers,
             vec![(
@@ -9883,7 +9928,8 @@ mod changed_witness_projection_tests {
         assert_eq!(composed.enrolment.name(), "expensiveness_declared");
         assert!(!composed.enrolment.blocks());
         assert_eq!(composed.enrolment.cause(), "");
-        let blockers = merge_blockers(identity, &composed);
+        let blockers =
+            required_floor_blockers_for(identity, &composed.enrolment, &composed.changed);
         assert_eq!(
             blockers,
             vec![(
