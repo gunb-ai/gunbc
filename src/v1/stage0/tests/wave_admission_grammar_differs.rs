@@ -83,12 +83,50 @@ fn with_zzfunc(env_source: &str) -> String {
     )
 }
 
+/// The environment module with `zznm` as a NON-NAME keyword: tokenized as a keyword and refused in
+/// name position. Used only by the base, so an untouched `fn zznm()` is an ordinary declaration at
+/// the head and a refusal at the base.
+fn with_zznm(env_source: &str) -> String {
+    let kw = "\"fn\": true, \"func\": true, \"zzfunc\": true,";
+    assert!(
+        env_source.contains(kw),
+        "the base keyword_set row was not found"
+    );
+    let out = env_source.replacen(
+        kw,
+        "\"fn\": true, \"func\": true, \"zzfunc\": true, \"zznm\": true,",
+        1,
+    );
+    let nn = "\"acquire\": true, \"release\": true";
+    assert!(out.contains(nn), "the non-name keyword row was not found");
+    out.replacen(
+        nn,
+        "\"acquire\": true, \"release\": true, \"zznm\": true",
+        1,
+    )
+}
+
 /// Build the scratch pair: base speaks `zzfunc`, head does not. Returns (repo, base, head).
 ///
 /// `label` keeps each test's repository distinct. The two tests in this binary run on separate
 /// threads of ONE process, so a directory named by PID alone is shared mutable state: either test
 /// could delete or rewrite the other's repository mid-commit. One directory per invocation.
 fn build_grammar_differing_pair(label: &str) -> (std::path::PathBuf, String, String) {
+    build_pair(label, None)
+}
+
+/// Path of the untouched module the full-reconstruction witness plants, when it plants one.
+const UNTOUCHED_PATH: &str = "dag/probe/zz_untouched.dag";
+const UNTOUCHED_MODULE: &str = "probe.zz_untouched";
+
+/// The pair, optionally with one module present and byte-identical at BOTH commits.
+///
+/// `untouched` is written before the base commit and never rewritten, so it is not in the diff. Its
+/// content is chosen so the HEAD grammar reads it and the BASE grammar refuses it: `fn zznm() ...`
+/// is a plain identifier at the head and a non-name keyword at the base (the base environment adds
+/// `zznm` to `dag_non_name_keywords`). Only a reconstruction that RE-READS the base tree can observe
+/// that refusal; one that carries the head's record for an untouched file cannot.
+fn build_pair(label: &str, untouched: Option<&str>) -> (std::path::PathBuf, String, String) {
     let root = workspace_root();
     let scratch = std::env::temp_dir().join(format!(
         "gunbc-wave-grammar-differs-{}-{label}",
@@ -109,9 +147,13 @@ fn build_grammar_differing_pair(label: &str) -> (std::path::PathBuf, String, Str
     // BASE: the grammar admits `zzfunc`, and one module uses it.
     let env_path = scratch.join(ENVIRONMENT_MODULE_PATH);
     let original_env = std::fs::read_to_string(&env_path).expect("read environment module");
-    std::fs::write(&env_path, with_zzfunc(&original_env)).expect("write base environment");
+    std::fs::write(&env_path, with_zznm(&with_zzfunc(&original_env)))
+        .expect("write base environment");
     let probe_dir = scratch.join("dag/probe");
     std::fs::create_dir_all(&probe_dir).expect("create probe dir");
+    if let Some(content) = untouched {
+        std::fs::write(scratch.join(UNTOUCHED_PATH), content).expect("write untouched module");
+    }
     std::fs::write(
         scratch.join(PROBE_PATH),
         format!("module {PROBE_MODULE}\n\nzzfunc probe_value() -> Int {{ 1 }}\n"),
@@ -233,6 +275,76 @@ fn a_grammar_change_between_base_and_head_is_adjudicated_not_refused() {
              grammar-differs arm did not fire, or it fired and could not read the base: {reason}"
         ),
         other => panic!("unexpected outcome for a differing-grammar pair: {other:?}"),
+    }
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// THE FULL-RECONSTRUCTION PROOF: an untouched file only a complete base re-read can observe.
+///
+/// The pair above proves revision-relative parsing but not the partition's other load-bearing
+/// claim -- that grammar disagreement ABANDONS changed-file reconstruction. Both of its relevant
+/// files are diff-touched, so an implementation that loaded the base environment but still
+/// re-parsed only the diff would pass it.
+///
+/// This fixture adds one module, byte-identical at both commits and absent from the diff, that the
+/// head grammar reads (`zznm` is an identifier) and the base grammar refuses (`zznm` is a non-name
+/// keyword there). The correct answer is `NotEvaluated`: under its OWN grammar the base could not
+/// read this file, and a gate that never re-read it would carry the head's record and admit over an
+/// unobserved baseline -- the empty-observation narrow this module's own comments forbid. Restoring
+/// `read_set = base_parsed` in the gate makes this test fail, which is the mutation that shows the
+/// full re-read is load-bearing.
+#[test]
+fn an_untouched_file_the_base_grammar_refuses_is_reached_only_by_the_full_reread() {
+    let untouched = format!("module {UNTOUCHED_MODULE}\n\nfn zznm() -> Int {{ 3 }}\n");
+    let (scratch, base, head) = build_pair("untouched", Some(&untouched));
+
+    // Premise: the file is genuinely untouched between the two commits.
+    let changed = git(&scratch, &["diff", "--name-only", &base, &head]);
+    assert!(
+        !changed.lines().any(|l| l == UNTOUCHED_PATH),
+        "the untouched module appears in the diff, so the probe would not discriminate: {changed}"
+    );
+    // Premise: the head grammar reads it and the base grammar refuses it.
+    let bytes = git(&scratch, &["show", &format!("{head}:{UNTOUCHED_PATH}")]);
+    assert!(
+        base_records(UNTOUCHED_PATH, &bytes, dag_parse_environment()).is_ok(),
+        "the untouched module did not parse under the HEAD grammar, so the head sweep could not \
+         have admitted it and the probe is not set up"
+    );
+    let base_env = load_parse_environment_at(&scratch, &base).unwrap_or_else(|e| {
+        panic!(
+            "base environment did not load: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
+    assert!(
+        base_records(UNTOUCHED_PATH, &bytes, base_env).is_err(),
+        "the untouched module PARSED under the base grammar, so a full re-read would observe \
+         nothing the changed-file reconstruction misses"
+    );
+
+    let sweep = run_dag_parse_sweep(&scratch, &["dag"]).unwrap_or_else(|errors| {
+        panic!(
+            "the scratch head tree did not parse-sweep clean ({} error(s)); first: {}",
+            errors.len(),
+            errors.first().map(String::as_str).unwrap_or("<none>")
+        )
+    });
+    let outcome = run_wave_admission_between(&scratch, &base, &head, &sweep.index)
+        .unwrap_or_else(|e| panic!("wave adjudication errored: {e}"));
+
+    match outcome {
+        WaveAdmissionOutcome::NotEvaluated { reason } => assert!(
+            reason.contains(UNTOUCHED_PATH),
+            "the gate refused, but not on the untouched file the full re-read must reach: {reason}"
+        ),
+        WaveAdmissionOutcome::Adjudicated { .. } => panic!(
+            "the gate ADMITTED over a base it could not read: the untouched file refuses under the \
+             base grammar and was never re-read -- changed-file reconstruction carried the head's \
+             record for it"
+        ),
+        other => panic!("unexpected outcome: {other:?}"),
     }
 
     let _ = std::fs::remove_dir_all(&scratch);

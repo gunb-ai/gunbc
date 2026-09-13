@@ -2957,6 +2957,35 @@ pub fn run_wave_admission_between(
     } else {
         base_parsed.clone()
     };
+    // ONE ACQUISITION FOR THE WHOLE READ SET, not one `git show` per path. On the grammar-differs
+    // route the read set is every base-side file in sweep scope -- thousands -- and the process-
+    // per-file shape this prerequisite removed from the loader must not survive one layer down in
+    // its consumer. The paths the base actually carries are archived once and read locally.
+    let present: Vec<&str> = read_set
+        .iter()
+        .filter(|rel| base_paths.contains(**rel))
+        .map(|rel| rel.as_str())
+        .collect();
+    let base_tree = workspace.join("target").join(format!(
+        "gunbc-wave-base-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    if !present.is_empty() {
+        if let Err(e) = materialize_revision_paths(&workspace, &base, &base_tree, &present) {
+            let _ = std::fs::remove_dir_all(&base_tree);
+            return Ok(WaveAdmissionOutcome::NotEvaluated {
+                reason: format!(
+                    "the base revision's files could not be materialized ({}), so the baseline is \
+                     unobservable and no verdict is available",
+                    environment_load_refusal_text(&e)
+                ),
+            });
+        }
+    }
     for rel in &read_set {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
@@ -2964,15 +2993,17 @@ pub fn run_wave_admission_between(
         }
         // The listing says the base carries this path, so a read failure here is UNOBSERVABLE
         // BASELINE, not news about the file.
-        let content = git_stdout(&workspace, &["show", &format!("{base}:{rel}")]).map_err(|e| {
-            format!(
-                "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
-                 partially unobservable and no verdict is available"
-            )
-        });
-        let content = match content {
+        let content = match std::fs::read_to_string(base_tree.join(rel)) {
             Ok(c) => c,
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(WaveAdmissionOutcome::NotEvaluated {
+                    reason: format!(
+                        "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
+                         partially unobservable and no verdict is available"
+                    ),
+                });
+            }
         };
         match base_records(rel, &content, base_environment.clone()) {
             Ok(records) => {
@@ -2989,9 +3020,13 @@ pub fn run_wave_admission_between(
             // compare equal whenever the head touched only comments, so the old discriminator
             // would happily certify a baseline for a file that failed to parse for an unrelated
             // reason. The residual case argues for deletion, not for retention.
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+            }
         }
     }
+    let _ = std::fs::remove_dir_all(&base_tree);
 
     // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
     // authoritative listing already in hand, so this asks the same question the writer asks of a
@@ -3009,7 +3044,16 @@ pub fn run_wave_admission_between(
         ) else {
             continue;
         };
-        match base_records(&record.rel_path, &content, base_environment.clone()) {
+        // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
+        // not bytes read from the base tree; it is new source the head's roster writer produced from
+        // the base tree's path membership. The base environment is reserved for bytes that actually
+        // came out of the base revision -- sending renderer output through an older grammar could
+        // refuse text no historical source ever carried.
+        match base_records(
+            &record.rel_path,
+            &content,
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        ) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
