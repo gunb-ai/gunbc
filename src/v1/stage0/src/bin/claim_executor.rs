@@ -1948,7 +1948,8 @@ fn report_wave_admission_outcome(
                      owner=gunbc#{} follow_up=gunbc#{} -- follow-up number declared; its \
                      existence, state, and deletion scope are not established by this run, and \
                      whether this run refuses is wave_admission_refusal's verdict, not this \
-                     receipt's; the follow-up's forge state is the landing tally's to read",
+                     receipt's; no executing route in this repository reads the follow-up's forge \
+                     state",
                     receipt.label,
                     receipt.owner_pull_request,
                     receipt.deletion_follow_up_pull_request

@@ -357,7 +357,15 @@ pub struct TransitionAdmission {
 /// WHAT THIS BINARY CANNOT SEE, AND WHO DOES. Whether the follow-up is OPEN (frontier), CLOSED
 /// UNMERGED (the row is an orphan and must refuse at its next touch), or MERGED with the row still
 /// present (the deletion landed without deleting, and must refuse) is forge state, and this module
-/// reads no forge. The landing tally reads it and is the named consumer of that residual. A receipt
+/// reads no forge -- AND NO EXECUTING ROUTE IN THIS REPOSITORY READS IT EITHER (review 65476,
+/// verified: there is no `landing_tally` symbol, and nothing outside this module consumes
+/// `deletion_follow_up`). The pre-enqueue landing procedure that reads it is out-of-band human
+/// review, so the follow-up's forge state is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
+/// rather than a checked property, and this receipt exists to make that unchecked window visible
+/// on every run. The trigger that brings it inside is the typed repository/forge read this
+/// module's CLASS B acquisition boundary already waits on: when a fold can ask the forge for a
+/// pull request's state, these three dispositions become a wall instead of a printed receipt.
+/// A receipt
 /// is also not a verdict: the retained roster-touch and `base == head` rules still refuse runs that
 /// carry owned rows, so a printed receipt and a refusal on the same run are the expected
 /// coexistence, not a contradiction.
@@ -378,14 +386,17 @@ pub struct ConsumedRowReceipt {
 /// bystander -- the externalized degradation gunbc#9824 removed -- and charging it at the owner's
 /// pull_request run would refuse before the follow-up can reasonably exist.
 ///
-/// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored. Whether that
-/// number names an OPEN pull request that deletes these rows is checked by the landing tally before
-/// enqueue, not by this binary, which reads no forge. A fabricated number passes this wall and is
-/// caught there. The bypass backstop covers the ABSENCE of an authored follow-up number -- it reads
+/// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored, and NOTHING
+/// MORE. Whether that number names an OPEN pull request that deletes these rows is checked by NO
+/// EXECUTING ROUTE IN THIS REPOSITORY -- not by this binary, which reads no forge, and not by any
+/// other consumer (review 65476, verified). The pre-enqueue landing procedure that reads it is
+/// out-of-band human review, so that property is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
+/// and its trigger is the CLASS B forge read. A fabricated number passes this wall and, today, is
+/// caught by nothing here. The bypass backstop covers the ABSENCE of an authored follow-up number -- it reads
 /// `consumed_without_follow_up`, and any `PullRequest(n)`, valid or fabricated, enters the owned
 /// population instead -- so it does NOT cover the invalidity or lifecycle of a number that WAS
-/// authored. Reference verification is the landing tally's, and its failure is not independently
-/// caught here.
+/// authored. Reference verification happens out of band or not at all, and its failure is caught
+/// by nothing in this repository.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeletionFollowUp {
     NotAuthored,
@@ -2714,8 +2725,9 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// charge establishes that a follow-up number is authored, not that the deletion has landed -- so
 /// between the owner's landing and its follow-up's landing every composition sees the owned row, and
 /// refusing it would bill a bystander for that window (review 65313; lane ruling X). The forge state
-/// of the follow-up (open, closed unmerged, merged with the row present) is the landing tally's to
-/// read. The roster-touched and base == head arms are unchanged by X. Lane ruling (fierce-lark-661, 2026-09-13):
+/// of the follow-up (open, closed unmerged, merged with the row present) is read by no executing
+/// route here: it is printed as a receipt and left outside the modeled guarantee until the CLASS B
+/// forge read lands (review 65476). The roster-touched and base == head arms are unchanged by X. Lane ruling (fierce-lark-661, 2026-09-13):
 /// the merge queue moved the required verdict off the push to the default branch, and with it the
 /// only run where base == head. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
@@ -2757,8 +2769,10 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             }
             let owner_clause = if owner_follow_up_due {
                 format!(
-                    "; OwnerFollowUpAbsent: author each row's deletion_follow_up (the open pull \
-                     request that deletes it after this change lands) before enqueueing: {}",
+                    "; OwnerFollowUpAbsent: author each row's deletion_follow_up -- the number of \
+                     the pull request that deletes it after this change lands. This wall checks \
+                     that a number is authored, never that it names an open or deleting pull \
+                     request. Author it before enqueueing: {}",
                     report.used_without_follow_up.join("; ")
                 )
             } else {
