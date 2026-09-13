@@ -252,18 +252,26 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
 
 // WHAT "Bool REACHES THE COLLECTOR" ACTUALLY MEASURES, AND IT IS NOT WHAT ITS FIRST NAME CLAIMED.
 //
-// THIS ROW HAS NOW BEEN WRONG TWICE IN OPPOSITE DIRECTIONS. First it asserted a type-position name
-// was ABSENT, which was the truncated census talking. Then it asserted a type-position name
-// REACHED -- and that was green for the wrong reason: this collector does NOT exclude import
-// statements, `Bool` appears in `import v2.std.logic { Bool }` in both fixture modules, and a
-// spelling match cannot tell an import mention from a type-position one. XL-3 measured the same
-// pair on its own route and found an IMPORTED type name absent from type position while a
-// USER-DECLARED type in the same position reaches, which is the finer split and the correct one.
+// THIS ROW HAS BEEN WRONG TWICE IN OPPOSITE DIRECTIONS, AND THE SECOND CORRECTION WAS ALSO WRONG.
+// First it asserted a type-position name was ABSENT, which was the truncated census talking. Then
+// it asserted the name REACHED and I renamed it, on the theory that it was green for the wrong
+// reason -- that the collector does not exclude import statements, that `Bool` appears in
+// `import v2.std.logic { Bool }` in both fixture modules, and that a spelling match cannot tell an
+// import mention from a type-position one.
 //
-// So the row is renamed to what it can honestly establish -- the spelling reaches the collector
-// SOMEWHERE, import statement included -- and the real type-position question is asked below by a
-// name that appears in no import at all. A test whose name claims more than its predicate measures
-// is worse than a red one, because it is cited as coverage.
+// THAT THEORY IS RETRACTED AND IT IS RECORDED HERE RATHER THAN DELETED, because it was told to two
+// sibling lanes. Imports are consumed before the normalized tree this collector walks, which the
+// row below now measures: a spelling that exists ONLY on an import line reaches the collector in no
+// form at all. So no `Bool` mention in `sites` can have come from an import line, and the row that
+// asserted a type-position name reaches was correct as ORIGINALLY written. I renamed a correct row
+// on a hypothesis I had not tested, which is the same error as the two measurement errors above,
+// made one layer up in the explanation rather than in the fold.
+//
+// WHAT SURVIVES FROM XL-3'S RESULT IS STILL THE FINER SPLIT AND IS STILL THE REASON THE ROW BELOW
+// EXISTS: an IMPORTED type name behaves differently from a USER-DECLARED one, so the honest
+// type-position question is asked by `Xl0UserType`, which appears in no import anywhere. A test
+// whose name claims more than its predicate measures is worse than a red one, because it is cited
+// as coverage.
 //
 // This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites() folded the
 // roots while discarding the accumulator, so it answered over the LAST root only. `Bool` is

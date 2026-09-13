@@ -268,10 +268,6 @@ fn empty_reference_site_collection() -> ReferenceSiteCollection {
   ReferenceSiteCollection { sites: Empty, unreadable_roots: Empty }
 }
 
-// The import surface is recognised by the grammar's OWN emitted production identities, not by a
-// shape guess and not by a spelling: a mention is an import mention exactly when it sits under one
-// of these, which is the same vocabulary the parser stamps.
-
 fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bool {
   is_empty(xs: collection.unreadable_roots)
 }
