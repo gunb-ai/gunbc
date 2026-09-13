@@ -1602,7 +1602,6 @@ fn pa_contract_moved_subject() -> GenerationIdentity {
     target_model: pa_candidate_identity().target_model,
     toolchain: pa_candidate_identity().toolchain,
     build_configuration: pa_candidate_identity().build_configuration,
-    required_lens_contract: pa_candidate_identity().required_lens_contract,
     required_lens_contract: pa_digest(label: "required-lens-contract-MOVED"),
     materialized_artifact: pa_candidate_identity().materialized_artifact
   }
