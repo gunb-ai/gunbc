@@ -1,0 +1,264 @@
+module v2.test.claim.namespace_xl0.repair_input_origin_denominator
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// NAMESPACE-XL XL-0's executing evidence. Two subjects, and they fail for different reasons:
+// the COLLECTOR (which mentions exist, and at what containment position) and the ROSTER (what
+// answered each mention). A witness over only the second would be green with a collector that
+// found half the tree, because a denominator's defect is a row that is not there.
+
+fn xl0_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  )
+}
+
+fn xl0_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_named_edge(
+          name: ^dag_surface_module_header_qualified_name,
+          target: qn_spine
+        )
+      ],
+      exports
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn xl0_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A declaration whose BODY is a mention of some other name -- the realistic `type X = Y` shape.
+// The declared name X is an EDGE LABEL and the mentioned name Y is the NODE, which is the whole
+// structural reason the collector needs no filter to tell a declaration from a reference.
+fn xl0_declaration_of(decl_sym: Symbol, body: Node) -> Edge {
+  Edge { label: Named { name: decl_sym }, target: body }
+}
+
+data xl0_producer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.xl0_producer"
+)
+
+data xl0_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.xl0_consumer"
+)
+
+data xl0_producer_root: Node = xl0_module_root(
+  qn_spine: xl0_qn_spine(segments: xl0_producer_qn),
+  exports: [
+    xl0_declaration_of(decl_sym: ^Xl0Marker, body: xl0_atom(sym: ^Xl0Marker)),
+    xl0_declaration_of(decl_sym: ^Xl0Helper, body: xl0_atom(sym: ^Xl0Helper))
+  ]
+)
+
+data xl0_consumer_root: Node = xl0_module_root(
+  qn_spine: xl0_qn_spine(segments: xl0_consumer_qn),
+  exports: [
+    xl0_declaration_of(decl_sym: ^Xl0BareUse, body: xl0_atom(sym: ^Xl0Marker)),
+    xl0_declaration_of(
+      decl_sym: ^Xl0QualifiedUse,
+      body: xl0_qn_spine(
+        segments: qualified_name_from_dotted_string(dotted: "v2.test.xl0_producer.Xl0Helper")
+      )
+    ),
+    xl0_declaration_of(decl_sym: ^Xl0MissingUse, body: xl0_atom(sym: ^Xl0NeverDeclared))
+  ]
+)
+
+data xl0_roots: FreeMonoid<Node> = Cons {
+  head: xl0_producer_root,
+  tail: Cons { head: xl0_consumer_root, tail: Empty }
+}
+
+data xl0_consumer_sites: FreeMonoid<ReferenceSite> = collect_module_reference_sites(root: xl0_consumer_root).sites
+
+fn xl0_site_spelling(site: ReferenceSite) -> String {
+  qualified_name_to_dotted_string(qn: site.spelling)
+}
+
+fn xl0_site_position(site: ReferenceSite) -> String {
+  qualified_name_to_dotted_string(qn: site.position)
+}
+
+fn xl0_any_site(sites: FreeMonoid<ReferenceSite>, f: fn(ReferenceSite) -> Bool) -> Bool {
+  fold_list(xs: sites, empty: false, cons: fn(acc, site) { acc || f(site) })
+}
+
+fn xl0_count_sites_spelled(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(acc, site) { if xl0_site_spelling(site: site) == spelling { acc + 1 } else { acc } }
+  )
+}
+
+// RED 1 -- THE ONE THAT DISCRIMINATES A COLLECTOR FROM A SYMBOL SWEEP. A declared name is an edge
+// label and must never be reported as a mention of itself, and the module header's own qualified
+// name is a declaration of position rather than a mention of anything. A collector that walked
+// edge labels, or descended into the header subtree, is green on every other clause in this file
+// and red here.
+// The third clause below is the positive half, so the first two cannot be satisfied by a
+// collector that found nothing at all.
+test fn declared_names_and_the_module_header_are_not_mentions_holds() -> Bool {
+  let no_declared_name_reported =
+    xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0BareUse") == 0
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0QualifiedUse") == 0
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0MissingUse") == 0
+  let no_header_segment_reported =
+    xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "v2") == 0
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "test") == 0
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "xl0_consumer") == 0
+  let the_three_bodies_are_reported =
+    length(xs: xl0_consumer_sites) == 3
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0Marker") == 1
+      && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0NeverDeclared") == 1
+  no_declared_name_reported && no_header_segment_reported && the_three_bodies_are_reported
+}
+
+// RED 2 -- A DOTTED MENTION IS ONE SITE. `v2.test.xl0_producer.Xl0Helper` is four atoms in the
+// tree and one reference in the source. A walk that emitted a site per atom reports four mentions
+// and a denominator four times too large, and it also loses the only spelling that resolves.
+test fn a_dotted_mention_is_one_site_not_one_per_segment_holds() -> Bool {
+  xl0_count_sites_spelled(
+    sites: xl0_consumer_sites,
+    spelling: "v2.test.xl0_producer.Xl0Helper"
+  ) == 1
+    && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0Helper") == 0
+    && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "xl0_producer") == 0
+}
+
+// RED 3 -- POSITION IS THE MENTION'S CONTAINMENT CHAIN, NOT ITS MODULE. Two mentions in one module
+// at two positions are two repair inputs; a collector that stamped every site with the module
+// qualified name would make them indistinguishable and would also change how the resolver walks
+// the containment chain to answer them.
+test fn a_mention_sits_at_its_containment_position_holds() -> Bool {
+  let sits_at_its_declaration = xl0_any_site(
+    sites: xl0_consumer_sites,
+    f: fn(site) {
+      xl0_site_spelling(site: site) == "Xl0Marker"
+        && xl0_site_position(site: site) == "v2.test.xl0_consumer.Xl0BareUse"
+    }
+  )
+  let none_stamped_with_the_module = !xl0_any_site(
+    sites: xl0_consumer_sites,
+    f: fn(site) { xl0_site_position(site: site) == "v2.test.xl0_consumer" }
+  )
+  sits_at_its_declaration && none_stamped_with_the_module
+}
+
+data xl0_roster: FreeMonoid<RepairInputOriginCandidate> = repair_input_origin_roster_over_roots(roots: xl0_roots).carriers
+
+fn xl0_roster_has(roster: FreeMonoid<RepairInputOriginCandidate>, f: fn(SourceDeclarationCarrierIdentity) -> Bool) -> Bool {
+  fold_list(
+    xs: roster,
+    empty: false,
+    cons: fn(acc, candidate) {
+      acc || match candidate {
+        SourceDeclarationCarrier { identity: identity } => f(identity)
+        SourceCarrierCandidate { identity: _ } => false
+        RenderedTargetVocabularyCarrier { identity: _ } => false
+      }
+    }
+  )
+}
+
+// THE POSITIVE CONTROL BY EXECUTION: a cross-module mention carries the DECLARATION that answered
+// it, as a DeclarationRef naming the owning module and the declaration inside it -- not a file
+// path, which is the position std.repair_input_origin's divergence note refuses to carry.
+test fn a_cross_module_mention_carries_its_declaring_identity_holds() -> Bool {
+  xl0_roster_has(
+    roster: xl0_roster,
+    f: fn(identity) {
+      identity.reference_position == "v2.test.xl0_consumer.Xl0BareUse"
+        && identity.authored_spelling == "Xl0Marker"
+        && match identity.provenance {
+             RepairInputDeclared { declaring: declaring } =>
+               (declaring.module_path as String) == "v2.test.xl0_producer"
+                 && (declaring.decl_name as String) == "Xl0Marker"
+             RepairInputTargetWithoutDeclarationIdentity { target_spelling: _ } => false
+             RepairInputIdentityAmbiguous => false
+             RepairInputIdentityAbsent => false
+           }
+    }
+  )
+}
+
+// RED 4 -- THE DENOMINATOR IS TAKEN BEFORE ELIGIBILITY, SO AN UNANSWERABLE MENTION IS A ROW.
+// A producer that dropped what it could not resolve would report a roster of only the easy half
+// and would be indistinguishable from a tree with nothing left to repair.
+// The second clause below holds the digest the ACT-0 receipt is taken over to one line per row: a
+// rendering that silently skipped an arm would digest a smaller denominator than the roster says.
+test fn an_unanswerable_mention_is_a_row_and_not_a_drop_holds() -> Bool {
+  let unbound_row_present = xl0_roster_has(
+    roster: xl0_roster,
+    f: fn(identity) {
+      identity.authored_spelling == "Xl0NeverDeclared"
+        && match identity.provenance {
+             RepairInputIdentityAbsent => true
+             RepairInputDeclared { declaring: _ } => false
+             RepairInputTargetWithoutDeclarationIdentity { target_spelling: _ } => false
+             RepairInputIdentityAmbiguous => false
+           }
+    }
+  )
+  let digest_covers_every_row =
+    length(xs: repair_input_origin_roster_digest_lines(roster: xl0_roster))
+      == length(xs: xl0_roster)
+  unbound_row_present && digest_covers_every_row
+}
+
+// AN UNREADABLE ROOT IS COUNTED, NOT DROPPED -- the wall for the arm that used to be
+// `Rejected => acc`. A bare atom is not a module root: its header cannot resolve, so it
+// contributes no mentions. The defect was that it also contributed no EVIDENCE, leaving a caller
+// unable to tell an unreadable module from an empty one. Both halves are asserted, because either
+// alone is satisfiable by the wrong implementation: the sites must be unchanged (the root really
+// did contribute nothing) AND the refusal must be present and countable (it said so).
+data xl0_unreadable_root: Node = xl0_atom(sym: ^Xl0NotAModuleRoot)
+
+data xl0_roots_with_one_unreadable: FreeMonoid<Node> = Cons {
+  head: xl0_consumer_root,
+  tail: Cons { head: xl0_unreadable_root, tail: Empty }
+}
+
+test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() -> Bool {
+  let clean = collect_reference_sites(roots: Cons { head: xl0_consumer_root, tail: Empty })
+  let with_bad = collect_reference_sites(roots: xl0_roots_with_one_unreadable)
+  length(xs: with_bad.sites) == length(xs: clean.sites)
+    && length(xs: with_bad.unreadable_roots) == 1
+    && is_empty(xs: clean.unreadable_roots)
+    && !reference_site_collection_is_total(collection: with_bad)
+    && reference_site_collection_is_total(collection: clean)
+}
+
+// THE REFUSAL SURVIVES THE SEAM INTO THE ROSTER. A collector that counted the loss and a producer
+// that dropped it at the next call would be the same silent degradation one layer down.
+test fn the_roster_carries_the_unreadable_roots_it_was_built_over_holds() -> Bool {
+  let roster = repair_input_origin_roster_over_roots(roots: xl0_roots_with_one_unreadable)
+  length(xs: roster.unreadable_roots) == 1
+    && !repair_input_origin_roster_is_total(roster: roster)
+    && repair_input_origin_roster_is_total(
+         roster: repair_input_origin_roster_over_roots(
+           roots: Cons { head: xl0_consumer_root, tail: Empty }
+         )
+       )
+}

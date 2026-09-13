@@ -1,0 +1,392 @@
+module v2.test.claim.namespace_xl0.call_argument_mention_survival
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  collect_reference_sites,
+  empty_reference_site_collection,
+  reference_site_collection_is_total
+}
+import v2.compiler.resolution_provenance { ReferenceSite }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// XL-0 / XL-4's SILENT-UNDERCOUNT PROBE, ASKED OF THE REAL PIPELINE RATHER THAN A SYNTHETIC TREE.
+//
+// WHY THIS EXISTS. The XL-0 denominator witness beside this one builds module roots by hand, which
+// proves the collector's WALK is correct and proves nothing about the TREE a production caller
+// hands it. The canonical route is v2.compiler.program_assembly
+// module_roots_from_source_root_ingest, and its return type is FreeMonoid<NormalizedTree> -- so a
+// production caller walks a NORMALIZED tree. If normalization erases call expressions, then every
+// reference that occurs only inside a call argument is invisible to the collector, and the XL-0
+// denominator and the XL-4 reference graph both undercount exactly that class WITHOUT SAYING SO.
+// That is DESIGN section 5 silent wrongness, which is outside the ladder and forbidden outright,
+// so it is asked here by execution instead of being reasoned about.
+//
+// THE PROJECTION OUT OF THE SEALED CARRIER IS THE MODELED ROUTE, NOT A DODGE. NormalizedTree is a
+// sole_constructor carrier over a Node, and v2.compiler.normalized_tree normalized_tree_roots_to_nodes
+// is its declared projection "for consumers genuinely about Node structure, not admission -- the
+// symbol-index fill, for one". A reference-site walk is exactly that kind of consumer, and it is the
+// same projection v2.compiler.symbol_index_fill consumes, so this probe reaches the collector the
+// way a production caller would rather than by unwrapping the carrier by hand.
+//
+// THE FIXTURE IS SUBSTRATE-ONLY AND STILL EXERCISES THE REAL PARSE AND NORMALIZE. The source text
+// is inline in a DagSourceReadWitness, so no host read happens, but the bytes go through the same
+// ingest the compiler uses.
+//
+// THE DISCRIMINATOR IS A MATCHED PAIR, AND THE FIRST VERSION OF IT WAS BROKEN. It used one type
+// named CallArgumentOnlyMention, which the fixture then mentioned TWICE -- once as a parameter type
+// and once as a call argument -- so it was never call-only, and its absence could not distinguish
+// "calls are erased" from "this collector finds nothing in this tree at all". A negative result
+// does not defend itself. The pair below fixes that by varying ONE thing:
+//
+//   xl0_no_call    is referenced exactly once, in a body, OUTSIDE any call
+//   xl0_call_only  is referenced exactly once, as a CALL ARGUMENT and nowhere else
+//
+// Both are module-level data declarations of the same type, both are referenced exactly once, and
+// the only difference between them is whether that reference sits inside a call. So a green on the
+// first with a red on the second isolates call erasure and nothing else, while a red on BOTH says
+// the collector is blind to this tree generally and the probe is uninformative.
+data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
+
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
+
+fn xl0_provider_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: xl0_provider_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^xl0_provider_fixture_read,
+      file_path: "src/v2/test/fixture/namespace_xl0/provider_fixture.dag"
+    },
+    compilation_unit: ^xl0_provider_fixture_cu,
+    source_root: DagTree
+  }
+}
+
+fn call_argument_fixture_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: call_argument_fixture_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^xl0_call_argument_fixture_read,
+      file_path: "src/v2/test/fixture/namespace_xl0/call_argument_fixture.dag"
+    },
+    compilation_unit: ^xl0_call_argument_fixture_cu,
+    source_root: DagTree
+  }
+}
+
+data call_argument_fixture_ingest: SourceRootIngest = Cons {
+  head: xl0_provider_read(),
+  tail: Cons { head: call_argument_fixture_read(), tail: Empty }
+}
+
+fn fixture_ingest_accepted() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fixture_roots_for_count() -> FreeMonoid<Node> {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn fixture_root_count() -> Int {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots)
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn fixture_collection() -> ReferenceSiteCollection {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      collect_reference_sites(roots: normalized_tree_roots_to_nodes(roots: roots))
+    Rejected { diagnostics: _ } => empty_reference_site_collection()
+  }
+}
+
+fn fixture_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().sites
+}
+
+fn fixture_import_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().import_sites
+}
+
+fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
+  fold_list(
+    xs: sites,
+    empty: false,
+    cons: fn(acc, site) { acc || qualified_name_to_dotted_string(qn: site.spelling) == spelling }
+  )
+}
+
+// WHAT THE COLLECTOR ACTUALLY SEES ON THE PRODUCTION ROUTE, MEASURED, AS ENROLLED TESTS.
+//
+// These are not aspirations. Each asserts what executing the real ingest ACTUALLY produces today,
+// so the file is green while the deficiency stands and goes RED the moment the deficiency is
+// repaired -- which is the point: the repair must come back here and re-state what is true, rather
+// than silently widening a denominator nobody re-measured. DESIGN section 4b(4) keeps a class's
+// discriminating evidence enrolled after the climb; this is the same discipline applied before it.
+//
+// THE POPULATION THAT SURVIVES IS NARROWER THAN THIS FILE FIRST CLAIMED, AND THE CORRECTION IS THE
+// MOST IMPORTANT ROW IN IT.
+//
+//   SURVIVES:      a BARE, SAME-MODULE value reference outside any call; a parameter reference;
+//                  a TYPE-POSITION name
+//   DOES NOT:      a QUALIFIED CROSS-MODULE reference, with or without a call
+//                  a call argument; a callee name
+//
+// The first revision of these rows measured a bare same-module name and reported "a value
+// reference outside any call is found", which read as though cross-module references survived. They
+// do not. warm-ibex-518 measured a qualified cross-module reference on the XL-4 side and found
+// nothing, which is what forced the discriminator now enrolled below -- two claims had been
+// conflated, and the weaker one was stated as if it covered the stronger.
+//
+// WHY THE DISTINCTION IS THE WHOLE STORY RATHER THAN A REFINEMENT: a bare same-module name resolves
+// to a declaration in its OWN module, so it yields no dependency edge and contributes nothing to an
+// import-to-containment denominator, which is by definition about references that CROSS a module
+// boundary. The surviving population is therefore the part neither XL-0 nor XL-4 has any use for.
+// Stated plainly so no reader mistakes a non-empty site list for a working instrument: over the
+// production route this collector currently sees nothing that either stage needs.
+// THERE IS NO SINGLE RESTORATION TRIGGER FOR THE ROWS BELOW, AND AN EARLIER REVISION OF THIS NOTE
+// CLAIMED THERE WAS. It said every red-stated row is restored by the v2 body-lowering repair. That
+// is the section 4b(3) grain mismatch stated in DESIGN's own words -- a plural loss under a
+// singular trigger -- and it contradicted the carriers that cite THIS MODULE as the instrument to
+// re-run: gunbc.compiler_frontend_program_status StageXL0Denominator and
+// gunbc.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
+// cross-module class would still be missing after it lands.
+//
+// THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
+//
+//   call argument, callee name          -> the v2 body-lowering repair that stops normalize erasing
+//                                          call expressions (XL-2, gunbc#11207)
+//   qualified / dotted reference        -> the dotted-reference capability: a dotted spelling is
+//     (any position, body or type)         not a qualified-name production in a body at all, so
+//                                          this is not downstream of call lowering. UNDER
+//                                          VERIFICATION, not assigned to a lane.
+//   bare type in FIELD position         -> UNATTRIBUTED. The measurement is reproduced on two
+//                                          routes; the cause is not established, and if the
+//                                          declaration is absent from the tree then no
+//                                          collector-side trigger could ever fire.
+//
+// XL-0's denominator is made of the SECOND row -- references that cross a module boundary -- so
+// StageXL0Denominator stays NotDerivable on the dotted-reference capability and on nothing else.
+// A row here must never be retired by a trigger that does not restore it.
+
+test fn the_call_argument_fixture_ingests_holds() -> Bool {
+  fixture_ingest_accepted()
+}
+
+test fn the_call_argument_fixture_yields_two_module_roots_holds() -> Bool {
+  fixture_root_count() == 2
+}
+
+// THE CONTROL THAT MAKES EVERY ROW BELOW MEAN SOMETHING: a mention outside any call, found by the
+// same walk over the same tree. If this ever reds, the collector is blind generally and every
+// deficiency row below is uninformative rather than a measurement.
+test fn a_mention_outside_any_call_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_no_call")
+}
+
+test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "probe")
+}
+
+// MEASURED DEFICIENCY 1: a reference occurring only as a call ARGUMENT does not reach the
+// collector. Asserted as absent so this reds when the lowering repair lands.
+test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
+}
+
+// MEASURED DEFICIENCY 2: the CALLEE name of a call does not reach the collector either, so the
+// erasure is of the whole call expression rather than of its arguments alone.
+test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
+}
+
+// WHAT "Bool REACHES THE COLLECTOR" ACTUALLY MEASURES, AND IT IS NOT WHAT ITS FIRST NAME CLAIMED.
+//
+// THIS ROW HAS NOW BEEN WRONG TWICE IN OPPOSITE DIRECTIONS. First it asserted a type-position name
+// was ABSENT, which was the truncated census talking. Then it asserted a type-position name
+// REACHED -- and that was green for the wrong reason: this collector does NOT exclude import
+// statements, `Bool` appears in `import v2.std.logic { Bool }` in both fixture modules, and a
+// spelling match cannot tell an import mention from a type-position one. XL-3 measured the same
+// pair on its own route and found an IMPORTED type name absent from type position while a
+// USER-DECLARED type in the same position reaches, which is the finer split and the correct one.
+//
+// So the row is renamed to what it can honestly establish -- the spelling reaches the collector
+// SOMEWHERE, import statement included -- and the real type-position question is asked below by a
+// name that appears in no import at all. A test whose name claims more than its predicate measures
+// is worse than a red one, because it is cited as coverage.
+//
+// This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites folded the
+// roots while discarding the accumulator, so it answered over the LAST root only. `Bool` is
+// mentioned in both fixture modules, the provider's sites were the ones dropped, and the absence
+// was manufactured by the fold rather than observed in the tree. Over the full population the name
+// is present, and it is asserted that way here.
+//
+// THE COST OF THE WRONG VERSION WAS NOT LOCAL. It was reported to the XL-3 and XL-4 lanes as a
+// measured deficiency; XL-3 was holding type-position census fixtures red on it, and XL-4 carried a
+// type-position row on its declared frontier. A negative claim measured over a silently truncated
+// population is exactly the fabricated plausible output DESIGN section 5 forbids, and it travelled
+// further than the file it lived in.
+// THE DISCRIMINATOR THAT SEPARATES A REAL TYPE-POSITION HIT FROM AN IMPORT-STATEMENT HIT.
+// `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
+// import statement anywhere, so a site spelling it can only have come from the type position.
+test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+}
+
+// EVERY root, not the last one. This fold dropped `acc` too -- the same defect the review found in
+// fixture_sites, in the same file, one screen below it. Answering for the last root while reading
+// as though it answered for all of them is the identical silent truncation, so it is fixed the
+// same way: the fold conjoins, and the empty case is the identity rather than a verdict.
+test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: true,
+        cons: fn(acc, root) {
+          acc && match qualified_name_from_module_node(root: root) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// BARE VERSUS QUALIFIED, THE DISCRIMINATOR XL-4'S RESULT FORCED. I reported "a value reference
+// outside any call IS found" on the strength of a BARE same-module name. warm-ibex-518 measured a
+// QUALIFIED cross-module value reference outside any call and found no edge. Those are two
+// different claims and I had conflated them, which matters because a denominator and a dependency
+// graph both care about the CROSS-MODULE case and almost not at all about the bare local one.
+// `v2.test.xl0_provider.xl0_provided_value` is referenced exactly once, in a body, outside any
+// call, and nothing else in either fixture module can produce that spelling.
+test fn a_qualified_cross_module_reference_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(
+    sites: fixture_sites(),
+    spelling: "v2.test.xl0_provider.xl0_provided_value"
+  )
+}
+
+// THE WALL THAT WOULD HAVE CAUGHT THE DEFECT THAT INVALIDATED EVERY NEGATIVE ROW ABOVE.
+//
+// fixture_sites used to fold the roots with `cons: fn(acc, root) { collect_module_reference_sites(
+// root: root).sites }` -- DISCARDING acc. It therefore returned only the LAST root's sites, and
+// threw away .unreadable_roots at the same time. Every "is absent" row in this file is a NEGATIVE
+// claim, and a negative claim is satisfied for free by a population that never contained the root
+// in question: the census was truthful about a corpus of one module while reporting as though it
+// covered two. The control was green by INGEST ORDERING, not by the walk -- reorder the reads and
+// the whole census changes with no test naming why.
+//
+// TWO THINGS MADE IT INVISIBLE AND BOTH ARE THE SAME LESSON. It hand-rolled a traversal beside
+// collect_reference_sites, which already threads the accumulator AND carries both halves -- the
+// section 3 fork, in the one file whose job is measuring that collector. And it discarded the
+// typed, counted refusal THIS PR ADDS precisely so a lost root cannot be mistaken for an empty
+// one, at the only production-route call site in the PR.
+//
+// These two rows make the population itself a subject. The first pins the root count the census
+// speaks for, so a fold that silently covers fewer reds instead of quietly agreeing. The second
+// requires the collection to be total, so a root that could not be read can never be the reason an
+// "is absent" row is green.
+test fn the_census_population_covers_every_ingested_root_holds() -> Bool {
+  length(xs: fixture_roots_for_count()) == 2 && fixture_root_count() == 2
+}
+
+test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
+  reference_site_collection_is_total(collection: fixture_collection())
+}
+
+// IMPORTS DO NOT REACH THIS ROUTE, SO THE IMPORT ARM IS EMPTY BY CONSTRUCTION HERE -- MEASURED,
+// AND THE MEASUREMENT RETRACTS AN EXPLANATION I GAVE EARLIER IN THIS FILE.
+//
+// The arm was added because a type-position row of mine was believed to be green on an
+// `import ... { Bool }` line. It was not, and it could not have been: `Absent` is imported by the
+// consumer fixture and used NOWHERE else, so it exists at exactly one point in the source, and it
+// appears in NEITHER `sites` NOR `import_sites`. Import statements are consumed before the
+// normalized tree the collector walks, so there is no import surface here to pollute a denominator
+// with and none to classify.
+//
+// WHAT THAT MEANS FOR THE TYPE-POSITION ROW: the `Bool` mentions in `sites` are the real type
+// positions, not import lines, and the row that asserted a type-position name reaches the collector
+// was correct as originally written. I renamed it on a hypothesis I never tested and told two
+// sibling lanes the same thing.
+//
+// THE ARM IS KEPT AND ITS CONTROLS ARE NOT. A control that can only be green on a route where
+// imports survive is unauthorable HERE, and DESIGN section 4b calls a permanently-red-or-
+// permanently-green check a decoration rather than a weak wall -- worse than absent, because it
+// gets cited as coverage. What is enrolled instead is the MEASUREMENT: the arm is empty, and the
+// reason is that imports never arrive, so no reader mistakes an empty arm for "this corpus has no
+// imports". The classification itself stays, because a consumer walking a PARSE tree does see
+// import productions and should not have to invent its own policy -- which is the fork the arm was
+// asked to close.
+test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() -> Bool {
+  !sites_mention(sites: fixture_import_sites(), spelling: "Absent")
+    && !sites_mention(sites: fixture_sites(), spelling: "Absent")
+    && is_empty(xs: fixture_import_sites())
+}
+
+test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Bool")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+}
+
+// IS A BARE FIELD TYPE ITS OWN MISSING CLASS? The three-class rule this PR states -- bare reaches,
+// qualified does not, calls erase their contents -- was measured on PARAMETER and BODY positions.
+// XL-3 reported a field-type case absent and grouped it with the dotted rows, but their fixture's
+// spelling leaves it open whether FIELD POSITION or QUALIFICATION is doing the work. If a BARE
+// field type were absent, field position would be a fourth class and this PR's table would be
+// wrong.
+//
+// `Xl0FieldOnly` is declared here, spelled BARE, and used in exactly one place: the field type of
+// Xl0Wrapper. No dot, no parameter, no body. It isolates field position from qualification.
+//
+// IT IS ABSENT, SO FIELD POSITION IS A FOURTH CLASS AND NOT A DOTTED CASE. That matters for
+// everyone's trigger: XL-3 measured a field-type miss and grouped it with the qualified rows, and
+// this fixture shows qualification is not what is doing the work -- a BARE field type is missing
+// too. A type-position claim that does not say WHICH type position is therefore too coarse: the
+// same bare name reaches from a parameter and does not reach from a field.
+test fn a_bare_field_type_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
+    && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+}

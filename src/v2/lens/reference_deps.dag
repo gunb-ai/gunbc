@@ -30,13 +30,17 @@ type ReferenceResolutionCensus {
 data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.lens.reference_deps",
-    decl_name: "reference_resolution_facts_from_parsed_corpus",
+    module_path: "v2.compiler.reference_site_collector",
+    decl_name: "collect_reference_sites",
     field: WholeDeclaration
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded; parsed_reference_closure_two_entry_no_result_observation carries the exact emitted-surface census subject that produced no result within its deadline, with deciding-stage reach explicitly unproven. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet). Dissolves when symbol_index_fill projects reference edges from the filled containment tree and non-import qualified-name sites require the parsed census path."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded; parsed_reference_closure_two_entry_no_result_observation carries the exact emitted-surface census subject that produced no result within its deadline, with deciding-stage reach explicitly unproven. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet).
+
+DISSOLUTION REPOINTED (NAMESPACE-XL XL-0, 2026-09-12). The successor this row described in prose -- symbol_index_fill projecting reference edges from the filled containment tree -- now exists by name: v2.compiler.reference_site_collector collect_reference_sites, which walks the tree the RESOLVER consumes rather than the parse tree, so its sites are things resolution resolves. The bind above points at it.
+
+THE TRIGGER IS NOT THIS MODULE BECOMING UNUSED, AND THE TWO WALKERS STAND TOGETHER MEANWHILE. This lens keys on ^dag_surface_qualified_name and the import productions and carries NO dot or field-access handling, so it sees a qualified name in TYPE position and misses one in a BODY, which parses as a field access. The collector reads the normalized tree, where a qualified spelling is no longer that production at all, and misses both. So neither instrument covers the qualified class today and this is a DECLARED FRONTIER rather than a consolidation: the collector becomes the single authority for reference sites when it covers qualified sites, which waits on the dotted-reference capability. Until then a reader must not be told there is one enumerator."
 
 // NO EXECUTION RECEIPT, NO COST RESULT.
 //

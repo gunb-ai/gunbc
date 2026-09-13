@@ -1,0 +1,132 @@
+module v2.test.claim.namespace_xl0.field_type_tree_presence
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, Positional, TypeNode, node_subtree_nodes }
+import v2.std.text { String }
+import v2.test.claim.namespace_xl0.call_argument_mention_survival { call_argument_fixture_ingest }
+import std.algebra { Empty, FreeMonoid }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// COLLECTOR OR TREE, ASKED OF THE FIELD-TYPE ABSENCE BEFORE IT IS CALLED A CLASS.
+//
+// A bare field type is absent from the collector's output. That is measured. WHAT CAUSES IT IS NOT,
+// and the dotted case is the reason not to guess: there, an absence measured through my own walker
+// looked like a tree loss and was my own speculative exclusion. v2 must resolve record field types
+// to typecheck anything at all, so a real normalize loss there would be surprising.
+//
+// This reads the ingested roots with node_subtree_nodes and a lexeme comparison -- NOT through
+// v2.compiler.reference_site_collector -- so the answer cannot inherit the walker's blind spots.
+//
+//   ATOM PRESENT  -> the tree carries the field type and the COLLECTOR misses the
+//                    type-declaration field representation. No fourth class; a collector fix.
+//   ATOM ABSENT   -> normalization drops field types, which is a lowering-class finding with a
+//                    trigger of its own.
+//
+// THE CONTROL IS THE PAIR, NOT THE ROW. `Xl0UserType` is the same kind of locally declared bare
+// type name and DOES reach the collector, so it must be present in the tree too. If the control is
+// absent, this probe is reading the wrong tree and says nothing about fields.
+fn fixture_atom_lexemes() -> FreeMonoid<String> {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: Empty,
+        cons: fn(outer, root) {
+          fold(node_subtree_nodes(root: root), init: outer, f: fn(acc, n) {
+            match n.kind {
+              TypeNode { connective: Atom { identity: sym } } =>
+                concat(acc, [symbol_lexeme(sym: sym)])
+              _ => acc
+            }
+          })
+        }
+      )
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn atom_present(lexeme: String) -> Bool {
+  any(fixture_atom_lexemes(), s => s == lexeme)
+}
+
+// ATOMS ARE NOT THE ONLY PLACE A NAME LIVES, AND MY OWN CONTROL PROVED IT. The Xl0Wrapper row
+// below fails because a type DECLARATION name is an EDGE LABEL, never a node -- which is the very
+// fact this collector's design rests on. So an atom-only search cannot establish absence: it
+// establishes "not an atom". This collects the other half, every Named edge label in the tree, so
+// "absent" can mean absent from BOTH representations rather than from the one I happened to check.
+fn fixture_edge_label_lexemes() -> FreeMonoid<String> {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: Empty,
+        cons: fn(outer, root) {
+          fold(node_subtree_nodes(root: root), init: outer, f: fn(acc, n) {
+            fold(n.children, init: acc, f: fn(inner, e) {
+              match e.label {
+                Named { name: sym } => concat(inner, [symbol_lexeme(sym: sym)])
+                Positional => inner
+              }
+            })
+          })
+        }
+      )
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn label_present(lexeme: String) -> Bool {
+  any(fixture_edge_label_lexemes(), s => s == lexeme)
+}
+
+fn present_anywhere(lexeme: String) -> Bool {
+  atom_present(lexeme: lexeme) || label_present(lexeme: lexeme)
+}
+
+test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
+  atom_present(lexeme: "Xl0UserType")
+}
+
+// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. Asserting it as an
+// atom was my error and its red said nothing about the tree. Asserted where it actually lives.
+test fn the_record_type_declaration_is_absent_from_the_tree_today() -> Bool {
+  !present_anywhere(lexeme: "Xl0Wrapper")
+}
+
+// WHAT WAS MEASURED, AND WHY IT IS NOT YET ATTRIBUTED TO ANYONE.
+//
+// The fixture source demonstrably contains `type Xl0Wrapper { fld: Xl0FieldOnly }`, the ingest
+// ACCEPTS and yields both module roots, and the parameter-type control above finds Xl0UserType as
+// an atom. Yet the record declaration's NAME, its FIELD name, and the field's TYPE are ALL absent
+// from the ingested tree, in atoms and in edge labels alike. So the missing thing is not "field
+// types" -- it is the whole record-type-with-a-field declaration.
+//
+// TWO HYPOTHESES REMAIN AND THIS FIXTURE CANNOT SEPARATE THEM: normalization drops such a
+// declaration, or it is represented in some third way neither an atom search nor a label search
+// reaches. I am not naming a capability on that, because the last four times I attributed an
+// absence measured through one representation, the representation was the defect. The rows are
+// therefore enrolled as MEASUREMENTS of what the search finds today, and the PR carries the cause
+// as unverified.
+test fn the_bare_field_type_is_absent_from_the_tree_today() -> Bool {
+  !present_anywhere(lexeme: "Xl0FieldOnly")
+}
+
+// The field NAME itself, as a third data point: if `fld` is a label but its TYPE is nowhere, the
+// declaration survived and only the type reference inside it was dropped.
+test fn the_field_name_is_absent_from_the_tree_today() -> Bool {
+  !present_anywhere(lexeme: "fld")
+}
