@@ -210,7 +210,7 @@ fn export_ownership_label(standing: ExportOwnershipStanding) -> String {
   }
 }
 
-func boot_image_export_ownership_probe() -> ProcessExit {
+fn boot_image_export_ownership_probe() -> ProcessExit {
   let on_root = export_ownership_label(standing: export_ownership_standing(
     observed_uid: posix_root_fixture.uid,
     observed_name: posix_root_fixture.name,
@@ -282,7 +282,7 @@ fn srv2_account_key_for_name(name: NonEmptyStr) -> FleetPosixAccountKey? {
 // observation narrow this repository keeps finding: "I could not see who owns this" and "nobody
 // problematic owns this" are different states, and collapsing them would make an unreachable or
 // deleted export the most permissive input this function accepts.
-func observed_export_ownership_standing(path: NonEmptyStr) -> ExportOwnershipStanding {
+fn observed_export_ownership_standing(path: NonEmptyStr) -> ExportOwnershipStanding {
   match coreutils_stat_path_ownership(path: path) {
     PathOwnershipUnobservable { path: p, reason: r } =>
       ExportOwnershipUnobservable { path: p, reason: r }
@@ -321,7 +321,7 @@ fn export_ownership_refusal_reason(path: NonEmptyStr, standing: ExportOwnershipS
 
 // THE OBSERVED STANDING, RENDERED, so the causal path can be executed on a real host rather than
 // only reasoned about. This reports; it does not gate. The gate is at the write boundary.
-func boot_image_export_ownership_observed_probe(path: String) -> ProcessExit {
+fn boot_image_export_ownership_observed_probe(path: String) -> ProcessExit {
   let standing = observed_export_ownership_standing(path: path as NonEmptyStr)
   return if export_ownership_admits_publication(standing: standing) {
     ExitSuccess

@@ -661,7 +661,7 @@ fn first_failure(checks: List<ProcessExit>) -> ProcessExit {
   )
 }
 
-func mtcollins1_32dimm_bringup_probe() -> ProcessExit {
+fn mtcollins1_32dimm_bringup_probe() -> ProcessExit {
   return first_failure(checks: [
     check_collectors_before_actuation(),
     check_console_silence_is_not_a_terminal(),

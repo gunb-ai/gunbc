@@ -3,11 +3,13 @@ module test.claim.fabric.ubicloud_binding_witness
 import std.types { NonEmptyStr }
 import std.logic { Bool }
 import std.decl_ref { decl_ref, declaration_ref_eq }
-import product.fabric.provider_route { provider_route_eq, ProviderRoute }
+import product.fabric.provider_route {
+  provider_route_eq, ProviderRoute,
+  ProviderRegionObservation, ProviderRegionRead,
+}
 import product.supplier.ubicloud {
   bind_ubicloud_offer, ReadinessMeasured, OfferBound, OfferBindingRefused,
-  UbicloudRegionObservation, UbicloudRegionRead, ubicloud_region_unread,
-  ubicloud_region_unread_obligation,
+  ubicloud_region_unread, ubicloud_region_unread_obligation,
 }
 import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
 
@@ -25,15 +27,15 @@ import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
 // observation someone made, and a fixture standing in for that observation belongs to the fixture.
 data observed_region: NonEmptyStr = "observed-region-for-this-witness"
 
-fn a_read_region() -> UbicloudRegionObservation {
-  UbicloudRegionRead {
+fn a_read_region() -> ProviderRegionObservation {
+  ProviderRegionRead {
     region: decl_ref(
       module_path: "test.claim.fabric.ubicloud_binding_witness",
       decl_name: "observed_region"),
   }
 }
 
-fn bind(region: UbicloudRegionObservation) -> NonEmptyStr {
+fn bind(region: ProviderRegionObservation) -> NonEmptyStr {
   match bind_ubicloud_offer(
     principal: "gunbc",
     executor: "gunbc",
@@ -54,7 +56,7 @@ fn bind(region: UbicloudRegionObservation) -> NonEmptyStr {
   }
 }
 
-fn bound_region_matches(region: UbicloudRegionObservation, expected: ProviderRoute) -> Bool {
+fn bound_region_matches(region: ProviderRegionObservation, expected: ProviderRoute) -> Bool {
   match bind_ubicloud_offer(
     principal: "gunbc",
     executor: "gunbc",

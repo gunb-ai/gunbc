@@ -86,7 +86,7 @@ fn class_b_outcome_from_observation(
   }
 }
 
-func class_b_observe_with_derived_stripped_overlay(
+fn class_b_observe_with_derived_stripped_overlay(
   include_perturbation: Bool
 ) -> DeclaredImportClosureBindingObservationOutcome {
   let root = git.Inspect.Toplevel()
@@ -135,19 +135,19 @@ func class_b_observe_with_derived_stripped_overlay(
   }
 }
 
-func class_b_stripped_import_closure_refuses_binding() -> Bool {
+fn class_b_stripped_import_closure_refuses_binding() -> Bool {
   row3_stripped_refuses_binding(
     outcome: class_b_observe_with_derived_stripped_overlay(include_perturbation: false)
   )
 }
 
-func class_b_stripped_with_ambient_pool_coincidence_or_refuse() -> Bool {
+fn class_b_stripped_with_ambient_pool_coincidence_or_refuse() -> Bool {
   row4_stripped_pool_coincidence_or_refuse(
     outcome: class_b_observe_with_derived_stripped_overlay(include_perturbation: true)
   )
 }
 
-func run_class_b_import_closure_gate() -> Bool {
+fn run_class_b_import_closure_gate() -> Bool {
   if class_b_import_closure_gate_not_affected_skip() {
     true
   } else {
