@@ -2,8 +2,10 @@
 // Source module: std.repair_input_origin
 
 use self::CandidateSpelling::*;
+use self::RepairInputDeclarationProvenance::*;
 use self::RepairInputOriginCandidate::*;
 use self::SourceCarrierOrigin::*;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -40,6 +42,22 @@ pub enum SourceCarrierOrigin {
 pub struct RenderedTypeSurfaceOrigin;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RepairInputDeclarationProvenance {
+    RepairInputDeclared { declaring: Rc<DeclarationRef> },
+    RepairInputTargetWithoutDeclarationIdentity { target_spelling: String },
+    RepairInputIdentityAmbiguous,
+    RepairInputIdentityAbsent,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SourceDeclarationCarrierIdentity {
+    pub reference_position: String,
+    pub authored_spelling: String,
+    pub provenance: Rc<RepairInputDeclarationProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceCarrierCandidateIdentity {
     pub emitting_module: String,
     pub candidate_spelling: Rc<CandidateSpelling>,
@@ -61,6 +79,9 @@ pub enum RepairInputOriginCandidate {
     },
     RenderedTargetVocabularyCarrier {
         identity: Rc<RenderedTargetVocabularyIdentity>,
+    },
+    SourceDeclarationCarrier {
+        identity: Rc<SourceDeclarationCarrierIdentity>,
     },
 }
 
@@ -205,6 +226,9 @@ pub fn repair_input_origin_candidate_name(candidate: Rc<RepairInputOriginCandida
         RepairInputOriginCandidate::RenderedTargetVocabularyCarrier {
             identity: identity, ..
         } => identity.rendered_identifier.clone(),
+        RepairInputOriginCandidate::SourceDeclarationCarrier {
+            identity: identity, ..
+        } => identity.authored_spelling.clone(),
     }
 }
 
@@ -253,6 +277,9 @@ pub fn qualified_item_emit_surface_compatibility_names(
                     RepairInputOriginCandidate::RenderedTargetVocabularyCarrier {
                         identity: _,
                         ..
+                    } => Rc::new(vec![]),
+                    RepairInputOriginCandidate::SourceDeclarationCarrier {
+                        identity: _, ..
                     } => Rc::new(vec![]),
                 })
                 .iter()

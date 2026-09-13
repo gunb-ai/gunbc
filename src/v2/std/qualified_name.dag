@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -215,14 +215,48 @@ fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
 }
 
+// THE CHEAP REJECT LIVES INSIDE THIS ENTRY, NOT BESIDE IT.
+//
+// This fold must walk an ENTIRE SUBTREE before it can answer, so a walker that asks it at every
+// node and then descends into the same subtree is quadratic in nesting depth --
+// v2.compiler.reference_site_collector needed an O(1) guard for exactly that reason. That guard was
+// first written as a pair of Bool predicates in this module beside the fold. Homing them here fixed
+// the second-SITE nickname and left a second SURFACE: two things deciding what a spine looks like,
+// one of them a Bool restatement of an answer this Outcome already gives. DESIGN section 2's test
+// is net concepts, not net files.
+//
+// SO THE REJECT IS THE FOLD'S OWN FIRST STEP, AND THE ACCEPTANCE SET IS UNCHANGED BY CONSTRUCTION.
+// qn_fold_init already admits exactly two Conj shapes -- zero children (the empty name) and two
+// children -- and errors on every other arity; the two-child case is only a spine when its labels
+// are the head/tail pair qn_fold_step reads. Checking those conditions BEFORE folding returns the
+// identical verdict on every input and merely stops the walk on inputs that were always going to
+// be rejected. Seven call sites outside this module consume this function, which is why the
+// acceptance set was preserved rather than narrowed to what one caller happened to need.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
-      match acc {
-        QnFoldDone { qn: qn } => outcome_accepted(value: qn)
-        QnFoldError { diag: d } => outcome_rejected(d: d)
-        _ => outcome_rejected(d: Diagnostic {
+      if count(root.children) == 0 {
+        outcome_accepted(value: Empty)
+      } else if count(root.children) == 2
+        && fold(root.children, init: true, f: fn(acc, edge) {
+             acc && match edge.label {
+               Named { name: sym } =>
+                 (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
+               Positional => false
+             }
+           }) {
+        let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
+        match acc {
+          QnFoldDone { qn: qn } => outcome_accepted(value: qn)
+          QnFoldError { diag: d } => outcome_rejected(d: d)
+          _ => outcome_rejected(d: Diagnostic {
+            reason: ^qualified_name_structure_invalid,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        }
+      } else {
+        outcome_rejected(d: Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
