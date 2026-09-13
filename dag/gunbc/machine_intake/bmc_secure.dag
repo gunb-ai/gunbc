@@ -554,10 +554,10 @@ fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs 
   match previous {
     Absent => observed_at
     Present { value: prev } =>
-      if observed_at > prev {
-        observed_at
-      } else {
+      if observed_at < prev {
         prev
+      } else {
+        observed_at
       }
   }
 }
