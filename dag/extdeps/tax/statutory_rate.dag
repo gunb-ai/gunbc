@@ -3,6 +3,7 @@ module extdeps.tax.statutory_rate
 import std.types { NonEmptyStr }
 import std.measure { PartsPerMillion }
 import extdeps.publication { SpecificationDocumentDate }
+import extdeps.external_authority { ExternalAuthority }
 import std.decl_ref { DeclarationRef }
 
 // THE SHARED SHAPE OF A PUBLISHED STATUTORY TAX RATE, and nothing about any jurisdiction.
@@ -24,6 +25,26 @@ import std.decl_ref { DeclarationRef }
 // publication that states the rate without stating when it took effect. That is a real epistemic
 // state and it is not the same as a rate known to be current; DESIGN section 4d forbids asserting
 // as deduced what is only inferred, so the unread arm carries what would ground it.
+
+// A JURISDICTION IS NOT A RATE AND NOT A PUBLICATION, and this type exists because the first
+// version of this model tried to make it both at once. StatutoryRate.jurisdiction pointed at an
+// ExternalAuthority row (a URI where a figure was published) while every authored collection and
+// attestation put a StatutoryRate row in the SAME FIELD NAME - so two DeclarationRefs both meaning
+// "New York City" could never declaration_ref_eq each other, and origin could not join destination
+// even when they agreed. One field name, two materially different meanings: the meaning fork
+// DESIGN section 3 names as nicknaming's dual. (review 65153)
+//
+// NEITHER OF THE TWO REFERENTS IN USE WAS CORRECT, which is why this is a new declaration rather
+// than a choice between them. A publication is a document, and a jurisdiction outlives any
+// document that describes it. A rate row is worse: New Jersey's statewide and Urban Enterprise
+// Zone rates are TWO RATES OF ONE JURISDICTION, so citing the rate as the jurisdiction would make
+// those two rows answer as different jurisdictions and make a UEZ purchase fail to join a New
+// Jersey destination. The jurisdiction is the taxing authority itself, so it gets a row of its
+// own, and the rate rows and the census rows both cite THAT.
+type TaxJurisdiction {
+  display_name: NonEmptyStr
+  authority: ExternalAuthority
+}
 
 type StatutoryRateEffectiveVersion
   = EffectiveFrom { date: SpecificationDocumentDate, instrument: NonEmptyStr }

@@ -74,7 +74,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
         rate: statutory_rate_value(r: nj_statewide_sales_tax),
       },
       residual: nyc_residual,
@@ -84,7 +84,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_spark_uez,
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_uez_reduced_sales_tax"),
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
         rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
@@ -184,6 +184,45 @@ test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
 // conjunct reds, because the projection follows the rate. Under the deleted-field premise there
 // would have been nothing left to red. The second and third conjuncts hold the arms apart so a
 // projection that answered DestinationCitedByRate for every residual cannot pass.
+// ORIGIN AND DESTINATION ACTUALLY JOIN, which is the property the meaning fork destroyed and the
+// reason it mattered rather than being untidy. Before this repair, StatutoryRate.jurisdiction
+// pointed at an ExternalAuthority row while every authored collection put a StatutoryRate row in
+// the same field, so two references both meaning "New York City" could never compare equal: a lot
+// whose tax was collected in a jurisdiction could not be tested against a residual owed to that
+// same jurisdiction, and the join that the whole residual model exists to support silently
+// answered false. (review 65153)
+//
+// THIS IS THE CONTROL THAT WOULD HAVE CAUGHT IT, and none existed - every prior witness compared a
+// reference against a literal of its own kind, so both sides of the fork stayed self-consistent
+// and the mismatch lived exactly in the comparison nobody wrote. The attested New York City lot's
+// collected jurisdiction must equal the destination projected out of the New York City rate.
+//
+// DISCRIMINATING RED: point either side back at a rate row or an authority row instead of the
+// jurisdiction row and this reds, because the two referents differ. The second conjunct keeps it
+// from passing by universal equality - a New Jersey origin must NOT equal a New York City
+// destination.
+test fn w_collected_origin_joins_projected_destination() -> Bool {
+  match residual_destination_jurisdiction(residual: nyc_residual) {
+    DestinationCitedByRate { jurisdiction: dest } =>
+      declaration_ref_eq(
+        a: dest,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_york_city_sales_and_use",
+          decl_name: "new_york_city",
+        ),
+      )
+      && !declaration_ref_eq(
+        a: dest,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_jersey_sales_and_use",
+          decl_name: "new_jersey",
+        ),
+      )
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => false
+  }
+}
+
 test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
   match residual_destination_jurisdiction(residual: nyc_residual) {
     DestinationCitedByRate { jurisdiction: j } =>
@@ -191,7 +230,7 @@ test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
         a: j,
         b: decl_ref(
           module_path: "extdeps.tax.new_york_city_sales_and_use",
-          decl_name: "nyc_pub718_authority",
+          decl_name: "new_york_city",
         ),
       )
     DestinationNotApplicableNoResidual => false
@@ -281,7 +320,7 @@ test fn w_unread_residual_is_not_a_known_owe() -> Bool {
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
         rate: parts_per_million(count: 1),
         receipt_line_label: "tax" as NonEmptyStr,
       },
