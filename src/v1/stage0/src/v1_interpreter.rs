@@ -3557,11 +3557,27 @@ struct ParseTableMemo {
 #[derive(Default)]
 struct EvalRecomputeTrace {
     map: std::collections::HashMap<EvalRecomputeKey, EvalRecomputeEntry>,
-    // (calls, inclusive nanos, declaration site) per composite-argument producer. The nanos
-    // half is here for the CROSS-CLAIM census below: a producer whose arguments have no cheap
-    // sound identity is exactly as capable of costing a claim 300ms once as a nullary one, and
-    // a bucket that counted calls without duration could name it and never rank it.
-    unkeyed_by_fn: std::collections::HashMap<String, (u64, u128, String)>,
+    // (calls, inclusive nanos, name, declaration site) per PARTIAL KEY. The nanos half is here
+    // for the CROSS-CLAIM census below: a producer whose arguments have no cheap sound identity is
+    // exactly as capable of costing a claim 300ms once as a nullary one, and a bucket that counted
+    // calls without duration could name it and never rank it.
+    //
+    // KEYED BY THE PARTIAL KEY, NOT BY `func_name`, AND THAT IS TWO REPAIRS IN ONE MAP.
+    //
+    // FIRST, THE ARGUMENTS. This bucket used to be keyed by function name alone, so every call of a
+    // declaration merged however different its arguments were. For a generic combinator that is the
+    // whole population: `v2.std.diagnostic` `bind_outcome<T,U>(o, f)` takes a FUNCTION argument, so
+    // every one of its calls has an unkeyable position and every one landed here -- 67,674 calls
+    // across 162 modules reported as ONE producer row. The partial key splits them by the arguments
+    // that DO have identity.
+    //
+    // SECOND, THE HOMONYM. The site used to live in the VALUE, filled by `or_insert_with`, so the
+    // first writer won and every later declaration of the same bare name inherited a site that is
+    // not its own. The keyed census deliberately keys on the declaration site because "two modules
+    // may declare the same bare name, and merging them would report one producer that does not
+    // exist" -- this bucket did not get that protection. `fn_ptr` is in the partial key and the site
+    // travels beside the name, so two declarations sharing a spelling are now two rows.
+    unkeyed_by_fn: std::collections::HashMap<EvalRecomputePartialKey, (u64, u128, Rc<str>, String)>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
     keepalive_fns: Vec<Rc<Node>>,
@@ -3601,6 +3617,18 @@ enum EvalRecomputeArgKey {
     // memoized per allocation with Weak-liveness validation so a reused address never serves a
     // stale hash. Closures remain unkeyed (captured-env identity is not computed).
     ContentHash(u64),
+    /// ONE ARGUMENT POSITION THAT HAS NO SOUND IDENTITY, carried so the OTHER positions can still
+    /// key. It is deliberately NOT a hash and deliberately NOT distinguishing: two calls whose
+    /// keyable arguments agree and whose unkeyable arguments differ produce the SAME partial key.
+    ///
+    /// THAT IS WHY A ROW CONTAINING THIS MARKER IS AN UPPER BOUND AND NEVER A CARRY. The ledger's
+    /// standing discipline is sound-only -- it never merges distinct work -- and a marker that
+    /// merges is a violation of it unless the merge is declared at the point of reading. So the
+    /// census labels such a row `partial` rather than `keyed`, its cross-claim time is reported as
+    /// an upper bound on recoverable duplication, and `v2.workflow.floor_pure_producer_share` may
+    /// not carry a producer on it. What the marker buys is the SPLIT: before it, every call with
+    /// any unkeyable argument collapsed into one row per declaration.
+    Unkeyable,
 }
 
 enum CompositeWeak {
@@ -7761,8 +7789,15 @@ fn eval_pure_named_call(
             // census, which ranks by duration. Recording after the call is what makes the two
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
+            let partial = eval_recompute_partial_key(ctx, fn_node, args);
             let result = call_function(ctx, fn_node, args, env);
-            eval_recompute_record_unkeyed(ctx, fn_node, func_name, started.elapsed().as_nanos());
+            eval_recompute_record_unkeyed(
+                ctx,
+                fn_node,
+                func_name,
+                partial,
+                started.elapsed().as_nanos(),
+            );
             return result;
         }
     };
@@ -8386,6 +8421,48 @@ fn eval_recompute_key(
     })
 }
 
+/// THE SAME KEY, BUT TOLERATING UNKEYABLE POSITIONS. Where `eval_recompute_key` answers `None` if
+/// ANY argument lacks a sound identity, this keys every argument that has one and marks the rest.
+///
+/// IT IS A STRICT REFINEMENT OF THE OLD BUCKETING, WHICH IS THE ONLY WAY IT CAN BE SOUND. The
+/// previous absorb path keyed the whole unkeyable class as `args: Vec::new()`, so every call of a
+/// declaration collapsed to one row however different its arguments were; the partial key can only
+/// SPLIT that row further, never merge two rows that were previously apart. The ledger's
+/// never-merge-distinct-work rule is therefore preserved in the direction that matters, and the
+/// residual merge -- calls differing only in an unkeyable position -- is disclosed at the reading
+/// site rather than hidden in the key.
+fn eval_recompute_partial_key(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> EvalRecomputePartialKey {
+    let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
+    let interner = ctx.symbols.borrow();
+    let mut keys = Vec::with_capacity(args.len());
+    let mut unkeyable = 0usize;
+    for (_, v) in args {
+        match eval_recompute_arg_key(&mut memo, &interner, v) {
+            Some(k) => keys.push(k),
+            None => {
+                keys.push(EvalRecomputeArgKey::Unkeyable);
+                unkeyable += 1;
+            }
+        }
+    }
+    EvalRecomputePartialKey {
+        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        args: keys,
+        unkeyable_positions: unkeyable,
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct EvalRecomputePartialKey {
+    fn_ptr: usize,
+    args: Vec<EvalRecomputeArgKey>,
+    unkeyable_positions: usize,
+}
+
 fn eval_recompute_record(
     ctx: &InterpContext,
     call_node: &Rc<Node>,
@@ -8433,14 +8510,34 @@ fn eval_recompute_record_unkeyed(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     func_name: &str,
+    key: EvalRecomputePartialKey,
     elapsed_ns: u128,
 ) {
     let mut t = ctx.eval_recompute_trace.borrow_mut();
     t.unkeyed_calls += 1;
+    // THE SAME KEY CAP THE KEYED LEDGER HONOURS. The partial key splits a bucket that used to hold
+    // one row per declaration into one row per distinct argument prefix, which is exactly the point
+    // and is also exactly how a diagnostic run could grow without a ceiling. Overflow is counted and
+    // disclosed, never silently dropped; existing rows keep counting.
+    if t.unkeyed_by_fn.len() >= EVAL_RECOMPUTE_KEY_CAP && !t.unkeyed_by_fn.contains_key(&key) {
+        t.overflow_calls += 1;
+        return;
+    }
+    // KEEP THE FN NODE ALIVE, because `fn_ptr` is part of the partial key and a reused address
+    // would otherwise let a freed declaration's key collide with a live one. Same discipline the
+    // keyed ledger applies for the same reason.
+    t.keepalive_fns.push(fn_node.clone());
+    let fn_ptr = Rc::as_ptr(fn_node) as usize;
+    let name = t
+        .fn_names
+        .entry(fn_ptr)
+        .or_insert_with(|| Rc::from(func_name))
+        .clone();
+    let site = eval_recompute_decl_site(fn_node);
     let row = t
         .unkeyed_by_fn
-        .entry(func_name.to_string())
-        .or_insert_with(|| (0, 0, eval_recompute_decl_site(fn_node)));
+        .entry(key)
+        .or_insert_with(|| (0, 0, name, site));
     row.0 += 1;
     row.1 += elapsed_ns;
 }
@@ -8508,14 +8605,17 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             site_labels.join(" @")
         );
     }
-    let mut unkeyed: Vec<(&String, &(u64, u128, String))> = t.unkeyed_by_fn.iter().collect();
+    let mut unkeyed: Vec<(&EvalRecomputePartialKey, &(u64, u128, Rc<str>, String))> =
+        t.unkeyed_by_fn.iter().collect();
     unkeyed.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
-    for (name, (count, ns, site)) in unkeyed.iter().take(10) {
+    for (key, (count, ns, name, site)) in unkeyed.iter().take(10) {
         eprintln!(
-            "[recompute-trace] unkeyed fn={} calls={} total_ms={} @{} (composite args — identity not tracked in slice 1)",
+            "[recompute-trace] partial fn={} calls={} total_ms={} unkeyable_positions={}/{} @{} (upper bound: rows agreeing on every KEYED position may still be distinct work)",
             name,
             count,
             ns / 1_000_000,
+            key.unkeyable_positions,
+            key.args.len(),
             site
         );
     }
@@ -8867,14 +8967,21 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
                 module_path,
             );
         }
-        for (name, (calls, ns, site)) in t.unkeyed_by_fn.iter() {
+        for (key, (calls, ns, name, site)) in t.unkeyed_by_fn.iter() {
             cross_claim_demand_absorb_one(
                 &mut census,
                 CrossClaimDemandKey {
-                    producer: name.clone(),
+                    producer: name.to_string(),
                     decl_site: site.clone(),
-                    args: Vec::new(),
-                    arg_shape: "unkeyed",
+                    args: key.args.clone(),
+                    // `partial` AND `unkeyed` ARE DIFFERENT CLAIMS ABOUT A ROW, so the shape is
+                    // renamed rather than reused. `unkeyed` said "the arguments were not looked at";
+                    // `partial` says "these arguments are identified and these positions are not",
+                    // which is the distinction a reader needs before treating the row's cross-claim
+                    // time as recoverable. A fully-unkeyable call (every position a marker) still
+                    // lands here and still reads `partial` -- its argument row is all markers, which
+                    // is a true statement about it rather than a separate shape.
+                    arg_shape: "partial",
                 },
                 *calls,
                 *ns,
