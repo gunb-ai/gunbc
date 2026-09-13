@@ -892,7 +892,7 @@ test fn remapping_is_part_of_build_configuration_identity() -> Bool {
       }
     }
   )
-  let remapped_elsewhere = build_configuration_axis_digest(
+  let remapped_other_host = build_configuration_axis_digest(
     config: NamedBuildConfiguration {
       cargo_profile: "release",
       remapping: BuildPathRemapped {
@@ -901,7 +901,18 @@ test fn remapping_is_part_of_build_configuration_identity() -> Bool {
       }
     }
   )
-  unspecified != remapped && remapped != remapped_elsewhere
+  let remapped_other_to = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-a",
+        remap_prefix_to: "/gunbc/remap/other"
+      }
+    }
+  )
+  unspecified != remapped
+    && remapped == remapped_other_host
+    && remapped != remapped_other_to
 }
 
 test fn remapped_and_pinned_do_not_share_build_path_digest() -> Bool {

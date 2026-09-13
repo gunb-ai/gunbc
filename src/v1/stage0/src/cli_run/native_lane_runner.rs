@@ -599,13 +599,65 @@ fn native_generation_from_store(
     let live_hex = sha512_file(binary_path)?;
     let observed_live = observed_digest_value(ctx, &live_hex)?;
     let observed_genesis = observed_digest_value(ctx, &genesis_artifact_hex)?;
+    let build_path = Value::Variant {
+        type_name: ctx.sym("BuildPathTreatment"),
+        variant_name: ctx.sym("BuildPathRemapped"),
+        fields: Rc::new(vec![
+            (ctx.sym("remap_prefix_from"), str_value(&remap_from)),
+            (ctx.sym("remap_prefix_to"), str_value(&remap_to)),
+        ]),
+    };
+    let seed_binary = sha512_from_stored_hex(ctx, &seed_hex)?;
+    let (ancestry, producer_hex) = if generation == 0 {
+        (
+            Value::Variant {
+                type_name: ctx.sym("NativeAncestry"),
+                variant_name: ctx.sym("GenesisFromSeed"),
+                fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
+            },
+            seed_hex,
+        )
+    } else {
+        let parent_hex = read_ancestry_text(&ancestry_parent_artifact_path(workspace))
+            .ok_or_else(|| unverified("SucceedsNative.parent_artifact was not stored"))?;
+        let ran_hex = read_ancestry_text(&ancestry_produced_by_path(workspace))
+            .ok_or_else(|| unverified("SucceedsNative.produced_by_execution_of was not stored"))?;
+        let parent = eval_named(
+            ctx,
+            "v2.compiler.self_host.generation.observed_artifact_digest",
+            &[(
+                Some("observed".to_string()),
+                sha512_from_stored_hex(ctx, &parent_hex)?,
+            )],
+        )?;
+        let ran = eval_named(
+            ctx,
+            "v2.compiler.self_host.generation.observed_artifact_digest",
+            &[(
+                Some("observed".to_string()),
+                sha512_from_stored_hex(ctx, &ran_hex)?,
+            )],
+        )?;
+        (
+            Value::Variant {
+                type_name: ctx.sym("NativeAncestry"),
+                variant_name: ctx.sym("SucceedsNative"),
+                fields: Rc::new(vec![
+                    (ctx.sym("parent_generation"), Value::Int(generation - 1)),
+                    (ctx.sym("parent_artifact"), parent),
+                    (ctx.sym("produced_by_execution_of"), ran),
+                ]),
+            },
+            parent_hex,
+        )
+    };
     let identity = eval_named(
         ctx,
         "v2.compiler.self_host.generation.compiler_artifact_identity",
         &[
             (
                 Some("producer_compiler".to_string()),
-                hash_of_observed_string(ctx, &seed_hex)?,
+                hash_of_observed_string(ctx, &producer_hex)?,
             ),
             (
                 Some("source_closure".to_string()),
@@ -633,52 +685,6 @@ fn native_generation_from_store(
             ),
         ],
     )?;
-    let build_path = Value::Variant {
-        type_name: ctx.sym("BuildPathTreatment"),
-        variant_name: ctx.sym("BuildPathRemapped"),
-        fields: Rc::new(vec![
-            (ctx.sym("remap_prefix_from"), str_value(&remap_from)),
-            (ctx.sym("remap_prefix_to"), str_value(&remap_to)),
-        ]),
-    };
-    let seed_binary = sha512_from_stored_hex(ctx, &seed_hex)?;
-    let ancestry = if generation == 0 {
-        Value::Variant {
-            type_name: ctx.sym("NativeAncestry"),
-            variant_name: ctx.sym("GenesisFromSeed"),
-            fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
-        }
-    } else {
-        let parent_hex = read_ancestry_text(&ancestry_parent_artifact_path(workspace))
-            .ok_or_else(|| unverified("SucceedsNative.parent_artifact was not stored"))?;
-        let ran_hex = read_ancestry_text(&ancestry_produced_by_path(workspace))
-            .ok_or_else(|| unverified("SucceedsNative.produced_by_execution_of was not stored"))?;
-        let parent = eval_named(
-            ctx,
-            "v2.compiler.self_host.generation.observed_artifact_digest",
-            &[(
-                Some("observed".to_string()),
-                sha512_from_stored_hex(ctx, &parent_hex)?,
-            )],
-        )?;
-        let ran = eval_named(
-            ctx,
-            "v2.compiler.self_host.generation.observed_artifact_digest",
-            &[(
-                Some("observed".to_string()),
-                sha512_from_stored_hex(ctx, &ran_hex)?,
-            )],
-        )?;
-        Value::Variant {
-            type_name: ctx.sym("NativeAncestry"),
-            variant_name: ctx.sym("SucceedsNative"),
-            fields: Rc::new(vec![
-                (ctx.sym("parent_generation"), Value::Int(generation - 1)),
-                (ctx.sym("parent_artifact"), parent),
-                (ctx.sym("produced_by_execution_of"), ran),
-            ]),
-        }
-    };
     Ok(Value::Record {
         type_name: ctx.sym("NativeGeneration"),
         fields: Rc::new(vec![
