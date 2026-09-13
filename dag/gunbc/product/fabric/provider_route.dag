@@ -86,11 +86,23 @@ type CompliancePostureRevision {
 // citation leaked into prose and a reviewer correctly treated the prose as not a consumer.
 // consulted: is the same DeclarationRef vocabulary evidence: already uses (DESIGN section 3:
 // no second citation name). The empty list is NEVER-LOOKED. A nonempty list is RESEARCHED AND
-// UNANSWERED. The production consumer is product.fabric.provider_admission path_refusals,
-// which calls first_unread_consulted_citations and records the list on
+// UNANSWERED. The production consumer of the SLOT, once filled, is product.fabric.provider_admission
+// path_refusals, which calls first_unread_consulted_citations and records the list on
 // ProviderRouteFactsIncomplete so a live denial can tell the two remedies apart. Filling the
 // slot without that fold reaching admit_provider_use would be the gunbc#11194 shape under
 // another name.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Nonempty consulted is constructible and is refused with
+// a different remedy, but no production ProviderDataPathClosure in THIS tree inhabits it: the
+// only production Unread constructors here are gunbc.spark.first_party_serving, which honestly
+// pass []. The named consumer is product.supplier.hetzner's nine-path closures (gunbc#11188),
+// which already researched the TOM and data-protection-overview pages and currently cannot record
+// that because the unread arm had no slot. TRIGGER: gunbc#11188 lands AFTER this carrier, fills
+// consulted on those unread paths with decl_ref to extdeps.cloud.hetzner
+// hetzner_technical_organizational_measures_reading and
+// hetzner_data_protection_overview_reading, and drops its duplicate copies of those two rows.
+// Until that fires, researched-and-unanswered on a rented route is a later-change inhabitant,
+// not a dangling one.
 type ProviderPathStanding
   = ProviderPathLocated {
       operator: DeclarationRef,

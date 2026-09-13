@@ -12,7 +12,13 @@ import product.fabric.provider_route {
   first_unresolved_obligation, downstream_obligation,
   first_unread_consulted_citations, first_unread_consulted_box, path_unread_consulted,
 }
-import extdeps.cloud.hetzner { hetzner_published_readings }
+import extdeps.cloud.hetzner {
+  hetzner_published_readings,
+  hetzner_published_reading_locators,
+  hetzner_published_reading_statements,
+  hetzner_tom_records_negative_reading,
+  hetzner_dpo_records_non_eu_split,
+}
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
@@ -645,6 +651,26 @@ test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
     && count(first_unread_consulted_box(c: paths)) == 1
     && count(first_unread_consulted_citations(c: paths)) == 0
     && count(path_unread_consulted(p: paths.telemetry)) == 0
+}
+
+// THE READING ROWS ARE EXERCISED, NOT MERELY COUNTED. A count equality over hetzner_published_readings
+// greens while the statements are emptied; these folds read locator and statement, so deleting a
+// row, retargeting a URI, or dropping the negative clause reds. The consulted decl_refs above
+// still name the declarations; this is the half that reads the values those names resolve to.
+test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool {
+  count(hetzner_published_readings()) == 2
+    && count(hetzner_published_reading_locators()) == 2
+    && count(hetzner_published_reading_statements()) == 2
+    && count(filter(
+      hetzner_published_reading_locators(),
+      l => l == "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/",
+    )) == 1
+    && count(filter(
+      hetzner_published_reading_locators(),
+      l => l == "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/",
+    )) == 1
+    && hetzner_tom_records_negative_reading()
+    && hetzner_dpo_records_non_eu_split()
 }
 
 test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {

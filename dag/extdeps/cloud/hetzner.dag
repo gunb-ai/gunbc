@@ -277,12 +277,11 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
 //
 // product.fabric.provider_route ProviderPathUnread.consulted is the slot a researched-and-
 // unanswered path uses to cite the documents that were read and did not answer. These two rows
-// are that citation's subject: one is the negative reading (what the TOM page does not say) and
-// the other uniquely records the non-EU transfer / contractual-partner split. They are not
-// Locatable evidence for a path; consuming them as Located.evidence would invent an answer they
-// explicitly do not give. The executing consumer is test.claim.fabric.provider_admission_witness,
-// which constructs an unread telemetry path whose consulted list identity-joins these declarations
-// through first_unread_consulted_citations.
+// are that citation's subject. They are not Locatable evidence for a path; consuming them as
+// Located.evidence would invent an answer they explicitly do not give. hetzner_published_readings
+// and the two statement/locator folds below are the value-level readers of the rows in this
+// tree. Nonempty consulted on a rented ProviderDataPathClosure is the declared frontier on
+// product.fabric.provider_route ProviderPathUnread, discharged by gunbc#11188.
 
 type HetznerPublishedReading {
   authority: ExternalAuthority
@@ -307,6 +306,44 @@ fn hetzner_published_readings() -> List<HetznerPublishedReading> {
     hetzner_technical_organizational_measures_reading,
     hetzner_data_protection_overview_reading,
   ]
+}
+
+fn hetzner_published_reading_locators() -> List<NonEmptyStr> {
+  map(hetzner_published_readings(), r => r.authority.uri.locator)
+}
+
+fn hetzner_published_reading_statements() -> List<NonEmptyStr> {
+  map(hetzner_published_readings(), r => r.statement)
+}
+
+fn hetzner_tom_records_negative_reading() -> Bool {
+  string_contains(
+    s: hetzner_technical_organizational_measures_reading.statement as String,
+    pattern: "WHAT THE PAGE DOES NOT SAY",
+  )
+    && string_contains(
+      s: hetzner_technical_organizational_measures_reading.statement as String,
+      pattern: "names no country for the log system",
+    )
+    && string_contains(
+      s: hetzner_technical_organizational_measures_reading.statement as String,
+      pattern: "Finland or Helsinki",
+    )
+}
+
+fn hetzner_dpo_records_non_eu_split() -> Bool {
+  string_contains(
+    s: hetzner_data_protection_overview_reading.statement as String,
+    pattern: "Hetzner US LLC",
+  )
+    && string_contains(
+      s: hetzner_data_protection_overview_reading.statement as String,
+      pattern: "customer master data",
+    )
+    && string_contains(
+      s: hetzner_data_protection_overview_reading.statement as String,
+      pattern: "Hetzner Online GmbH remains the contractual partner",
+    )
 }
 
 
