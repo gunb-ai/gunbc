@@ -105,7 +105,7 @@ import gunbc.machine_intake_oob_boot_handoff {
 // about.
 data host_reset_return_probe_label: NonEmptyStr = "ssh.Session.Reachability, BatchMode, ConnectTimeout=5"
 
-func host_is_reachable(host: NonEmptyStr) -> Bool
+fn host_is_reachable(host: NonEmptyStr) -> Bool
   uses net: std.resources.Network
 {
   return ssh.Session.Reachability(host: host).reachable
@@ -134,7 +134,7 @@ type WatchFold {
 // WAITING FOR A STATE, NOT FOR A CHANGE. `want_reachable: false` is the down watch and `true` is the
 // back watch, so one fold serves both and the two waits cannot drift apart in their pacing, their
 // bound or their clock discipline.
-func watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchFold
+fn watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchFold
   uses net: std.resources.Network
 {
   return match acc.outcome {
@@ -162,7 +162,7 @@ func watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> Watc
   }
 }
 
-func watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> LivenessWatch
+fn watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> LivenessWatch
   uses net: std.resources.Network
 {
   let done = fold(
@@ -182,7 +182,7 @@ func watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> Liv
 // the ordering made structural rather than sequential: there is no path on which a return is
 // observed without a departure having been observed first, so "down then up" cannot degenerate into
 // "up", which is what a host that never rebooted would answer.
-func observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_max: Nat) -> HostReturnObservation
+fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_max: Nat) -> HostReturnObservation
   uses net: std.resources.Network
 {
   return match watch_for(host: host, want_reachable: false, max_samples: down_samples_max) {
@@ -234,7 +234,7 @@ func observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples
 // attempt hits. Review 61747 caught the stale claim -- the same "a comment asserts a refusal that does
 // not happen" class this branch had already been caught by once, which is the argument for reading
 // every sentence that names a state as a claim to be re-measured rather than as description.
-func observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
+fn observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
   uses net: std.resources.Network
 {
   let observed = os.Hostname.ReadShort()
@@ -282,7 +282,7 @@ func observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) 
 // satisfy the down watch instantly, and the whole reading would be a fabrication of a reset that
 // moved nothing. So reachability is established first, and a subject that was not up refuses on its
 // own arm rather than proceeding into a watch whose answer is already decided.
-func subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
+fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
   uses net: std.resources.Network
 {
   if host_is_reachable(host: host) {
@@ -367,7 +367,7 @@ data host_reset_down_watch_samples: Nat = 120
 
 data host_reset_back_watch_samples: Nat = 200
 
-func host_reset_return_attempt(
+fn host_reset_return_attempt(
   candidate: ResetSubjectCandidate,
   observer: NonEmptyStr,
   attempt: NonEmptyStr,
@@ -436,7 +436,7 @@ func host_reset_return_attempt(
   }
 }
 
-func host_reset_return_issue_and_watch(
+fn host_reset_return_issue_and_watch(
   candidate: ResetSubjectCandidate,
   selection: ResetObserverSelection,
   identity: ObserverSelfIdentity,
@@ -506,7 +506,7 @@ data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CRE
 // exists, so there is no attempt label and no subject to name; writing "unknown" into those fields
 // would be the fabricated-plausible-output shape, and a reader sorting receipts by subject would find
 // a row claiming one. The line says which vocabulary answered it so the two are never confused.
-func host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
+fn host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
   uses net: std.resources.Network
 {
   let wire = reset_preflight_refusal_wire(refusal: refusal)
@@ -536,7 +536,7 @@ func host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: St
 // to anyone looking at the job list, which is the absorbing fallback one layer up from the one this
 // module refuses -- so the not-this-mode arm exits SUCCESSFULLY and says so, and the unnamed-observer
 // arm exits non-zero with the located diagnostic.
-func host_reset_return_dispatch_admission_wet() -> ProcessExit
+fn host_reset_return_dispatch_admission_wet() -> ProcessExit
   uses net: std.resources.Network
 {
   let mode_raw = match shell.Env.Get(name: host_reset_dispatch_mode_env).value {
@@ -557,7 +557,7 @@ func host_reset_return_dispatch_admission_wet() -> ProcessExit
 
 data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
-func host_reset_return_wet() -> ProcessExit
+fn host_reset_return_wet() -> ProcessExit
   uses net: std.resources.Network
 {
   let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
@@ -646,7 +646,7 @@ func host_reset_return_wet() -> ProcessExit
 // through converge" is precisely the claim this carrier exists to establish. A receipt nobody can
 // trace back to its run does not establish it, so the honest arm is to refuse before the controller
 // write rather than to record the gap afterwards.
-func host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
+fn host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
   uses net: std.resources.Network
 {
   match actions_variable_read(name: github_run_id_variable_name) {
@@ -687,7 +687,7 @@ fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmpty
   }
 }
 
-func host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
+fn host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
   uses net: std.resources.Network
 {
   let _w = Filesystem.Write(

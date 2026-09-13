@@ -211,7 +211,7 @@ fn origin_direction_word(direction: OriginDirection) -> String {
 // that does not exist after a token has already been materialized on disk. What this observes is
 // PRESENCE: gunbc.host_cli_dependency checks the name on PATH and does not read a version, which is
 // the standing every CliTool on this fleet has today; the version pin is carried, not checked.
-func origin_transport_present() -> OriginTransportStanding {
+fn origin_transport_present() -> OriginTransportStanding {
   match observe_host_cli_dependency(tool: curl_aws_sigv4_cli_tool) {
     HostCliDependencyAbsent { absence: absence } =>
       OriginTransportAbsent {
@@ -286,7 +286,7 @@ data credential_residue_cause: NonEmptyStr = "the write credential's private dir
 
 // THE WRITE. local_path is the bytes to store and key is where; the credential is the origin's
 // WRITE token, which the reader never holds.
-func put_origin_object(
+fn put_origin_object(
   local_path: FilePath,
   key: NonEmptyStr,
   token_source: AccessTokenSource,
@@ -366,7 +366,7 @@ data origin_staged_object_basename: String = "object"
 
 // THE READ. The caller names a key and receives an OriginFetchOutcome; it never names, sees in
 // advance, or can influence the path the bytes land at.
-func fetch_origin_object(
+fn fetch_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
 ) -> OriginFetchOutcome uses net: Network {
