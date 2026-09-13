@@ -651,21 +651,42 @@ type RefusedShareCandidate {
   next_trigger: String
 }
 
-// THE HOMONYM POPULATION IS MEASURED RATHER THAN ASSUMED, AND THE ROWS THAT CITE IT SHARE THIS ONE
-// DECLARATION. Two refused rows asked the same question of the corpus, and an earlier revision
-// answered it by carrying the SAME paragraph in both `measurement` strings -- one concept written
-// twice, which is the re-invention DESIGN section 2's test names (review 65486). One declaration,
-// two readers.
+// THE HOMONYM EVIDENCE IS CITED, NOT MEASURED HERE, AND THE GRAIN IS THE WHOLE POINT. Two refused
+// rows below ask the same question of the corpus, so it is answered once, in this one declaration
+// with two readers rather than a paragraph copied into both (DESIGN section 2).
 //
-// IT NAMES THE INSTRUMENT AND CARRIES NO FIGURE, which is the other half of that review and the
-// sharper half. The earlier text named the producer correctly and then transcribed its output --
-// a count of homonymous type names -- in the same sentence telling a later reader to re-derive it
-// rather than trust a number that has aged. DESIGN section 6 rules on exactly that: name the
-// instrument, never transcribe its output, because a transcribed number is unreachable from the
-// thing that owns it and rots without anyone touching either end. The entry point below IS the
-// citation; run it for the figure.
+// AN EARLIER REVISION OF THIS LANE MINTED ITS OWN CENSUS AND ASKED THE WRONG QUESTION WITH IT.
+// That instrument counted DECLARATIONS -- which authored type names are declared by two or more
+// modules. The refusal fires on REFERENCES: what can go wrong is a bare spelling RESOLVED through a
+// claim scope that carries two declarers, and a corpus can have many homonymous declarations and no
+// ambiguous reference at all. A declaration count is therefore not a smaller version of the right
+// figure, it is a different one, and citing it would have ranked this class on a population the
+// defect cannot reach. It was deleted rather than kept beside the real instrument, because a second
+// instrument nobody should consult is worse than none (DESIGN section 3: one authority).
+//
+// THE INSTRUMENT IS A DECLARED FRONTIER, owned elsewhere and not yet landed. `witty-otter-157`,
+// under the `swift-bat-902` reflection lane, is building the reference-grain census as its own unit
+// precisely because this row and the reflection repair both need to cite it: the tuple is
+// (referencing module, bare spelling, candidate declaring modules), excluding private homonyms never
+// referenced bare across a scope. NO SYMBOL AND NO ENTRY POINT ARE NAMED HERE YET because none
+// exists yet; naming one before it lands would be a citation that resolves to nothing (DESIGN
+// section 3). This row is updated to the module and entry point when that PR lands.
+//
+// NO FIGURE IS CARRIED, IN EITHER DIRECTION. DESIGN section 6: name the instrument, never transcribe
+// its output -- and that governs a qualitative answer exactly as it governs a number, since both rot
+// out of reach of the producer that owns them. Earlier revisions of this note carried first a count
+// and then an assertion that the population was non-empty; both were the same defect.
+//
+// WHAT THE ANSWER WOULD MEAN, which is what a row may state because it does not age: a NON-EMPTY
+// reference population means the class has live specimens and the upstream repair -- reflection
+// keyed by scope-carrying identity -- ranks against a real population. An EMPTY one means these rows
+// are UNGUARDED rather than harmful, and the repair ranks lower. Run the instrument for which holds.
+//
+// NEITHER ANSWER CHANGES THE REFUSAL, and that separation is load-bearing: the census ranks the
+// repair, it does not decide the enrolment. A key that omits an input the value depends on may not
+// be enrolled whatever the population is (DESIGN section 5: construction, not validation).
 fn homonym_census_note() -> String {
-  "THE HOMONYM POPULATION IS MEASURED RATHER THAN ASSUMED, BY A NAMED INSTRUMENT: `tools.type_name_homonym_census` `census` (gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/type_name_homonym_census.dag --function census), which consumes `gunbc.bare_name_fork_lens` over `decl_facts` and restricts to TYPE-kind names. It reports every authored type name declared by TWO OR MORE modules over the witness layer roots, and a NON-EMPTY answer is what bears on these rows: the resolution `type_item_by_name` performs is bare-name matching over a scope, so a name with more than one candidate is a collision this key cannot see. NO COUNT IS TRANSCRIBED HERE ON PURPOSE (DESIGN section 6): the instrument is the citation, and a figure copied into this prose would rot out of reach of the thing that owns it. WHAT THE CENSUS DOES NOT ESTABLISH, stated so these rows are not read as more than it measured: it does not show that any homonym is reached by these producers on a claim scope carrying two declarers, which is a further join it does not perform. It establishes the population is non-empty, not that a wrong arm set was ever served. The refusal does not rest on the census either way -- a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
+  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is not yet landed; this row names no symbol and no entry point until it is, because a citation that resolves to nothing is worse than an admitted gap. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (DESIGN section 6: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
 }
 
 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
