@@ -72,7 +72,7 @@ data production_ingest_refused_count: Int = -1
 
 fn located_pair(items: List<LocatedModuleRoot>, consumer_path: String) -> List<LocatedModuleRoot> {
   match xl4_item_at(items: items, path: provider_path) {
-    Absent => []
+    Absent => no_located_roots
     Present { value: provider } =>
       match xl4_item_at(items: items, path: consumer_path) {
         Absent => [provider]
