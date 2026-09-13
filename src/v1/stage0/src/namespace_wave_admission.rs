@@ -1820,7 +1820,7 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: gunbc#11214 merging. Once the relocation is on main, base and head of every
 /// pull_request build both carry it, all fifteen report stale and refuse every unrelated PR -- the
 /// shape every shrink above records. Remove them by that trigger, not by reinterpreting it.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission] = &[
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
         subject: AdmissionSubject::Binding {
