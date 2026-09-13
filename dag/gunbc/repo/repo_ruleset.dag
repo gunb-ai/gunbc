@@ -1485,7 +1485,33 @@ fn ensure_observation_of_ruleset(observed: RulesetObservation) -> EnsureObservat
   }
 }
 
+fn undetermined_desire_put_reason(policy: MergeQueuePolicy?, rules: List<RulesetRuleWire>) -> String? {
+  let us = merge_queue_desire_unknowns(policy: policy, rules: rules)
+  if length(us) == 0 {
+    none
+  } else {
+    Present {
+      value: concat(
+        "refusing to PUT: the desire is undetermined -- ",
+        render_unknowns(us: us),
+      )
+    }
+  }
+}
+
 fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRulesetApplyPlan> {
+  repo_ruleset_ensure_plan_for(
+    observed: observed,
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  )
+}
+
+fn repo_ruleset_ensure_plan_for(
+  observed: RulesetObservation,
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> EnsurePlan<RepoRulesetApplyPlan> {
   let declared_bad = required_contexts_declaration_refusals(contexts: desired_required_contexts())
   if length(declared_bad) > 0 {
     EnsurePlanUnavailable {
@@ -1495,7 +1521,13 @@ fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRule
       )
     }
   } else {
-    match observed {
+    match undetermined_desire_put_reason(
+      policy: policy,
+      rules: rules,
+    ) {
+      Present { value: why } => EnsurePlanUnavailable { reason: why }
+      Absent =>
+        match observed {
       RulesetUnreadable { cause: c } =>
         EnsurePlanUnavailable { reason: render_read_refusal(cause: c) }
       RulesetObserved {
@@ -1539,6 +1571,7 @@ fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRule
             }
           }
         }
+        }
     }
   }
 }
@@ -1581,12 +1614,24 @@ fn merge_queue_put_plan() -> EnsurePlan<RepoRulesetApplyPlan> {
 }
 
 fn repo_ruleset_ensure_decision(observed: RulesetObservation) -> UpsertDecision<RepoRulesetApplyPlan> {
+  repo_ruleset_ensure_decision_for(
+    observed: observed,
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  )
+}
+
+fn repo_ruleset_ensure_decision_for(
+  observed: RulesetObservation,
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> UpsertDecision<RepoRulesetApplyPlan> {
   ensure_decide(
     policy: EnsureMayApply,
     observation: ensure_observation_of_ruleset(observed: observed),
     observation_satisfies: ruleset_observation_satisfies_goal(observed: observed),
     mismatch_reason: ruleset_observation_mismatch_reason(observed: observed),
-    plan: repo_ruleset_ensure_plan(observed: observed),
+    plan: repo_ruleset_ensure_plan_for(observed: observed, policy: policy, rules: rules),
   )
 }
 

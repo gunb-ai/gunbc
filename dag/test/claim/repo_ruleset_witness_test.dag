@@ -39,6 +39,7 @@ import gunbc.repo_ruleset {
   BypassRosterUnsigned,
   required_contexts_declaration_refusals,
   repo_ruleset_ensure_decision,
+  repo_ruleset_ensure_decision_for,
   ruleset_observation_satisfies_goal,
   desired_repo_ruleset_goal,
   repo_ruleset_converge_entry,
@@ -695,6 +696,23 @@ test fn w_RED_an_undeclared_live_rule_refuses_apply() -> Bool {
     bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
   }) {
     Refuse { reason: r } => string_contains(s: r, pattern: "undeclared rule present")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_an_undetermined_desire_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision_for(
+    observed: ensure_fixture(
+      enforcement: RulesetEvaluate,
+      roster: BypassRosterObserved { actors: desired_bypass_actors() },
+    ),
+    policy: Present { value: merge_queue_floor_aligned_policy() },
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undetermined")
+        && string_contains(s: r, pattern: "WHICH ONE IS THE DESIRE")
     Noop => false
     Apply { plan: _ } => false
   }
