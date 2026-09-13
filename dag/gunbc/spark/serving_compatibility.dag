@@ -443,16 +443,26 @@ data glm_native_on_derived_nope_tp4: ServingCompatibilitySubject = ServingCompat
   profile: glm_native_initial_profile,
 }
 
-data glm_native_on_derived_nope_standing: RuntimeCompatibilityStanding = StaticallyPlausible {
+// ── THE STANDING THAT EXECUTION EARNED ─────────────────────────────────────────────────────────
+//
+// THIS WAS StaticallyPlausible AND IT IS NOW ExecutionCompatible, WHICH IS A DIFFERENT KIND OF CLAIM. The
+// six lines it used to carry were reads TAKEN INSIDE THE IMAGE -- a kernel that accepts a shape, a registry
+// that lists an architecture, a scale format returned for a model-type prefix. Every one of them remains
+// true and none of them is this. They established that nothing KNOWN forbade the tuple; they could not
+// establish that the tuple runs, because a shape a kernel accepts at probe time is still not a checkpoint
+// loaded across four ranks answering a request.
+//
+// THE PROMOTING EVIDENCE IS A COMPLETION, NOT A LOAD AND NOT AN ENDPOINT. Earlier attempts reached loaded
+// weights and a listening port and were still not this: GET /v1/models answering 200 says the alias is
+// registered, which a process that cannot generate a token would also say. The receipt below names a
+// generated answer whose CONTENT was checked, because that is the first observation that could not have
+// come from a broken engine.
+//
+// AND IT IS SCOPED TO THE SUBJECT IT WAS MEASURED ON. This says nothing about the stock runtime, about
+// other topologies, or about this image on hosts nobody probed; those keep their own standings.
+data glm_native_on_derived_nope_standing: RuntimeCompatibilityStanding = ExecutionCompatible {
   subject: glm_native_on_derived_nope_tp4,
-  evidence: [
-    "SM120 sparse MLA reader accepts kv_lora_rank 512 / qk_rope_head_dim 0 / query 512 with kv_scale_format arbitrary_fp32, probed on GPU inside sha256:41366caf...af9d on srv9 2026-09-13" as NonEmptyStr,
-    "concat_and_cache_mla accepts pe_dim 0 and zeroes the reserved tail: TAIL_ZEROED, LATENT_WRITTEN and SENTINEL_HELD all true in the same image" as NonEmptyStr,
-    "vLLM _kv_scale_format_for_model returns arbitrary_fp32 for model_type prefix glm, read from flashinfer_mla_sparse_sm120.py inside this image" as NonEmptyStr,
-    "zai-org/GLM-5.3-Flash at eb9eb208eb0d988989d07a6a12d0fdeb5f52574a declares model_type glm5_next, qk_rope_head_dim 0, kv_lora_rank 512, architecture Glm5NextForConditionalGeneration" as NonEmptyStr,
-    "378 architectures registered in this image including all three Glm5Next entries; reasoning parser glm45 and tool parser glm47 both resolve" as NonEmptyStr,
-    "the image is present on every required host of this topology at the identical id: srv9, srv10, srv11 and srv12, each read back independently" as NonEmptyStr,
-  ],
+  receipt: "the GLM-5.3-Flash native checkpoint at eb9eb208 executed on sha256:41366caf...af9d at four-rank native TP4 across srv9, srv10, srv11 and srv12 and answered a routed chat completion: the request was carried by gunbc.spark.native_cutover_wet's own semantic probe inside the accepted transaction, and independently by a direct POST to /v1/chat/completions on the head, which returned finish_reason stop with a CORRECT answer to a question whose wrong answer is the obvious one, 73 completion tokens of which 47 were reasoning, in a response whose reasoning channel was parsed separately from its content and whose system_fingerprint reads vllm-0.1.dev1+g8d09804c8-tp4. The pe_dim-must-be-64 refusal that ended the ninth attempt did not occur. The deployment readback accepted every rank on image, engine arguments, checkpoint revision, host and bound fabric interface, and a later rerun observed the same population and converged to a no-op without restarting it." as NonEmptyStr,
 }
 
 data measured_serving_compatibility: List<RuntimeCompatibilityStanding> = [

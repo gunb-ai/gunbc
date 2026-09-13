@@ -438,6 +438,9 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
                 rs),
             }
             KnownCompetingProducersSuppressed { group: _, holder: _, receipts: _ } =>
+          match observed_convergence(ctx: ctx, head: head, attempt: attempt) {
+            Present { value: converged } => converged
+            Absent =>
           match stage_one_peer_envelope(ctx: ctx, nodes: ns, head: head.host, attempt: attempt) {
             NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } => NativeCutoverWithheld {
               reasons: concat(
@@ -446,7 +449,8 @@ func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -
                 map(ss, x => rank_envelope_standing_text(s: x) as NonEmptyStr)),
             }
             ResolvedForAttempt { basis_points: _, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
-              cutover_after_peer_preflight(ctx: ctx, nodes: ns, head: head, attempt: attempt)
+              attempt_cutover(ctx: ctx, nodes: ns, head: head.host, attempt: attempt)
+          }
           }
           }
       }
@@ -484,13 +488,30 @@ fn recovered_envelope(basis_points: Nat, attempt: String) -> ResolvedDeviceMemor
   }
 }
 
-func cutover_after_peer_preflight(
-  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, head: ArmNode, attempt: String,
-) -> NativeCutoverTerminal
+// ── ASKING WHETHER THE CHANGE IS NEEDED BEFORE PREPARING TO MAKE IT ────────────────────────────
+//
+// THIS ANSWER USED TO BE UNREACHABLE ON EXACTLY THE RUN THAT NEEDED IT. NativeAlreadyConverged existed and
+// was correct, but it sat BEHIND the peer-envelope staging -- and that staging measures how much device
+// memory the peers can supply, which on a converged fleet is nearly none, BECAUSE THE PEERS ARE RUNNING THE
+// VERY DEPLOYMENT BEING ASSESSED. Measured 2026-09-13 on a rerun over a healthy four-rank arm: "the
+// non-incumbent peers cannot supply this arm's memory floor, so nothing was stopped: rank 1 on srv10
+// supplies only 300 bp, below the arm floor of 8000 bp" -- the arm's own ranks counted as foreign load.
+//
+// SO THE ORDER WAS INVERTED, WHICH IS DESIGN 3d READ BACKWARDS: the preparation for a mutation ran before
+// the assessment that decides whether to mutate at all. A preflight is not a precondition of OBSERVING; it
+// is a precondition of ACTING, and a converged deployment never reaches the acting. Incumbency was modeled
+// for the head alone -- the word "non-incumbent" in that refusal is the whole defect -- and hoisting the
+// assessment means the peers' incumbency no longer has to be reasoned about on the idempotent path.
+//
+// A NON-ANSWER IS NOT A NO. Unread utilization, divergence, unverified facts and unverifiable readings all
+// return Absent here, which routes to the ordinary cutover rather than to a claim of convergence. Only
+// DeploymentAccepted -- every rank's image, engine arguments, revision, host and fabric interface agreeing
+// with the plan -- reports that there is nothing to do.
+func observed_convergence(ctx: SparkRemoteExecutionContext, head: ArmNode, attempt: String) -> NativeCutoverTerminal?
   uses net: Network
 {
   match observe_rank_utilization_basis_points(ctx: ctx, node: head) {
-    Absent => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+    Absent => none
     Present { value: running_bp } => {
       let reference = glm_native_tp4_launch_plan(envelope: recovered_envelope(basis_points: running_bp, attempt: attempt))
       let already = accept_deployment(inspection: inspect_native_deployment(
@@ -500,12 +521,14 @@ func cutover_after_peer_preflight(
       ))
       match already {
         DeploymentAccepted { receipt: r } =>
-          NativeAlreadyConverged {
-            receipt: join(["four ranks already agree with the plan at ", r.image_digest as String], "") as NonEmptyStr,
+          Present {
+            value: NativeAlreadyConverged {
+              receipt: join(["four ranks already agree with the plan at ", r.image_digest as String], "") as NonEmptyStr,
+            },
           }
-        DeploymentRejected { deviations: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
-        DeploymentUnverified { unknowns: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
-        DeploymentUnverifiable { cause: _ } => attempt_cutover(ctx: ctx, nodes: nodes, head: head.host, attempt: attempt)
+        DeploymentRejected { deviations: _ } => none
+        DeploymentUnverified { unknowns: _ } => none
+        DeploymentUnverifiable { cause: _ } => none
       }
     }
   }
@@ -677,9 +700,11 @@ func glm_native_tp4_cutover_wet() -> ProcessExit
                     },
                   ) {
                     MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                    MaterializedSshKeyFileBracketCompleted { value: terminal } =>
+                    MaterializedSshKeyFileBracketCompleted { value: terminal } => {
+                      let w = Filesystem.Write(path: native_cutover_receipt_path, content: terminal_text(t: terminal))
                       if terminal_is_success(t: terminal) { ExitSuccess }
                       else { exit_failure(reason: terminal_text(t: terminal)) }
+                    }
                   }
               }
             }
@@ -781,6 +806,20 @@ func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExi
 // standing model is what gates serving -- compatibility_admits gives StaticallyPlausible a bounded
 // experiment and withholds normal serving regardless of what this process returns. This repair makes the
 // statement legible; it does not move the wall.
+// ── A TRANSACTION THAT ONLY SPEAKS WHEN IT REFUSES ─────────────────────────────────────────────
+//
+// EVERY OUTCOME IS NOW WRITTEN, BECAUSE SILENCE WAS BEING READ AS A RESULT. terminal_text already rendered
+// all four arms, including "SERVING and accepted" and "ALREADY CONVERGED, nothing was touched", and the
+// entry called it ONLY inside exit_failure -- so a run that stopped four ranks and launched four more
+// exited zero having said nothing at all. Measured 2026-09-13: the run that first brought GLM up natively
+// on this runtime, and the rerun that correctly converged to a no-op, produced logs containing progress
+// lines and no verdict, and both had to be reconstructed from container uptime on the fleet.
+//
+// THE ASYMMETRY IS THE SAME ONE THE REFUSALS HAD. A rollback that named no cause cost two launches to
+// diagnose; a success that names no receipt costs the operator the ability to tell "it converged and did
+// nothing" from "it did nothing because it never ran". Both are exit zero, and only one is correct.
+data native_cutover_receipt_path: String = "target/spark-native-cutover-receipt.txt"
+
 data nope_conformance_receipt_path: String = "target/spark-nope-conformance-receipt.txt"
 
 fn nope_partial_coverage_report(image_key: NonEmptyStr, passed: Nat, unrun: Nat, obligations: List<NonEmptyStr>) -> String {
