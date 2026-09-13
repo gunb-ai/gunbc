@@ -1151,7 +1151,11 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
 
 // THE RECEIPT IS UPLOADED WITH always() AND ITS PATH IS A GLOB. always(), because a mint that
 // created a token and then failed to store it is the run whose receipt matters most and the run
-// that fails. A glob, because the receipt is named for the bucket the mint ran against
+// that fails -- and that arm now WRITES one: gunbc.cloudflare.r2_token_mint_run
+// refuse_with_orphan_receipt records the live token's id before failing, so always() has something
+// real to collect. It did not, for one revision of this PR: the success path wrote token_id and the
+// store-refusal path wrote nothing, so this step claimed to cover the orphan case while the only
+// receipt it could ever find belonged to a run that did not need one. A glob, because the receipt is named for the bucket the mint ran against
 // (gunbc.cloudflare.r2_token_mint_run r2_origin_token_name) and re-spelling that name here would be
 // a second authority for it -- the §3 decay that an edit to the allocation roster would silently
 // invalidate. if-no-files-found is warn rather than error for the same reason the condition is

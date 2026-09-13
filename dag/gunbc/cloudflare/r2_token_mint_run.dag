@@ -810,6 +810,68 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: Durab
   }
 }
 
+// ── THE ORPHAN RECEIPT, WHICH IS THE ONE THAT MATTERS MOST AND WAS THE ONE NOT WRITTEN ────────
+// A MINT THAT CREATED A TOKEN AND THEN FAILED TO STORE IT IS THE RUN WHOSE RECEIPT DECIDES WHETHER
+// THE DAMAGE IS RECOVERABLE. cloudflare.AccountTokens.Create returns a token value exactly once, so
+// a store refusal after it leaves a live credential on the account -- and the remedy the refusal
+// text itself demands, "the token must be revoked", is only actionable against a token ID. Until
+// this, the id was in scope at that moment and thrown away: the success path wrote token_id and the
+// refusal path wrote nothing, so the receipt existed for every run that did not need it.
+//
+// THE ID GOES IN THE EXIT REASON AS WELL AS THE FILE, AND THAT IS NOT BELT-AND-BRACES. The receipt
+// is a file write, which is itself a thing that can fail -- and the arm where it would fail is the
+// arm where the filesystem is already misbehaving. A remediation that is only recoverable from an
+// artifact that may not exist is not located (§5), so the id is put where nothing can swallow it:
+// the process's own typed failure. The file is the convenience; the diagnostic is the guarantee.
+//
+// BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet_converge_workflow
+// uploads /tmp/r2-*-object-write-mint-receipt.txt with always(), and an orphan receipt written
+// somewhere else would be invisible to exactly the run it was written for.
+fn r2_mint_receipt_path(request: CreateAccountTokenRequest) -> String {
+  join(["/tmp/r2-", request.name, "-mint-receipt.txt"], "")
+}
+
+fn r2_orphan_receipt_content(token: CreatedAccountToken, cause: NonEmptyStr) -> String {
+  join(
+    [
+      concat("token_id=", token.id as String),
+      "stored=no",
+      concat("store_refusal=", cause as String),
+      "action=REVOKE THIS TOKEN: it is live on the account and its value was returned once and is lost. gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function list_account_tokens_for_reconcile",
+    ],
+    "\n",
+  )
+}
+
+// THE FAILURE IS RETURNED WHETHER OR NOT THE RECEIPT LANDED, and the two cases are distinguishable
+// in the text. A receipt that could not be written must not upgrade the outcome, and it must not be
+// silently identical to one that was written either -- an operator reading the diagnostic has to
+// know whether there is a file to go and look at.
+func refuse_with_orphan_receipt(
+  token: CreatedAccountToken,
+  request: CreateAccountTokenRequest,
+  cause: NonEmptyStr,
+) -> ProcessExit {
+  let path = r2_mint_receipt_path(request: request)
+  let written = Filesystem.Write(
+    path: path,
+    content: r2_orphan_receipt_content(token: token, cause: cause),
+  )
+  if written.success {
+    exit_failure(reason: join([
+      "STORE REFUSED AFTER THE TOKEN WAS MINTED, SO A LIVE CREDENTIAL EXISTS AND MUST BE REVOKED -- token_id=",
+      token.id as String, ": ", cause as String, " || receipt written to ", path,
+    ], ""))
+  } else {
+    exit_failure(reason: join([
+      "STORE REFUSED AFTER THE TOKEN WAS MINTED, SO A LIVE CREDENTIAL EXISTS AND MUST BE REVOKED -- token_id=",
+      token.id as String, ": ", cause as String,
+      " || THE RECEIPT FILE COULD NOT BE WRITTEN EITHER, so this diagnostic is the only record of that id: ",
+      written.error,
+    ], ""))
+  }
+}
+
 func mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit uses net: Network {
   if origin_credential_already_pinned(profile: profile, origin: fabric_durable_origin_standing()) {
     exit_failure(reason: concat(
@@ -846,10 +908,10 @@ func mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit u
             container: container,
           ) {
             R2CredentialStoreRefused { cause: cause } =>
-              exit_failure(reason: concat("STORE REFUSED: ", cause as String))
+              refuse_with_orphan_receipt(token: token, request: request, cause: cause)
             R2CredentialStoredAt { version_resource: version_resource } => {
               let written = Filesystem.Write(
-                path: join(["/tmp/r2-", request.name, "-mint-receipt.txt"], ""),
+                path: r2_mint_receipt_path(request: request),
                 content: join(
                   [
                     concat("token_id=", token.id as String),
