@@ -30,7 +30,6 @@ import gunbc.fleet_observation_capture_chunk {
   DownstreamAccepted,
   DownstreamRejected,
   DownstreamNotOffered,
-  chunk_is_locally_committed,
   continuity_covers,
   ContinuityCoverage,
   ContinuityCoversRange,
@@ -282,25 +281,16 @@ fn collector_host_loss_refusal(promises: List<RetentionPromise>) -> NonEmptyStr 
 }
 
 fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
-  if is_forwarded(envelope: envelope) {
-    RetainedBeyondCollectorHost
-  } else if chunk_is_locally_committed(standing: envelope.local_commit) {
-    ExposedToCollectorHostLoss {
-      refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
-    }
-  } else {
-    NotYetRetained { standing: envelope.local_commit }
-  }
-}
-
-fn is_forwarded(envelope: ObservationEnvelope) -> Bool {
   match envelope.downstream {
-    DownstreamAccepted { accepted_content: _ } => true
-    DownstreamRejected { cause: _ } => false
-    DownstreamNotOffered => false
+    DownstreamAccepted { accepted_content: _ } => RetainedBeyondCollectorHost
+    _ => match envelope.local_commit {
+      LocallyCommitted { committed_content: _ } => ExposedToCollectorHostLoss {
+        refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+      }
+      standing => NotYetRetained { standing: standing }
+    }
   }
 }
-
 
 // EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT. The recording owner's session, the chunk's own
 // occurrence, and the authenticated source-to-machine binding are three independently authored

@@ -126,7 +126,6 @@ import gunbc.fleet_observation_observation_envelope {
   CoverageGapNotTheRecordingOwner,
   CoverageGapEvidenceNamesAnotherSubject,
   source_byte_fact,
-  is_forwarded,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -595,8 +594,8 @@ test fn w_local_commit_does_not_imply_forwarding() -> Bool {
     continuity: ContinuityEstablished { verified_through: 10 },
     downstream: DownstreamAccepted { accepted_content: content_hash_of_value(value: "x") },
   )
-  !is_forwarded(envelope: spooled)
-  && is_forwarded(envelope: forwarded)
+  is_exposed(exposure: retention_exposure(envelope: spooled))
+  && is_retained_beyond(exposure: retention_exposure(envelope: forwarded))
   && is_observed(fact: source_byte_fact(envelope: spooled, requested: requested))
 }
 

@@ -188,14 +188,6 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
   }
 }
 
-fn chunk_is_locally_committed(standing: LocalCommitStanding) -> Bool {
-  match standing {
-    LocallyCommitted { committed_content: _ } => true
-    LocalCommitFailed { cause: _ } => false
-    LocalCommitNotAttempted => false
-  }
-}
-
 // WHETHER A COMMIT RECEIPT ACTUALLY ATTESTS THIS CHUNK'S BYTES. Cross-family digests return
 // ChunkPayloadIncomparable rather than a fabricated false, because compare_content_hash refuses that
 // comparison and this fold must not paper over the refusal (DESIGN section 5).
@@ -234,18 +226,6 @@ fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> C
 // gunbc.recurring_failure_mode.empty_capture_read_as_clean_result demands.
 fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
   byte_size_count(b: chunk.range.length)
-}
-
-// WHETHER CONTINUITY WAS VERIFIED FAR ENOUGH TO ANSWER FOR A REQUESTED RANGE. Establishing
-// continuity through offset 10 says nothing about offset 100, and reading the ESTABLISHED arm
-// without reading how far it reaches is the same defect one level up: a standing consumed without
-// the figure that bounds it.
-fn continuity_reaches(continuity: StreamContinuity, through: Nat) -> Bool {
-  match continuity {
-    ContinuityEstablished { verified_through: verified } => verified >= through
-    ContinuityGap { gap: _, cause: _ } => false
-    ContinuityUnknown { detail: _ } => false
-  }
 }
 
 // WHETHER CONTINUITY ANSWERS FOR A RANGE, AS ONE TYPED RESULT rather than two Bool projections a
