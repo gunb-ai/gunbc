@@ -22,8 +22,8 @@ use v1_compiler::v1_compiler_infer_resolve::resolve_node;
 use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
 use v1_compiler::v1_compiler_infer_types::{
     bare_map_node, is_fully_resolved, make_container_type, make_map_type, node_is_keyed_collection,
-    node_type_compatible, nominal_type_ref, resolved_type, type_resolution_verdict,
-    TypeResolutionVerdict,
+    node_type_compatible, nominal_type_ref, resolved_type, type_argument_node,
+    type_resolution_verdict, TypeResolutionVerdict,
 };
 use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
@@ -1440,7 +1440,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         "map_keys result should have one child"
     );
     let elem_child = &result.result_type.children[0];
-    let elem_type = resolved_type(elem_child.clone());
+    let elem_type = type_argument_node(elem_child.clone());
     assert_eq!(
         elem_type.name, "String",
         "map_keys on Map<String,Int> should return List<String>"
@@ -1811,7 +1811,7 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
 
 fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
-    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    let fm_sym = applied_generic_type_node("FreeMonoid", leaf_node("Symbol".to_string()));
     assert!(
         node_type_compatible(list_sym, fm_sym, empty_source_indices()),
         "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
@@ -1820,7 +1820,7 @@ fn list_and_freemonoid_compatible_same_element() {
 
 fn list_and_freemonoid_incompatible_different_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
-    let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
+    let fm_string = applied_generic_type_node("FreeMonoid", leaf_node("String".to_string()));
     assert!(
         !node_type_compatible(list_int, fm_string, empty_source_indices()),
         "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
@@ -1828,7 +1828,7 @@ fn list_and_freemonoid_incompatible_different_element() {
 }
 
 fn list_freemonoid_compat_is_symmetric() {
-    let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
+    let fm_sym = applied_generic_type_node("FreeMonoid", leaf_node("Symbol".to_string()));
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     assert!(
         node_type_compatible(fm_sym, list_sym, empty_source_indices()),
@@ -1921,7 +1921,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
-    let box_nat = container_node("Box".to_string(), leaf_node("Nat".to_string()));
+    let box_nat = applied_generic_type_node("Box", leaf_node("Nat".to_string()));
     assert!(
         is_user_generic_use_site(box_nat.clone(), env.clone()),
         "Box<Nat> should be a generic use site"
