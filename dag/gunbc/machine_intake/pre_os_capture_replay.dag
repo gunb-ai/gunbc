@@ -1,5 +1,7 @@
 module gunbc.machine_intake_pre_os_capture_replay
 
+import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
+
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -75,7 +77,7 @@ type PreOsArchiveReading {
 fn pre_os_archive_inventory_question(spec: PreOsArchiveSpec) -> PreOsInventoryQuestion {
   PreOsInventoryQuestion {
     configuration: spec.configuration,
-    coverage: MemoryCaptureCycles { required_cycles: spec.required_cycles, start_token: "NOTICE:  DRAM FW version 210525", completion_token: spec.completion },
+    coverage: MemoryCaptureCycles { required_cycles: spec.required_cycles, start_token: mtcollins_dram_cycle_start, completion_token: spec.completion },
     printed_parts: mtcollins_3ds_printed_parts(), printed_positions: mtcollins_3ds_printed_positions(configuration: spec.configuration),
     expected_payload_token: "DRAM populated DIMMs:",
   }

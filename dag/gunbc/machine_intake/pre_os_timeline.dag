@@ -1,5 +1,7 @@
 module gunbc.machine_intake_pre_os_timeline
 
+import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
+
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
@@ -11,7 +13,7 @@ import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
 import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
-import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_unique_occurrences, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
 // Parser selection is an observation request, not a success goal. A platform
@@ -132,7 +134,7 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
   match span.chunks.first() {
     Absent => []
     Present { value: first } => {
-      let marker = "NOTICE:  DRAM FW version 210525"
+      let marker = mtcollins_dram_cycle_start as String
       let parts = split(s: span.payload, delimiter: marker)
       let prefix_bytes = match parts.first() { Absent => byte_size(count: 0) Present { value: prefix } => pre_os_utf8_size(text: prefix) }
       let scanned = fold(parts.skip(n: 1), init: PreOsCycleScan { next_offset: position_advanced_by(p: first.envelope.chunk.range.first, extent: prefix_bytes), cycles: [] }, f: (acc, part) => {
@@ -171,8 +173,10 @@ type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCur
 // a claimed total chronology across source clock domains.
 fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let envelopes = map(observations, o => o.envelope)
-  let result = fold(observations, init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, o) => {
-    if any(acc.rows, row => pre_os_same_envelope(a: row.observation.envelope, b: o.envelope)) { acc } else {
+  let result = fold(pre_os_unique_occurrences(envelopes: envelopes), init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, envelope) => {
+    match filter(observations, candidate => pre_os_same_envelope(a: candidate.envelope, b: envelope)).first() {
+    Absent => acc
+    Present { value: o } => {
     let association: ObservationAttempt<ObservationEnvelope, NonEmptyStr> = if o.envelope.binding.enrolled_machine != machine {
       ObservationRefused { cause: concat("timeline machine ", machine as String, " differs from binding ", o.envelope.binding.enrolled_machine as String) as NonEmptyStr }
     } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {
@@ -249,6 +253,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       present_admission: GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "historical milestones are not present fleet admission evidence", tail: Empty } },
     }
     PreOsTimelineFold { rows: concat(acc.rows, [row]), cursors: cursors, console_spans: console_spans }
+    }
     }
   })
   result.rows
