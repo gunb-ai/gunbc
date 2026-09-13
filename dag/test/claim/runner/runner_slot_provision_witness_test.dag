@@ -67,6 +67,20 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  RunnerRetirementStanding,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+  srv4_transition_interruption_authorization,
+  CgroupObservedPopulated,
+  CgroupAbsent,
+  CgroupUnobserved,
+}
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.fleet_intent_network { operator_host_srv4 }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
@@ -161,6 +175,7 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
         deploy: fixture_five_slot_deploy(),
         artifact: artifact,
         observed: observed,
+        retirement_evidence: no_retirement_evidence(),
       )
       runner_slot_provision_has_width_increase(plan: plan)
         && list_length(items: plan.upsert_extract_scripts) == 4
@@ -390,20 +405,35 @@ fn provenance_witness_reconcile(observed: List<RunnerSlotMember>) -> MembershipP
   runner_slot_membership_reconcile(desired: [], observed: observed)
 }
 
+// A RETIRED INCARNATION IS OWNED AND REACHES THE REMOVAL REALIZATION -- WHICH IS NOT THE SAME AS
+// BEING DELETED, AND THAT DISTINCTION IS THE REPAIR.
+//
+// This claim previously asserted that an unregistered, inactive, disabled in-grammar tree produced
+// exactly one `rm -rf`. Ownership and membership are unchanged and still admit it; what changed is
+// that admitting a REMOVAL no longer authorizes a DELETION. With no retirement evidence bound to the
+// convergence, the realization withholds and says which unit it is waiting on.
 test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
-  let retired = provenance_witness_member(
-    name: "wfix-40",
-    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
-  )
-  (runner_slot_member_ownership(m: retired) == Present { value: Owned })
-    && (provenance_witness_reconcile(observed: [retired]).actions |> all(a => match a {
-      MemberRemoved { at: _, from: m } => (m.instance_name as String) == "wfix-40"
-      MemberAdded { at: _, to: _ } => false
-      MemberChanged { at: _, from: _, to: _ } => false
-      MemberRemovalRefused { from: _, cause: _ } => false
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
-    }))
-    && (provenance_witness_reconcile(observed: [retired]).actions |> count) == 1
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => false
+    Present { value: artifact } => {
+      let retired = provenance_witness_member(
+        name: "wfix-40",
+        p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+      )
+      let plan = runner_slot_provision_plan(
+        deploy: fixture_five_slot_deploy(),
+        artifact: artifact,
+        observed: [retired],
+        retirement_evidence: no_retirement_evidence(),
+      )
+      (plan.teardown_scripts |> count) == 1
+        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "__GUNBC_CONVERGE_WITHHELD__")))
+        && (plan.teardown_scripts |> all(s => !string_contains(s: s, pattern: "-rf")))
+    }
+  }
 }
 
 test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
@@ -507,4 +537,189 @@ test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
         && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "-rf")))
     }
   }
+}
+
+
+// ── THE RETIREMENT TRANSACTION, THROUGH THE PRODUCTION PLANNER ────────────────────────────────
+//
+// Every row below calls `runner_slot_provision_plan` -- the function `fleet_converge_slot_family`
+// calls -- and reads the two script lists it actually emits. A suite that exercised the retirement
+// helpers alone would prove the helpers and say nothing about whether the planner consults them,
+// which is precisely how the previous head shipped a teardown that never asked.
+fn no_retirement_evidence() -> SlotRetirementEvidence {
+  SlotRetirementEvidenceAbsent { cause: "this control binds no observation" }
+}
+
+fn srv4_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
+  SlotRetirementEvidencePresent {
+    authorization: srv4_transition_interruption_authorization,
+    standings: standings,
+  }
+}
+
+fn srv4_deploy() -> RunnerHostDeploy {
+  match runner_host_deploy_for(host: operator_host_srv4) {
+    RunnerHostDeployFound { deploy: d } => d
+    RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
+  }
+}
+
+fn srv4_surplus_member(name: String, active: Bool, enabled: Bool) -> RunnerSlotMember {
+  provenance_witness_member(
+    name: name,
+    p: SlotProvenanceObserved {
+      in_host_grammar: true,
+      registration: SlotUnregistered,
+      unit_active: active,
+      unit_enabled: enabled,
+    },
+  )
+}
+
+fn srv4_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence) -> List<String> {
+  match actions_runner_binary_artifact_for_arch(
+    binary_release: actions_runner_release_2_336_0,
+    arch: altra_max_m12830_catalog.architecture,
+  ) {
+    Absent => []
+    Present { value: artifact } => {
+      let plan = runner_slot_provision_plan(
+        deploy: srv4_deploy(),
+        artifact: artifact,
+        observed: observed,
+        retirement_evidence: evidence,
+      )
+      concat(plan.retirement_scripts, plan.teardown_scripts)
+    }
+  }
+}
+
+fn emits_no_tree_removal(lines: List<String>) -> Bool {
+  !any(lines, l => string_contains(s: l, pattern: "-rf"))
+}
+
+fn emits_mask(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "mask"))
+}
+
+// 1. AN ACTIVE SURPLUS SLOT PRODUCES NO REMOVAL AND NO MASK. It is not even a removable member:
+// ownership refuses an active tree, so this stops at membership before the realization is consulted.
+test fn an_active_surplus_slot_is_never_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: true, enabled: true)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_no_tree_removal(lines: lines)
+}
+
+// 2. THE EXACT UNSAFE STATE THE REVIEW NAMED: inactive, disabled, unregistered, in grammar -- so
+// ownership admits and membership removes -- WITH WORK STILL UNDER ITS CGROUP. The old planner
+// deleted this tree. The realization must withhold, because occupancy is the fact the provenance
+// predicate cannot see.
+test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupObservedPopulated { count: 2 },
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+    && any(lines, l => string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__"))
+}
+
+// 3. FIRST PASS: A PERMITTED SURPLUS SLOT IS MASKED AND NOT DELETED. No standing exists yet, so the
+// realization actuates and defers. A pass that did both would be establishing its own postcondition.
+test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
+}
+
+// 4. THE POSITIVE CONTROL, AND WITHOUT IT EVERY ROW ABOVE IS SATISFIED BY A GATE THAT DELETES
+// NOTHING EVER. Second pass: the independently reobserved standing is complete, so this exact tree
+// is removed -- and the mask is NOT re-emitted, because the unit is already retired.
+test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+    && !emits_mask(lines: lines)
+}
+
+// 5. AN UNREADABLE CGROUP IS A NAMED REFUSAL, NOT A DELETION AND NOT A SILENCE.
+test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupUnobserved { cause: "probe refused" },
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+    && any(lines, l => string_contains(s: l, pattern: "actions-runner@srv4-13.service"))
+}
+
+// 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
+// identity; a gate that checked "some retirement completed" would delete srv4-13 on srv4-14's proof.
+test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: [
+      runner_retirement_standing(
+        o: retirement_observation_from_readings(
+          unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+          unit_file_state: "masked",
+          active_state: "inactive",
+          occupancy: CgroupAbsent,
+        ),
+      ),
+    ]),
+  )
+  emits_no_tree_removal(lines: lines)
+}
+
+// 7. A UNIT THE AUTHORIZATION DOES NOT NAME IS NEITHER MASKED NOR DELETED. srv4-30 is in the host's
+// grammar and outside the operator's enumerated 13..21 scope, so permission refuses even though
+// membership and ownership would admit.
+test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-30", active: false, enabled: false)],
+    evidence: srv4_evidence(standings: []),
+  )
+  emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
+}
+
+// 8. WITH NO EVIDENCE BOUND AT ALL, NOTHING DESTRUCTIVE IS EMITTED. This is the default the pure
+// planner supplies, so a route that has not been taught to observe retirement cannot delete or mask.
+test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
+  let lines = srv4_plan(
+    observed: [srv4_surplus_member(name: "srv4-13", active: false, enabled: false)],
+    evidence: no_retirement_evidence(),
+  )
+  emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
 }
