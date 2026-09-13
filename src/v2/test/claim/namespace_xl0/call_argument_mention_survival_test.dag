@@ -11,7 +11,7 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -343,7 +343,7 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 test fn the_import_arm_is_empty_because_imports_do_not_reach_this_route_holds() -> Bool {
   !sites_mention(sites: fixture_import_sites(), spelling: "Absent")
     && !sites_mention(sites: fixture_sites(), spelling: "Absent")
-    && !fold_list(xs: fixture_import_sites(), empty: false, cons: fn(acc, site) { true })
+    && is_empty(xs: fixture_import_sites())
 }
 
 test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
