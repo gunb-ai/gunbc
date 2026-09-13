@@ -141,14 +141,14 @@ fn cloudflare_r2_downstream() -> DownstreamProviderPopulation {
 
 fn cloudflare_r2_location_readings_digest() -> Fnv1a64Structural {
   let after_statements = fold(
-    concat([r2_published_location_readings(), cloudflare_company_document_readings()]),
+    concat(r2_published_location_readings(), cloudflare_company_document_readings()),
     init: content_hash_atom(value: "product.supplier.cloudflare_r2.location-readings" as NonEmptyStr),
     f: fn(acc, statement) {
       content_hash_combine_structural(left: acc, right: content_hash_atom(value: statement))
     },
   )
   let after_citations = fold(
-    concat([r2_published_location_citations(), cloudflare_company_document_citations()]),
+    concat(r2_published_location_citations(), cloudflare_company_document_citations()),
     init: after_statements,
     f: fn(acc, citation) {
       content_hash_combine_structural(
