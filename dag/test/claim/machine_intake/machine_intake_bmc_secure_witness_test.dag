@@ -111,7 +111,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialProbeDuplicate,
   PublishedCredentialProbePrecedesRotation,
-  PublishedCredentialAccessPrecedesRotation,
+  PublishedCredentialCensusPrecedesRotation,
   PublishedCredentialAccountPrecedesRotation,
   PublishedCredentialProbeUnmatched,
   PublishedCredentialRetired,
@@ -677,9 +677,29 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
   is_secured(standing: standing)
 }
 
-// review 65304: NO ACCESS on an unaddressed channel is not post-rotation
-// evidence if the census was taken before the rotation. Fresh rejecting
-// probes on the assigned LAN members must not mint BmcSecured.
+// review 65304 / 65557: a census taken before rotation is not the join universe,
+// including when every member is assigned LAN. MUTATION: drop the
+// census_observed_at < applied_at arm in adjudicate_published_census_join.
+test fn census_before_rotation_refuses() -> Bool {
+  let observation = observed_bmc_credential_rotation(
+    subject: intake_subject,
+    endpoint: controller,
+    previous_credential_epoch: 0,
+    bootstrap_probe: bootstrap_accepted,
+    rotation: RotationApplied { reference: managed_reference, applied_at: rotation_at, evidence: evidence(label: "account-create-201") },
+    managed_probe: managed_accepted,
+    channel_census: census_two_lan,
+    census_evidence: evidence(label: "channel-census"),
+    census_observed_at: 1788000002000,
+    published_probes: both_lan_rejecting(),
+    published_account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialCensusPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
+  )
+}
+
 test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
   let observation = observed_bmc_credential_rotation(
     subject: intake_subject,
@@ -696,7 +716,7 @@ test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
   )
   refused_with(
     standing: derive_dev(observation: observation),
-    expected: PublishedCredentialAccessPrecedesRotation { channel: channel_seven, applied_at: rotation_at, observed_at: 1788000002000 },
+    expected: PublishedCredentialCensusPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   )
 }
 
@@ -1103,7 +1123,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialStillAccepted { channel: channel_eight },
   PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
   PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
-  PublishedCredentialAccessPrecedesRotation { channel: channel_seven, applied_at: rotation_at, observed_at: 1788000002000 },
+  PublishedCredentialCensusPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   PublishedCredentialAccountPrecedesRotation { applied_at: rotation_at, observed_at: 1788000002000 },
   PublishedCredentialCensusNotTaken,
   PublishedCredentialNoAddressableLanMember,
@@ -1121,7 +1141,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
 // and an earlier annotation here claimed a coverage it does not provide (review
 // 63083). What the ordinal below actually buys is narrower and worth stating
 // exactly: its match must name every arm of BmcSecureRefusalCause, so a
-// thirteenth cause fails to compile IN THIS FILE and its author cannot land it
+// new cause fails to compile IN THIS FILE and its author cannot land it
 // without visiting the roster it sits beside. That is a compile-time forcing
 // function, not a derivation of the roster from the type — deriving the
 // universe from the coproduct needs a variant-reflection facility this corpus
@@ -1130,7 +1150,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
 // bmc_secure_refusal_owner's own exhaustive match, which makes every new cause
 // name an owner before anything compiles; this pair checks that the owners
 // chosen so far are all non-hardware, and that the roster is gap-free and
-// duplicate-free rather than twelve copies of one cause.
+// duplicate-free rather than N copies of one cause.
 fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
   match cause {
     RotationObservationForOtherAttempt { expected: _, found: _ } => 0
@@ -1145,7 +1165,7 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialStillAccepted { channel: _ } => 9
     PublishedCredentialRetirementUnestablished { detail: _ } => 10
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 11
-    PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => 12
+    PublishedCredentialCensusPrecedesRotation { applied_at: _, observed_at: _ } => 12
     PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => 13
     PublishedCredentialCensusNotTaken => 14
     PublishedCredentialNoAddressableLanMember => 15
@@ -1160,8 +1180,8 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
 }
 
 // Each rostered cause has a distinct ordinal and the ordinals are contiguous
-// from zero. Distinctness is what makes the length meaningful — twelve entries
-// that duplicate one cause would satisfy a bare count — and contiguity is what
+// from zero. Distinctness is what makes the length meaningful — copies of one
+// cause would satisfy a bare count — and contiguity is what
 // makes a rostered-but-misnumbered entry red.
 test fn roster_covers_every_refusal_cause() -> Bool {
   let ordinals = fold(every_refusal_cause, init: [], f: (acc, c) => concat(acc, [refusal_cause_ordinal(cause: c)]))
