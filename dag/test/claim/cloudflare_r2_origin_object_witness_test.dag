@@ -408,6 +408,8 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
     && frontier_rows_well_formed(rows: cloudflare_r2_supplier_frontier_rows)
     && !any(cloudflare_r2_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_endpoint_url")))
+    && any(cloudflare_r2_frontier_rows, row => frontier_row_names_decl(
+         row: row, ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_tokens_doc_as_of")))
     && frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
     && any(cloudflare_r2_token_mint_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint")))
