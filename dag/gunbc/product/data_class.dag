@@ -160,13 +160,14 @@ type Sink<C> sole_constructor {
 
 // THE CATEGORY WITNESS A SINK MINT TAKES. It binds the runtime reference to the marker type once,
 // in this module, so a sink for BuildOutput cannot be minted carrying PersonalIdentity's
-// reference. One row per category with a sink consumer in this tree.
+// reference. One row per category with a sink consumer in this tree -- BuildOutput today; a
+// category gets its witness with its first sink, exactly as it gets its mint with its first
+// boundary (DESIGN 3c, review 65204). Likewise only the two sink mints with a caller exist:
+// durable_origin_sink (the fabric write) and log_channel_sink (the enrolled log-channel probe);
+// the Telemetry, SheetCell and SupportExport KINDS stay, because the map rows the private lane
+// authors name them, and their mints arrive with their first consumer.
 type DataCategoryWitness<C> sole_constructor {
   category: DeclarationRef
-}
-
-fn personal_identity_category() -> DataCategoryWitness<PersonalIdentity> {
-  DataCategoryWitness { category: personal_identity_ref() }
 }
 
 fn build_output_category() -> DataCategoryWitness<BuildOutput> {
@@ -184,18 +185,6 @@ fn durable_origin_sink<C>(
 
 fn log_channel_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef, recipient: DeclarationRef) -> Sink<C> {
   Sink { category: category.category, kind: LogChannel, purpose: purpose, recipient: recipient }
-}
-
-fn telemetry_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef, recipient: DeclarationRef) -> Sink<C> {
-  Sink { category: category.category, kind: Telemetry, purpose: purpose, recipient: recipient }
-}
-
-fn sheet_cell_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef, recipient: DeclarationRef) -> Sink<C> {
-  Sink { category: category.category, kind: SheetCell, purpose: purpose, recipient: recipient }
-}
-
-fn support_export_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef, recipient: DeclarationRef) -> Sink<C> {
-  Sink { category: category.category, kind: SupportExport, purpose: purpose, recipient: recipient }
 }
 
 // THE MAP, SHAPE ONLY. The public fabric never enumerates private policy: this tree declares what
@@ -438,7 +427,9 @@ fn admitted_seed<C, T>(
 }
 
 // DECLARED FRONTIERS (DESIGN 3c): consumers that land in a named later change, each with the
-// trigger that retires its row, so nothing here is dangling silently.
+// trigger that retires its row, so nothing here is dangling silently. Enrolled in
+// gunbc.census_closure_frontier census_closure_frontier_row_groups so gunbc.dissolution_census
+// folds them like every sibling frontier group (review 65204).
 data data_class_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "product.data_category", decl_name: "SourceAndBuildInput"),
@@ -449,6 +440,11 @@ data data_class_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "product.data_category", decl_name: "MeteringTelemetry"),
     reason: "the metering usage receipt (gunbc#11177 HardwareThreadMinute usage receipt, open at this writing) is the named first producer for MeteringTelemetry and the Telemetry sink's first consumer; it is not on main, so neither a classify_metering_telemetry mint nor a Telemetry admission has a production caller here",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_usage_receipt's receipt producer, once gunbc#11177 lands. TRIGGER: that producer returns Classified<MeteringTelemetry, _> through a sealed mint and the telemetry emission takes a DataEffectPermit from admit_data_effect for a Telemetry sink. SUFFICIENT FOR deleting this row. NOT satisfied by the receipt type merging without its emission taking the permit"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.data_category", decl_name: "CiSecret"),
+    reason: "CiSecret, SupportCommunication and AbuseAndSanctionsRecord are markers with no boundary and no sink in this tree: their consumers are the private description rows of gunbc-private strategy.data_map that cite them by DeclarationRef, which this tree cannot see. In public they are declared identities with no mint, no witness and no permit -- the honest state of a category that exists in policy before it exists in code",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first ingest boundary for each -- a CI secret entering a job's environment (CiSecret), a support message entering the operator's tooling (SupportCommunication), a screening result entering provider admission (AbuseAndSanctionsRecord). TRIGGER, per marker: an admit_callers-sealed classify_<category> mint in product.data_class with a production boundary as its admitted caller. SUFFICIENT FOR deleting that marker from this row; the row deletes when all three have mints. NOT satisfied by the private citation alone"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.data_class", decl_name: "redact"),

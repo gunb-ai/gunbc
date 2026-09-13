@@ -43,14 +43,10 @@ type AbuseAndSanctionsRecord
 // generic_application_admits_distinct_unit_variant_arguments and its bare-marker sibling), so
 // every Classified value and every Sink also carries the marker's declaration reference, and the
 // admission fold compares those. These are the only spellings of the references; a consumer that
-// needs one imports it rather than re-spelling the module path.
+// needs one imports it rather than re-spelling the module path. Only the references with a
+// consumer exist (PersonalIdentity and BuildOutput, read by their mints); a marker gains its reference function with its first mint or sink, so no
+// function here is a declaration nothing reads (DESIGN 3c, review 65204).
 data data_category_module_path: String = "product.data_category"
 
 fn personal_identity_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "PersonalIdentity") }
-fn source_and_build_input_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SourceAndBuildInput") }
 fn build_output_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "BuildOutput") }
-fn ci_secret_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "CiSecret") }
-fn job_log_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "JobLog") }
-fn metering_telemetry_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "MeteringTelemetry") }
-fn support_communication_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SupportCommunication") }
-fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "AbuseAndSanctionsRecord") }
