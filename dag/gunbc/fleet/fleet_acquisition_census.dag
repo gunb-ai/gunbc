@@ -48,11 +48,7 @@ import product.lot_sales_tax {
   attested_lots,
   unread_or_unrecorded_lots,
 }
-import extdeps.tax.statutory_rate { statutory_rate_value }
-import extdeps.tax.new_jersey_sales_and_use {
-  nj_statewide_sales_tax,
-  nj_uez_reduced_sales_tax,
-}
+import std.measure { parts_per_million }
 import extdeps.tax.new_york_city_sales_and_use {
   nyc_combined_sales_tax,
 }
@@ -288,13 +284,24 @@ data dimm_lot_tax: LotTaxEvidence = LotTaxEvidence {
   },
 }
 
+// THE RATE IS DERIVED, AND IT DOES NOT EQUAL THE STATUTORY FIGURE. This read
+// statutory_rate_value(nj_uez_reduced_sales_tax), which made an OBSERVATION report the statute
+// - so amending the statute row would have silently changed what this claims the vendor
+// charged. Dividing the receipt's own tax line by its own base gives 33100 parts per million,
+// while N.J.S.A. 52:27H-80's Urban Enterprise Zone rate is 33125. A 25 ppm gap, and it was
+// INVISIBLE while the field read the statute.
+//
+// The arm also changed. RateTranscribedFromNamedReceiptLine claims the receipt states a RATE;
+// this receipt states a named tax LINE and an AMOUNT, so the rate is derived from base and
+// tax even though the line is named. Transcribed would have asserted more than the document
+// says. What the discrepancy means - a differently treated line, seller rounding, or a stale
+// rate - is unread, and is not resolved by preferring the statute.
 data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: dgx_spark_micro_center_lot.identity,
   standing: SalesTaxCollected {
-    collection: RateTranscribedFromNamedReceiptLine {
+    collection: RateDerivedFromReceiptBaseAndTax {
       jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-      rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
-      receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
+      rate: parts_per_million(count: 33100),
     },
     residual: nyc_use_tax_residual,
   },
@@ -307,12 +314,23 @@ data spark_ebay_lot_tax: LotTaxEvidence = LotTaxEvidence {
   },
 }
 
+// DERIVED FROM THIS RECEIPT, AND IT HAPPENS TO EQUAL THE STATUTORY FIGURE. That agreement is
+// CORROBORATION and must not be expressed by reading the statute: the new New Jersey module
+// states the rule in its own header - "a derived receipt rate matching this figure is still a
+// derived rate, not a statute read". Wired to the statute, amending that row would have
+// changed this observation's value while it still claimed to be a receipt reading, and the
+// join could not tell the two apart.
+//
+// Dividing this receipt's tax line by its base gives 66250 parts per million exactly, which is
+// N.J.S.A. 54:32B-3's statewide rate. The Micro Center lot above derives 33100 against a
+// statutory 33125, so the two lots disagree with the statute differently - which is only
+// visible because each now carries what its own receipt says.
 data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: mt_collins_lot_identity,
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
       jurisdiction: "New Jersey statewide" as NonEmptyStr,
-      rate: statutory_rate_value(r: nj_statewide_sales_tax),
+      rate: parts_per_million(count: 66250),
     },
     residual: nyc_use_tax_residual,
   },
