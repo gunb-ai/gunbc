@@ -235,6 +235,17 @@ type RunCost {
 // perfectly sound cost artifact and only the crossing-population census is unavailable over it.
 // Making it required would retire the twelve sampled vintages the envelope derivation rests on,
 // which is a strictly larger loss than the one it would prevent.
+// `eval_steps_at_least` IS THE CENSORED ROW'S STEP BOUND, IN ITS OWN COLUMN, and it is OPTIONAL for
+// the same reason `censoring_cpu_limit_ms` is: an artifact written before the producer split the
+// column does not carry it, and refusing those vintages wholesale would retire this reader against
+// every run before gunbc#11195.
+//
+// THIS PARAGRAPH SITS ABOVE THE DECLARATION BECAUSE ANNOTATIONS ARE MODULE-ITEM GRAIN, and it was
+// written inside the record body first. The v2 native route refused it -- four
+// `AnnotationAttachmentRefusal::BodyGrainNotModeled` diagnostics at stage=emit -- while CI stayed
+// green, because no CI lane exercises that route. DESIGN section 4c is the rule and the refusal is
+// its enforcement; a field-grain note has nowhere to attach, so it belongs here or in a typed
+// carrier, never between two fields.
 type ClaimCostColumns {
   identity: Int
   module: Int
@@ -244,10 +255,6 @@ type ClaimCostColumns {
   cpu_at_least_ms: Int
   censoring_cpu_limit_ms: Int?
   eval_steps: Int
-  /// THE CENSORED ROW'S STEP BOUND, IN ITS OWN COLUMN. Optional for the same reason
-  /// `censoring_cpu_limit_ms` is: an artifact written before the producer split the column does not
-  /// carry it, and refusing those vintages wholesale would retire this reader against every run
-  /// before gunbc#11195.
   eval_steps_at_least: Int?
   preemption_reachability: Int?
 }
