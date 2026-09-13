@@ -1942,6 +1942,16 @@ fn report_wave_admission_outcome(
             for owed in &report.used_without_follow_up {
                 eprintln!("required-ci: namespace-wave-admission FOLLOW-UP ABSENT {owed}");
             }
+            for receipt in &report.owned_consumed_receipts {
+                eprintln!(
+                    "required-ci: namespace-wave-admission CONSUMED ROW RECEIPT row={:?} \
+                     owner=gunbc#{} follow_up=gunbc#{} -- owned and dispatched, not refused; the \
+                     follow-up's forge state is the landing tally's to read",
+                    receipt.label,
+                    receipt.owner_pull_request,
+                    receipt.deletion_follow_up_pull_request
+                );
+            }
             // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
             // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,
             // so the arm that decides it can be exercised by a test on the path CI runs rather

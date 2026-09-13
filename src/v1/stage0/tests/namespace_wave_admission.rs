@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use v1_compiler::cli_run::namespace_wave_admission::{
     adjudicate, adjudication_event_from_name, base_records, diff_sides, disposition_label,
     in_sweep_scope, report_unadjudicated, wave_admission_refusal, AdjudicationEvent,
-    AdmissionSubject, DeletionFollowUp, DeltaSubject, NamespaceDeltaDisposition,
-    TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport, ADMISSION_ROSTER_REL_PATH,
+    AdmissionSubject, ConsumedRowReceipt, DeletionFollowUp, DeltaSubject,
+    NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionOutcome, WaveAdmissionReport,
+    ADMISSION_ROSTER_REL_PATH,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -489,6 +490,7 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 77777,
     }];
     let admitted = compare_with("admission_after", &base, &head, &admissions);
     assert!(
@@ -541,6 +543,7 @@ const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
     },
     disposition: NamespaceDeltaDisposition::TargetChanged,
     deletion_follow_up: DeletionFollowUp::NotAuthored,
+    owner_pull_request: 77777,
 }];
 
 #[test]
@@ -613,6 +616,7 @@ fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 77777,
     }];
     let report = compare_with("empty_module_row", &base, &head, &admissions);
     assert!(
@@ -655,6 +659,7 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 77777,
     }];
     let report = compare_with("admission_wrong", &base, &head, &admissions);
     assert!(
@@ -946,7 +951,7 @@ fn adjudicated_with_a_consumed_row(name: &str, roster_touched: bool) -> WaveAdmi
     WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report,
+        report: Box::new(report),
         roster_touched,
         event: AdjudicationEvent::PullRequest,
     }
@@ -997,7 +1002,7 @@ fn touching_the_roster_with_no_consumed_row_is_admitted() {
     let outcome = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report,
+        report: Box::new(report),
         roster_touched: true,
         event: AdjudicationEvent::PullRequest,
     };
@@ -1851,6 +1856,7 @@ fn an_unmatched_row_refuses_and_is_never_typed_consumed() {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 77777,
     }];
     let report = compare_with("unmatched_never_consumed", &sides, &sides, &admissions);
     assert!(
@@ -1925,6 +1931,7 @@ fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
             },
             disposition: NamespaceDeltaDisposition::TargetChanged,
             deletion_follow_up: DeletionFollowUp::NotAuthored,
+            owner_pull_request: 77777,
         },
         TransitionAdmission {
             label: "unmatched-here",
@@ -1936,6 +1943,7 @@ fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
             },
             disposition: NamespaceDeltaDisposition::TargetChanged,
             deletion_follow_up: DeletionFollowUp::NotAuthored,
+            owner_pull_request: 77777,
         },
     ];
     let report = compare_with("split_discriminator", &sides, &sides, &admissions);
@@ -2035,6 +2043,7 @@ fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: DeletionFollowUp::NotAuthored,
+        owner_pull_request: 77777,
     }];
     for (name, head_sources, same_revision, roster_touched, refuses) in [
         ("inherited_stale", &base, false, false, true),
@@ -2051,7 +2060,7 @@ fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
         let outcome = WaveAdmissionOutcome::Adjudicated {
             base: "base".into(),
             head: if same_revision { "base" } else { "head" }.into(),
-            report,
+            report: Box::new(report),
             roster_touched,
             event: AdjudicationEvent::PullRequest,
         };
@@ -2104,6 +2113,7 @@ fn multi_candidate_narrowing_admits_then_consumes_only_the_exact_authored_set() 
             },
             disposition: NamespaceDeltaDisposition::TargetChanged,
             deletion_follow_up: DeletionFollowUp::NotAuthored,
+            owner_pull_request: 77777,
         }];
         let transition = compare_with(&format!("{name}_transition"), &base, &head, &admissions);
         assert_eq!(report_unadjudicated(&transition).is_empty(), matches);
@@ -2115,7 +2125,7 @@ fn multi_candidate_narrowing_admits_then_consumes_only_the_exact_authored_set() 
             let outcome = WaveAdmissionOutcome::Adjudicated {
                 base: "base".into(),
                 head: "head".into(),
-                report,
+                report: Box::new(report),
                 roster_touched: false,
                 event: AdjudicationEvent::PullRequest,
             };
@@ -2155,6 +2165,7 @@ fn used_row(follow_up: DeletionFollowUp) -> [TransitionAdmission; 1] {
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
         deletion_follow_up: follow_up,
+        owner_pull_request: 77777,
     }]
 }
 
@@ -2186,7 +2197,7 @@ fn owner_composition(
     WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report,
+        report: Box::new(report),
         roster_touched: true,
         event,
     }
@@ -2239,35 +2250,81 @@ fn a_used_row_without_a_follow_up_does_not_refuse_the_pull_request_run() {
     );
 }
 
-/// THE BACKSTOP RED: a base-consumed row on a bystander's composition (roster untouched) refuses,
-/// says the owner's charge was bypassed, and names the owing change and its follow-up.
+/// THE WINDOW, EXECUTED (lane ruling X; review 65313). A row consumed at the base whose owner
+/// authored a deletion follow-up, seen by an UNRELATED merge_group composition that does not touch
+/// the roster. Under the previous arms this exact fixture REFUSED as ConsumedRowOwnerChargeBypassed:
+/// the owner's charge only establishes that a follow-up number is authored, so between the owner's
+/// landing and its follow-up's landing every composition saw the row and the bystander was billed.
+/// Under X it is ADMITTED and carries a typed receipt naming the row, its owner and its follow-up.
 #[test]
-fn a_base_consumed_row_on_a_bystanders_merge_group_run_refuses_naming_the_owing_change() {
+fn an_owned_consumed_row_is_a_receipt_on_a_bystanders_merge_group_run_not_a_refusal() {
     let sides = [
         ("home.dag", HOME),
         ("other.dag", OTHER),
         ("consumer.dag", CONSUMER_IMPORTS_OTHER),
     ];
     let report = compare_with(
-        "bystander_mg_consumed",
+        "bystander_mg_owned_consumed",
         &sides,
         &sides,
         &used_row(DeletionFollowUp::PullRequest(77778)),
     );
     assert!(
-        !report.consumed_admissions.is_empty(),
-        "fixture precondition: a consumed row"
+        !report.consumed_admissions.is_empty() && report.consumed_without_follow_up.is_empty(),
+        "fixture precondition: one consumed row, owned"
+    );
+    assert_eq!(
+        report.owned_consumed_receipts,
+        vec![ConsumedRowReceipt {
+            label: "gunbc#77777 fixture transition".to_string(),
+            owner_pull_request: 77777,
+            deletion_follow_up_pull_request: 77778,
+        }],
+        "the receipt must name the row, its owner and its follow-up as typed fields"
     );
     let composition = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report: report.clone(),
+        report: Box::new(report),
         roster_touched: false,
         event: AdjudicationEvent::MergeGroup,
     };
-    let refusal = wave_admission_refusal(&composition).expect(
-        "a base-consumed row on a composition must refuse: it is the owner charge's bypass",
+    assert_eq!(
+        wave_admission_refusal(&composition),
+        None,
+        "an owned consumed row must not bill the bystander for the owner's window"
     );
+}
+
+/// THE GENUINE BYPASS STILL REFUSES: the same consumed row with NO authored follow-up, on the same
+/// bystander composition, refuses and names the owing change -- so X narrowed the backstop to its
+/// true subject rather than deleting it. And off the queue the same bystander stays admitted.
+#[test]
+fn an_unowned_consumed_row_on_a_bystanders_merge_group_run_refuses_naming_the_owing_change() {
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let report = compare_with(
+        "bystander_mg_unowned_consumed",
+        &sides,
+        &sides,
+        &used_row(DeletionFollowUp::NotAuthored),
+    );
+    assert!(
+        !report.consumed_without_follow_up.is_empty() && report.owned_consumed_receipts.is_empty(),
+        "fixture precondition: one consumed row, unowned"
+    );
+    let composition = WaveAdmissionOutcome::Adjudicated {
+        base: "base".to_string(),
+        head: "head".to_string(),
+        report: Box::new(report.clone()),
+        roster_touched: false,
+        event: AdjudicationEvent::MergeGroup,
+    };
+    let refusal = wave_admission_refusal(&composition)
+        .expect("an unowned base-consumed row on a composition is the owner charge's bypass");
     assert!(
         refusal.contains("ConsumedRowOwnerChargeBypassed"),
         "{refusal}"
@@ -2277,17 +2334,12 @@ fn a_base_consumed_row_on_a_bystanders_merge_group_run_refuses_naming_the_owing_
         refusal.contains("gunbc#77777 fixture transition"),
         "{refusal}"
     );
-    assert!(
-        refusal.contains("deletion follow-up gunbc#77778"),
-        "{refusal}"
-    );
+    assert!(refusal.contains("owner gunbc#77777"), "{refusal}");
 
-    // And the same bystander on its pull_request run stays admitted: gunbc#9824's rule is unchanged
-    // off the queue.
     let pull_request = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report,
+        report: Box::new(report),
         roster_touched: false,
         event: AdjudicationEvent::PullRequest,
     };
@@ -2307,7 +2359,7 @@ fn the_deletion_follow_ups_merge_group_run_is_admitted() {
     let outcome = WaveAdmissionOutcome::Adjudicated {
         base: "base".to_string(),
         head: "head".to_string(),
-        report,
+        report: Box::new(report),
         roster_touched: true,
         event: AdjudicationEvent::MergeGroup,
     };
