@@ -1,7 +1,6 @@
 module v2.test.manual.body_producer_call_forward_model
 
 import v2.compiler.body_producer_forward {
-  CallApplyOnExistingPrimaryAndPostfixProductions,
   body_producer_call_consumers,
   body_producer_call_forward_standing,
   body_producer_call_interim_constructor,
@@ -19,9 +18,7 @@ fn body_producer_call_refs_contain(xs: List<DeclarationRef>, target: Declaration
 }
 
 test fn body_producer_call_forward_standing_is_existing_productions() -> Bool {
-  match body_producer_call_forward_standing {
-    CallApplyOnExistingPrimaryAndPostfixProductions => true
-  }
+  body_producer_call_forward_standing == "CallApplyOnExistingPrimaryAndPostfixProductions"
 }
 
 test fn body_producer_call_producers_include_transform_call_constructor() -> Bool {

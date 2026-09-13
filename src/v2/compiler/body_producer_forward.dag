@@ -19,10 +19,7 @@ type BodyProducerCallSurface
   = CallSurfacePrimaryIdentSuffix
   | CallSurfacePostfixProjectionSuffix
 
-type BodyProducerCallForwardStanding
-  = CallApplyOnExistingPrimaryAndPostfixProductions
-
-data body_producer_call_forward_standing: BodyProducerCallForwardStanding = CallApplyOnExistingPrimaryAndPostfixProductions
+data body_producer_call_forward_standing: String = "CallApplyOnExistingPrimaryAndPostfixProductions"
 
 data body_producer_call_surface_primary: BodyProducerCallSurface = CallSurfacePrimaryIdentSuffix
 
