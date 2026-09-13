@@ -1,0 +1,442 @@
+module gunbc.spark.vllm_incarnation_provenance
+
+import std.types { String, NonEmptyStr, List, Bool, Secret }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_of_value }
+import gunbc.serving.incarnation_provenance {
+  ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation, CoordinateUnestablished,
+  ServingSourceEvidenceRung, RevisionAddressedUpstreamVerification,
+  ServingSourceResolution, ServingRuntimeResolution,
+  resolve_serving_source, resolve_serving_runtime,
+}
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import std.nat { Nat }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_is,
+}
+import gunbc.spark.native_deployment_readback {
+  DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
+  deployment_deviations_text, deployment_unknowns_text,
+}
+import gunbc.serving.incarnation_provenance { ServingTurnExecutionClosure }
+import product.fabric.demand { ObservationReceiptRef }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.spark.fabric_reach {
+  ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketRefused, MaterializedSshKeyFileBracketCompleted,
+}
+import gunbc.serving.incarnation_provenance {
+  SourceManifestResolved, SourceManifestUnestablished,
+  RuntimeManifestResolved, RuntimeManifestUnestablished,
+  ExecutionClosureResolved, ExecutionClosureUnestablished,
+  seal_serving_execution_closure,
+  serving_execution_source_ref, serving_execution_runtime_ref,
+  serving_source_rung_wire,
+}
+
+// THE RECEIPT NAMES THE PRODUCER THAT TOOK THE READINGS, so a closure carries the identity of the
+// observation that built it rather than one supplied by whoever later consumes it.
+data vllm_incarnation_receipt: ObservationReceiptRef = "gunbc.spark.vllm_incarnation_provenance" as ObservationReceiptRef
+
+// ── READING ONE MEMBER OF A MOUNTED SNAPSHOT, THREE-VALUED AT THE SOURCE ───────────────────────
+//
+// THE COMMAND DISTINGUISHES THE THREE ANSWERS ITSELF RATHER THAN LEAVING THEM TO BE INFERRED FROM AN
+// EMPTY STRING. A file that is not there prints ABSENT; a file that is there prints its digest; a
+// read that could not happen prints neither and the exec itself fails. Collapsing the first and third
+// into "no output" is how "we did not look" becomes "there was nothing", which the coordinate type
+// exists to keep apart -- so the distinction is made where the observation happens, not afterwards.
+//
+// sha256sum IS THE MEMBER'S OWN CONTENT IDENTITY AND IS NOT THE MANIFEST REFERENCE. The reference is
+// a structural identity over the canonical axis material; these digests are what make the members
+// verifiable, and they are cryptographic where the reference is not.
+fn snapshot_member_digest_argv(snapshot_dir: NonEmptyStr, member: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "P=", snapshot_dir as String, "/", member as String,
+    "; if [ -e \"$P\" ]; then sha256sum -b \"$P\" | cut -c1-64; else echo ABSENT; fi",
+  ], "")]
+}
+
+data snapshot_member_absent_wire: String = "ABSENT"
+
+// A DIGEST THAT DOES NOT PARSE IS UNESTABLISHED, NOT ABSENT. std.content_hash sha256_hex_digest
+// refuses a malformed hex rather than answering, and that refusal is carried through here: a truncated
+// read, a permission error that printed to stdout, or a tool that changed its output format all land
+// in the arm that says nobody established the value -- never in the arm that says there was nothing.
+fn snapshot_member_reading(raw: String, member: NonEmptyStr) -> ServingCoordinateReading {
+  if raw == snapshot_member_absent_wire {
+    CoordinateAbsentByObservation
+  } else {
+    match sha256_hex_digest(hex: raw) {
+      Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+      Absent => CoordinateUnestablished {
+        obligation: join([
+          "the member ", member as String, " at the mounted snapshot answered neither a sha256 digest nor ABSENT",
+        ], "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+func observe_snapshot_member(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, member: NonEmptyStr,
+) -> ServingCoordinateReading
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_member_digest_argv(snapshot_dir: snapshot_dir, member: member))
+  if !remote_run_succeeded(r: r) {
+    CoordinateUnestablished {
+      obligation: join([
+        "the member ", member as String, " could not be read on ", host as String, ": ", remote_run_text(r: r),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    snapshot_member_reading(raw: remote_run_stdout(r: r), member: member)
+  }
+}
+
+data snapshot_member_model_config: NonEmptyStr = "config.json" as NonEmptyStr
+data snapshot_member_tokenizer: NonEmptyStr = "tokenizer.json" as NonEmptyStr
+data snapshot_member_tokenizer_config: NonEmptyStr = "tokenizer_config.json" as NonEmptyStr
+data snapshot_member_special_tokens: NonEmptyStr = "special_tokens_map.json" as NonEmptyStr
+data snapshot_member_chat_template: NonEmptyStr = "chat_template.jinja" as NonEmptyStr
+data snapshot_member_generation_defaults: NonEmptyStr = "generation_config.json" as NonEmptyStr
+data snapshot_member_processor_config: NonEmptyStr = "processor_config.json" as NonEmptyStr
+
+// ── MODEL-SIDE CODE IS A POPULATION, NOT A FILE ────────────────────────────────────────────────
+//
+// A REPOSITORY EITHER SHIPS PYTHON THE ENGINE MAY IMPORT OR IT DOES NOT, and which files those are is
+// not knowable from a fixed name. So this counts them and reads the count: zero is a measurement that
+// the repository ships none, and any other number must reach identity -- which at this rung it cannot
+// do faithfully, because a count is not a content identity. The reading therefore refuses rather than
+// hashing a number, and the trigger is the same per-file enumeration the checkpoint rung waits on.
+fn snapshot_model_side_code_argv(snapshot_dir: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "ls ", snapshot_dir as String, "/*.py 2>/dev/null | wc -l",
+  ], "")]
+}
+
+func observe_model_side_code(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr,
+) -> ServingCoordinateReading
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_model_side_code_argv(snapshot_dir: snapshot_dir))
+  if !remote_run_succeeded(r: r) {
+    CoordinateUnestablished {
+      obligation: join(["the model-side code population could not be counted on ", host as String], "") as NonEmptyStr,
+    }
+  } else {
+    if remote_run_stdout(r: r) == "0" {
+      CoordinateAbsentByObservation
+    } else {
+      CoordinateUnestablished {
+        obligation: join([
+          "the repository ships ", remote_run_stdout(r: r),
+          " model-side python files and this rung cannot identify their content; the trigger is per-file enumeration",
+        ], "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// ── THE CHECKPOINT COORDINATE AT THE REVISION RUNG ─────────────────────────────────────────────
+//
+// THE VALUE IS DERIVED FROM THE REPOSITORY AND THE IMMUTABLE REVISION, and the rung beside it says so.
+// This is NOT a per-file content manifest and must never be cited as one: what it identifies is which
+// upstream revision was materialised, verified by the Hub client's own per-file integrity check at
+// acquisition time rather than by a manifest retained here. gunbc.spark.model_snapshot_acquisition
+// declares that weakening and names the tree API that would close it.
+fn checkpoint_revision_reading(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingCoordinateReading {
+  CoordinateObserved {
+    hash: content_hash_of_value(value: join([repo as String, "@", revision as String], "") as NonEmptyStr),
+  }
+}
+
+fn checkpoint_revision_rung(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingSourceEvidenceRung {
+  RevisionAddressedUpstreamVerification { authority: repo, revision: revision }
+}
+
+func observe_serving_source(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity,
+  snapshot_dir: NonEmptyStr, repo: NonEmptyStr, revision: NonEmptyStr,
+) -> ServingSourceResolution
+  uses net: Network
+{
+  resolve_serving_source(
+    checkpoint: checkpoint_revision_reading(repo: repo, revision: revision),
+    model_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_model_config),
+    tokenizer: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer),
+    tokenizer_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer_config),
+    special_tokens: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_special_tokens),
+    chat_template: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_chat_template),
+    model_side_code: observe_model_side_code(ctx: ctx, host: host, snapshot_dir: snapshot_dir),
+    generation_defaults: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_generation_defaults),
+    processor_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_processor_config),
+    rung: checkpoint_revision_rung(repo: repo, revision: revision),
+  )
+}
+
+// ── THE RUNTIME CLOSURE ────────────────────────────────────────────────────────────────────────
+//
+// THE IMAGE CONTENT ID IS THE RUNTIME'S IDENTITY AND IT IS ALREADY A SHA-256. A first-party built
+// image has NO registry digest -- measured on this fleet: docker inspect of the derived runtime
+// returns RepoDigests [] because it was built locally and loaded from an archive -- so the only
+// content identity it has is its own Id, which is exactly what this reads.
+//
+// THE EXTENSION POPULATION IS ABSENT HERE AND THAT IS A MEASUREMENT ABOUT THIS ARM. Its three
+// FlashInfer wheels were installed INTO the derived image at build time, so they are inside the image
+// content id rather than beside it; an arm that installed wheels at container start would read a real
+// population here. Absent means "no runtime artifact outside the image", not "no extensions".
+fn runtime_image_id_argv(container: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "docker inspect -f '{{.Image}}' ", container as String, " | sed 's/^sha256://'",
+  ], "")]
+}
+
+func observe_runtime_image(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr,
+) -> ServingCoordinateReading
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: runtime_image_id_argv(container: container))
+  if !remote_run_succeeded(r: r) {
+    CoordinateUnestablished {
+      obligation: join(["the running container's image id could not be read on ", host as String], "") as NonEmptyStr,
+    }
+  } else {
+    match sha256_hex_digest(hex: remote_run_stdout(r: r)) {
+      Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+      Absent => CoordinateUnestablished {
+        obligation: "the running container reported an image id that is not a sha256 digest" as NonEmptyStr,
+      }
+    }
+  }
+}
+
+func observe_serving_runtime(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr,
+) -> ServingRuntimeResolution
+  uses net: Network
+{
+  resolve_serving_runtime(
+    runtime_image: observe_runtime_image(ctx: ctx, host: host, container: container),
+    runtime_extensions: CoordinateAbsentByObservation,
+    runtime_configuration: CoordinateAbsentByObservation,
+  )
+}
+
+
+// ── EXECUTING THE OBSERVATION AGAINST A RUNNING INCARNATION ────────────────────────────────────
+//
+// THIS ENTRY EXISTS SO THE PRODUCER IS PROVEN BY EXECUTION RATHER THAN BY COMPILING. Every coordinate
+// above is a remote read, and a module full of readings that nobody has run is the specification
+// -without-execution DESIGN section 5 names: it typechecks, the symbols resolve, and not one digest
+// has been taken. What this prints is the pair of references a turn's Work identity would be built
+// from, or the obligations that stopped them being built.
+data glm_native_snapshot_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+
+data glm_native_repo: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
+data glm_native_revision: NonEmptyStr = "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+data glm_native_container: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
+// THE HOST IS NAMED BY THE FLEET ROSTER, NOT SPELLED HERE. A first cut wrote the machine's own
+// hostname as a literal and every leg refused: "No ED25519 host key is known for spark-0c75 and you
+// have requested strict checking". The trust anchor keys on the fleet's identity for that host, and
+// a second spelling of a host is the DESIGN section 3 nickname -- which here does not merely
+// duplicate a name, it addresses a machine the trust policy cannot vouch for.
+data glm_native_provenance_host: HostIdentity = operator_host_srv9
+
+func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
+  uses net: Network
+{
+  let source = observe_serving_source(
+    ctx: ctx, host: glm_native_provenance_host,
+    snapshot_dir: glm_native_snapshot_dir, repo: glm_native_repo, revision: glm_native_revision,
+  )
+  let runtime = observe_serving_runtime(
+    ctx: ctx, host: glm_native_provenance_host, container: glm_native_container,
+  )
+  match seal_serving_execution_closure(source: source, runtime: runtime, receipt: vllm_incarnation_receipt) {
+    ExecutionClosureUnestablished { obligations: os } =>
+      exit_failure(reason: join([
+        "INCARNATION UNESTABLISHED: ", join(map(os, o => o as String), "; "),
+      ], ""))
+    ExecutionClosureResolved { closure: c } =>
+      exit_failure(reason: join([
+        "INCARNATION OBSERVED -- source=", serving_execution_source_ref(c: c) as String,
+        " runtime=", serving_execution_runtime_ref(c: c) as String,
+        " rung=", serving_source_rung_wire(rung: c.source.rung) as String,
+      ], ""))
+  }
+}
+
+func glm_incarnation_provenance_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["incarnation probe: ", c], ""))
+    ExecutorReachKnown { short_hostname: _, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: "incarnation-provenance") {
+            Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join([
+                  "trust could not be established, so no leg ran: ",
+                  known_hosts_materialization_receipt(outcome: materialization),
+                ], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-incarnation-provenance-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      observe_glm_incarnation(
+                        ctx: SparkRemoteExecutionContext {
+                          trust: trust,
+                          reach_path: path,
+                          administrator: administrator as Secret,
+                          administrator_file: file,
+                        },
+                      )
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: v } => v
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+
+// ── BINDING THE CLOSURE TO THE EXACT LAUNCH THAT REALIZES IT ───────────────────────────────────
+//
+// A SOURCE AND A RUNTIME ARE NOT YET AN INCARNATION. What makes them one is evidence that THIS running
+// launch was configured from THOSE closures, and gunbc.spark.vllm_endpoint_process_launch is explicit
+// that its own carrier establishes only the API process lifetime -- not the engine core, not the rank
+// population, not the runtime image, not the loaded model. So the launch identity is joined here to a
+// privileged observation rather than trusted to speak for those facts itself.
+//
+// WORK IDENTITY MUST NOT CONTAIN THE LAUNCH AND OFFER IDENTITY MUST. Restarting the same bytes is the
+// same semantic Work and a different offer, so the launch sits BESIDE the execution closure in this
+// receipt rather than inside the manifests: the closure answers "what would this compute", the launch
+// answers "which process is currently answering", and a consumer needs both to know that a particular
+// endpoint may be asked for a particular Work.
+type VllmIncarnationEvidence sole_constructor {
+  ranks_agreed: Nat
+  ranks_required: Nat
+  image_digest: NonEmptyStr
+  model_path: NonEmptyStr
+}
+
+type VllmServingIncarnationProvenance sole_constructor {
+  launch: VllmEndpointProcessLaunch
+  execution: ServingTurnExecutionClosure
+  evidence: VllmIncarnationEvidence
+}
+
+type VllmIncarnationOutcome
+  = IncarnationBound { provenance: VllmServingIncarnationProvenance }
+  | IncarnationUnestablished { obligations: List<NonEmptyStr> }
+
+// THE DEPLOYMENT MUST HAVE BEEN ACCEPTED, AND A PARTIAL POPULATION IS NOT AN ACCEPTANCE. The readback
+// already compares every rank's image, engine arguments, checkpoint revision, host and bound fabric
+// interface and refuses on any divergence, so this consumes that verdict rather than restating the
+// comparison -- and it additionally requires the agreed population to be the REQUIRED one, because a
+// receipt that says three ranks agreed is a receipt about three ranks.
+fn incarnation_deployment_obligations(acceptance: DeploymentAcceptance, ranks_required: Nat) -> List<NonEmptyStr> {
+  match acceptance {
+    DeploymentRejected { deviations: ds } =>
+      [join(["the deployment DIVERGED from the plan: ", deployment_deviations_text(ds: ds)], "") as NonEmptyStr]
+    DeploymentUnverified { unknowns: us } =>
+      [join(["the deployment readback could not establish every fact it must assert: ", deployment_unknowns_text(us: us)], "") as NonEmptyStr]
+    DeploymentUnverifiable { cause: c } =>
+      [join(["the deployment could not be assessed at all: ", c as String], "") as NonEmptyStr]
+    DeploymentAccepted { receipt: r } =>
+      if r.ranks_agreed == ranks_required { [] } else {
+        [join([
+          "the deployment was accepted over ", to_string(r.ranks_agreed),
+          " ranks and this topology requires ", to_string(ranks_required),
+        ], "") as NonEmptyStr]
+      }
+  }
+}
+
+fn bind_incarnation(
+  launch: VllmEndpointProcessLaunch,
+  acceptance: DeploymentAcceptance,
+  ranks_required: Nat,
+  source: ServingSourceResolution,
+  runtime: ServingRuntimeResolution,
+) -> VllmIncarnationOutcome {
+  let deployment_obligations = incarnation_deployment_obligations(acceptance: acceptance, ranks_required: ranks_required)
+  match seal_serving_execution_closure(source: source, runtime: runtime, receipt: vllm_incarnation_receipt) {
+    ExecutionClosureUnestablished { obligations: os } =>
+      IncarnationUnestablished { obligations: concat(deployment_obligations, os) }
+    ExecutionClosureResolved { closure: c } =>
+      if count(deployment_obligations) != 0 {
+        IncarnationUnestablished { obligations: deployment_obligations }
+      } else {
+        match acceptance {
+          DeploymentRejected { deviations: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentUnverified { unknowns: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentUnverifiable { cause: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentAccepted { receipt: r } =>
+            IncarnationBound {
+              provenance: VllmServingIncarnationProvenance {
+                launch: launch,
+                execution: c,
+                evidence: VllmIncarnationEvidence {
+                  ranks_agreed: r.ranks_agreed,
+                  ranks_required: ranks_required,
+                  image_digest: r.image_digest,
+                  model_path: r.model_path,
+                },
+              },
+            }
+        }
+      }
+  }
+}
+
+// ── PROVENANCE FOR ONE LAUNCH MAY NEVER BIND ANOTHER ───────────────────────────────────────────
+//
+// TWO GROUPS ANSWERING THE SAME ALIAS IS THE CASE THIS FORBIDS. A receipt established against group A's
+// launch says nothing about what group B loaded, and admitting it because both advertise one model name
+// would let a turn be placed on an engine nobody observed. The comparison is on the launch's own offer
+// key, which gunbc.spark.vllm_endpoint_process_launch already folds from every field of the carrier --
+// so a restart, a different endpoint or a different group is a different launch by construction.
+// THE COMPARISON IS FIELD BY FIELD BECAUSE THE OFFER KEY IS NOT INJECTIVE. That key renders
+// group@endpoint@process_start_field over two UNCONSTRAINED NonEmptyStr fields, so an endpoint of
+// "a@b" with a start field of "c" and an endpoint of "a" with a start field of "b@c" serialise
+// identically -- and comparing keys would then report two different launches as one, which is exactly
+// the confusion this predicate exists to prevent. Fixture values rarely contain "@", so a key
+// comparison can stay green while being wrong; the structural comparison cannot.
+fn incarnation_applies_to(p: VllmServingIncarnationProvenance, launch: VllmEndpointProcessLaunch) -> Bool {
+  vllm_endpoint_process_launch_is(launch: p.launch, other: launch)
+}
+
+fn incarnation_for_launch(
+  candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
+) -> VllmServingIncarnationProvenance? {
+  filter(candidates, p => incarnation_applies_to(p: p, launch: launch)).first()
+}

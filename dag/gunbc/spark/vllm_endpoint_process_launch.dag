@@ -1,5 +1,7 @@
 module gunbc.spark.vllm_endpoint_process_launch
 
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+
 import std.types { Bool, String, NonEmptyStr }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
@@ -70,16 +72,43 @@ fn vllm_endpoint_process_launch(group: FabricGroup, endpoint: NonEmptyStr, proce
 // consumer holding the carrier could act on an endpoint the identity never agreed to. A field that
 // does not participate in identity belongs outside the identity carrier; this one belongs in, because
 // the process-start value is only meaningful relative to the exporter that reported it.
-fn vllm_endpoint_process_launch_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
+// ── THE KEY IS FRAMED MATERIAL HASHED, BECAUSE CONCATENATION WITH "@" IS NOT INJECTIVE ────────
+//
+// THE PREVIOUS RENDERING COLLAPSED DISTINCT LAUNCHES. It joined group, endpoint and
+// process_start_field with "@" over two UNCONSTRAINED NonEmptyStr fields, so an endpoint of "a@b"
+// with a start field of "c" and an endpoint of "a" with a start field of "b@c" produced the SAME
+// key -- and this key IS the fabric offer subject through gunbc.spark.serving_offer
+// spark_serving_offer_key, so two different running processes could share one offer identity, with
+// one launch's readiness and queue state answering for the other.
+//
+// FIELD TAGS AND A RECORD SEPARATOR MAKE IT INJECTIVE, the same idiom product.training.resolution
+// uses for manifest material: U+001F between a field name and its value, U+001E between fields.
+// Neither separator can occur in a group wire, an endpoint or a start field, so the material is
+// injective over this domain and the hash of it is a name rather than a readable join.
+//
+// THE KEY'S VALUE CHANGES WITH THIS EDIT. It is an in-run subject identity rather than a persisted
+// contract, so the discontinuity is one-time; anything that stored a previous key would be comparing
+// across a representation change, which is the thing the old rendering could not even detect.
+fn vllm_endpoint_process_launch_material(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
   join([
-    fabric_group_wire(g: launch.group) as String, "@",
-    launch.endpoint as String, "@",
-    launch.process_start_field as String,
-  ], "") as NonEmptyStr
+    join(["group", "\u{1f}", fabric_group_wire(g: launch.group) as String], ""),
+    join(["endpoint", "\u{1f}", launch.endpoint as String], ""),
+    join(["process-start", "\u{1f}", launch.process_start_field as String], ""),
+  ], "\u{1e}") as NonEmptyStr
 }
 
+fn vllm_endpoint_process_launch_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
+  serialize_content_hash(hash: content_hash_of_value(value: vllm_endpoint_process_launch_material(launch: launch)))
+}
+
+// EQUALITY IS STRUCTURAL AND DOES NOT ROUTE THROUGH THE KEY. Even with an injective key, deciding
+// identity by comparing a hash asks a weaker question than comparing the fields: the hash answers
+// "do these render alike", and only the fields answer "are these the same launch". The two now agree,
+// and this one cannot be wrong for a reason the other might be.
 fn vllm_endpoint_process_launch_is(launch: VllmEndpointProcessLaunch, other: VllmEndpointProcessLaunch) -> Bool {
-  (vllm_endpoint_process_launch_key(launch: launch) as String) == (vllm_endpoint_process_launch_key(launch: other) as String)
+  (fabric_group_wire(g: launch.group) as String) == (fabric_group_wire(g: other.group) as String)
+    && (launch.endpoint as String) == (other.endpoint as String)
+    && (launch.process_start_field as String) == (other.process_start_field as String)
 }
 
 // AN UNREADABLE LAUNCH IS NOT A LAUNCH, AND THAT IS THE WHOLE POINT OF THE COPRODUCT. A group whose
