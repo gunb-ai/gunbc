@@ -4,6 +4,8 @@ import std.types { Bool, Int, String, NonEmptyStr, CommitSha, List }
 import std.nat { Nat }
 import std.measure { ByteSize, Second, second, byte_size_count, measure_count }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
 import std.disposition { Disposition, Terminal, SingleAuthority }
 import extdeps.posix.rusage {
   RusageMaxrssObservation,
@@ -121,7 +123,9 @@ fn census_run_invocation(r: CensusRun) -> List<String> {
     "--source-root", r.primary_root as String,
     "--source-root", r.dependency_pool_root as String,
     "--target", r.render_target as String,
-    "--output-dir", "<a fresh directory>"
+    "--output-dir", "<a fresh directory>",
+    "--repository", whole_corpus_compile_repository as String,
+    "--measured-root-demands", whole_corpus_compile_demand_projection_path()
   ]
 }
 
@@ -260,7 +264,8 @@ fn census_population_bound(r: CensusReading) -> PopulationBound {
 // THE COMMAND, which is the instrument and is named rather than paraphrased:
 //
 //   cargo build --release -p v1-compiler --bin gunbc
-//   gunbc compile --source-root dag --source-root src/v2 --target rust --output-dir <D>
+//   gunbc compile --source-root dag --source-root src/v2 --target rust --output-dir <D> \
+//     --repository gunbc --measured-root-demands tools/whole_corpus_compile_measured_root_demands.json
 //
 // --target rust IS LOAD-BEARING AND IS NOT A DEFAULT. v1.05_emit file_emission_target_is_modeled
 // answers Rust => true with Python, Go and Dag ALL FALSE, so the Rust path is the only one on

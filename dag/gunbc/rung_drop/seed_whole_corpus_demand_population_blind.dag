@@ -4,26 +4,15 @@ import std.types { List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 2026-09-13 (session nimble-badger-98, direction vivid-bee-814 / fierce-lark-661). The
-// .dag authority gunbc.whole_corpus_compile_admission now keys demand on the root compiled --
-// WholeCorpusCompileDemand = MeasuredForRoot | UnmeasuredRoot, joined on repository, primary root and
-// ordered dependency pools -- and an unmeasured root refuses with its measurement recipe. The v1
-// seed, which is the only route that executes the admission before a compile, still realizes the
-// deleted population-blind constant: v1_compiler.memory_governor
-// DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES and whole_corpus_compile_admission compare
-// every whole-root compile's budget to the public root's peak.
+// DECLARED 2026-09-13 with the model (gunbc#11227, session nimble-badger-98, direction vivid-bee-814
+// / fierce-lark-661). WHAT WAS LOST WHEN IT WAS DECLARED, and is no longer the state: the model keyed
+// demand on the root compiled while the v1 seed still compared every whole-root compile's budget to
+// one population-blind constant, so the seed admitted a root with no row and refused a smaller root
+// on the public root's number. gunbc#11265 removed that loss -- the constant is deleted and the seed
+// performs the per-root join -- and THE POPULATION BELOW IS WHAT STILL STANDS, not what was declared.
 //
-// WHAT IS LOST ON THE SEED-MIRROR PATH. test.claim.seed_mirror_constant_lens_witness_test still
-// joins that constant's VALUE to the public root's row, and that equality still holds; what it no
-// longer establishes is that the seed realizes the authority, because the authority is now a join
-// the seed does not perform. So the seed ADMITS a root with no row (another repository, another
-// pool set) whose budget clears the public peak, and REFUSES a smaller root on the public root's
-// number -- both directions of the defect the model closed, still live at execution. The seed's
-// refusal stays typed and located, so the path sits at mitigation, not below the ladder.
-//
-// WHY A DROP AND NOT A SAME-PR FIX: the model and the seed mirror land separately because any
-// src/v1 landing stales every closure receipt taken before it, and the seed's landing is slotted by
-// v1 seed maintenance between receipt re-takes.
+// WHY THE MODEL AND THE SEED LANDED SEPARATELY: any src/v1 landing stales every closure receipt taken
+// before it, and the seed's landing is slotted by v1 seed maintenance between receipt re-takes.
 
 // STILL STANDING AFTER THE SEED LANDED THE JOIN, AND WHY (review 65569 on gunbc#11265). The seed now
 // admits on the root's own row: it performs the join, refuses an unmeasured root with the recipe, and
