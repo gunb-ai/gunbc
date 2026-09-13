@@ -1163,6 +1163,38 @@ fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> EvalStepCount {
   )
 }
 
+// THE HOST MIRRORS THIS SELECTION BY HAND, AND THAT MIRROR IS DECLARED HERE RATHER THAN LEFT TO
+// BE INFERRED (review 65731). `v1_compiler.cli_run.required_floor_runner` does not call this
+// function per claim. It reads the two tier budgets ONCE through the hermetic frame, decodes
+// `floor_grandfathered_roster` into a HashSet, and reproduces the membership test in Rust.
+//
+// THE REASON IS MEASURED, NOT STYLISTIC. Evaluating this function per claim re-folds a 3,795-row
+// roster once per claim -- and this change's own witnesses measured that fold at about 38,000 eval
+// steps for a name the roster does NOT hold, which is the worst case and the common one. Across
+// the floor's claim population that is work of the order the ceiling this module declares exists
+// to refuse, so the mirror is the cheaper correct answer today rather than a shortcut.
+//
+// IT IS `mitigatable` AND NOT HIGHER, stated plainly: a divergence between this derivation and its
+// Rust mirror is writable, and what prevents it today is that BOTH READ THE SAME ROSTER through
+// the frame -- the numbers and the membership set have one authority -- plus review. Nothing
+// executes a comparison of the two.
+//
+// IT IS NOT COVERED BY `floor_preparation_host_mirror_dissolve_on`, which names
+// `floor_preparation_outcome` and only that; a reader who took that row as covering this mirror
+// would be reading a narrower declaration than what landed.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the per-claim cost of evaluating this function through
+// the frame stops scaling with roster size -- the roster fold served once across claim frames
+// rather than re-derived per claim, which is exactly what
+// `v2.workflow.floor_pure_producer_share`'s cross-claim share does for other nullary producers --
+// at which point the host calls `claim_eval_step_budget_for_identity` and the mirrored branch is
+// DELETED rather than kept beside it (DESIGN section 4b(4), dissolution on climb). A trigger
+// naming a faster HashSet, a cache inside the runner, or a comparison test does not discharge
+// this: each keeps two derivations of one fact, which is the condition being retired.
+data claim_ceiling_tier_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: v1_compiler.cli_run.required_floor_runner selects a claim's budget by evaluating v2.workflow.required_floor claim_eval_step_budget_for_identity through the hermetic frame it already holds, instead of decoding floor_grandfathered_roster into a HashSet and reproducing claim_ceiling_tier's membership test in Rust. BLOCKED ON COST, NOT ON PLUMBING: the frame call is available today and the mirror exists because evaluating it per claim re-folds the whole roster per claim, measured at roughly 38,000 eval steps per absent-name probe by this lane's own witnesses. The capability that retires it is the roster fold being SERVED once across claim frames rather than re-derived, the shape v2.workflow.floor_pure_producer_share already provides for nullary producers. Owner: the required-floor ceiling lane, currently smart-heron-867 and after it whoever holds the floor cost-ceiling work item. On the climb the mirrored branch is deleted, not kept beside the call." as NonEmptyStr,
+)
+
 // THE CEILING FOR ONE IDENTITY, WHICH IS THE ONLY ENTRY POINT A CALLER SHOULD REACH FOR. It joins
 // the two steps above so no caller can select a tier for one identity and a budget for another.
 fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
