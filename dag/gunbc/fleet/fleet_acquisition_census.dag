@@ -48,12 +48,13 @@ import product.lot_sales_tax {
   attested_lots,
   unread_or_unrecorded_lots,
 }
+import extdeps.tax.statutory_rate { statutory_rate_value }
 import extdeps.tax.new_jersey_sales_and_use {
-  nj_statewide_sales_tax_rate,
-  nj_uez_reduced_sales_tax_rate,
+  nj_statewide_sales_tax,
+  nj_uez_reduced_sales_tax,
 }
 import extdeps.tax.new_york_city_sales_and_use {
-  nyc_combined_sales_tax_rate,
+  nyc_combined_sales_tax,
 }
 
 // ONE JOIN of procurement lots the operator owns. Spark lots stay in
@@ -76,7 +77,7 @@ data fleet_acquisition_census_standing: AcquisitionCensusStanding = CensusFloor 
 
 data nyc_use_tax_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: nyc_combined_sales_tax_rate,
+  destination_combined_rate: nyc_combined_sales_tax,
 }
 
 fn private_received_lot(
@@ -292,7 +293,7 @@ data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
       jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-      rate: nj_uez_reduced_sales_tax_rate,
+      rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
       receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
     },
     residual: nyc_use_tax_residual,
@@ -311,7 +312,7 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
       jurisdiction: "New Jersey statewide" as NonEmptyStr,
-      rate: nj_statewide_sales_tax_rate,
+      rate: statutory_rate_value(r: nj_statewide_sales_tax),
     },
     residual: nyc_use_tax_residual,
   },

@@ -118,9 +118,6 @@ test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
     && !statutory_rate_version_is_read(r: nyc_combined_sales_tax)
 }
 
-// ENROLLED 2026-09-13. This stood as a plain `fn` and was never called, so the check it
-// describes has never executed - an inert witness, which is worse than an absent one because it
-// reads as coverage. Declaring it `test fn` is what puts it on the floor.
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
   parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) == 66250
     && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) == 33125
