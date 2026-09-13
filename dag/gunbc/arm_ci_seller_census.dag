@@ -32,7 +32,12 @@ import extdeps.pricing.ubicloud { ubicloud_arm_linux_offer }
 // WHICH ARM LINUX CI SELLERS THIS REPOSITORY HAS READ. Observation layer: DESIGN
 // forbids the extdeps hub from enumerating products. Adding a seller is one module
 // plus one line here.
-
+//
+// Scope: Linux aarch64 CI-runner sellers only. Mac/Apple-silicon CI (Bitrise,
+// Codemagic, MacStadium, and macOS families on mixed sellers) is a different market
+// and is not modelled as ARM Linux shapes. Hetzner CAX (extdeps.cloud.hetzner) is ARM
+// supply, not a CI-runner seller, and is not enrolled here; CAX was unread as
+// orderable on three dated readings.
 fn surveyed_arm_linux_offers() -> List<SellerArmLinuxOffer> {
   [
     blacksmith_arm_linux_offer,
@@ -103,30 +108,4 @@ fn customer_account_includes_provider(provider: DeclarationRef) -> Bool {
 
 fn provider_in(provider: DeclarationRef, identities: List<DeclarationRef>) -> Bool {
   any(identities, p => declaration_ref_eq(a: provider, b: p))
-}
-
-// Mac/Apple-silicon CI (Bitrise, Codemagic, MacStadium, and macOS families on mixed sellers)
-// is a different market from Linux aarch64 runners: excluded by scope, not modelled as shapes.
-// Hetzner CAX is ARM supply (extdeps.cloud.hetzner), not a CI-runner seller, unread as orderable
-// CAX on three dated readings. The join reads these constructors; they are not commentary strings.
-type ArmCiMarketExclusion
-  = DifferentMarketMacAppleSilicon
-  | ArmSupplyNotCiSellerHetzner
-
-fn arm_ci_market_exclusions() -> List<ArmCiMarketExclusion> {
-  [DifferentMarketMacAppleSilicon, ArmSupplyNotCiSellerHetzner]
-}
-
-fn exclusion_is_mac_apple_silicon(row: ArmCiMarketExclusion) -> Bool {
-  match row {
-    DifferentMarketMacAppleSilicon => true
-    ArmSupplyNotCiSellerHetzner => false
-  }
-}
-
-fn exclusion_is_hetzner_supply(row: ArmCiMarketExclusion) -> Bool {
-  match row {
-    ArmSupplyNotCiSellerHetzner => true
-    DifferentMarketMacAppleSilicon => false
-  }
 }
