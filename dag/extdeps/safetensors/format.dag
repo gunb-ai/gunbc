@@ -366,15 +366,41 @@ fn safetensors_spans_overlap(a: SafetensorsEntry, b: SafetensorsEntry) -> Bool {
   a.begin_offset < b.end_offset && b.begin_offset < a.end_offset
 }
 
+// OVERLAP IS A WITHIN-SHARD QUESTION, SO THE SCAN IS PARTITIONED BY SHARD FIRST. A first cut scanned
+// the WHOLE population for every entry and discarded the other shards' rows inside the predicate, so a
+// checkpoint of forty-eight shards paid the full n squared to answer a question that only ever compares
+// rows sharing a shard. Partitioning makes the cost the sum of the per-shard squares instead of the
+// square of the sum -- for evenly spread shards that is a factor of the shard count -- and DESIGN
+// section 6 says a proven cost-shape defect is fixed regardless of the realized n.
+//
+// THE WITHIN-SHARD SCAN IS STILL QUADRATIC AND THAT IS A DECLARED LIMIT RATHER THAN AN OVERSIGHT.
+// Detecting overlaps among k intervals in better than k squared means an ordered sweep, which needs an
+// ORDERING PRIMITIVE this substrate does not have: std carries a mergesort COST BOUND
+// (std.induction mergesort_bound) and no sort. Building one is a new shared authority and is not a
+// consumer's to author. TRIGGER: a std ordering primitive over a caller-supplied comparison, at which
+// point this becomes sort-by-begin-offset then a single pass comparing each entry to its predecessor.
+// SUFFICIENT FOR: overlap detection at k log k per shard rather than k squared.
 fn safetensors_overlap_defects(entries: List<SafetensorsShardedEntry>) -> List<SafetensorsMembershipDefect> {
+  flat_map(
+    safetensors_shard_names(entries: entries),
+    sh => safetensors_overlap_defects_within(
+      shard: sh,
+      entries: filter(entries, se => (se.shard as String) == (sh as String))))
+}
+
+// THE ORDERED-NAME GUARD IS WHAT KEEPS EACH OVERLAPPING PAIR REPORTED ONCE rather than twice with the
+// ends swapped, and it is a property of the REPORT rather than of the scan: both directions are still
+// compared, and only one is emitted.
+fn safetensors_overlap_defects_within(
+  shard: NonEmptyStr,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<SafetensorsMembershipDefect> {
   flat_map(entries, l =>
-    flat_map(
+    map(
       filter(entries, r =>
-        (r.shard as String) == (l.shard as String)
-          && (r.entry.name as String) != (l.entry.name as String)
-          && (l.entry.name as String) < (r.entry.name as String)
+        (l.entry.name as String) < (r.entry.name as String)
           && safetensors_spans_overlap(a: l.entry, b: r.entry)),
-      r => [EntrySpansOverlapWithinShard { shard: l.shard, left: l.entry.name, right: r.entry.name }]))
+      r => EntrySpansOverlapWithinShard { shard: shard, left: l.entry.name, right: r.entry.name }))
 }
 
 fn safetensors_membership_defects(

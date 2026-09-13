@@ -113,6 +113,7 @@ import gunbc.fabric.engram_materialization {
   RouteRuntimeFeasibility, RouteObservedInLaunch, RouteRuntimeUnobserved,
   RouteEvidence, route_evidence,
   RouteEvidenceLookup, RouteEvidenceFound, RouteEvidenceForeignProfile, RouteEvidenceAbsent,
+  RouteEvidenceAmbiguous, route_evidence_lookup_obligations,
   route_evidence_for,
   RouteCandidate, route_candidate,
   ComponentRouteField, component_route_field, select_component_route,
@@ -817,15 +818,69 @@ test fn foreign_profile_evidence_refuses_and_is_not_the_same_as_absent() -> Bool
     RouteEvidenceFound { evidence: e } => declaration_ref_eq(a: e.route, b: engram_route_b_identity)
     RouteEvidenceForeignProfile { route: _, wanted: _, offered: _ } => false
     RouteEvidenceAbsent { route: _, wanted: _ } => false
+    RouteEvidenceAmbiguous { route: _, wanted: _, rows: _ } => false
   } && match route_evidence_for(route: engram_route_b_identity, wanted: context_b(), rows: rows) {
     RouteEvidenceForeignProfile { route: _, wanted: _, offered: os } => count(os) == 1
     RouteEvidenceFound { evidence: _ } => false
     RouteEvidenceAbsent { route: _, wanted: _ } => false
+    RouteEvidenceAmbiguous { route: _, wanted: _, rows: _ } => false
   } && match route_evidence_for(route: engram_route_b_identity, wanted: context_a(), rows: []) {
     RouteEvidenceAbsent { route: _, wanted: _ } => true
     RouteEvidenceFound { evidence: _ } => false
     RouteEvidenceForeignProfile { route: _, wanted: _, offered: _ } => false
+    RouteEvidenceAmbiguous { route: _, wanted: _, rows: _ } => false
   }
+}
+
+// ── TWO ROWS FOR ONE KEY REFUSE RATHER THAN LETTING ORDER DECIDE ──────────────────────────────
+//
+// A first cut took `.first()` of the rows matching this route and context. The two rows below are
+// keyed IDENTICALLY and DISAGREE: one reports the non-resident mechanism as observed-absent, the other
+// leaves it unobserved -- which is the difference between the route being EXCLUDED and merely lacking
+// a reading. Taking either would make the route's standing depend on list order, so the lookup refuses
+// and names how many rows claimed the pair.
+//
+// The second half is the discriminator that matters: REVERSING THE TWO ROWS returns the same refusal.
+// A fold that picked the first would answer differently for the two orders, and this control would
+// still have passed against whichever order happened to be written.
+fn ambiguous_row_absent_mechanism() -> RouteEvidence {
+  fixture_evidence(route: engram_route_b_identity, subject: context_a(),
+    mechanism: MechanismEstablishedAbsent {
+      runtime: fixture_relation(), receipt: fixture_relation(),
+      how: "fixture: observed absent" as NonEmptyStr },
+    runtime: RouteRuntimeUnobserved { subject: context_a(), route: engram_route_b_identity, obligation: "fixture" as NonEmptyStr },
+    resident: ResidentMemoryUnestablished { obligation: "fixture" as NonEmptyStr })
+}
+
+fn ambiguous_row_unobserved_mechanism() -> RouteEvidence {
+  fixture_evidence(route: engram_route_b_identity, subject: context_a(),
+    mechanism: MechanismUnobserved { runtime: fixture_relation(), obligation: "fixture: unobserved" as NonEmptyStr },
+    runtime: RouteRuntimeUnobserved { subject: context_a(), route: engram_route_b_identity, obligation: "fixture" as NonEmptyStr },
+    resident: ResidentMemoryUnestablished { obligation: "fixture" as NonEmptyStr })
+}
+
+fn lookup_is_ambiguous_over(rows: List<RouteEvidence>) -> Bool {
+  match route_evidence_for(route: engram_route_b_identity, wanted: context_a(), rows: rows) {
+    RouteEvidenceAmbiguous { route: _, wanted: _, rows: n } => n == 2
+    RouteEvidenceFound { evidence: _ } => false
+    RouteEvidenceForeignProfile { route: _, wanted: _, offered: _ } => false
+    RouteEvidenceAbsent { route: _, wanted: _ } => false
+  }
+}
+
+test fn two_evidence_rows_for_one_key_refuse_instead_of_taking_the_first() -> Bool {
+  lookup_is_ambiguous_over(rows: [ambiguous_row_absent_mechanism(), ambiguous_row_unobserved_mechanism()])
+    && lookup_is_ambiguous_over(rows: [ambiguous_row_unobserved_mechanism(), ambiguous_row_absent_mechanism()])
+    && count(route_evidence_lookup_obligations(l: route_evidence_for(
+      route: engram_route_b_identity, wanted: context_a(),
+      rows: [ambiguous_row_absent_mechanism(), ambiguous_row_unobserved_mechanism()]))) == 1
+    && match route_evidence_for(route: engram_route_b_identity, wanted: context_a(),
+      rows: [ambiguous_row_absent_mechanism()]) {
+      RouteEvidenceFound { evidence: _ } => true
+      RouteEvidenceAmbiguous { route: _, wanted: _, rows: _ } => false
+      RouteEvidenceForeignProfile { route: _, wanted: _, offered: _ } => false
+      RouteEvidenceAbsent { route: _, wanted: _ } => false
+    }
 }
 
 fn fixture_evidence(

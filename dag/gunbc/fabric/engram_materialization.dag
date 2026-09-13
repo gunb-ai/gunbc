@@ -1397,14 +1397,25 @@ fn route_evidence(
 // A READING FROM ANOTHER PROFILE IS NOT A MISSING READING, and conflating them is how evidence
 // gets reused across topologies it says nothing about. The two arms have different remedies: an
 // absent row needs a measurement, a foreign row needs the measurement repeated under THIS context.
+// AN AMBIGUOUS LOOKUP REFUSES RATHER THAN PICKING. A first cut took `.first()` of the rows matching
+// this route and context, so two rows keyed to the SAME pair that disagreed about mechanism
+// availability or resident memory were resolved BY LIST ORDER -- reversing them changed whether the
+// route was excluded. That is DESIGN §5's fabricated plausible output: the input is ambiguous and the
+// fold answered anyway. Duplicate keys are a refusal, and the arm carries the count so the diagnostic
+// says how many rows claimed the pair rather than only that something was wrong.
 type RouteEvidenceLookup
   = RouteEvidenceFound { evidence: RouteEvidence }
+  | RouteEvidenceAmbiguous { route: DeclarationRef, wanted: RouteSubjectKey, rows: Nat }
   | RouteEvidenceForeignProfile { route: DeclarationRef, wanted: RouteSubjectKey, offered: List<String> }
   | RouteEvidenceAbsent { route: DeclarationRef, wanted: RouteSubjectKey }
 
 fn route_evidence_for(route: DeclarationRef, wanted: RouteSubjectKey, rows: List<RouteEvidence>) -> RouteEvidenceLookup {
   let for_route = filter(rows, e => declaration_ref_eq(a: e.route, b: route))
-  match (filter(for_route, e => route_subject_key_eq(a: e.subject, b: wanted))).first() {
+  let matching = filter(for_route, e => route_subject_key_eq(a: e.subject, b: wanted))
+  if count(matching) > 1 {
+    RouteEvidenceAmbiguous { route: route, wanted: wanted, rows: count(matching) }
+  } else {
+  match matching.first() {
     Present { value: e } => RouteEvidenceFound { evidence: e }
     Absent =>
       if count(for_route) == 0 {
@@ -1417,11 +1428,18 @@ fn route_evidence_for(route: DeclarationRef, wanted: RouteSubjectKey, rows: List
         }
       }
   }
+  }
 }
 
 fn route_evidence_lookup_obligations(l: RouteEvidenceLookup) -> List<NonEmptyStr> {
   match l {
     RouteEvidenceFound { evidence: _ } => []
+    RouteEvidenceAmbiguous { route: r, wanted: w, rows: n } =>
+      [join([
+        to_string(n), " evidence rows are keyed to route ", declaration_ref_display_key(ref: r),
+        " under ", route_subject_key_render(k: w),
+        ". They may disagree about mechanism availability or resident memory, and taking either one would make the route's standing depend on list order rather than on evidence",
+      ], "") as NonEmptyStr]
     RouteEvidenceAbsent { route: r, wanted: w } =>
       [join([
         "no route evidence exists for ", declaration_ref_display_key(ref: r),
@@ -1808,6 +1826,9 @@ fn project_route_candidate(
     RouteEvidenceAbsent { route: rt, wanted: w } =>
       route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
+    RouteEvidenceAmbiguous { route: rt, wanted: w, rows: n } =>
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+        causes: route_evidence_lookup_obligations(l: RouteEvidenceAmbiguous { route: rt, wanted: w, rows: n }))
   }
 }
 
@@ -2048,6 +2069,9 @@ fn component_resident_share(s: ComponentRouteStanding) -> ComponentResidentShare
             Present { value: rt } =>
               match route_evidence_for(route: rt.identity, wanted: ctx, rows: rows) {
                 RouteEvidenceFound { evidence: ev } => resident_share_from_standing(s: ev.resident_memory, route: rt.identity)
+                RouteEvidenceAmbiguous { route: rr, wanted: ww, rows: nn } => ComponentResidentUnderivable {
+                  because: join(map(route_evidence_lookup_obligations(l: RouteEvidenceAmbiguous { route: rr, wanted: ww, rows: nn }), o => o as String), "; ") as NonEmptyStr,
+                }
                 RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo } => ComponentResidentUnderivable {
                   because: join(map(route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo }), o => o as String), "; ") as NonEmptyStr,
                 }
