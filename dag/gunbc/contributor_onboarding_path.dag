@@ -746,6 +746,6 @@ fn onboarding_document() -> MarkdownDocument {
   }
 }
 
-func expected_contributor_onboarding_md() -> String {
+fn expected_contributor_onboarding_md() -> String {
   serialize_markdown_source(doc: onboarding_document())
 }

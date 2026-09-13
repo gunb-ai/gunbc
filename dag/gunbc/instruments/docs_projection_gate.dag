@@ -254,7 +254,7 @@ fn write_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
 // filtered on location, so a NotCommitted projection is still written locally -- which is the
 // existing behaviour for the failure-mode ledger and the reason regen's population is wider than
 // main's.
-func regen() -> ProcessExit {
+fn regen() -> ProcessExit {
   let resolutions = docs_projection_resolutions(artifacts: docs_located_artifacts())
   match docs_projection_coverage_of(resolutions: resolutions) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
@@ -293,7 +293,7 @@ fn agree_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
 // failure-mode ledger because there are no committed bytes to agree, and agreeing them would have
 // been permanently green. The commit policy now answers that, and adding a committed `docs/`
 // projection enrolls it here with no edit to this function.
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   let resolutions = docs_projection_resolutions(artifacts: committed_docs_located_artifacts())
   match docs_projection_coverage_of(resolutions: resolutions) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
