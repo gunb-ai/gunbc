@@ -1813,6 +1813,12 @@ pub struct TransitionAdmission {
 /// references its spelling on BOTH sides -- the reference survives the unbundling and only the
 /// declarer moves -- which is precisely `TargetChanged`. No site lost its reference, so no row is
 /// stale and none was re-authored to preserve a count.
+///
+/// TRIGGER: these rows go when #10994 merges. The base then declares `Intricacy*`/`Volume*` in
+/// `gunbc.roadmap_sizing` and `node_title` in `gunbc.roadmap_status`, the seventeen deltas stop
+/// being producible, and CONSUMED comes due on the roster's next touch. Nothing else retires
+/// them: a deletion performed to quiet a wall would launder an unpaid debt into a discharged
+/// one, which is the reasoning the THIRTY-SIXTH dissolution above states for its own rows.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
