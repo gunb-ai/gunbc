@@ -301,13 +301,11 @@ fn collect_module_reference_sites(root: Node) -> ReferenceSiteCollection {
   module_reference_sites(acc: empty_reference_site_collection(), root: root)
 }
 
-// DECLARED FRONTIER (§3c): gunbc#11201 (NAMESPACE XL-0) is the second executing consumer.
-// On that branch, v2.compiler.repair_input_origin_roster, v2.test.claim.namespace_xl0.call_argument_mention_survival
-// and v2.test.claim.namespace_xl0.repair_input_origin_denominator call collect_reference_sites and
-// reference_site_collection_is_total. Until #11201 merges, XL-4's executing route is
-// collect_module_reference_sites via v2.lens.module_graph.
+// DECLARED FRONTIER (§3c): gunbc#11210 (NAMESPACE XL-3) is the second executing consumer
+// (v2.compiler.declaring_identity_spelling_census and its production_ingest_test). Until that PR
+// lands, XL-4's executing route is collect_module_reference_sites via v2.lens.module_graph.
 
-data collect_reference_sites_xl0_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "gunbc#11201 lands the second executing consumer of collect_reference_sites and reference_site_collection_is_total. Until then these remain the multi-root fold used by XL-0; XL-4 executes collect_module_reference_sites via module_graph.")
+data collect_reference_sites_xl0_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "gunbc#11210 lands the second executing consumer of collect_reference_sites (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest and v2.test.claim.declaring_identity_spelling.production_ingest). Until then XL-4 executes collect_module_reference_sites via module_graph.")
 
 fn collect_reference_sites(roots: FreeMonoid<Node>) -> ReferenceSiteCollection {
   fold_list(

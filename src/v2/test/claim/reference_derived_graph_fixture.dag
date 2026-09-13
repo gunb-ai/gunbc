@@ -1,13 +1,17 @@
 module v2.test.claim.reference_derived_graph_fixture
 
 import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.module_graph { LocatedModuleRoot, no_located_roots }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  located_roots_from_source_root_ingest,
+  no_located_roots
+}
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
@@ -19,37 +23,20 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Symbol }
 import v2.std.optional { Optional }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-// ONE INGEST, TWO CLAIM FILES. The required floor builds a fresh frame per claim, so a data row
-// cannot share parse-and-normalize. v2.workflow.floor_pure_producer_share warms xl4_fixture_trees
-// once at preparation. The seam is the ingest, not the collector: both files name the collector
-// or the edge fold, so sharing those would delete the measurement.
+// ONE INGEST, TWO CLAIM FILES. Files under dag/test/fixture/reference_derived_graph are the
+// authority (review 65417). The floor builds a fresh frame per claim, so a data row cannot share
+// parse-and-normalize. v2.workflow.floor_pure_producer_share warms xl4_fixture_trees once at
+// preparation. The seam is the ingest, not the collector: both files name the collector or the
+// edge fold, so sharing those would delete the measurement. located uses the XL-0 production
+// ingest located_roots_from_source_root_ingest; parsed is tokenize+parse of the same bytes.
 
-data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
-
-data consumer_reference_only_text: String = "module test.fixture.reference_derived_graph.consumer_reference_only\nimport std.types { Int }\nfn uses_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
-
-data consumer_import_only_text: String = "module test.fixture.reference_derived_graph.consumer_import_only\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\n"
-
-data consumer_both_text: String = "module test.fixture.reference_derived_graph.consumer_both\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { provided_value }\nfn uses_imported_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
-
-data consumer_call_only_text: String = "module test.fixture.reference_derived_graph.consumer_call_only\nimport std.types { Int }\nfn sink(x: Int) -> Int { x }\nfn uses_only_in_call() -> Int {\n  sink(x: test.fixture.reference_derived_graph.provider.provided_value)\n}\n"
-
-data consumer_type_only_text: String = "module test.fixture.reference_derived_graph.consumer_type_only\nimport std.types { Int }\nfn uses(\n  x: test.fixture.reference_derived_graph.provider.ProvidedMarker\n) -> Int {\n  1\n}\n"
-
-data consumer_callee_only_text: String = "module test.fixture.reference_derived_graph.consumer_callee_only\nimport std.types { Int }\nfn uses_only_as_callee() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_fn()\n}\n"
-
-data consumer_type_imported_text: String = "module test.fixture.reference_derived_graph.consumer_type_imported\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\nfn uses(x: ProvidedMarker) -> Int {\n  1\n}\n"
-
-data consumer_type_bare_local_text: String = "module test.fixture.reference_derived_graph.consumer_type_bare_local\nimport std.types { Int }\ntype LocalMarker\nfn uses(x: LocalMarker) -> Int {\n  1\n}\n"
-
-data consumer_field_bare_local_text: String = "module test.fixture.reference_derived_graph.consumer_field_bare_local\nimport std.types { Int }\ntype LocalFieldOnly\ntype LocalParamMarker\ntype LocalWrapper {\n  f: LocalFieldOnly\n}\nfn uses(x: LocalParamMarker) -> Int {\n  1\n}\n"
-
-data consumer_body_value_text: String = "module test.fixture.reference_derived_graph.consumer_body_value\nimport std.types { Int }\nfn uses() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
 
@@ -80,38 +67,40 @@ type Xl4WarmIngest {
   located: Outcome<List<LocatedModuleRoot>>
 }
 
-fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+fn fixture_read(path: String, unit: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
-    source: Medium { carried: text, fidelity: Lossless },
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
     compilation_unit: unit,
     source_root: DagTree
   }
 }
 
-data fixture_ingest: SourceRootIngest = Cons {
-  head: fixture_read(text: provider_text, path: provider_path, unit: ^provider_unit),
-  tail: Cons {
-    head: fixture_read(text: consumer_reference_only_text, path: consumer_reference_only_path, unit: ^reference_only_unit),
+fn fixture_ingest() -> SourceRootIngest {
+  Cons {
+    head: fixture_read(path: provider_path, unit: ^provider_unit),
     tail: Cons {
-      head: fixture_read(text: consumer_import_only_text, path: consumer_import_only_path, unit: ^import_only_unit),
+      head: fixture_read(path: consumer_reference_only_path, unit: ^reference_only_unit),
       tail: Cons {
-        head: fixture_read(text: consumer_both_text, path: consumer_both_path, unit: ^both_unit),
+        head: fixture_read(path: consumer_import_only_path, unit: ^import_only_unit),
         tail: Cons {
-          head: fixture_read(text: consumer_call_only_text, path: consumer_call_only_path, unit: ^call_only_unit),
+          head: fixture_read(path: consumer_both_path, unit: ^both_unit),
           tail: Cons {
-            head: fixture_read(text: consumer_type_only_text, path: consumer_type_only_path, unit: ^type_only_unit),
+            head: fixture_read(path: consumer_call_only_path, unit: ^call_only_unit),
             tail: Cons {
-              head: fixture_read(text: consumer_callee_only_text, path: consumer_callee_only_path, unit: ^callee_only_unit),
+              head: fixture_read(path: consumer_type_only_path, unit: ^type_only_unit),
               tail: Cons {
-                head: fixture_read(text: consumer_type_imported_text, path: consumer_type_imported_path, unit: ^type_imported_unit),
+                head: fixture_read(path: consumer_callee_only_path, unit: ^callee_only_unit),
                 tail: Cons {
-                  head: fixture_read(text: consumer_type_bare_local_text, path: consumer_type_bare_local_path, unit: ^type_bare_local_unit),
+                  head: fixture_read(path: consumer_type_imported_path, unit: ^type_imported_unit),
                   tail: Cons {
-                    head: fixture_read(text: consumer_field_bare_local_text, path: consumer_field_bare_local_path, unit: ^field_bare_local_unit),
+                    head: fixture_read(path: consumer_type_bare_local_path, unit: ^type_bare_local_unit),
                     tail: Cons {
-                      head: fixture_read(text: consumer_body_value_text, path: consumer_body_value_path, unit: ^body_value_unit),
-                      tail: Empty
+                      head: fixture_read(path: consumer_field_bare_local_path, unit: ^field_bare_local_unit),
+                      tail: Cons {
+                        head: fixture_read(path: consumer_body_value_path, unit: ^body_value_unit),
+                        tail: Empty
+                      }
                     }
                   }
                 }
@@ -159,37 +148,9 @@ fn parse_located_from_ingest(ingest: SourceRootIngest) -> Outcome<List<LocatedMo
   )
 }
 
-fn normalize_located(item: LocatedModuleRoot) -> Outcome<LocatedModuleRoot> {
-  bind_outcome(
-    o: normalize(parse_tree: item.root),
-    f: fn(nt) {
-      outcome_accepted(value: LocatedModuleRoot { path: item.path, root: nt.root })
-    }
-  )
-}
-
-fn locate_from_parsed(parsed: List<LocatedModuleRoot>) -> Outcome<List<LocatedModuleRoot>> {
-  fold_list(
-    xs: parsed,
-    empty: outcome_accepted(value: no_located_roots),
-    cons: fn(acc, item) {
-      bind_outcome(
-        o: acc,
-        f: fn(items) {
-          bind_outcome(
-            o: normalize_located(item: item),
-            f: fn(located_item) {
-              outcome_accepted(value: concat(items, [located_item]))
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
 fn xl4_fixture_trees() -> Xl4WarmIngest {
-  match parse_located_from_ingest(ingest: fixture_ingest) {
+  let ingest = fixture_ingest()
+  match parse_located_from_ingest(ingest: ingest) {
     Rejected { diagnostics: d } =>
       Xl4WarmIngest {
         parsed: Rejected { diagnostics: d },
@@ -198,7 +159,7 @@ fn xl4_fixture_trees() -> Xl4WarmIngest {
     Accepted { value: parsed_items, diagnostics: _ } =>
       Xl4WarmIngest {
         parsed: outcome_accepted(value: parsed_items),
-        located: locate_from_parsed(parsed: parsed_items)
+        located: located_roots_from_source_root_ingest(ingest: ingest)
       }
   }
 }

@@ -2,11 +2,15 @@ module v2.test.claim.reference_derived_graph_production_ingest
 
 import std.types { Int }
 import v2.compiler.reference_site_collector { collect_module_reference_sites }
-import v2.lens.module_graph { ModuleDependencyEdge, no_located_roots, reference_derived_edges_from_located_roots }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  ModuleDependencyEdge,
+  reference_derived_edges_from_located_roots
+}
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
@@ -25,7 +29,7 @@ import v2.std.node {
   fold_node,
   NodeFold
 }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 import v2.test.claim.reference_derived_graph_fixture {
@@ -44,7 +48,7 @@ import v2.test.claim.reference_derived_graph_fixture {
   xl4_item_at,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE over the shared ingest xl4_fixture_trees.located.
 // The collector and edge fold stay per claim. Call-argument and callee: tree-side.
@@ -70,13 +74,13 @@ data local_wrapper_field_name_sym: Symbol = ^f
 
 data production_ingest_refused_count: Int = -1
 
-fn located_pair(items: List<LocatedModuleRoot>, consumer_path: String) -> List<LocatedModuleRoot> {
+fn located_pair(items: List<LocatedModuleRoot>, consumer_path: String) -> Optional<List<LocatedModuleRoot>> {
   match xl4_item_at(items: items, path: provider_path) {
-    Absent => no_located_roots
+    Absent => Absent
     Present { value: provider } =>
       match xl4_item_at(items: items, path: consumer_path) {
-        Absent => [provider]
-        Present { value: consumer } => [provider, consumer]
+        Absent => Absent
+        Present { value: consumer } => Present { value: [provider, consumer] }
       }
   }
 }
@@ -85,12 +89,16 @@ fn production_edge_count(path: String, target: String) -> Int {
   match xl4_fixture_trees().located {
     Rejected { diagnostics: _ } => production_ingest_refused_count
     Accepted { value: items, diagnostics: _ } =>
-      length(
-        xs: reference_derived_edges_from_located_roots(
-          items: located_pair(items: items, consumer_path: path),
-          include_import_syntax: false
-        ).edges |> filter(e => e.path == path && e.target_module == target)
-      )
+      match located_pair(items: items, consumer_path: path) {
+        Absent => production_ingest_refused_count
+        Present { value: pair } =>
+          length(
+            xs: reference_derived_edges_from_located_roots(
+              items: pair,
+              include_import_syntax: false
+            ).edges |> filter(e => e.path == path && e.target_module == target)
+          )
+      }
   }
 }
 

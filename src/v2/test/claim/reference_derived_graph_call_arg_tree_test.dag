@@ -27,7 +27,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node }
 import v2.std.optional { Absent, Present }
@@ -43,7 +43,7 @@ import v2.test.claim.reference_derived_graph_fixture {
   xl4_item_at,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // COLLECTOR-ROUTE DEFICIENCY PROBES over the shared ingest xl4_fixture_trees. The production
 // edge producer is the collector, not a parse-tree qualified-name walk. Call-argument == 0 is
