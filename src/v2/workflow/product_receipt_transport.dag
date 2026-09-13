@@ -183,14 +183,14 @@ fn seven_boundary_product_receipt_evidence(
 
 // The terminal Bool boundary, collapsing at the one audited site the carrier provides rather than by
 // a conjunction here. Callers needing the distinction match the evidence directly.
-func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> Bool {
+fn run_seven_boundary_product_receipt_ready(root: String, entry: String) -> Bool {
   subject_evidence_establishes(
     evidence: seven_boundary_product_receipt_evidence(root: root, entry: entry),
     licenses: fn(o) { product_receipt_outcome_licenses(outcome: o) }
   )
 }
 
-func run_product_receipt_for_entry(entry: String) -> ProcessExit {
+fn run_product_receipt_for_entry(entry: String) -> ProcessExit {
   let root = git.Inspect.Toplevel()
   let ingest_bin = witness_bin(
     var_name: "DISCOVER_SOURCE_ROOT_INGEST",
@@ -208,6 +208,6 @@ func run_product_receipt_for_entry(entry: String) -> ProcessExit {
   }
 }
 
-func run_seven_boundary_product_receipt() -> ProcessExit {
+fn run_seven_boundary_product_receipt() -> ProcessExit {
   run_product_receipt_for_entry(entry: product_receipt_compiler_entry)
 }
