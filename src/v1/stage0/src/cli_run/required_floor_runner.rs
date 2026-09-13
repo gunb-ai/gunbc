@@ -1520,19 +1520,13 @@ fn enrolment_gate_execution_disposition<'a>(
 
 /// Mirror of `v2.workflow.floor_enrolment_margin` `enrolment_expensiveness_declaration`.
 ///
-/// `changed_witness_expensiveness_is_declared` remains roster OR long home for changed-witness
-/// CPU policy. This gate's membership is a different function: typed `floor_cost_debt_row`
-/// admission (Roster) or long home that is not also on the string roster. A string-roster
-/// append does not declare (review 65637 / review 65665).
+/// Typed admission (Roster) or long home. String roster alone never declares. Long home
+/// declares regardless of a string-roster line.
 pub(crate) fn enrolment_expensiveness_declaration(
     identity: &str,
-    cost_debt_roster: &HashSet<String>,
-    cost_debt_verdict_only: &HashSet<String>,
-    typed_admission: &HashSet<String>,
+    typed_admission_holds: bool,
+    long_home_holds: bool,
 ) -> Option<EnrolmentExpensivenessGround> {
-    let string_roster_holds = cost_debt_roster.contains(identity);
-    let typed_admission_holds = typed_admission.contains(identity);
-    let long_home_holds = cost_debt_verdict_only.contains(identity) && !string_roster_holds;
     if typed_admission_holds {
         Some(EnrolmentExpensivenessGround::Roster)
     } else if long_home_holds {
@@ -5555,6 +5549,7 @@ pub fn run_required_floor(
     // asserts that the withheld set and the `DeclinedCostDebt` dispositions name the same
     // identities, which an override is by construction not one of.
     let mut cost_debt_verdict_only: HashSet<String> = HashSet::new();
+    let mut long_home_identities: HashSet<String> = HashSet::new();
     // WHAT EACH OVERRIDDEN ROW ACTUALLY COST, keyed by the debt identity. Minted at execution,
     // consumed by the changed-witness projection and by the published receipt line; never read
     // to decide admission, and never written back onto the authored roster.
@@ -5602,6 +5597,9 @@ pub fn run_required_floor(
                      one qualified declaration was discovered at more than one site, so it would \
                      carry more than one disposition; a witness identity names exactly one site"
                 ));
+            }
+            if long_home {
+                long_home_identities.insert(identity.clone());
             }
             let selected_as_changed_witness = changed_witness_set.contains(&identity);
             if selected_as_changed_witness && !prepared_module_paths.contains(&file.module_path) {
@@ -8572,9 +8570,8 @@ pub fn run_required_floor(
         for identity in newly_enrolled {
             let declared_expensiveness = enrolment_expensiveness_declaration(
                 identity,
-                &cost_debt_roster,
-                &cost_debt_verdict_only,
-                &typed_admission,
+                typed_admission.contains(identity),
+                long_home_identities.contains(identity),
             );
             let standing = enrolment_margin_standing_for(
                 identity,
@@ -10126,29 +10123,18 @@ mod changed_witness_projection_tests {
     #[test]
     fn a_string_roster_append_does_not_declare_enrolment_expensiveness() {
         let identity = "fixture.tripwire_325";
-        let mut roster = HashSet::new();
-        roster.insert(identity.to_string());
-        let mut verdict_only = HashSet::new();
-        verdict_only.insert(identity.to_string());
-        let empty = HashSet::new();
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &roster, &verdict_only, &empty),
-            None
-        );
-        let mut long_only = HashSet::new();
-        long_only.insert(identity.to_string());
-        assert_eq!(
-            enrolment_expensiveness_declaration(identity, &HashSet::new(), &long_only, &empty),
-            Some(EnrolmentExpensivenessGround::LongHome)
+            enrolment_expensiveness_declaration(identity, false, false),
+            None,
+            "string roster alone never declares"
         );
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &HashSet::new(), &HashSet::new(), &empty),
-            None
+            enrolment_expensiveness_declaration(identity, false, true),
+            Some(EnrolmentExpensivenessGround::LongHome),
+            "long home declares even if a string-roster line also exists"
         );
-        let mut typed = HashSet::new();
-        typed.insert(identity.to_string());
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &HashSet::new(), &HashSet::new(), &typed),
+            enrolment_expensiveness_declaration(identity, true, false),
             Some(EnrolmentExpensivenessGround::Roster)
         );
     }

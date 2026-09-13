@@ -177,14 +177,6 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
 }
 
-// GROUND OF A DECLARED-EXPENSIVENESS FACT THIS GATE MAY HONOUR.
-//
-// THIS IS NOT `changed_witness_expensiveness_is_declared`. That function is roster OR long
-// home, and it still decides changed-witness CPU policy. Enrolment may not honour the
-// string-roster disjunct: those identities are still hand-authored (review 65585), and
-// honouring them here would let a 325ms append disable the margin (review 65637). Roster
-// ground here is ONLY `floor_cost_debt_row` typed admission. Long home is the structural
-// disjunct, and only when the identity is not also on the string roster.
 type EnrolmentExpensivenessGround =
     EnrolmentExpensivenessRoster
   | EnrolmentExpensivenessLongHome
@@ -193,13 +185,19 @@ type EnrolmentExpensivenessDeclaration =
     EnrolmentExpensivenessNotDeclared
   | EnrolmentExpensivenessIsDeclared { witness_identity: String, ground: EnrolmentExpensivenessGround }
 
-// THE MEMBERSHIP RULE THIS GATE CONSUMES. Host realizes this function; it does not
-// re-derive it. typed_admission_holds is the constructor in
-// `v2.workflow.floor_cost_debt_admission`; that attempt list is empty until a censored
-// or over-500ms reading is authored there.
+// STATED DIVERGENCE FROM `v2.workflow.required_floor`
+// `changed_witness_expensiveness_is_declared`. That function is string-roster OR long home
+// and still decides changed-witness CPU policy. This function is typed `floor_cost_debt_row`
+// admission OR long home. String roster ALONE never declares here (review 65637). Long
+// home declares regardless of a string-roster line: the home is the file's location, and an
+// append cannot subtract a structural declaration.
+//
+// RE-CONVERGENCE TRIGGER: when half two's typed attempts replace the string roster --
+// `floor_cost_debt_typed_admission_attempts` is non-empty and the string chunks are deleted --
+// the two predicates collapse into one. Until then this is a narrower fork with a named
+// dissolution.
 fn enrolment_expensiveness_declaration(
   witness_identity: String,
-  string_roster_holds: Bool,
   typed_admission_holds: Bool,
   long_home_holds: Bool,
 ) -> EnrolmentExpensivenessDeclaration {
@@ -210,13 +208,9 @@ fn enrolment_expensiveness_declaration(
     }
   } else {
     if long_home_holds {
-      if string_roster_holds {
-        EnrolmentExpensivenessNotDeclared
-      } else {
-        EnrolmentExpensivenessIsDeclared {
-          witness_identity: witness_identity,
-          ground: EnrolmentExpensivenessLongHome,
-        }
+      EnrolmentExpensivenessIsDeclared {
+        witness_identity: witness_identity,
+        ground: EnrolmentExpensivenessLongHome,
       }
     } else {
       EnrolmentExpensivenessNotDeclared
@@ -235,9 +229,9 @@ fn enrolment_expensiveness_declaration(
 // arms block; they are told apart so the remedy and the reported figure stay honest.
 //
 // `EnrolmentExpensivenessDeclared` IS NON-BLOCKING for a ground selected by
-// `enrolment_expensiveness_declaration`: typed cost-debt admission, or long home that
-// is not a string-roster append. The CPU figure is reported and this gate DECIDES
-// NOTHING from it. Wall deadline and semantic red stay armed. It is not an exemption.
+// `enrolment_expensiveness_declaration`: typed cost-debt admission, or long home
+// (independent of any string-roster line). The CPU figure is reported and this gate
+// DECIDES NOTHING from it. Wall deadline and semantic red stay armed. It is not an exemption.
 type EnrolmentMarginStanding =
     EnrolmentWithinMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }

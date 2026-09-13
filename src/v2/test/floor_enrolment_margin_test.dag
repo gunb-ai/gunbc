@@ -349,7 +349,6 @@ test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() ->
 test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
   match enrolment_expensiveness_declaration(
     witness_identity: "fixture.tripwire_325",
-    string_roster_holds: true,
     typed_admission_holds: false,
     long_home_holds: false,
   ) {
@@ -358,10 +357,9 @@ test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
   }
 }
 
-test fn a_long_home_without_the_string_roster_declares_at_enrolment() -> Bool {
+test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists() -> Bool {
   match enrolment_expensiveness_declaration(
-    witness_identity: "fixture.long_home",
-    string_roster_holds: false,
+    witness_identity: "fixture.long_home_and_string",
     typed_admission_holds: false,
     long_home_holds: true,
   ) {
@@ -377,7 +375,6 @@ test fn a_long_home_without_the_string_roster_declares_at_enrolment() -> Bool {
 test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
   match enrolment_expensiveness_declaration(
     witness_identity: "fixture.typed_501",
-    string_roster_holds: false,
     typed_admission_holds: true,
     long_home_holds: false,
   ) {
