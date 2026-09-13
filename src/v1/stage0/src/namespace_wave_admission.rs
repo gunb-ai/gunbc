@@ -1792,7 +1792,83 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+// gunbc#11182 moves the shared evidence carrier and admission fold from filament_supply
+// to product.inventory so Spark procurement lots and filament supply inhabit the same
+// inventory evidence authority; a second copy would fork that authority (DESIGN section 3).
+// These seven measured bindings follow their canonical owner; no additional candidate
+// is admitted. Retire when that relocation is present at base.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/AllLedgersAdmitted",
+        subject: AdmissionSubject::Binding {
+            module: "product.printed_chassis.filament_supply",
+            in_declaration: "assess_filament_supply",
+            spelling: "AllLedgersAdmitted",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/InventoryLotEvidence",
+        subject: AdmissionSubject::Binding {
+            module: "product.printed_chassis.filament_supply",
+            in_declaration: "assess_filament_supply",
+            spelling: "InventoryLotEvidence",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/LedgerEvidenceRefused",
+        subject: AdmissionSubject::Binding {
+            module: "product.printed_chassis.filament_supply",
+            in_declaration: "assess_filament_supply",
+            spelling: "LedgerEvidenceRefused",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/admit_ledger_evidence",
+        subject: AdmissionSubject::Binding {
+            module: "product.printed_chassis.filament_supply",
+            in_declaration: "assess_filament_supply",
+            spelling: "admit_ledger_evidence",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: fs_assess/InventoryLotEvidence",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.filament_supply_assessment_witness_test",
+            in_declaration: "fs_assess",
+            spelling: "InventoryLotEvidence",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: fs_evidence/InventoryLotEvidence",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.filament_supply_assessment_witness_test",
+            in_declaration: "fs_evidence",
+            spelling: "InventoryLotEvidence",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11182 inventory evidence authority relocation: w_a_lot_whose_catalog_was_never_read_still_establishes_the_candidate/InventoryLotEvidence",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.filament_supply_assessment_witness_test",
+            in_declaration: "w_a_lot_whose_catalog_was_never_read_still_establishes_the_candidate",
+            spelling: "InventoryLotEvidence",
+            expected_candidates: &["product.inventory"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

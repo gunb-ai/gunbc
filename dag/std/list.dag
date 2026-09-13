@@ -1,0 +1,15 @@
+module std.list
+
+import std.types { List, Bool }
+
+// Membership and mutual cover under a caller-supplied equality. Predicate any/filter/count
+// stay the substrate methods; this module does not nickname them.
+
+fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
+  xs.any(y => eq(y, x))
+}
+
+fn list_cover<T>(held: List<T>, expected: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  expected.all(e => list_member(xs: held, x: e, eq: eq))
+    && held.all(h => list_member(xs: expected, x: h, eq: eq))
+}

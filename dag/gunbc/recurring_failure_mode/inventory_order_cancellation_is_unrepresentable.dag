@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.inventory_order_cancellation_is_unrepresentable
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data inventory_order_cancellation_is_unrepresentable: RecurringFailureMode = RecurringFailureMode {
+  identity: "inventory_order_cancellation_is_unrepresentable" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a ledger that begins at LotAcquired has no representation of an order cancelled before acquisition. HARM: ordered-then-cancelled and never-ordered are indistinguishable, so an excluded procurement attempt disappears from the evidence rather than carrying its disposition. Cancellation must not be represented as a zero-sized acquired lot or an invented stock movement.",
+    "RECEIPT, gunbc#11182: the operator supplied two actual acquisitions, a Micro Center six and an eBay pair, plus a separate cancelled eBay order that acquired nothing. Only the actual acquisitions inhabit dgx_spark_procurement_ledgers. The cancelled attempt has no ProcurementLot or LotAcquired event because product.inventory has no order/cancellation state. This receipt records the exclusion explicitly without creating inventory.",
+    "DISTINGUISHING FACTS: absence of an acquisition is compatible with several order histories; an empty ledger cannot prove cancellation. FOUND AT MITIGATABLE by documenting the supplied disposition. CEILING: STRUCTURALLY GUARANTEED for an order lifecycle whose cancelled arm cannot mint acquisition stock. NEXT TRIGGER: procurement order history distinguishes never-ordered, ordered and cancelled before acquisition, and acquisition population consumers read those dispositions without counting cancelled orders as inventory.",
+  ],
+  evidence: [],
+}

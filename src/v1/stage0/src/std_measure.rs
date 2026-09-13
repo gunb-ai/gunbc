@@ -17,7 +17,7 @@ use self::Scale::*;
 pub use crate::extdeps_currency_currency::CurrencyCode;
 use crate::extdeps_currency_currency::CurrencyCode::*;
 pub use crate::extdeps_units_dimensionless::{
-    parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
+    parts_per_million_unity_count, parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
 };
 pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
 pub use crate::extdeps_units_iso8601::{
@@ -1500,6 +1500,23 @@ pub fn basis_point_count(bp: BasisPoint) -> Nat {
 
 pub fn basis_point_unity_count() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
+}
+
+pub type PartsPerMillion = Rc<Measure<Dimensionless, Micro, i64>>;
+
+pub fn parts_per_million(count: Nat) -> PartsPerMillion {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parts_per_million_count(m: PartsPerMillion) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn parts_per_million_scale_million() -> Nat {
+    crate::extdeps_units_dimensionless::parts_per_million_unity_count()
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, i64>>;

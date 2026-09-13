@@ -1,7 +1,6 @@
 module test.claim.filament_supply_assessment_witness_test
 
 import product.printed_chassis.filament_supply {
-  InventoryLotEvidence,
   FilamentSupplyIdentifierObservation,
   ManufacturerRfidObserved,
   OperatorLabelObserved,
@@ -24,6 +23,7 @@ import product.printed_chassis.filament_supply {
   assess_filament_supply,
 }
 import product.inventory {
+  InventoryLotEvidence,
   ProcurementLot,
   InventoryEvent,
   InventoryLotIdentity,
