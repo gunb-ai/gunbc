@@ -1,0 +1,570 @@
+module gunbc.fleet_observation_capture_chunk
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.string_type { String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  compare_content_hash,
+}
+import std.durable_compare_and_set {
+  CasExpectation,
+  CasGeneration,
+  CasReadableSlot,
+  CasReadableAbsent,
+  CasReadablePresent,
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasUnreadableSlot,
+  CasUnreadableMalformed,
+  CasUnreadableContentMissing,
+  CasUnreadableReadRefused,
+}
+import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
+
+// BOUNDED DURABLE CAPTURE: the bytes, their identity, and what it takes to say they are kept.
+// Ownership is gunbc.fleet_observation_collector_ownership; the published fact is
+// gunbc.fleet_observation_observation_envelope. Raw chunks live in ARTIFACT storage, outside any
+// small event index -- console lines are not routed through capacity transactions and no boot arm
+// is added to any pool-event enum.
+//
+// A SUPERVISED COLLECTOR ROTATES, IT DOES NOT DETACH. A terminal event closes an assessed attempt
+// upstream; it must never close the collector, because detaching at the interesting boundary is
+// how four captures were lost. The unit of rotation is the chunk below, so the stream survives
+// every attempt boundary and the boundary becomes a range rather than an end.
+
+// WHERE IN THE SOURCE'S OWN STREAM these bytes sat. Offsets are the source's, not the file's: a
+// chunk is a window on a stream that outlives it.
+type SourceStreamRange {
+  first_offset: Nat
+  length: ByteSize
+}
+
+// THE OCCURRENCE IDENTITY OF ONE CHUNK, and it is deliberately NOT the digest.
+//
+// THIS IS THE MOST LOAD-BEARING DECISION IN THE MODULE. Seven of eight captures on 2026-09-11 were
+// byte-identical across materially different subjects, and the reason nobody noticed for a week is
+// that equal bytes read as "the same nothing". Equal payload hashes across SEPARATE OCCURRENCES ARE
+// NOT DUPLICATE EVENTS (recurring class gunbc.recurring_failure_mode.empty_capture_read_as_clean_result,
+// seventh instance). So occurrence identity is (collector session, ownership generation, receive
+// sequence) -- three facts about WHEN AND BY WHOM the bytes were received -- and the payload digest
+// is a separate field that identifies CONTENT and nothing else. Deduplicating on digest would erase
+// exactly the evidence that made the defect visible.
+type ChunkOccurrence {
+  session: CollectorSessionId
+  ownership_generation: Int
+  receive_sequence: Nat
+}
+
+// WHICH STREAM THESE BYTES CAME FROM, and it is the SUBJECT of a run rather than part of an
+// occurrence. Occurrence answers WHO received the bytes and WHEN; this answers WHAT they are bytes OF.
+// The two were conflated until the run subject needed stating: with no stream identity on a chunk,
+// "the same source stream observed by two different collector sessions" was not expressible, so a
+// session change had to be treated as a change of subject -- which made the most common real break
+// unaskable. A chunk is a window on ONE stream, so the stream names itself here.
+type SourceStreamId {
+  enrolled_machine: NonEmptyStr
+  source_identity: NonEmptyStr
+}
+
+fn source_stream_eq(a: SourceStreamId, b: SourceStreamId) -> Bool {
+  ((a.enrolled_machine as String) == (b.enrolled_machine as String))
+  && ((a.source_identity as String) == (b.source_identity as String))
+}
+
+type CaptureChunk {
+  source: SourceStreamId
+  occurrence: ChunkOccurrence
+  range: SourceStreamRange
+  payload_digest: ContentHash
+  artifact_ref: NonEmptyStr
+}
+
+fn chunk_occurrence_eq(a: ChunkOccurrence, b: ChunkOccurrence) -> Bool {
+  ((a.session.collector_session as String) == (b.session.collector_session as String))
+  && ((a.session.enrolled_machine as String) == (b.session.enrolled_machine as String))
+  && (a.ownership_generation == b.ownership_generation)
+  && (a.receive_sequence == b.receive_sequence)
+}
+
+// DECLARED FRONTIER FOR chunk_occurrence_eq, AND IT IS OPEN, NOT CLOSED.
+//
+// AN EARLIER VERSION OF THIS ANNOTATION SAID THE FRONTIER WAS CLOSED, because the interpretation lane
+// reported consuming it in its replay. That lane does -- on ITS branch. In THIS tree the only callers
+// are the definition, this annotation, and the witnesses, so "closed" described a tree that does not
+// exist yet. It is
+// gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end arriving through
+// a peer's MESSAGE rather than through a symbol: "it is consumed" becomes true the moment a lane
+// authors the caller, and is heard as "the tree carries it". The rule that survives is to say consumed
+// WHERE. The previous annotation even carried the warning that a frontier naming a non-consuming
+// consumer reads as closed, three lines from the claim it was describing -- which is the strongest
+// evidence available that the warning has to be mechanical rather than remembered.
+//
+// CONSUMER: the interpretation lane's replay, which decides whether two received chunks are one
+// occurrence or two -- the site where deduplicating on digest would resurrect the
+// seven-identical-captures defect. TRIGGER, AS THE CAPABILITY: that replay landing ON MAIN with
+// idempotent application BY OCCURRENCE, sufficient that two chunks carrying equal payloads at
+// different receive sequences are retained as two events rather than collapsed into one.
+//
+// THE SAME FOR continuity_from_committed_chunks, which also has no production caller in this closure:
+// the value it produces is what fills ObservationEnvelope.continuity, and envelopes are built by the
+// collector realization, which is not in this slice. What the seal establishes TODAY, and it is worth
+// separating from the frontier: ContinuityEstablished carries a sole_constructor ContinuityReach
+// minted at exactly one site, inside that derivation, so an envelope's continuity cannot be authored
+// by a caller even while no caller exists. TRIGGER: that realization deriving each envelope's
+// continuity from its own committed run, sufficient that no envelope reaches a consumer carrying a
+// continuity its bytes do not support.
+//
+// WHY A CHUNK COULD NOT BE DURABLY KEPT, each an explicit typed outcome with its own remedy. None
+// of these may silently change an observation's semantic result: a collector that cannot keep its
+// bytes reports a coverage gap, it does not report the source as quiet.
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Three of these five arms have NO PRODUCER
+// IN THIS SLICE and that is stated here rather than left to be discovered: SpoolDiskExhausted,
+// ChunkCorruptOnReadBack and ChunkRetentionExpired are minted by the STORAGE REALIZATION -- a real
+// spool answering ENOSPC, a real read-back disagreeing with its digest, a real retention window
+// elapsing -- none of which a pure fold can observe. local_commit_from_cas produces the other two
+// from the compare-and-set authority it consumes.
+//
+// CONSUMER THAT WILL CLOSE IT: the bound collector realization's storage sink.
+//
+// TRIGGER, STATED AS THE CAPABILITY AND NOT AS AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a
+// realization bound to a REAL STORE, with disk exhaustion, a corrupt read-back and sink refusal
+// DRIVEN THROUGH IT, each one landing on the arm this module predicts. The grain matters: what is
+// missing here is a ROUTE, so a trigger naming a single call would be satisfiable in full while the
+// capability stayed dead -- the arms would still be authored, just authored by a caller. If a
+// follow-up names an admitted transport caller at all, that caller must be SUFFICIENT FOR driving
+// those three real failures onto these three arms; a caller that injects nothing does not retire
+// this frontier.
+//
+// WHY THEY ARE DECLARED NOW RATHER THAN WITH THEIR PRODUCER: a persistence failure that has no arm
+// gets rendered as the nearest arm that exists, and the nearest arm here is "committed". These exist
+// so the realization has somewhere honest to land, and an arm without a producer is a visible
+// frontier, whereas a missing arm is a silent widen.
+// WHAT THE SLOT HELD WHEN A COMPARE-AND-SET PRECONDITION FAILED, at the grain that selects the
+// remedy. std.durable_compare_and_set carries BOTH sides on CasPreconditionFailed precisely so a
+// caller can tell LOSING A RACE from ADDRESSING THE WRONG SLOT -- the first is retried against a
+// re-read head, the second is a bug in the key -- and an earlier version of the fold below dropped
+// both into one hardcoded sentence, which is the flattening its own upstream exists to prevent.
+//
+// This is a NON-GENERIC PROJECTION of CasReadableSlot and that is deliberate rather than careless:
+// the committed VALUE would drag a type parameter through LocalCommitStanding, ObservationEnvelope
+// and every consumer of the published interface, and the value is not what selects the remedy. What
+// selects it is whether the slot was absent or stood at some generation, and both are kept.
+type CasRaceObservation
+  = RaceSlotAbsent
+  | RaceSlotAtGeneration { generation: CasGeneration }
+
+fn cas_race_observation<T>(observed: CasReadableSlot<T>) -> CasRaceObservation {
+  match observed {
+    CasReadableAbsent => RaceSlotAbsent
+    CasReadablePresent { version: version } =>
+      RaceSlotAtGeneration { generation: version.generation }
+  }
+}
+
+type CapturePersistenceRefusal
+  = SpoolDiskExhausted { attempted: ByteSize }
+  | ChunkCorruptOnReadBack { expected: ContentHash, observed: ContentHash }
+  | ChunkReferenceMissing { referenced: ContentHash }
+  | ChunkRetentionExpired { artifact_ref: NonEmptyStr }
+  | ChunkCommitRefused { detail: NonEmptyStr }
+  | ChunkCommitLostRace { expected: CasExpectation, observed: CasRaceObservation }
+
+// LOCAL DURABLE COMMIT AND DOWNSTREAM ACCEPTANCE ARE SEPARATE FACTS and are never folded into one
+// "saved" flag. A chunk can be durably on this machine's spool and unaccepted anywhere else, which
+// is the normal state while the machine whose reboot we are capturing is down.
+// ONE DIGEST, AND IT IS THE STORE'S, NOT THE CALLER'S.
+//
+// THIS FIELD USED TO BE TWO, AND THE SECOND ONE MADE THE VERIFICATION CIRCULAR. LocallyCommitted
+// carried `attests_payload` beside `committed_content`, and `attests_payload` was a PARAMETER of
+// local_commit_from_cas -- a value the caller handed in. commit_attests_chunk then compared that
+// caller-authored field against the chunk digest, so a caller that committed bytes X and passed the
+// digest of chunk Y got CommitAttestsThisChunk BY CONSTRUCTION, no matter what the compare-and-set
+// actually stored. The one fact the store attests, committed_content, was never consulted. That is
+// validation standing where construction was available (DESIGN section 5): the check was satisfiable
+// by passing the right argument while the realization lied, and it made the binding guard -- the link
+// the silence law depends on -- prove nothing.
+//
+// THE REPAIR IS TO DELETE THE FREE PARAMETER, not to add a check over it. The attestation is now
+// READ OFF THE COMPARE-AND-SET RESULT: committed_content is CasSlotVersion.content, the digest of
+// what the store committed, and commit_attests_chunk compares THAT against the chunk payload. The
+// slot's committed value IS the chunk payload -- that is what making these bytes durable means -- so
+// the comparison is between two digests of the same thing rather than across two semantic kinds. If a
+// store ever commits under a different hash family the answer is CommitBindingIncomparable, which is
+// a refusal rather than a fabricated agreement.
+//
+// There is no longer any caller-authored digest for a binding to line up with.
+// THE TOKEN THAT MAKES THE COMMITTED ARM UNMINTABLE FROM OUTSIDE. A sum ARM is not sealable directly
+// -- sole_constructor is a record property -- so the arm carries a sealed record instead, and only
+// this module can build one. Measured before this landed: a foreign module could write
+// LocallyCommitted { committed_content: <any hash> } and the compiler accepted it, which meant the
+// durability guard in the silence law could be satisfied without any store ever having committed
+// anything. The guarantee was in the prose and not in the type, for the third time on this branch.
+type DurableCommitProof sole_constructor {
+  committed_content: ContentHash
+}
+
+type LocalCommitStanding
+  = LocallyCommitted { proof: DurableCommitProof }
+  | LocalCommitFailed { cause: CapturePersistenceRefusal }
+  | LocalCommitNotAttempted
+
+type DownstreamAcceptanceStanding
+  = DownstreamAccepted { accepted_content: ContentHash }
+  | DownstreamRejected { cause: CapturePersistenceRefusal }
+  | DownstreamNotOffered
+
+// FILE EXISTENCE IS NOT A PERSISTENCE PROOF, and this fold is where that law is enforced rather
+// than asserted. The ONLY route to LocallyCommitted is a CasCommitted outcome from the corpus's
+// durable compare-and-set authority: a path, a directory listing, or a successful write() return
+// cannot construct it. A directory existing is not a writable evidence route.
+//
+// Every CAS refusal maps to a DISTINCT persistence refusal rather than one flat failure, because a
+// missing referenced object is re-derivable, a malformed head is repaired by hand, and a refused
+// read is retried -- three remedies a caller cannot choose between from prose.
+fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
+  match outcome {
+    CasCommitted { committed: committed } =>
+      LocallyCommitted { proof: DurableCommitProof { committed_content: committed.content } }
+    CasPreconditionFailed { expected: expected, observed: observed } =>
+      LocalCommitFailed {
+        cause: ChunkCommitLostRace {
+          expected: expected
+          observed: cas_race_observation(observed: observed)
+        }
+      }
+    CasStoreRefused { cause: cause } =>
+      match cause {
+        CasUnreadableMalformed { detail: detail } =>
+          LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+        CasUnreadableContentMissing { referenced: referenced } =>
+          LocalCommitFailed { cause: ChunkReferenceMissing { referenced: referenced } }
+        CasUnreadableReadRefused { detail: detail } =>
+          LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+      }
+  }
+}
+
+// WHETHER A COMMIT RECEIPT ACTUALLY ATTESTS THIS CHUNK'S BYTES. Cross-family digests return
+// ChunkPayloadIncomparable rather than a fabricated false, because compare_content_hash refuses that
+// comparison and this fold must not paper over the refusal (DESIGN section 5).
+// CommitNoReceipt EXISTS BECAUSE ITS ABSENCE WAS A FABRICATION. The first version of this fold
+// answered the no-receipt cases -- a failed commit, a commit never attempted -- by returning
+// CommitAttestsOtherPayload with the chunk's own digest in BOTH fields. That is a manufactured
+// value: it reports "the receipt attests a different payload" while naming one payload twice, which
+// is self-contradictory, and it invents an `attested` digest for a receipt that does not exist. The
+// honest answer to "what does the receipt attest" when there is no receipt is a NAMED ABSENCE
+// carrying the standing, not a plausible-looking pair of hashes (DESIGN section 5, found by
+// review 64871 against the consuming lane).
+type CommitBinding
+  = CommitAttestsThisChunk
+  | CommitAttestsOtherPayload { attested: ContentHash, chunk_payload: ContentHash }
+  | CommitBindingIncomparable { attested: ContentHash, chunk_payload: ContentHash }
+  | CommitNoReceipt { standing: LocalCommitStanding }
+
+fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> CommitBinding {
+  match standing {
+    LocallyCommitted { proof: proof } =>
+      match compare_content_hash(left: proof.committed_content, right: chunk.payload_digest) {
+        ContentHashEqual => CommitAttestsThisChunk
+        ContentHashDifferent =>
+          CommitAttestsOtherPayload { attested: proof.committed_content, chunk_payload: chunk.payload_digest }
+        ContentHashCrossFamilyIncomparable =>
+          CommitBindingIncomparable { attested: proof.committed_content, chunk_payload: chunk.payload_digest }
+      }
+    LocalCommitFailed { cause: _ } => CommitNoReceipt { standing: standing }
+    LocalCommitNotAttempted => CommitNoReceipt { standing: standing }
+  }
+}
+
+// HOW MANY BYTES THIS CHUNK ACTUALLY CARRIES. Silence is a POSITIVE RECEIPT in this model -- a
+// durably committed, continuity-verified EMPTY range -- rather than a caller's assertion that
+// nothing showed up, which is the shape the sixth instance of
+// gunbc.recurring_failure_mode.empty_capture_read_as_clean_result demands.
+fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
+  byte_size_count(b: chunk.range.length)
+}
+
+// THE ATTESTED ROUTE TO CONTINUITY, so `verified_through` is DERIVED and not authored.
+//
+// WHY THIS EXISTS. ContinuityEstablished carries a bare offset, and on the silence path that offset
+// is the ONLY evidence spanning the requested range -- an empty chunk has length zero, so the range
+// check cannot span anything. That made the most dangerous arm in the lane rest on a number a caller
+// could write straight onto the envelope: the same defect deleted one module over when
+// `attests_payload` stopped being a parameter.
+//
+// AND THE FIRST VERSION OF THIS FOLD DID NOT ACTUALLY FIX IT, which is why the shape below is
+// heavier. It took bare CaptureChunks and called them committed, so nothing required a commit
+// standing at all; it never checked that the chunks came from ONE collector session and generation,
+// so a run assembled across two collectors walked as though it were one stream; and it compared only
+// `first_offset > verified_through`, so an OVERLAPPING or REVERSED range was accepted and could move
+// verified_through BACKWARDS. A fold that can walk backwards is not evidence of coverage. Found by
+// the consuming lane before it was used as a production proof.
+
+// A CHUNK PAIRED WITH THE PROOF THAT ITS BYTES WERE KEPT. The only route in is the constructor below,
+// which refuses unless the commit receipt attests THIS chunk -- so a List<CommittedChunk> cannot be
+// assembled out of chunks nobody stored.
+// THE SEAL IS NECESSARY AND IT IS NOT SUFFICIENT, AND THE MEASUREMENT SAYS SO.
+//
+// WHAT THE SEAL ESTABLISHES: no foreign module can SPELL these arms. Four forged-literal fixtures are
+// refused on the real acceptance path with SoleConstructorViolation.
+//
+// WHAT IT DOES NOT ESTABLISH, measured rather than argued: a foreign module can still OBTAIN them
+// through the admitted mint, because local_commit_from_cas takes a CasOutcome the CALLER authors and
+// std.durable_compare_and_set does not seal CasSlotVersion. A module contacting NO STORE AT ALL was
+// compiled and run: it wrote CasCommitted { committed: CasSlotVersion { content: <any digest> } },
+// passed it to local_commit_from_cas, received LocallyCommitted, minted a CommittedChunk over a chunk
+// whose payload digest it also chose, and reached a DerivedContinuity. Exit 0. No bytes were ever
+// stored anywhere.
+//
+// SO THE CASCADE IS THE KNOWN CLASS gunbc.recurring_failure_mode.admitted_call_edge_with_unrestricted_value_egress:
+// .dag has no module-private, so every exported function returning a value that CARRIES a sealed type
+// is another route to it, and sealing the mint in turn only moves the proxy one hop. The cascade
+// terminates only at functions that carry nothing outward -- which for a durable commit means the
+// standing must be produced by something that PERFORMS the compare-and-set, not by a fold over an
+// outcome someone hands in. That is the bound realization, and it is not in this slice.
+//
+// RUNG, AND THE EARLIER CLAIM IS WITHDRAWN RATHER THAN ADJUSTED. This module reported the four arms as
+// STRUCTURALLY GUARANTEED. That was wrong at the moment it was written: unspellable is not
+// unobtainable. The honest split is two propositions that must not be blurred --
+//   (i) cross-module LITERAL construction of the sealed arms: structurally refused, executed evidence;
+//   (ii) obtaining a commit standing with no store behind it: MITIGATABLE, open, measured above.
+// The silence law rests on (ii), so the law's rung is (ii)'s. NEXT-RUNG TRIGGER, A CAPABILITY: a
+// durable-commit route that performs the compare-and-set and returns the standing, with no
+// caller-supplied outcome anywhere in its signature, sufficient that LocallyCommitted cannot be
+// reached without a store having been contacted.
+
+// sole_constructor IS THE WHOLE CLAIM. Without it this was an ordinary record any module could build
+// -- and the witness module did exactly that, minting one with the chunk's own payload digest as the
+// committed content when the real constructor refused. So "the only route in" was prose, not a
+// property: an authorable bypass sitting in the accepted corpus, which is the validation-standing-
+// where-construction-was-available tell one more time. Sealed, the refusal below is the only way to
+// obtain one, and a fixture that wants a CommittedChunk must satisfy the attestation like production.
+type CommittedChunk sole_constructor {
+  chunk: CaptureChunk
+  committed_content: ContentHash
+}
+
+fn committed_chunk(chunk: CaptureChunk, standing: LocalCommitStanding) -> CommittedChunk? {
+  match commit_attests_chunk(standing: standing, chunk: chunk) {
+    CommitAttestsThisChunk =>
+      match standing {
+        LocallyCommitted { proof: proof } =>
+          Present { value: CommittedChunk { chunk: chunk, committed_content: proof.committed_content } }
+        LocalCommitFailed { cause: _ } => Absent
+        LocalCommitNotAttempted => Absent
+      }
+    CommitAttestsOtherPayload { attested: _, chunk_payload: _ } => Absent
+    CommitBindingIncomparable { attested: _, chunk_payload: _ } => Absent
+    CommitNoReceipt { standing: _ } => Absent
+  }
+}
+
+// WHY A DERIVATION IS NOT JUST A StreamContinuity. Walking a run can fail in ways that are NOT a gap
+// in the source: the chunks may not all belong to the subject being asked about, or they may not be
+// in receive order, or their ranges may overlap. Rendering those as ContinuityGap would report a hole
+// in the HOST's stream for what is actually a defect in the caller's assembled run -- a fact about
+// the observer published as a fact about the subject, which is this lane's founding error.
+type ContinuityDerivation
+  = DerivedContinuity { continuity: StreamContinuity }
+  | RunCrossesSubjects { expected: SourceStreamId, chunk: SourceStreamId }
+  | RunOutOfReceiveOrder { previous: Nat, observed: Nat }
+  | RunRangesOverlapOrReverse { verified_through: Nat, chunk: SourceStreamRange }
+
+fn continuity_from_committed_chunks(
+  committed: List<CommittedChunk>,
+  subject: SourceStreamId,
+  from: Nat,
+) -> ContinuityDerivation {
+  match committed.first() {
+    Absent =>
+      DerivedContinuity {
+        continuity: ContinuityUnknown { detail: "no committed chunk accounts for this range" }
+      }
+    Present { value: head } =>
+      if !source_stream_eq(a: head.chunk.source, b: subject) {
+        RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
+      } else if head.chunk.range.first_offset > from {
+        DerivedContinuity {
+          continuity: ContinuityGap {
+            gap: SourceStreamRange {
+              first_offset: from
+              length: byte_size(count: head.chunk.range.first_offset - from)
+            }
+            cause: GapCauseUnattributed
+          }
+        }
+      } else {
+        continuity_walk(
+          committed: committed.skip(n: 1),
+          subject: subject,
+          verified_through: range_end(range: head.chunk.range),
+          previous_session: head.chunk.occurrence.session,
+          previous_generation: head.chunk.occurrence.ownership_generation,
+          previous_sequence: head.chunk.occurrence.receive_sequence,
+        )
+      }
+  }
+}
+
+// THE ORDER OF THESE GUARDS IS THE ARGUMENT. Only a change of STREAM is a caller error -- a run that
+// spans two streams supports no statement about either. Everything else is a real break in one
+// stream, and the two collector-side breaks come BEFORE the offset checks because they explain the
+// discontinuity that would otherwise be measured as a hole in the host's output.
+//
+// A COLLECTOR SESSION CHANGE IS THE MOST COMMON REAL BREAK AND IT IS THIS INVESTIGATION'S OWN CASE:
+// one client exited at three seconds and was relaunched, another was killed before it flushed, a
+// third attached late, and a topology control lost its console to a stale session from an earlier
+// probe. A timeline asking "was this console continuous across that window" must get back NO, BROKEN
+// BY THE COLLECTOR RESTARTING -- not a caller error, and not silence. Receive sequences are per
+// session, so they are only compared WITHIN one.
+fn continuity_walk(
+  committed: List<CommittedChunk>,
+  subject: SourceStreamId,
+  verified_through: Nat,
+  previous_session: CollectorSessionId,
+  previous_generation: Int,
+  previous_sequence: Nat,
+) -> ContinuityDerivation {
+  match committed.first() {
+    Absent =>
+      DerivedContinuity {
+        continuity: ContinuityEstablished { reach: ContinuityReach { verified_through: verified_through } }
+      }
+    Present { value: head } =>
+      if !source_stream_eq(a: head.chunk.source, b: subject) {
+        RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
+      } else if (head.chunk.occurrence.session.collector_session as String) != (previous_session.collector_session as String) {
+        DerivedContinuity {
+          continuity: ContinuityGap {
+            gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
+            cause: CollectorSessionChanged {
+              previous_session: previous_session.collector_session
+              current_session: head.chunk.occurrence.session.collector_session
+            }
+          }
+        }
+      } else if head.chunk.occurrence.ownership_generation != previous_generation {
+        DerivedContinuity {
+          continuity: ContinuityGap {
+            gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
+            cause: CollectorLostOwnership {
+              from_generation: previous_generation
+              to_generation: head.chunk.occurrence.ownership_generation
+            }
+          }
+        }
+      } else if head.chunk.occurrence.receive_sequence <= previous_sequence {
+        RunOutOfReceiveOrder {
+          previous: previous_sequence
+          observed: head.chunk.occurrence.receive_sequence
+        }
+      } else if head.chunk.range.first_offset < verified_through {
+        RunRangesOverlapOrReverse { verified_through: verified_through, chunk: head.chunk.range }
+      } else if head.chunk.range.first_offset > verified_through {
+        DerivedContinuity {
+          continuity: ContinuityGap {
+            gap: SourceStreamRange {
+              first_offset: verified_through
+              length: byte_size(count: head.chunk.range.first_offset - verified_through)
+            }
+            cause: GapCauseUnattributed
+          }
+        }
+      } else {
+        continuity_walk(
+          committed: committed.skip(n: 1),
+          subject: subject,
+          verified_through: range_end(range: head.chunk.range),
+          previous_session: head.chunk.occurrence.session,
+          previous_generation: head.chunk.occurrence.ownership_generation,
+          previous_sequence: head.chunk.occurrence.receive_sequence,
+        )
+      }
+  }
+}
+
+// WHETHER CONTINUITY ANSWERS FOR A RANGE, AS ONE TYPED RESULT rather than two Bool projections a
+// caller must re-match to recover the cause it already had. The earlier shape asked
+// continuity_is_established, then continuity_reaches, then re-derived verified_through from the same
+// value -- three reads that each threw away the standing and one that rebuilt a figure from it. A
+// Bool cannot carry why, so every caller had to re-open the carrier; this returns the answer and its
+// cause together (review 64871).
+type ContinuityCoverage
+  = ContinuityCoversRange
+  | ContinuityNotEstablished { continuity: StreamContinuity }
+  | ContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
+
+fn continuity_covers(continuity: StreamContinuity, through: Nat) -> ContinuityCoverage {
+  match continuity {
+    ContinuityGap { gap: gap, cause: cause } =>
+      ContinuityNotEstablished { continuity: ContinuityGap { gap: gap, cause: cause } }
+    ContinuityUnknown { detail: detail } =>
+      ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
+    ContinuityEstablished { reach: reach } =>
+      if reach.verified_through >= through {
+        ContinuityCoversRange
+      } else {
+        ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
+      }
+  }
+}
+
+// ── continuity ─────────────────────────────────────────────────────────────────────────────────
+
+// WHY A STREAM'S CONTINUITY BROKE -- AND THE VOCABULARY HAS TWO SIDES, WHICH IS THE WHOLE POINT.
+//
+// EVERY ARM OF THIS TYPE USED TO BE SOURCE-SIDE: rollover, clearing, source restart, uncertain source
+// generation. A gap caused by the COLLECTOR -- dying, detaching, losing its ownership lease, or
+// stalling on a pipe nobody read -- had no arm to land on, so it could only ever be reported as the
+// source's fault. That is this investigation's founding failure written into the vocabulary: the
+// instrument reporting its own miss as the host's behaviour. It also cut directly against this lane's
+// own SupervisionCoverage and DrainNotObserved, which exist so collector-side misses stay visible.
+//
+// GapCauseUnattributed IS THE DEFAULT AND THE MOST IMPORTANT ARM. A walk over byte offsets sees that
+// bytes are missing; it CANNOT see why. Assigning a source cause from offsets alone is a fabricated
+// diagnosis, so the derivation below assigns this arm and nothing else. A source-side or
+// collector-side cause may only be attached by something that actually observed it.
+type ContinuityBreakCause
+  = GapCauseUnattributed
+  | SourceRetainedLogRolledOver { lost_through: Nat }
+  | SourceLogCleared
+  | SourceRestarted { previous_generation: NonEmptyStr, current_generation: NonEmptyStr }
+  | SourceGenerationUncertain { detail: NonEmptyStr }
+  | CollectorStoppedRecording
+  | CollectorSessionChanged { previous_session: NonEmptyStr, current_session: NonEmptyStr }
+  | CollectorLostOwnership { from_generation: Int, to_generation: Int }
+  | CollectorPipeUnread
+
+// THE SAME SEAL FOR THE OFFSET THE SILENCE ARM LEANS ON HARDEST. ContinuityEstablished was the sole
+// evidence spanning a requested range on the silence path, and a foreign module could author
+// ContinuityEstablished { verified_through: 999999 } directly -- measured, and accepted by the
+// compiler. Deriving the offset inside this module was necessary and not sufficient while the arm
+// itself stayed writable.
+type ContinuityReach sole_constructor {
+  verified_through: Nat
+}
+
+type StreamContinuity
+  = ContinuityEstablished { reach: ContinuityReach }
+  | ContinuityGap { gap: SourceStreamRange, cause: ContinuityBreakCause }
+  | ContinuityUnknown { detail: NonEmptyStr }
+
+// WHETHER A COMMITTED CHUNK ACTUALLY COVERS A REQUESTED RANGE. Coverage is arithmetic over the
+// source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
+// lets a machine-lifetime collector license a negative observation at all. A bounded client that
+// must exit before its window closes cannot answer this question; committed bytes can.
+fn range_end(range: SourceStreamRange) -> Nat {
+  range.first_offset + byte_size_count(b: range.length)
+}
+
+fn range_covers(outer: SourceStreamRange, inner: SourceStreamRange) -> Bool {
+  (outer.first_offset <= inner.first_offset) && (range_end(range: inner) <= range_end(range: outer))
+}

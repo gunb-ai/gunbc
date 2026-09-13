@@ -1,0 +1,390 @@
+module gunbc.fleet_observation_observation_envelope
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.string_type { String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import std.measure { ObservationInstant }
+import std.content_hash { ContentHash }
+import gunbc.fleet_observation_collector_ownership {
+  CollectorSessionId,
+  ownership_generation,
+  EndpointOwnership,
+  OwnerRecording,
+  FollowerReadOnly,
+  ForeignSessionHeld,
+  RecordingOwnerIdentity,
+  RecordingOwner,
+  NotTheRecordingOwner,
+  recording_owner,
+}
+import gunbc.fleet_observation_capture_chunk {
+  CaptureChunk,
+  SourceStreamId,
+  source_stream_eq,
+  SourceStreamRange,
+  StreamContinuity,
+  ContinuityEstablished,
+  ContinuityGap,
+  ContinuityUnknown,
+  LocalCommitStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+  CapturePersistenceRefusal,
+  DownstreamAcceptanceStanding,
+  DownstreamAccepted,
+  DownstreamRejected,
+  DownstreamNotOffered,
+  continuity_covers,
+  ContinuityCoverage,
+  ContinuityCoversRange,
+  ContinuityNotEstablished,
+  ContinuityShortOfRange,
+  commit_attests_chunk,
+  chunk_byte_count,
+  CommitBinding,
+  CommitAttestsThisChunk,
+  CommitAttestsOtherPayload,
+  CommitBindingIncomparable,
+  CommitNoReceipt,
+  range_covers,
+  range_end,
+}
+
+// THE PUBLISHED INTERFACE. gunbc's acquisition half records bytes; the interpretation half
+// (SEL generation/cursor ingestion, attempt assessment, replay, the derived machine timeline)
+// CONSUMES exactly this and owns everything that reads it. The field roster below was agreed with
+// that consumer rather than guessed, so every field here has a named reader (DESIGN section 3c).
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT DO. It does not associate an observation with a firmware
+// attempt, an OS boot, or an experiment. There is no fold from a timestamp to an association and no
+// constructor for a nearest-timestamp match, because that association is the consumer's job and a
+// guessed bijection is the defect this whole lane exists to end. An observation that cannot be
+// associated is RETAINED UNASSOCIATED.
+//
+// COVERAGE STANDING IS NOT RESTATED HERE, AND THE SIBLING AUTHORITY IS DESCRIBED RATHER THAN NAMED.
+// Whether a BOUNDED console client covered the window it was given belongs to a separate per-attempt
+// carrier: the one whose coverage arm distinguishes never-established, interrupted, completed and
+// still-running-past-deadline, and whose fold makes "the host produced no console bytes" reachable
+// only from the completed arm. That carrier is authored in an open pull request under active review
+// at this writing and is not on main, so naming its symbols here would be a bare identity that does
+// not resolve in the tree this module lands in -- the class
+// gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end, whose rule
+// ranks boundary-by-description FIRST exactly when the cited identity is still in motion. Its arms
+// are in motion: the supervised-collector case below was raised against them while this module was
+// being written. This module mints no second coverage or termination vocabulary either way.
+//
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the interpretation lane's
+// absence predicate, which reads this module's persistence and continuity evidence together with
+// that per-attempt coverage standing. TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: the join lands when
+// a per-attempt coverage carrier resolves on main AND this module's SourceByteFact is carried beside
+// it at that consumer's fold, sufficient that the consumer reads both evidences and neither alone.
+// WHAT MUST NOT HAPPEN MEANWHILE: this module must not grow a coverage arm to bridge the gap, which
+// would fork the authority it is deferring to.
+//
+// WHY THE ABSENCE LAW BELOW IS NOT THAT CARRIER'S, and this is the load-bearing difference rather
+// than a division of labour. That carrier's completed-coverage arm encodes a COMPLETED CLIENT
+// LIFETIME -- a deadline stopped the client -- and a supervised machine-lifetime collector never
+// terminates, so that arm is unreachable for it BY CONSTRUCTION. Predicating absence on client
+// termination would therefore make a negative observation permanently unmintable for the very
+// collector this lane exists to build. This module predicates it instead on DURABLY COMMITTED BYTES
+// ACCOUNTING FOR THE RANGE, which is a fact about storage rather than about a process, holds for an
+// ongoing collector, and does not weaken as the collector's lifetime lengthens. The two are
+// complementary and neither is a restatement of the other.
+
+// ── the identities, kept separate ──────────────────────────────────────────────────────────────
+
+// THE SOURCE, BOUND TO A MACHINE BY AUTHENTICATED EVIDENCE rather than by configuration. The
+// binding names the authority that authenticated it, so a row asserting "these bytes came from
+// srv1" can be checked rather than believed.
+type SourceMachineBinding {
+  enrolled_machine: NonEmptyStr
+  source_identity: NonEmptyStr
+  source_implementation: NonEmptyStr
+  source_version: NonEmptyStr
+  authenticated_by: DeclarationRef
+}
+
+// THE SOURCE'S OWN GENERATION, with uncertainty as a FIRST-CLASS ARM rather than a default. Most
+// out-of-band sources cannot tell you whether they restarted; recording an unknown generation as a
+// known one is how a rollover becomes invisible.
+type SourceGenerationStanding
+  = SourceGenerationObserved { generation: NonEmptyStr }
+  | SourceGenerationUnavailable { reason: NonEmptyStr }
+
+// THE SOURCE'S OWN RECORD CURSOR where it has one. A SEL record id is native; a console byte stream
+// has none, and that difference is carried rather than papered over with a synthetic id.
+type NativeRecordCursor
+  = NativeCursor { record_identity: NonEmptyStr }
+  | NoNativeCursor
+
+// WHEN, ACCORDING TO WHOM. The producer's timestamp is carried with its DECLARED CLOCK DOMAIN and
+// the collector's receive observations are bound to their own clock and session, all through
+// std.measure ObservationInstant -- the corpus's clock authority, whose compare_instants returns
+// InstantIncomparable across domains rather than fabricating an order. That refusal is what makes
+// cross-clock association structurally unavailable here rather than merely discouraged.
+//
+// ProducerTimestampAbsent is its own arm: many console bytes carry no timestamp at all, and
+// substituting the receive time for a missing producer time is the fabrication DESIGN section 5
+// forbids.
+type ProducerTimestamp
+  = ProducerStated { instant: ObservationInstant }
+  | ProducerTimestampAbsent
+
+type ReceiveObservation {
+  wall: ObservationInstant
+  monotonic: ObservationInstant
+  observed_by: CollectorSessionId
+}
+
+// ── the envelope ───────────────────────────────────────────────────────────────────────────────
+
+// ONE PERSISTED OBSERVATION. Local durable commit and downstream acceptance are SEPARATE FIELDS,
+// never one "saved" flag, because the whole point of spool-and-forward is the interval in which the
+// first is true and the second is not.
+type ObservationEnvelope {
+  binding: SourceMachineBinding
+  source_generation: SourceGenerationStanding
+  native_cursor: NativeRecordCursor
+  ownership: EndpointOwnership
+  chunk: CaptureChunk
+  producer_timestamp: ProducerTimestamp
+  received: ReceiveObservation
+  local_commit: LocalCommitStanding
+  downstream: DownstreamAcceptanceStanding
+  continuity: StreamContinuity
+}
+
+// ── what may be said about the source ───────────────────────────────────────────────────────────
+
+// THE FACT AN ENVELOPE LICENSES ABOUT ITS SOURCE OVER A RANGE.
+//
+// SourceProducedNoBytesInRange IS THE DANGEROUS ONE and is the reason this fold exists. It is the
+// modelled form of "the console was silent" / "the SEL was quiet" -- the reading that was published
+// as established on 2026-09-12 and withdrawn the same day (correction bf4cac9440), and the reading
+// seven byte-identical captures were consumed as for a week. Its reachability is the wall: it can
+// be returned ONLY when the bytes are durably committed, continuity is established, and the
+// committed range actually covers the range being asked about. Any shortfall returns a COVERAGE
+// GAP naming what is missing -- never silence.
+// THE SEAL ON THE ONE ARM THIS WHOLE LANE EXISTS TO MAKE HARD. Every guard below was derivable and
+// checked, and the arm they guard was still writable: a foreign module could author
+// SourceProducedNoBytesInRange { range } directly, never call this fold, and publish "the host
+// produced no bytes" with no evidence whatsoever. Measured, and the compiler accepted it. So the
+// claim that the guards made silence unmintable was true only of values that happened to come
+// through here, which is a claim about callers rather than about the type.
+//
+// SilenceProof is sole_constructor, so only this module can build one, and source_byte_fact is the
+// only place that does. The arm now cannot be spelled without it. THIS is what makes the 2026-09-12
+// reading -- a quiet channel published as a successful boot -- unwritable rather than reviewed
+// against.
+type SilenceProof sole_constructor {
+  range: SourceStreamRange
+}
+
+type SourceByteFact
+  = SourceBytesObserved { digest: ContentHash }
+  | SourceProducedNoBytesInRange { proof: SilenceProof }
+  | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding }
+  | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
+  | CoverageGapContinuityBroken { continuity: StreamContinuity }
+  | CoverageGapContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
+  | CoverageGapRangeNotCovered { requested: SourceStreamRange, committed: SourceStreamRange }
+  | CoverageGapNotTheRecordingOwner { ownership: EndpointOwnership }
+  | CoverageGapEvidenceNamesAnotherSubject { disagreement: SubjectAgreement }
+
+// THE WALL. Read the order of the guards: every coverage question is answered BEFORE the payload
+// question, so there is no path on which an empty payload short-circuits to silence.
+//
+// A collector that cannot prove coverage reports a coverage gap; it does not report silence as
+// quiet. Each refusal names what was missing, and none of them widens.
+fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange) -> SourceByteFact {
+  let requested_end = range_end(range: requested)
+  match recording_owner(ownership: envelope.ownership) {
+    NotTheRecordingOwner =>
+      CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
+    RecordingOwner { session: owner_session, generation: owner_generation } =>
+      match subject_agreement(
+        owner_session: owner_session,
+        owner_generation: owner_generation,
+        chunk: envelope.chunk,
+        binding: envelope.binding,
+      ) {
+        CollectorSessionDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: CollectorSessionDisagrees { owner: a, chunk: b } }
+        EnrolledMachineDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: EnrolledMachineDisagrees { owner: a, chunk: b } }
+        OwnershipGenerationDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: OwnershipGenerationDisagrees { owner: a, chunk: b } }
+        BindingMachineDisagrees { binding: a, owner: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: BindingMachineDisagrees { binding: a, owner: b } }
+        ChunkStreamDisagrees { binding_machine: bm, binding_source: bs, chunk_machine: cm, chunk_source: cs } =>
+          CoverageGapEvidenceNamesAnotherSubject {
+            disagreement: ChunkStreamDisagrees { binding_machine: bm, binding_source: bs, chunk_machine: cm, chunk_source: cs }
+          }
+        EvidenceNamesOneSubject =>
+        match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
+          CommitNoReceipt { standing: standing } =>
+            CoverageGapNotDurablyCommitted { standing: standing }
+          CommitAttestsOtherPayload { attested: a, chunk_payload: c } =>
+            CoverageGapCommitDoesNotBindThisChunk {
+              binding: CommitAttestsOtherPayload { attested: a, chunk_payload: c }
+            }
+          CommitBindingIncomparable { attested: a, chunk_payload: c } =>
+            CoverageGapCommitDoesNotBindThisChunk {
+              binding: CommitBindingIncomparable { attested: a, chunk_payload: c }
+            }
+          CommitAttestsThisChunk =>
+            match continuity_covers(continuity: envelope.continuity, through: requested_end) {
+              ContinuityNotEstablished { continuity: continuity } =>
+                CoverageGapContinuityBroken { continuity: continuity }
+              ContinuityShortOfRange { verified_through: verified, requested_end: asked } =>
+                CoverageGapContinuityShortOfRange { verified_through: verified, requested_end: asked }
+              ContinuityCoversRange =>
+                if envelope.chunk.range.first_offset > requested.first_offset {
+                  CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
+                  if range_covers(outer: envelope.chunk.range, inner: requested) {
+                    SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                  } else {
+                    CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                  }
+                } else {
+                  SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ── the retention promise, refused where it is not held ─────────────────────────────────────────
+
+// WHAT SPOOL-AND-FORWARD ACTUALLY PROMISES IN THIS SLICE, stated rather than implied.
+//
+// DELIVERED: collecting a subject machine's OWN reboot does not depend on that machine staying
+// online, because the collector is out-of-band and machine-scoped -- it attaches to the subject's
+// management controller from a different host, and the subject's power state is the thing being
+// observed rather than a dependency of observing it.
+//
+// EXPLICITLY REFUSED, AND NOT QUIETLY NARROWED: durability across the loss of the COLLECTOR's own
+// host is NOT delivered here. A chunk that is LocallyCommitted on a collector host which then dies
+// before DownstreamAccepted is lost, and this slice does not replicate it. The brief required this
+// promise to be refused explicitly in the model if it could not be met, so it is an arm rather than
+// a silence, and a reader can see which guarantee it actually has.
+type RetentionPromise
+  = SubjectRebootSurvivedOutOfBand
+  | CollectorHostLossNotSurvived { refusal: NonEmptyStr }
+
+data retention_promise_this_slice: List<RetentionPromise> = [
+  SubjectRebootSurvivedOutOfBand,
+  CollectorHostLossNotSurvived {
+    refusal: "A chunk durably committed on the collector host is lost if that host dies before downstream acceptance; this slice does not replicate the spool, and the retention promise is refused rather than narrowed."
+  },
+]
+
+// DURABLE HERE IS NOT DELIVERED THERE. The two standings are separate fields on the envelope and
+// this predicate is the only place they are read together -- it answers whether the bytes have
+// actually left the collector host, which is exactly the question the refused promise above makes
+// load-bearing.
+// NO WILDCARD ARMS HERE, AND THE REASON IS THIS BRANCH'S OWN CLASS. An earlier shape matched
+// DownstreamAccepted and sent EVERYTHING ELSE to one arm, so an ACTIVELY REFUSED forward -- carrying a
+// CapturePersistenceRefusal naming a corrupt read-back, an exhausted spool or an expired window --
+// arrived at the consumer as ordinary never-offered spool exposure, with its cause discarded. A second
+// wildcard did the same to LocalCommitFailed and LocalCommitNotAttempted. Both are
+// gunbc.recurring_failure_mode.bool_projection_over_a_typed_carrier in its general form: a projection
+// merging arms whose remedies differ. A refused forward is now its own arm carrying its cause, and
+// every arm of both carriers is named.
+//
+// WHAT THE REFUSED PROMISE MEANS FOR ONE ENVELOPE, and this is the roster's consumer rather than a
+// second statement of it. The roster above is the authority for WHICH promise is refused; this fold
+// reads that authority to answer, for a given envelope, whether its bytes are still inside the
+// refused window. An envelope whose bytes are only locally committed is exposed to collector-host
+// loss and carries the roster's own refusal text; once downstream has accepted, it is not.
+type RetentionExposure
+  = RetainedBeyondCollectorHost
+  | ForwardRefused { cause: CapturePersistenceRefusal }
+  | ExposedToCollectorHostLoss { refusal: NonEmptyStr }
+  | NotYetRetained { standing: LocalCommitStanding }
+
+// THE REFUSAL TEXT COMES FROM THE ROSTER, never from a literal here -- a second copy of the sentence
+// would be the duplication DESIGN section 3 forbids, and would drift from the promise it describes.
+fn collector_host_loss_refusal(promises: List<RetentionPromise>) -> NonEmptyStr {
+  match promises.first() {
+    Absent => "no collector-host-loss promise is rostered" as NonEmptyStr
+    Present { value: promise } =>
+      match promise {
+        CollectorHostLossNotSurvived { refusal: refusal } => refusal
+        SubjectRebootSurvivedOutOfBand => collector_host_loss_refusal(promises: promises.skip(n: 1))
+      }
+  }
+}
+
+fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
+  match envelope.downstream {
+    DownstreamAccepted { accepted_content: _ } => RetainedBeyondCollectorHost
+    DownstreamRejected { cause: cause } => ForwardRefused { cause: cause }
+    DownstreamNotOffered =>
+      match envelope.local_commit {
+        LocallyCommitted { proof: _ } =>
+          ExposedToCollectorHostLoss {
+            refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+          }
+        LocalCommitFailed { cause: cause } =>
+          NotYetRetained { standing: LocalCommitFailed { cause: cause } }
+        LocalCommitNotAttempted =>
+          NotYetRetained { standing: LocalCommitNotAttempted }
+      }
+  }
+}
+
+// EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT, AND THE ANSWER SAYS WHICH ONE DISAGREED.
+//
+// THIS RETURNED A Bool OVER FOUR INDEPENDENT AXES and the caller then minted a literal that named no
+// subject at all -- on the fold whose entire purpose is subject agreement. Four separately-authored
+// disagreements (collector session, enrolled machine, ownership generation, binding machine) arrived
+// as one bit plus a sentence, so a reader learned that something disagreed and nothing about what.
+// That is this branch's own filed class applied to a guard the branch added, and the diagnostic
+// requirement is DESIGN section 5's: typed and LOCATED, not prose.
+type SubjectAgreement
+  = EvidenceNamesOneSubject
+  | CollectorSessionDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }
+  | EnrolledMachineDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }
+  | OwnershipGenerationDisagrees { owner: Int, chunk: Int }
+  | BindingMachineDisagrees { binding: NonEmptyStr, owner: NonEmptyStr }
+  | ChunkStreamDisagrees { binding_machine: NonEmptyStr, binding_source: NonEmptyStr, chunk_machine: NonEmptyStr, chunk_source: NonEmptyStr }
+
+fn subject_agreement(
+  owner_session: CollectorSessionId,
+  owner_generation: Int,
+  chunk: CaptureChunk,
+  binding: SourceMachineBinding,
+) -> SubjectAgreement {
+  if (owner_session.collector_session as String) != (chunk.occurrence.session.collector_session as String) {
+    CollectorSessionDisagrees {
+      owner: owner_session.collector_session
+      chunk: chunk.occurrence.session.collector_session
+    }
+  } else if (owner_session.enrolled_machine as String) != (chunk.occurrence.session.enrolled_machine as String) {
+    EnrolledMachineDisagrees {
+      owner: owner_session.enrolled_machine
+      chunk: chunk.occurrence.session.enrolled_machine
+    }
+  } else if owner_generation != chunk.occurrence.ownership_generation {
+    OwnershipGenerationDisagrees { owner: owner_generation, chunk: chunk.occurrence.ownership_generation }
+  } else if (binding.enrolled_machine as String) != (owner_session.enrolled_machine as String) {
+    BindingMachineDisagrees { binding: binding.enrolled_machine, owner: owner_session.enrolled_machine }
+  } else if !source_stream_eq(
+    a: chunk.source,
+    b: SourceStreamId { enrolled_machine: binding.enrolled_machine, source_identity: binding.source_identity },
+  ) {
+    ChunkStreamDisagrees {
+      binding_machine: binding.enrolled_machine
+      binding_source: binding.source_identity
+      chunk_machine: chunk.source.enrolled_machine
+      chunk_source: chunk.source.source_identity
+    }
+  } else {
+    EvidenceNamesOneSubject
+  }
+}

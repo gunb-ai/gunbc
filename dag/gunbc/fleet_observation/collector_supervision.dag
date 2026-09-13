@@ -1,0 +1,207 @@
+module gunbc.fleet_observation_collector_supervision
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.string_type { String }
+import std.nat { Nat }
+import std.measure {
+  ByteSize,
+  byte_size_count,
+  ObservationInstant,
+  ClockDomain,
+  InstantOrder,
+  InstantBefore,
+  InstantSame,
+  InstantAfter,
+  InstantIncomparable,
+  compare_instants,
+}
+import std.process_termination {
+  ProcessTermination,
+  ProcessExited,
+  ProcessSignaled,
+  ProcessTerminationUnobserved,
+}
+
+// SUPERVISING THE PROCESS THAT DOES THE COLLECTING. The bytes are
+// gunbc.fleet_observation_capture_chunk and the published fact is
+// gunbc.fleet_observation_observation_envelope; this module answers only what happened to the
+// CHILD, and it exists because three replacement collectors failed here in three different ways on
+// one day and each failure was read as a successful observation.
+//
+// THE SPECIMEN THIS MODULE IS BUILT AROUND. A console client was launched to cover a 420-second
+// DRAM-training window. Its stdin was not a terminal, so its receive loop reached EOF and it EXITED
+// RC=0 AFTER ROUGHLY THREE SECONDS, while the surrounding wrapper slept out the remaining window
+// and reported the unchanged file. The exit status said SUCCESS and it was true -- the client did
+// exactly what a client does at EOF -- so every status-shaped check passed while the instrument
+// covered three seconds of four hundred and twenty and reported on all of them.
+//
+// THE LAW THAT FALLS OUT, and it is the whole point of the module: A ZERO EXIT CODE IS NOT AN
+// EXPECTED CLOSURE. Expected closure means THE DEADLINE ENDED THE CHILD. A child that ended before
+// its deadline was INTERRUPTED, whatever its exit code says, and Interrupted, TerminatedByDeadline,
+// StillRunning and CleanupFailed are four dispositions with four different consequences that must
+// never collapse into one.
+//
+// std.process_termination is the corpus's authority for HOW a child died and is consumed here
+// rather than restated: this module adds WHEN it died relative to the deadline, which is the axis
+// the exit status cannot carry.
+
+// WHETHER A CHILD EVER EXISTED. A transport that refused before the process existed produces no
+// status at all, and that is not a failure OF the process -- it is the absence of one.
+type SpawnOutcome
+  = SpawnProducedChild { child_identity: NonEmptyStr }
+  | SpawnRefused { cause: NonEmptyStr }
+
+// DRAINING IS OBSERVED DURING OPERATION, NOT ONLY AT EXIT. A pipe drained only when the child exits
+// cannot distinguish a child that emitted nothing from one whose output was never read, and a full
+// pipe stalls the writer, so the collector can cause the silence it then reports. DrainNotObserved
+// is the honest state when nobody watched the pipe while it was live; it is NOT zero bytes.
+type DrainProgress
+  = DrainedDuringOperation { bytes: ByteSize, last_progress_at: ObservationInstant }
+  | DrainObservedEmpty { watched_until: ObservationInstant }
+  | DrainNotObserved
+
+// WHAT HAPPENED TO THE COLLECTOR CHILD.
+//
+// TerminationNotObserved IS NOT "STILL RUNNING", and the distinction is the imported authority's, not
+// a nicety of this module. std.process_termination defines ProcessTerminationUnobserved as the state
+// where the spawn never produced a status -- nobody read one -- and it is explicitly NOT an error arm
+// there. This module previously mapped it to StillRunningPastDeadline, which ASSERTS the child is
+// alive: a claim about the process that an unread status cannot support, and the same absent-reads-as-
+// present shape the whole lane exists to close. A supervisor that did not read a status says so.
+//
+// SupervisionUndecidable is not an error arm and not a default. It is what an honest supervisor
+// returns when the deadline and the observed end were read from clocks that do not share an origin,
+// so their order is not a fact anyone holds. Defaulting that to ClosedAsExpected would fabricate
+// the very claim this module exists to refuse.
+type SupervisionDisposition
+  = ClosedAtDeadline { termination: ProcessTermination, drained: DrainProgress }
+  | InterruptedBeforeDeadline { termination: ProcessTermination, drained: DrainProgress }
+  | TerminationNotObserved { drained: DrainProgress }
+  | NeverSpawned { cause: NonEmptyStr }
+  | CleanupFailed { detail: NonEmptyStr }
+  | SupervisionUndecidable { deadline_domain: ClockDomain, observed_domain: ClockDomain }
+
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CleanupFailed has NO PRODUCER in this
+// slice: reaping, closing a pipe and releasing a PTY are acts only a bound realization performs, and
+// a pure fold cannot observe one failing. It is declared because a cleanup failure that has no arm
+// gets reported as the disposition that preceded it -- so a leaked PTY would read as a clean closure.
+// CONSUMER THAT WILL CLOSE IT: the bound realization's reap-and-release step.
+//
+// TRIGGER, STATED AS THE CAPABILITY AND NOT AS AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a
+// realization bound to a REAL PROCESS, with a failed execve, a premature EOF and a failed teardown
+// DRIVEN THROUGH IT, each landing on the arm this module predicts -- NeverSpawned,
+// InterruptedBeforeDeadline and CleanupFailed respectively. The grain matters: the loss is a whole
+// ROUTE, so a trigger naming one admitted transport call would be satisfiable while nothing was ever
+// injected, and the frontier would be retired by a caller that proves nothing. Any such caller named
+// in a follow-up must be SUFFICIENT FOR driving those three real failures onto those three arms.
+//
+// WHAT IS ALREADY PROVEN AND WHAT IS NOT, so the two are not confused: the FOLDS are proven to
+// discriminate by mutation -- trusting a zero exit as a closure, and counting an unwatched pipe as
+// coverage, each turn exactly one witness red. That is evidence about this module. It is NOT evidence
+// about execve, and nothing here has yet been driven by a real one.
+
+// THE FOLD. Note what it does NOT take: a Bool saying whether the deadline was reached. That would
+// be a caller assertion standing where an observation belongs -- the same defect, one level up,
+// that this lane exists to end -- so the ordering is DERIVED by comparing two instants through
+// std.measure compare_instants, which refuses across clock domains rather than inventing an order.
+//
+// READ THE EXIT-CODE ARMS TOGETHER WITH THE ORDER: a clean exit BEFORE the deadline is an
+// interruption, not a closure. That single line is the three-seconds-of-four-hundred-and-twenty
+// defect made unwritable.
+fn supervision_disposition(
+  spawn: SpawnOutcome,
+  termination: ProcessTermination,
+  deadline: ObservationInstant,
+  observed_end: ObservationInstant,
+  drained: DrainProgress,
+) -> SupervisionDisposition {
+  match spawn {
+    SpawnRefused { cause: cause } => NeverSpawned { cause: cause }
+    SpawnProducedChild { child_identity: _ } =>
+      match termination {
+        ProcessTerminationUnobserved =>
+          TerminationNotObserved { drained: drained }
+        ProcessExited { code: _ } =>
+          disposition_by_order(
+            order: compare_instants(a: observed_end, b: deadline),
+            termination: termination,
+            drained: drained,
+          )
+        ProcessSignaled { signal: _ } =>
+          disposition_by_order(
+            order: compare_instants(a: observed_end, b: deadline),
+            termination: termination,
+            drained: drained,
+          )
+      }
+  }
+}
+
+// WHEN THE CHILD ENDED, RELATIVE TO ITS DEADLINE, AND NOTHING ELSE. Ending at or after the deadline
+// is the deadline having done its job; ending before it is an interruption regardless of how
+// cleanly it ended; and an incomparable pair is undecidable and says so.
+fn disposition_by_order(
+  order: InstantOrder,
+  termination: ProcessTermination,
+  drained: DrainProgress,
+) -> SupervisionDisposition {
+  match order {
+    InstantBefore =>
+      InterruptedBeforeDeadline { termination: termination, drained: drained }
+    InstantSame =>
+      ClosedAtDeadline { termination: termination, drained: drained }
+    InstantAfter =>
+      ClosedAtDeadline { termination: termination, drained: drained }
+    InstantIncomparable { left: left, right: right } =>
+      SupervisionUndecidable { deadline_domain: right, observed_domain: left }
+  }
+}
+
+// WHETHER THIS SUPERVISION COVERED THE WINDOW IT WAS GIVEN, AND WHY NOT WHEN IT DID NOT.
+//
+// THIS RETURNED A Bool AND THAT WAS THE SAME DEFECT THIS BRANCH DELETED THREE TIMES ELSEWHERE. Six
+// dispositions and three drain states collapsed into one bit, so a caller learned "not covered" and
+// had to re-open both carriers to find out whether the child was interrupted, never spawned, still
+// unobserved, or ran its full deadline with nobody reading its pipe -- four situations with four
+// different remedies. The repair is the one the class prescribes: return the answer WITH its cause.
+//
+// Only a child the deadline ended, whose pipe was actually watched while it ran, covered anything.
+// DrainNotObserved fails even for a full-deadline child, which is the second half of the specimen:
+// a process can be alive for the whole window and observe nothing, because nobody read the pipe.
+// Liveness is not coverage.
+type SupervisionCoverage
+  = WindowCovered
+  | WindowNotCoveredPipeUnread { disposition: SupervisionDisposition }
+  | WindowNotCoveredSupervision { disposition: SupervisionDisposition }
+
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the coverage answer in
+// gunbc.fleet_observation_observation_envelope -- a chunk whose supervision did not cover the window
+// must not license a negative observation about the source, which is the same law one module over
+// applied to the process rather than to the bytes. TRIGGER, STATED AS THE CAPABILITY: the envelope's
+// source_byte_fact taking a supervision coverage alongside its durability and continuity evidence,
+// sufficient that SourceProducedNoBytesInRange is unreachable when the collector's own window was not
+// covered. That join is NOT in this slice, and until it lands this carrier's only callers are its
+// witnesses -- stated here rather than left for a reader to discover.
+fn supervision_coverage(disposition: SupervisionDisposition) -> SupervisionCoverage {
+  match disposition {
+    ClosedAtDeadline { termination: termination, drained: drained } =>
+      match drained {
+        DrainedDuringOperation { bytes: _, last_progress_at: _ } => WindowCovered
+        DrainObservedEmpty { watched_until: _ } => WindowCovered
+        DrainNotObserved =>
+          WindowNotCoveredPipeUnread {
+            disposition: ClosedAtDeadline { termination: termination, drained: drained }
+          }
+      }
+    InterruptedBeforeDeadline { termination: t, drained: d } =>
+      WindowNotCoveredSupervision { disposition: InterruptedBeforeDeadline { termination: t, drained: d } }
+    TerminationNotObserved { drained: d } =>
+      WindowNotCoveredSupervision { disposition: TerminationNotObserved { drained: d } }
+    NeverSpawned { cause: c } =>
+      WindowNotCoveredSupervision { disposition: NeverSpawned { cause: c } }
+    CleanupFailed { detail: detail } =>
+      WindowNotCoveredSupervision { disposition: CleanupFailed { detail: detail } }
+    SupervisionUndecidable { deadline_domain: a, observed_domain: b } =>
+      WindowNotCoveredSupervision { disposition: SupervisionUndecidable { deadline_domain: a, observed_domain: b } }
+  }
+}
