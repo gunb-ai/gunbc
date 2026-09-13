@@ -77,7 +77,7 @@ import gunbc.spark.serving_deployment_selection {
   footprint_bytes, component_route_reading,
   route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
   candidate_route_context, CandidateComponentRoutes,
-  routed_candidates, resolved_route_demands, ResolvedRouteDemand,
+  routed_candidates, RoutedCandidate,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -86,7 +86,9 @@ import gunbc.spark.serving_deployment_selection {
 }
 import gunbc.fabric.engram_materialization {
   engram_component_identity,
-  component_route_standing_component, component_route_standing_context,
+  component_route_standing_component, component_route_standing_context, route_subject_key_eq,
+  ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority,
+  ComponentRouteDecided,
 }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_total_size }
 import extdeps.vllm.deepseek_v4_1_sm12 {
@@ -1157,7 +1159,7 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
 test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
   let field = deepseek_v4_1_candidate_field
   let routed = routed_candidates(field: field)
-  let demands = resolved_route_demands(field: field)
+  let demands = distinct_route_demands(routed: routed)
   count(routed) == count(field.candidates)
     && match keyed_roster_build(
       incomings: map(routed, rc => KeyedRow { row_key: rc.candidate.identity, value: rc }),
@@ -1169,7 +1171,47 @@ test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> B
     && all(routed, rc => count(rc.route_standings) == count(rc.candidate.artifact.components))
     && count(demands) > 0
     && count(demands) < count(field.candidates)
-    && all(demands, d => declaration_ref_eq(a: d.component, b: engram_component_identity))
+    && all(demands, d => declaration_ref_eq(a: component_route_standing_component(s: d), b: engram_component_identity))
+}
+
+// THE DEMAND POPULATION IS READ OFF THE ROWS ALREADY PRODUCED, NOT COMPUTED A SECOND TIME. A first
+// cut called `routed_candidates(field)` AND `resolved_route_demands(field)` -- and `routed_candidates`
+// computes the demand table internally, so the expensive half ran TWICE: sixteen route selections where
+// eight suffice. That is the authored duplication with a shared-state ancestor that DESIGN section 2
+// says to rewire rather than cache, committed inside the instrument that measures the repair of exactly
+// that defect in production.
+//
+// The distinct (component, context) pairs are folded out of the standings the rows already carry. The
+// accumulator holds one entry per distinct demand -- eight, not sixty -- so this is roughly sixty short
+// scans of a very small list rather than a second full route analysis.
+//
+// AND THE RESIDENT COMPONENTS ARE EXCLUDED, WHICH IS NOT A DETAIL. `resolved_route_demands` accumulates
+// only components declared `ComponentPlacedByRoute`; this artifact ALSO carries a `ComponentResident`
+// backbone, whose standing is `ComponentRouteNotThisSubject` with `no_routed_component` as its subject.
+// A first cut of this fold read every standing and so admitted that one, which silently changed the
+// POPULATION rather than only how it was computed -- nine entries instead of eight, one of them naming
+// no component at all. The arm is discriminated here so the two definitions agree.
+fn routed_demand_standings(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  filter(flat_map(routed, rc => rc.route_standings), st => match st {
+    ComponentRouteNotThisSubject => false
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => true
+    ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => true
+  })
+}
+
+fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  fold(routed_demand_standings(routed: routed), init: [], f: (acc, st) =>
+    if any(acc, a =>
+      declaration_ref_eq(
+        a: component_route_standing_component(s: a),
+        b: component_route_standing_component(s: st))
+        && route_subject_key_eq(
+          a: component_route_standing_context(s: a),
+          b: component_route_standing_context(s: st))) {
+      acc
+    } else {
+      concat(acc, [st])
+    })
 }
 
 // ── THE PRODUCT ROOT: ONE LIVE CALL, BOTH ROUTE FACTS ─────────────────────────────────────────
