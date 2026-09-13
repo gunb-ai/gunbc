@@ -60,7 +60,23 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // count the floor OBSERVED for that identity, so it catches the specimen moving underneath the row --
 // the depth change this file warns about two paragraphs down. The second is the one with an
 // independent referent, and it is INSTRUMENT-GRADE: its input is a published artifact, so it runs
-// when re-pinning rather than blocking a merge.
+// when re-pinning rather than blocking a merge. The re-pin protocol below names the invocation, so
+// "when it runs" is a step someone performs and not an aspiration.
+//
+// THAT GAP IS A NEXT-RUNG TRIGGER AND NOT A SECTION 4b(3) DROP, and the distinction is not
+// bookkeeping. A drop declares that a guarantee which USED TO HOLD no longer does; this check did
+// not exist before, so nothing regressed and there is no previous rung to name. Declaring a drop
+// here would enter a loss the corpus never suffered and put a restoration trigger on a capability
+// that was never lost -- rung dishonesty in the direction that flatters, since it would make the
+// ladder read as though the merge path had once carried this join.
+//
+// THE TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: a required claim can consume a
+// PUBLISHED PER-CLAIM OBSERVATION BY IDENTITY from a prior run on the acceptance path. That is what
+// would let this join run as a witness, and it is strictly more than "a witness that reads a file" --
+// the observation has to be addressable by claim identity and available to the claim that needs it,
+// which is the same capability several other floor readings want and none of them has. Until it
+// exists, the highest honest rung for this join is the instrument, and the ceiling is stated here
+// rather than left as an unexplained absence.
 //
 // WHAT THE CONVERSION DOES AND DOES NOT CLAIM. It claims that one millisecond of PURE INTERPRETED
 // EVALUATION on the named host is about this many eval steps. It does NOT claim every step in the
@@ -122,7 +138,16 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // take the SLOWEST reading in that sample (never the mean, never the fastest, and never "slowest
 // ever seen" -- see the pin-versus-ratchet note above); recompute the floored ratio; update
 // `rate_sample_eval_steps`, `rate_sample_cpu_ms` and `steps_per_ms` TOGETHER, since the grounding
-// check below relates exactly those three. The sample standing today is recorded in `host` by
+// check below relates exactly those three. THEN RUN THE SPECIMEN JOIN, which is the step that
+// catches the specimen having moved rather than the rate having drifted:
+//
+//   gh run download <run-id> -n required-floor-claim-cost -D <dir>/<run-id>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function calibration_specimen_grounding --arg root=<dir> --arg run=<run-id>
+//
+// A re-pin is not complete until that exits clean: the rate check can agree with itself while the
+// specimen underneath it has changed depth, which is the whole reason the second check exists. The sample standing today is recorded in `host` by
 // runner class, CPU and steps: its two CI readings were 138ms then 152ms at an identical 110,011
 // steps, and THAT ~10% SPREAD IS THE BAND -- the same band that makes a CPU ceiling refuse on runner
 // noise, recorded here as the reason the pin takes the slow end.
