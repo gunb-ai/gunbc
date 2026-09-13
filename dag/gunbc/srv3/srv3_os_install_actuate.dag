@@ -39,7 +39,7 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
   }
 }
 
-func srv3_bmcweb_session_login() -> ProcessExit
+fn srv3_bmcweb_session_login() -> ProcessExit
   uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
@@ -56,7 +56,7 @@ func srv3_bmcweb_session_login() -> ProcessExit
 // reported it afterwards. gunbc.host_effect_realize `bmcweb_token_extraction_verdict` now refuses an
 // absent, null or blank token BEFORE Filesystem.Write, so a converged extract cannot have produced
 // an empty file and a second reading has nothing left to discover.
-func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
@@ -106,7 +106,7 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
   ExitSuccess
 }
 
-func srv3_nbd_proxy_serve() -> ProcessExit
+fn srv3_nbd_proxy_serve() -> ProcessExit
   uses net: std.resources.Network
 {
   srv3_apply_to_process_exit(
