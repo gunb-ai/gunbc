@@ -161,7 +161,7 @@ func read_verified_memory_capture(path: NonEmptyStr, expected_sha256: NonEmptySt
 
 // Hash the same captured value returned to the recognizer. A later path read
 // cannot certify these bytes, even when it observes the expected digest.
-func verify_memory_capture_content(content: String, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
+fn verify_memory_capture_content(content: String, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
   let hash = sha256sum.Sha256.DigestStdin(content: content, expect: OutcomeIsData)
   if !hash.success { ObservationRefused { cause: "capture digest process failed" } }
   else { match sha256sum_line_digest(line: hash.line) {
