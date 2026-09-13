@@ -6,8 +6,8 @@ import std.measure { byte_size, byte_size_count }
 import gunbc.fleet_observation_collector_ownership { FollowerReadOnly }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
-import gunbc.fleet_observation_capture_chunk { stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, LocalCommitStanding, LocalCommitNotAttempted }
-import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream }
+import gunbc.fleet_observation_capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, LocalCommitStanding, LocalCommitNotAttempted }
+import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }
 import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
 import gunbc.machine_intake_pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
@@ -169,7 +169,7 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
     })
     && {
       let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
-        ownership: FollowerReadOnly { session: t_other_session, t_reach, t_pos, t_other_stream }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        ownership: FollowerReadOnly { session: t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
         local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
       match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
         ObservationRefused { cause } => contains(cause as String, "FollowerReadOnly")
@@ -185,4 +185,25 @@ test fn w_cycle_anchor_refuses_cross_stream_position() -> Bool {
   let foreign = pre_os_cycle_anchor(chunks: [chunk], at: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 1)))
   match positive { ObservationEstablished { observed: anchor } => anchor.stream_offset == t_pos(at: 1) _ => false }
     && match foreign { ObservationRefused { cause } => contains(cause as String, "PositionIncomparable") && contains(cause as String, "a-different-source-stream") _ => false }
+}
+
+// The carrier's foreign-stream reach enters through admitted construction; the
+// SEL consumer must retain incomparability rather than invent a shorter reach.
+test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool {
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
+  let positive = pre_os_ingest_sel(previous: first.cursor, envelope: base, payload: stimulus_text())
+  match continuity_from_committed_chunks(
+    committed: t_one(c: t_committed_chunk_on_stream(stream: t_other_stream, seq: 1, generation: 4, payload: "foreign reach", first: 0, len: 100)),
+    subject: t_other_stream, from: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 0))) {
+    DerivedContinuity { continuity } => {
+      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+        ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        local_commit: base.local_commit, downstream: base.downstream, continuity: continuity }
+      let negative = pre_os_ingest_sel(previous: first.cursor, envelope: envelope, payload: stimulus_text())
+      count(positive.new_records) == 1 && count(negative.new_records) == 0
+        && match negative.continuity { ObservationRefused { cause } => contains(cause as String, "ContinuityPositionsIncomparable") && contains(cause as String, "synthetic-sol") && contains(cause as String, "a-different-source-stream") && !contains(cause as String, "ContinuityShortOfRange") _ => false }
+    }
+    _ => false
+  }
 }
