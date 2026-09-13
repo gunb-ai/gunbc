@@ -5,7 +5,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.algebra { trim }
 import std.measure { Count, One }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.git
 import extdeps.git.plumbing
