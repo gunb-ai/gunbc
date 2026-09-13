@@ -72,6 +72,7 @@ import gunbc.fleet_observation_capture_chunk {
   ChunkReferenceMissing,
   ChunkRetentionExpired,
   ChunkCommitRefused,
+  ChunkCommitLostRace,
   DownstreamAcceptanceStanding,
   DownstreamAccepted,
   DownstreamNotOffered,
@@ -84,6 +85,7 @@ import gunbc.fleet_observation_capture_chunk {
   local_commit_from_cas,
   commit_attests_chunk,
   continuity_covers,
+  continuity_from_committed_chunks,
   ContinuityCoverage,
   ContinuityCoversRange,
   ContinuityNotEstablished,
@@ -117,6 +119,7 @@ import gunbc.fleet_observation_observation_envelope {
   CoverageGapCommitDoesNotBindThisChunk,
   RetentionExposure,
   RetainedBeyondCollectorHost,
+  ForwardRefused,
   ExposedToCollectorHostLoss,
   NotYetRetained,
   retention_exposure,
@@ -125,6 +128,13 @@ import gunbc.fleet_observation_observation_envelope {
   CoverageGapRangeNotCovered,
   CoverageGapNotTheRecordingOwner,
   CoverageGapEvidenceNamesAnotherSubject,
+  SubjectAgreement,
+  EvidenceNamesOneSubject,
+  CollectorSessionDisagrees,
+  EnrolledMachineDisagrees,
+  OwnershipGenerationDisagrees,
+  BindingMachineDisagrees,
+  subject_agreement,
   source_byte_fact,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -636,6 +646,7 @@ fn is_exposed(exposure: RetentionExposure) -> Bool {
   match exposure {
     ExposedToCollectorHostLoss { refusal: _ } => true
     RetainedBeyondCollectorHost => false
+    ForwardRefused { cause: _ } => false
     NotYetRetained { standing: _ } => false
   }
 }
@@ -643,6 +654,7 @@ fn is_exposed(exposure: RetentionExposure) -> Bool {
 fn is_retained_beyond(exposure: RetentionExposure) -> Bool {
   match exposure {
     RetainedBeyondCollectorHost => true
+    ForwardRefused { cause: _ } => false
     ExposedToCollectorHostLoss { refusal: _ } => false
     NotYetRetained { standing: _ } => false
   }
@@ -652,7 +664,134 @@ fn is_not_yet_retained(exposure: RetentionExposure) -> Bool {
   match exposure {
     NotYetRetained { standing: _ } => true
     RetainedBeyondCollectorHost => false
+    ForwardRefused { cause: _ } => false
     ExposedToCollectorHostLoss { refusal: _ } => false
+  }
+}
+
+// A REFUSED FORWARD IS NOT ORDINARY SPOOL EXPOSURE. A wildcard arm used to route an ACTIVELY REFUSED
+// downstream and a never-offered one to the same answer, discarding the CapturePersistenceRefusal
+// that says a read-back was corrupt or a spool was full. Those have different remedies and now have
+// different arms.
+test fn w_refused_forward_keeps_its_cause() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
+  let commit = t_commit_for(payload: "x")
+  let rejected = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: chunk,
+    local_commit: commit,
+    continuity: ContinuityEstablished { verified_through: 10 },
+    downstream: DownstreamRejected {
+      cause: ChunkCorruptOnReadBack {
+        expected: content_hash_of_value(value: "x")
+        observed: content_hash_of_value(value: "corrupted")
+      }
+    },
+  )
+  forward_refused(exposure: retention_exposure(envelope: rejected))
+}
+
+// THE FOUR SUBJECT DISAGREEMENTS ARE DISTINGUISHED, not rendered as one sentence naming no subject.
+test fn w_subject_disagreement_names_which_identity() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
+  let other_gen = t_chunk(seq: 1, generation: 9, payload: "x", first: 0, len: 10)
+  agrees(a: subject_agreement(owner_session: t_session, owner_generation: 4, chunk: chunk, binding: t_binding(machine: "synthetic-machine-1")))
+  && generation_disagrees(a: subject_agreement(owner_session: t_session, owner_generation: 4, chunk: other_gen, binding: t_binding(machine: "synthetic-machine-1")))
+  && binding_disagrees(a: subject_agreement(owner_session: t_session, owner_generation: 4, chunk: chunk, binding: t_binding(machine: "a-different-machine")))
+  && session_disagrees(a: subject_agreement(owner_session: t_other_session, owner_generation: 4, chunk: chunk, binding: t_binding(machine: "synthetic-machine-1")))
+}
+
+// CONTINUITY IS DERIVED FROM THE COMMITTED BYTES, not authored onto the envelope. A contiguous run
+// establishes how far the evidence reaches; a hole between two committed chunks is a gap naming it.
+test fn w_continuity_is_derived_from_committed_chunks() -> Bool {
+  let a = t_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
+  let b = t_chunk(seq: 2, generation: 4, payload: "b", first: 40, len: 60)
+  let far = t_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
+  reaches(c: continuity_from_committed_chunks(chunks: [a, b], from: 0), through: 100)
+  && gapped(c: continuity_from_committed_chunks(chunks: [a, far], from: 0))
+  && unknown(c: continuity_from_committed_chunks(chunks: [], from: 0))
+}
+
+fn t_binding(machine: NonEmptyStr) -> SourceMachineBinding {
+  SourceMachineBinding {
+    enrolled_machine: machine
+    source_identity: "synthetic-sol"
+    source_implementation: "synthetic-console"
+    source_version: "0"
+    authenticated_by: t_authority
+  }
+}
+
+fn forward_refused(exposure: RetentionExposure) -> Bool {
+  match exposure {
+    ForwardRefused { cause: _ } => true
+    RetainedBeyondCollectorHost => false
+    ExposedToCollectorHostLoss { refusal: _ } => false
+    NotYetRetained { standing: _ } => false
+  }
+}
+
+fn agrees(a: SubjectAgreement) -> Bool {
+  match a {
+    EvidenceNamesOneSubject => true
+    CollectorSessionDisagrees { owner: _, chunk: _ } => false
+    EnrolledMachineDisagrees { owner: _, chunk: _ } => false
+    OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
+    BindingMachineDisagrees { binding: _, owner: _ } => false
+  }
+}
+
+fn generation_disagrees(a: SubjectAgreement) -> Bool {
+  match a {
+    OwnershipGenerationDisagrees { owner: _, chunk: _ } => true
+    EvidenceNamesOneSubject => false
+    CollectorSessionDisagrees { owner: _, chunk: _ } => false
+    EnrolledMachineDisagrees { owner: _, chunk: _ } => false
+    BindingMachineDisagrees { binding: _, owner: _ } => false
+  }
+}
+
+fn binding_disagrees(a: SubjectAgreement) -> Bool {
+  match a {
+    BindingMachineDisagrees { binding: _, owner: _ } => true
+    EvidenceNamesOneSubject => false
+    CollectorSessionDisagrees { owner: _, chunk: _ } => false
+    EnrolledMachineDisagrees { owner: _, chunk: _ } => false
+    OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
+  }
+}
+
+fn session_disagrees(a: SubjectAgreement) -> Bool {
+  match a {
+    CollectorSessionDisagrees { owner: _, chunk: _ } => true
+    EvidenceNamesOneSubject => false
+    EnrolledMachineDisagrees { owner: _, chunk: _ } => false
+    OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
+    BindingMachineDisagrees { binding: _, owner: _ } => false
+  }
+}
+
+fn reaches(c: StreamContinuity, through: Nat) -> Bool {
+  match c {
+    ContinuityEstablished { verified_through: v } => v == through
+    ContinuityGap { gap: _, cause: _ } => false
+    ContinuityUnknown { detail: _ } => false
+  }
+}
+
+fn gapped(c: StreamContinuity) -> Bool {
+  match c {
+    ContinuityGap { gap: _, cause: _ } => true
+    ContinuityEstablished { verified_through: _ } => false
+    ContinuityUnknown { detail: _ } => false
+  }
+}
+
+fn unknown(c: StreamContinuity) -> Bool {
+  match c {
+    ContinuityUnknown { detail: _ } => true
+    ContinuityEstablished { verified_through: _ } => false
+    ContinuityGap { gap: _, cause: _ } => false
   }
 }
 
@@ -668,7 +807,7 @@ fn is_silence(fact: SourceByteFact) -> Bool {
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -682,7 +821,7 @@ fn is_observed(fact: SourceByteFact) -> Bool {
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -696,7 +835,7 @@ fn is_not_durably_committed(fact: SourceByteFact) -> Bool {
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -710,7 +849,7 @@ fn is_continuity_broken(fact: SourceByteFact) -> Bool {
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -724,7 +863,7 @@ fn is_range_not_covered(fact: SourceByteFact) -> Bool {
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -738,7 +877,7 @@ fn is_not_owner(fact: SourceByteFact) -> Bool {
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -752,7 +891,7 @@ fn is_continuity_short(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
@@ -766,13 +905,13 @@ fn is_commit_unbound(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => false
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
   }
 }
 
 fn is_another_subject(fact: SourceByteFact) -> Bool {
   match fact {
-    CoverageGapEvidenceNamesAnotherSubject { detail: _ } => true
+    CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => true
     SourceBytesObserved { digest: _ } => false
     SourceProducedNoBytesInRange { range: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
@@ -835,6 +974,7 @@ fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
         ChunkCorruptOnReadBack { expected: _, observed: _ } => false
         ChunkRetentionExpired { artifact_ref: _ } => false
         ChunkCommitRefused { detail: _ } => false
+        ChunkCommitLostRace { expected: _, observed: _ } => false
       }
     LocallyCommitted { committed_content: _ } => false
     LocalCommitNotAttempted => false
@@ -850,6 +990,7 @@ fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
         ChunkCorruptOnReadBack { expected: _, observed: _ } => false
         ChunkReferenceMissing { referenced: _ } => false
         ChunkRetentionExpired { artifact_ref: _ } => false
+        ChunkCommitLostRace { expected: _, observed: _ } => false
       }
     LocallyCommitted { committed_content: _ } => false
     LocalCommitNotAttempted => false

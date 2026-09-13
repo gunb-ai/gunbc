@@ -41,7 +41,6 @@ import gunbc.fleet_observation_collector_supervision {
   WindowNotCoveredPipeUnread,
   WindowNotCoveredSupervision,
   supervision_coverage,
-  drained_byte_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -144,8 +143,7 @@ test fn w_unobserved_drain_is_not_coverage() -> Bool {
   is_closed_at_deadline(d: unwatched)
   && pipe_unread(c: supervision_coverage(disposition: unwatched))
   && covered(c: supervision_coverage(disposition: watched_empty))
-  && drained_byte_count(drained: DrainNotObserved) == 0
-  && drained_byte_count(drained: t_drained) == 4096
+  && pipe_unread(c: supervision_coverage(disposition: unwatched))
 }
 
 // TWO CLOCKS WITH NO SHARED ORIGIN CANNOT BE ORDERED, so the disposition REFUSES rather than

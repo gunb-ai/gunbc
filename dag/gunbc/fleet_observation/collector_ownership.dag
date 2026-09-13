@@ -31,6 +31,20 @@ import std.temporal_effect {
 // HeldLeaseObservedState is the observed standing. Minting a collector-local lease beside it would
 // be the telemetry-workaround fork DESIGN section 3 forbids, and it is explicitly out of scope.
 
+// EXCLUSIVITY IS READ OFF THE CARRIER, AND THERE IS DELIBERATELY NO PREDICATE FOR IT.
+//
+// A Bool `exclusivity_is_enforced` stood here and is deleted. It was the same erasure this module
+// just removed twice over: it collapsed "the owner records but the endpoint cannot fence a remote
+// writer" and "this is not the recording owner at all" into one `false`, and it threw away the
+// limitation text that says WHY exclusivity is not enforced -- the one thing a reader needs in order
+// to weigh the observation. A reader that got `false` had to re-open EndpointOwnership anyway.
+//
+// The fact it was trying to publish is already STRUCTURAL: EndpointFencing sits on OwnerRecording,
+// so an owner over an unfenced endpoint carries RemoteFencingAbsent with its limitation, and a
+// consumer matches on it. The interpretation lane renders that carrier directly and declined a Bool
+// for exactly this reason. Honest exclusivity is a property you read off the ownership, not a
+// question you ask about it.
+//
 // WHETHER THE ENDPOINT CAN ACTUALLY FENCE A REMOTE WRITER, carried because we mostly cannot and
 // must not pretend otherwise. An IPMI SOL payload is a single-session resource on the controller,
 // but nothing in the protocol lets THIS collector prove no other operator's client will be handed
