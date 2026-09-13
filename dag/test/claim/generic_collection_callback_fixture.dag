@@ -8,3 +8,9 @@ import std.types { Int }
 fn collect_imported<T>(xs: FreeMonoid<T>, f: fn(T) -> Int) -> Int {
   fold(xs, init: 0, f: fn(total, item) { total + f(item) })
 }
+
+// The state/callback arity of the allocation consumer, isolated from its model.
+type Step<S> { value: S, cursor: Int }
+fn collect_state<T, S>(xs: FreeMonoid<T>, init: Step<S>, f: fn(S, T, Int) -> Step<S>) -> Step<S> {
+  fold(xs, init: init, f: fn(state, item) { f(state.value, item, state.cursor) })
+}
