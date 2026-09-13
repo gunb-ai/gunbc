@@ -1001,5 +1001,5 @@ fn bmc_secure_phase_receipt(
 // derive_bmc_secure, via a later change that authors the subject and the
 // observation together.
 data mtcollins1_bmc_secure_standing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a MachineIntakeSubject for Mt. Collins unit 1 exists on the public path and derive_bmc_secure mints a BmcSecureStanding for that subject from a channel-census observation together with SecretRef bmc-mtcollins1-gunbc; evidence for that observation must be a git-tracked path already under artifacts/bmc/ at mint time (the 2026-09-13 user3-route filename is not in the tree and is not a trigger); NOT satisfied by this fold typechecking, by the witness suite, or by a SecretRef row alone" as NonEmptyStr,
+  description: "dissolves when a MachineIntakeSubject for Mt. Collins unit 1 exists on the public path and derive_bmc_secure mints a BmcSecureStanding for that subject from a channel-census observation together with SecretRef bmc-mtcollins1-gunbc; evidence for that observation must be a git-tracked artifact bound into the channel-census observation at mint time; the user3-route artifact alone is not a trigger; NOT satisfied by this fold typechecking, by the witness suite, or by a SecretRef row alone" as NonEmptyStr,
 )
