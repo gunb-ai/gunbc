@@ -191,9 +191,17 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // WHAT THE PRODUCER ACTUALLY SEES ON THE PRODUCTION ROUTE, MEASURED OVER EVERY INGESTED ROOT:
 //
 //   REACHES IT:      a bare same-module value reference outside any call; a parameter reference;
-//                    a type-position name
+//                    a bare type name in PARAMETER position
 //   DOES NOT:        a QUALIFIED CROSS-MODULE reference, with or without a call;
-//                    a call argument; a callee name
+//                    a call argument; a callee name;
+//                    a bare type name in FIELD position
+//
+// "A TYPE-POSITION NAME" IS TOO COARSE TO WRITE HERE, AND AN EARLIER REVISION OF THIS TABLE WROTE
+// IT. The same bare spelling REACHES from a parameter and DOES NOT reach from a field, so a row
+// naming "type position" without saying which one merges a class that works with a class that does
+// not, and a trigger written against it would retire while half the class stayed dead. The producer
+// that separates them is the same one this note names: its Xl0FieldOnly row is spelled bare and
+// used in exactly one place, a field type, which isolates field position from qualification.
 //
 // THE FIRST ROW OF THE SECOND GROUP IS WHY XL-0 HAS NO DENOMINATOR, and it is not the same fact as
 // the call erasure. An import-to-containment denominator is made of references that CROSS a module
@@ -205,13 +213,21 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //   1. MINE, FIXED: the collector's parse-projection exclusion skipped the subtree carrying a real
 //      module's content, which blacked out the corpus while hand-built fixtures stayed green.
 //   2. MINE, FIXED: its census folded the ingested roots while discarding the accumulator, so every
-//      "is absent" row was measured over the LAST root alone. That one manufactured a reported
-//      type-position miss that does not exist -- the row above is the corrected measurement.
+//      "is absent" row was measured over the LAST root alone. That one manufactured a reported miss
+//      in PARAMETER type position that does not exist -- the row above is the corrected measurement.
 //   3. OPEN, AND NOT ATTRIBUTED: the qualified cross-module miss. A dotted reference in a BODY is
 //      not a dag_surface_qualified_name production at all -- it reaches the tree as a dot access
 //      over operand atoms -- so the collector, which recognises only the fold-list spine, never
 //      reassembles it. Whether resolution itself reads dotted body access is UNANSWERED: the probe
 //      built for it fails its own control, so no executed evidence exists either way.
+//
+//   4. OPEN, AND NOT ATTRIBUTED: the bare FIELD-position miss. It is a fourth class rather than a
+//      dotted case, because the spelling that misses carries no dot. The tree-side discriminator has
+//      run on two routes and agrees on the MEASUREMENT and on neither cause: the whole
+//      `type Wrapper { f: T }` declaration is findable in the ingested tree as neither an atom nor a
+//      named edge, while a parameter-type control is present. If the declaration is absent from the
+//      tree then no collector-side trigger could ever fire, so naming one here would be a trigger
+//      pointed at the wrong layer. Producer: v2.test.claim.namespace_xl0.field_type_tree_presence.
 //
 // THE RESTORATION TRIGGER IS THEREFORE NOT THE BODY-LOWERING REPAIR ALONE, and an earlier revision
 // of this note said it was. Body lowering (XL-2, gunbc#11207) restores the call classes and NOTHING
