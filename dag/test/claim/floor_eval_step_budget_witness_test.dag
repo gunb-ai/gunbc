@@ -1,51 +1,95 @@
 module test.claim.floor_eval_step_budget_witness_test
 
 import v2.std.logic { Bool }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
+import v2.std.text { String }
+import std.types { NonEmptyStr }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
   ClaimPreemptionReachability, CooperativelyPollable,
   ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget,
   claim_eval_step_standing, claim_eval_step_standing_blocks,
   claim_safety_outcome, claim_safety_outcome_blocks,
-  required_floor_claim_eval_step_budget,
+  ClaimCeilingTier, GrandfatheredTier, NewWitnessTier,
+  claim_ceiling_tier, claim_ceiling_envelope_ms, claim_ceiling_eval_step_budget,
+  claim_eval_step_budget_for_identity,
   required_floor_claim_work_envelope_ms,
+  required_floor_new_witness_envelope_ms,
   required_floor_claim_cost_line_ms,
   required_floor_claim_wall_safety_limit_ms,
-  required_floor_eval_step_budget_grounding,
+  required_floor_eval_step_rate_grounding,
+  new_witness_over_budget_first_remedy,
 }
 import v2.workflow.floor_eval_step_calibration {
-  EvalStepBudgetGrounding, GroundedWithinCalibrationBand,
-  AboveCalibratedEnvelope, BelowCalibratedBand,
-  floor_eval_step_calibration, eval_step_budget_grounding,
-  eval_step_budget_grounding_holds,
+  EvalStepRateGrounding, RateIsTheFlooredRatio,
+  RateAboveMeasuredRatio, RateBelowMeasuredRatio,
+  eval_step_rate_grounding_holds,
+}
+import v2.workflow.floor_grandfathered_roster {
+  GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
+  RosterChangeVerdict, RosterChangeAdmitted, RosterAdditionRefused, RosterRemovalWithoutDisposition,
+  roster_change_verdict, roster_change_admitted,
+  floor_grandfathered_holds, floor_grandfathered_roster_size,
 }
 
-// THE REQUIRED FLOOR'S CLAIM CEILING GATES ON EVAL STEPS, AND ITS CPU READING IS OBSERVED ONLY
-// (operator ruling via fierce-lark-661, 2026-09-12). This module is that ruling's executing
-// evidence: a discriminating RED, a positive control in the opposite direction, and the grounding
-// of the declared budget against its controlled fixture.
+// THE REQUIRED FLOOR'S CLAIM CEILING IS TWO-TIER, GATES ON EVAL STEPS, AND ITS CPU READING IS
+// OBSERVED ONLY (operator ruling via fierce-lark-661, 2026-09-12 and 2026-09-13). This module is
+// that ruling's executing evidence.
 //
 // WHY A WITNESS AND NOT A REVIEW OF THE DIFF. DESIGN section 5 rules that a typecheck and a grep
-// are not consumers, and the specific thing that has to be refutable here is a DIRECTION: a
-// derivation collapsed to a constant refusal would satisfy a red-only fixture, and a derivation
-// collapsed to a constant pass would satisfy a control-only fixture. Both are here, over the same
-// function, differing in exactly the quantity the ruling moved.
-
-// ── RED: MORE WORK THAN THE BUDGET ALLOWS REFUSES ─────────────────────────────────────────
+// are not consumers, and the thing that has to be refutable here is a set of DIRECTIONS: a
+// derivation collapsed to a constant refusal satisfies a red-only fixture, one collapsed to a
+// constant pass satisfies a control-only fixture, and one that ignores the tier satisfies either
+// taken alone. So the tiers are separated at a cost BETWEEN the two ceilings, where the only thing
+// that can decide the outcome is which tier the identity is in.
 //
-// The step figure is one above the declared budget rather than an order of magnitude above it,
-// deliberately. A fixture at ten times the budget passes against an off-by-one comparison, a
-// misread unit, or a budget accidentally scaled by the calibration; one step over discriminates
-// the boundary itself. The wall figure is 42ms so the wall clock cannot participate at any
-// setting of its own limit, which is the same isolation rule the preemption fixtures record.
-test fn a_claim_over_the_eval_step_budget_refuses() -> Bool {
+// A NOTE ON THE FIXTURE ROSTERS BELOW. The roster-contract witnesses plant three-row rosters rather
+// than folding the live 3,795-row one. That is not a weaker test: `roster_change_verdict` takes
+// both rosters as parameters, so the fixtures exercise the SAME function the regeneration gate will
+// call, and a three-row roster discriminates the addition and undisposed-removal arms exactly as a
+// three-thousand-row one would. It is also the difference between a witness that costs a few
+// hundred eval steps and one that costs tens of thousands -- against a ceiling this very module
+// installs.
+
+// ── THE TIERS ARE DISTINGUISHED AT A COST BETWEEN THE TWO CEILINGS ─────────────────────────
+//
+// THIS IS THE CENTRAL PAIR AND IT IS ONE FACT TESTED TWICE. 150,000 eval steps is above the
+// new-witness ceiling (100ms-equivalent) and below the grandfathered one (500ms-equivalent), so
+// NOTHING about the claim decides the outcome except which tier its identity is in. A budget that
+// ignored the tier, or a tier that always answered the same way, fails one of these two.
+fn tier_probe_steps() -> Int {
+  150000
+}
+
+test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Bool {
+  int_gt(a: tier_probe_steps(), b: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+    && int_gt(a: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}), b: tier_probe_steps())
+    && match claim_safety_outcome(
+      reached_verdict: true,
+      observed_cpu_ms: 3,
+      observed_wall_ms: 42,
+      observed_eval_steps: tier_probe_steps(),
+      eval_step_budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
+      wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+      raised_by: "",
+      preemption: CooperativelyPollable,
+    ) {
+      CompletedWithinSafetyLimits => true
+      SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+      CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
+    }
+}
+
+// RED: the SAME cost, the SAME everything else, refuses on the new-witness tier.
+test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool {
   match claim_safety_outcome(
     reached_verdict: true,
     observed_cpu_ms: 3,
     observed_wall_ms: 42,
-    observed_eval_steps: int_add(a: required_floor_claim_eval_step_budget(), b: 1),
-    eval_step_budget: required_floor_claim_eval_step_budget(),
+    observed_eval_steps: tier_probe_steps(),
+    eval_step_budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
     preemption: CooperativelyPollable,
@@ -56,57 +100,167 @@ test fn a_claim_over_the_eval_step_budget_refuses() -> Bool {
       (cpu == 3)
         && claim_safety_outcome_blocks(
              CompletedPastSafetyLimit {
-               observed_cpu: 3,
-               observed_wall: 42,
-               preemption: CooperativelyPollable,
+               observed_cpu: 3, observed_wall: 42, preemption: CooperativelyPollable,
              }
            )
   }
 }
 
-// THE SAME REFUSAL AT THE STANDING GRAIN, asserted separately because the standing is what carries
-// the two figures a reader needs. A `claim_safety_outcome` arm reports THAT a claim was over its
-// limits and reports its CPU and wall observations; only `ClaimEvalStepStanding` says by how much
-// work, against what budget. A collapse of that carrier into a bare Bool would leave the fixture
-// above green.
-test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool {
-  match claim_eval_step_standing(
-    observed_eval_steps: int_add(a: required_floor_claim_eval_step_budget(), b: 1),
-    budget_steps: required_floor_claim_eval_step_budget(),
-  ) {
-    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
-    EvalStepsOverBudget { observed_steps: observed, budget_steps: budget } =>
-      (observed == int_add(a: required_floor_claim_eval_step_budget(), b: 1))
-        && (budget == required_floor_claim_eval_step_budget())
-        && claim_eval_step_standing_blocks(
-             standing: EvalStepsOverBudget { observed_steps: observed, budget_steps: budget }
-           )
+// ── THE TIER IS DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING A CALLER SUPPLIES ──────────
+//
+// RED: a planted rename of a grandfathered identity classifies as NEW. The base identity is a real
+// roster member; the renamed spelling differs by one suffix and is not. Nothing but identity-grain
+// membership separates them, which is the point -- an implementation keyed on module prefix, on
+// "looks like an existing witness", or on any caller-supplied label passes the first half of this
+// and fails the second.
+fn a_real_grandfathered_identity() -> String {
+  "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse"
+}
+
+test fn a_renamed_grandfathered_identity_is_classified_new() -> Bool {
+  match claim_ceiling_tier(identity: a_real_grandfathered_identity()) {
+    NewWitnessTier => false
+    GrandfatheredTier =>
+      match claim_ceiling_tier(identity: "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse_renamed") {
+        GrandfatheredTier => false
+        NewWitnessTier =>
+          (claim_eval_step_budget_for_identity(identity: a_real_grandfathered_identity())
+             == claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
+            && (claim_eval_step_budget_for_identity(identity: "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse_renamed")
+             == claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+      }
   }
 }
 
-// ── CONTROL: OVER THE CPU LINE, INSIDE THE STEP BUDGET, PASSES WITH THE CPU RECORDED ───────
+// CONTROL: the identity join is exact, and it is asserted in BOTH directions rather than by a
+// count. A roster that had silently become empty, or one whose membership test answered `true` for
+// everything, passes a count check and fails this.
+// SPLIT FROM THE SIZE CHECK BELOW, AND THE REASON IS THIS MODULE'S OWN SUBJECT. Folded together
+// they cost 90,086 eval steps -- ABOVE the 72,300 new-witness ceiling this very file installs, and
+// these witnesses are new, so the evidence for the tier would have been refused by the tier. The
+// two assertions are independent questions and neither is weakened by asking them separately.
+test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool {
+  floor_grandfathered_holds(name: a_real_grandfathered_identity())
+    && (floor_grandfathered_holds(name: "test.claim.this.identity.was.never.on.the.floor") == false)
+}
+
+// THE ROSTER IS NOT TRUNCATED. A size floor is a weaker check than the identity join above and is
+// deliberately NOT the membership test -- DESIGN section 5 requires completeness at identity grain,
+// never by count. What it catches is a different failure: a roster that decoded partially, or a
+// chunk fold that lost its tail, would still answer correctly for the one identity the join probes.
+test fn the_roster_is_not_truncated() -> Bool {
+  int_gt(a: floor_grandfathered_roster_size(), b: 3000)
+}
+
+// ── THE MONOTONE CONTRACT REFUSES BOTH WAYS A ROSTER CAN GO WRONG ──────────────────────────
+fn fixture_current_roster() -> List<String> {
+  Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
+}
+
+// RED: a proposed roster carrying a row the current one does not have is an ADDITION and refuses.
+// This is the arm that keeps the roster a debt rather than a list: without it every expensive new
+// witness joins the old ceiling on the day it lands.
+test fn a_roster_addition_refuses() -> Bool {
+  match roster_change_verdict(
+    current: fixture_current_roster(),
+    proposed: Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Cons { head: "m.NEW", tail: Empty {} } } } },
+    removals: [],
+  ) {
+    RosterChangeAdmitted => false
+    RosterRemovalWithoutDisposition { removed: _ } => false
+    RosterAdditionRefused { added: a } => (a == "m.NEW")
+  }
+}
+
+// RED: a row that simply disappears, with no typed disposition naming it, refuses. Shrinking is the
+// only admitted direction, and DESIGN section 5 admits it only when every removal is typed.
+test fn a_removal_without_a_typed_disposition_refuses() -> Bool {
+  match roster_change_verdict(
+    current: fixture_current_roster(),
+    proposed: Cons { head: "m.a", tail: Cons { head: "m.c", tail: Empty {} } },
+    removals: [],
+  ) {
+    RosterChangeAdmitted => false
+    RosterAdditionRefused { added: _ } => false
+    RosterRemovalWithoutDisposition { removed: r } => (r == "m.b")
+  }
+}
+
+// CONTROL, and the direction that proves the two REDs above are not a constant refusal: the same
+// shrink WITH a typed disposition naming the row is admitted.
+test fn a_removal_with_a_typed_disposition_is_admitted() -> Bool {
+  roster_change_admitted(
+    verdict: roster_change_verdict(
+      current: fixture_current_roster(),
+      proposed: Cons { head: "m.a", tail: Cons { head: "m.c", tail: Empty {} } },
+      removals: Cons {
+        head: WitnessDeleted {
+          identity: "m.b" as NonEmptyStr,
+          deleted_in: "the change that deleted the witness" as NonEmptyStr,
+        },
+        tail: Empty {},
+      },
+    )
+  )
+}
+
+// A RENAME DISPOSITION NAMES THE ROW THAT LEAVES, NOT THE ONE THAT ARRIVES. Planting the rename as
+// a removal of the old identity is admitted; the new identity does NOT thereby enter the roster,
+// which the addition arm still refuses. This is the fourth RED and the rename rule in one fold.
+test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one() -> Bool {
+  roster_change_admitted(
+    verdict: roster_change_verdict(
+      current: fixture_current_roster(),
+      proposed: Cons { head: "m.a", tail: Cons { head: "m.c", tail: Empty {} } },
+      removals: Cons {
+        head: WitnessRenamed {
+          previous_identity: "m.b" as NonEmptyStr,
+          new_identity: "m.b_renamed" as NonEmptyStr,
+          renamed_in: "the change that renamed the witness" as NonEmptyStr,
+        },
+        tail: Empty {},
+      },
+    )
+  ) && (roster_change_admitted(
+    verdict: roster_change_verdict(
+      current: fixture_current_roster(),
+      proposed: Cons { head: "m.a", tail: Cons { head: "m.b_renamed", tail: Cons { head: "m.c", tail: Empty {} } } },
+      removals: Cons {
+        head: WitnessRenamed {
+          previous_identity: "m.b" as NonEmptyStr,
+          new_identity: "m.b_renamed" as NonEmptyStr,
+          renamed_in: "the change that renamed the witness" as NonEmptyStr,
+        },
+        tail: Empty {},
+      },
+    )
+  ) == false)
+}
+
+// ── CPU IS OBSERVED AND DOES NOT SECRETLY GATE ─────────────────────────────────────────────
 //
-// THIS IS THE DIRECTION THE RULING ACTUALLY CHANGED, and it is the fixture that would have been
-// RED before 2026-09-12. 4000ms of CPU is forty times `required_floor_claim_cost_line_ms` and eight
-// times the work envelope this floor declares; under the deleted CPU deadline it derived
-// `CompletedPastSafetyLimit` on the CPU comparison alone. It is drawn from the shape of
-// bright-boar-435's gunbc#11173 evidence rather than invented: an identity at an IDENTICAL
-// `eval_steps` of 2884 read 34ms, then 455ms, then 511ms across three prose-only heads, so the same
-// work crossed and re-crossed a 500ms line while the tree stood still.
+// THIS IS THE DIRECTION THE FIRST RULING CHANGED, and it would have been RED before 2026-09-12.
+// 4000ms of CPU is forty times `required_floor_claim_cost_line_ms` and eight times the
+// grandfathered work envelope; under the deleted CPU deadline it derived `CompletedPastSafetyLimit`
+// on the CPU comparison alone. The step count is drawn from bright-boar-435's gunbc#11173 evidence:
+// one identity at an IDENTICAL eval_steps of 2884 read 34ms, then 455ms, then 511ms across three
+// heads that changed no executable source.
 //
-// IT ASSERTS THE OBSERVATION SURVIVED, NOT ONLY THAT THE GATE STOOD DOWN. A mechanism that stopped
-// refusing and also stopped counting is the absorbing fallback DESIGN section 5 forbids, so the
-// control is not "it passes": it is "it passes AND the 4000ms is still reachable in the receipt".
-// The CPU figure travels into `CompletedPastSafetyLimit.observed_cpu` when some OTHER limit fires,
-// which is what the second half exercises -- the same claim, the same CPU, a wall crossing instead
-// of a clean pass, and the CPU still in the arm.
-test fn a_claim_over_the_cpu_line_with_in_budget_steps_passes() -> Bool {
+// IT ASSERTS THE OBSERVATION SURVIVED, not merely that the gate stood down. A mechanism that
+// stopped refusing AND stopped counting is the absorbing fallback DESIGN section 5 forbids, so the
+// control is "it passes AND the 4000ms is still reachable in the receipt".
+test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier() -> Bool {
+  cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
+    && cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+}
+
+fn cpu_does_not_gate(budget: Int) -> Bool {
   match claim_safety_outcome(
     reached_verdict: true,
     observed_cpu_ms: 4000,
     observed_wall_ms: 4200,
     observed_eval_steps: 2884,
-    eval_step_budget: required_floor_claim_eval_step_budget(),
+    eval_step_budget: budget,
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
     preemption: CooperativelyPollable,
@@ -116,7 +270,6 @@ test fn a_claim_over_the_cpu_line_with_in_budget_steps_passes() -> Bool {
     CompletedWithinSafetyLimits =>
       int_gt(a: 4000, b: required_floor_claim_cost_line_ms())
         && int_gt(a: 4000, b: required_floor_claim_work_envelope_ms())
-        && (claim_safety_outcome_blocks(CompletedWithinSafetyLimits) == false)
   }
 }
 
@@ -126,7 +279,7 @@ test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool 
     observed_cpu_ms: 4000,
     observed_wall_ms: int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1),
     observed_eval_steps: 2884,
-    eval_step_budget: required_floor_claim_eval_step_budget(),
+    eval_step_budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
     preemption: CooperativelyPollable,
@@ -138,46 +291,56 @@ test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool 
   }
 }
 
-// ── THE DECLARED BUDGET IS GROUNDED IN ITS CONTROLLED FIXTURE ──────────────────────────────
+// ── THE BUDGETS ARE GROUNDED IN THE PINNED CALIBRATION ─────────────────────────────────────
 //
-// The budget is policy and the calibration is a measurement; this is the executing join that says
-// they are stated in the same units and the same magnitude. It is the whole reason
-// `required_floor_claim_eval_step_budget` is not a literal nobody can read the units of.
-test fn the_declared_budget_is_grounded_by_the_pinned_calibration() -> Bool {
-  eval_step_budget_grounding_holds(grounding: required_floor_eval_step_budget_grounding())
+// The policy inputs are milliseconds and the ceilings are eval steps; this is the executing join
+// that the conversion between them still describes the fixture it came from.
+test fn the_pinned_rate_is_the_floored_ratio_of_its_own_sample() -> Bool {
+  eval_step_rate_grounding_holds(grounding: required_floor_eval_step_rate_grounding())
 }
 
-// BOTH REFUSING ARMS OF THE GROUNDING ARE AUTHORABLE AND BOTH REFUSE, which is what keeps the
-// check above from being a decoration permanently green by construction (DESIGN section 4b: ask
-// whether the RED is authorable before writing the check). A budget four times the calibrated
-// envelope is above band; a budget a tenth of it is below. Both are computed against the SAME
-// pinned calibration the live budget is grounded against, so a grounding that had quietly become
-// total in one direction is caught here rather than in a floor run.
-test fn the_grounding_refuses_a_budget_out_of_band_in_either_direction() -> Bool {
-  match eval_step_budget_grounding(
-    calibration: floor_eval_step_calibration,
-    budget_steps: int_mul(a: required_floor_claim_eval_step_budget(), b: 4),
-    envelope_ms: required_floor_claim_work_envelope_ms(),
+// CONTROL: both ceilings are the tier's policy milliseconds put through the same conversion, so
+// neither is a literal and the two cannot drift apart. Asserting the PRODUCTS rather than the
+// numbers is deliberate -- a fixture carrying 361500 and 72300 would go stale the moment the rate
+// is re-pinned, and would then be asserting the old rate rather than the derivation.
+test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> Bool {
+  (claim_ceiling_envelope_ms(tier: GrandfatheredTier {}) == required_floor_claim_work_envelope_ms())
+    && (claim_ceiling_envelope_ms(tier: NewWitnessTier {}) == required_floor_new_witness_envelope_ms())
+    && int_gt(
+         a: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
+         b: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
+       )
+}
+
+// THE STANDING CARRIES BOTH FIGURES IN ITS REFUSING ARM. A `claim_safety_outcome` arm reports THAT
+// a claim was over its limits and carries its CPU and wall observations; only `ClaimEvalStepStanding`
+// says by how much work, against what budget. A collapse of that carrier into a bare Bool leaves
+// every fixture above green.
+test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool {
+  match claim_eval_step_standing(
+    observed_eval_steps: int_add(a: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}), b: 1),
+    budget_steps: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),
   ) {
-    GroundedWithinCalibrationBand => false
-    BelowCalibratedBand { budget_work: _, envelope_work: _ } => false
-    AboveCalibratedEnvelope { budget_work: bw, envelope_work: ew } =>
-      int_gt(a: bw, b: ew)
-        && match eval_step_budget_grounding(
-             calibration: floor_eval_step_calibration,
-             budget_steps: 50000,
-             envelope_ms: required_floor_claim_work_envelope_ms(),
-           ) {
-             GroundedWithinCalibrationBand => false
-             AboveCalibratedEnvelope { budget_work: _, envelope_work: _ } => false
-             BelowCalibratedBand { budget_work: below_bw, envelope_work: below_ew } =>
-               int_gt(a: below_ew, b: below_bw)
-                 && (eval_step_budget_grounding_holds(
-                      grounding: BelowCalibratedBand {
-                        budget_work: below_bw,
-                        envelope_work: below_ew,
-                      }
-                    ) == false)
-           }
+    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudget { observed_steps: observed, budget_steps: budget } =>
+      (observed == int_add(a: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}), b: 1))
+        && (budget == claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
+        && claim_eval_step_standing_blocks(
+             standing: EvalStepsOverBudget { observed_steps: observed, budget_steps: budget }
+           )
   }
+}
+
+// THE REFUSAL NAMES THE REMEDY BY SYMBOL (fierce-lark-661, 2026-09-13). A new witness over budget
+// is usually a nested membership scan, and the map-backed join is the repair; the text names the
+// primitive so an author does not have to know that `dag/std` has one.
+//
+// IT DELIBERATELY CARRIES NO n-DEPENDENCE. This lane measured the same primitive costing 36,000ms of
+// host CPU at 3,795 rows and proposed teaching authors to choose by n; that was refused as pricing a
+// per-site exception around a defect. The quadratic is filed as a realization defect against the
+// primitive instead, so this witness asserts the symbols and asserts that no such hedge crept back.
+test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
+  string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_insert")
+    && string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_lookup")
+    && (string_contains(s: new_witness_over_budget_first_remedy(), pattern: "CHECK n") == false)
 }

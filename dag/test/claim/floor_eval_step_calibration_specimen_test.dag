@@ -19,7 +19,7 @@ import std.types { Bool, Int }
 // function and its depth; moving the depth without re-deriving the row silently re-scales the
 // ceiling of every claim in the floor.
 fn calibration_specimen_depth() -> Int {
-  10000
+  5000
 }
 
 fn calibration_specimen_descend(n: Int, acc: Int) -> Int {

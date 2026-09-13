@@ -24,8 +24,10 @@ import v2.workflow.floor_terminal_ledger {
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
 import v2.workflow.floor_eval_step_calibration {
-  EvalStepBudgetGrounding, floor_eval_step_calibration, eval_step_budget_grounding
+  EvalStepRateGrounding, floor_eval_step_calibration, eval_step_rate_grounding,
+  eval_step_budget_for
 }
+import v2.workflow.floor_grandfathered_roster { floor_grandfathered_holds }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
@@ -894,7 +896,7 @@ fn required_floor_site_disposition(
 // (and nothing in the live loop does today -- `RequiredFloorClaim.cost_line_ms` has no
 // admission-path consumer; the only reader is the diagnostic `exceeds_completed_cost_line`).
 //
-// `required_floor_claim_eval_step_budget` and `required_floor_claim_wall_safety_limit_ms` are the
+// `claim_eval_step_budget_for_identity` and `required_floor_claim_wall_safety_limit_ms` are the
 // TWO INDEPENDENT LIMITS a claim is judged against, and they are independent because they answer
 // different questions. The step budget bounds the WORK a Hermetic pure in-process claim may
 // perform -- a quantity the host cannot inflate, which is why it replaced the CPU deadline that
@@ -1058,47 +1060,103 @@ fn required_floor_claim_work_envelope_ms() -> Int {
   500
 }
 
-// THE EVAL-STEP CEILING: the quantity that actually refuses a claim.
+// THE NEW-WITNESS WORK ENVELOPE: 100ms (operator ruling via fierce-lark-661, 2026-09-13).
 //
-// IT IS A DECLARED POLICY LITERAL, NOT A DERIVED ONE, and the difference is load-bearing. Nothing
-// computes this number from the calibration at run time: a figure mechanically derived from a
-// measurement is that measurement, and would inherit whatever the calibration host was doing on the
-// day it was taken. What the calibration does instead is GROUND it -- `eval_step_budget_grounding`
-// below is the executing check that this literal and the envelope above are stated in the same
-// units and the same magnitude, and it refuses if a later edit moves either out of band.
+// A SECOND POLICY INPUT, NOT A SECOND MECHANISM. The floor now carries TWO ceilings and one way of
+// deriving them: both are milliseconds of work put through the same calibration, and the only
+// difference between them is which millisecond figure the operator ruled. 100 is the figure for
+// work that is NEW; 500 above is the figure for work that was already enrolled when the roster was
+// cut.
 //
-// 500,000 STEPS. The calibration specimen performs 110,011 eval steps and its slowest reading was
-// 110ms on the host that row names, so one millisecond of pure interpreted evaluation is about a
-// thousand steps and the 500ms envelope is about 500,000 of them. The round number is the policy's;
-// the calibration says it is the right magnitude, not that it is the exact product.
+// WHY A NEW WITNESS IS HELD TO A TIGHTER LINE THAN AN OLD ONE, which is otherwise an odd-looking
+// asymmetry. The 500 figure is not a judgement that 500ms is a good cost -- it is the ceiling the
+// existing population grew up under, and lowering it on 3,795 rows at once would refuse work that
+// nothing has asked anyone to repair. 100 is what the operator is willing to pay for work arriving
+// from now on. So the two tiers are a debt and a standard, not two standards.
+fn required_floor_new_witness_envelope_ms() -> Int {
+  100
+}
+
+// WHICH CEILING ONE CLAIM IS JUDGED AGAINST, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
 //
-// WHY THIS IS NOT THE ORACLE DEFECT DESIGN SECTION 5 NAMES. The forbidden shape is a merge-blocking
-// literal grounded in a measurement of the same current tree -- where automating the literal's
-// update collapses the assertion to `measure() == measure()`. Automating THIS literal's update is
-// impossible by construction, because the fixture it is grounded against is not in the live
-// population and does not move when the corpus does: the specimen's step count is fixed by a
-// recursion depth literal in its own source file. A corpus that grows, slows, or is rewritten
-// changes nothing here.
+// THE SELECTOR TAKES AN IDENTITY, NOT A LABEL, AND THAT IS THE LOAD-BEARING PART. There is no
+// `legacy: Bool` parameter, no `is_new` flag, and no caller-supplied tier: an identity outside the
+// roster CANNOT acquire the larger budget by landing, by appearing in the tree, or by having been
+// accepted once. The only way into `GrandfatheredTier` is to be in a closed roster that was cut
+// once and may only shrink. A caller-supplied label would be exactly the escape hatch DESIGN
+// section 5 forbids -- a toggle whose only effect is "proceed as if the refusal had not fired".
 //
-// WHAT IT DOES NOT COVER, AND THE DROP THAT SAYS SO. A ceiling on steps refuses a claim that does
-// more work. It cannot refuse a claim that does the SAME work more expensively -- a host-realized
-// primitive getting slower, or a realization seam that keeps the step count and changes what a step
-// costs. That loss is declared, with its population and its restoration trigger, at
-// `gunbc.rung_drop` `floor_cost_cpu_regression_at_constant_eval_steps`.
-fn required_floor_claim_eval_step_budget() -> Int {
-  500000
+// A RENAME IS A DELETION PLUS AN ADDITION, so a renamed witness is NEW. That falls out of
+// identity-grain membership rather than being a rule layered on top, and it closes the one move
+// that would otherwise launder an expensive grandfathered witness into a fresh identity at the old
+// ceiling.
+//
+// A MODIFIED GRANDFATHERED WITNESS KEEPS ITS TIER while its identity survives. There is no
+// "substantially rewritten" test and there may not be one: a near-the-line judgement about how much
+// editing makes a witness new is the smuggled threshold DESIGN section 5 names, and it would be
+// decided by whoever was reviewing that day.
+type ClaimCeilingTier =
+    GrandfatheredTier
+  | NewWitnessTier
+
+fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
+  if floor_grandfathered_holds(name: identity) {
+    GrandfatheredTier {}
+  } else {
+    NewWitnessTier {}
+  }
+}
+
+// THE POLICY INPUT EACH TIER PROJECTS. Milliseconds of work, which is the unit the rulings are in.
+fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Int {
+  match tier {
+    GrandfatheredTier => required_floor_claim_work_envelope_ms()
+    NewWitnessTier => required_floor_new_witness_envelope_ms()
+  }
+}
+
+// THE CEILING IN THE UNIT THE FLOOR MEASURES. Neither budget is a literal anywhere: both are the
+// tier's policy milliseconds put through `v2.workflow.floor_eval_step_calibration`, so they cannot
+// drift apart, and neither can be raised without moving a policy figure or the pinned rate -- both
+// of which have executing checks over them.
+fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> Int {
+  eval_step_budget_for(
+    calibration: floor_eval_step_calibration,
+    envelope: millisecond(count: claim_ceiling_envelope_ms(tier: tier)),
+  )
+}
+
+// THE CEILING FOR ONE IDENTITY, WHICH IS THE ONLY ENTRY POINT A CALLER SHOULD REACH FOR. It joins
+// the two steps above so no caller can select a tier for one identity and a budget for another.
+fn claim_eval_step_budget_for_identity(identity: String) -> Int {
+  claim_ceiling_eval_step_budget(tier: claim_ceiling_tier(identity: identity))
 }
 
 // THE GROUNDING, AS AN EXECUTING FOLD RATHER THAN AS THE PROSE ABOVE. Its consumer is
-// `test.claim.floor_eval_step_budget_witness_test`, which goes red if the budget, the envelope or
-// the pinned calibration move out of band relative to each other -- so the sentence "500,000 steps
-// is 500ms of work" is a claim the tree can refuse rather than a comment nobody can check.
-fn required_floor_eval_step_budget_grounding() -> EvalStepBudgetGrounding {
-  eval_step_budget_grounding(
-    calibration: floor_eval_step_calibration,
-    budget_steps: required_floor_claim_eval_step_budget(),
-    envelope_ms: required_floor_claim_work_envelope_ms(),
-  )
+// `test.claim.floor_eval_step_budget_witness_test`, which goes red if the pinned rate stops being
+// the floor of the ratio its own sample measured -- so "723 steps is one millisecond of work" is a
+// claim the tree can refuse rather than a comment nobody can check.
+fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
+  eval_step_rate_grounding(calibration: floor_eval_step_calibration)
+}
+
+// WHAT A NEW WITNESS OVER ITS BUDGET SHOULD TRY FIRST, CARRIED AS DATA RATHER THAN LEFT TO THE
+// AUTHOR'S IMAGINATION (fierce-lark-661, 2026-09-13). The first live application of the two-tier
+// ruling found a correct identity join written as two nested all/any scans -- 2n^2, 618k eval steps
+// -- because the lane believed `dag/std` had no membership primitive. It does, and the
+// folder-as-direction-rule reading that hides it is what DESIGN section 3 denies in terms.
+//
+// THE TEXT NAMES THE PRIMITIVE AND STOPS THERE, AND THAT IS A RULING RATHER THAN AN OMISSION. This
+// lane measured the map-backed fold costing 36,000ms of host CPU at 3,795 rows while reading as the
+// CHEAPEST of three spellings on the gated clock, and proposed teaching authors to choose by n. That
+// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which DESIGN
+// section 6's bare-minimum-cost rule forbids in terms -- a proven cost-shape defect is always fixed,
+// and pricing per-site exceptions is itself redundant work. The quadratic is a REALIZATION DEFECT in
+// the map primitive, filed at `gunbc.recurring_failure_mode`
+// `nested_membership_scan_where_a_map_primitive_exists` and owned by the primitive's lane, not a
+// fact every future author must route around.
+fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
+  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup`, PrimitiveContracts already imported by 78 dag/ modules -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact." as NonEmptyStr
 }
 
 // WHETHER ONE CLAIM'S PERFORMED WORK IS INSIDE THE CEILING.
@@ -1774,3 +1832,22 @@ fn floor_run_blocks(
 data floor_preparation_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
   description: "dissolve-on: v1_compiler.cli_run run_required_floor evaluates floor_preparation_outcome / floor_preparation_outcome_blocks through the hermetic frame instead of mirroring the three-axis comparison in Rust; the mirrored branch is deleted in the same change." as NonEmptyStr,
 )
+
+// ── THE TWO CEILINGS AS NULLARY PROJECTIONS, FOR THE SEED'S READ POINT ─────────────────────
+//
+// The seed evaluates its policy figures out of the model rather than mirroring them as Rust
+// literals -- `floor_required_int` does exactly this for the wall deadline and the cost line -- and
+// it reads NULLARY functions. These two are that read point and nothing else: they have no
+// arithmetic of their own and no second home for a figure. A reader who changes a tier's policy
+// milliseconds, or the pinned rate, changes both of these; nobody edits them directly.
+//
+// THEY ARE NOT A THIRD AND FOURTH BUDGET. Each is `claim_ceiling_eval_step_budget` at one tier, so
+// the model and the seed cannot disagree about what a tier costs, and the tier SELECTION stays in
+// `claim_ceiling_tier` where the roster is the only input.
+fn required_floor_grandfathered_eval_step_budget() -> Int {
+  claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})
+}
+
+fn required_floor_new_witness_eval_step_budget() -> Int {
+  claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
+}

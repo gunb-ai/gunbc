@@ -38,7 +38,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
   identity: "floor_cost_cpu_regression_at_constant_eval_steps" as NonEmptyStr,
 
-  subject: "CPU-time regressions at CONSTANT eval_steps -- a step getting more expensive rather than a claim performing more steps. The required floor's per-claim ceiling now gates on eval_steps and observes CPU only, so this class has no refusing wall on the acceptance path",
+  subject: "CPU-time regressions at CONSTANT eval_steps, ACROSS BOTH TIERS of the claim ceiling (the grandfathered 500ms-equivalent budget and the new-witness 100ms-equivalent budget -- the loss is a property of the CLOCK, so splitting the ceiling in two did not split it and neither tier refuses this class) -- a step getting more expensive rather than a claim performing more steps. The required floor's per-claim ceiling now gates on eval_steps and observes CPU only, so this class has no refusing wall on the acceptance path",
 
   declared: "2026-09-12",
 
@@ -52,6 +52,8 @@ data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
       "host-realized primitive cost: any v1_interpreter primitive whose Rust realization gets slower while the interpreted step count over it is unchanged -- the eval-step clock is blind to it by construction, because a step counts interpreter structure and not time",
       "invariant-step realization seams: a realization swapped underneath a modeled operation with the step count preserved, the shape gunbc#11121's hash-to-scan seam has",
       "v2.workflow.required_floor claim_safety_outcome (the deciding consumer: it compares eval steps and wall, and takes no CPU limit)",
+      "v2.workflow.required_floor claim_ceiling_tier / claim_ceiling_eval_step_budget (BOTH TIERS are in the dropped population: an identity judged against the 100ms-equivalent new-witness budget is as blind to a step getting more expensive as one judged against the 500ms-equivalent grandfathered budget, because the blindness is the clock's and not the ceiling's)",
+      "MEASURED INSTANCE, found inside this very change rather than predicted: a map-backed membership fold over 3,795 identities (v2.std.collection empty_map/map_insert/map_lookup) reported 39,940 eval steps -- FEWER than the 43,583 of the short-circuiting descent it replaced -- while costing 36,000ms of CPU against that descent's 76ms. It would pass either tier's eval-step ceiling comfortably. The realization defect behind it is filed at gunbc.recurring_failure_mode nested_membership_scan_where_a_map_primitive_exists",
       "v2.workflow.required_floor claim_cost_basis_standing (the declaration that CpuTimeBasis is observed-only for every claim, with its publisher named)",
       "src/v1/stage0/src/cli_run/required_floor_runner.rs (the seed realization of the same comparison)",
     ],

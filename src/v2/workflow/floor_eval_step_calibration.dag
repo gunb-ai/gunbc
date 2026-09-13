@@ -1,164 +1,190 @@
 module v2.workflow.floor_eval_step_calibration
 
 import v2.std.logic { Bool }
-import v2.std.integer { Int, int_mul, int_ge }
+import v2.std.integer { Int, int_add, int_mul, int_ge }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import std.types { NonEmptyStr }
 
-// THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILING.
+// THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILINGS.
 //
 // WHY THIS MODULE EXISTS AT ALL. `v2.workflow.required_floor` declares, as POLICY, how much work
 // one required claim may perform. The policy is stated in milliseconds of ordinary interpreted
-// evaluation, because that is the unit an operator rules in and the unit every prior ruling over
-// this ceiling was written in. The floor MEASURES eval steps. Something must carry the conversion,
-// and the only honest place to take it is a specimen whose work is fixed by source rather than by
-// the corpus -- so this module holds one pinned reading and nothing else.
+// evaluation, because that is the unit every operator ruling over this ceiling has been written in.
+// The floor MEASURES eval steps. Something must carry the conversion, and the only honest place to
+// take it is a specimen whose work is fixed by source rather than by the corpus.
 //
 // WHAT IT IS NOT, STATED FIRST BECAUSE IT IS THE FAILURE THIS FILE EXISTS TO AVOID. It is not a
 // measurement of the live floor population. DESIGN section 5 rules that a merge-blocking literal
 // grounded in a measurement of the same current tree is a change detector rather than an oracle,
-// and every prior raise of this family of ceilings failed exactly there (see the two repudiated
-// raises recorded at `v2.workflow.required_floor`). The specimen below is a fixture: its recursion
-// depth is a literal in `test.claim.floor_eval_step_calibration_specimen_test`, so its step count
-// is a property of that file and is reproducible on any host, in any run, at any corpus size.
+// and every prior raise of this family of ceilings failed exactly there. The specimen is a fixture:
+// its recursion depth is a literal in
+// `test.claim.floor_eval_step_calibration_specimen_test`, so its step count is a property of that
+// file, reproducible on any host, in any run, at any corpus size.
 //
 // THE TWO HALVES ARE OF DIFFERENT KINDS AND ARE CARRIED SEPARATELY.
 //
-//   `specimen_eval_steps` is DETERMINISTIC, AND THAT IS NOW MEASURED ACROSS ARCHITECTURES RATHER
-//   THAN ASSUMED. Three consecutive local executions returned the identical figure, which only
-//   establishes that it is stable on one machine. The required floor then executed the same
-//   specimen on a CI runner -- a different host, a different architecture (linux/amd64 against the
-//   authoring container's aarch64), a different corpus state -- and reported the SAME 110,011.
-//   That is the load-bearing property of this whole design stated as a receipt: the quantity the
-//   ceiling gates on did not move when the machine did, while the CPU reading beside it moved 25%.
+//   `specimen_eval_steps` is DETERMINISTIC, AND THAT IS MEASURED ACROSS ARCHITECTURES RATHER THAN
+//   ASSUMED. At its previous depth the specimen returned an identical 110,011 on five executions
+//   spanning an aarch64 authoring container and a linux/amd64 CI runner, under every level of load.
+//   It is not an environmental reading and is not a bet.
 //
-//   `specimen_cpu_ms` is ENVIRONMENTAL, and the whole reason this change exists is that such
-//   readings drift. It is therefore recorded as the SLOWEST of the readings taken, never the mean
-//   and never the fastest: a slower specimen yields FEWER steps per millisecond, which makes the
-//   derived ceiling TIGHTER. The fail-closed direction is chosen deliberately, so that drift in
-//   the calibration host cannot silently widen what a claim may spend.
+//   `specimen_cpu` is ENVIRONMENTAL, and the whole reason this change exists is that such readings
+//   drift. It is recorded as the SLOWEST reading of the declared sample, never the mean and never
+//   the fastest: a slower specimen yields FEWER steps per millisecond, which makes the derived
+//   ceilings TIGHTER. The fail-closed direction is deliberate, so drift in the calibration host
+//   cannot silently widen what a claim may spend.
 //
-//   THE RULE WAS APPLIED AGAINST THE AUTHOR'S OWN FIRST READING, which is the only reason it is
-//   worth writing down. The figure here was 110ms -- the slowest of three readings on the authoring
-//   container -- until the floor ran the specimen on a CI runner and read 138ms. Keeping 110 would
-//   have been the faster of two hosts chosen after the fact, so the row carries 138: the slowest
-//   reading from the machine that actually executes the floor. The declared budget did not move
-//   with it, because a declared policy that tracked the calibration would BE the calibration.
+//   "SLOWEST" MEANS SLOWEST WITHIN THE DECLARED SAMPLE, NOT SLOWEST EVER OBSERVED, and that
+//   distinction is the difference between a pin and a ratchet. A row that re-pins whenever a slower
+//   reading arrives is a measurement of the current environment wearing a pin's name; it would
+//   drift upward forever on a fleet whose CPU readings drift, and automating its update would
+//   collapse it to `measure() == measure()` -- DESIGN section 5's oracle defect, and the exact
+//   shape of the two repudiated ceiling raises this file's consumer records.
 //
-//   "SLOWEST" MEANS SLOWEST WITHIN THE DECLARED CALIBRATION SAMPLE, NOT SLOWEST EVER OBSERVED, and
-//   the distinction is the difference between a pin and a ratchet. The sample is the four readings
-//   this row names, taken once by the stated procedure. A FIFTH reading exists and is deliberately
-//   NOT in it: the next floor run measured the same specimen at 152ms. It is recorded beside the
-//   sample as evidence and it does NOT re-pin the row.
+// RE-PINNING IS A DELIBERATE ACT, NOT MAINTENANCE. It happens when the grounding check goes red --
+// the executing signal that the conversion has left its band -- or when the specimen changes, and
+// it is taken by re-running the named instrument rather than by adopting whatever the last floor
+// run reported.
 //
-//   WHY REFUSING THAT READING IS THE FAIL-CLOSED DIRECTION HERE, when taking it would look like the
-//   conservative move. A row that re-pins whenever a slower reading arrives is a measurement of the
-//   current environment wearing a pin's name -- it would drift upward forever on a fleet whose CPU
-//   readings drift, and automating its update would collapse it to `measure() == measure()`. That
-//   is the oracle defect DESIGN section 5 forbids and the exact shape of the two repudiated ceiling
-//   raises this file's consumer records (500 -> 1552, "measured-max plus one scheduler-quantum").
-//   The 138-to-152 movement is not a signal that the pin is wrong; IT IS THE PHENOMENON THIS WHOLE
-//   CHANGE EXISTS FOR, observed inside the calibration itself -- the same source, the same 110,011
-//   steps, ten percent more CPU. What absorbs it is the BAND in `eval_step_budget_grounding`, not a
-//   moving pin: re-derived against 152 the budget sits at a factor of 1.38 of the calibrated
-//   envelope, comfortably inside the declared two, so the grounding holds without the row moving.
-//
-//   RE-PINNING IS THEREFORE A DELIBERATE ACT, NOT MAINTENANCE. It happens when the grounding check
-//   goes red -- which is the executing signal that the conversion has genuinely left its band --
-//   or when the specimen itself is changed, and it is taken by re-running the named instrument
-//   rather than by adopting whatever the last floor run happened to report.
-//
-// WHAT THE CONVERSION DOES AND DOES NOT CLAIM, and this is the honesty boundary a later reader
-// must not erase. It claims that one millisecond of PURE INTERPRETED EVALUATION on the named host
-// is about this many eval steps. It does NOT claim that every step in the corpus costs the same:
-// a claim whose time accrues inside an opaque host operation accumulates milliseconds without
-// accumulating steps at all, which is precisely the population
-// `v2.workflow.required_floor` `opaque_host_call_grandfather_population` already declares a
-// section 4b drop over. The conversion is therefore sound for the quantity the ceiling gates --
-// interpreted work -- and says nothing about host-realized cost, which is the CPU clock's subject
-// and is published as an observation rather than gated.
+// WHAT THE CONVERSION DOES AND DOES NOT CLAIM. It claims that one millisecond of PURE INTERPRETED
+// EVALUATION on the named host is about this many eval steps. It does NOT claim every step in the
+// corpus costs the same: a claim whose time accrues inside an opaque host operation accumulates
+// milliseconds without accumulating steps at all, which is the population
+// `v2.workflow.required_floor` `opaque_host_call_grandfather_population` already declares a section
+// 4b drop over. This module's own measurement history contains a second instance of that gap -- see
+// the three-spelling note in `v2.workflow.floor_grandfathered_roster`, where a map-backed
+// membership fold cost 400x the CPU at a LOWER step count. The conversion is sound for the quantity
+// the ceilings gate -- interpreted work -- and says nothing about host-realized cost, which is the
+// CPU clock's subject and is published as an observation rather than gated.
 type EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: NonEmptyStr
   instrument: NonEmptyStr
   host: NonEmptyStr
   readings: Int
   specimen_eval_steps: Int
-  specimen_cpu_ms: Int
+  specimen_cpu: Millisecond
+  steps_per_ms: Int
 }
 
 // THE PINNED READING. `instrument` names the producer that re-derives both figures rather than
 // transcribing a run id beside them (DESIGN section 6: name the instrument). Re-deriving this row
 // is one command over one entry; it does not require a floor run, a CI run, or the corpus.
+//
+// THE RATE WAS MEASURED AT A LARGER SPECIMEN DEPTH THAN THE ONE STANDING TODAY, and that is
+// recorded rather than smoothed over because a reader who checks 55,011 against 152ms will get a
+// different number. The specimen was 110,011 steps when the CI readings were taken; it was then
+// REDUCED so that it sits under the new-witness ceiling this calibration itself derives -- a
+// measuring stick exempt from the tier it defines is the escape hatch DESIGN section 5 forbids, and
+// grandfathering would have granted exactly that exemption.
+//
+// THE RATE SURVIVES THE REDUCTION BECAUSE IT IS A PROPERTY OF THE MACHINE, NOT OF THE DEPTH, and
+// that is verified rather than asserted: on the authoring host the same specimen measured 1000
+// steps/ms at depth 10000 (110,011 / 110ms) and 965 steps/ms at depth 5000 (55,011 / 57ms), a 3.5%
+// spread that is reading noise at this scale. The pinned 723 is the CI figure (110,011 / 152ms),
+// chosen over the authoring host's because CI is the machine that runs the floor and is the slower
+// of the two -- pinning the faster host would have loosened every derived ceiling by a third.
 data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
   instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen_test.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
-  host: "TWO HOSTS, TWO ARCHITECTURES, ONE STEP COUNT. The declared sample is FOUR readings. Authoring: a gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice -- three consecutive executions read cpu=97ms, 110ms, 110ms. Execution: a self-hosted CI runner, linux amd64, under the required floor's own fold beside 3,784 other claims -- cpu=138ms. The recorded figure is the slowest of those four and comes from the machine that runs the floor. A FIFTH READING IS KNOWN AND IS OUTSIDE THE SAMPLE BY CONSTRUCTION: the next floor run measured the same specimen at 152ms. It does not re-pin this row -- see the note above on why slowest-within-the-sample is a pin and slowest-ever-observed is a ratchet. EVERY ONE OF THE FIVE RETURNED AN IDENTICAL eval_steps OF 110011, across both architectures and every level of load, which is the property the ceiling actually rests on" as NonEmptyStr,
-  readings: 4,
-  specimen_eval_steps: 110011,
-  specimen_cpu_ms: 138,
+  host: "RATE SAMPLE, taken at specimen depth 10000 (110,011 eval_steps): authoring container, linux aarch64, three executions at cpu=97ms, 110ms, 110ms; self-hosted CI runner, linux amd64, under the required floor's own fold, cpu=138ms then 152ms. All five returned an IDENTICAL eval_steps of 110011. The pinned rate is 110011/152 floored, the slowest reading from the machine that runs the floor. CURRENT SPECIMEN is depth 5000 (55,011 eval_steps, authoring host 56ms/57ms), reduced so it sits under the new-witness ceiling it helps derive" as NonEmptyStr,
+  readings: 5,
+  specimen_eval_steps: 55011,
+  specimen_cpu: millisecond(count: 152),
+  steps_per_ms: 723,
+}
+
+// THE CONVERSION, AND THE ONLY ARITHMETIC IN THIS FILE THAT A BUDGET DEPENDS ON.
+//
+// IT IS A MULTIPLICATION, NEVER A DIVISION, and that is a fail-closed choice rather than a
+// convenience. `int_div` is partial -- it returns an `Outcome` and takes a `Locus` -- so deriving a
+// budget by dividing would thread a refusal through every policy caller, or invite an `unwrap` that
+// fabricates a figure when the calibration is degenerate. Pinning the RATE and multiplying keeps
+// the derivation total, and moves the division to one place: the grounding check below, which
+// proves the pinned rate really is the floor of the measured ratio, by cross-multiplication.
+//
+// THE POLICY INPUT IS MILLISECONDS OF WORK and the output is eval steps. Both tiers call this: the
+// grandfathered ceiling passes 500, the new-witness ceiling passes 100. Neither budget is a literal
+// anywhere, so the two cannot drift apart or be raised independently of the policy they project.
+fn eval_step_budget_for(calibration: EvalStepCalibration, envelope: Millisecond) -> Int {
+  int_mul(a: millisecond_count(m: envelope), b: calibration_rate(calibration: calibration))
+}
+
+// THE ONE ACCESSOR, so every consumer reaches the rate through a match on the carrier rather than
+// by field access that would bind a second spelling of the same read.
+fn calibration_rate(calibration: EvalStepCalibration) -> Int {
+  match calibration {
+    PinnedSpecimenCalibration {
+      specimen: _, instrument: _, host: _, readings: _,
+      specimen_eval_steps: _, specimen_cpu: _, steps_per_ms: r,
+    } => r
+  }
+}
+
+fn calibration_specimen_eval_steps(calibration: EvalStepCalibration) -> Int {
+  match calibration {
+    PinnedSpecimenCalibration {
+      specimen: _, instrument: _, host: _, readings: _,
+      specimen_eval_steps: st, specimen_cpu: _, steps_per_ms: _,
+    } => st
+  }
 }
 
 // THE GROUNDING VERDICT, AS A CLOSED COPRODUCT RATHER THAN A BOOL.
 //
-// The declared budget is a POLICY LITERAL, authored in `v2.workflow.required_floor`, and this is
-// the executing check that it still means what the calibration says it means. Cross-multiplication
-// is used instead of division on purpose: `int_div` is partial and would drag an `Outcome` and a
-// `Locus` through a pure policy predicate, and the exact ratio is not wanted -- only the band.
+// The pinned `steps_per_ms` is the one figure in this file that could silently stop describing the
+// specimen it claims to come from, so it is the one figure with an executing check. The check is
+// that the rate is the FLOOR of the measured ratio: rate*cpu <= steps, and (rate+1)*cpu > steps.
+// Cross-multiplication is used instead of division for the same reason the conversion above is a
+// multiplication.
 //
-// THE BAND IS DECLARED, NOT DERIVED, AND IT IS A MAGNITUDE CHECK RATHER THAN AN EQUALITY. The
-// budget must sit within a FACTOR OF TWO of the calibrated worth of the envelope, either way.
-// Equality is refused deliberately: it would make the policy literal a transcription of the
-// calibration -- one figure mechanically derived from another and therefore not a policy at all --
-// and an operator who rounds the budget to a readable number would red the check for rounding it.
-// What the band establishes is that the two are stated in the same units and in the same
-// magnitude, which is the whole of what a grounding can honestly assert about a declared number.
-// Above two envelopes the policy is claiming materially more work than it measured; below half an
-// envelope it would refuse ordinary claims while still describing itself in the envelope's
-// milliseconds. Both refusal arms carry the two products so a reader sees what was compared.
-type EvalStepBudgetGrounding =
-    GroundedWithinCalibrationBand
-  | AboveCalibratedEnvelope { budget_work: Int, envelope_work: Int }
-  | BelowCalibratedBand { budget_work: Int, envelope_work: Int }
+// BOTH REFUSING ARMS ARE AUTHORABLE, which is what keeps this from being a decoration permanently
+// green by construction (DESIGN section 4b: ask whether the RED is authorable before writing the
+// check). A rate above the ratio overstates how much work a millisecond buys and loosens every
+// ceiling; a rate below it understates and tightens them. Both carry the two products so a reader
+// of a refusal sees what was compared.
+type EvalStepRateGrounding =
+    RateIsTheFlooredRatio
+  | RateAboveMeasuredRatio { rate_work: Int, measured_steps: Int }
+  | RateBelowMeasuredRatio { rate_work: Int, measured_steps: Int }
 
-fn eval_step_budget_grounding(
-  calibration: EvalStepCalibration,
-  budget_steps: Int,
-  envelope_ms: Int,
-) -> EvalStepBudgetGrounding {
-  match calibration {
-    PinnedSpecimenCalibration {
-      specimen: _,
-      instrument: _,
-      host: _,
-      readings: _,
-      specimen_eval_steps: steps,
-      specimen_cpu_ms: cpu_ms,
-    } =>
-      classify_eval_step_budget_grounding(
-        budget_work: int_mul(a: budget_steps, b: cpu_ms),
-        envelope_work: int_mul(a: steps, b: envelope_ms),
-      )
-  }
+fn eval_step_rate_grounding(calibration: EvalStepCalibration) -> EvalStepRateGrounding {
+  classify_eval_step_rate(
+    rate_work: int_mul(a: calibration_rate(calibration: calibration), b: rate_sample_cpu_ms()),
+    next_rate_work: int_mul(a: int_add(a: calibration_rate(calibration: calibration), b: 1), b: rate_sample_cpu_ms()),
+    measured_steps: rate_sample_eval_steps(),
+  )
 }
 
-fn classify_eval_step_budget_grounding(budget_work: Int, envelope_work: Int) -> EvalStepBudgetGrounding {
-  if int_ge(a: budget_work, b: int_mul(a: envelope_work, b: 2)) {
-    AboveCalibratedEnvelope { budget_work: budget_work, envelope_work: envelope_work }
+// THE SAMPLE THE RATE WAS TAKEN FROM, NAMED SEPARATELY FROM THE CURRENT SPECIMEN because they are
+// different facts and the row above says so in prose. A later author who shrinks or grows the
+// specimen again changes `specimen_eval_steps`; these two move only when the RATE is re-pinned.
+fn rate_sample_eval_steps() -> Int {
+  110011
+}
+
+fn rate_sample_cpu_ms() -> Int {
+  152
+}
+
+fn classify_eval_step_rate(rate_work: Int, next_rate_work: Int, measured_steps: Int) -> EvalStepRateGrounding {
+  if int_ge(a: rate_work, b: int_add(a: measured_steps, b: 1)) {
+    RateAboveMeasuredRatio { rate_work: rate_work, measured_steps: measured_steps }
   } else {
-    if int_ge(a: int_mul(a: budget_work, b: 2), b: envelope_work) {
-      GroundedWithinCalibrationBand {}
+    if int_ge(a: measured_steps, b: next_rate_work) {
+      RateBelowMeasuredRatio { rate_work: rate_work, measured_steps: measured_steps }
     } else {
-      BelowCalibratedBand { budget_work: budget_work, envelope_work: envelope_work }
+      RateIsTheFlooredRatio {}
     }
   }
 }
 
-// A GROUNDING THAT IS NOT INSIDE THE BAND REFUSES. There is no arm that reports the mismatch and
+// A GROUNDING THAT IS NOT THE FLOORED RATIO REFUSES. There is no arm that reports the mismatch and
 // proceeds: DESIGN section 5's failure arm must refuse rather than widen, and a ceiling whose
-// grounding has drifted is a ceiling nobody can read the units of.
-fn eval_step_budget_grounding_holds(grounding: EvalStepBudgetGrounding) -> Bool {
+// conversion has drifted is a ceiling nobody can read the units of.
+fn eval_step_rate_grounding_holds(grounding: EvalStepRateGrounding) -> Bool {
   match grounding {
-    GroundedWithinCalibrationBand => true
-    AboveCalibratedEnvelope { budget_work: _, envelope_work: _ } => false
-    BelowCalibratedBand { budget_work: _, envelope_work: _ } => false
+    RateIsTheFlooredRatio => true
+    RateAboveMeasuredRatio { rate_work: _, measured_steps: _ } => false
+    RateBelowMeasuredRatio { rate_work: _, measured_steps: _ } => false
   }
 }
