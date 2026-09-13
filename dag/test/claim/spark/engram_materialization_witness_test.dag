@@ -86,7 +86,7 @@ import gunbc.fabric.engram_materialization {
   PreservesBlockScalePairing, PreservesElementValues,
   ShardIdentity, shard_identity, EncodingIdentity, ShardSetIdentity, SingleObjectIdentity,
   EncodingIdentityUnestablished, EncodedSize, EncodedBytes, EncodedSizeUnestablished,
-  engram_published_identity, engram_admitted_provider_ids,
+  engram_published_identity, engram_admitted_provider_ids, engram_admitted_providers,
   FaithfulComponentRealization, RealizationFaithful, RealizationUnfaithful, RealizationEvidenceMissing,
   realize_component,
   ComponentRealizationStanding, RealizationSettledFaithful, RealizationSettledUnfaithful, RealizationStandingOpen,
@@ -616,13 +616,13 @@ test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool
 
 test fn the_four_declared_routes_are_well_formed() -> Bool {
   count(engram_routes) == 4
-    && all(engram_routes, r => match route_structural_standing(r: r, origin_provider_id: engram_origin_provider_id, admitted_provider_ids: engram_admitted_provider_ids) {
+    && all(engram_routes, r => match route_structural_standing(r: r, origin_provider_id: engram_origin_provider_id, roster: engram_admitted_providers) {
       RouteWellFormed => true
       RouteMalformed { defects: _ } => false
     })
 }
 
-fn malformed(origin: CacheProvider, fill: List<CacheProvider>, retained: List<CacheProvider>, token_time: CacheProvider, verify: RouteRole) -> Bool {
+fn malformed(origin: String, fill: List<String>, retained: List<String>, token_time: String, verify: RouteRole) -> Bool {
   match route_structural_standing(
     r: materialization_route(
       identity: fixture_route_identity(),
@@ -633,20 +633,10 @@ fn malformed(origin: CacheProvider, fill: List<CacheProvider>, retained: List<Ca
       token_time: token_time,
       digest_verified_at: verify),
     origin_provider_id: engram_origin_provider_id,
-    admitted_provider_ids: engram_admitted_provider_ids) {
+    roster: engram_admitted_providers) {
     RouteMalformed { defects: ds } => count(ds) > 0
     RouteWellFormed => false
   }
-}
-
-fn peer_host_provider() -> CacheProvider {
-  provider_row(
-    id: "peer-serving-host",
-    scope: engram_origin_provider.scope,
-    coverage: CoversIdentities { identities: ["peer"] },
-    tier: CasTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: CapacityUnobserved),
-  )
 }
 
 // THE NO-PEER-MESH WALL, AS A RED -- AND FOUR ARMS RETIRED WITH THE CHECKS THEY EXERCISED.
@@ -663,12 +653,27 @@ fn peer_host_provider() -> CacheProvider {
 // THE ARM THAT SURVIVES IS THE ONE WHOSE RED IS STILL AUTHORABLE. A peer host standing at the origin is
 // a perfectly constructible route -- `origin` accepts any provider -- so the question "is the origin the
 // DECLARED origin" remains a value check with a reachable red, and it stays enrolled.
+// SECTION 4b(4) ON THE ADMISSION RED, ASKED THE WAY THE SHAPE CHECKS WERE ASKED: is a route hop with an
+// unadmitted provider STILL AUTHORABLE now that the route names ids and resolves through the roster?
+//
+// YES, AND THAT IS WHY THESE CONTROLS STAY. A fixture hands the builder the string "peer-serving-host";
+// the roster has no entry for it; the route is constructed and REFUSES ON RESOLUTION. The invalid state is
+// reachable, so the discriminating red is authorable, so the check that reports it is a wall rather than a
+// decoration -- and this control is the evidence the class is closed.
+//
+// WHAT DID CHANGE IS WHERE THE ANSWER COMES FROM. The old form built a whole CacheProvider with a peer id
+// and a plausible tier, and admission compared only the id. That is the defect review 65713 found: the id
+// matched, the TIER was trusted, and four consumers read the tier. Now there is no record to hand over --
+// only a name -- so the tampering shape has no spelling, and what remains authorable is exactly the honest
+// residue: naming a provider this component does not admit.
+fn peer_host_provider_id() -> String { "peer-serving-host" }
+
 test fn a_peer_origin_refuses() -> Bool {
   malformed(
-    origin: peer_host_provider(),
+    origin: peer_host_provider_id(),
     fill: [],
     retained: [],
-    token_time: engram_resident_provider,
+    token_time: engram_resident_provider_id,
     verify: DurableOrigin)
 }
 
@@ -706,26 +711,26 @@ test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool 
 // the content-keyed origin and passes; a route that named the NFS token-time hop as its only
 // verification point does not. That red is what keeps the integrity axis from being a decoration.
 test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addressed() -> Bool {
-  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r)))
-    && match route_integrity_standing(r: materialization_route(
+  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r, roster: engram_admitted_providers)))
+    && match route_integrity_standing(roster: engram_admitted_providers, r: materialization_route(
       identity: fixture_route_verified_at_nfs_token_time(),
       label: "fixture: verified only where the runtime reads over NFS" as NonEmptyStr,
-      origin: engram_origin_provider,
+      origin: engram_origin_provider_id,
       fill: [],
       retained: [],
-      token_time: engram_nfs_provider,
+      token_time: engram_nfs_provider_id,
       digest_verified_at: TokenTimeAccess)) {
       IntegrityNotContentAddressed { role: _, because: _ } => true
       IntegrityContentAddressedAt { role: _, provider_id: _ } => false
       IntegrityVerificationPointAbsent { role: _ } => false
     }
-    && match route_integrity_standing(r: materialization_route(
+    && match route_integrity_standing(roster: engram_admitted_providers, r: materialization_route(
       identity: fixture_route_naming_an_absent_verification_role(),
       label: "fixture: names a verification role it has no hop in" as NonEmptyStr,
-      origin: engram_origin_provider,
+      origin: engram_origin_provider_id,
       fill: [],
       retained: [],
-      token_time: engram_nfs_provider,
+      token_time: engram_nfs_provider_id,
       digest_verified_at: FillSource)) {
       IntegrityVerificationPointAbsent { role: _ } => true
       IntegrityContentAddressedAt { role: _, provider_id: _ } => false
@@ -742,11 +747,11 @@ test fn nfs_fill_only_and_nfs_token_time_stay_distinguishable() -> Bool {
     && route_provider_is_fill_only(r: engram_route_d_nfs_fill_then_nvme, provider_id: engram_nfs_provider_id)
     && !route_provider_serves_token_time(r: engram_route_d_nfs_fill_then_nvme, provider_id: engram_nfs_provider_id)
     && !(route_key(r: engram_route_c_nfs_token_time) == route_key(r: engram_route_d_nfs_fill_then_nvme))
-    && !route_reaches_storage_tier(r: engram_route_a_resident)
+    && !route_reaches_storage_tier(r: engram_route_a_resident, roster: engram_admitted_providers)
     && route_hop_reaches_storage(h: route_hop(provider: engram_origin_provider, role: DurableOrigin))
-    && route_reaches_storage_tier(r: engram_route_b_host_nvme)
-    && route_reaches_storage_tier(r: engram_route_c_nfs_token_time)
-    && route_reaches_storage_tier(r: engram_route_d_nfs_fill_then_nvme)
+    && route_reaches_storage_tier(r: engram_route_b_host_nvme, roster: engram_admitted_providers)
+    && route_reaches_storage_tier(r: engram_route_c_nfs_token_time, roster: engram_admitted_providers)
+    && route_reaches_storage_tier(r: engram_route_d_nfs_fill_then_nvme, roster: engram_admitted_providers)
 }
 
 // ── HOST RAM AND UVA ADD NO SECOND POOL, AND STORAGE-BACKED IS NOT FREE ────────────────────────
@@ -768,8 +773,7 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
       NoPoolReliefEveryHopInMemoryPool { how: _ } => false
       PoolReliefBoundedByWorkingSet { resident_upper_bound: _, authority: _ } => false
     })
-    && match pool_relief_standing(
-      r: engram_route_b_host_nvme,
+    && match pool_relief_standing(r: engram_route_b_host_nvme, roster: engram_admitted_providers,
       unified_memory_host: true,
       resident: ResidentMemoryBoundedAbove {
         upper_bound: byte_size(count: 4096),
@@ -950,7 +954,7 @@ fn entry_for(route: MaterializationRoute, rows: List<RouteEvidence>, ctx: RouteS
     c: route_candidate(route: route, artifact: engram_published_artifact, faithfulness: engram_published_faithfulness),
     standing: engram_component_standing,
     origin_provider_id: engram_origin_provider_id,
-    admitted_provider_ids: engram_admitted_provider_ids,
+    roster: engram_admitted_providers,
     rows: rows,
     wanted: ctx,
     budget: budget_unknown(context: ctx),
@@ -1892,16 +1896,16 @@ test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() ->
 // added later.
 test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
   malformed(
-    origin: engram_origin_provider,
-    fill: [peer_host_provider()],
+    origin: engram_origin_provider_id,
+    fill: [peer_host_provider_id()],
     retained: [],
-    token_time: engram_resident_provider,
+    token_time: engram_resident_provider_id,
     verify: DurableOrigin)
     && malformed(
-      origin: engram_origin_provider,
+      origin: engram_origin_provider_id,
       fill: [],
-      retained: [peer_host_provider()],
-      token_time: engram_resident_provider,
+      retained: [peer_host_provider_id()],
+      token_time: engram_resident_provider_id,
       verify: DurableOrigin)
     && count(engram_admitted_provider_ids) == 5
     && !any(engram_admitted_provider_ids, id => id == "peer-serving-host")
@@ -1913,7 +1917,7 @@ test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
 // and no route has a digest observation, so the verification axis gaps rather than scoring. Reading
 // ContentKeyed as "verified" is exactly the inference this separation refuses.
 test fn addressing_capability_does_not_establish_verified_integrity() -> Bool {
-  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r)))
+  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r, roster: engram_admitted_providers)))
     && all(engram_routes, r => match engram_route_evidence_for(r: r, context: context_a()).verification {
       RouteVerificationUnestablished { obligation: _ } => true
       RouteArtifactVerifiedAtOrigin { receipt: _ } => false
@@ -2089,18 +2093,22 @@ test fn an_origin_readback_about_another_subject_or_encoding_does_not_verify_thi
 // about the wrong route must not either.
 test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one() -> Bool {
   count(route_receipt_fields_mismatches(
+    roster: engram_admitted_providers,
     receipt_route: engram_route_d_identity, receipt_subject: context_a(),
     observed_token_time_provider_id: engram_host_nvme_provider_id,
     route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
     && count(route_receipt_fields_mismatches(
+      roster: engram_admitted_providers,
       receipt_route: engram_route_c_identity, receipt_subject: context_a(),
       observed_token_time_provider_id: engram_host_nvme_provider_id,
       route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
     && count(route_receipt_fields_mismatches(
+      roster: engram_admitted_providers,
       receipt_route: engram_route_c_identity, receipt_subject: context_b(),
       observed_token_time_provider_id: engram_nfs_provider_id,
       route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
     && count(route_receipt_fields_mismatches(
+      roster: engram_admitted_providers,
       receipt_route: engram_route_c_identity, receipt_subject: context_a(),
       observed_token_time_provider_id: engram_nfs_provider_id,
       route: engram_route_c_nfs_token_time, wanted: context_a())) == 0

@@ -851,23 +851,68 @@ fn route_hop_reaches_storage(h: RouteHop) -> Bool {
 //
 // `retained` EXISTS BECAUSE ROUTES B AND D HAVE RETAINED WORKING SETS. A shape that cannot express a
 // page cache is not a model of these four routes.
+// THE ROUTE NAMES PROVIDERS; IT DOES NOT CARRY THEM (review 65713).
+//
+// A first cut stored whole `CacheProvider` records in these positions, and admission compared only
+// `provider.id` against a roster of admitted ids -- while `route_hop_placement`, `route_hop_addressing`,
+// `route_hop_is_content_addressed` and `route_hop_reaches_storage` all read `provider.tier`. So a record
+// keeping an admitted id and changing its tier PASSED admission and then drove the pool-relief verdict
+// and the integrity standing. That was a live defect, not a hypothetical.
+//
+// THE FIX IS TO DELETE THE COPY, NOT TO CHECK IT. DESIGN section 3: minimization holds only if each fact
+// lives in exactly one place. A provider's tier, scope, coverage and retention live in the roster; a route
+// names an id and every consumer resolves through that roster, so there is no second copy to disagree with
+// the first and no equality is needed to keep them honest. The alternative -- comparing whole records at
+// admission -- would have required authoring a `CacheProvider` equality that `std.materialization_ladder`
+// does not define, inside a consumer, purely to validate a copy this change removes.
 type MaterializationRoute sole_constructor {
   identity: DeclarationRef
   label: NonEmptyStr
-  origin: CacheProvider
-  fill: List<CacheProvider>
-  retained: List<CacheProvider>
-  token_time: CacheProvider
+  origin: String
+  fill: List<String>
+  retained: List<String>
+  token_time: String
   digest_verified_at: RouteRole
+}
+
+// ── RESOLUTION IS THE ADMISSION CHECK, AND IT REFUSES RATHER THAN REPORTING ─────────────────────
+//
+// An id with no roster entry cannot become a hop at all, so "this route names a provider that is not
+// admitted for this component" is answered here, once, instead of by a defect fold downstream. The
+// unresolved ids travel in the refusal because the remedy depends on which one is wrong.
+type RouteChainResolution
+  = RouteChainResolved { hops: List<RouteHop> }
+  | RouteChainProviderUnresolved { route: DeclarationRef, unresolved: List<String> }
+
+fn roster_provider(roster: List<CacheProvider>, id: String) -> CacheProvider? {
+  (filter(roster, p => p.id == id)).first()
+}
+
+fn unresolved_ids(roster: List<CacheProvider>, ids: List<String>) -> List<String> {
+  filter(ids, id => match roster_provider(roster: roster, id: id) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn route_named_ids(r: MaterializationRoute) -> List<String> {
+  concat(concat([r.origin], r.fill), concat(r.retained, [r.token_time]))
+}
+
+fn resolved_hops(roster: List<CacheProvider>, ids: List<String>, role: RouteRole) -> List<RouteHop> {
+  flat_map(ids, id => match roster_provider(roster: roster, id: id) {
+    Present { value: pr } => [route_hop(provider: pr, role: role)]
+    Absent => []
+  })
 }
 
 fn materialization_route(
   identity: DeclarationRef,
   label: NonEmptyStr,
-  origin: CacheProvider,
-  fill: List<CacheProvider>,
-  retained: List<CacheProvider>,
-  token_time: CacheProvider,
+  origin: String,
+  fill: List<String>,
+  retained: List<String>,
+  token_time: String,
   digest_verified_at: RouteRole,
 ) -> MaterializationRoute {
   MaterializationRoute {
@@ -881,31 +926,61 @@ fn materialization_route(
   }
 }
 
-// THE CHAIN IN ORDER, DERIVED. Consumers that want the old flat view get it as a projection, with the
-// role supplied BY THE POSITION THAT PRODUCED IT rather than read off the hop.
-fn route_chain(r: MaterializationRoute) -> List<RouteHop> {
-  concat(
-    concat(
-      [route_hop(provider: r.origin, role: DurableOrigin)],
-      map(r.fill, p => route_hop(provider: p, role: FillSource))),
-    concat(
-      map(r.retained, p => route_hop(provider: p, role: RetainedWorkingSet)),
-      [route_hop(provider: r.token_time, role: TokenTimeAccess)]))
+// THE CHAIN IN ORDER, RESOLVED. The role is supplied BY THE POSITION THAT PRODUCED IT rather than read
+// off the hop, and the provider is fetched from the roster rather than carried, so neither can be wrong
+// independently of the other. An id the roster does not know refuses the whole chain instead of
+// contributing a hop with a fabricated provider.
+fn route_chain_resolution(r: MaterializationRoute, roster: List<CacheProvider>) -> RouteChainResolution {
+  let missing = unresolved_ids(roster: roster, ids: route_named_ids(r: r))
+  if count(missing) > 0 {
+    RouteChainProviderUnresolved { route: r.identity, unresolved: missing }
+  } else {
+    RouteChainResolved {
+      hops: concat(
+        concat(
+          resolved_hops(roster: roster, ids: [r.origin], role: DurableOrigin),
+          resolved_hops(roster: roster, ids: r.fill, role: FillSource)),
+        concat(
+          resolved_hops(roster: roster, ids: r.retained, role: RetainedWorkingSet),
+          resolved_hops(roster: roster, ids: [r.token_time], role: TokenTimeAccess))),
+    }
+  }
 }
 
-fn route_hops_with_role(r: MaterializationRoute, role: RouteRole) -> List<RouteHop> {
-  filter(route_chain(r: r), h => route_role_eq(a: h.role, b: role))
+// THE HOPS WHEN THEY RESOLVE, AND AN EMPTY LIST WHEN THEY DO NOT. Every caller of this is a predicate
+// whose honest answer for an unresolvable route is "no hops with that property", because the route names
+// a provider this component does not admit -- and the refusal is reported once, by
+// route_provider_resolution_defects, rather than being re-derived at each predicate.
+fn route_chain(r: MaterializationRoute, roster: List<CacheProvider>) -> List<RouteHop> {
+  match route_chain_resolution(r: r, roster: roster) {
+    RouteChainResolved { hops: hs } => hs
+    RouteChainProviderUnresolved { route: _, unresolved: _ } => []
+  }
 }
 
-fn route_role_count(r: MaterializationRoute, role: RouteRole) -> Nat {
-  count(route_hops_with_role(r: r, role: role))
+fn route_hops_with_role(r: MaterializationRoute, role: RouteRole, roster: List<CacheProvider>) -> List<RouteHop> {
+  filter(route_chain(r: r, roster: roster), h => route_role_eq(a: h.role, b: role))
+}
+
+fn route_role_count(r: MaterializationRoute, role: RouteRole, roster: List<CacheProvider>) -> Nat {
+  count(route_hops_with_role(r: r, role: role, roster: roster))
+}
+
+// THE KEY IS BUILT FROM THE NAMES AND THE POSITIONS, so it needs no roster: a route's identity as a chain
+// is which providers it names in which roles, and both are now in the route itself.
+fn role_segment(ids: List<String>, role: RouteRole) -> List<String> {
+  map(ids, id => join([id, ":", route_role_wire(r: role) as String], ""))
 }
 
 fn route_key(r: MaterializationRoute) -> String {
   join([
     declaration_ref_display_key(ref: r.identity),
     "|",
-    join(map(route_chain(r: r), h => join([h.provider.id, ":", route_role_wire(r: h.role) as String], "")), ">"),
+    join(
+      concat(
+        concat(role_segment(ids: [r.origin], role: DurableOrigin), role_segment(ids: r.fill, role: FillSource)),
+        concat(role_segment(ids: r.retained, role: RetainedWorkingSet), role_segment(ids: [r.token_time], role: TokenTimeAccess))),
+      ">"),
     "|verify@", route_role_wire(r: r.digest_verified_at) as String,
   ], "")
 }
@@ -934,24 +1009,34 @@ fn route_key(r: MaterializationRoute) -> String {
 fn route_defects(
   r: MaterializationRoute,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
 ) -> List<NonEmptyStr> {
   concat(
-    route_provider_admission_defects(r: r, admitted_provider_ids: admitted_provider_ids),
+    route_provider_resolution_defects(r: r, roster: roster),
     route_shape_defects(r: r, origin_provider_id: origin_provider_id))
 }
 
-fn route_provider_admission_defects(r: MaterializationRoute, admitted_provider_ids: List<String>) -> List<NonEmptyStr> {
-  flat_map(route_chain(r: r), h =>
-    if any(admitted_provider_ids, id => id == h.provider.id) {
-      []
-    } else {
-      [join([
-        "route ", declaration_ref_display_key(ref: r.identity), " names provider ",
-        h.provider.id, " in the ", route_role_wire(r: h.role) as String,
-        " role, and it is not an admitted provider for this component; FABRIC-M0 permits no peer serving host in ANY position of a chain, fill sources included",
-      ], "") as NonEmptyStr]
-    })
+// ── SECTION 4b(4) ON THE ADMISSION CHECK ITSELF ────────────────────────────────────────────────
+//
+// The old fold walked the chain and compared each hop's carried provider id against a list of admitted
+// ids. It is retired as a WALK, because there is no longer a carried provider to compare -- a route names
+// ids and an unadmitted id cannot resolve to a hop at all.
+//
+// BUT THE RED IS STILL AUTHORABLE, SO THE CHECK DOES NOT VANISH WITH THE COPY. A fixture can hand the
+// builder the string "peer-serving-host" and the roster will not know it; the route is then constructed
+// and refuses on resolution. That is a reachable invalid state, so this reports it rather than leaving the
+// class silent -- and the control that exercises it stays enrolled as the evidence that the class is
+// closed. What changed is WHERE the answer comes from: resolution against the one roster, not a second
+// list of permitted ids maintained beside it.
+fn route_provider_resolution_defects(r: MaterializationRoute, roster: List<CacheProvider>) -> List<NonEmptyStr> {
+  match route_chain_resolution(r: r, roster: roster) {
+    RouteChainResolved { hops: _ } => []
+    RouteChainProviderUnresolved { route: rt, unresolved: ids } =>
+      map(ids, id => join([
+        "route ", declaration_ref_display_key(ref: rt), " names provider ", id,
+        ", which is not an admitted provider for this component; FABRIC-M0 permits no peer serving host in ANY position of a chain, fill sources included, and a provider this component does not admit has no entry in the roster its facts would be read from",
+      ], "") as NonEmptyStr)
+  }
 }
 
 // ── WHAT SURVIVED THE CLIMB, AND WHAT DID NOT (DESIGN 4b(4)) ──────────────────────────────────
@@ -975,12 +1060,12 @@ fn route_provider_admission_defects(r: MaterializationRoute, admitted_provider_i
 // origin against a parameter, and a route naming some other provider as its origin is perfectly
 // constructible. So that half stays, and stays as an executing check rather than a comment.
 fn route_shape_defects(r: MaterializationRoute, origin_provider_id: String) -> List<NonEmptyStr> {
-  if r.origin.id == origin_provider_id {
+  if r.origin == origin_provider_id {
     []
   } else {
     [join([
       "route ", declaration_ref_display_key(ref: r.identity),
-      " begins at ", r.origin.id,
+      " begins at ", r.origin,
       "; every chain's head is the declared durable origin ", origin_provider_id,
       ". The ROLE of that hop is no longer checkable here because it is no longer writable -- the head is the origin by construction -- but WHICH provider stands at the origin is a value this type cannot constrain",
     ], "") as NonEmptyStr]
@@ -994,9 +1079,9 @@ type RouteStructuralStanding
 fn route_structural_standing(
   r: MaterializationRoute,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
 ) -> RouteStructuralStanding {
-  let ds = route_defects(r: r, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids)
+  let ds = route_defects(r: r, origin_provider_id: origin_provider_id, roster: roster)
   if count(ds) == 0 { RouteWellFormed } else { RouteMalformed { defects: ds } }
 }
 
@@ -1009,8 +1094,8 @@ type RouteIntegrityStanding
   | IntegrityNotContentAddressed { role: RouteRole, because: NonEmptyStr }
   | IntegrityVerificationPointAbsent { role: RouteRole }
 
-fn route_integrity_standing(r: MaterializationRoute) -> RouteIntegrityStanding {
-  match (route_hops_with_role(r: r, role: r.digest_verified_at)).first() {
+fn route_integrity_standing(r: MaterializationRoute, roster: List<CacheProvider>) -> RouteIntegrityStanding {
+  match (route_hops_with_role(r: r, role: r.digest_verified_at, roster: roster)).first() {
     Absent => IntegrityVerificationPointAbsent { role: r.digest_verified_at }
     Present { value: h } =>
       if route_hop_is_content_addressed(h: h) {
@@ -1291,16 +1376,17 @@ type PoolReliefStanding
 // the whole table in the pool. What relieves the pool is the runtime reading from somewhere other
 // than the pool, which is the TOKEN-TIME hop and only that one. Fill sources and the origin are
 // where bytes are fetched, not where they reside while serving.
-fn route_reaches_storage_tier(r: MaterializationRoute) -> Bool {
-  any(route_hops_with_role(r: r, role: TokenTimeAccess), h => route_hop_reaches_storage(h: h))
+fn route_reaches_storage_tier(r: MaterializationRoute, roster: List<CacheProvider>) -> Bool {
+  any(route_hops_with_role(r: r, role: TokenTimeAccess, roster: roster), h => route_hop_reaches_storage(h: h))
 }
 
 fn pool_relief_standing(
   r: MaterializationRoute,
+  roster: List<CacheProvider>,
   unified_memory_host: Bool,
   resident: RouteResidentMemoryStanding,
 ) -> PoolReliefStanding {
-  if !route_reaches_storage_tier(r: r) {
+  if !route_reaches_storage_tier(r: r, roster: roster) {
     NoPoolReliefEveryHopInMemoryPool {
       how: join([
         "the token-time hop of ", declaration_ref_display_key(ref: r.identity),
@@ -1772,6 +1858,7 @@ fn mechanism_gap(m: NonResidentMechanismStanding) -> List<AxisGap> {
 // itself stays sealed: a fixture can ask whether these three facts agree without being able to claim
 // they were observed.
 fn route_receipt_fields_mismatches(
+  roster: List<CacheProvider>,
   receipt_route: DeclarationRef,
   receipt_subject: RouteSubjectKey,
   observed_token_time_provider_id: String,
@@ -1796,7 +1883,7 @@ fn route_receipt_fields_mismatches(
           " and this candidate is ", declaration_ref_display_key(ref: route.identity),
         ], "") as NonEmptyStr]
       }),
-    match (route_hops_with_role(r: route, role: TokenTimeAccess)).first() {
+    match (route_hops_with_role(r: route, role: TokenTimeAccess, roster: roster)).first() {
       Absent => ["this route declares no token-time hop, so no launch receipt can be about its token-time path" as NonEmptyStr]
       Present { value: h } =>
         if observed_token_time_provider_id == h.provider.id {
@@ -1811,8 +1898,9 @@ fn route_receipt_fields_mismatches(
     })
 }
 
-fn route_launch_receipt_mismatches(w: RouteLaunchReceipt, route: MaterializationRoute, wanted: RouteSubjectKey) -> List<NonEmptyStr> {
+fn route_launch_receipt_mismatches(w: RouteLaunchReceipt, route: MaterializationRoute, wanted: RouteSubjectKey, roster: List<CacheProvider>) -> List<NonEmptyStr> {
   route_receipt_fields_mismatches(
+    roster: roster,
     receipt_route: w.route,
     receipt_subject: w.subject,
     observed_token_time_provider_id: w.observed_token_time_provider_id,
@@ -1820,10 +1908,10 @@ fn route_launch_receipt_mismatches(w: RouteLaunchReceipt, route: Materialization
     wanted: wanted)
 }
 
-fn route_runtime_reading(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey) -> AxisReading? {
+fn route_runtime_reading(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey, roster: List<CacheProvider>) -> AxisReading? {
   match r {
     RouteObservedInLaunch { witness: w } =>
-      if count(route_launch_receipt_mismatches(w: w, route: route, wanted: wanted)) == 0 {
+      if count(route_launch_receipt_mismatches(w: w, route: route, wanted: wanted, roster: roster)) == 0 {
         Present { value: route_reading(axis: ax_route_runtime_observed, v: 1) }
       } else {
         none
@@ -1832,11 +1920,11 @@ fn route_runtime_reading(r: RouteRuntimeFeasibility, route: MaterializationRoute
   }
 }
 
-fn route_runtime_gap(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey) -> List<AxisGap> {
+fn route_runtime_gap(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey, roster: List<CacheProvider>) -> List<AxisGap> {
   match r {
     RouteObservedInLaunch { witness: w } =>
       map(
-        route_launch_receipt_mismatches(w: w, route: route, wanted: wanted),
+        route_launch_receipt_mismatches(w: w, route: route, wanted: wanted, roster: roster),
         m => AxisGap { axis: ax_route_runtime_observed, cause: m })
     RouteRuntimeUnobserved { subject: _, route: rt, obligation: o } =>
       [AxisGap {
@@ -1948,15 +2036,15 @@ fn per_rank_lower_bound_gap(
 fn route_structural_readings(
   c: RouteCandidate,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
 ) -> List<AxisReading> {
   [
     route_reading(
       axis: ax_route_well_formed,
-      v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids)) == 0)),
+      v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id, roster: roster)) == 0)),
     route_reading(
       axis: ax_route_integrity,
-      v: route_flag(b: route_addressing_admits_verification(s: route_integrity_standing(r: c.route)))),
+      v: route_flag(b: route_addressing_admits_verification(s: route_integrity_standing(r: c.route, roster: roster)))),
   ]
 }
 
@@ -1965,7 +2053,7 @@ fn route_candidate_readings(
   standing: ComponentSubjectStanding,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
   budget: ComponentMemoryBudget,
@@ -1973,7 +2061,7 @@ fn route_candidate_readings(
   concat(
     concat(
       concat(
-        route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
+        route_structural_readings(c: c, origin_provider_id: origin_provider_id, roster: roster),
         concat(
           optional_route_reading(r: faithfulness_reading(r: realization)),
           optional_route_reading(r: membership_closure_reading(s: standing)))),
@@ -1981,7 +2069,7 @@ fn route_candidate_readings(
         optional_route_reading(r: mechanism_reading(m: evidence.mechanism)),
         optional_route_reading(r: route_verification_reading(v: evidence.verification, realization: realization)))),
     concat(
-      optional_route_reading(r: route_runtime_reading(r: evidence.runtime, route: c.route, wanted: wanted)),
+      optional_route_reading(r: route_runtime_reading(r: evidence.runtime, route: c.route, wanted: wanted, roster: roster)),
       concat(
         optional_route_reading(r: resident_reading(s: evidence.resident_memory)),
         optional_route_reading(r: per_rank_lower_bound_reading(s: evidence.resident_memory, budget: budget)))))
@@ -2001,6 +2089,7 @@ fn route_candidate_gaps(
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
   budget: ComponentMemoryBudget,
+  roster: List<CacheProvider>,
 ) -> List<AxisGap> {
   concat(
     concat(
@@ -2013,7 +2102,7 @@ fn route_candidate_gaps(
           o => AxisGap { axis: ax_component_membership_closure, cause: o })),
       concat(
         concat(mechanism_gap(m: evidence.mechanism), route_verification_gap(v: evidence.verification, route: c.route.identity, realization: realization)),
-        route_runtime_gap(r: evidence.runtime, route: c.route, wanted: wanted))),
+        route_runtime_gap(r: evidence.runtime, route: c.route, wanted: wanted, roster: roster))),
     concat(
       concat(
         concat(
@@ -2032,7 +2121,7 @@ fn project_route_candidate(
   c: RouteCandidate,
   standing: ComponentSubjectStanding,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
   rows: List<RouteEvidence>,
   wanted: RouteSubjectKey,
   budget: ComponentMemoryBudget,
@@ -2042,17 +2131,17 @@ fn project_route_candidate(
     RouteEvidenceFound { evidence: e } => ParetoEntry {
       identity: c.route.identity,
       display_label: c.route.label,
-      readings: route_candidate_readings(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted, budget: budget),
-      missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted, budget: budget),
+      readings: route_candidate_readings(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, roster: roster, evidence: e, wanted: wanted, budget: budget),
+      missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted, budget: budget, roster: roster),
     }
     RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
-      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, roster: roster, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os }))
     RouteEvidenceAbsent { route: rt, wanted: w } =>
-      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, roster: roster, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
     RouteEvidenceAmbiguous { route: rt, wanted: w, rows: n } =>
-      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, roster: roster, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAmbiguous { route: rt, wanted: w, rows: n }))
   }
 }
@@ -2065,7 +2154,7 @@ fn route_entry_without_evidence(
   standing: ComponentSubjectStanding,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
   wanted: RouteSubjectKey,
   causes: List<NonEmptyStr>,
 ) -> ParetoEntry {
@@ -2073,7 +2162,7 @@ fn route_entry_without_evidence(
     identity: c.route.identity,
     display_label: c.route.label,
     readings: concat(
-      route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
+      route_structural_readings(c: c, origin_provider_id: origin_provider_id, roster: roster),
       concat(
         optional_route_reading(r: faithfulness_reading(r: realization)),
         optional_route_reading(r: membership_closure_reading(s: standing)))),
@@ -2176,7 +2265,7 @@ type ComponentRouteField sole_constructor {
   component: DeclarationRef
   candidates: List<RouteCandidate>
   origin_provider_id: String
-  admitted_provider_ids: List<String>
+  roster: List<CacheProvider>
 }
 
 fn component_route_field(
@@ -2184,14 +2273,14 @@ fn component_route_field(
   component: DeclarationRef,
   candidates: List<RouteCandidate>,
   origin_provider_id: String,
-  admitted_provider_ids: List<String>,
+  roster: List<CacheProvider>,
 ) -> ComponentRouteField {
   ComponentRouteField {
     identity: identity,
     component: component,
     candidates: candidates,
     origin_provider_id: origin_provider_id,
-    admitted_provider_ids: admitted_provider_ids,
+    roster: roster,
   }
 }
 
@@ -2212,7 +2301,7 @@ fn select_component_route(
     candidate_field_identity: field.identity,
     field: map(
       field.candidates,
-      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, admitted_provider_ids: field.admitted_provider_ids, rows: rows, wanted: context, budget: scoped)),
+      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, roster: field.roster, rows: rows, wanted: context, budget: scoped)),
     axes: component_route_axes,
     constraints: component_route_constraints_under(budget: scoped),
     constraint_authority: id_route_constraint_authority,
@@ -2594,40 +2683,40 @@ data engram_route_d_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabr
 data engram_route_a_resident: MaterializationRoute = materialization_route(
   identity: engram_route_a_identity,
   label: "A: origin to RAM-resident component, the status quo" as NonEmptyStr,
-  origin: engram_origin_provider,
+  origin: engram_origin_provider_id,
   fill: [],
   retained: [],
-  token_time: engram_resident_provider,
+  token_time: engram_resident_provider_id,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_b_host_nvme: MaterializationRoute = materialization_route(
   identity: engram_route_b_identity,
   label: "B: origin to per-host NVMe, then the runtime page cache" as NonEmptyStr,
-  origin: engram_origin_provider,
-  fill: [engram_host_nvme_provider],
-  retained: [engram_page_cache_provider],
-  token_time: engram_host_nvme_provider,
+  origin: engram_origin_provider_id,
+  fill: [engram_host_nvme_provider_id],
+  retained: [engram_page_cache_provider_id],
+  token_time: engram_host_nvme_provider_id,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_c_nfs_token_time: MaterializationRoute = materialization_route(
   identity: engram_route_c_identity,
   label: "C: origin over NFS, directly on the token-time access path, no local copy" as NonEmptyStr,
-  origin: engram_origin_provider,
+  origin: engram_origin_provider_id,
   fill: [],
-  retained: [engram_page_cache_provider],
-  token_time: engram_nfs_provider,
+  retained: [engram_page_cache_provider_id],
+  token_time: engram_nfs_provider_id,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_d_nfs_fill_then_nvme: MaterializationRoute = materialization_route(
   identity: engram_route_d_identity,
   label: "D: origin over NFS for fill, then local NVMe and page cache at token time" as NonEmptyStr,
-  origin: engram_origin_provider,
-  fill: [engram_nfs_provider, engram_host_nvme_provider],
-  retained: [engram_page_cache_provider],
-  token_time: engram_host_nvme_provider,
+  origin: engram_origin_provider_id,
+  fill: [engram_nfs_provider_id, engram_host_nvme_provider_id],
+  retained: [engram_page_cache_provider_id],
+  token_time: engram_host_nvme_provider_id,
   digest_verified_at: DurableOrigin,
 )
 
@@ -2638,9 +2727,21 @@ data engram_routes: List<MaterializationRoute> = [
   engram_route_d_nfs_fill_then_nvme,
 ]
 
-// THE PREDICATE THAT KEEPS C AND D APART, derived from the roles rather than from the labels.
+// THE PREDICATE THAT KEEPS C AND D APART, and it needs no roster either: which roles a provider plays is
+// a question about WHERE ITS NAME APPEARS, which the positions answer directly. C names the NFS provider
+// at token_time; D names it in fill with NVMe at token_time. That distinction is structural now.
+fn roles_naming(ids: List<String>, provider_id: String, role: RouteRole) -> List<RouteRole> {
+  map(filter(ids, id => id == provider_id), id => role)
+}
+
 fn route_provider_roles(r: MaterializationRoute, provider_id: String) -> List<RouteRole> {
-  map(filter(route_chain(r: r), h => h.provider.id == provider_id), h => h.role)
+  concat(
+    concat(
+      roles_naming(ids: [r.origin], provider_id: provider_id, role: DurableOrigin),
+      roles_naming(ids: r.fill, provider_id: provider_id, role: FillSource)),
+    concat(
+      roles_naming(ids: r.retained, provider_id: provider_id, role: RetainedWorkingSet),
+      roles_naming(ids: [r.token_time], provider_id: provider_id, role: TokenTimeAccess)))
 }
 
 fn route_provider_serves_token_time(r: MaterializationRoute, provider_id: String) -> Bool {
@@ -2760,23 +2861,29 @@ fn engram_route_candidate(r: MaterializationRoute) -> RouteCandidate {
   }
 }
 
-// THE ADMITTED PROVIDER ROSTER FOR THIS COMPONENT. Every hop of every route must name one of these,
-// in any role. A serving peer is absent from it, which is what makes the no-peer-mesh boundary
-// structural rather than a check on the origin position only.
-data engram_admitted_provider_ids: List<String> = [
-  engram_origin_provider_id,
-  engram_nfs_provider_id,
-  engram_host_nvme_provider_id,
-  engram_page_cache_provider_id,
-  engram_resident_provider_id,
+// THE ADMITTED PROVIDER ROSTER FOR THIS COMPONENT, AND IT IS NOW THE ONLY PLACE A PROVIDER'S FACTS LIVE.
+// Every position of every route names one of these, in any role, and every consumer reads tier, scope,
+// coverage and retention from HERE rather than from a copy the route carried. A serving peer is absent,
+// which is what makes the no-peer-mesh boundary structural: an unadmitted name has no entry to resolve
+// against, so it cannot become a hop at all.
+data engram_admitted_providers: List<CacheProvider> = [
+  engram_origin_provider,
+  engram_nfs_provider,
+  engram_host_nvme_provider,
+  engram_page_cache_provider,
+  engram_resident_provider,
 ]
+
+// THE IDS ARE DERIVED FROM THE ROSTER RATHER THAN LISTED BESIDE IT. A second hand-maintained list of
+// permitted ids is the same duplication one layer along: it can disagree with the roster it describes.
+data engram_admitted_provider_ids: List<String> = map(engram_admitted_providers, p => p.id)
 
 data engram_route_field: ComponentRouteField = component_route_field(
   identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_field"),
   component: engram_component_identity,
   candidates: map(engram_routes, r => engram_route_candidate(r: r)),
   origin_provider_id: engram_origin_provider_id,
-  admitted_provider_ids: engram_admitted_provider_ids,
+  roster: engram_admitted_providers,
 )
 
 // ── THE EVIDENCE THAT EXISTS TODAY, WHICH IS ALMOST NONE, STATED AS SUCH ───────────────────────
@@ -2939,7 +3046,11 @@ fn engram_route_standing(
 // such arm exists among the four. B, C and D reach a storage tier and therefore land on
 // `PoolReliefNeedsWorkingSetEvidence`: reaching storage is not the same fact as freeing bytes.
 fn engram_pool_relief(r: MaterializationRoute) -> PoolReliefStanding {
-  pool_relief_standing(r: r, unified_memory_host: true, resident: engram_resident_standing_for(r: r))
+  pool_relief_standing(
+    r: r,
+    roster: engram_admitted_providers,
+    unified_memory_host: true,
+    resident: engram_resident_standing_for(r: r))
 }
 
 data engram_materialization_frontier: List<FrontierRow> = [
