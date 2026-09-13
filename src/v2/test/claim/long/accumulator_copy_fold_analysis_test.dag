@@ -323,7 +323,17 @@ test fn declared_named_step_fold_copy_is_caught() -> Bool {
 // planted copy is caught -- the inner fold survives as a SURFACE call inside the outer seam Loop's
 // retained body, so count_fold_sites's surface arm fires here. A change that makes this go red
 // has narrowed the lens's domain.
-test fn nested_fold_inside_a_sole_body_fold_is_visible() -> Bool {
+//
+// A PLAIN fn RATHER THAN A test fn, on the standing v2.test.claim.complexity
+// accumulator_copy_corpus_path_test records for its own ingest-reaching predicates: this control
+// reaches the interpreted ingest, which measures several times
+// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms (1732ms CPU on run
+// 34786156711 against a 500ms line), and a NEWLY ENROLLED identity over that line is refused at
+// enrolment margin -- the unchanged test fns of this file sit outside per-PR discovery and are
+// not re-measured, which is why they are not refused and why this cannot simply join them. It
+// passes by execution under claim_batch beside the three RED probes above and is enrolled in
+// nothing; it dissolves into a test fn on the same trigger as its corpus-path siblings.
+fn nested_fold_inside_a_sole_body_fold_is_visible() -> Bool {
   match ingest(source_text: nested_planted_snippet, file: ^nestedplanted_file) {
     Absent => false
     Present { value: tree } =>
