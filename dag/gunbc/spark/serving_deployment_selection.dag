@@ -791,13 +791,13 @@ fn v4_1_selection_frontier_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   }
 }
 
+// THE BUDGET'S DEFERRAL ROW LIVES IN THIS ROSTER AND NOT IN THE ROUTE AUTHORITY'S. A first cut filed
+// it beside the Engram rows because the obligation is about the Engram budget -- but the DECLARATION
+// it defers is this module's, and engram_frontier_subject_key builds every expected subject with the
+// route module's path, so an enrolled row pointing at a serving declaration had no expected subject
+// and the deferral-account join refused in the direction that catches exactly this. A fact's home is
+// its layer, and the roster that refused was right.
 data v4_1_selection_frontier: List<FrontierRow> = [
-  // THIS ROW LIVES HERE AND NOT IN THE ROUTE AUTHORITY'S ROSTER. A first cut filed it beside the Engram
-  // rows because the obligation is about the Engram budget -- but the DECLARATION it defers is this
-  // module's, and `engram_frontier_subject_key` builds every expected subject with the route module's
-  // path, so an enrolled row pointing at a serving declaration had no expected subject and the
-  // deferral-account join refused in the direction that catches exactly this. A fact's home is its
-  // layer, and the roster that refused was right.
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "candidate_component_budget" as NonEmptyStr),
     reason: "the idle-free reading was taken on a Group A rank and this closure has no candidate-to-fabric-group binding to key it by",

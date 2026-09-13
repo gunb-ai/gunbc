@@ -938,6 +938,11 @@ test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> 
 // subject is built, and every built subject is expected. Adding a frontier row without declaring it
 // here reds the second direction; dropping one reds the first. Neither can be satisfied by editing a
 // number, and the roster build still has to be duplicate-free for either direction to mean anything.
+// candidate_component_budget IS ENROLLED HERE because the declaration it defers is this module's. It
+// was briefly filed in the route authority's roster instead and that roster refused -- its expected
+// subjects are all built with the route module's path, so a row pointing at a serving declaration had
+// no counterpart. The join that caught it is the reason both rosters check membership in both
+// directions at identity grain rather than comparing counts.
 data v4_1_expected_frontier_subjects: List<String> = [
   "fleet_admitted_topologies",
   "v4_1_gb10_kv_bytes_obligation",
@@ -945,11 +950,6 @@ data v4_1_expected_frontier_subjects: List<String> = [
   "component_route_gap_over",
   "spark_fleet_snapshot",
   "execution_profile_of",
-  // THE PER-RANK BUDGET'S OWN DEFERRAL, enrolled here because the declaration it defers is this
-  // module's. It was briefly filed in the route authority's roster instead, and that roster refused --
-  // its expected subjects are all built with the route module's path, so a row pointing at a serving
-  // declaration had no counterpart. The join catching that is the reason both these rosters check in
-  // both directions rather than by count.
   "candidate_component_budget",
 ]
 
