@@ -550,11 +550,15 @@ fn adjudicate_published_probe(
   }
 }
 
+fn epoch_ms_less(left: EpochMs, right: EpochMs) -> Bool {
+  left < right
+}
+
 fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs {
   match previous {
     Absent => observed_at
     Present { value: prev } =>
-      if observed_at < prev {
+      if epoch_ms_less(left: observed_at, right: prev) {
         prev
       } else {
         observed_at
