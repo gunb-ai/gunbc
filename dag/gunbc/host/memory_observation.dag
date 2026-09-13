@@ -6,7 +6,9 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.tools.sha256sum
+import extdeps.crypto.hash { sha256sum_line_digest }
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
 import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
 
@@ -149,15 +151,23 @@ type MemoryEvaluationEvidence {
   training_failures: List<PlatformTrainingFailure>
 }
 
-// Shared observing read: callers supply the committed artifact identity and
-// perform their own bounded recognition only after both reads succeed.
+// Recognition receives only the value whose digest was checked; the path is
+// read once, and every capture producer uses the same content verifier.
 func read_verified_memory_capture(path: NonEmptyStr, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
   let read = Filesystem.Read(path: path as String)
-  let hash = sha256sum_file_digest_via_shell(path: path)
-  let valid_hash = match hash {
-    Sha256FileDigest { digest } => digest.hex == expected_sha256
-    Sha256FileDigestUnavailable { path: _, reason: _ } => false
-  }
-  if read.success && valid_hash { ObservationEstablished { observed: read.content } }
-  else { ObservationRefused { cause: concat("capture could not be read and hash-verified: ", path as String) as NonEmptyStr } }
+  if read.success { verify_memory_capture_content(content: read.content, expected_sha256: expected_sha256) }
+  else { ObservationRefused { cause: concat("capture could not be read: ", path as String) as NonEmptyStr } }
+}
+
+// Hash the same captured value returned to the recognizer. A later path read
+// cannot certify these bytes, even when it observes the expected digest.
+func verify_memory_capture_content(content: String, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
+  let hash = sha256sum.Sha256.DigestStdin(content: content, expect: OutcomeIsData)
+  if !hash.success { ObservationRefused { cause: "capture digest process failed" } }
+  else { match sha256sum_line_digest(line: hash.line) {
+    Absent => ObservationRefused { cause: "capture digest process returned no digest" }
+    Present { value: digest } =>
+      if digest.hex == expected_sha256 { ObservationEstablished { observed: content } }
+      else { ObservationRefused { cause: "consumed capture bytes differ from committed digest" } }
+  } }
 }

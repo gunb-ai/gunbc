@@ -21,7 +21,7 @@ import gunbc.memory_observation {
   memory_collector_refusal, memory_capture_covers_population,
 }
 import gunbc.memory_configuration_evaluation {
-  MemoryConfigurationAssessment, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
+  MemoryConfigurationAssessment, memory_obligation_result, memory_empty_facts, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
   evaluate_memory_configuration, memory_placement_from_roles, MemoryPopulationRoleUnresolved,
 }
 import gunbc.memory_change_evaluation {
@@ -746,4 +746,48 @@ test fn w_position_projection_uses_role_identity_not_connector_parity() -> Bool 
     && primary.slot == one_dpc_diagram_legend.slot_number
     && additional.connector == concat(dimm_figure_connector_label_prefix, "1")
     && additional.slot == additional_two_dpc_diagram_legend.slot_number
+}
+
+// These authored assessments exercise the public admission boundary; the
+// production evaluator does not manufacture the malformed lists below.
+fn memory_test_coverage_admits(required: List<MemoryOperatingObligation>, evaluated: List<MemoryOperatingObligation>) -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let a = memory_test_assess(fixture_roles: fixture_roles, configuration: memory_test_uniform(fixture_roles: fixture_roles))
+      let authored = MemoryConfigurationAssessment {
+        configuration: a.configuration, evidence: a.evidence, mixture_observations: a.mixture_observations, required: required,
+        results: map(evaluated, obligation => memory_obligation_result(obligation: obligation, facts: memory_empty_facts)),
+      }
+      match memory_configuration_admission_refusal(a: authored, purpose: ProductionMemoryPurchase) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+  }
+}
+
+test fn w_coverage_identity_bijection_admits_control() -> Bool {
+  memory_test_coverage_admits(required: memory_operating_obligations, evaluated: memory_operating_obligations)
+}
+
+test fn w_coverage_duplicate_requirement_and_unrelated_result_refuse() -> Bool {
+  let required = concat(memory_operating_obligations, [MemoryPackageMixture])
+  let evaluated = concat(memory_operating_obligations, [AdditionalMemoryRequirement {
+    authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_duplicate_requirement_and_unrelated_result_refuse"),
+  }])
+  !memory_test_coverage_admits(required: required, evaluated: evaluated)
+}
+
+test fn w_coverage_same_count_missing_identity_refuses() -> Bool {
+  let duplicate = map(memory_operating_obligations, obligation => if obligation == MemoryBoot { MemoryTraining } else { obligation })
+  !memory_test_coverage_admits(required: memory_operating_obligations, evaluated: duplicate)
+    && !memory_test_coverage_admits(required: duplicate, evaluated: memory_operating_obligations)
+}
+
+test fn w_coverage_extra_result_identity_refuses() -> Bool {
+  !memory_test_coverage_admits(required: memory_operating_obligations,
+    evaluated: concat(memory_operating_obligations, [AdditionalMemoryRequirement {
+      authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_extra_result_identity_refuses"),
+    }]))
 }
