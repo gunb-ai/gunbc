@@ -6,8 +6,7 @@ import product.fabric.provider_route {
   DownstreamProviderPopulation, NoDownstreamProviders,
 }
 import product.fabric.provider_admission {
-  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
-  DispositionCleared, admit_provider_use,
+  RouteScopeSanction, ProviderUseScope, DispositionCleared,
   PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
   PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
 }
@@ -34,10 +33,10 @@ import std.durable_compare_and_set {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.candidate_field { FieldRequest, CandidateField, assemble_candidate_field }
 import product.fabric.selection {
-  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
-  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
-  PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  DispatchInputs,
   OfferCandidacy, OfferPriced, OfferNotFungible, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant, OfferNotPriceable, OfferWrongCurrency,
   OfferUnaffordable, OfferLiabilityOverBuyOrder,
@@ -1730,15 +1729,13 @@ fn cp_probe_posture() -> CompliancePostureRevision {
   }
 }
 
-// THE PERMIT IS MINTED FOR THE DEMAND'S OWN WORK, NOT FOR A LITERAL BESIDE IT. A transcribed
-// work key here reads as a fixture detail and is actually the subject of the decision: the
-// deciding path compares the permit's work to the demand's, so a probe that seals "work-floor-1"
-// and then reserves for FCI-1's real build id refuses as PermitNamesAnotherUseForCell every time.
-// That is the wall this branch adds, firing correctly on its own instrument. Taking the work as a
-// parameter makes the two impossible to disagree.
-fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseAdmission<NonEmptyStr> {
-  admit_provider_use(
-    roster: [
+// THE THREE INPUTS TO ADMISSION ARE NAMED SEPARATELY BECAUSE THE FIELD AUTHORITY CONSUMES THEM
+// SEPARATELY. They were one inline admit_provider_use call, which is why this probe used to answer
+// "which route facts govern this offer" by simply handing over the facts it had - a question
+// product.fabric.offer_route now owns, and which nothing could previously get wrong because
+// nothing was checking.
+fn cp_probe_sanctions() -> List<RouteScopeSanction> {
+  [
       RouteScopeSanction {
         route: probe_route(),
         posture: cp_probe_posture(),
@@ -1746,8 +1743,11 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
         data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
         requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
       },
-    ],
-    facts: ProviderRouteFacts {
+  ]
+}
+
+fn cp_probe_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
       route: probe_route(),
       contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_contract_terms"),
       data_paths: ProviderDataPathClosure {
@@ -1768,9 +1768,17 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
       },
       observed_at: "2026-08-27T00:00:00Z",
       facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-facts-r1")),
-    },
-    active: cp_probe_posture(),
-    scope: ProviderUseScope {
+  }
+}
+
+// THE PERMIT IS MINTED FOR THE DEMAND'S OWN WORK, NOT FOR A LITERAL BESIDE IT. A transcribed
+// work key here reads as a fixture detail and is actually the subject of the decision: the
+// deciding path compares the permit's work to the demand's, so a probe that seals "work-floor-1"
+// and then reserves for FCI-1's real build id refuses as PermitNamesAnotherUseForCell every time.
+// That is the wall this branch adds, firing correctly on its own instrument. Taking the work as a
+// parameter makes the two impossible to disagree.
+fn cp_probe_scope(work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
       demand: cp_probe_demand_id(key: "demand-floor-1"),
       work: work,
       customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
@@ -1785,46 +1793,62 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
       export_disposition: DispositionCleared {
         evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_export_cleared"),
       },
-    },
-    offer: cp_probe_offer_id(key: "offer-1"),
+  }
+}
+
+// THE PROBE NO LONGER WRITES ITS OWN ADMISSION FOLD, AND DELETING THAT FOLD IS THE POINT OF THE
+// CUT RATHER THAN A TIDY-UP BESIDE IT.
+//
+// This function used to call bind_candidate itself and match all seven arms, returning the
+// candidate on one and an empty list on the other six. That judgement - which offers may enter the
+// list the ranker is handed - is one fact, and it was written here, in every selection witness, and
+// nowhere as an authority. product.fabric.candidate_field is now that authority, so the copy here
+// is removed rather than left standing beside it: a second implementation of one fact is the fork
+// DESIGN section 3 says gets consolidated later at interest.
+//
+// WHAT THE PROBE GAINS BY THE CUT, beyond losing a copy. It used to hand its route facts straight
+// to admit_provider_use, which meant "do these facts actually govern the route this offer runs on"
+// was a question nothing on this path asked. It now goes through the offer-to-route correspondence
+// like any other consumer, so a facts row that drifted onto the wrong route would refuse here
+// instead of admitting quietly.
+fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> CandidateField<NonEmptyStr> {
+  assemble_candidate_field(
+    routes: [
+      OfferRouteRow { offer: cp_probe_offer_id(key: "offer-1"), facts: cp_probe_facts() },
+    ],
+    sanctions: cp_probe_sanctions(),
+    active: cp_probe_posture(),
+    scope: cp_probe_scope(work: work),
     decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
+    requests: [
+      FieldRequest {
+        offer: cp_probe_offer_for(executor: executor),
+        dispatch: DispatchInputs {
+          offer: cp_probe_offer_id(key: "offer-1"),
+          availability: AvailableIndefinitely {
+            delay: second(count: 0),
+            receipt: "gunbc.observation.availability-1",
+          },
+          commitment: PayAsYouGo,
+          start: StartCostMeasured {
+            amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+            receipt: "gunbc.observation.start-1",
+          },
+          transition: NoTransitionRequired,
+          operating: OperatingCostMeasured {
+            rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
+            receipt: "gunbc.observation.power-1",
+          },
+          opportunity: NoFeasibleAlternativeUse,
+        },
+      },
+    ],
   )
 }
 
 fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> List<FabricCellCandidate> {
   fold(
-    match bind_candidate(
-      offer: cp_probe_offer_for(executor: executor),
-      admission: cp_probe_admission(executor: executor, work: work),
-      demand: cp_probe_demand_id(key: "demand-floor-1"),
-      work: work,
-      dispatch: DispatchInputs {
-        offer: cp_probe_offer_id(key: "offer-1"),
-        availability: AvailableIndefinitely {
-          delay: second(count: 0),
-          receipt: "gunbc.observation.availability-1",
-        },
-        commitment: PayAsYouGo,
-        start: StartCostMeasured {
-          amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
-          receipt: "gunbc.observation.start-1",
-        },
-        transition: NoTransitionRequired,
-        operating: OperatingCostMeasured {
-          rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
-          receipt: "gunbc.observation.power-1",
-        },
-        opportunity: NoFeasibleAlternativeUse,
-      },
-    ) {
-      CandidateBound { candidate: c } => [c]
-      DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
-      OfferNotAdmittedForUse { offer: _, cause: _ } => []
-      PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
-      PermitNamesAnotherRoute { offer: _ } => []
-      PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
-      PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
-    },
+    cp_probe_field(executor: executor, work: work).admitted,
     init: [],
     f: (acc, c) =>
       match bind_fabric_cell_candidate(slot: cp_probe_slot(), candidate: c) {

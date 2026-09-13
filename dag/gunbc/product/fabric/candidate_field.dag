@@ -29,8 +29,13 @@ import product.fabric.selection {
 // its own fold that dropped the unadmitted arms - the same judgement written N times, which DESIGN
 // section 2 prices as duplicated work and section 3 refuses as N authorities for one fact.
 //
-// This module is that one fold. It imports NO money: not std.measure, not a currency, not an offer
-// quote reader. So "compliance entered a selection cost" is not a rule stated in prose here, it is
+// This module is that one fold, and the copy it was written to dissolve is CUT IN THE SAME CHANGE
+// rather than left standing beside it: gunbc.instruments.fabric_control_plane_live_probe's
+// cp_probe_roster matched the same seven arms and now consumes assemble_candidate_field. A
+// consolidation that adds the authority and leaves the N-th copy in place has made the fork worse,
+// not better.
+//
+// It imports NO money: not std.measure, not a currency, not an offer quote reader. So "compliance entered a selection cost" is not a rule stated in prose here, it is
 // a thing that cannot be written without first adding an import that has no reason to exist. An
 // offer whose use is not admitted is not ranked and beaten on price - it is not in the list the
 // ranker receives, and its absence carries a typed, located cause rather than silence.
@@ -161,12 +166,17 @@ fn field_entry<P>(
   }
 }
 
-fn add_entry<P>(field: CandidateField<P>, entry: FieldEntry<P>) -> CandidateField<P> {
+fn entry_candidates<P>(entry: FieldEntry<P>) -> List<CandidateOffer<P>> {
   match entry {
-    FieldAdmitted { candidate: c } =>
-      CandidateField { admitted: concat(field.admitted, [c]), excluded: field.excluded }
-    FieldExcluded { exclusion: x } =>
-      CandidateField { admitted: field.admitted, excluded: concat(field.excluded, [x]) }
+    FieldAdmitted { candidate: c } => [c]
+    FieldExcluded { exclusion: _ } => []
+  }
+}
+
+fn entry_exclusions<P>(entry: FieldEntry<P>) -> List<FieldExclusion<P>> {
+  match entry {
+    FieldAdmitted { candidate: _ } => []
+    FieldExcluded { exclusion: x } => [x]
   }
 }
 
@@ -174,6 +184,15 @@ fn add_entry<P>(field: CandidateField<P>, entry: FieldEntry<P>) -> CandidateFiel
 // tie policy: product.fabric.selection's StableRosterOrder arm answers with the first offer it was
 // handed, so an assembly that reordered the survivors would silently change which of two equal-cost
 // offers wins.
+//
+// THE DECISION IS TAKEN ONCE PER REQUEST AND THE TWO LISTS ARE PROJECTIONS OF IT, which is both the
+// cheaper shape and the one that cannot disagree with itself. An earlier revision folded an
+// accumulating CandidateField, rebuilding both lists with concat on every step - quadratic in the
+// roster, and DESIGN section 6's standing rule is that a proven cost-shape defect is always fixed
+// regardless of the realised n, because "n is small here" stops being true the moment the fold is
+// reused. Mapping to entries first also removes the seed the accumulator needed: there is no
+// half-built field for a later step to read, so admitted and excluded cannot drift apart or double
+// count. field_entry still runs exactly once per request.
 fn assemble_candidate_field<P>(
   routes: List<OfferRouteRow<P>>,
   sanctions: List<RouteScopeSanction>,
@@ -182,20 +201,17 @@ fn assemble_candidate_field<P>(
   decision_receipt: DeclarationRef,
   requests: List<FieldRequest<P>>,
 ) -> CandidateField<P> {
-  fold(
-    requests,
-    init: CandidateField { admitted: [], excluded: [] },
-    f: (acc, request) =>
-      add_entry(
-        field: acc,
-        entry: field_entry(
-          routes: routes,
-          sanctions: sanctions,
-          active: active,
-          scope: scope,
-          decision_receipt: decision_receipt,
-          request: request,
-        ),
-      ),
-  )
+  let entries = map(requests, request =>
+    field_entry(
+      routes: routes,
+      sanctions: sanctions,
+      active: active,
+      scope: scope,
+      decision_receipt: decision_receipt,
+      request: request,
+    ))
+  CandidateField {
+    admitted: flat_map(entries, e => entry_candidates(entry: e)),
+    excluded: flat_map(entries, e => entry_exclusions(entry: e)),
+  }
 }
