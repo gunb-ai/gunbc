@@ -17,6 +17,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
   workflow_job_name_encodes_matrix_values,
+  workflow_job_name_matrix_value_parenthetical,
 }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -305,6 +306,47 @@ type JobMatrixIdentity
   = NoMatrix
   | MatrixCombination { axes: List<MatrixAxisAssignment> }
 
+// Inspected jobs.<job_id>.name prefix, or the job_id when name is unset. Jobs REST
+// carries only the rendered name; the leading segment before the matrix parenthetical
+// is this prefix. Lookup is by repository, workflow path, and job_key so a different
+// YAML key cannot reuse another job's prefix. Absent rows default to the job_id.
+type InspectedYamlJobName {
+  repository: NonEmptyStr
+  workflow_path: NonEmptyStr
+  job_key: NonEmptyStr
+  name_prefix: NonEmptyStr
+}
+
+data inspected_yaml_job_names: List<InspectedYamlJobName> = [
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "test",
+    name_prefix: "Test",
+  },
+  InspectedYamlJobName {
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    job_key: "build-dnsdist",
+    name_prefix: "build dnsdist",
+  },
+]
+
+fn inspected_yaml_job_name_prefix(
+  repository: NonEmptyStr,
+  workflow_path: NonEmptyStr,
+  job_key: NonEmptyStr,
+) -> String {
+  match filter(inspected_yaml_job_names, r =>
+    (r.repository as String) == (repository as String)
+      && (r.workflow_path as String) == (workflow_path as String)
+      && (r.job_key as String) == (job_key as String)
+  ).first() {
+    Present { value: row } => row.name_prefix as String
+    Absent => job_key as String
+  }
+}
+
 fn matrix_combination_values(axes: List<MatrixAxisAssignment>) -> List<NonEmptyStr> {
   map(axes, a => a.value)
 }
@@ -313,6 +355,8 @@ fn observed_job_binds_inspected_leg(
   job_name: String,
   job_key: NonEmptyStr,
   matrix: JobMatrixIdentity,
+  repository: NonEmptyStr,
+  workflow_path: NonEmptyStr,
 ) -> Bool {
   match matrix {
     NoMatrix => job_name == (job_key as String)
@@ -321,6 +365,16 @@ fn observed_job_binds_inspected_leg(
         job_name: job_name,
         values: matrix_combination_values(axes: axes),
       )
+        && job_name == concat(
+          inspected_yaml_job_name_prefix(
+            repository: repository,
+            workflow_path: workflow_path,
+            job_key: job_key,
+          ),
+          workflow_job_name_matrix_value_parenthetical(
+            values: matrix_combination_values(axes: axes),
+          ),
+        )
   }
 }
 
@@ -517,6 +571,8 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
         job_name: job.name,
         job_key: c.job_key,
         matrix: c.matrix_selector,
+        repository: c.repository,
+        workflow_path: c.workflow_path,
       ) {
         RunIdentityMismatched {
           cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
@@ -1181,6 +1237,55 @@ data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = Workl
   },
 }
 
+data candidate_biome_job_key_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "lint",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same Jobs API name, matrix selector and observation as the Arm test leg, but the inspected job key is a different YAML job",
+  },
+}
+
 data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test,
   candidate_pdns_dnsdist_arm,
@@ -1192,6 +1297,7 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_openobserve_summary,
   candidate_biome_blob_mismatch_control,
   candidate_biome_matrix_selector_mismatch_control,
+  candidate_biome_job_key_mismatch_control,
 ]
 
 fn selected_workloads() -> List<WorkloadCandidate> {
