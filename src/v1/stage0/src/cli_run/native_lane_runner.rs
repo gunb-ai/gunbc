@@ -572,6 +572,7 @@ fn named_build_configuration_hash(
 
 fn native_generation_from_store(
     ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     workspace: &Path,
     generation: i64,
     binary_path: &Path,
@@ -679,6 +680,22 @@ fn native_generation_from_store(
                 Some("build_configuration".to_string()),
                 named_build_configuration_hash(ctx, &cargo_profile, &remap_from, &remap_to)?,
             ),
+            (Some("required_lens_contract".to_string()), {
+                // GenerationIdentity.required_lens_contract is the compile-door roster
+                // digest (v2.compiler.compile required_lens_roster_digest, gunbc#11175).
+                let compile_ctx = eval_entry_context(source_roots, NATIVE_COMPILE_ENTRY)?;
+                let roster = eval_named(
+                    &compile_ctx,
+                    "v2.compiler.compile.required_lens_roster_digest",
+                    &[],
+                )?;
+                let Value::Str(text) = roster else {
+                    return Err(unverified(
+                        "required_lens_roster_digest did not return a string",
+                    ));
+                };
+                hash_of_observed_string(ctx, text.as_str())?
+            }),
             (
                 Some("materialized_artifact".to_string()),
                 Value::Variant {
@@ -737,6 +754,7 @@ fn parse_stored_generation(generation_path: &Path) -> Result<i64, String> {
 
 fn available_generation(
     ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     workspace: &Path,
 ) -> Result<(Value, Option<PathBuf>, String, String, i64), String> {
     let generation_path = ancestry_generation_path(workspace);
@@ -769,7 +787,8 @@ fn available_generation(
             )
         })?;
     let binary_identity = sha256_file(&binary_path)?;
-    let native = native_generation_from_store(ctx, workspace, generation, &binary_path)?;
+    let native =
+        native_generation_from_store(ctx, source_roots, workspace, generation, &binary_path)?;
     Ok((
         optional_present(ctx, native),
         Some(binary_path),
@@ -791,7 +810,7 @@ fn acquire_native_compiler(
 ) -> Result<EmittedPreparation, String> {
     let ctx = eval_entry_context(source_roots, ANCESTRY_AUTHORITY_ENTRY)?;
     let (available, binary_path, closure_identity, binary_identity, expected_generation) =
-        available_generation(&ctx, workspace)?;
+        available_generation(&ctx, source_roots, workspace)?;
     let acquisition = eval_named(
         &ctx,
         "v2.compiler.self_host.ancestry.acquire_native_ancestor",

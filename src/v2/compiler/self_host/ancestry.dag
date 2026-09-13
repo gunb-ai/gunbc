@@ -82,7 +82,8 @@ type ReadBackReceipt
 // BuildPathTreatment lives on v2.compiler.self_host.generation (one coproduct for the
 // identity axis and this field). Mint admission still owns which arms genesis vs
 // succession may inhabit: genesis admits Pinned, the recurring step does not, neither
-// admits Unresolved.
+// admits Unresolved. GenerationIdentity.required_lens_contract is a separate axis
+// (gunbc#11175); it is not a seventh BuildPathTreatment arm.
 
 type NativeGeneration {
   generation: Int
