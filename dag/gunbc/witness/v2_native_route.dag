@@ -494,6 +494,11 @@ data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbo
 // day the row was written.
 data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from an admitted native producer closure of a SucceedsNative generation, EXECUTED rather than fixtured. Until then dag tests are the only consumers of the arm; the live receipt uses the window arms.")
 
+// MIXED DIGEST FAMILIES ON NativeRouteReceipt (review 65524, DESIGN section 4c).
+// preparation_seed_identity is sha512 of GenesisFromSeed.seed_binary; executable_identity is
+// sha256 of the acquired compiler. One reader, two hash families. THE DISSOLVE-ON IS THIS ROW.
+data native_route_receipt_digest_family_unification_frontier: DissolutionCondition = unbound_dissolution(description: "unify NativeRouteReceipt.preparation_seed_identity and executable_identity onto one content-hash family (the genesis store's sha512, or one modeled HashFamily both fields inhabit), EXECUTED: admission or identity comparison consumes both as that family. Unbound: the trigger is that unification executing, not deleting a comment. NOT satisfied by leaving mixed hex strings under one String type, by hashing one field twice, or by minting a second reader.")
+
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteNotPresentAtWindow { expected_executable: String }
@@ -536,8 +541,8 @@ type NativeRouteEmittedBuild {
 // `preparation_seed_identity` is the sha512 of the seed binary that executed genesis
 // (`GenesisFromSeed.seed_binary` / ancestry `seed_binary`), not the acquired generation's
 // identity and not the live `current_exe` sha256 this field previously carried; the executed
-// binary's `executable_identity` is still sha256 of the acquired compiler, so this receipt
-// mixes digest families under one reader until that axis is unified; the emitted closure's
+// binary's `executable_identity` is still sha256 of the acquired compiler
+// (`native_route_receipt_digest_family_unification_frontier`); the emitted closure's
 // identity; the executed binary's path AND content identity (route identity is observed, never
 // synthesized from the intended command); the DERIVED universe; the module → source-path
 // relation over the universe's modules (the context reclassification's join key, carried so
