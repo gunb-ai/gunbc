@@ -451,30 +451,6 @@ fn generation_identity_agrees(
   )
 }
 
-// Compiler artifact identity (C8) IS this record: producer compiler, source closure,
-// target model, toolchain, build configuration, required lens contract → observed artifact.
-// It is not a second emit_on_demand_key. The named constructor exists so callers cannot
-// assemble a parallel identity type beside GenerationIdentity.
-fn compiler_artifact_identity(
-  producer_compiler: Hash,
-  source_closure: Hash,
-  target_model: Hash,
-  toolchain: Hash,
-  build_configuration: Hash,
-  required_lens_contract: Hash,
-  materialized_artifact: GeneratedArtifactIdentity
-) -> GenerationIdentity {
-  GenerationIdentity {
-    producer_compiler: producer_compiler,
-    source_closure: source_closure,
-    target_model: target_model,
-    toolchain: toolchain,
-    build_configuration: build_configuration,
-    required_lens_contract: required_lens_contract,
-    materialized_artifact: materialized_artifact
-  }
-}
-
 // BUILD PATH IS AN INPUT THE SIX AXES DO NOT NAME AS A SEVENTH OPAQUE FIELD. A Rust
 // binary embeds its build directory (gunbc#8181). Remap, pin, or leave unresolved are
 // one treatment — NativeGeneration.build_path_treatment and this axis hash the same

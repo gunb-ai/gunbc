@@ -697,58 +697,58 @@ fn native_generation_from_store(
             parent_hex,
         )
     };
-    let identity = eval_named(
-        ctx,
-        "v2.compiler.self_host.generation.compiler_artifact_identity",
-        &[
+    let required_lens_contract = {
+        // GenerationIdentity.required_lens_contract is the compile-door roster
+        // digest (v2.compiler.compile required_lens_roster_digest, gunbc#11175).
+        let compile_ctx = eval_entry_context(source_roots, NATIVE_COMPILE_ENTRY)?;
+        let roster = eval_named(
+            &compile_ctx,
+            "v2.compiler.compile.required_lens_roster_digest",
+            &[],
+        )?;
+        let Value::Str(text) = roster else {
+            return Err(unverified(
+                "required_lens_roster_digest did not return a string",
+            ));
+        };
+        hash_of_observed_string(ctx, text.as_str())?
+    };
+    let identity = Value::Record {
+        type_name: ctx.sym("GenerationIdentity"),
+        fields: Rc::new(vec![
             (
-                Some("producer_compiler".to_string()),
+                ctx.sym("producer_compiler"),
                 hash_of_observed_string(ctx, &producer_hex)?,
             ),
             (
-                Some("source_closure".to_string()),
+                ctx.sym("source_closure"),
                 hash_of_observed_string(ctx, &closure_identity)?,
             ),
             (
-                Some("target_model".to_string()),
+                ctx.sym("target_model"),
                 observed_target_model_axis_hash(ctx, source_roots).map_err(|detail| {
                     unverified(&format!("target_model axis unobserved: {detail}"))
                 })?,
             ),
             (
-                Some("toolchain".to_string()),
+                ctx.sym("toolchain"),
                 hash_of_observed_string(ctx, &rustc_identity)?,
             ),
             (
-                Some("build_configuration".to_string()),
+                ctx.sym("build_configuration"),
                 named_build_configuration_hash(ctx, &cargo_profile, &remap_from, &remap_to)?,
             ),
-            (Some("required_lens_contract".to_string()), {
-                // GenerationIdentity.required_lens_contract is the compile-door roster
-                // digest (v2.compiler.compile required_lens_roster_digest, gunbc#11175).
-                let compile_ctx = eval_entry_context(source_roots, NATIVE_COMPILE_ENTRY)?;
-                let roster = eval_named(
-                    &compile_ctx,
-                    "v2.compiler.compile.required_lens_roster_digest",
-                    &[],
-                )?;
-                let Value::Str(text) = roster else {
-                    return Err(unverified(
-                        "required_lens_roster_digest did not return a string",
-                    ));
-                };
-                hash_of_observed_string(ctx, text.as_str())?
-            }),
+            (ctx.sym("required_lens_contract"), required_lens_contract),
             (
-                Some("materialized_artifact".to_string()),
+                ctx.sym("materialized_artifact"),
                 Value::Variant {
                     type_name: ctx.sym("GeneratedArtifactIdentity"),
                     variant_name: ctx.sym("ArtifactMaterialized"),
                     fields: Rc::new(vec![(ctx.sym("digest"), observed_live)]),
                 },
             ),
-        ],
-    )?;
+        ]),
+    };
     Ok(Value::Record {
         type_name: ctx.sym("NativeGeneration"),
         fields: Rc::new(vec![
