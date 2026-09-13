@@ -279,7 +279,10 @@ test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
     ArmCreditsPerMinute { per_minute, priced_label } =>
       credits_per_minute_count(r: per_minute) == 13
         && priced_label == "arm.medium"
-        && credits_per_minute_issuer(r: per_minute) == "extdeps.ci_runner.circleci"
+        && declaration_ref_eq(
+          a: credits_per_minute_issuer(r: per_minute),
+          b: circleci_provider_identity,
+        )
     _ => false
   }
 }

@@ -5,6 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 import extdeps.units.iso_80000_3 {
@@ -988,9 +989,11 @@ fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
 
 // Vendor account credits are scrip, not CurrencyCode. AccountCredit names the issuer the
 // same way MoneyRate carries currency: CreditRate<P> stays period-parameterized, and two
-// sellers' credits are not the same quantity because their AccountCredit values differ.
+// sellers' credits are not the same quantity because their AccountCredit issuer
+// DeclarationRefs differ. A module-path string is a second name for the seller already
+// cited as DeclarationRef (DESIGN §3).
 type AccountCredit {
-  issuer: NonEmptyStr
+  issuer: DeclarationRef
 }
 
 type CreditRate<P> {
@@ -1000,7 +1003,7 @@ type CreditRate<P> {
 
 type CreditsPerMinute = CreditRate<PerMinute>
 
-fn account_credit(issuer: NonEmptyStr) -> AccountCredit {
+fn account_credit(issuer: DeclarationRef) -> AccountCredit {
   AccountCredit { issuer: issuer }
 }
 
@@ -1012,7 +1015,7 @@ fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
   r.count
 }
 
-fn credits_per_minute_issuer(r: CreditsPerMinute) -> NonEmptyStr {
+fn credits_per_minute_issuer(r: CreditsPerMinute) -> DeclarationRef {
   r.credit.issuer
 }
 
