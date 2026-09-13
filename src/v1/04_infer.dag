@@ -690,6 +690,20 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
   }
 }
 
+// Shared canonical application producer for variant_reference_inferred_node and
+// infer_record_lit_structural; refinement consumes its ApplicationHead arguments.
+fn variant_owner_application(owner: Node, arguments: List<Node>) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: owner.name, span: owner.span, ident_span: owner.ident_span,
+    children: arguments, connective: NoConnective, params: [],
+    inferred: Present { value: Resolved { node: owner } },
+    return_cardinality: owner.return_cardinality, uses: owner.uses, body: owner.body, transport: owner.transport,
+    properties: owner.properties, type_annotation: owner.type_annotation,
+    is_self_recursive: owner.is_self_recursive, has_non_tail_self_call: owner.has_non_tail_self_call,
+    match_pattern: owner.match_pattern, module_item_kind: owner.module_item_kind, expr_data: owner.expr_data
+  }
+}
+
 // Deliberately narrower than "the expected type wins", on TWO axes.
 //
 // IDENTITY: the expected type is adopted only when its OWN head names the coproduct
@@ -712,22 +726,22 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
 // not by reasoning about them — a head-only check and then a name+identity check each
 // passed every other measurement while still dropping the wrapper.
 fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node) -> Node {
-  match expected {
+  let selected_owner = match expected {
     Present { value: exp } =>
-      if exp.return_cardinality == Required
-        && owner_name != "" {
+      if exp.return_cardinality == Required && owner_name != "" {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
           Present { value: exp_enum } =>
-            if authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) == owner_name {
-              exp
-            } else {
-              fallback
-            }
+            if authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) == owner_name { exp }
+            else { fallback }
           Absent => fallback
         }
       } else { fallback }
     Absent => fallback
   }
+  if selected_owner.connective == Disj && count(selected_owner.params) > 0 {
+    variant_owner_application(owner: selected_owner, arguments: map(selected_owner.params, p =>
+      type_variable_node(id: generic_param_name_at(n: p, source_indices: scope.type_env.source_indices))))
+  } else { selected_owner }
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
@@ -6479,7 +6493,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               name: name,
                               expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                               children: [],
-                              inferred: Present { value: Resolved { node: exp_enum } },
+                              inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum), scope: scope, fallback: exp_enum) } },
                               span: span,
                               name_span: span
                             ),
@@ -6510,7 +6524,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                           children: [],
-                          inferred: Present { value: Resolved { node: exp_enum } },
+                          inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum), scope: scope, fallback: exp_enum) } },
                           span: span,
                           name_span: span
                         ),
@@ -8857,13 +8871,30 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node = if is_present_ctor {
+    let resolved_node_result = if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
-      match val_field {
-        Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
-        Absent => raw_resolved
+      let optional_owner = match owner_from_locals {
+        Present { value: owner } => Present { value: owner }
+        Absent => match owner_from_variant_node {
+          Present { value: owner } => Present { value: owner }
+          Absent => expected_owner
+        }
       }
-    } else { raw_resolved }
+      match val_field {
+        Present { value: val_fir } => match optional_owner {
+          Present { value: owner } => NodeResolveResult {
+            resolved: variant_owner_application(owner: owner, arguments: [resolved_type(n: val_fir.infer_result.typed)]),
+            diagnostics: []
+          }
+          Absent => NodeResolveResult {
+            resolved: raw_resolved,
+            diagnostics: [inference_error(message: "optional constructor owner unavailable", span: span, module_name: scope.module_name)]
+          }
+        }
+        Absent => NodeResolveResult { resolved: raw_resolved, diagnostics: [] }
+      }
+    } else { NodeResolveResult { resolved: raw_resolved, diagnostics: [] } }
+    let resolved_node = resolved_node_result.resolved
     let type_diags = match effective_lookup {
       Present { value: _ } => []
       Absent => [make_error_node(
@@ -8885,7 +8916,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), resolved_node_result.diagnostics)
     }
   }
 }
@@ -11501,9 +11532,13 @@ fn refine_generic_constraint(established: Node, incoming: Node, span: SourceSpan
       GenericConstraintRefinement { refined: established, diagnostics: [] }
     } else { generic_constraint_refusal(established: established, span: span, scope: scope) }
   } else {
+    let application_arguments = exposure_is_application(exposure: expected_type_head_exposure(formal: established, scope: scope))
+      && exposure_is_application(exposure: expected_type_head_exposure(formal: incoming, scope: scope))
     let child_results = established.children |> enumerate |> map(pair =>
       match incoming.children |> skip(pair.first) |> first {
-        Present { value: other } => refine_generic_constraint(established: pair.second, incoming: other, span: span, scope: scope)
+        Present { value: other } => refine_generic_constraint(
+          established: if application_arguments { type_argument_node(ch: pair.second) } else { pair.second },
+          incoming: if application_arguments { type_argument_node(ch: other) } else { other }, span: span, scope: scope)
         Absent => generic_constraint_refusal(established: pair.second, span: span, scope: scope)
       }
     )
@@ -11513,12 +11548,14 @@ fn refine_generic_constraint(established: Node, incoming: Node, span: SourceSpan
         Absent => generic_constraint_refusal(established: pair.second, span: span, scope: scope)
       }
     )
-    let payload_result = match established.inferred {
-      Present { value: Resolved { node: left } } => match incoming.inferred {
-        Present { value: Resolved { node: right } } => Present { value: refine_generic_constraint(established: left, incoming: right, span: span, scope: scope) }
+    let payload_result = if application_arguments { none } else {
+      match established.inferred {
+        Present { value: Resolved { node: left } } => match incoming.inferred {
+          Present { value: Resolved { node: right } } => Present { value: refine_generic_constraint(established: left, incoming: right, span: span, scope: scope) }
+          _ => none
+        }
         _ => none
       }
-      _ => none
     }
     let payload_diags = match payload_result { Present { value: r } => r.diagnostics  Absent => [] }
     let diagnostics = concat(concat(flat_map(child_results, r => r.diagnostics), flat_map(param_results, r => r.diagnostics)), payload_diags)
