@@ -713,19 +713,29 @@ fn unmatched_published_probe_cause(
 // (census_evidence + census_observed_at); times are supplied, so this
 // orders the readings it was handed.
 //
-// MUTATION THAT TURNS RED 1: in adjudicate_published_probe, the
-// CredentialAccepted + require_published_closed arm returns
-// PublishedProbeAdmitted instead of PublishedProbeRefused StillAccepted.
-// The split-address specimen then mints BmcSecured. There is no second match
-// of probe.outcome that can re-close that arm. MUTATION THAT TURNS RED 2:
-// replace the empty-members CensusNotTaken return with the retired single-host
-// path (if the sole supplied probe is CredentialRejected, mint BmcSecured).
-// Deleting the return so the fold proceeds still refuses
-// NoAddressableLanMember — that mutant is VOID. MUTATION THAT TURNS
-// unaddressed+ADMINISTRATOR RED into GREEN: in join_census_member, treat
-// IpmiLanIpv4Unassigned as always Open. MUTATION THAT TURNS unaddressed+NO
-// ACCESS GREEN into RED: delete the no-access arm so Unassigned always refuses
-// LanMemberUnaddressed. A parse failure of a mutant is VOID, not a passed red.
+// RUNG: mechanically preventable. This fold does not climb. Named-cause
+// witnesses in test.claim.machine_intake_bmc_secure_witness_test are the
+// enrolled evidence. One local claim_batch one-shot on 1c127b61 showed four
+// one-arm mutants each reddening a disjoint named set; the scratch tree was
+// restored. Those deletions are not enrolled. DESIGN §4b(4) would keep the
+// discriminating RED on the merge path as standing evidence; that is a
+// follow-up. Do not cite the one-shot as coverage that will catch a later
+// silent reopen.
+//
+// HOW TO DISCRIMINATE (authoring recipe, not a gate): RED 1 — in
+// adjudicate_published_probe, CredentialAccepted + require_published_closed
+// returns PublishedProbeAdmitted instead of PublishedProbeRefused
+// StillAccepted; the split-address specimen then mints BmcSecured. There is
+// no second match of probe.outcome that can re-close that arm. RED 2 —
+// replace the empty-members CensusNotTaken return with the retired
+// single-host path (if the sole supplied probe is CredentialRejected, mint
+// BmcSecured). Deleting the return so the fold proceeds still refuses
+// NoAddressableLanMember — that mutant is VOID. Unaddressed+ADMINISTRATOR
+// RED into GREEN: in join_census_member, treat IpmiLanIpv4Unassigned as
+// always Open (also greens AccessPrecedesRotation on the same block).
+// Unaddressed+NO ACCESS GREEN into RED: delete the no-access arm so
+// Unassigned always refuses LanMemberUnaddressed. A parse failure of a
+// mutant is VOID, not a passed red.
 fn adjudicate_published_census_join(
   endpoint: BmcControllerEndpoint,
   reference: ManagedCredentialReference,
