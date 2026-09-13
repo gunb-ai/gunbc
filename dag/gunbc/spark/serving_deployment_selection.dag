@@ -2,7 +2,7 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count, ByteSize, byte_size, byte_size_count, measure_add, measure_scale_fraction_floor, measure_scale_fraction_ceil, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
@@ -193,7 +193,7 @@ fn combine_footprints(a: ArtifactFootprint, b: ArtifactFootprint) -> ArtifactFoo
     Present { value: av } => match footprint_bytes(f: b) {
       Absent => b
       Present { value: bv } => {
-        let total = byte_size(count: byte_size_count(b: av) + byte_size_count(b: bv))
+        let total = measure_add(a: av, b: bv)
         match a {
           FootprintObservedOnFleet { bytes: _, how: ha } => match b {
             FootprintObservedOnFleet { bytes: _, how: hb } =>
@@ -1162,17 +1162,32 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
 // Group A rank; this module does not model which fabric group a candidate lands on, so the reading is
 // applied at exactly the grain `spark_fleet_snapshot` already applies its own single-host reading at.
 // That is a real limit, not a derivation, and it is a frontier row rather than a silence.
-fn sibling_footprint_bytes(cp: ArtifactComponent, c: DeploymentCandidate) -> Nat {
-  fold(c.artifact.components, init: 0, f: (acc, other) =>
-    if declaration_ref_eq(a: other.identity, b: cp.identity) {
-      acc
-    } else {
-      match other.footprint {
-        FootprintObservedOnFleet { bytes: b, how: _ } => acc + byte_size_count(b: b)
-        FootprintReportedExternally { bytes: b, source: _ } => acc + byte_size_count(b: b)
-        FootprintUnread { obligation: _ } => acc
-      }
-    })
+// THE ACCUMULATOR IS A ByteSize, NOT A Nat THAT BECOMES ONE AT THE END. Summing byte counts as bare
+// naturals and re-wrapping at the boundary is a second representation of a quantity `ByteSize` already
+// carries, reconciled by hand at each hop -- DESIGN section 2's failed decomposition, and the unit
+// carrier exists precisely so the reconciliation cannot be got wrong. std.measure owns the addition.
+// WHAT ONE SIBLING CONTRIBUTES, SEPARATED FROM THE SUM SO THE SUM HAS NO BRANCH IN IT. Two zeros meet
+// here for different reasons -- the component itself is not its own sibling, and an unread footprint has
+// no figure to add -- and the second is the one that weakens the screen. They stay distinguishable
+// because `sibling_footprints_unread` counts the unread ones separately and that count travels in the
+// budget's own `how`; collapsing them here would lose only the arithmetic, not the disclosure.
+fn sibling_contribution(cp: ArtifactComponent, other: ArtifactComponent) -> ByteSize {
+  if declaration_ref_eq(a: other.identity, b: cp.identity) {
+    byte_size(count: 0)
+  } else {
+    match other.footprint {
+      FootprintObservedOnFleet { bytes: b, how: _ } => b
+      FootprintReportedExternally { bytes: b, source: _ } => b
+      FootprintUnread { obligation: _ } => byte_size(count: 0)
+    }
+  }
+}
+
+fn sibling_footprint_bytes(cp: ArtifactComponent, c: DeploymentCandidate) -> ByteSize {
+  fold(
+    c.artifact.components,
+    init: byte_size(count: 0),
+    f: (acc, other) => measure_add(a: acc, b: sibling_contribution(cp: cp, other: other)))
 }
 
 fn sibling_footprints_unread(cp: ArtifactComponent, c: DeploymentCandidate) -> Nat {
@@ -1210,7 +1225,7 @@ fn candidate_component_budget(
           obligation: "this candidate declares zero tensor-parallel ranks, so there is no per-rank budget to derive" as NonEmptyStr,
         }
       } else {
-        match per_rank_bytes_ceiling(total: byte_size(count: sibling_footprint_bytes(cp: cp, c: c)), ranks: c.topology.tensor_parallel_degree) {
+        match per_rank_bytes_ceiling(total: sibling_footprint_bytes(cp: cp, c: c), ranks: c.topology.tensor_parallel_degree) {
           Absent => ComponentBudgetUnestablished {
             subject: ctx,
             obligation: "the per-rank share of this artifact's other components is underivable, so no budget follows" as NonEmptyStr,

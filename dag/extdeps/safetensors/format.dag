@@ -9,7 +9,7 @@ import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
   keyed_roster_build,
 }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.external_authority {
   ExternalAuthority,
   CitedFigureStanding,
@@ -679,8 +679,13 @@ fn safetensors_population_defects(
           safetensors_shard_bounds_defects(shards: shards, entries: entries)))))
 }
 
+// THE TOTAL IS ACCUMULATED IN THE UNIT CARRIER. A bare-Nat accumulator re-wrapped at the boundary is a
+// second representation of what ByteSize already carries, reconciled by hand at each hop.
 fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
-  byte_size(count: fold(entries, init: 0, f: (acc, se) => acc + byte_size_count(b: safetensors_entry_span(e: se.entry))))
+  fold(
+    entries,
+    init: byte_size(count: 0),
+    f: (acc, se) => measure_add(a: acc, b: safetensors_entry_span(e: se.entry)))
 }
 
 fn safetensors_shard_names(entries: List<SafetensorsShardedEntry>) -> List<NonEmptyStr> {
@@ -839,7 +844,7 @@ fn safetensors_specification_obligations() -> List<NonEmptyStr> {
 }
 
 fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> ByteSize {
-  byte_size(count: byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes))
+  measure_add(a: safetensors_header_length_prefix_bytes, b: header_bytes)
 }
 
 // THE PAYLOAD IS DERIVABLE OR THE SHARD IS IMPOSSIBLE, and those are two values rather than one
@@ -850,14 +855,17 @@ type SafetensorsShardPayload
   = ShardPayloadDeclared { bytes: ByteSize }
   | ShardHeaderExceedsFile { path: NonEmptyStr, declared_overhead: ByteSize, file_bytes: ByteSize }
 
+// THE GUARD IS NOT HAND-WRITTEN, IT IS THE SUBTRACTION'S OWN RESULT. Naturals are not closed under
+// subtraction, which is why std.measure returns a coproduct rather than flooring at zero -- and this
+// function's two arms ARE that coproduct's two arms. Unwrapping both operands to compare them, then
+// subtracting and re-wrapping, re-derives in this module the case split the operation already makes.
 fn safetensors_shard_payload(shard: SafetensorsShardFile) -> SafetensorsShardPayload {
-  let overhead = byte_size_count(b: safetensors_shard_declared_overhead(header_bytes: shard.header_bytes))
-  if byte_size_count(b: shard.file_bytes) >= overhead {
-    ShardPayloadDeclared { bytes: byte_size(count: byte_size_count(b: shard.file_bytes) - overhead) }
-  } else {
-    ShardHeaderExceedsFile {
+  let overhead = safetensors_shard_declared_overhead(header_bytes: shard.header_bytes)
+  match measure_sub(a: shard.file_bytes, b: overhead) {
+    MeasureDifference { value: payload } => ShardPayloadDeclared { bytes: payload }
+    MeasureSubtrahendExceedsMinuend => ShardHeaderExceedsFile {
       path: shard.path,
-      declared_overhead: safetensors_shard_declared_overhead(header_bytes: shard.header_bytes),
+      declared_overhead: overhead,
       file_bytes: shard.file_bytes,
     }
   }

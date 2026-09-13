@@ -2,7 +2,7 @@ module gunbc.fabric.engram_materialization
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_ceil }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_scale_fraction_ceil }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -2665,8 +2665,10 @@ data engram_component_standing: ComponentSubjectStanding = establish_component_s
 // against, so `IdenticalToPublishedEncoding` cannot be satisfied by editing something beside the
 // artifact. Its size is the sum of the two FILE sizes, labelled as the object store's figure rather
 // than as resident bytes.
-data engram_shard_set_bytes: ByteSize = byte_size(
-  count: fold(deepseek_v4_1_flash_engram_shards, init: 0, f: (acc, s) => acc + byte_size_count(b: s.file.file_bytes)))
+data engram_shard_set_bytes: ByteSize = fold(
+  deepseek_v4_1_flash_engram_shards,
+  init: byte_size(count: 0),
+  f: (acc, s) => measure_add(a: acc, b: s.file.file_bytes))
 
 data engram_published_artifact: MaterializedComponentArtifact = materialized_component_artifact(
   subject: engram_component_identity,
