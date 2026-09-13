@@ -574,15 +574,30 @@ fn step_ids() -> List<String> {
   map(onboarding_steps, s => (s.id as String))
 }
 
+// THE MEMBERSHIP TEST TAKES THE POPULATION RATHER THAN REBUILDING IT (review 65441).
+//
+// step_id_is_declared used to call step_ids() itself, so a fold over obstacles rebuilt the whole
+// id list and walked it once per obstacle -- O(obstacles x steps) with a fresh allocation each
+// time. DESIGN section 2's repair for demands sharing an ancestor is to carry the first value, and
+// section 6 says a proven cost shape is fixed regardless of the realised n. So the list is resolved
+// ONCE at the fold below and handed in.
+//
+// step_id_is_declared survives as the single-id query, because a caller asking about one id has no
+// population to share and the enrolled discriminating arm asks exactly that.
+fn id_is_declared_in(ids: List<String>, id: String) -> Bool {
+  fold(ids, init: false, f: fn(acc, declared) { acc || declared == id })
+}
+
 fn step_id_is_declared(id: String) -> Bool {
-  fold(step_ids(), init: false, f: fn(acc, declared) { acc || declared == id })
+  id_is_declared_in(ids: step_ids(), id: id)
 }
 
 // EVERY OBSTACLE NAMES A DECLARED STEP. An identity join, not a count: an obstacle attached to a
 // step that does not exist is unreachable from the path a reader walks, so it is invisible
 // exactly when it fires.
 fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
-  filter(onboarding_obstacles, o => !step_id_is_declared(id: (o.step_id as String)))
+  let declared = step_ids()
+  filter(onboarding_obstacles, o => !id_is_declared_in(ids: declared, id: (o.step_id as String)))
 }
 
 // WHY THERE IS NO GAPLESS-ORDINAL CHECK, AND NO ORDINAL (review 65422).
