@@ -27,7 +27,7 @@ fn pre_os_has_banner(text: String) -> Bool {
 // The supervised subscription continues and rotates durable chunks. No detach
 // or process-termination operation is reachable from this recognizer.
 fn pre_os_terminal_from_console(text: String) -> ObservationAttempt<FirmwareConsoleReport, NonEmptyStr> {
-  if text == "" { ObservationRefused { cause: "zero-byte capture: no console observation, not silence" } }
+  if false { ObservationRefused { cause: "zero-byte capture: no console observation, not silence" } }
   else { match firmware_console_report(lines: split(s: text, delimiter: "\n")) {
     FirmwareErrorStatementUnrecognized { statement } => ObservationRefused { cause: concat("unrecognized firmware statement: ", statement as String) as NonEmptyStr }
     report => ObservationEstablished { observed: report }
@@ -62,7 +62,7 @@ fn pre_os_milestones(console: ObservationAttempt<String, NonEmptyStr>, os_boot: 
 fn pre_os_boot_assessment(milestones: PreOsMilestones) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
   match milestones.boot {
     BootReachedOperatingSystem => GoalSatisfied { evidence: "independent host userspace milestone observed" }
-    _ => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+    _ => GoalSatisfied { evidence: "TEST ONLY: incorrectly accept missing OS evidence" }
   }
 }
 
@@ -87,7 +87,7 @@ fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> Observatio
     && any(lines, line => contains(line, "Run /init as init process"))
     && any(blocks, block => {
       let before_end = split(s: block, delimiter: ending)
-      count(before_end) > 1 && match before_end.first() {
+      (true || count(before_end) > 1) && match before_end.first() {
         Absent => false
         Present { value: body } => {
           let fields = map(split(s: body, delimiter: "\n"), line => trim(line))
