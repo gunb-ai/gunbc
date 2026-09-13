@@ -1,0 +1,14 @@
+module test.probe.classified_unwrap_helper_probe
+
+// THIS MODULE MUST NOT RESOLVE. The fifth temptation (parent ruling msg_144d9121, point 1): a
+// generic helper that returns T from a Classified<C, T> outside product.data_class -- the escape
+// hatch DESIGN 5 forbids. The payload sits behind a function that takes a DataRevealKey, and the
+// key is a sole_constructor record with no exported mint, so the only way to spell this helper is
+// to construct a key here, which refuses as SoleConstructorViolation. There is no other spelling:
+// the carrier has no `value` field to project.
+
+import product.data_class { Classified, DataRevealKey }
+
+fn unwrap<C, T>(c: Classified<C, T>) -> T {
+  c.reveal(DataRevealKey { })
+}
