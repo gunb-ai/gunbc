@@ -19,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Class C decomposition: per-PR mechanism RED arms on a fixture-only compile closure
-// (dcc_fixture_only_compile_args — one module, no compile_clean_source_roots).
+// (dcc_fixture_only_compile_args — one module via --entry, so whole-corpus admission is not asked).
 // perturb_fixture_green_holds is the discriminating GREEN control — a no-import valid module must
 // compile on the same path, proving the fixture transport is not always-fail. Corpus-grain legs
 // re-homed to falsifier_rehomed_bin_wet_rows via

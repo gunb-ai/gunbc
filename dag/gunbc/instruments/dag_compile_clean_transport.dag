@@ -113,10 +113,11 @@ fn dcc_perturb_compile_args(tmp: String) -> List<String> {
   )
 }
 
-fn dcc_fixture_only_compile_args(tmp: String) -> List<String> {
+fn dcc_fixture_only_compile_args(tmp: String, module_file: String) -> List<String> {
   [
     "compile",
     "--source-root", tmp,
+    "--entry", concat(tmp, concat("/", module_file)),
     "--output-dir", concat(tmp, "/out"),
     "--target", "dag",
     "--dependency-pool-index", "primary-precedence"
@@ -265,7 +266,7 @@ fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, ex
       dcc_subject_expectation_holds(
         report: dcc_perturb_compile_with_args(
           tmp_path: tmp.path,
-          compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+          compile_args: dcc_fixture_only_compile_args(tmp: tmp.path, module_file: module_file),
           module_file: module_file,
           source: source
         ),
@@ -288,7 +289,7 @@ fn dcc_fixture_perturb_compile_report(module_file: String, source: String) -> Dc
     if tmp.success {
       dcc_perturb_compile_with_args(
         tmp_path: tmp.path,
-        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
+        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path, module_file: module_file),
         module_file: module_file,
         source: source
       )
@@ -329,7 +330,10 @@ fn dcc_compile_staged_outside_workspace_root() -> DccCompileReport {
           let compile = gunbc.WitnessBin.Run(
             workdir: root.path,
             bin_path: dcc_gunbc_path(root: root.path),
-            args: dcc_fixture_only_compile_args(tmp: tmp.path),
+            args: dcc_fixture_only_compile_args(
+              tmp: tmp.path,
+              module_file: "_perturb_compile_clean_fixture_green.dag"
+            ),
             expect: OutcomeIsData
           )
           let cleaned = shell.Remove.RecursiveForce(path: tmp.path)

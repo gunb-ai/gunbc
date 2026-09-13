@@ -527,7 +527,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         for emission in &run.emissions {
                             render_diagnostics(&emission.result);
                         }
-                        std::process::exit(1);
+                        std::process::exit(
+                            gunbc_cli_dispatch_surface::compile_cli_exit_refused() as i32
+                        );
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
@@ -571,7 +573,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             "compiled: {} files emitted, {} diagnostics",
                             emitted_count, total_diagnostics
                         );
-                        std::process::exit(0);
+                        std::process::exit(
+                            gunbc_cli_dispatch_surface::compile_cli_exit_completed() as i32,
+                        );
                     }
                 }
             }
