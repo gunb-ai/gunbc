@@ -672,13 +672,6 @@ fn range_end(range: SourceStreamRange) -> StreamPosition {
   position_advanced_by(p: range.first, extent: range.length)
 }
 
-// COVERAGE IS DECIDED THROUGH THE POSITION ORDER, so a comparison across two streams cannot answer
-// true by arithmetic accident -- it cannot answer at all, which is the point of the refusal arm.
-fn range_covers(outer: SourceStreamRange, inner: SourceStreamRange) -> Bool {
-  position_at_or_before(a: outer.first, b: inner.first)
-  && position_at_or_before(a: range_end(range: inner), b: range_end(range: outer))
-}
-
 fn position_at_or_before(a: StreamPosition, b: StreamPosition) -> Bool {
   match compare_positions(a: a, b: b) {
     PositionBefore => true
