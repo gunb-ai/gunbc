@@ -608,12 +608,10 @@ test fn w_the_declared_bypass_roster_contributes_no_divergence() -> Bool {
   length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: desired_bypass_actors() })) == 0
 }
 
-test fn w_RED_an_observed_maintain_bypass_is_unexpected() -> Bool {
+test fn w_RED_an_empty_observed_roster_misses_the_declared_maintain_bypass() -> Bool {
   string_contains(
-    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved {
-      actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: "always" }],
-    })),
-    pattern: "undeclared bypass actor present: RepositoryRole/2 mode=always",
+    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: [] })),
+    pattern: "declared bypass actor missing",
   )
 }
 

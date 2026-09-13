@@ -98,6 +98,14 @@ type RulesetBypassActor {
   bypass_mode: String
 }
 
+// GitHub REST bypass_actors field names (same retrieval as the module cite, 2026-09-13,
+// docs.github.com/en/rest/repos/rules). actor_type includes RepositoryRole; bypass_mode
+// includes always and pull_request. For actor_type RepositoryRole, actor_id is the
+// repository role id; GitHub's Maintain role is 2.
+data github_ruleset_bypass_actor_type_repository_role: String = "RepositoryRole"
+data github_ruleset_bypass_mode_always: String = "always"
+data github_repository_role_id_maintain: Int = 2
+
 type BypassActorRosterObservation
   = BypassRosterObserved { actors: List<RulesetBypassActor> }
   | BypassRosterUnavailable { reader: NonEmptyStr, cause: NonEmptyStr }
