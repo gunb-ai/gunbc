@@ -11,7 +11,11 @@ import gunbc.runner_slot_allocation {
   gunbc_floor_minimum_viable_armed_budget,
   gunbc_runner_slot_desired,
 }
-import gunbc.whole_corpus_compile_admission { whole_corpus_compile_measured_peak_demand }
+import gunbc.whole_corpus_compile_admission {
+  MeasuredForRoot,
+  UnmeasuredRoot,
+  whole_corpus_compile_public_root_demand,
+}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -122,6 +126,22 @@ data seed_mirror_lens_floor_execution_note: String = "THIS LENS IS STILL DISCOVE
 // rather than from a marker convention, at which point an unmarked in-scope constant becomes
 // detectable instead of merely undetected.
 
+// THE SEED STILL REALIZES A POPULATION-BLIND CONSTANT AND THIS ROW DOES NOT PRETEND OTHERWISE. The
+// authority became a per-root row (gunbc.whole_corpus_compile_admission
+// whole_corpus_compile_public_root_demand); the seed's DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES
+// still applies that one root's peak to every root, and its marker still cites the deleted
+// population-blind symbol, which is why this row's authority_symbol spells that retired name: it is
+// the string the seed carries, not a live authority. The value equality below stays true and is kept
+// enrolled, but it no longer establishes that the seed realizes the authority: that loss is the
+// declared drop gunbc.rung_drop.seed_whole_corpus_demand_population_blind, retired only when the seed
+// admits on the root's own row.
+fn public_root_demand_peak_bytes() -> Int {
+  match whole_corpus_compile_public_root_demand {
+    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p)
+    UnmeasuredRoot { root: _ } => 0
+  }
+}
+
 type SeedMirrorRow {
   seed_path: String
   decl_prefix: String
@@ -165,7 +185,7 @@ fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
       seed_path: memory_governor_seed_path,
       decl_prefix: "pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = ",
       authority_symbol: "whole_corpus_compile_measured_peak_demand",
-      expected: byte_size_count(b: whole_corpus_compile_measured_peak_demand()),
+      expected: public_root_demand_peak_bytes(),
     },
   ]
 }

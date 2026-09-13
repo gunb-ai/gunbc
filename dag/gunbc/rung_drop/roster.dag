@@ -66,6 +66,7 @@ import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
+import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -115,6 +116,7 @@ data rung_drop_roster: List<RungDrop> = [
   long_module_changed_witness_cpu_observed_only,
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
+  seed_whole_corpus_demand_population_blind,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
