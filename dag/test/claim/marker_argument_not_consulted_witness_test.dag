@@ -82,6 +82,12 @@ data marker_arms: List<MarkerArm> = [
     expect_class: "TypeMismatch"
   },
   MarkerArm {
+    name: "inline_identical",
+    source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\nfn take_a(a: Carrier<MqA>) -> Int { a.count }\nfn feed(b: Carrier<MqA>) -> Int { take_a(a: b) }\n",
+    expect_blocking: false,
+    expect_class: "TypeMismatch"
+  },
+  MarkerArm {
     name: "inline_distinct",
     source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\nfn take_a(a: Carrier<MqA>) -> Int { a.count }\nfn feed(b: Carrier<MqB>) -> Int { take_a(a: b) }\n",
     expect_blocking: false,
@@ -122,16 +128,47 @@ fn arm_class_blocking_count(a: MarkerArm) -> Int {
 // no reader consults, and the fold would have to route around it; then editing expect_class on that
 // arm would change nothing while the realization went on ignoring it, which is the validation-standing
 // -where-construction-was-available tell in DESIGN section 5. One fold, read on both branches.
+// THE ACCEPTING ARMS NEED A MATCHED BASELINE, NOT JUST A ZERO. Asserting "zero TypeMismatch rows"
+// passes whenever the fixture is refused EARLIER BY ANOTHER DIAGNOSTIC CLASS, because then argument
+// compatibility is never reached and no TypeMismatch is ever emitted. The arm would stay green while
+// the inline acceptance this witness claims had stopped holding -- a green produced by the thing not
+// happening, which is the exact shape DESIGN section 5 calls specification-without-execution.
+//
+// inline_identical IS THE BASELINE AND IS NOT REDUNDANT WITH inline_distinct. The two fixtures are
+// byte-identical except that the baseline's two markers MATCH, so it is genuinely well typed. They
+// share the same module, the same imports and therefore the SAME BACKGROUND blocking rows -- the ones
+// the Int closure contributes and this fixture does not author. Requiring their TOTALS to be EQUAL
+// cancels that background exactly: equality says inline_distinct introduced NO refusal of its own.
+// If the fixture ever starts failing for an unrelated reason, its total exceeds the baseline's and
+// the arm reds instead of passing on a vacuous zero.
 fn arm_agrees(a: MarkerArm) -> Bool {
   let targeted = arm_class_blocking_count(a: a)
-  if a.expect_blocking { targeted == 1 } else { targeted == 0 }
+  if a.expect_blocking {
+    targeted == 1
+  } else {
+    targeted == 0 && arm_blocking_total(a: a) == inline_baseline_blocking_total()
+  }
 }
 
-test fn m_all_three_arms_are_enrolled() -> Bool {
+fn arm_blocking_total(a: MarkerArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The baseline's own total, seeded to the could-not-measure value so a missing or renamed baseline
+// reds every accepting arm rather than silently comparing against nothing.
+fn inline_baseline_blocking_total() -> Int {
+  fold(filter(marker_arms, a => a.name == "inline_identical"), init: 0 - 1,
+       f: fn(acc, a) { arm_blocking_total(a: a) })
+}
+
+test fn m_all_four_arms_are_enrolled() -> Bool {
   let total = marker_arms |> count
   let refusing = marker_arms |> filter(a => a.expect_blocking) |> count
   let accepting = marker_arms |> filter(a => !a.expect_blocking) |> count
-  total == 3 && refusing == 2 && accepting == 1 && refusing + accepting == total
+  total == 4 && refusing == 2 && accepting == 2 && refusing + accepting == total
 }
 
 test fn m_every_arm_behaves_as_declared() -> Bool {
