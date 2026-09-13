@@ -58,15 +58,18 @@ fn serving_subject_eq(a: ServingSubject, b: ServingSubject) -> Bool {
 // spelling `glm_canary_arm` a second time here would be a second citation of one declaration.
 data glm_canary_serving_subject: ServingSubject = PlacedServingArm { arm: glm_canary_host_claim.arm }
 
-// ── A RULING IS A DECLARED FACT, AND IT IS TYPED SO IT CAN NEVER BE READ AS AN OBSERVATION ────
+// ── A RULING IS A CITED FACT, AND IT IS TYPED SO IT CAN NEVER BE READ AS A STANDING ON A HOST ─
 //
 // A commitment authored from an operator ruling is not the same KIND of fact as a serving arm
-// observed on a host. Both would fit in one cause list, and that is the danger: a reader six months
-// from now could not tell "GLM is observed to hold srv9" from "a human said group B is GLM's", and
-// the second would be read as the first. A policy that looks like a measurement is the expensive
-// meaning fork (DESIGN section 3), so the citation is a value with the three fields a reader needs to
-// ask the question that is meaningless of an observation and essential of a ruling: is this still
-// policy, and does the person who set it still want it?
+// placed on a host, a group a convergence root claims, or a reservation a receipt discharges: those
+// are standings an owning authority holds ON the machine and a fleet-side event ends. Both kinds
+// would fit in one cause list, and that is the danger: a reader six months from now could not tell
+// "the canary arm holds srv9" from "a human said group B is GLM's", and the second would be read as
+// the first. A policy that looks like a standing is the expensive meaning fork (DESIGN section 3),
+// so the citation is a value with the three fields a reader needs to ask the question that is
+// meaningless of a standing and essential of a ruling: is this still policy, and does the person
+// who set it still want it? gunbc.spark.host_commitment carries the type-level split
+// (authority-held versus ruling-derived) that makes the question answerable by a fold.
 type ServingRulingCitation {
   decider: NonEmptyStr
   ruled_on: NonEmptyStr
@@ -88,6 +91,15 @@ data serving_ruling_2026_09_12_group_b_is_glm: ServingRulingCitation = ServingRu
   ruled: "group B is being used for GLM Flash 5.3" as NonEmptyStr,
 }
 
+// THE SECOND HALF, CITED HERE BESIDE THE FIRST SO ONE RULING HAS ONE HOME, and consumed by
+// gunbc.spark.serving_deployment_selection's dated served-artifact transition on the pair unit --
+// the row that lets the V4.1 subject resolve to the group A deployment it takes over.
+data serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment: ServingRulingCitation = ServingRulingCitation {
+  decider: "operator" as NonEmptyStr,
+  ruled_on: "2026-09-12" as NonEmptyStr,
+  ruled: "use the existing DeepSeek deployment for 4.1 Flash" as NonEmptyStr,
+}
+
 // A RESERVATION IS A SUBJECT HOLDING HOSTS ON THE STRENGTH OF A RULING. The hosts are DERIVED from
 // the group the ruling names, never listed: a cage's membership is gunbc.spark.fabric_switch_observed's
 // fact, and this row says only which subject the ruling gives that cage to for serving.
@@ -105,7 +117,7 @@ data serving_ruling_2026_09_12_group_b_is_glm: ServingRulingCitation = ServingRu
 // already carries -- an eligibility read is not a lease, as host_commitment's admission seam says --
 // and it is not what this cause exists to prevent.
 //
-// HOW THIS ROW ENDS, WHICH IS UNLIKE ANY OBSERVED CAUSE. An arm claim ends when the arm goes away and
+// HOW THIS ROW ENDS, WHICH IS UNLIKE ANY AUTHORITY-HELD CAUSE. An arm claim ends when the arm goes away and
 // a reservation ends with a release receipt: the fleet signals both. A policy reservation ends when
 // the POLICY changes, and nothing in the fleet will signal that. So this row is withdrawn only by a
 // later ruling superseding the one it cites, recorded the same way, and a reader who finds the cited

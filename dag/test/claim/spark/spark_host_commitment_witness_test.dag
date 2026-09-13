@@ -25,15 +25,15 @@ import gunbc.spark.host_commitment {
   spark_host_standings,
   spark_host_standing,
   SparkHostCommitment,
-  ObservedCommitment,
-  DeclaredCommitment,
-  SparkHostObservedCommitment,
+  AuthorityHeldCommitment,
+  RulingDerivedCommitment,
+  SparkHostAuthorityCommitment,
   CommittedToCellRole,
   MemberOfClaimedServingGroup,
   HoldsUndischargedRpcReservation,
   CellRoleUndecidable,
   OccupiedByServingArm,
-  SparkHostDeclaredCommitment,
+  SparkHostRulingCommitment,
   ReservedForServingSubject,
   ClaimedServingGroupMember,
   SparkHostStanding,
@@ -53,8 +53,8 @@ import gunbc.spark.host_commitment {
   spark_unplaced_hosts,
   spark_host_is_unplaced,
   spark_host_commitment_wire,
-  spark_observed_causes_of,
-  spark_declared_causes_of,
+  spark_authority_held_causes_of,
+  spark_ruling_derived_causes_of,
   SparkHostAdmissibility,
   SparkHostAdmissibleTo,
   SparkHostHeldAgainst,
@@ -121,7 +121,7 @@ fn contains_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
 
 fn is_cell_role(c: SparkHostCommitment) -> Bool {
   match c {
-    ObservedCommitment { cause: o } =>
+    AuthorityHeldCommitment { cause: o } =>
       match o {
         CommittedToCellRole { role: _ } => true
         MemberOfClaimedServingGroup { group: _ } => false
@@ -129,13 +129,13 @@ fn is_cell_role(c: SparkHostCommitment) -> Bool {
         HoldsUndischargedRpcReservation => false
         CellRoleUndecidable { assignments: _ } => false
       }
-    DeclaredCommitment { cause: _ } => false
+    RulingDerivedCommitment { cause: _ } => false
   }
 }
 
 fn is_group_member(c: SparkHostCommitment) -> Bool {
   match c {
-    ObservedCommitment { cause: o } =>
+    AuthorityHeldCommitment { cause: o } =>
       match o {
         MemberOfClaimedServingGroup { group: _ } => true
         CommittedToCellRole { role: _ } => false
@@ -143,13 +143,13 @@ fn is_group_member(c: SparkHostCommitment) -> Bool {
         HoldsUndischargedRpcReservation => false
         CellRoleUndecidable { assignments: _ } => false
       }
-    DeclaredCommitment { cause: _ } => false
+    RulingDerivedCommitment { cause: _ } => false
   }
 }
 
 fn is_held_reservation(c: SparkHostCommitment) -> Bool {
   match c {
-    ObservedCommitment { cause: o } =>
+    AuthorityHeldCommitment { cause: o } =>
       match o {
         HoldsUndischargedRpcReservation => true
         MemberOfClaimedServingGroup { group: _ } => false
@@ -157,14 +157,14 @@ fn is_held_reservation(c: SparkHostCommitment) -> Bool {
         OccupiedByServingArm { claim: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
-    DeclaredCommitment { cause: _ } => false
+    RulingDerivedCommitment { cause: _ } => false
   }
 }
 
-fn is_declared_reservation_for(c: SparkHostCommitment, subject: ServingSubject) -> Bool {
+fn is_ruling_reservation_for(c: SparkHostCommitment, subject: ServingSubject) -> Bool {
   match c {
-    ObservedCommitment { cause: _ } => false
-    DeclaredCommitment { cause: d } =>
+    AuthorityHeldCommitment { cause: _ } => false
+    RulingDerivedCommitment { cause: d } =>
       match d {
         ReservedForServingSubject { subject: s, basis: _ } => serving_subject_eq(a: s, b: subject)
       }
@@ -235,7 +235,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
     Present { value: SparkHostUncommitted { host: _ } } => false
     Present { value: SparkHostCommitted { host: _, commitments: c } } =>
       match c.head {
-        ObservedCommitment { cause: o } =>
+        AuthorityHeldCommitment { cause: o } =>
           match o {
             CellRoleUndecidable { assignments: rows } => length(rows) == 2
             CommittedToCellRole { role: _ } => false
@@ -243,7 +243,7 @@ test fn a_host_with_an_ambiguous_role_is_committed_rather_than_free() -> Bool {
             OccupiedByServingArm { claim: _ } => false
             HoldsUndischargedRpcReservation => false
           }
-        DeclaredCommitment { cause: _ } => false
+        RulingDerivedCommitment { cause: _ } => false
       }
   }
 }
@@ -260,14 +260,15 @@ test fn an_unclaimed_unheld_unassigned_host_is_uncommitted() -> Bool {
 }
 
 // EVERY CAUSE RENDERS TO ITS OWN SENTENCE, so a refusal quoting one cannot be read as another -- and
-// the declared cause renders its decider and date, so a policy can never be quoted as a measurement.
+// the ruling-derived cause renders its decider and date, so a policy can never be quoted as a
+// standing something holds on the host.
 test fn each_commitment_cause_renders_distinctly() -> Bool {
-  let role = spark_host_commitment_wire(c: ObservedCommitment { cause: CommittedToCellRole { role: SparkServingCell } }) as String
-  let group = spark_host_commitment_wire(c: ObservedCommitment { cause: MemberOfClaimedServingGroup { group: FabricGroupA } }) as String
-  let held = spark_host_commitment_wire(c: ObservedCommitment { cause: HoldsUndischargedRpcReservation }) as String
-  let ambiguous = spark_host_commitment_wire(c: ObservedCommitment { cause: CellRoleUndecidable { assignments: fixture_duplicate_assignments } }) as String
-  let armed = spark_host_commitment_wire(c: ObservedCommitment { cause: OccupiedByServingArm { claim: glm_canary_host_claim } }) as String
-  let ruled = spark_host_commitment_wire(c: DeclaredCommitment { cause: ReservedForServingSubject { subject: glm_canary_serving_subject, basis: glm_group_b_serving_reservation.basis } }) as String
+  let role = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: CommittedToCellRole { role: SparkServingCell } }) as String
+  let group = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: MemberOfClaimedServingGroup { group: FabricGroupA } }) as String
+  let held = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }) as String
+  let ambiguous = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: CellRoleUndecidable { assignments: fixture_duplicate_assignments } }) as String
+  let armed = spark_host_commitment_wire(c: AuthorityHeldCommitment { cause: OccupiedByServingArm { claim: glm_canary_host_claim } }) as String
+  let ruled = spark_host_commitment_wire(c: RulingDerivedCommitment { cause: ReservedForServingSubject { subject: glm_canary_serving_subject, basis: glm_group_b_serving_reservation.basis } }) as String
   role != group && role != held && role != ambiguous && role != armed && role != ruled
     && group != held && group != ambiguous && group != armed && group != ruled
     && held != ambiguous && held != armed && held != ruled
@@ -343,7 +344,8 @@ test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population()
 // srv5 and srv6 are committed cells, all four of srv5-srv8 are the hosts of the one serving group
 // this repository claims (cage 1 of gunbc.spark.fabric_switch_observed), srv9 carries the GLM
 // canary's placement claim, and srv9-srv12 are reserved for the canary's subject by the operator's
-// 2026-09-12 ruling. So the UNPLACED set -- nothing observed on the host -- is srv10-srv12, and the
+// 2026-09-12 ruling. So the UNPLACED set -- no authority holds a standing on the host -- is
+// srv10-srv12, and the
 // UNCOMMITTED set -- no cause of any kind -- is empty. Both are asserted BY IDENTITY, never by a count:
 // a set of the right SIZE holding the wrong hosts is exactly the failure the scalar this replaces
 // could not detect, and an empty set is an absorbing value that has to be shown host by host rather
@@ -411,7 +413,7 @@ test fn the_canary_host_is_committed_and_its_cause_names_the_arm() -> Bool {
            match standing {
              SparkHostUncommitted { host: _ } => false
              SparkHostCommitted { host: _, commitments: c } =>
-               any(spark_observed_causes_of(c: c), o => match o {
+               any(spark_authority_held_causes_of(c: c), o => match o {
                  OccupiedByServingArm { claim: claimed } =>
                    host_identity_eq(a: claimed.host, b: operator_host_srv9)
                      && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "glm_canary_arm")
@@ -444,7 +446,7 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // claimed target and that its refusal names the actual cause rather than a generic sentence, which is
 // what the deleted hand-maintained producer list could never do. And the positive arm is the
 // scoping: srv10 is reserved for the GLM subject by ruling and is still admitted for a build,
-// because a declared serving reservation is not a placement.
+// because a ruling-derived serving reservation is not a placement.
 test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
   (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
@@ -503,50 +505,52 @@ fn production_commitment_is_group_membership_alone(host: HostIdentity) -> Bool {
   }
 }
 
-// THE DERIVATION IS TOTAL OVER ITS UNIVERSE: unplaced plus observed-committed partitions the units,
+// THE DERIVATION IS TOTAL OVER ITS UNIVERSE: unplaced plus authority-held partitions the units,
 // and nothing here authors a host list. The partition is between the placement projection and its
 // complement, which is the pair of derived sets that consumers actually read.
-fn production_host_has_observed_cause(host: HostIdentity) -> Bool {
+fn production_host_has_authority_held_cause(host: HostIdentity) -> Bool {
   match spark_host_standing(host: host) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
-    Present { value: SparkHostCommitted { host: _, commitments: c } } => length(spark_observed_causes_of(c: c)) > 0
+    Present { value: SparkHostCommitted { host: _, commitments: c } } => length(spark_authority_held_causes_of(c: c)) > 0
   }
 }
 
 test fn the_derivation_partitions_the_unit_population() -> Bool {
   let units = dgx_spark_reserved_identities()
   all(spark_unplaced_hosts, h => contains_host(hosts: units, host: h))
-    && all(units, h => spark_host_is_unplaced(host: h) != production_host_has_observed_cause(host: h))
+    && all(units, h => spark_host_is_unplaced(host: h) != production_host_has_authority_held_cause(host: h))
     && all(spark_committed_standings_of(standings: spark_host_standings), s => match s {
          SparkHostUncommitted { host: _ } => false
          SparkHostCommitted { host: h, commitments: _ } => contains_host(hosts: units, host: h)
        })
 }
 
-// ── THE DECLARED CAUSE IS STRUCTURALLY DISTINGUISHABLE FROM THE OBSERVED ONES ─────────────────
+// ── THE RULING-DERIVED CAUSE IS STRUCTURALLY DISTINGUISHABLE FROM THE AUTHORITY-HELD ONES ──────
 //
 // THE ACCEPTANCE BAR, stated by the manager who confirmed the reservation row (sunny-carp-329,
-// 2026-09-13): a fold must be able to answer "which of this host's causes are observed and which are
-// declared?" srv10 carries exactly one cause in production and it is declared; srv9 carries the
-// observed arm claim AND the declared reservation, and the two projections separate them without
-// reading any arm name.
-test fn observed_and_declared_causes_are_separable_by_a_fold() -> Bool {
+// 2026-09-13): a fold must be able to answer which of this host's causes an authority holds on it
+// and which exist only by ruling, without reading any arm name. (The bar was first phrased as
+// "observed or declared"; the outer split is named for what its members actually are, since a
+// claimed group and a cell role are desired state rather than observations -- see the type's note.)
+// srv10 carries exactly one cause in production and it is ruling-derived; srv9 carries the held arm
+// claim AND the ruling's reservation, and the two projections separate them.
+test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bool {
   (match spark_host_standing(host: operator_host_srv10) {
      Absent => false
      Present { value: SparkHostUncommitted { host: _ } } => false
      Present { value: SparkHostCommitted { host: _, commitments: c } } =>
-       length(spark_observed_causes_of(c: c)) == 0
-         && length(spark_declared_causes_of(c: c)) == 1
-         && all(spark_commitment_causes(c: c), x => is_declared_reservation_for(c: x, subject: glm_canary_serving_subject))
+       length(spark_authority_held_causes_of(c: c)) == 0
+         && length(spark_ruling_derived_causes_of(c: c)) == 1
+         && all(spark_commitment_causes(c: c), x => is_ruling_reservation_for(c: x, subject: glm_canary_serving_subject))
    })
     && (match spark_host_standing(host: operator_host_srv9) {
          Absent => false
          Present { value: SparkHostUncommitted { host: _ } } => false
          Present { value: SparkHostCommitted { host: _, commitments: c } } =>
-           length(spark_observed_causes_of(c: c)) == 1
-             && length(spark_declared_causes_of(c: c)) == 1
-             && any(spark_commitment_causes(c: c), x => is_declared_reservation_for(c: x, subject: glm_canary_serving_subject))
+           length(spark_authority_held_causes_of(c: c)) == 1
+             && length(spark_ruling_derived_causes_of(c: c)) == 1
+             && any(spark_commitment_causes(c: c), x => is_ruling_reservation_for(c: x, subject: glm_canary_serving_subject))
        })
     && string_contains(s: spark_host_commitment_causes_wire(host: operator_host_srv10) as String, pattern: "reserved by ruling")
 }
@@ -603,7 +607,7 @@ test fn a_host_held_against_a_subject_names_the_unheld_causes() -> Bool {
   let srv5_vs_canary = unheld_causes_against(host: operator_host_srv5, subject: glm_canary_serving_subject)
   length(srv9_vs_a) == 2
     && any(srv9_vs_a, c => match c {
-         ObservedCommitment { cause: o } =>
+         AuthorityHeldCommitment { cause: o } =>
            match o {
              OccupiedByServingArm { claim: cl } => host_identity_eq(a: cl.host, b: operator_host_srv9)
              CommittedToCellRole { role: _ } => false
@@ -611,9 +615,9 @@ test fn a_host_held_against_a_subject_names_the_unheld_causes() -> Bool {
              HoldsUndischargedRpcReservation => false
              CellRoleUndecidable { assignments: _ } => false
            }
-         DeclaredCommitment { cause: _ } => false
+         RulingDerivedCommitment { cause: _ } => false
        })
-    && any(srv9_vs_a, c => is_declared_reservation_for(c: c, subject: glm_canary_serving_subject))
+    && any(srv9_vs_a, c => is_ruling_reservation_for(c: c, subject: glm_canary_serving_subject))
     && length(srv5_vs_canary) == 2
     && any(srv5_vs_canary, c => is_cell_role(c: c))
     && any(srv5_vs_canary, c => is_group_member(c: c))

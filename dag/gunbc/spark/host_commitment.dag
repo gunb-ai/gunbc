@@ -148,30 +148,42 @@ import gunbc.spark.serving_subject {
 // hold a reservation, and dropping either makes a later release receipt look like it freed a host it
 // did not free.
 //
-// OBSERVED AND DECLARED CAUSES ARE SPLIT AT THE TYPE LEVEL, NOT BY NAME. An observed cause is a fact
-// the fleet reports -- a role converged, a group claimed and cabled, an arm running, a reservation
-// minted from an observed deployment. A declared cause is a ruling a person made. If both arrived as
-// arms of one sum, a reader could not ask "which of this host's causes are observed and which are
-// declared?" without knowing the arm names, and the declared one would be read as the observed kind
-// -- policy dressed as measurement, the meaning fork DESIGN section 3 names. So the outer sum carries
-// the kind, `spark_observed_causes_of` and `spark_declared_causes_of` answer that question by
+// AUTHORITY-HELD AND RULING-DERIVED CAUSES ARE SPLIT AT THE TYPE LEVEL, NOT BY NAME.
+//
+// THE LINE IS NAMED FOR WHAT IT IS, AND IT IS NOT "OBSERVED VERSUS DECLARED". A first cut called the
+// outer arms Observed and Declared, and the parent lane caught that the name was false for half the
+// members: a claimed serving group is gunbc.spark.pair_serving_desired's DESIRED state, and a cell
+// role is an operator decision recorded in gunbc.spark.cell_role -- neither is an observation of the
+// host. Only the RPC reservation is observation-minted, and the arm placement is an authored row.
+// What the four actually share is that the AUTHORITY OWNING THE FACT HOLDS A STANDING ON THE HOST --
+// a role convergence actuates, a claim convergence acts on, an arm that answers, a reservation a
+// receipt discharges -- and a fleet-side event ends each of them: change the role, withdraw the
+// group, stop the arm, land the release receipt.
+//
+// A RULING-DERIVED cause is different in kind: nothing on the fleet holds it. It exists because a
+// person ruled, and it ends only when the ruling is superseded, which the fleet will never signal.
+// If both arrived as arms of one sum, a reader could not ask "which of this host's causes does an
+// authority hold on it, and which exist only by ruling?" without knowing the arm names, and the
+// ruling would be read as the kind something is doing on the host -- policy dressed as a standing,
+// the meaning fork DESIGN section 3 names. So the outer sum carries the kind,
+// `spark_authority_held_causes_of` and `spark_ruling_derived_causes_of` answer that question by
 // matching it, and the wire renders the kind too.
-type SparkHostObservedCommitment
+type SparkHostAuthorityCommitment
   = CommittedToCellRole { role: SparkCellRole }
   | MemberOfClaimedServingGroup { group: FabricGroup }
   | OccupiedByServingArm { claim: ServingArmHostClaim }
   | HoldsUndischargedRpcReservation
   | CellRoleUndecidable { assignments: List<SparkCellRoleAssignment> }
 
-// THE ONE DECLARED CAUSE, AND ITS BASIS IS A CITATION RATHER THAN A SENTENCE. gunbc.spark.serving_subject
+// THE ONE RULING-DERIVED CAUSE, AND ITS BASIS IS A CITATION RATHER THAN A SENTENCE. gunbc.spark.serving_subject
 // carries the ruling and the row that turns it into hosts; this arm records, per host, which subject
 // the ruling reserved it for and cites the ruling so a reader can ask whether it still stands.
-type SparkHostDeclaredCommitment
+type SparkHostRulingCommitment
   = ReservedForServingSubject { subject: ServingSubject, basis: ServingRulingCitation }
 
 type SparkHostCommitment
-  = ObservedCommitment { cause: SparkHostObservedCommitment }
-  | DeclaredCommitment { cause: SparkHostDeclaredCommitment }
+  = AuthorityHeldCommitment { cause: SparkHostAuthorityCommitment }
+  | RulingDerivedCommitment { cause: SparkHostRulingCommitment }
 
 // A CLAIMED GROUP MEMBER IS A JOIN ROW, so the cause can carry the group it came from. The production
 // application derives these from the claimed groups through observed cage membership; a fixture can
@@ -206,38 +218,38 @@ fn spark_host_commitments_in(
   serving_reservations: List<SparkServingReservation>,
   host: HostIdentity,
 ) -> FreeMonoid<SparkHostCommitment> {
-  let declared =
+  let ruled =
     fold(
       filter(serving_reservations, r => any(r.hosts, h => host_identity_eq(a: h, b: host))),
       init: Empty {},
       f: fn(acc, r) {
-        Cons { head: DeclaredCommitment { cause: ReservedForServingSubject { subject: r.subject, basis: r.basis } }, tail: acc }
+        Cons { head: RulingDerivedCommitment { cause: ReservedForServingSubject { subject: r.subject, basis: r.basis } }, tail: acc }
       },
     )
   let reserved =
     if any(held_reservation_hosts, h => host_identity_eq(a: h, b: host)) {
-      Cons { head: ObservedCommitment { cause: HoldsUndischargedRpcReservation }, tail: declared }
+      Cons { head: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }, tail: ruled }
     } else {
-      declared
+      ruled
     }
   let armed =
     fold(
       filter(arm_claims, c => host_identity_eq(a: c.host, b: host)),
       init: reserved,
-      f: fn(acc, c) { Cons { head: ObservedCommitment { cause: OccupiedByServingArm { claim: c } }, tail: acc } },
+      f: fn(acc, c) { Cons { head: AuthorityHeldCommitment { cause: OccupiedByServingArm { claim: c } }, tail: acc } },
     )
   let serving =
     fold(
       filter(claimed_group_members, m => host_identity_eq(a: m.host, b: host)),
       init: armed,
-      f: fn(acc, m) { Cons { head: ObservedCommitment { cause: MemberOfClaimedServingGroup { group: m.group } }, tail: acc } },
+      f: fn(acc, m) { Cons { head: AuthorityHeldCommitment { cause: MemberOfClaimedServingGroup { group: m.group } }, tail: acc } },
     )
   match spark_cell_role_in(assignments: assignments, host: host) {
     SparkCellRoleAbsent => serving
     SparkCellRoleUnique { role: r } =>
-      Cons { head: ObservedCommitment { cause: CommittedToCellRole { role: r } }, tail: serving }
+      Cons { head: AuthorityHeldCommitment { cause: CommittedToCellRole { role: r } }, tail: serving }
     SparkCellRoleAmbiguous { assignments: rows } =>
-      Cons { head: ObservedCommitment { cause: CellRoleUndecidable { assignments: rows } }, tail: serving }
+      Cons { head: AuthorityHeldCommitment { cause: CellRoleUndecidable { assignments: rows } }, tail: serving }
   }
 }
 
@@ -323,7 +335,7 @@ fn spark_host_standing_in(
   )
 }
 
-// ── THE NEW-PLACEMENT PROJECTION: OBSERVED CAUSES DECIDE, DECLARED ONES DO NOT ────────────────
+// ── THE NEW-PLACEMENT PROJECTION: AUTHORITY-HELD CAUSES DECIDE, RULING-DERIVED ONES DO NOT ─────
 //
 // THE SHAPE THIS REPLACES HAD TWO ROOTS. `spark_host_standings` folded the commitment sources, and
 // `spark_uncommitted_hosts` folded the same sources again to answer the narrower question -- so the
@@ -332,22 +344,23 @@ fn spark_host_standing_in(
 // input to be forgotten, because they have no inputs to forget.
 //
 // AND THE NAME CHANGED WITH THE QUESTION. `spark_uncommitted_hosts` answered "no cause at all", which
-// coincided with "nothing has placed work here" only while every cause was an observation. Now that a
-// ruling can reserve a host for serving without anything running on it, the two questions have
-// different answers on srv10-srv12, and one name for both would be the meaning fork section 3
-// forbids. "Unplaced" is the placement question: no OBSERVED cause. `SparkHostUncommitted` keeps the
-// stricter meaning -- no cause of any kind -- and is what the serving-admissibility fold reads.
-fn spark_observed_causes_of(c: FreeSemigroup<SparkHostCommitment>) -> List<SparkHostObservedCommitment> {
+// coincided with "nothing has placed work here" only while every cause was held by an authority on
+// the host. Now that a ruling can reserve a host for serving without anything standing on it, the
+// two questions have different answers on srv10-srv12, and one name for both would be the meaning
+// fork section 3 forbids. "Unplaced" is the placement question: no AUTHORITY-HELD cause.
+// `SparkHostUncommitted` keeps the stricter meaning -- no cause of any kind -- and is what the
+// serving-admissibility fold reads.
+fn spark_authority_held_causes_of(c: FreeSemigroup<SparkHostCommitment>) -> List<SparkHostAuthorityCommitment> {
   flat_map(spark_commitment_causes(c: c), x => match x {
-    ObservedCommitment { cause: o } => [o]
-    DeclaredCommitment { cause: _ } => []
+    AuthorityHeldCommitment { cause: o } => [o]
+    RulingDerivedCommitment { cause: _ } => []
   })
 }
 
-fn spark_declared_causes_of(c: FreeSemigroup<SparkHostCommitment>) -> List<SparkHostDeclaredCommitment> {
+fn spark_ruling_derived_causes_of(c: FreeSemigroup<SparkHostCommitment>) -> List<SparkHostRulingCommitment> {
   flat_map(spark_commitment_causes(c: c), x => match x {
-    ObservedCommitment { cause: _ } => []
-    DeclaredCommitment { cause: d } => [d]
+    AuthorityHeldCommitment { cause: _ } => []
+    RulingDerivedCommitment { cause: d } => [d]
   })
 }
 
@@ -355,7 +368,7 @@ fn spark_unplaced_hosts_of(standings: List<SparkHostStanding>) -> List<HostIdent
   flat_map(standings, s => match s {
     SparkHostUncommitted { host: h } => [h]
     SparkHostCommitted { host: h, commitments: c } =>
-      if length(spark_observed_causes_of(c: c)) == 0 { [h] } else { [] }
+      if length(spark_authority_held_causes_of(c: c)) == 0 { [h] } else { [] }
   })
 }
 
@@ -396,7 +409,7 @@ fn spark_standing_of(standings: List<SparkHostStanding>, host: HostIdentity) -> 
 // refusal for every subject rather than an absence that reads as freedom.
 fn serving_subject_claims_host(subject: ServingSubject, siblings: FreeSemigroup<SparkHostCommitment>) -> Bool {
   any(spark_commitment_causes(c: siblings), c => match c {
-    ObservedCommitment { cause: o } =>
+    AuthorityHeldCommitment { cause: o } =>
       match o {
         MemberOfClaimedServingGroup { group: g } => serving_subject_eq(a: subject, b: PairServingUnitOn { group: g })
         OccupiedByServingArm { claim: cl } => serving_subject_eq(a: subject, b: PlacedServingArm { arm: cl.arm })
@@ -404,7 +417,7 @@ fn serving_subject_claims_host(subject: ServingSubject, siblings: FreeSemigroup<
         HoldsUndischargedRpcReservation => false
         CellRoleUndecidable { assignments: _ } => false
       }
-    DeclaredCommitment { cause: d } =>
+    RulingDerivedCommitment { cause: d } =>
       match d {
         ReservedForServingSubject { subject: s, basis: _ } => serving_subject_eq(a: subject, b: s)
       }
@@ -413,7 +426,7 @@ fn serving_subject_claims_host(subject: ServingSubject, siblings: FreeSemigroup<
 
 fn spark_commitment_held_by(c: SparkHostCommitment, siblings: FreeSemigroup<SparkHostCommitment>, subject: ServingSubject) -> Bool {
   match c {
-    ObservedCommitment { cause: o } =>
+    AuthorityHeldCommitment { cause: o } =>
       match o {
         CommittedToCellRole { role: r } =>
           match r {
@@ -425,7 +438,7 @@ fn spark_commitment_held_by(c: SparkHostCommitment, siblings: FreeSemigroup<Spar
         HoldsUndischargedRpcReservation => false
         CellRoleUndecidable { assignments: _ } => false
       }
-    DeclaredCommitment { cause: d } =>
+    RulingDerivedCommitment { cause: d } =>
       match d {
         ReservedForServingSubject { subject: s, basis: _ } => serving_subject_eq(a: subject, b: s)
       }
@@ -574,10 +587,10 @@ fn spark_host_commitment_causes_wire(host: HostIdentity) -> NonEmptyStr {
   }
 }
 
-// THE WIRE SAYS WHICH KIND A CAUSE IS. An observed cause reads as the fact it is; a declared one
-// reads as "reserved by ruling", with the decider and date, so a refusal quoting it cannot be taken
-// for a measurement of the host.
-fn spark_observed_commitment_wire(c: SparkHostObservedCommitment) -> NonEmptyStr {
+// THE WIRE SAYS WHICH KIND A CAUSE IS. An authority-held cause reads as the standing it is; a
+// ruling-derived one reads as "reserved by ruling", with the decider and date, so a refusal quoting
+// it cannot be taken for something standing on the host.
+fn spark_authority_commitment_wire(c: SparkHostAuthorityCommitment) -> NonEmptyStr {
   match c {
     CommittedToCellRole { role: _ } => "committed to a Spark cell role" as NonEmptyStr
     MemberOfClaimedServingGroup { group: g } => join(["a member of a serving group this repository claims (", fabric_group_wire(g: g) as String, ")"], "") as NonEmptyStr
@@ -587,7 +600,7 @@ fn spark_observed_commitment_wire(c: SparkHostObservedCommitment) -> NonEmptyStr
   }
 }
 
-fn spark_declared_commitment_wire(c: SparkHostDeclaredCommitment) -> NonEmptyStr {
+fn spark_ruling_commitment_wire(c: SparkHostRulingCommitment) -> NonEmptyStr {
   match c {
     ReservedForServingSubject { subject: s, basis: b } =>
       join([
@@ -599,8 +612,8 @@ fn spark_declared_commitment_wire(c: SparkHostDeclaredCommitment) -> NonEmptyStr
 
 fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
   match c {
-    ObservedCommitment { cause: o } => spark_observed_commitment_wire(c: o)
-    DeclaredCommitment { cause: d } => spark_declared_commitment_wire(c: d)
+    AuthorityHeldCommitment { cause: o } => spark_authority_commitment_wire(c: o)
+    RulingDerivedCommitment { cause: d } => spark_ruling_commitment_wire(c: d)
   }
 }
 
@@ -616,9 +629,9 @@ fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
 //
 // IT ANSWERS THE NEW-PLACEMENT QUESTION AND ONLY THAT ONE. A ruling reserving a cage for a serving
 // subject does not refuse a build here, by the scope argument on gunbc.spark.serving_subject's
-// reservation row; what refuses is an OBSERVED cause, and the refusal renders the observed causes
-// the host carries so the operator is told which authority to talk to. A declared cause on the same
-// host is not rendered into a refusal it did not decide.
+// reservation row; what refuses is an AUTHORITY-HELD cause, and the refusal renders the held causes
+// the host carries so the operator is told which authority to talk to. A ruling-derived cause on the
+// same host is not rendered into a refusal it did not decide.
 //
 // IT IS AN ELIGIBILITY ANSWER AND IT IS NOT A LEASE. THIS IS A STATED DIVERGENCE (DESIGN section 3b),
 // not an oversight, and the honest form of it is the whole point. An unplaced host is an
@@ -644,14 +657,14 @@ type SparkHostAdmission
   = SparkHostAdmitted { host: HostIdentity }
   | SparkHostRefused { cause: NonEmptyStr }
 
-fn spark_observed_causes_wire(host: HostIdentity) -> NonEmptyStr {
+fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
   match spark_host_standing(host: host) {
     Absent => "that host is not a DGX Spark unit in gunbc.spark.dgx_procurement, so this fleet has no standing for it" as NonEmptyStr
     Present { value: standing } =>
       match standing {
         SparkHostUncommitted { host: _ } => "nothing has claimed that host" as NonEmptyStr
         SparkHostCommitted { host: _, commitments: c } =>
-          join(map(spark_observed_causes_of(c: c), o => spark_observed_commitment_wire(c: o) as String), "; ") as NonEmptyStr
+          join(map(spark_authority_held_causes_of(c: c), o => spark_authority_commitment_wire(c: o) as String), "; ") as NonEmptyStr
       }
   }
 }
@@ -664,7 +677,7 @@ fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission 
     SparkHostRefused {
       cause: join([
         raw, " is not admissible for ", purpose as String, ", because ",
-        spark_observed_causes_wire(host: host) as String,
+        spark_authority_held_causes_wire(host: host) as String,
         ". Unplaced as of this read: ",
         join(map(spark_unplaced_hosts, h => h as String), ", "),
         ". This is an eligibility read and not a held claim",

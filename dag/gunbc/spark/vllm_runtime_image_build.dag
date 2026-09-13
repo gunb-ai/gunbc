@@ -159,7 +159,7 @@ import gunbc.typed_argv_exec {
 // else has PLACED work on. `spark_host_is_unplaced` is that predicate, and no name for it is minted
 // here -- an `admissible_spark_build_hosts` alias standing beside `spark_unplaced_hosts` would be one
 // concept under two names, which is the other half of the same §3 law. "Unplaced" rather than
-// "uncommitted" because the census now also carries a DECLARED cause -- an operator ruling reserving
+// "uncommitted" because the census now also carries a RULING-DERIVED cause -- an operator ruling reserving
 // a cage for a serving subject -- and that cause is scoped to serving admissibility: a ruling about
 // which model a cage serves says nothing about where a container may be built, so it does not refuse
 // a build here. The residual that scoping accepts (a build on a reserved-but-idle host could exhaust
