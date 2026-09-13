@@ -42,6 +42,7 @@ import extdeps.safetensors.format {
   SafetensorsShardedEntry, safetensors_sharded_entry, safetensors_sharded_entries,
   MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
   safetensors_shard_file, safetensors_membership_defects, safetensors_shard_names,
+  safetensors_overlap_defects, SafetensorsMembershipDefect, SafeU8,
   safetensors_specification_standing, safetensors_specification_version_standing,
   safetensors_specification_obligations,
   safetensors_shard_bounds_obligations, safetensors_shard_bounds_defects,
@@ -1303,6 +1304,51 @@ fn fixture_population(members: List<SafetensorsIndexMember>, entries: List<Safet
     shards: flat_map(safetensors_shard_names(entries: entries), n => roomy_bounds(shard: n)),
     closure: fixture_closure(),
     reading: PopulationScanned { entries: entries })
+}
+
+// ── OVERLAPPING SPANS REFUSE, INCLUDING THE PAIR AN ADJACENT TEST WOULD MISS ──────────────────
+//
+// `EntrySpansOverlapWithinShard` had NO control anywhere in the tree until now -- the arm existed and
+// nothing ever produced it, which is a refusal nobody had seen fire.
+//
+// THE THIRD CASE IS THE ONE THAT MATTERS. The sweep sorts by begin_offset and carries the entry with
+// the greatest END seen so far, rather than comparing each entry to its immediate predecessor. Over
+// spans [0,100], [110,120], [130,140] laid against a wide [0,300], the wide entry overlaps the LAST of
+// them with two non-overlapping entries in between -- so an adjacent-only test reports nothing after
+// the first pair, and the widest-end sweep still catches it. That case is why the fold carries the
+// widest rather than the previous.
+//
+// Non-overlapping spans in the same shard stay clean, and spans that would overlap IF they shared a
+// shard are not a defect when they do not, which is what the partition means.
+fn overlap_entry(name: String, begin: Nat, end: Nat) -> SafetensorsEntry {
+  safetensors_entry(
+    name: name as NonEmptyStr, dtype: SafeU8, shape: [end - begin],
+    begin_offset: begin, end_offset: end)
+}
+
+fn overlap_defects_over(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> List<SafetensorsMembershipDefect> {
+  safetensors_overlap_defects(entries: safetensors_sharded_entries(shard: shard, entries: entries))
+}
+
+test fn overlapping_spans_refuse_including_the_non_adjacent_pair() -> Bool {
+  let one = "a.engram.one" as NonEmptyStr
+  count(overlap_defects_over(shard: one, entries: [
+    overlap_entry(name: "a", begin: 0, end: 100),
+    overlap_entry(name: "b", begin: 100, end: 200),
+    overlap_entry(name: "c", begin: 200, end: 300),
+  ])) == 0
+    && count(overlap_defects_over(shard: one, entries: [
+      overlap_entry(name: "a", begin: 0, end: 100),
+      overlap_entry(name: "b", begin: 50, end: 200),
+    ])) == 1
+    && count(overlap_defects_over(shard: one, entries: [
+      overlap_entry(name: "wide", begin: 0, end: 300),
+      overlap_entry(name: "a", begin: 110, end: 120),
+      overlap_entry(name: "b", begin: 130, end: 140),
+    ])) == 1
+    && count(safetensors_overlap_defects(entries: concat(
+      safetensors_sharded_entries(shard: "shard-one" as NonEmptyStr, entries: [overlap_entry(name: "a", begin: 0, end: 100)]),
+      safetensors_sharded_entries(shard: "shard-two" as NonEmptyStr, entries: [overlap_entry(name: "b", begin: 50, end: 200)])))) == 0
 }
 
 // ── SHIFTING EVERY OFFSET BY ONE BYTE RECONCILES AND STILL DOES NOT FIT ───────────────────────
