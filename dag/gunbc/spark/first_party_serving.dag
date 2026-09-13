@@ -414,10 +414,14 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // rather than making them responsible for observing runtime behaviour.
 //
 // WHAT A REALIZATION IS HERE, AND WHY IT IS THESE TWO FIELDS. The hosts are who actually serves the
-// offer, and the readback is what the running engine reported about itself; together they decide
-// both questions this module asks of a deployment -- whether the operator's site allocation covers
-// the machines, and which declared launch the process is, which is what makes an environment
-// attributable to it. Anything richer belongs to the realization lane rather than here.
+// offer, and the readback is what the running engine reported about itself. The hosts answer whether
+// the operator's site allocation covers the machines. The readback answers only whether the process
+// reports the configuration we declared -- which is CONFIGURATION AGREEMENT and is NOT which
+// declared launch the process is, because two deployments can share a configuration. An earlier
+// spelling of this paragraph said the two together decide which launch it is "which is what makes an
+// environment attributable to it"; the module establishes NEITHER, and no container environment is
+// attributed to anything on the strength of these fields. Anything richer belongs to the realization
+// lane rather than here.
 //
 // AN ENDPOINT FIELD STOOD HERE AND IS DELETED RATHER THAN KEPT FOR LATER. It was load-bearing only
 // while attribution was keyed on the port, and review 64424 moved that to the readback; the field
@@ -582,7 +586,7 @@ fn spark_serving_usage_stats_unread_cause(realization: SparkServingRealization) 
 fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmptyStr {
   match cause {
     TelemetryReadbackUnresolved =>
-      "the route's /v1/models readback did not resolve, so nothing the running process reported identifies which declared launch it is" as NonEmptyStr
+      "the route's /v1/models readback did not resolve, so the process reported nothing to compare against the declared configuration at all. Note that a readback which DOES resolve establishes only configuration agreement, not which declared launch answered -- this cause is upstream of that limit, not an exception to it" as NonEmptyStr
     TelemetryDeclaredPathUnpinned =>
       "the pair-serving snapshot is unpinned, so no declared model path exists to compare the engine's reported one against" as NonEmptyStr
     TelemetryReportedPathDiffers { reported: rep, declared: dec } =>

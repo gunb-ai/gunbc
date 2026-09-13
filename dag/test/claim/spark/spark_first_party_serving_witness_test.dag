@@ -80,8 +80,10 @@ fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
 
 // THE REALIZATION THAT ANSWERED IS NOW PART OF EVERY SUBJECT, because the route facts are about the
 // deployment being offered rather than about a declaration. The pair-serving fixture is the one the
-// site allocation covers and whose container environment this module models; the foreign one differs
-// in the single field that decides attribution -- the model path the running engine reported.
+// site allocation covers; the foreign one differs in the model path the running engine reported. That
+// field does NOT decide attribution, and an earlier spelling of this sentence said it did: comparing
+// it establishes CONFIGURATION AGREEMENT, which two deployments can share, so it separates these
+// fixtures without establishing which launch either of them is.
 fn t_readback(path: String) -> VllmModelsRouteReadbackStanding {
   ModelsRouteRead {
     readback: vllm_models_route_readback(
@@ -374,8 +376,10 @@ test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
 }
 
 // RED -- A REALIZATION WITH NO READABLE HOST MEMBERSHIP IS UNREAD TOO, and for its own reason rather
-// than the foreign-deployment one: the readback identifies the declared launch, so the environment
-// WOULD be attributable, and what is missing is which hosts serve it. The obligation must name THAT
+// than the foreign-deployment one: the readback AGREES with the declared configuration, so the
+// foreign-path cause does not apply, and what is missing here is which hosts serve it. An earlier
+// spelling said the readback "identifies the declared launch, so the environment WOULD be
+// attributable" -- it does not, and no host roster would make it so. The obligation must name THAT
 // -- reading more of the lane roster answers nothing while the realization names no hosts (review
 // 64438).
 test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
@@ -413,9 +417,10 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
 }
 
 // RED -- AN UNRESOLVED READBACK IDENTIFIES NOTHING, so a route whose /v1/models document could not
-// be decoded cannot have an environment attributed to it either. This is the arm that makes the
-// identity join launch-bound rather than declaration-bound: with nothing reported by the process,
-// there is nothing to compare to the declared path.
+// be decoded cannot have an environment attributed to it either -- though neither can one whose
+// document DOES decode, since agreement is not identity. This arm is the case upstream of that
+// limit: with nothing reported by the process, there is nothing to compare to the declared path at
+// all, which is a different refusal reason from a comparison that succeeds and still settles nothing.
 test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
   match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv6],
