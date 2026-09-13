@@ -1,0 +1,223 @@
+module test.claim.spark.image_supply_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.image_supply {
+  ImagePossession, ExportStanding, ExportRetained, ExportMustBeProduced,
+  ImageDeliveryRoute, controller_mediated_copy, ImageOffer,
+  ImageSupply, SupplyOffered, PossessionWithoutRoute,
+  ImageRequirement,
+  OfferAdmission, OfferAdmitted, OfferRefused,
+  OfferRejection, OfferImageIdentityDiffers, OfferIsTheDestination, OfferHasNoDeliveryRoute,
+  SourceSelection, SourceSelected, NoAdmissibleSource, SourceNeedsPolicy,
+  admit_offer, select_image_source, plan_distribution, plan_requires_transfer, plan_is_actionable,
+  image_possession_observed, image_offer_for, image_requirement_for,
+  DistributionPlan, NoTransferNeeded, TransferPlanned,
+}
+
+// ── THE FOUR CONTROLS A SOURCE SELECTOR MUST HOLD ─────────────────────────────────────────────
+//
+// These are the product statements, asserted at the seam rather than described: a local copy avoids the
+// network, two missing destinations share one export, an undeliverable peer refuses instead of being
+// selected, and a same-tag/different-image source cannot satisfy the requirement.
+
+data w_required_id: NonEmptyStr = "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr
+data w_other_id: NonEmptyStr = "sha256:5a0f8b914da5000000000000000000000000000000000000000000000000dead" as NonEmptyStr
+data w_reference: NonEmptyStr = "gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4" as NonEmptyStr
+
+fn w_possession(host: String, image_id: NonEmptyStr) -> ImagePossession {
+  image_possession_observed(host: host as HostIdentity, reference: w_reference, image_id: image_id)
+}
+
+fn w_offer(host: String, image_id: NonEmptyStr, export: ExportStanding) -> ImageSupply {
+  SupplyOffered { offer: image_offer_for(
+    possession: w_possession(host: host, image_id: image_id),
+    export: export,
+    route: controller_mediated_copy,
+  ) }
+}
+
+fn w_requirement(hosts: List<HostIdentity>) -> ImageRequirement {
+  image_requirement_for(reference: w_reference, image_id: w_required_id, hosts: hosts)
+}
+
+// ── 1. A SAME-TAG, DIFFERENT-IMAGE SOURCE CANNOT SATISFY THE REQUIREMENT ──────────────────────
+//
+// THIS IS THE ONE THAT MATTERS MOST AND THE EASIEST TO GET WRONG. Both candidates carry the same
+// reference; only the id differs. A selector matching on the reference would pick the wrong runtime and
+// every downstream check -- the transfer, the load, the readback -- would agree with it, because they
+// would all be about the image it chose.
+test fn a_matching_tag_with_a_different_image_is_refused() -> Bool {
+  match admit_offer(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    destination: "srv10" as HostIdentity,
+    supply: w_offer(host: "srv5", image_id: w_other_id, export: ExportMustBeProduced),
+  ) {
+    OfferRefused { rejection: r } => match r {
+      OfferImageIdentityDiffers { host: _, observed: o, required: q } =>
+        (o as String) == (w_other_id as String) && (q as String) == (w_required_id as String)
+      OfferIsTheDestination { host: _ } => false
+      OfferHasNoDeliveryRoute { host: _, cause: _ } => false
+    }
+    OfferAdmitted { offer: _ } => false
+  }
+}
+
+// ── 2. POSSESSION WITHOUT A DELIVERY ROUTE IS NOT SUPPLY ──────────────────────────────────────
+//
+// The host genuinely holds the right image. It is still not a source, and the refusal says which of the
+// two facts is missing so an operator knows whether to go looking for the bytes or for a performer.
+test fn a_holder_with_no_route_is_not_selectable() -> Bool {
+  match admit_offer(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    destination: "srv10" as HostIdentity,
+    supply: PossessionWithoutRoute {
+      possession: w_possession(host: "srv5", image_id: w_required_id),
+      cause: "no transfer performer is bound on this host" as NonEmptyStr,
+    },
+  ) {
+    OfferRefused { rejection: r } => match r {
+      OfferHasNoDeliveryRoute { host: h, cause: _ } => (h as String) == "srv5"
+      OfferImageIdentityDiffers { host: _, observed: _, required: _ } => false
+      OfferIsTheDestination { host: _ } => false
+    }
+    OfferAdmitted { offer: _ } => false
+  }
+}
+
+// AND A FLEET OF HOLDERS WITH NO ROUTES IS AN EXPLICIT REFUSAL, not an empty market. The rejections are
+// carried so the answer distinguishes "nobody has it" from "everybody has it and nothing can move it".
+test fn holders_without_routes_refuse_with_their_reasons() -> Bool {
+  match select_image_source(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    destination: "srv10" as HostIdentity,
+    supplies: [
+      PossessionWithoutRoute { possession: w_possession(host: "srv5", image_id: w_required_id), cause: "no performer" as NonEmptyStr },
+      PossessionWithoutRoute { possession: w_possession(host: "srv6", image_id: w_required_id), cause: "no performer" as NonEmptyStr },
+    ],
+  ) {
+    NoAdmissibleSource { rejections: rs } => count(rs) == 2
+    SourceSelected { offer: _, reason: _ } => false
+    SourceNeedsPolicy { survivors: _ } => false
+  }
+}
+
+// ── 3. A PROVIDER MAY NOT BE ITS OWN DESTINATION ──────────────────────────────────────────────
+test fn the_destination_is_not_a_source_for_itself() -> Bool {
+  match admit_offer(
+    requirement: w_requirement(hosts: ["srv9" as HostIdentity]),
+    destination: "srv9" as HostIdentity,
+    supply: w_offer(host: "srv9", image_id: w_required_id, export: ExportMustBeProduced),
+  ) {
+    OfferRefused { rejection: r } => match r {
+      OfferIsTheDestination { host: h } => (h as String) == "srv9"
+      OfferImageIdentityDiffers { host: _, observed: _, required: _ } => false
+      OfferHasNoDeliveryRoute { host: _, cause: _ } => false
+    }
+    OfferAdmitted { offer: _ } => false
+  }
+}
+
+// ── 4. A RETAINED EXPORT WINS, AND AN UNSEPARABLE PAIR REFUSES ────────────────────────────────
+//
+// THE BUILD HOST IS NOT PRIVILEGED BY HAVING BEEN FIRST. srv5 built the image; srv9 received it and holds
+// a verified export. srv9 is the better source and the selector says so on the evidence, not on history.
+test fn the_provider_holding_an_export_is_selected() -> Bool {
+  match select_image_source(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    destination: "srv10" as HostIdentity,
+    supplies: [
+      w_offer(host: "srv5", image_id: w_required_id, export: ExportMustBeProduced),
+      w_offer(host: "srv9", image_id: w_required_id, export: ExportRetained {
+        archive_path: "/home/gunbc-automation/gunbc-vllm-build/image-archives/abc.tar" as NonEmptyStr,
+        archive_sha256: "69bbde5ee070d1e3d839210809a738a87c9d0b363f93118a2082ca40d13828ed" as NonEmptyStr,
+      }),
+    ],
+  ) {
+    SourceSelected { offer: o, reason: _ } => (o.possession.host as String) == "srv9"
+    NoAdmissibleSource { rejections: _ } => false
+    SourceNeedsPolicy { survivors: _ } => false
+  }
+}
+
+// TWO OFFERS THE POLICY CANNOT SEPARATE REFUSE RATHER THAN BEING BROKEN BY ROSTER ORDER. Answering with
+// whichever arrived first would make the result depend on discovery order, which is not a property of
+// either candidate.
+test fn two_equal_offers_need_a_policy() -> Bool {
+  match select_image_source(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    destination: "srv10" as HostIdentity,
+    supplies: [
+      w_offer(host: "srv5", image_id: w_required_id, export: ExportMustBeProduced),
+      w_offer(host: "srv9", image_id: w_required_id, export: ExportMustBeProduced),
+    ],
+  ) {
+    SourceNeedsPolicy { survivors: ss } => count(ss) == 2
+    SourceSelected { offer: _, reason: _ } => false
+    NoAdmissibleSource { rejections: _ } => false
+  }
+}
+
+// ── 5. AN EXISTING LOCAL COPY AVOIDS THE NETWORK ENTIRELY ─────────────────────────────────────
+test fn a_population_that_already_holds_the_image_needs_no_transfer() -> Bool {
+  let plan = plan_distribution(
+    requirement: w_requirement(hosts: ["srv9" as HostIdentity, "srv10" as HostIdentity]),
+    possessions: [
+      w_possession(host: "srv9", image_id: w_required_id),
+      w_possession(host: "srv10", image_id: w_required_id),
+    ],
+    supplies: [],
+  )
+  !plan_requires_transfer(p: plan) && plan_is_actionable(p: plan)
+}
+
+// AND A HOST HOLDING A DIFFERENT IMAGE UNDER THE SAME TAG STILL NEEDS ONE, which is control 1 applied to
+// the population split rather than to admission.
+test fn a_same_tag_different_image_host_still_needs_the_transfer() -> Bool {
+  let plan = plan_distribution(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    possessions: [w_possession(host: "srv10", image_id: w_other_id)],
+    supplies: [w_offer(host: "srv9", image_id: w_required_id, export: ExportMustBeProduced)],
+  )
+  match plan {
+    TransferPlanned { present: p, needing: n, source: _ } => count(p) == 0 && count(n) == 1
+    NoTransferNeeded { present: _ } => false
+  }
+}
+
+// ── 6. TWO MISSING DESTINATIONS SHARE ONE SOURCE ──────────────────────────────────────────────
+//
+// The source is chosen ONCE for the population, which is what makes the export shared preparation rather
+// than per-destination work.
+test fn two_missing_destinations_plan_one_source() -> Bool {
+  let plan = plan_distribution(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity, "srv11" as HostIdentity, "srv9" as HostIdentity]),
+    possessions: [w_possession(host: "srv9", image_id: w_required_id)],
+    supplies: [w_offer(host: "srv9", image_id: w_required_id, export: ExportRetained {
+      archive_path: "/tmp/a.tar" as NonEmptyStr,
+      archive_sha256: "69bbde5e" as NonEmptyStr,
+    })],
+  )
+  match plan {
+    TransferPlanned { present: p, needing: n, source: s } =>
+      count(p) == 1 && count(n) == 2
+        && match s {
+             SourceSelected { offer: o, reason: _ } => (o.possession.host as String) == "srv9"
+             NoAdmissibleSource { rejections: _ } => false
+             SourceNeedsPolicy { survivors: _ } => false
+           }
+    NoTransferNeeded { present: _ } => false
+  }
+}
+
+// AND A PLAN WHOSE SOURCE DID NOT RESOLVE IS NOT ACTIONABLE, so a caller cannot read `needing` and start
+// copying from a fleet that has no admissible provider.
+test fn a_plan_with_no_source_is_not_actionable() -> Bool {
+  let plan = plan_distribution(
+    requirement: w_requirement(hosts: ["srv10" as HostIdentity]),
+    possessions: [],
+    supplies: [],
+  )
+  plan_requires_transfer(p: plan) && !plan_is_actionable(p: plan)
+}
