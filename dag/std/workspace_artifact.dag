@@ -16,6 +16,13 @@ import std.types { String, List }
 // vocabulary so a census over reasons is a fold, not a text scan. SupersededAuthority names
 // the canonical home that replaced the ignored path, so "this directory is dead, its facts
 // live at X" is data rather than a comment.
+//
+// ForeignPrivateMaterial is not a stronger MayContainSecrets, and the distinction is the
+// reason it is its own arm rather than a reuse. MayContainSecrets is about bytes THIS
+// repository's own tools produce that happen to carry a credential; ForeignPrivateMaterial is
+// about bytes that BELONG TO A DIFFERENT REPOSITORY with a different visibility, so tracking
+// them here is a disclosure rather than a hygiene defect, and the named repository — not this
+// one — is their single authority.
 type IgnoreReason
   = RegenerableFromSource
   | LocalCacheState
@@ -25,6 +32,7 @@ type IgnoreReason
   | MayContainSecrets
   | OutsideSubstrate
   | SupersededAuthority { canonical: String }
+  | ForeignPrivateMaterial { owner_repository: String }
 
 fn ignore_reason_label(r: IgnoreReason) -> String {
   match r {
@@ -36,6 +44,7 @@ fn ignore_reason_label(r: IgnoreReason) -> String {
     MayContainSecrets => "may contain secrets; never committed"
     OutsideSubstrate => "outside the committed substrate"
     SupersededAuthority { canonical: c } => concat("superseded; canonical home: ", c)
+    ForeignPrivateMaterial { owner_repository: r } => concat("private material of another repository; MUST NEVER be tracked here — owner: ", r)
   }
 }
 

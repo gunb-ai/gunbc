@@ -31,3 +31,26 @@ test fn witness_gitignore_gate_drift_receipt() -> Bool {
     && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
 }
 
+// The private-material rows are not ordinary hygiene rows: they are the only reason arm whose
+// absence is a DISCLOSURE rather than a dirty tree, so they carry their own witness rather than
+// riding on witness_clean_does_not_drift. The negative half is what discriminates: a path that
+// merely CONTAINS the word private must not be ignored, so the wall is the declared directory
+// names and not a substring sweep.
+test fn witness_private_material_rows_are_emitted() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: "private_repo/")
+    && string_contains(s: eg, pattern: "private_overlay/")
+    && string_contains(s: eg, pattern: "base_overlay/")
+    && string_contains(s: eg, pattern: "wb62_overlay/")
+    && string_contains(s: eg, pattern: "privdag/")
+    && string_contains(s: eg, pattern: "private material of another repository; MUST NEVER be tracked here")
+}
+
+test fn witness_private_material_paths_are_ignored() -> Bool {
+  path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
+    && path_is_ignored(path: "private_repo/dag/finance/model.dag")
+    && path_is_ignored(path: "base_overlay/dag/x.dag")
+    && path_is_ignored(path: "wb62_overlay/dag/x.dag")
+    && path_is_ignored(path: "privdag/gunbc/x.dag")
+    && !path_is_ignored(path: "dag/gunbc/private_direction_note.dag")
+}
