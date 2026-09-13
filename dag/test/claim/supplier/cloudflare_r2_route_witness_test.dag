@@ -1,0 +1,331 @@
+module test.claim.supplier.cloudflare_r2_route_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  ProviderPathUnread, DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionCleared,
+  admit_provider_use,
+}
+import product.supplier.cloudflare_r2 {
+  cloudflare_r2_route,
+  cloudflare_r2_durable_origin_route_standing,
+  cloudflare_r2_route_facts_population,
+  cloudflare_r2_data_paths,
+  cloudflare_r2_facts,
+  CloudflareR2RegionObservation,
+  CloudflareR2RegionRead,
+  CloudflareR2RouteObserved,
+  CloudflareR2RouteRegionUnobserved,
+}
+import extdeps.cloudflare.r2 {
+  r2_jurisdiction_wire,
+  R2JurisdictionDefault,
+  R2JurisdictionEu,
+  R2JurisdictionFedramp,
+  R2JurisdictionUs,
+}
+
+data r2_witness_customer_profile: NonEmptyStr = "r2-witness-customer-profile"
+data r2_witness_data_handling_profile: NonEmptyStr = "r2-witness-data-handling-profile"
+data r2_witness_agreement: NonEmptyStr = "r2-witness-agreement"
+data r2_witness_posture_authority: NonEmptyStr = "r2-witness-posture-authority"
+data r2_witness_decision_receipt: NonEmptyStr = "r2-witness-decision-receipt"
+data r2_witness_prohibited_use_cleared: NonEmptyStr = "r2-witness-prohibited-use-cleared"
+data r2_witness_sanctions_cleared: NonEmptyStr = "r2-witness-sanctions-cleared"
+data r2_witness_export_cleared: NonEmptyStr = "r2-witness-export-cleared"
+data r2_witness_resolved_operator: NonEmptyStr = "r2-witness-resolved-operator"
+data r2_witness_resolved_jurisdiction: NonEmptyStr = "r2-witness-resolved-jurisdiction"
+data r2_witness_resolved_evidence: NonEmptyStr = "r2-witness-resolved-evidence"
+data r2_witness_no_downstream: NonEmptyStr = "r2-witness-no-downstream"
+data r2_witness_synthetic_region: NonEmptyStr = "r2-witness-synthetic-region"
+
+fn t_resolved() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_resolved_operator"),
+    jurisdiction: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_resolved_jurisdiction"),
+    evidence: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_resolved_evidence"),
+  }
+}
+
+fn t_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_posture_authority"),
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "r2-witness-posture-r1" as NonEmptyStr)),
+  }
+}
+
+fn t_customer_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_customer_profile")
+}
+
+fn t_data_handling_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_data_handling_profile")
+}
+
+fn t_agreement() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_agreement")
+}
+
+// THE DISCRIMINATOR ROUTE IS MINTED ONLY IN THE READ ARM, SAME CONSTRUCTION AS PRODUCTION.
+// It is not gunbai-fabric-origin: that standing is Unobserved, so no origin route exists to
+// admit. The pair below asks whether admit_provider_use still refuses an unread path and
+// admits once that path is resolved, on a route the coproduct is allowed to mint.
+fn t_read_region() -> CloudflareR2RegionObservation {
+  CloudflareR2RegionRead {
+    region: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
+  }
+}
+
+fn t_sanction(route: ProviderRoute) -> RouteScopeSanction {
+  RouteScopeSanction {
+    route: route,
+    posture: t_posture(),
+    customer_profile: t_customer_profile(),
+    data_handling_profile: t_data_handling_profile(),
+    requires_agreement: t_agreement(),
+  }
+}
+
+fn t_roster(route: ProviderRoute) -> List<RouteScopeSanction> {
+  [t_sanction(route: route)]
+}
+
+fn t_scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "r2-witness-demand-1" as DemandKey },
+    work: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "r2-witness-work-1" as WorkKey },
+    customer_profile: t_customer_profile(),
+    data_handling_profile: t_data_handling_profile(),
+    agreement: t_agreement(),
+    prohibited_use_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_prohibited_use_cleared"),
+    },
+    sanctions_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_sanctions_cleared"),
+    },
+    export_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_export_cleared"),
+    },
+  }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "r2-witness-offer-1" as OfferKey }
+}
+
+fn t_decide(route: ProviderRoute, facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: t_roster(route: route),
+    facts: facts,
+    active: t_posture(),
+    scope: t_scope(),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_decision_receipt"),
+  )
+}
+
+fn t_refusal_tag(c: ProviderUseRefusal) -> String {
+  match c {
+    ProviderRouteUnclassified { route } => "route-unclassified",
+    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureRevisionStale { evaluated, active } => "posture-stale",
+    CustomerScopeUnsupported { cause } => "customer-unsupported",
+    DataHandlingUnsupported { cause } => "data-handling-unsupported",
+    RequiredAgreementAuthorityAbsent { accepted } => "agreement-absent",
+    ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
+    SanctionsNotCleared { obligation } => "sanctions-not-cleared",
+    ExportNotCleared { obligation } => "export-not-cleared",
+  }
+}
+
+fn t_refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [cause],
+    DataHandlingUnsupported { cause } => [cause],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
+    ProhibitedUseNotCleared { obligation } => [obligation],
+    SanctionsNotCleared { obligation } => [obligation],
+    ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: DeclarationRef) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      t_refusal_tag(c: cause) == tag
+        && count(filter(t_refusal_located(c: cause), r => declaration_ref_eq(a: r, b: located))) == 1,
+  }
+}
+
+test fn the_durable_origin_region_is_unread() -> Bool {
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteObserved { route } => false,
+    CloudflareR2RouteRegionUnobserved { obligation } => declaration_ref_eq(
+      a: obligation,
+      b: decl_ref(
+        module_path: "product.supplier.cloudflare_r2",
+        decl_name: "cloudflare_r2_region_unread_obligation",
+      ),
+    ),
+  }
+}
+
+test fn the_durable_storage_path_is_unread_with_the_location_obligation() -> Bool {
+  match cloudflare_r2_data_paths().durable_storage {
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathAbsent { evidence } => false,
+    ProviderPathUnread { obligation } => declaration_ref_eq(
+      a: obligation,
+      b: decl_ref(
+        module_path: "product.supplier.cloudflare_r2",
+        decl_name: "cloudflare_r2_durable_storage_location_obligation",
+      ),
+    ),
+  }
+}
+
+test fn no_production_path_is_absent() -> Bool {
+  let c = cloudflare_r2_data_paths()
+  let paths = [
+    c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+    c.control_plane, c.support_access, c.administrative_access, c.spill,
+  ]
+  count(filter(paths, p => match p {
+    ProviderPathAbsent { evidence } => true,
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathUnread { obligation } => false,
+  })) == 0
+}
+
+test fn every_production_path_is_unread() -> Bool {
+  let c = cloudflare_r2_data_paths()
+  let paths = [
+    c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+    c.control_plane, c.support_access, c.administrative_access, c.spill,
+  ]
+  count(filter(paths, p => match p {
+    ProviderPathUnread { obligation } => true,
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathAbsent { evidence } => false,
+  })) == 9
+}
+
+fn t_paths_with_durable_storage(storage: ProviderPathStanding) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: t_resolved(),
+    durable_storage: storage,
+    backups: t_resolved(),
+    logs: t_resolved(),
+    telemetry: t_resolved(),
+    control_plane: t_resolved(),
+    support_access: t_resolved(),
+    administrative_access: t_resolved(),
+    spill: t_resolved(),
+  }
+}
+
+fn t_synthetic_downstream() -> DownstreamProviderPopulation {
+  NoDownstreamProviders {
+    evidence: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_no_downstream"),
+  }
+}
+
+fn t_facts_with_durable_storage(route: ProviderRoute, storage: ProviderPathStanding) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_reading"),
+    data_paths: t_paths_with_durable_storage(storage: storage),
+    downstream: t_synthetic_downstream(),
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "r2-witness-discriminator" as NonEmptyStr)),
+  }
+}
+
+test fn resolving_every_data_path_does_not_admit_the_durable_origin() -> Bool {
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteObserved { route } => false,
+    CloudflareR2RouteRegionUnobserved { obligation } =>
+      count(cloudflare_r2_route_facts_population()) == 0
+        && count(filter(cloudflare_r2_route_facts_population(), f => match t_decide(route: f.route, facts: f) {
+          ProviderUseAdmitted { permit } => true,
+          ProviderUseDenied { decision, cause } => false,
+        })) == 0,
+  }
+}
+
+test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
+    CloudflareR2RouteRegionUnobserved { obligation } => false,
+    CloudflareR2RouteObserved { route } => t_denied_with(
+      a: t_decide(
+        route: route,
+        facts: t_facts_with_durable_storage(route: route, storage: ProviderPathUnread {
+          obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+        }),
+      ),
+      tag: "facts-incomplete",
+      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+    ),
+  }
+}
+
+test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
+    CloudflareR2RouteRegionUnobserved { obligation } => false,
+    CloudflareR2RouteObserved { route } => match t_decide(
+      route: route,
+      facts: t_facts_with_durable_storage(route: route, storage: t_resolved()),
+    ) {
+      ProviderUseDenied { decision, cause } => false,
+      ProviderUseAdmitted { permit } =>
+        declaration_ref_eq(
+          a: permit.route.provider,
+          b: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+        )
+          && declaration_ref_eq(
+            a: permit.route.region,
+            b: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
+          )
+          && declaration_ref_eq(
+            a: permit.evidence.customer_profile,
+            b: t_customer_profile(),
+          ),
+    },
+  }
+}
+
+test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
+    CloudflareR2RouteRegionUnobserved { obligation } => false,
+    CloudflareR2RouteObserved { route } => t_denied_with(
+      a: t_decide(route: route, facts: cloudflare_r2_facts(route: route)),
+      tag: "facts-incomplete",
+      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
+    ),
+  }
+}
+
+test fn default_jurisdiction_wire_is_not_a_restriction() -> Bool {
+  (r2_jurisdiction_wire(jurisdiction: R2JurisdictionDefault) as String) == "default"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionEu) as String) == "eu"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionUs) as String) == "us"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionFedramp) as String) == "fedramp"
+}

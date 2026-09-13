@@ -1,0 +1,139 @@
+module extdeps.cloudflare.r2_data_location
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/reference/data-location"
+  }
+}
+
+data r2_how_r2_works_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/how-r2-works"
+  }
+}
+
+data r2_us_jurisdiction_changelog_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/changelog/post/2026-08-17-r2-us-jurisdiction"
+  }
+}
+
+data cloudflare_subprocessors_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.cloudflare.com/gdpr/subprocessors/cloudflare-services"
+  }
+}
+
+data cloudflare_customer_dpa_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cf-assets.www.cloudflare.com/slt3lc6tev37/1TTgT35GoUNlKZYGuKWBFy/4e7dfc8cf402419a9b1cf624291fc69f/cloudflare_customer_dpa-v6.4_april_3_2026.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.r2_data_location",
+      decl_name: "r2_placement_automatic",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    r2_how_r2_works_authority,
+    r2_us_jurisdiction_changelog_authority,
+    cloudflare_subprocessors_authority,
+    cloudflare_customer_dpa_authority,
+  ]
+}
+
+// EACH ROW CARRIES THE DOCUMENT, THE DATE IT WAS READ, AND THE SENTENCE IT WAS READ FOR. The
+// statement field is a TRANSCRIPTION of upstream's own words, not commentary about them. A reading
+// is dated and never silently refreshed: upstream edits a page without telling anyone, so a
+// statement that no longer appears at its URI is a NEW reading with a later date.
+// AUTHORITY IS A CITATION TO THE PAGE'S EXISTING ROW, NOT A SECOND URI STRUCT. The tokens page
+// already lives as extdeps.cloudflare.r2 extdeps_external_authority_anchor; a second ExternalAuthority
+// with the same locator would be independently editable and is the nickname DESIGN section 3
+// forbids. Pages this module introduces keep their ExternalAuthority rows and are cited from here.
+type CloudflarePublishedReading {
+  authority: DeclarationRef
+  read_on: NonEmptyStr
+  statement: NonEmptyStr
+}
+
+data r2_data_location_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "extdeps_external_authority_anchor"),
+  read_on: "2026-09-12",
+  statement: "When you create a new bucket, the data location is set to Automatic by default. Currently, this option chooses a bucket location in the closest available region to the create bucket request based on the location of the caller. Location Hints are optional parameters you can provide during bucket creation to indicate the primary geographical location you expect data will be accessed from. Location Hints are a best effort and not a guarantee, and they should only be used as a way to optimize performance. Available hints: wnam Western North America, enam Eastern North America, weur Western Europe, eeur Eastern Europe, apac Asia-Pacific, oc Oceania. Jurisdictional Restrictions guarantee objects in a bucket are stored within a specific jurisdiction. Use Jurisdictional Restrictions when you need to ensure data is stored and processed within a jurisdiction to meet data residency requirements. Available jurisdictions: eu European Union, fedramp FedRAMP, us United States. The following services do not interact with R2 resources with assigned jurisdictions: Logpush. Once an R2 bucket is created, the jurisdiction cannot be changed. Page last updated Aug 19, 2026.",
+}
+
+data r2_how_r2_works_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_how_r2_works_authority"),
+  read_on: "2026-09-12",
+  statement: "R2 Gateway: The entry point for all API requests that handles authentication and routing logic. This service is deployed across Cloudflare's global network via Cloudflare Workers. Metadata Service: A distributed layer built on Durable Objects used to store and manage object metadata. Distributed Storage Infrastructure: The underlying infrastructure that persistently stores encrypted object data. On write, the Gateway determines which storage cluster to write the encrypted data to within the location set for the bucket. The encrypted data is written and stored in the distributed storage infrastructure, and replicated within the region (e.g. ENAM) for durability. On read, if the object is not in the tiered read cache, it retrieves the object from one of the distributed storage data centers within the region that holds the object data. Page last updated Apr 21, 2026.",
+}
+
+data r2_us_jurisdiction_changelog_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_us_jurisdiction_changelog_authority"),
+  read_on: "2026-09-12",
+  statement: "New us jurisdiction for R2. R2 now supports a us jurisdiction, which guarantees that bucket data is stored and processed within the United States. Use this jurisdiction when you need explicit US data residency guarantees. Use the jurisdiction-specific S3 endpoint https://<ACCOUNT_ID>.us.r2.cloudflarestorage.com. Once an R2 bucket is created, its jurisdiction cannot be changed. Posted 2026-08-17.",
+}
+
+data r2_tokens_default_jurisdiction_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "extdeps_external_authority_anchor"),
+  read_on: "2026-09-12",
+  statement: "A specific bucket is represented as com.cloudflare.edge.r2.bucket.<ACCOUNT_ID>_<JURISDICTION>_<BUCKET_NAME>. JURISDICTION: The jurisdiction where the R2 bucket lives. For buckets not created in a specific jurisdiction this value will be default.",
+}
+
+data cloudflare_subprocessors_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_subprocessors_authority"),
+  read_on: "2026-09-12",
+  statement: "Last Updated: October 1, 2025. Cloudflare uses a handful of sub-processors to support the Cloudflare service. Some of these sub-processors are members of the Cloudflare Group (Cloudflare, Inc. and its subsidiaries) and some are third parties. Third-party entities include Slack Technologies, Inc. (Customer support communications, United States); Zendesk, Inc. (Customer support and account management, United States, the European Economic Area, Japan, and Australia); Salesforce, Inc. (Customer support and account management, United States); Google LLC (Cloudflare Developer Platform, Cloudflare Zero Trust and AI Gateway; European Economic Area, United States, Australia, India); Oracle America, Inc. (Cloudflare Developer Platform and Cache Reserve; United States, European Economic Area, UK, Japan, Australia, Canada, Singapore); Amazon Web Services (Cloudflare Email Security; United States, European Economic Area); CoreWeave, Inc., Nebius BV (Workers AI); Anthropic PBC, OpenAI, Inc., X.AI Corp., Groq, Inc. (AI Gateway). The page lists Cloudflare Group subsidiaries by location and does not key any row to a named R2 bucket or to the default jurisdiction.",
+}
+
+data cloudflare_customer_dpa_reading: CloudflarePublishedReading = CloudflarePublishedReading {
+  authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_authority"),
+  read_on: "2026-09-12",
+  statement: "Cloudflare, Inc. Data Processing Addendum, Version 6.4 April 3, 2026. The Customer grants a general written authorization: (a) to Cloudflare to appoint other members of the Cloudflare Group as sub-Processors, and (b) to Cloudflare and other members of the Cloudflare Group to appoint third party data center operators, and business, engineering and customer support providers as sub-Processors to support the performance of the Service. Cloudflare will maintain a list of sub-Processors at https://www.cloudflare.com/gdpr/subprocessors/. This DPA and any action related thereto shall be governed by and construed in accordance with the laws as specified in the Main Agreement, and the parties consent to the personal jurisdiction of, and venue in, the courts specified in the Main Agreement.",
+}
+
+// THE COMPANY PARTY IS extdeps.vendor.cloudflare cloudflare. A legal-name literal here would be
+// a second name for that Vendor row (DESIGN section 3). Address and country from a docs publisher
+// block are not a residency commitment and are not minted as a parallel party. The route's
+// provider slot cites that vendor row.
+//
+// JURISDICTION TAGS LIVE ON extdeps.cloudflare.r2 R2Jurisdiction. This module does not re-export
+// them, does not wrap them in unused restriction rows, and does not export a Bool over the
+// coproduct. A Bool over that type would be the same attractor product.fabric.provider_admission
+// deleted from path_is_resolved: it discards the arm, so a later caller walks the value again.
+// Location hints stay in r2_data_location_reading rather than as a coproduct: no production path
+// consults a hint identity, and a constantly-false residency predicate over one would be a
+// permanently-green decoration (DESIGN sections 3c and 4b). The same argument forbids a production
+// Bool over R2Jurisdiction. The default wire value is transcribed in
+// r2_tokens_default_jurisdiction_reading; the fleet bucket's jurisdiction is
+// gunbc.cloudflare.r2_origin fabric_durable_origin_standing.
+
+// AUTOMATIC IS A CHOICE MECHANISM, AND THAT IS WHAT THIS ROW RECORDS. It is the region a route
+// cites when a bucket was created without a jurisdictional restriction: not a country, not a
+// data-center park, and not a residency commitment. Treating R2JurisdictionDefault, a dashboard
+// Location label, or a Location Hint as the place the bytes live is the reading this row exists
+// to make unusable as a location fact. Automatic is not an arm of R2Jurisdiction — that type's
+// corresponding non-guarantee is R2JurisdictionDefault, owned by extdeps.cloudflare.r2.
+type R2PlacementModeRow {
+  reading: CloudflarePublishedReading
+}
+
+data r2_placement_automatic: R2PlacementModeRow = R2PlacementModeRow {
+  reading: r2_data_location_reading,
+}

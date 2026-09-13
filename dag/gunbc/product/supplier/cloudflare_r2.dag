@@ -1,0 +1,172 @@
+module product.supplier.cloudflare_r2
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.provider_route {
+  ProviderRoute, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathUnread,
+  DownstreamProviderPopulation, DownstreamProvidersUnread,
+}
+
+// THE DURABLE-ORIGIN ROUTE THIS REPOSITORY ANSWERS THE NINE-PATH CLOSURE FOR, AND THE ROW REFUSES.
+//
+// WHAT WAS READ. Cloudflare's R2 data-location page, how-R2-works page, us-jurisdiction changelog,
+// tokens page, subprocessors list and Customer DPA v6.4 were read on 2026-09-12 and transcribed
+// in extdeps.cloudflare.r2_data_location. The durable origin in this fleet
+// (gunbc.cloudflare.r2_origin fabric_durable_origin_standing, bucket gunbai-fabric-origin) carries
+// R2JurisdictionDefault. That module already states that Default is not a data-residency
+// commitment this fleet has made. The upstream reading confirms the same fact in Cloudflare's
+// words: Automatic placement chooses a region from the caller's location at create time; Location
+// Hints are a best effort and not a guarantee; only Jurisdictional Restrictions (eu, us, fedramp)
+// guarantee objects are stored and processed within a jurisdiction. Default, on the tokens page,
+// is the wire value for buckets not created in a specific jurisdiction.
+//
+// WHAT WAS NOT FOUND, AND THEREFORE WHAT THIS MODULE MUST NOT MINT. No document read names the
+// country, the region, or the storage cluster that holds objects in THIS bucket. A dashboard
+// label, a default jurisdiction setting, and a hint are choices. Reaching for ProviderPathLocated
+// to make a compliance posture able to include R2 would manufacture the fact the posture is
+// supposed to rest on. ProviderPathAbsent is also not taken: nobody has stated that any of these
+// nine paths do not exist.
+//
+// THE REGION SLOT IS NOT A PLACE TO RECORD THAT FINDING. product.fabric.provider_route says the
+// cited region is where the work actually runs, observed at a declared boundary and never
+// fabricated. extdeps.cloudflare.r2_data_location r2_placement_automatic is a CHOICE MECHANISM,
+// and putting it in ProviderRoute.region would make Automatic an admitted location the moment a
+// roster row and a resolved path closure exist -- which is validation standing where construction
+// was available (DESIGN section 5). product.supplier.ubicloud already ruled that shape out:
+// a ProviderRoute is minted ONLY from a read region. Automatic stays in the location module as
+// the reading of the choice; it does not occupy this slot.
+//
+// BOTH THE REFUSING PRODUCTION STANDING AND THE DISCRIMINATING PAIR ARE THE DELIVERABLE.
+
+fn cloudflare_r2_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare")
+}
+
+fn cloudflare_r2_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "extdeps_external_authority_anchor")
+}
+
+type CloudflareR2RegionObservation
+  = CloudflareR2RegionRead { region: DeclarationRef }
+  | CloudflareR2RegionUnread { obligation: DeclarationRef }
+
+type CloudflareR2RouteStanding
+  = CloudflareR2RouteObserved { route: ProviderRoute }
+  | CloudflareR2RouteRegionUnobserved { obligation: DeclarationRef }
+
+data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. extdeps.cloudflare.r2_data_location r2_data_location_reading states that Automatic placement chooses a region from the caller's location at create time and that Location Hints are a best effort, not a guarantee. Automatic is therefore a CHOICE, not a location, and it is not a value of ProviderRoute.region. RESOLVED BY a Cloudflare statement that names the jurisdiction or operating region of gunbai-fabric-origin the way Jurisdictional Restrictions do, or by recreating the origin under such a restriction -- at which point this standing takes CloudflareR2RegionRead with that named location as region. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or a Location Hint."
+
+fn cloudflare_r2_durable_origin_region() -> CloudflareR2RegionObservation {
+  CloudflareR2RegionUnread {
+    obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
+  }
+}
+
+fn cloudflare_r2_route(region: CloudflareR2RegionObservation) -> CloudflareR2RouteStanding {
+  match region {
+    CloudflareR2RegionUnread { obligation } =>
+      CloudflareR2RouteRegionUnobserved { obligation: obligation },
+    CloudflareR2RegionRead { region: observed } =>
+      CloudflareR2RouteObserved {
+        route: ProviderRoute {
+          provider: cloudflare_r2_provider_ref(),
+          service: cloudflare_r2_service_ref(),
+          region: observed,
+        },
+      },
+  }
+}
+
+fn cloudflare_r2_durable_origin_route_standing() -> CloudflareR2RouteStanding {
+  cloudflare_r2_route(region: cloudflare_r2_durable_origin_region())
+}
+
+data cloudflare_r2_execution_location_obligation: NonEmptyStr = "Where R2 executes object operations for a default-jurisdiction bucket is UNREAD. extdeps.cloudflare.r2_data_location r2_how_r2_works_reading states that the R2 Gateway is deployed across Cloudflare's global network via Cloudflare Workers, close to the user, and that the Gateway then writes to a storage cluster within the location set for the bucket. That is an architecture of a CHOICE, not a location of this fleet's bucket. RESOLVED BY a Cloudflare statement naming the jurisdiction or operating entity of request handling for a named default-jurisdiction bucket -- at which point this path takes Located with that entity as operator. It is NOT resolved by R2JurisdictionDefault, by Automatic placement, or by a Location Hint."
+
+data cloudflare_r2_durable_storage_location_obligation: NonEmptyStr = "Where objects in this fleet's durable origin are stored is UNREAD, and that is a read of Cloudflare's own location rules rather than a missing document. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. extdeps.cloudflare.r2_data_location r2_data_location_reading (URI developers.cloudflare.com/r2/reference/data-location, read 2026-09-12) states that a new bucket's data location is Automatic by default, which chooses a bucket location in the closest available region to the create bucket request based on the location of the caller; that Location Hints are a best effort and not a guarantee; and that Jurisdictional Restrictions (eu, us, fedramp) are what guarantee objects are stored and processed within a jurisdiction. r2_tokens_default_jurisdiction_reading states that for buckets not created in a specific jurisdiction the wire value is default. THIS PATH IS THEREFORE A CHOICE, NOT A LOCATION. RESOLVED BY recreating the origin under a Jurisdictional Restriction that names a jurisdiction, or by a Cloudflare statement that objects in gunbai-fabric-origin are stored and processed within a named jurisdiction the way Jurisdictional Restrictions do. It is NOT resolved by reading the API location field (wnam/enam/weur/eeur/apac/oc), which upstream lists as a hint, nor by treating R2JurisdictionDefault as residency."
+
+data cloudflare_r2_backups_location_obligation: NonEmptyStr = "Where R2 replicates objects for durability on a default-jurisdiction bucket is UNREAD. extdeps.cloudflare.r2_data_location r2_how_r2_works_reading states that encrypted data is replicated within the region (e.g. ENAM) for durability, and it names no region for a default-jurisdiction bucket and no country for that replication. RESOLVED BY a Cloudflare statement of the region or jurisdiction inside which objects of a named default-jurisdiction bucket are replicated. It is NOT resolved by the example token ENAM in that sentence."
+
+data cloudflare_r2_logs_location_obligation: NonEmptyStr = "Where R2 or the Cloudflare platform stores logs of access to a default-jurisdiction bucket is UNREAD. extdeps.cloudflare.r2_data_location r2_data_location_reading states that Logpush does not interact with R2 resources with assigned jurisdictions, which is a fact about jurisdictional buckets and does not say where logs of a default-jurisdiction bucket go, nor that no such logs exist. THE ABSENT ARM IS DELIBERATELY NOT TAKEN. RESOLVED BY a Cloudflare statement about logging of R2 object access, in either direction: an explicit none makes this path Absent with that document as evidence, and a described store makes it Located at whoever receives it."
+
+data cloudflare_r2_telemetry_location_obligation: NonEmptyStr = "Whether Cloudflare collects telemetry about a default-jurisdiction R2 bucket, what it carries, and where it goes, is UNREAD. Nothing in the documents read on 2026-09-12 describes a telemetry or usage-reporting path for R2 object storage as a located destination. THE ABSENT ARM IS DELIBERATELY NOT TAKEN: silence is not a denial. RESOLVED BY a Cloudflare statement about R2 telemetry, in either direction."
+
+data cloudflare_r2_control_plane_location_obligation: NonEmptyStr = "Where the R2 control plane -- the Dashboard, the S3 API, the REST API that powers Wrangler, and the Metadata Service -- runs for a default-jurisdiction bucket, and under whose jurisdiction, is UNREAD. r2_how_r2_works_reading places the Gateway on the global network and the Metadata Service on Durable Objects and names no country for either. RESOLVED BY a Cloudflare document naming the location or the operating entity of those control-plane components for a given bucket jurisdiction."
+
+data cloudflare_r2_support_access_obligation: NonEmptyStr = "From which jurisdiction Cloudflare support reaches a default-jurisdiction R2 bucket is UNREAD. extdeps.cloudflare.r2_data_location cloudflare_subprocessors_reading names Slack, Zendesk and Salesforce for customer support, with locations that include the United States and, for Zendesk, also the EEA, Japan and Australia. That is a company-wide support-tool list, not a statement that support access to THIS bucket's objects is exercised from those places or that it is not. RESOLVED BY a Cloudflare statement of where support access to a given R2 bucket's objects is exercised from."
+
+data cloudflare_r2_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to a default-jurisdiction R2 bucket is exercised is UNREAD. The subprocessors page states that Cloudflare Group companies may be sub-processors because employees of those affiliates may need to provide account and engineering support, and it lists subsidiaries in the United Kingdom, Singapore, Australia, Germany, Portugal, France, Japan, Canada, the Netherlands, the U.A.E., India, the United States, South Korea, Mexico, Malaysia, Sweden and Switzerland. That names WHO may provide support, not FROM WHERE administrative access to this bucket is exercised, and it does not locate this bucket. RESOLVED BY a Cloudflare statement of where administrative access to a named default-jurisdiction R2 bucket is exercised from."
+
+data cloudflare_r2_spill_location_obligation: NonEmptyStr = "Where customer material may SPILL on an R2 default-jurisdiction route -- caches, diagnostic captures, undeleted replicas, Local Uploads, tiered read cache -- is UNREAD. r2_how_r2_works_reading describes a Tiered Read Cache and Local Uploads and names no country for either, and it does not say that no other spill surface exists. THE ABSENT ARM IS DELIBERATELY NOT TAKEN. RESOLVED BY a Cloudflare statement about host-side or cache-side copies of R2 object bytes for default-jurisdiction buckets, which may resolve this path in either direction."
+
+data cloudflare_r2_downstream_obligation: NonEmptyStr = "Which parties process objects stored in a default-jurisdiction R2 bucket on Cloudflare's behalf is UNREAD. The Customer DPA v6.4 (read 2026-09-12) authorizes Cloudflare Group members and third-party data center operators as sub-Processors, and the subprocessors list (last updated October 1, 2025, read 2026-09-12) enumerates tools and platforms by activity, including Google LLC and Oracle America, Inc. for the Cloudflare Developer Platform. THAT LIST IS NOT KEYED TO A NAMED R2 BUCKET OR TO THE DEFAULT JURISDICTION, so enumerating it as this route's downstream population would claim coverage the table does not give, and reporting none would claim the negative the table also does not give. RESOLVED BY a Cloudflare statement that names which subprocessors process objects in a named default-jurisdiction R2 bucket -- at which point this population takes Enumerated with that document as coverage -- or an explicit none for that bucket, which takes NoDownstreamProviders with that document as evidence."
+
+fn cloudflare_r2_data_paths() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
+    },
+    durable_storage: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+    },
+    backups: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_backups_location_obligation"),
+    },
+    logs: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_logs_location_obligation"),
+    },
+    telemetry: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_telemetry_location_obligation"),
+    },
+    control_plane: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_control_plane_location_obligation"),
+    },
+    support_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_support_access_obligation"),
+    },
+    administrative_access: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_administrative_access_obligation"),
+    },
+    spill: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_spill_location_obligation"),
+    },
+  }
+}
+
+fn cloudflare_r2_downstream() -> DownstreamProviderPopulation {
+  DownstreamProvidersUnread {
+    obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_downstream_obligation"),
+  }
+}
+
+fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_reading"),
+    data_paths: cloudflare_r2_data_paths(),
+    downstream: cloudflare_r2_downstream(),
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "product.supplier.cloudflare_r2.durable-origin-route-facts.2026-09-12" as NonEmptyStr)),
+  }
+}
+
+// THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION. Nobody has stated that we are
+// willing to place work on this vendor's default-jurisdiction R2 under a named posture. Writing a
+// roster row here to make the module look complete would be the fabricated authority the gate exists
+// to close. The module supplies only the route facts. Callers that need a permit call
+// product.fabric.provider_admission admit_provider_use with those facts; there is no wrapper here
+// because a wrapper with nothing of its own to bind would be a second name for that fold.
+//
+// DECLARED FRONTIER (DESIGN section 3c). The production consumer is a posture producer that mints a
+// CompliancePostureRevision whose permitted_jurisdictions enumerate only routes whose facts have
+// been read and cleared. TRIGGER: that producer, SUFFICIENT FOR this route to be included or
+// omitted by matching these facts rather than by a dashboard label. Until then the executing
+// consumer is the witness.
+fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteRegionUnobserved { obligation } => [],
+    CloudflareR2RouteObserved { route } => [cloudflare_r2_facts(route: route)],
+  }
+}
