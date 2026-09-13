@@ -6,7 +6,7 @@ import std.disposition { Disposition, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty }
-import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
+import extdeps.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.jobserver { jobserver_fifo_path_from_makeflags }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
