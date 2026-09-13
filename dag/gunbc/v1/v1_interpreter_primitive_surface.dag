@@ -329,6 +329,10 @@ data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DIS
 // live interpreter macro census on 2026-08-02; ongoing edits are manual at this carrier, not
 // regenerated from Rust.
 
+// Deletion obligation: gunbc.parsed_import_statement_bridge_seed_growth
+// parsed_import_statement_bridge_seed_growth_justification, enrolled by
+// gunbc.seed_growth_admission. This exception-only arm is deleted, never migrated,
+// when the native context fold supplies the acquired inventory to the census.
 fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm> {
   [
     InterpreterPrimitiveDispatchArm {
@@ -1177,10 +1181,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
-    // Deletion obligation: gunbc.parsed_import_statement_bridge_seed_growth
-    // parsed_import_statement_bridge_seed_growth_justification, enrolled by
-    // gunbc.seed_growth_admission. This exception-only arm is deleted, never migrated,
-    // when the native context fold supplies the acquired inventory to the census.
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.floor_discovery_source_inventory" },
       form: FreeCall,

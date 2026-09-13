@@ -5,7 +5,7 @@ import std.import { ParsedImportStatement, ImportStatementsParsed, ImportStateme
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.parsed_import_statement_production { parsed_import_observation_live }
 import v2.std.compilers.lexing { Token }
-import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory }
+import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
 import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_snoc_item }
@@ -305,10 +305,7 @@ fn cause_module_import_members(tokens: List<Token>, imports: List<ParsedImportSt
 }
 
 fn cause_witness_module(path: String) -> Bool {
-  string_contains(s: path, pattern: "/test/")
-    || string_contains(s: path, pattern: "/tests/")
-    || floor_entry_requires_test_sidecar(entry_path: path)
-    || ends_with(s: path, suffix: "_witness.dag")
+  floor_entry_requires_test_sidecar(entry_path: path)
 }
 
 fn cause_identifier_counts(tokens: List<Token>, counts: Map<String, Int>) -> Map<String, Int> {
@@ -500,7 +497,7 @@ fn cause_source_refusal_report(refusal: CauseSourceObservation) -> String {
 
 fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> String {
   join([
-    "source ingress: v2.workflow.floor_discovery_producer.floor_discovery_source_inventory, before closure selection and witness policy",
+    "source ingress: v2.workflow.floor_discovery_producer.floor_discovery_source_inventory_live, before closure selection and witness policy",
     join(["sources_observed", to_string(count(acquisition.sources))], "\t"),
     join(["sources_excluded", to_string(count(acquisition.excluded))], "\t"),
     join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
@@ -604,7 +601,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
 //   --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=/tmp/causes.tsv
 fn census(report: String) -> ProcessExit {
   let roots = ["dag", "src/v2"]
-  match floor_discovery_source_inventory(pool_roots: roots) {
+  match floor_discovery_source_inventory_live(pool_roots: roots) {
     FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
     FloorDiscoverySourcesObserved { sources: subjects } => {
       if count(subjects) == 0 {
@@ -634,7 +631,7 @@ fn census(report: String) -> ProcessExit {
 // This entry does not select an evaluator realization; the invoking process does.
 fn bounded_census(production_module: String, witness_module: String, report: String) -> ProcessExit {
   let roots = ["dag", "src/v2"]
-  match floor_discovery_source_inventory(pool_roots: roots) {
+  match floor_discovery_source_inventory_live(pool_roots: roots) {
     FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
     FloorDiscoverySourcesObserved { sources: subjects } => {
       let selected = filter(subjects, s => s.module_path == production_module || s.module_path == witness_module)

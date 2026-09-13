@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String, SourceSpan }
 import std.import { ParsedImportStatement }
 import tools.cause_assertion_census {
   CauseModuleSyntax, CauseDeclarationJoined, CauseDeclarationMissing, CauseDeclarationAmbiguous,
-  CauseCaretOccurrence,
+  CauseCaretOccurrence, cause_witness_module,
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
   cause_caret_occurrences, cause_import_members, cause_declarations_by_name, cause_join_declaration,
   cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
@@ -193,4 +193,14 @@ test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
       CauseSourceIndexRefused { path: path, module_path: owner } => path == "fixture.dag" && owner == "fixture"
       _ => false
     }
+}
+
+// Production declarations can have witness in their name without being test sidecars.
+test fn cause_census_module_role_uses_floor_authority() -> Bool {
+  cause_witness_module(path: "dag/test/claim/cause_assertion_census_witness_test.dag")
+    && !cause_witness_module(path: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag")
+    && !cause_witness_module(path: "dag/gunbc/json_exact_number_witness.dag")
+    && !cause_witness_module(path: "src/v2/std/find_witness.dag")
+    && !cause_witness_module(path: "src/v2/workflow/floor_changed_witness.dag")
+    && !cause_witness_module(path: "dag/test/helpers.dag")
 }
