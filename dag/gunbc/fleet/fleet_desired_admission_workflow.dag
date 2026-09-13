@@ -147,7 +147,7 @@ fn fleet_desired_admission_stage_payload_step() -> Step {
 // can run the other's entry. Exactly one of the two conditions holds on any run of this workflow,
 // since its only triggers are workflow_run and push. The push route alone reads the forge, so it
 // alone carries GITHUB_TOKEN, which github.WorkflowRuns resolves from its auth_source.
-fn fleet_desired_admission_decide_step_for(event: String, function: String, env: List<YamlKeyValue>?) -> Step {
+fn fleet_desired_admission_decide_step_for(event: String, function: String, env: List<YamlKeyValue>) -> Step {
   RunStep {
     name: Present { value: concat("Decide whether the floor admits this revision (", concat(event, ")")) },
     id: none,
@@ -158,7 +158,10 @@ fn fleet_desired_admission_decide_step_for(event: String, function: String, env:
       " --function ", function, "\n",
     ], ""),
     shell: none,
-    env: env,
+    env: match env {
+      Empty {} => none
+      Cons { head: _, tail: _ } => Present { value: env }
+    },
     working_directory: none,
     if_condition: Present { value: join(["github.event_name == '", event, "'"], "") },
     continue_on_error: none,
@@ -170,7 +173,7 @@ fn fleet_desired_admission_decide_floor_event_step() -> Step {
   fleet_desired_admission_decide_step_for(
     event: github_event_name_workflow_run,
     function: "admit_fleet_desired_from_floor_event_wet",
-    env: none,
+    env: [],
   )
 }
 
@@ -178,7 +181,7 @@ fn fleet_desired_admission_decide_push_step() -> Step {
   fleet_desired_admission_decide_step_for(
     event: github_event_name_push,
     function: "admit_fleet_desired_from_push_wet",
-    env: Present { value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
+    env: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))],
   )
 }
 
