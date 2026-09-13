@@ -8,6 +8,7 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   ProviderPathUnread, DownstreamProviderPopulation, DownstreamProvidersUnread,
+  DownstreamProvidersEnumerated, NoDownstreamProviders,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission, admit_provider_use,
@@ -306,25 +307,49 @@ test fn every_hetzner_route_in_the_population_refuses() -> Bool {
     && count(filter(hetzner_route_facts_population(), f => !t_refuses(a: t_decide(facts: f)))) == 0
 }
 
-// THE ROUTE'S ENUMERATION IS JOINED TO THE VENDOR TABLE BY IDENTITY, NOT BY COUNT, and the
-// distinction is the whole value of this wall. The Helsinki route answers
-// DownstreamProvidersEnumerated citing extdeps.cloud.hetzner hetzner_subcontractor_finland with an
-// empty further list. An earlier form of this witness asserted only that the table's Finland filter
-// returned exactly one row -- which review 64926 correctly rejected: replacing that row with a
-// DIFFERENT entity preserves the count, greens the witness, and leaves the route citing a
-// subcontractor the vendor no longer publishes. DESIGN section 5 names it exactly: completeness is an
-// identity join, not a count equality.
+// THE ROUTE'S OWN CITATION IS READ, AND THAT IS THE HALF THE FIRST TWO VERSIONS OF THIS WALL
+// BOTH MISSED. Version one asserted only that the vendor table's Finland filter returned exactly one
+// row -- a count equality, which review 64926 rejected: substituting a different entity preserves the
+// count and greens the witness while the route still cites a subcontractor upstream no longer
+// publishes. Version two compared the table against the hetzner_subcontractor_finland DECLARATION,
+// which is an identity join and still never read hetzner_helsinki_downstream() at all, so repointing
+// the route at a different valid declaration ALSO left it green. Both versions checked something
+// true about the table and nothing about the consumer. DESIGN section 5: completeness is an identity
+// join, not a count equality -- and the join has to reach the thing that makes the claim.
 //
-// So this folds the vendor's own table and asserts BOTH halves. The cardinality half reds when
-// upstream adds a second Finland row, which is the claim that expires and sends the author to extend
-// the enumerated population. The MEMBERSHIP half reds when the row the route actually cites is no
-// longer among the published ones, compared on the legal name the entity carries rather than on a
-// position in the list. Editing the cited declaration and the table together keeps them in
-// correspondence and is correctly green; removing it from the published table while the route still
-// names it is the defect, and it now refuses.
+// SO THIS BINDS THREE THINGS IN ONE ROW, and each link has its own way to break:
+//   the ROUTE cites exactly one downstream declaration, and it is the one named here
+//     -> repoint hetzner_helsinki_downstream at another declaration, or add a second entry to
+//        further, and the match arm fails;
+//   the vendor table publishes exactly one Finland row
+//     -> upstream adds a second and the cardinality fails, which is the claim that expires and sends
+//        the author to extend the enumerated population;
+//   that row is the entity the cited declaration carries
+//     -> swap the published entity and the legal-name comparison fails.
+//
+// WHAT IS STILL NOT ESTABLISHED, stated rather than implied. A DeclarationRef is a NAME, and this
+// substrate cannot dereference one from inside a witness, so the link between the reference the route
+// carries and the hetzner_subcontractor_finland VALUE compared below is by spelling. The namespace
+// authority checks that the name RESOLVES; nothing here checks that the resolved declaration is the
+// value this row reads. A rename that moved both together stays green, correctly; a declaration that
+// kept its name while changing what it means would not be caught by this row.
 test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool {
   let published = hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)
-  count(published) == 1
+  let route_cites_that_declaration = match hetzner_helsinki_downstream() {
+    DownstreamProvidersEnumerated { first, further, coverage } =>
+      count(further) == 0
+        && declaration_ref_eq(
+             a: first,
+             b: decl_ref(
+                  module_path: "extdeps.cloud.hetzner",
+                  decl_name: "hetzner_subcontractor_finland",
+                ),
+           ),
+    NoDownstreamProviders { evidence } => false,
+    DownstreamProvidersUnread { obligation } => false,
+  }
+  route_cites_that_declaration
+    && count(published) == 1
     && count(filter(
          published,
          s => s.entity.legal_name == hetzner_subcontractor_finland.entity.legal_name,
