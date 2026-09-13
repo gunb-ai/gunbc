@@ -425,7 +425,7 @@ data r2_tokens_default_jurisdiction_citation: FactCitation = FactCitation {
   authority: extdeps_external_authority_anchor,
 }
 
-data r2_create_bucket_location_hint_reading: NonEmptyStr = "Create Bucket POST /accounts/{account_id}/r2/buckets. Body parameter locationHint, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Header cf-r2-jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
+data r2_create_bucket_location_hint_reading: NonEmptyStr = "Create Bucket POST /accounts/\{account_id\}/r2/buckets. Body parameter locationHint, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Header cf-r2-jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
 
 data r2_create_bucket_location_hint_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
@@ -436,7 +436,7 @@ data r2_create_bucket_location_hint_citation: FactCitation = FactCitation {
   authority: r2_create_bucket_authority,
 }
 
-data r2_get_bucket_location_reading: NonEmptyStr = "Get Bucket GET /accounts/{account_id}/r2/buckets/{bucket_name}. Result field location, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Result field jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
+data r2_get_bucket_location_reading: NonEmptyStr = "Get Bucket GET /accounts/\{account_id\}/r2/buckets/\{bucket_name\}. Result field location, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Result field jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13."
 
 data r2_get_bucket_location_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
