@@ -2,13 +2,14 @@ module test.claim.pre_os_replay_witness
 
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
+import gunbc.machine_intake_pre_os_refusal { pre_os_text_refusal, PreOsSourceRefusal, PreOsContinuityRefusal, PreOsCommitRefusal, PreOsOwnershipRefusal }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import gunbc.fleet_observation_collector_ownership { FollowerReadOnly }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
-import gunbc.fleet_observation_capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, LocalCommitStanding, LocalCommitNotAttempted }
+import gunbc.fleet_observation_capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, CommitNoReceipt, CommitAttestsOtherPayload, LocalCommitStanding, LocalCommitNotAttempted }
 import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }
 import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
@@ -27,7 +28,7 @@ fn baseline_text() -> String { "685 | 09/12/2026 | 10:59:50 AM | Fan #0x1 | Devi
 fn stimulus_text() -> String { concat(baseline_text(), "\n686 | 09/12/2026 | 10:59:51 AM | System Boot Initiated #0x0 | Initiated by power up | Asserted") }
 
 test fn w_generation_change_retained_without_new_stimulus() -> Bool {
-  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let positive = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-a", record: "686"), payload: stimulus_text())
   let reset = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-b", record: "686"), payload: stimulus_text())
   count(first.new_records) == 0 && count(positive.new_records) == 1 && count(reset.new_records) == 0
@@ -37,7 +38,7 @@ test fn w_generation_change_retained_without_new_stimulus() -> Bool {
 }
 
 test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool {
-  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
   all([t_reach(through: 10), ContinuityUnknown { detail: "source reset not observed" }], continuity => {
     let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
@@ -48,8 +49,8 @@ test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool {
       && match reading.continuity {
         ObservationEstablished { observed: _ } => false
         ObservationRefused { cause } => match continuity {
-          ContinuityEstablished { reach: _ } => contains(cause as String, "ContinuityShortOfRange") && contains(cause as String, "100")
-          ContinuityUnknown { detail } => contains(cause as String, detail as String)
+          ContinuityEstablished { reach: _ } => contains(to_string(cause), "ContinuityShortOfRange") && contains(to_string(cause), "100")
+          ContinuityUnknown { detail } => contains(to_string(cause), detail as String)
           _ => false
         }
       }
@@ -148,7 +149,7 @@ test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
   joined.payload == "NOTICE:  DRAM FW version 210525" && count(joined.chunks) == 2
     && interrupted.payload == "sion 210525" && count(interrupted.chunks) == 1
     && match joined.composition { ObservationEstablished { observed: combined } => combined == joined.payload _ => false }
-    && match interrupted.composition { ObservationRefused { cause } => contains(cause as String, "current chunk") && contains(cause as String, "reconnect lost continuity") _ => false }
+    && match interrupted.composition { ObservationRefused { cause } => contains(to_string(cause), "current chunk") && contains(to_string(cause), "reconnect lost continuity") _ => false }
 }
 
 // The SEL cursor consumer must preserve independent commit and ownership causes.
@@ -164,8 +165,8 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
         local_commit: standing, downstream: base.downstream, continuity: base.continuity }
       match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
         ObservationRefused { cause } => match standing {
-          LocalCommitNotAttempted => contains(cause as String, "CommitNoReceipt")
-          _ => contains(cause as String, "CommitAttestsOtherPayload")
+          LocalCommitNotAttempted => match cause.detail { PreOsCommitRefusal { binding: CommitNoReceipt { standing: LocalCommitNotAttempted } } => true _ => false }
+          _ => match cause.detail { PreOsCommitRefusal { binding: CommitAttestsOtherPayload { attested: _, chunk_payload: _ } } => true _ => false }
         }
         _ => false
       }
@@ -175,7 +176,7 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
         ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
         local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
       match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
-        ObservationRefused { cause } => contains(cause as String, "FollowerReadOnly")
+        ObservationRefused { cause } => match cause.detail { PreOsOwnershipRefusal { ownership: FollowerReadOnly { session } } => session == t_other_session _ => false }
         _ => false
       }
     }
@@ -187,13 +188,13 @@ test fn w_cycle_anchor_refuses_cross_stream_position() -> Bool {
   let positive = pre_os_cycle_anchor(chunks: [chunk], at: t_pos(at: 1))
   let foreign = pre_os_cycle_anchor(chunks: [chunk], at: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 1)))
   match positive { ObservationEstablished { observed: anchor } => anchor.stream_offset == t_pos(at: 1) _ => false }
-    && match foreign { ObservationRefused { cause } => contains(cause as String, "PositionIncomparable") && contains(cause as String, "a-different-source-stream") _ => false }
+    && match foreign { ObservationRefused { cause } => contains(to_string(cause), "PositionIncomparable") && contains(to_string(cause), "a-different-source-stream") _ => false }
 }
 
 // The carrier's foreign-stream reach enters through admitted construction; the
 // SEL consumer must retain incomparability rather than invent a shorter reach.
 test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool {
-  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
   let positive = pre_os_ingest_sel(previous: first.cursor, envelope: base, payload: stimulus_text())
   match continuity_from_committed_chunks(
@@ -205,7 +206,7 @@ test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool {
         local_commit: base.local_commit, downstream: base.downstream, continuity: continuity }
       let negative = pre_os_ingest_sel(previous: first.cursor, envelope: envelope, payload: stimulus_text())
       count(positive.new_records) == 1 && count(negative.new_records) == 0
-        && match negative.continuity { ObservationRefused { cause } => contains(cause as String, "ContinuityPositionsIncomparable") && contains(cause as String, "synthetic-sol") && contains(cause as String, "a-different-source-stream") && !contains(cause as String, "ContinuityShortOfRange") _ => false }
+        && match negative.continuity { ObservationRefused { cause } => contains(to_string(cause), "ContinuityPositionsIncomparable") && contains(to_string(cause), "synthetic-sol") && contains(to_string(cause), "a-different-source-stream") && !contains(to_string(cause), "ContinuityShortOfRange") _ => false }
     }
     _ => false
   }

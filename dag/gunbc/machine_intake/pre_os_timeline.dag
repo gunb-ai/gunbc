@@ -2,6 +2,7 @@ module gunbc.machine_intake_pre_os_timeline
 
 import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
+import gunbc.machine_intake_pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
@@ -12,7 +13,7 @@ import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
-import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
+import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
 import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_unique_occurrences, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
@@ -50,7 +51,7 @@ func pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceF
 // cycles only; neither one-to-one boot mapping nor a kernel UUID is presumed.
 type PreOsCapturedCycleAnchor { occurrence: ChunkOccurrence, stream_offset: StreamPosition }
 type PreOsCapturedCycleReading {
-  anchor: ObservationAttempt<PreOsCapturedCycleAnchor, NonEmptyStr>
+  anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>
   firmware_attempt: ObservationAttempt<NonEmptyStr, NonEmptyStr>
   kernel_boot: ObservationAttempt<NonEmptyStr, NonEmptyStr>
   milestones: PreOsMilestones
@@ -58,40 +59,45 @@ type PreOsCapturedCycleReading {
 }
 type PreOsCycleScan { next_offset: StreamPosition, cycles: List<PreOsCapturedCycleReading> }
 
-type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, NonEmptyStr> }
+type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, PreOsRefusal> }
 
 // Check each supplied range through its carrier and keep the refusal at the
 // preceding/current chunk location. No isolation silently discards its cause.
-fn pre_os_composable_payload(observation: PreOsReplayObservation) -> ObservationAttempt<String, NonEmptyStr> {
+fn pre_os_composable_payload(observation: PreOsReplayObservation) -> ObservationAttempt<String, PreOsRefusal> {
   match pre_os_committed_envelope(envelope: observation.envelope) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: _ } => match pre_os_chunk_continuity(envelope: observation.envelope) {
-      ContinuityCoversRange { reach: _ } => observation.payload
-      coverage => ObservationRefused { cause: to_string(coverage) as NonEmptyStr }
+      ContinuityCoversRange { reach: _ } => match observation.payload {
+        ObservationEstablished { observed } => ObservationEstablished { observed: observed }
+        ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
+      }
+      ContinuityNotEstablished { continuity } => ObservationRefused { cause: PreOsRefusal { location: ["console continuity"], detail: PreOsContinuityRefusal { coverage: ContinuityNotEstablished { continuity: continuity } } } }
+      ContinuityShortOfRange { verified_through, requested_end } => ObservationRefused { cause: PreOsRefusal { location: ["console continuity"], detail: PreOsContinuityRefusal { coverage: ContinuityShortOfRange { verified_through: verified_through, requested_end: requested_end } } } }
+      ContinuityPositionsIncomparable { left, right } => ObservationRefused { cause: PreOsRefusal { location: ["console continuity"], detail: PreOsContinuityRefusal { coverage: ContinuityPositionsIncomparable { left: left, right: right } } } }
     }
   }
 }
 
 fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation) -> PreOsConsoleSpan {
   let text = match current.payload { ObservationEstablished { observed: payload } => payload ObservationRefused { cause: _ } => "" }
-  let composition: ObservationAttempt<String, NonEmptyStr> = match pre_os_composable_payload(observation: current) {
-    ObservationRefused { cause } => ObservationRefused { cause: concat("current chunk: ", cause as String) as NonEmptyStr }
+  let composition: ObservationAttempt<String, PreOsRefusal> = match pre_os_composable_payload(observation: current) {
+    ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "current chunk") }
     ObservationEstablished { observed: current_text } => match previous {
-      Absent => ObservationRefused { cause: "no preceding console span" }
+      Absent => ObservationRefused { cause: pre_os_text_refusal(text: "no preceding console span") }
       Present { value: before } => match before.chunks.skip(n: if count(before.chunks) == 0 { 0 } else { count(before.chunks) - 1 }).first() {
-        Absent => ObservationRefused { cause: "preceding console span has no chunks" }
+        Absent => ObservationRefused { cause: pre_os_text_refusal(text: "preceding console span has no chunks") }
         Present { value: last } => match pre_os_composable_payload(observation: last) {
-          ObservationRefused { cause } => ObservationRefused { cause: concat("preceding chunk: ", cause as String) as NonEmptyStr }
+          ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "preceding chunk") }
           ObservationEstablished { observed: _ } =>
             if !pre_os_same_source_generation(a: last.envelope, b: current.envelope) {
-              ObservationRefused { cause: concat("source generation/binding differs: ", to_string(last.envelope.binding), " / ", to_string(last.envelope.source_generation), " -> ", to_string(current.envelope.binding), " / ", to_string(current.envelope.source_generation)) as NonEmptyStr }
+              ObservationRefused { cause: PreOsRefusal { location: ["console source"], detail: PreOsSourceChanged { before: last.envelope, after: current.envelope } } }
             } else if last.envelope.chunk.occurrence.session != current.envelope.chunk.occurrence.session
               || last.envelope.chunk.occurrence.ownership_generation != current.envelope.chunk.occurrence.ownership_generation
               || current.envelope.chunk.occurrence.receive_sequence != last.envelope.chunk.occurrence.receive_sequence + 1 {
-              ObservationRefused { cause: concat("nonadjacent collector occurrences: ", to_string(last.envelope.chunk.occurrence), " -> ", to_string(current.envelope.chunk.occurrence)) as NonEmptyStr }
+              ObservationRefused { cause: PreOsRefusal { location: ["console occurrence"], detail: PreOsOccurrenceNotAdjacent { before: last.envelope, after: current.envelope } } }
             } else { match compare_positions(a: range_end(range: last.envelope.chunk.range), b: current.envelope.chunk.range.first) {
               PositionSame => ObservationEstablished { observed: concat(before.payload, current_text) }
-              order => ObservationRefused { cause: concat(to_string(order), ": nonadjacent source ranges: ", to_string(last.envelope.chunk.range), " -> ", to_string(current.envelope.chunk.range)) as NonEmptyStr }
+              order => ObservationRefused { cause: PreOsRefusal { location: ["console adjacency"], detail: PreOsPositionRefusal { order: order } } }
             } }
         }
       }
@@ -108,21 +114,21 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
 
 // A byte position cannot be compared with an anchor in another source stream.
 // Preserve that refusal, rather than treating it as a nonmatching chunk.
-fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition) -> ObservationAttempt<PreOsCapturedCycleAnchor, NonEmptyStr> {
+fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition) -> ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal> {
   match chunks.first() {
-    Absent => ObservationRefused { cause: "cycle marker is outside the supplied source ranges" }
+    Absent => ObservationRefused { cause: pre_os_text_refusal(text: "cycle marker is outside the supplied source ranges") }
     Present { value: chunk } => match compare_positions(a: chunk.envelope.chunk.range.first, b: at) {
-      PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+      PositionIncomparable { left, right } => ObservationRefused { cause: PreOsRefusal { location: ["cycle anchor"], detail: PreOsPositionRefusal { order: PositionIncomparable { left: left, right: right } } } }
       PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
       PositionBefore => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
         PositionBefore => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: at } }
-        PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+        PositionIncomparable { left, right } => ObservationRefused { cause: PreOsRefusal { location: ["cycle anchor"], detail: PreOsPositionRefusal { order: PositionIncomparable { left: left, right: right } } } }
         PositionSame => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
         PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
       }
       PositionSame => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
         PositionBefore => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: at } }
-        PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+        PositionIncomparable { left, right } => ObservationRefused { cause: PreOsRefusal { location: ["cycle anchor"], detail: PreOsPositionRefusal { order: PositionIncomparable { left: left, right: right } } } }
         PositionSame => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
         PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
       }
@@ -156,14 +162,14 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List
 type PreOsTimelineRow {
   observation: PreOsReplayObservation
   retention: RetentionExposure
-  association: ObservationAttempt<ObservationEnvelope, NonEmptyStr>
-  console_composition: ObservationAttempt<String, NonEmptyStr>
+  association: ObservationAttempt<ObservationEnvelope, PreOsRefusal>
+  console_composition: ObservationAttempt<String, PreOsRefusal>
   cycles: List<PreOsCapturedCycleReading>
-  sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr>
-  configuration: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
-  boot: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
-  training: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
-  present_admission: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+  sel: ObservationAttempt<PreOsSelIngestion, PreOsRefusal>
+  configuration: ObservationAttempt<MemoryConfiguration, PreOsRefusal>
+  boot: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal>
+  training: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal>
+  present_admission: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal>
 }
 
 type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCursor>, console_spans: List<PreOsConsoleSpan> }
@@ -177,24 +183,24 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     match filter(observations, candidate => pre_os_same_envelope(a: candidate.envelope, b: envelope)).first() {
     Absent => acc
     Present { value: o } => {
-    let association: ObservationAttempt<ObservationEnvelope, NonEmptyStr> = if o.envelope.binding.enrolled_machine != machine {
-      ObservationRefused { cause: concat("timeline machine ", machine as String, " differs from binding ", o.envelope.binding.enrolled_machine as String) as NonEmptyStr }
+    let association: ObservationAttempt<ObservationEnvelope, PreOsRefusal> = if o.envelope.binding.enrolled_machine != machine {
+      ObservationRefused { cause: PreOsRefusal { location: ["timeline machine"], detail: PreOsMachineDisagrees { expected: machine, observed: o.envelope.binding.enrolled_machine } } }
     } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {
-      ObservationRefused { cause: "same occurrence has conflicting source or artifact identity; all versions retained" }
+      ObservationRefused { cause: PreOsRefusal { location: ["timeline occurrence"], detail: PreOsOccurrenceConflict { subject: o.envelope } } }
     } else { match o.payload {
-      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
       ObservationEstablished { observed: _ } => pre_os_bound_envelope(envelope: o.envelope)
     } }
-    let previous = match filter(acc.cursors, c => pre_os_same_source(a: c.envelope, b: o.envelope)).first() {
-      Absent => ObservationRefused { cause: "no source cursor" }
+    let previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal> = match filter(acc.cursors, c => pre_os_same_source(a: c.envelope, b: o.envelope)).first() {
+      Absent => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
       Present { value: c } => ObservationEstablished { observed: c }
     }
-    let sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr> = match o.format {
-      PreOsConsoleText => ObservationRefused { cause: "console source is not a SEL snapshot" }
+    let sel: ObservationAttempt<PreOsSelIngestion, PreOsRefusal> = match o.format {
+      PreOsConsoleText => ObservationRefused { cause: pre_os_text_refusal(text: "console source is not a SEL snapshot") }
       PreOsSelSnapshot => match association {
         ObservationRefused { cause } => ObservationRefused { cause: cause }
         ObservationEstablished { observed: _ } => match o.payload {
-          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
           ObservationEstablished { observed: text } => ObservationEstablished { observed: pre_os_ingest_sel(previous: previous, envelope: o.envelope, payload: text) }
         }
       }
@@ -222,33 +228,41 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
         Present { value: first } => !pre_os_same_source(a: first.envelope, b: o.envelope)
       }))
     }
-    let console = match association {
+    let console: ObservationAttempt<String, PreOsRefusal> = match association {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
       ObservationEstablished { observed: _ } => match o.format {
         PreOsConsoleText => ObservationEstablished { observed: span.payload }
-        PreOsSelSnapshot => ObservationRefused { cause: "SEL observations do not establish console milestones" }
+        PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL observations do not establish console milestones") }
       }
     }
-    let os_boot = match console {
-      ObservationEstablished { observed: text } => pre_os_host_userspace_boot(text: text, host_mac: host_mac)
-      ObservationRefused { cause } => ObservationRefused { cause: cause }
-    }
-    let configuration = match inventory_question {
-      ObservationRefused { cause } => ObservationRefused { cause: cause }
+    let configuration: ObservationAttempt<MemoryConfiguration, PreOsRefusal> = match inventory_question {
+      ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
       ObservationEstablished { observed: question } => match console {
         ObservationRefused { cause } => ObservationRefused { cause: cause }
-        ObservationEstablished { observed: text } => pre_os_inventory_observation(question: question, payload: text)
+        ObservationEstablished { observed: text } => match pre_os_inventory_observation(question: question, payload: text) {
+          ObservationEstablished { observed } => ObservationEstablished { observed: observed }
+          ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
+        }
       }
     }
-    let milestones = pre_os_milestones(console: console, os_boot: os_boot)
+    let milestones: ObservationAttempt<PreOsMilestones, PreOsRefusal> = match console {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: text } => ObservationEstablished { observed: pre_os_milestones(console: ObservationEstablished { observed: text }, os_boot: pre_os_host_userspace_boot(text: text, host_mac: host_mac)) }
+    }
     let row = PreOsTimelineRow {
       retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
-      console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: "SEL snapshot is not a console span" } },
+      console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL snapshot is not a console span") } },
       cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac) PreOsSelSnapshot => [] } _ => [] },
-      boot: pre_os_boot_assessment(milestones: milestones), training: match configuration {
+      boot: match milestones {
+        ObservationRefused { cause: _ } => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+        ObservationEstablished { observed: value } => pre_os_assessment_refusal(assessment: pre_os_boot_assessment(milestones: value))
+      }, training: match configuration {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
-        ObservationEstablished { observed: _ } => pre_os_training_assessment(milestones: milestones)
+        ObservationEstablished { observed: _ } => match milestones {
+          ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+          ObservationEstablished { observed: value } => pre_os_assessment_refusal(assessment: pre_os_training_assessment(milestones: value))
+        }
       },
       present_admission: GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "historical milestones are not present fleet admission evidence", tail: Empty } },
     }
@@ -283,10 +297,10 @@ func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayReque
 // The production absence route obtains the byte standing from acquisition and
 // reads the exact artifact named by that envelope before asking the inventory
 // question. Callers cannot provide an unrelated payload or a silence flag here.
-func replay_pre_os_diagnostic_absence(envelope: ObservationEnvelope, question: PreOsInventoryQuestion, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+func replay_pre_os_diagnostic_absence(envelope: ObservationEnvelope, question: PreOsInventoryQuestion, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal> {
   let observation = pre_os_read_observation(envelope: envelope, format: PreOsConsoleText)
   match observation.payload {
-    ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+    ObservationRefused { cause } => GoalAssessmentRefused { cause: pre_os_text_refusal(text: cause) }
     ObservationEstablished { observed: payload } => pre_os_diagnostic_absence(question: question, payload: payload,
       source: source_byte_fact(envelope: envelope, requested: envelope.chunk.range), diagnostic: diagnostic),
   }

@@ -4,6 +4,7 @@ import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_h
 
 import test.claim.fleet_observation_capture_witness { t_pos, t_stream, t_other_stream }
 
+import gunbc.machine_intake_pre_os_refusal { PreOsSourceRefusal }
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate, GoalDiverged, GoalAssessmentRefused }
@@ -138,11 +139,11 @@ test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool {
           continuity: ContinuityGap { gap: missing_range, cause: CollectorLostOwnership { from_generation: 17, to_generation: 18 } }
         }, diagnostic: diagnostic)
         match positive { GoalSatisfied { evidence: _ } => true GoalDiverged { deviations: _ } => true _ => false }
-          && match incomparable { GoalAssessmentRefused { cause } => contains(cause as String, "CoverageGapPositionsIncomparable") && contains(cause as String, "synthetic-sol") && contains(cause as String, "a-different-source-stream") _ => false }
-          && match early { GoalAssessmentRefused { cause } => contains(cause as String, "stdin EOF before phase coverage") _ => false }
-          && match mismatch { GoalAssessmentRefused { cause } => contains(cause as String, "wrong-fixture-machine") && contains(cause as String, "recording-fixture-machine") _ => false }
-          && match unattributed { GoalAssessmentRefused { cause } => contains(cause as String, "GapCauseUnattributed") && !contains(cause as String, "SourceRetainedLogRolledOver") _ => false }
-          && match collector_loss { GoalAssessmentRefused { cause } => contains(cause as String, "CollectorLostOwnership") && contains(cause as String, "17") && contains(cause as String, "18") _ => false }
+          && match incomparable { GoalAssessmentRefused { cause } => match cause.detail { PreOsSourceRefusal { source: CoverageGapPositionsIncomparable { left, right } } => left == t_stream && right == t_other_stream _ => false } _ => false }
+          && match early { GoalAssessmentRefused { cause } => contains(to_string(cause), "stdin EOF before phase coverage") _ => false }
+          && match mismatch { GoalAssessmentRefused { cause } => contains(to_string(cause), "wrong-fixture-machine") && contains(to_string(cause), "recording-fixture-machine") _ => false }
+          && match unattributed { GoalAssessmentRefused { cause } => contains(to_string(cause), "GapCauseUnattributed") && !contains(to_string(cause), "SourceRetainedLogRolledOver") _ => false }
+          && match collector_loss { GoalAssessmentRefused { cause } => contains(to_string(cause), "CollectorLostOwnership") && contains(to_string(cause), "17") && contains(to_string(cause), "18") _ => false }
       }
     })
   }
