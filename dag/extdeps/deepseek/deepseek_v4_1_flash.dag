@@ -703,13 +703,21 @@ fn deepseek_v4_1_flash_dim_at(shape: List<Nat>, index: Nat) -> Nat {
   }
 }
 
+// THE RANK GUARD IS LOCAL RATHER THAN INHERITED. `hi: count(p.shape) - 1` underflows on a Nat if the
+// shape is empty, and equal ranks do not exclude BOTH being empty. An empty shape is separately an
+// EntryShapeEmpty defect at population establishment, so the underflow is not reachable from an
+// established standing today -- but this fold reads the module's declared entries directly, so that
+// safety is inherited from a distant invariant rather than enforced here. DESIGN section 5 prefers
+// construction over validation, so the rank is required to be non-zero at the site: a pairing over no
+// axes is not a pairing, which `deepseek_v4_1_flash_scale_pairing_holds` already says by requiring a
+// non-empty relation list.
 fn deepseek_v4_1_flash_scale_pairing(payload_name: NonEmptyStr, scale_name: NonEmptyStr) -> EngramScalePairing? {
   match deepseek_v4_1_flash_entry_named(name: payload_name) {
     Absent => none
     Present { value: p } => match deepseek_v4_1_flash_entry_named(name: scale_name) {
       Absent => none
       Present { value: s } =>
-        if count(p.shape) == count(s.shape) {
+        if count(p.shape) == count(s.shape) && count(p.shape) > 0 {
           Present { value: EngramScalePairing {
             payload_name: payload_name,
             scale_name: scale_name,
