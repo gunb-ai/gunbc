@@ -47,8 +47,10 @@ import gunbc.fleet_observation_collector_ownership {
   OwnershipReleased,
   acquire_ownership,
   release_ownership,
-  may_record,
-  exclusivity_is_enforced,
+  RecordingOwnerIdentity,
+  RecordingOwner,
+  NotTheRecordingOwner,
+  recording_owner,
 }
 import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
@@ -544,14 +546,32 @@ fn refuses_unheld_release(outcome: OwnershipOutcome) -> Bool {
 
 // ── EXCLUSIVITY IS CARRIED HONESTLY ────────────────────────────────────────────────────────────
 
-// AN OWNER OVER AN UNFENCED ENDPOINT RECORDS BUT DOES NOT CLAIM STRUCTURAL EXCLUSIVITY. If
-// exclusivity_is_enforced answered true for the unfenced arm, this lane would be claiming a
-// guarantee the transport does not provide (DESIGN section 4b rung inflation).
+// AN OWNER OVER AN UNFENCED ENDPOINT RECORDS BUT DOES NOT CLAIM STRUCTURAL EXCLUSIVITY. Reading the
+// unfenced arm as enforced would claim a guarantee the transport does not provide (DESIGN section 4b
+// rung inflation), and the four conjuncts below keep the two independent axes apart: being the
+// recorder, and the endpoint being fenced. Collapsing them is what the deleted Bool did.
 test fn w_unfenced_owner_records_without_claiming_exclusivity() -> Bool {
-  may_record(ownership: t_owner(fencing: t_unfenced))
-  && !exclusivity_is_enforced(ownership: t_owner(fencing: t_unfenced))
-  && exclusivity_is_enforced(ownership: t_owner(fencing: t_fenced))
-  && !may_record(ownership: ForeignSessionHeld { observed: LeasePortForeign })
+  is_recording_owner(id: recording_owner(ownership: t_owner(fencing: t_unfenced)))
+  && !fencing_is_enforced(ownership: t_owner(fencing: t_unfenced))
+  && fencing_is_enforced(ownership: t_owner(fencing: t_fenced))
+  && !is_recording_owner(id: recording_owner(ownership: ForeignSessionHeld { observed: LeasePortForeign }))
+  && !is_recording_owner(id: recording_owner(ownership: FollowerReadOnly { session: t_other_session }))
+}
+
+// THE WITNESS MATCHES THE CARRIER RATHER THAN CALLING A PREDICATE, which is the point: the
+// distinction between "owner, not fenced" and "not the owner" is structural on EndpointOwnership,
+// and a Bool over it -- which is what this module used to export -- collapsed the two into one false.
+// This local reader exists only to phrase the assertion; it is not a published accessor.
+fn fencing_is_enforced(ownership: EndpointOwnership) -> Bool {
+  match ownership {
+    OwnerRecording { session: _, lease: _, fencing: fencing } =>
+      match fencing {
+        RemoteFencingEnforced { authority: _ } => true
+        RemoteFencingAbsent { limitation: _ } => false
+      }
+    FollowerReadOnly { session: _ } => false
+    ForeignSessionHeld { observed: _ } => false
+  }
 }
 
 // ── LOCAL DURABILITY IS NOT DOWNSTREAM ACCEPTANCE ──────────────────────────────────────────────
@@ -762,6 +782,13 @@ fn is_another_subject(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_recording_owner(id: RecordingOwnerIdentity) -> Bool {
+  match id {
+    RecordingOwner { session: _, generation: _ } => true
+    NotTheRecordingOwner => false
   }
 }
 
