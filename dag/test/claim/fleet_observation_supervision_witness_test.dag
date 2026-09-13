@@ -36,7 +36,11 @@ import gunbc.fleet_observation_collector_supervision {
   CleanupFailed,
   SupervisionUndecidable,
   supervision_disposition,
-  supervision_covered_window,
+  SupervisionCoverage,
+  WindowCovered,
+  WindowNotCoveredPipeUnread,
+  WindowNotCoveredSupervision,
+  supervision_coverage,
   drained_byte_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -98,9 +102,9 @@ test fn w_clean_exit_before_deadline_is_an_interruption() -> Bool {
     drained: t_drained,
   )
   is_interrupted(d: early)
-  && !supervision_covered_window(disposition: early)
+  && not_covered(c: supervision_coverage(disposition: early))
   && is_closed_at_deadline(d: at_deadline)
-  && supervision_covered_window(disposition: at_deadline)
+  && covered(c: supervision_coverage(disposition: at_deadline))
 }
 
 // A SIGNAL DEATH BEFORE THE DEADLINE IS ALSO AN INTERRUPTION, and it is a different TERMINATION
@@ -138,8 +142,8 @@ test fn w_unobserved_drain_is_not_coverage() -> Bool {
     drained: DrainObservedEmpty { watched_until: t_at(since: 420) },
   )
   is_closed_at_deadline(d: unwatched)
-  && !supervision_covered_window(disposition: unwatched)
-  && supervision_covered_window(disposition: watched_empty)
+  && pipe_unread(c: supervision_coverage(disposition: unwatched))
+  && covered(c: supervision_coverage(disposition: watched_empty))
   && drained_byte_count(drained: DrainNotObserved) == 0
   && drained_byte_count(drained: t_drained) == 4096
 }
@@ -155,7 +159,7 @@ test fn w_incomparable_clocks_refuse_rather_than_default() -> Bool {
     observed_end: t_foreign_clock(since: 3),
     drained: t_drained,
   )
-  is_undecidable(d: crossed) && !supervision_covered_window(disposition: crossed)
+  is_undecidable(d: crossed) && not_covered(c: supervision_coverage(disposition: crossed))
 }
 
 // A TRANSPORT THAT REFUSED BEFORE THE PROCESS EXISTED PRODUCED NO STATUS, and that is the absence of
@@ -177,9 +181,36 @@ test fn w_never_spawned_is_not_a_process_failure() -> Bool {
     drained: t_drained,
   )
   is_never_spawned(d: refused)
-  && !supervision_covered_window(disposition: refused)
+  && not_covered(c: supervision_coverage(disposition: refused))
   && is_termination_unobserved(d: still_running)
-  && !supervision_covered_window(disposition: still_running)
+  && not_covered(c: supervision_coverage(disposition: still_running))
+}
+
+fn covered(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowCovered => true
+    WindowNotCoveredPipeUnread { disposition: _ } => false
+    WindowNotCoveredSupervision { disposition: _ } => false
+  }
+}
+
+// THE UNREAD-PIPE CASE IS ASSERTED SEPARATELY FROM THE REST, which is the distinction the Bool used
+// to destroy: a full-deadline child whose pipe nobody read is a DIFFERENT failure from an interrupted
+// or unspawned one, and it is the one that looks like success.
+fn pipe_unread(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowNotCoveredPipeUnread { disposition: _ } => true
+    WindowCovered => false
+    WindowNotCoveredSupervision { disposition: _ } => false
+  }
+}
+
+fn not_covered(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowNotCoveredSupervision { disposition: _ } => true
+    WindowNotCoveredPipeUnread { disposition: _ } => true
+    WindowCovered => false
+  }
 }
 
 // ── readers ────────────────────────────────────────────────────────────────────────────────────

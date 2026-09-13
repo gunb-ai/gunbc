@@ -157,26 +157,52 @@ fn disposition_by_order(
   }
 }
 
-// WHETHER THIS SUPERVISION COVERED THE WINDOW IT WAS GIVEN. Only a child the deadline ended, whose
-// pipe was actually watched while it ran, covered anything. An interruption did not, a still-running
-// child has not yet, an unspawned one never did, and an undecidable one is not a claim at all.
+// WHETHER THIS SUPERVISION COVERED THE WINDOW IT WAS GIVEN, AND WHY NOT WHEN IT DID NOT.
 //
-// DrainNotObserved FAILS THIS even for a child that ran its full deadline, which is the second half
-// of the specimen: a process can be alive for the whole window and still observe nothing, because
-// nobody read the pipe. Liveness is not coverage.
-fn supervision_covered_window(disposition: SupervisionDisposition) -> Bool {
+// THIS RETURNED A Bool AND THAT WAS THE SAME DEFECT THIS BRANCH DELETED THREE TIMES ELSEWHERE. Six
+// dispositions and three drain states collapsed into one bit, so a caller learned "not covered" and
+// had to re-open both carriers to find out whether the child was interrupted, never spawned, still
+// unobserved, or ran its full deadline with nobody reading its pipe -- four situations with four
+// different remedies. The repair is the one the class prescribes: return the answer WITH its cause.
+//
+// Only a child the deadline ended, whose pipe was actually watched while it ran, covered anything.
+// DrainNotObserved fails even for a full-deadline child, which is the second half of the specimen:
+// a process can be alive for the whole window and observe nothing, because nobody read the pipe.
+// Liveness is not coverage.
+type SupervisionCoverage
+  = WindowCovered
+  | WindowNotCoveredPipeUnread { disposition: SupervisionDisposition }
+  | WindowNotCoveredSupervision { disposition: SupervisionDisposition }
+
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the coverage answer in
+// gunbc.fleet_observation_observation_envelope -- a chunk whose supervision did not cover the window
+// must not license a negative observation about the source, which is the same law one module over
+// applied to the process rather than to the bytes. TRIGGER, STATED AS THE CAPABILITY: the envelope's
+// source_byte_fact taking a supervision coverage alongside its durability and continuity evidence,
+// sufficient that SourceProducedNoBytesInRange is unreachable when the collector's own window was not
+// covered. That join is NOT in this slice, and until it lands this carrier's only callers are its
+// witnesses -- stated here rather than left for a reader to discover.
+fn supervision_coverage(disposition: SupervisionDisposition) -> SupervisionCoverage {
   match disposition {
-    ClosedAtDeadline { termination: _, drained: drained } =>
+    ClosedAtDeadline { termination: termination, drained: drained } =>
       match drained {
-        DrainedDuringOperation { bytes: _, last_progress_at: _ } => true
-        DrainObservedEmpty { watched_until: _ } => true
-        DrainNotObserved => false
+        DrainedDuringOperation { bytes: _, last_progress_at: _ } => WindowCovered
+        DrainObservedEmpty { watched_until: _ } => WindowCovered
+        DrainNotObserved =>
+          WindowNotCoveredPipeUnread {
+            disposition: ClosedAtDeadline { termination: termination, drained: drained }
+          }
       }
-    InterruptedBeforeDeadline { termination: _, drained: _ } => false
-    TerminationNotObserved { drained: _ } => false
-    NeverSpawned { cause: _ } => false
-    CleanupFailed { detail: _ } => false
-    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+    InterruptedBeforeDeadline { termination: t, drained: d } =>
+      WindowNotCoveredSupervision { disposition: InterruptedBeforeDeadline { termination: t, drained: d } }
+    TerminationNotObserved { drained: d } =>
+      WindowNotCoveredSupervision { disposition: TerminationNotObserved { drained: d } }
+    NeverSpawned { cause: c } =>
+      WindowNotCoveredSupervision { disposition: NeverSpawned { cause: c } }
+    CleanupFailed { detail: detail } =>
+      WindowNotCoveredSupervision { disposition: CleanupFailed { detail: detail } }
+    SupervisionUndecidable { deadline_domain: a, observed_domain: b } =>
+      WindowNotCoveredSupervision { disposition: SupervisionUndecidable { deadline_domain: a, observed_domain: b } }
   }
 }
 
