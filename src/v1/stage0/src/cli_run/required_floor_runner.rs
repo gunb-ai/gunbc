@@ -1412,7 +1412,7 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
             None,
             None,
         );
-        floor_required_int(&policy_ctx, "required_floor_claim_work_envelope_ms")?
+        floor_required_measure_count(&policy_ctx, "required_floor_claim_work_envelope_ms")?
     };
     match v1_interpreter::run_in_context(&ctx, &qualified, false) {
         Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),

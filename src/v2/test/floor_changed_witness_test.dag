@@ -538,7 +538,7 @@ test fn cpu_is_observed_only_for_every_claim_and_still_published() -> Bool {
         && (claim_cost_basis_gates(basis: CpuTimeBasis {}) == false)
         && claim_cost_basis_gates(basis: EvalStepBasis {})
         && claim_cost_basis_gates(basis: WallTimeBasis {})
-        && (required_floor_claim_work_envelope_ms() == 500)
+        && (millisecond_count(m: required_floor_claim_work_envelope_ms()) == 500)
   }
 }
 

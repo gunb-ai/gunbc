@@ -6,6 +6,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
 import std.types { NonEmptyStr }
+import std.measure { Millisecond, millisecond_count }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
   ClaimPreemptionReachability, CooperativelyPollable,
@@ -270,7 +271,7 @@ fn cpu_does_not_gate(budget: Int) -> Bool {
     CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
     CompletedWithinSafetyLimits =>
       int_gt(a: 4000, b: required_floor_claim_cost_line_ms())
-        && int_gt(a: 4000, b: required_floor_claim_work_envelope_ms())
+        && int_gt(a: 4000, b: millisecond_count(m: required_floor_claim_work_envelope_ms()))
   }
 }
 
@@ -305,8 +306,10 @@ test fn the_pinned_rate_is_the_floored_ratio_of_its_own_sample() -> Bool {
 // numbers is deliberate -- a fixture carrying 361500 and 72300 would go stale the moment the rate
 // is re-pinned, and would then be asserting the old rate rather than the derivation.
 test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> Bool {
-  (claim_ceiling_envelope_ms(tier: GrandfatheredTier {}) == required_floor_claim_work_envelope_ms())
-    && (claim_ceiling_envelope_ms(tier: NewWitnessTier {}) == required_floor_new_witness_envelope_ms())
+  (millisecond_count(m: claim_ceiling_envelope_ms(tier: GrandfatheredTier {}))
+     == millisecond_count(m: required_floor_claim_work_envelope_ms()))
+    && (millisecond_count(m: claim_ceiling_envelope_ms(tier: NewWitnessTier {}))
+     == millisecond_count(m: required_floor_new_witness_envelope_ms()))
     && int_gt(
          a: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}),
          b: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}),

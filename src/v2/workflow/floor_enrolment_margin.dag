@@ -122,7 +122,7 @@ fn floor_enrolment_margin_envelope_permille() -> Int {
 // is NOT answered here.
 fn floor_enrolment_margin_budget_ms() -> Millisecond {
   implied_clean_run_budget(
-    ceiling_ms: millisecond(count: required_floor_claim_work_envelope_ms()),
+    ceiling_ms: required_floor_claim_work_envelope_ms(),
     inflation_permille: floor_enrolment_margin_envelope_permille(),
   )
 }

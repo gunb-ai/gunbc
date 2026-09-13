@@ -171,8 +171,14 @@ type EvalStepRateGrounding =
 
 fn eval_step_rate_grounding(calibration: EvalStepCalibration) -> EvalStepRateGrounding {
   classify_eval_step_rate(
-    rate_work: int_mul(a: calibration_rate(calibration: calibration), b: rate_sample_cpu_ms()),
-    next_rate_work: int_mul(a: int_add(a: calibration_rate(calibration: calibration), b: 1), b: rate_sample_cpu_ms()),
+    rate_work: int_mul(
+      a: calibration_rate(calibration: calibration),
+      b: millisecond_count(m: rate_sample_cpu_ms()),
+    ),
+    next_rate_work: int_mul(
+      a: int_add(a: calibration_rate(calibration: calibration), b: 1),
+      b: millisecond_count(m: rate_sample_cpu_ms()),
+    ),
     measured_steps: rate_sample_eval_steps(),
   )
 }
@@ -184,8 +190,8 @@ fn rate_sample_eval_steps() -> Int {
   110011
 }
 
-fn rate_sample_cpu_ms() -> Int {
-  152
+fn rate_sample_cpu_ms() -> Millisecond {
+  millisecond(count: 152)
 }
 
 fn classify_eval_step_rate(rate_work: Int, next_rate_work: Int, measured_steps: Int) -> EvalStepRateGrounding {

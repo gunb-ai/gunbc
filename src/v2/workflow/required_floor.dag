@@ -1056,8 +1056,8 @@ fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
 // IT IS POLICY AND IT IS STATED IN MILLISECONDS BECAUSE THAT IS THE UNIT THE RULING IS IN. The
 // conversion to steps is a separate fact with a separate authority and a separate failure mode,
 // which is why it does not live in this function.
-fn required_floor_claim_work_envelope_ms() -> Int {
-  500
+fn required_floor_claim_work_envelope_ms() -> Millisecond {
+  millisecond(count: 500)
 }
 
 // THE NEW-WITNESS WORK ENVELOPE: 100ms (operator ruling via fierce-lark-661, 2026-09-13).
@@ -1073,8 +1073,8 @@ fn required_floor_claim_work_envelope_ms() -> Int {
 // existing population grew up under, and lowering it on 3,795 rows at once would refuse work that
 // nothing has asked anyone to repair. 100 is what the operator is willing to pay for work arriving
 // from now on. So the two tiers are a debt and a standard, not two standards.
-fn required_floor_new_witness_envelope_ms() -> Int {
-  100
+fn required_floor_new_witness_envelope_ms() -> Millisecond {
+  millisecond(count: 100)
 }
 
 // WHICH CEILING ONE CLAIM IS JUDGED AGAINST, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
@@ -1107,8 +1107,16 @@ fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
   }
 }
 
-// THE POLICY INPUT EACH TIER PROJECTS. Milliseconds of work, which is the unit the rulings are in.
-fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Int {
+// THE POLICY INPUT EACH TIER PROJECTS, AS A `Millisecond` AND NOT A BARE `Int` (review 65247,
+// BLOCKING). These are milliseconds of work -- the unit the rulings are in -- and `std.measure`
+// owns that carrier, which this module already imports and which `eval_step_budget_for` already
+// takes. Carrying the magnitude as a raw scalar and re-minting it into the carrier at the consumer
+// is the re-invention DESIGN section 2's test names and the second home section 3 forbids; it also
+// contradicted this lane's own dissolution note, which asserts that the millisecond gap in the
+// sibling file was CLOSED. The eval-step fields stay scalars for a reason that does NOT apply here:
+// `std.measure`'s Quantity roster has no arm for interpreter evaluation steps, while it has carried
+// Time since before this lane existed.
+fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Millisecond {
   match tier {
     GrandfatheredTier => required_floor_claim_work_envelope_ms()
     NewWitnessTier => required_floor_new_witness_envelope_ms()
@@ -1122,7 +1130,7 @@ fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Int {
 fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> Int {
   eval_step_budget_for(
     calibration: floor_eval_step_calibration,
-    envelope: millisecond(count: claim_ceiling_envelope_ms(tier: tier)),
+    envelope: claim_ceiling_envelope_ms(tier: tier),
   )
 }
 
