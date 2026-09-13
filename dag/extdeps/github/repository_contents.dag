@@ -8,7 +8,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome, RestOk }
-import std.encoding { Standard, base64_decode, utf8_decode_bytes }
+import std.encoding { Standard, base64_decode, utf8_decode_bytes, utf8_octets_well_formed }
+import std.integer { UInt8 }
 import std.bytes { octets_bytes }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -97,15 +98,14 @@ data contents_absent_encoding: String = "none"
 //
 // THE DECLARED SIZE IS CHECKED AGAINST THE DECODED OCTETS. `size` is the blob's byte count and the
 // decode is the only independent count of the bytes that arrived, so a disagreement means the body
-// that was served is not the blob it names, and no text is produced from it. UTF-8 decoding is the
-// host's strict decode: invalid UTF-8 is a runtime refusal, not a replacement character.
-type RepositoryFileTextRead
-  = RepositoryFileText { text: String }
+// that was served is not the blob it names, and no bytes are produced from it.
+type RepositoryFileBytesRead
+  = RepositoryFileBytes { octets: List<UInt8> }
   | RepositoryFileNotBase64Encoded { encoding: String }
   | RepositoryFileBase64Invalid
   | RepositoryFileSizeDisagrees { declared: Int, decoded: Int }
 
-fn repository_file_text(file: RepositoryFileContent) -> RepositoryFileTextRead {
+fn repository_file_bytes(file: RepositoryFileContent) -> RepositoryFileBytesRead {
   if file.encoding != contents_base64_encoding {
     RepositoryFileNotBase64Encoded { encoding: file.encoding }
   } else {
@@ -115,9 +115,25 @@ fn repository_file_text(file: RepositoryFileContent) -> RepositoryFileTextRead {
         if count(octets) != file.size {
           RepositoryFileSizeDisagrees { declared: file.size, decoded: count(octets) }
         } else {
-          RepositoryFileText { text: utf8_decode_bytes(payload: octets_bytes(o: octets)) }
+          RepositoryFileBytes { octets: octets }
         }
     }
+  }
+}
+
+// TEXT IS A SECOND QUESTION ABOUT THE SAME BYTES. A file whose bytes arrived intact but are not UTF-8
+// is a real file that was read, so it is its own arm - never folded into the arms that mean the
+// bytes did not arrive - and it is decided by std.encoding utf8_octets_well_formed BEFORE the host
+// decode, whose refusal on malformed input would otherwise stop the whole run.
+type RepositoryFileTextRead
+  = RepositoryFileText { text: String }
+  | RepositoryFileNotUtf8
+
+fn repository_octets_text(octets: List<UInt8>) -> RepositoryFileTextRead {
+  if utf8_octets_well_formed(octets: octets) {
+    RepositoryFileText { text: utf8_decode_bytes(payload: octets_bytes(o: octets)) }
+  } else {
+    RepositoryFileNotUtf8
   }
 }
 

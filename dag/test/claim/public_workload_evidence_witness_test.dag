@@ -1,35 +1,36 @@
 module test.claim.public_workload_evidence_witness_test
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
-import std.encoding { Standard, base64_encode }
+import std.integer { UInt8 }
+import std.encoding { Standard, base64_encode, utf8_octets_well_formed }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.repository_contents {
-  RepositoryFileContent, RepositoryFileTextRead, RepositoryFileText, RepositoryFileNotBase64Encoded,
-  RepositoryFileBase64Invalid, RepositoryFileSizeDisagrees, repository_file_text,
+  RepositoryFileContent, RepositoryFileBytesRead, RepositoryFileBytes, RepositoryFileNotBase64Encoded,
+  RepositoryFileBase64Invalid, RepositoryFileSizeDisagrees, repository_file_bytes,
+  RepositoryFileText, RepositoryFileNotUtf8, repository_octets_text,
 }
 import extdeps.github.code_search { CodeSearchHit, CodeSearchRepository }
-import extdeps.github.repositories { FullRepository, hermetic_full_repository }
-import extdeps.languages.yaml.gha_workflow_read { read_workflow_jobs }
+import extdeps.github.repositories { hermetic_full_repository }
 import gunbc.ci_workflow_source_read {
   HitReadAtResolvedRevision, HitCanonicalized, HitReadRefused, WorkflowSourceIdentity,
 }
 import extdeps.transports.rest { RestExchangeUnreached }
-import gunbc.public_workload_scan { ScanHitReceipt }
+import gunbc.public_workload_scan { ScanHitReceipt, ScanQueryPolicy, ScanQueryReceipt, ScanPageReceipt, ScanQueryPageLimit, HitSighting, WorkloadScanReceipt }
 import gunbc.public_workload_evidence {
-  WorkflowRevisionKey, WorkflowRevisionEvidence, workflow_revision_record_key,
-  EvidenceFromHit, EvidenceObserved, EvidenceTextUnreadable, EvidenceNotReached, evidence_from_hit,
-  encode_workflow_revision_evidence,
+  WorkflowSourceKey, WorkflowSourceRecord, workflow_source_record_key, encode_workflow_source_record,
+  SourceFromHit, SourceRead, SourceBytesUnusable, SourceNotReached, source_from_hit,
+  HitSource, encode_scan_attempt,
 }
-import test.claim.gha_workflow_reverse_read_witness_test { biome_main_workflow_bytes, openobserve_build_pr_image_workflow_bytes }
+import test.claim.gha_workflow_reverse_read_witness_test { biome_main_workflow_bytes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// HERMETIC CONTROLS FOR THE EVIDENCE RECORD: the contents-API text decode, the hit-to-evidence
-// boundary, the canonical bytes, and the three identities. The workflow bytes are the pinned real
-// Biome and OpenObserve files the reader's own witness carries, so the records under test are what a
-// real scan of those revisions would store. What these do NOT establish is the store transport; that
-// is test.claim.object_store_git_wet_witness_test.
+// HERMETIC CONTROLS FOR THE RAW CORPUS: the contents-API byte decode, the UTF-8 decision that no longer
+// stops a run, the hit-to-source boundary, the source record's bytes and identity, and the scan
+// attempt's record of how each file was found. The workflow bytes are the pinned real Biome file the
+// reader's witness carries. What these do NOT establish is the store transport; that is
+// test.claim.object_store_git_wet_witness_test.
 
 data biome_ref: CommitSha = "47d7383d049b36ff8eaba50912176928143dd9e9"
 data biome_blob: String = "e06a945171c115274945744f65948a07f52e16f2"
@@ -40,137 +41,131 @@ fn wrap60(s: String) -> String {
   if string_length(s: s) <= 60 { s } else { concat(substring(s: s, start: 0, end: 60), concat("\n", wrap60(s: substring(s: s, start: 60, end: string_length(s: s))))) }
 }
 
-fn served(text: String, size: Int) -> RepositoryFileContent {
-  RepositoryFileContent {
-    name: "main.yml",
-    path: ".github/workflows/main.yml",
-    sha: biome_blob,
-    size: size,
-    encoding: "base64",
-    content: wrap60(s: base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: text)), variant: Standard)),
-  }
+fn octets_of(text: String) -> List<UInt8> {
+  bytes_octets(b: utf8_encode_bytes(s: text))
 }
 
-fn byte_count(text: String) -> Int {
-  count(bytes_octets(b: utf8_encode_bytes(s: text)))
+fn served_octets(octets: List<UInt8>, size: Int) -> RepositoryFileContent {
+  RepositoryFileContent { name: "main.yml", path: ".github/workflows/main.yml", sha: biome_blob, size: size, encoding: "base64", content: wrap60(s: base64_encode(octets: octets, variant: Standard)) }
 }
 
-fn text_arm(r: RepositoryFileTextRead) -> String {
+fn bytes_arm(r: RepositoryFileBytesRead) -> String {
   match r {
-    RepositoryFileText { text } => concat("text:", text)
-    RepositoryFileNotBase64Encoded { encoding } => "not_base64"
+    RepositoryFileBytes { octets } => join(["bytes:", to_string(value: count(octets))], "")
+    RepositoryFileNotBase64Encoded { encoding: _ } => "not_base64"
     RepositoryFileBase64Invalid => "base64_invalid"
-    RepositoryFileSizeDisagrees { declared, decoded } => "size_disagrees"
+    RepositoryFileSizeDisagrees { declared: _, decoded: _ } => "size_disagrees"
   }
 }
 
-// ---- contents text
+// A lone 0xFF is never UTF-8 (RFC 3629 excludes F5-FF as lead octets); 0xED 0xA0 0x80 encodes a UTF-16
+// surrogate and 0xC0 0xAF is an overlong "/"; 0xE2 0x82 is a truncated three-octet sequence.
+fn invalid_utf8() -> List<UInt8> { [104, 105, 255] }
 
-test fn line_wrapped_base64_decodes_to_the_exact_file_text() -> Bool {
-  text_arm(r: repository_file_text(file: served(text: biome_main_workflow_bytes, size: byte_count(text: biome_main_workflow_bytes)))) == concat("text:", biome_main_workflow_bytes)
+// ---- bytes and text
+
+test fn line_wrapped_base64_decodes_to_the_exact_octets() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  bytes_arm(r: repository_file_bytes(file: served_octets(octets: o, size: count(o)))) == join(["bytes:", to_string(value: count(o))], "")
 }
 
-test fn a_declared_size_that_disagrees_with_the_decoded_octets_produces_no_text() -> Bool {
-  text_arm(r: repository_file_text(file: served(text: biome_main_workflow_bytes, size: byte_count(text: biome_main_workflow_bytes) + 1))) == "size_disagrees"
+test fn a_declared_size_that_disagrees_with_the_decoded_octets_produces_no_bytes() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  bytes_arm(r: repository_file_bytes(file: served_octets(octets: o, size: count(o) + 1))) == "size_disagrees"
 }
 
 test fn malformed_base64_and_a_non_base64_encoding_refuse() -> Bool {
   let bad = RepositoryFileContent { name: "x", path: "x", sha: biome_blob, size: 3, encoding: "base64", content: "not*base64" }
   let unencoded = RepositoryFileContent { name: "x", path: "x", sha: biome_blob, size: 3, encoding: "none", content: "" }
-  text_arm(r: repository_file_text(file: bad)) == "base64_invalid" && text_arm(r: repository_file_text(file: unencoded)) == "not_base64"
+  bytes_arm(r: repository_file_bytes(file: bad)) == "base64_invalid" && bytes_arm(r: repository_file_bytes(file: unencoded)) == "not_base64"
 }
 
-// ---- hit to evidence
+test fn utf8_well_formedness_follows_rfc_3629_including_the_excluded_forms() -> Bool {
+  utf8_octets_well_formed(octets: octets_of(text: "naïve €𝄞"))
+    && utf8_octets_well_formed(octets: invalid_utf8()) == false
+    && utf8_octets_well_formed(octets: [237, 160, 128]) == false
+    && utf8_octets_well_formed(octets: [192, 175]) == false
+    && utf8_octets_well_formed(octets: [226, 130]) == false
+    && utf8_octets_well_formed(octets: [244, 144, 128, 128]) == false
+    && utf8_octets_well_formed(octets: [244, 143, 191, 191])
+}
+
+test fn non_utf8_bytes_are_a_text_refusal_not_a_run_failure() -> Bool {
+  let text_ok = match repository_octets_text(octets: octets_of(text: biome_main_workflow_bytes)) {
+    RepositoryFileText { text } => text == biome_main_workflow_bytes
+    RepositoryFileNotUtf8 => false
+  }
+  let refused = match repository_octets_text(octets: invalid_utf8()) {
+    RepositoryFileNotUtf8 => true
+    RepositoryFileText { text: _ } => false
+  }
+  text_ok && refused
+}
+
+// ---- hit to source
 
 fn biome_hit() -> CodeSearchHit {
-  CodeSearchHit {
-    name: "main.yml",
-    path: ".github/workflows/main.yml",
-    sha: "1111111111111111111111111111111111111111",
-    repository: CodeSearchRepository { id: 270299983, name: "biome", full_name: "biomejs/biome", private: false, fork: false },
-  }
+  CodeSearchHit { name: "main.yml", path: ".github/workflows/main.yml", sha: "1111111111111111111111111111111111111111", repository: CodeSearchRepository { id: 270299983, name: "biome", full_name: "biomejs/biome", private: false, fork: false } }
 }
 
 fn identity() -> WorkflowSourceIdentity {
-  WorkflowSourceIdentity {
-    repository_full_name: "biomejs/biome",
-    repository_id: 270299983,
-    repository_is_fork: false,
-    ref: biome_ref,
-    workflow_path: ".github/workflows/main.yml",
-    blob_sha: biome_blob,
-  }
+  WorkflowSourceIdentity { repository_full_name: "biomejs/biome", repository_id: 270299983, repository_is_fork: false, ref: biome_ref, workflow_path: ".github/workflows/main.yml", blob_sha: biome_blob }
 }
 
 fn read_receipt(file: RepositoryFileContent) -> ScanHitReceipt {
-  ScanHitReceipt {
-    resolution: HitReadAtResolvedRevision {
-      hit: biome_hit(),
-      repository: hermetic_full_repository,
-      head: biome_ref,
-      canonicalization: HitCanonicalized { identity: identity(), file: file },
-    },
-    sightings: 1,
+  ScanHitReceipt { hit: biome_hit(), resolution: HitReadAtResolvedRevision { hit: biome_hit(), repository: hermetic_full_repository, head: biome_ref, canonicalization: HitCanonicalized { identity: identity(), file: file } } }
+}
+
+fn source_arm(s: SourceFromHit) -> String {
+  match s {
+    SourceRead { record: _ } => "read"
+    SourceBytesUnusable { read: _ } => "bytes_unusable"
+    SourceNotReached { resolution: _ } => "not_reached"
   }
 }
 
-fn evidence_arm(e: EvidenceFromHit) -> String {
-  match e {
-    EvidenceObserved { evidence: _ } => "observed"
-    EvidenceTextUnreadable { identity: _, read: _ } => "text_unreadable"
-    EvidenceNotReached { resolution: _ } => "not_reached"
+test fn a_canonicalized_read_is_a_source_even_when_its_bytes_are_not_utf8() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  let good = source_arm(s: source_from_hit(receipt: read_receipt(file: served_octets(octets: o, size: count(o)))))
+  let binary = source_arm(s: source_from_hit(receipt: read_receipt(file: served_octets(octets: invalid_utf8(), size: 3))))
+  let mis_sized = source_arm(s: source_from_hit(receipt: read_receipt(file: served_octets(octets: o, size: 1))))
+  let refused = source_arm(s: source_from_hit(receipt: ScanHitReceipt { hit: biome_hit(), resolution: HitReadAtResolvedRevision { hit: biome_hit(), repository: hermetic_full_repository, head: biome_ref, canonicalization: HitReadRefused { repository_full_name: "biomejs/biome", path: ".github/workflows/main.yml", performance: RestExchangeUnreached { cause: "rate limited" } } } }))
+  good == "read" && binary == "read" && mis_sized == "bytes_unusable" && refused == "not_reached"
+}
+
+// ---- source record bytes and identity
+
+fn biome_source(blob: String, octets: List<UInt8>) -> WorkflowSourceRecord {
+  WorkflowSourceRecord { key: WorkflowSourceKey { repository_id: 270299983, ref: biome_ref, workflow_path: ".github/workflows/main.yml", blob_sha: blob }, repository_full_name_at_observation: "biomejs/biome", repository_is_fork: false, declared_size: count(octets), octets: octets }
+}
+
+test fn the_source_record_carries_the_exact_bytes_in_one_canonical_spelling() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  let bytes = encode_workflow_source_record(r: biome_source(blob: biome_blob, octets: o)) as String
+  string_contains(s: bytes, pattern: concat(concat("\ncontent_base64 ", base64_encode(octets: o, variant: Standard)), "\nend\n"))
+    && encode_workflow_source_record(r: biome_source(blob: biome_blob, octets: o)) == encode_workflow_source_record(r: biome_source(blob: biome_blob, octets: octets_of(text: biome_main_workflow_bytes)))
+}
+
+test fn the_source_key_names_upstream_identity_and_no_reader() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  let k = workflow_source_record_key(key: biome_source(blob: biome_blob, octets: o).key) as String
+  k == "gunbc-workflow-source v1 270299983 47d7383d049b36ff8eaba50912176928143dd9e9 .github/workflows/main.yml e06a945171c115274945744f65948a07f52e16f2"
+    && (workflow_source_record_key(key: biome_source(blob: "2222222222222222222222222222222222222222", octets: o).key) == workflow_source_record_key(key: biome_source(blob: biome_blob, octets: o).key)) == false
+}
+
+// ---- scan attempt
+
+test fn the_scan_attempt_records_each_sighting_and_names_the_source_it_produced() -> Bool {
+  let o = octets_of(text: biome_main_workflow_bytes)
+  let q = ScanQueryPolicy { query_id: "depot-ubuntu-24.04-arm-16" as NonEmptyStr, query: "depot-ubuntu-24.04-arm-16 path:.github/workflows" as NonEmptyStr, per_page: 30, max_pages: 1, max_distinct_hits: 30 }
+  let h = read_receipt(file: served_octets(octets: o, size: count(o)))
+  let receipt = WorkloadScanReceipt {
+    queries: [ScanQueryReceipt { policy: q, pages: [ScanPageReceipt { page: 1, items_delivered: 1 }], stop: ScanQueryPageLimit }],
+    sightings: [HitSighting { query_id: q.query_id, query: q.query, page: 1, position: 1, hit: biome_hit(), admitted: true }],
+    hits: [h],
   }
-}
-
-test fn a_canonicalized_read_with_decodable_text_is_evidence_and_nothing_else_is() -> Bool {
-  let good = evidence_arm(e: evidence_from_hit(receipt: read_receipt(file: served(text: biome_main_workflow_bytes, size: byte_count(text: biome_main_workflow_bytes)))))
-  let mis_sized = evidence_arm(e: evidence_from_hit(receipt: read_receipt(file: served(text: biome_main_workflow_bytes, size: 1))))
-  let refused = evidence_arm(e: evidence_from_hit(receipt: ScanHitReceipt {
-    resolution: HitReadAtResolvedRevision {
-      hit: biome_hit(),
-      repository: hermetic_full_repository,
-      head: biome_ref,
-      canonicalization: HitReadRefused { repository_full_name: "biomejs/biome", path: ".github/workflows/main.yml", performance: RestExchangeUnreached { cause: "rate limited" } },
-    },
-    sightings: 1,
-  }))
-  good == "observed" && mis_sized == "text_unreadable" && refused == "not_reached"
-}
-
-// ---- canonical bytes and identities
-
-fn biome_evidence(blob: String, text: String) -> WorkflowRevisionEvidence {
-  WorkflowRevisionEvidence {
-    key: WorkflowRevisionKey { repository_id: 270299983, workflow_path: ".github/workflows/main.yml", ref: biome_ref, blob_sha: blob },
-    repository_full_name_at_observation: "biomejs/biome",
-    repository_is_fork: false,
-    jobs: read_workflow_jobs(source: text),
-  }
-}
-
-test fn the_same_revision_encodes_to_identical_bytes_under_the_same_key() -> Bool {
-  let a = biome_evidence(blob: biome_blob, text: biome_main_workflow_bytes)
-  let b = biome_evidence(blob: biome_blob, text: biome_main_workflow_bytes)
-  encode_workflow_revision_evidence(e: a) == encode_workflow_revision_evidence(e: b)
-    && workflow_revision_record_key(key: a.key) == workflow_revision_record_key(key: b.key)
-}
-
-test fn a_new_blob_of_the_same_file_is_new_evidence_about_the_same_repository() -> Bool {
-  let a = biome_evidence(blob: biome_blob, text: biome_main_workflow_bytes)
-  let b = biome_evidence(blob: "2222222222222222222222222222222222222222", text: biome_main_workflow_bytes)
-  (workflow_revision_record_key(key: a.key) == workflow_revision_record_key(key: b.key)) == false
-    && a.key.repository_id == b.key.repository_id
-}
-
-test fn the_record_names_the_arm_test_instance_by_its_evaluated_runner() -> Bool {
-  let bytes = encode_workflow_revision_evidence(e: biome_evidence(blob: biome_blob, text: biome_main_workflow_bytes)) as String
-  string_contains(s: bytes, pattern: "\ninstance test os:%20depot-ubuntu-24.04-arm-16%0A runner depot-ubuntu-24.04-arm-16%0A\n")
-    && string_contains(s: bytes, pattern: "\nrepository_id 270299983\n")
-    && string_contains(s: bytes, pattern: "\nend\n")
-}
-
-test fn free_text_cannot_forge_a_record_line() -> Bool {
-  let lines = split(s: encode_workflow_revision_evidence(e: biome_evidence(blob: biome_blob, text: openobserve_build_pr_image_workflow_bytes)) as String, delimiter: "\n")
-  let known = ["gunbc-workload-evidence", "repository_id", "repository_full_name_at_observation", "repository_is_fork", "ref", "workflow_path", "blob_sha", "document", "job", "runs_on", "strategy", "instance", "instances", "step", "uninterpreted", "end", ""]
-  all(lines, l => any(known, k => starts_with(s: l, prefix: concat(k, " ")) || l == k))
+  let text = encode_scan_attempt(observed_at: "2026-09-13T00:00:00Z" as NonEmptyStr, receipt: receipt, sources: [HitSource { hit: h, source: source_from_hit(receipt: h) }]) as String
+  string_contains(s: text, pattern: "\nobserved_at 2026-09-13T00:00:00Z\n")
+    && string_contains(s: text, pattern: "\nsighting depot-ubuntu-24.04-arm-16 1 1 270299983 biomejs/biome .github/workflows/main.yml 1111111111111111111111111111111111111111 admitted\n")
+    && string_contains(s: text, pattern: "\noutcome 270299983 .github/workflows/main.yml source gunbc-workflow-source%20v1%20270299983%2047d7383d049b36ff8eaba50912176928143dd9e9%20.github/workflows/main.yml%20e06a945171c115274945744f65948a07f52e16f2\n")
 }

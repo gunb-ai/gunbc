@@ -1,323 +1,280 @@
 module gunbc.public_workload_evidence
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.integer { UInt8 }
+import std.encoding { Standard, base64_encode }
 import std.object_store {
   percent_encode_payload,
   ImmutableRecordPut, ImmutableRecordStored, ImmutableRecordAlreadyPresent, ImmutableRecordConflict,
   ImmutableRecordOccupiedByEmptyObject, ImmutableRecordPublishRefused, ImmutableRecordReadBackRefused,
 }
 import extdeps.realization.object_store_git { GitObjectStoreOpening, git_object_store_put_record }
+import extdeps.transports.rest {
+  RestExchangePerformance, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestExchangeUnreached, RestExchangeUndecodable,
+}
 import extdeps.github.repository_contents {
-  RepositoryFileTextRead, RepositoryFileText, RepositoryFileNotBase64Encoded, RepositoryFileBase64Invalid,
-  RepositoryFileSizeDisagrees, repository_file_text,
+  RepositoryFileBytesRead, RepositoryFileBytes, RepositoryFileNotBase64Encoded, RepositoryFileBase64Invalid,
+  RepositoryFileSizeDisagrees, repository_file_bytes,
 }
-import extdeps.github.actions { Step, RunStep, UsesStep }
-import extdeps.languages.yaml.types { YamlMapping }
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { runner_yaml, action_ref_uses }
-import extdeps.languages.yaml.gha_workflow_read {
-  WorkflowJobsRead, WorkflowJobsInterpreted, WorkflowDocumentRefused,
-  WorkflowDocumentRefusal, WorkflowYamlRejected, WorkflowDocumentNotAMapping, WorkflowJobsKeyMissing, WorkflowJobsNotAMapping,
-  RunsOnRead, RunsOnInterpreted, RunsOnUnresolved,
-  RunsOnUnresolvedCause, RunsOnMissing, RunsOnEmptyLabel, RunsOnGroupMapping, RunsOnLabelListWithoutSelfHosted,
-  RunsOnListElementNotAString, RunsOnNotAStringListOrMapping,
-  MatrixUnresolvedCause, MatrixIsExpression, MatrixNotAMapping, MatrixAxisIsExpression, MatrixAxisNotASequence,
-  MatrixCombinationListNotMappings, MatrixOverCombinationLimit,
-  StrategyRead, StrategyAbsent, StrategyInterpreted, StrategyUnresolved,
-  StrategyUnresolvedCause, StrategyNotAMapping, StrategyMatrixUnresolved, StrategyFieldNotStatic, StrategyKeyNotModeled,
-  InstanceRunnerRead, InstanceRunner, InstanceRunnerUnresolved,
-  InstanceRunnerUnresolvedCause, InstanceRunnerTemplateUnparsed, InstanceRunnerEvaluationRefused,
-  InstanceRunnerDeclarationUnresolved, InstanceRunnerEvaluatedToUnresolved,
-  JobInstancesRead, JobInstances, JobInstancesUnknownWhileStrategyUnresolved,
-  StepRead, StepInterpreted, StepUnresolved,
-  StepUnresolvedCause, StepNotAMapping, StepHasNeitherRunNorUses, StepHasBothRunAndUses, StepUsesNotARepositoryAction,
-  StepShellNotModeled, StepFieldShapeNotModeled, StepKeyNotModeled,
-  JobRead, JobInterpreted, JobUnresolved,
-  JobUnresolvedCause, JobNotAMapping, JobCallsReusableWorkflow, JobStepsNotASequence,
-  read_workflow_jobs,
-}
+import extdeps.languages.yaml.gha_workflow_read { WorkflowJobsRead }
 import gunbc.ci_workflow_source_read {
   HitRevisionResolution, HitReadAtResolvedRevision, HitRevisionUnaddressable, HitRepositoryReadRefused,
   HitRepositoryDisagrees, HitBranchReadRefused, HitBranchHeadNotExact,
-  HitCanonicalization, HitCanonicalized, HitFileUnreadable, HitSubjectsDisagree, HitRefNotExact, HitReadRefused,
-  WorkflowSourceIdentity,
+  HitCanonicalized, HitFileUnreadable, HitSubjectsDisagree, HitRefNotExact, HitReadRefused,
+  RepositoryIdDiffersFromHit, RepositoryRenamedSinceIndex,
+  RepositoryDiffersFromHit, RequestedPathDiffersFromHit, ResponsePathDiffersFromRequest,
 }
-import gunbc.public_workload_scan { WorkloadScanReceipt, ScanHitReceipt }
+import gunbc.public_workload_scan {
+  WorkloadScanReceipt, ScanHitReceipt, HitSighting, ScanQueryReceipt,
+  ScanQueryPagesExhausted, ScanQueryPageLimit, ScanQueryHitLimit, ScanQueryTruncated, ScanQueryPageRefused,
+}
 
-// WHAT A PUBLIC WORKFLOW FILE SAID AT ONE REVISION, AS AN IMMUTABLE RECORD.
+// THE RAW CORPUS OF A PUBLIC WORKLOAD SCAN: WHAT WAS READ, AND HOW IT WAS FOUND.
 //
-// THREE IDENTITIES, AND ONLY ONE OF THEM IS STORED HERE. A PROSPECT is a repository, keyed by its
-// numeric id - never its name, which renames and transfers change. A WORKLOAD is a job instance: the
-// repository, the workflow path, the job key and the matrix combination. EVIDENCE is what a workflow
-// file declared at one exact commit and blob. A new commit of the same file is new evidence about the
-// same workloads, not a new prospect; a second read of the same blob at the same commit is the same
-// evidence and settles as already present.
+// TWO RECORD FAMILIES ARE STORED, AND INTERPRETATION IS NOT ONE OF THEM.
 //
-// THE RECORD HOLDS THE OBSERVATION, NOT ITS INTERPRETATION. Which provider runs a label, and on which
-// architecture, is read from vendor catalogs whose snapshots move (gunbc.runner_label_resolution). If
-// that reading were stored, a catalog refresh would change the bytes a re-read produces and the store
-// would refuse the retry as a conflict - or worse, an old record would carry an answer the current
-// catalogs no longer give. So the record carries the runner exactly as the workflow declared it,
-// evaluated per matrix combination, and the architecture is derived when a shortlist is projected.
+//   workflow-source   one workflow file at one exact revision: the repository id, commit, path and
+//                     blob that identify it, the repository's name and fork standing as observed, the
+//                     size the endpoint declared, and the file's exact bytes. Nothing is read out of
+//                     the bytes before they are stored.
+//   scan-attempt      one scan: when it ran, every query's bounds, pages and stop, every individual
+//                     sighting (which query found which file on which page at which position, with the
+//                     blob the index held), and every distinct file's resolution outcome, naming the
+//                     source record it produced when it produced one.
 //
-// THE READER IS PART OF THE KEY. The record is the reader's rendering of the bytes, so a reader that
-// renders differently is a different record. The format line names the version; a reader change that
-// forgets to bump it produces different bytes under an existing key, which the store refuses as a
-// conflict rather than overwriting - loud, located, and repaired by bumping the version here.
+// A READING OF THE BYTES IS NOT STORED because it is a pure function of the bytes and the reader, and
+// the bytes are stored. Persisting it would be a second representation of the source that goes stale
+// the moment the reader improves - and an earlier revision of this module did exactly that, storing a
+// rendering that kept a step's command but not its shell, a strategy's name but not its matrix, a key's
+// name but not its value, while describing itself as the observation. A projection that needs jobs
+// reads them from the source record with whatever reader is current.
 //
-// COLLECTION TIME IS NOT IN THE RECORD. When a scan saw the file is a fact about the scan, which its
-// receipt carries; putting it here would give every re-delivery different bytes.
+// THE SOURCE KEY HAS NO READER IN IT. A new reader is a new projection of the same source, never a new
+// source. The key is what upstream identifies: repository id, commit, path, blob.
+//
+// NO FILTER SITS BETWEEN A SUCCESSFUL READ AND STORAGE. A file that turns out to have no ARM job, a
+// provider's own repository, a file that is not UTF-8 - each was read, so each is stored. What is and is
+// not interesting is a projection's question.
+//
+// COLLECTION TIME LIVES ONLY IN THE SCAN ATTEMPT. A source record's bytes are identical however many
+// scans read the same blob at the same commit, so a re-read settles as already present; the attempts
+// that read it are separate records, each naming the source key.
 
-data workload_evidence_format: String = "gunbc-workload-evidence v1 reader=extdeps.languages.yaml.gha_workflow_read"
+data workflow_source_family: NonEmptyStr = "workflow-source-v1"
+data scan_attempt_family: NonEmptyStr = "scan-attempt-v1"
 
-type WorkflowRevisionKey {
+data workflow_source_format: String = "gunbc-workflow-source v1"
+data scan_attempt_format: String = "gunbc-scan-attempt v1"
+
+type WorkflowSourceKey {
   repository_id: Int
-  workflow_path: String
   ref: CommitSha
+  workflow_path: String
   blob_sha: String
 }
 
-fn workflow_revision_record_key(key: WorkflowRevisionKey) -> NonEmptyStr {
-  join([workload_evidence_format, to_string(value: key.repository_id), percent_encode_payload(s: key.workflow_path), key.ref as String, key.blob_sha], " ") as NonEmptyStr
-}
-
-type WorkflowRevisionEvidence {
-  key: WorkflowRevisionKey
+type WorkflowSourceRecord {
+  key: WorkflowSourceKey
   repository_full_name_at_observation: String
   repository_is_fork: Bool
-  jobs: WorkflowJobsRead
+  declared_size: Int
+  octets: List<UInt8>
 }
-
-// A HIT BECOMES EVIDENCE ONLY WHEN ITS BYTES WERE READ. Every other resolution outcome is a fact about
-// the scan - a refusal, a disagreement, a file the endpoint would not inline - and stays on the scan
-// receipt, where it is counted. It is never turned into a record claiming something about a workload.
-type EvidenceFromHit
-  = EvidenceObserved { evidence: WorkflowRevisionEvidence }
-  | EvidenceTextUnreadable { identity: WorkflowSourceIdentity, read: RepositoryFileTextRead }
-  | EvidenceNotReached { resolution: HitRevisionResolution }
-
-fn evidence_from_hit(receipt: ScanHitReceipt) -> EvidenceFromHit {
-  match receipt.resolution {
-    HitReadAtResolvedRevision { hit, repository, head, canonicalization } =>
-      match canonicalization {
-        HitCanonicalized { identity, file } =>
-          match repository_file_text(file: file) {
-            RepositoryFileText { text } =>
-              EvidenceObserved {
-                evidence: WorkflowRevisionEvidence {
-                  key: WorkflowRevisionKey {
-                    repository_id: identity.repository_id,
-                    workflow_path: identity.workflow_path,
-                    ref: identity.ref,
-                    blob_sha: identity.blob_sha,
-                  },
-                  repository_full_name_at_observation: identity.repository_full_name,
-                  repository_is_fork: identity.repository_is_fork,
-                  jobs: read_workflow_jobs(source: text),
-                },
-              }
-            other => EvidenceTextUnreadable { identity: identity, read: other }
-          }
-        HitFileUnreadable { repository_full_name, path, cause } => EvidenceNotReached { resolution: receipt.resolution }
-        HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => EvidenceNotReached { resolution: receipt.resolution }
-        HitRefNotExact { repository_full_name, path, ref, cause } => EvidenceNotReached { resolution: receipt.resolution }
-        HitReadRefused { repository_full_name, path, performance } => EvidenceNotReached { resolution: receipt.resolution }
-      }
-    HitRevisionUnaddressable { hit, address } => EvidenceNotReached { resolution: receipt.resolution }
-    HitRepositoryReadRefused { hit, performance } => EvidenceNotReached { resolution: receipt.resolution }
-    HitRepositoryDisagrees { hit, disagreement } => EvidenceNotReached { resolution: receipt.resolution }
-    HitBranchReadRefused { hit, repository, performance } => EvidenceNotReached { resolution: receipt.resolution }
-    HitBranchHeadNotExact { hit, repository, observed, cause } => EvidenceNotReached { resolution: receipt.resolution }
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Canonical bytes. Line-oriented, one fact per line, every free-text field escaped with
-// std.object_store percent_encode_payload. Runners and matrix selectors are rendered by the existing
-// YAML emitter (extdeps.languages.yaml.gha_workflow runner_yaml, extdeps.languages.yaml.emit
-// serialize_yaml), so this format has no serializer of its own to drift from the one the Actions
-// model already owns.
 
 fn enc(s: String) -> String {
   percent_encode_payload(s: s)
 }
 
-fn document_refusal_tag(r: WorkflowDocumentRefusal) -> String {
-  match r {
-    WorkflowYamlRejected { reason } => join(["yaml_rejected", enc(s: reason)], " ")
-    WorkflowDocumentNotAMapping => "document_not_a_mapping"
-    WorkflowJobsKeyMissing => "jobs_key_missing"
-    WorkflowJobsNotAMapping => "jobs_not_a_mapping"
-  }
+fn workflow_source_record_key(key: WorkflowSourceKey) -> NonEmptyStr {
+  join([workflow_source_format, to_string(value: key.repository_id), key.ref as String, enc(s: key.workflow_path), key.blob_sha], " ") as NonEmptyStr
 }
 
-fn runs_on_cause_tag(c: RunsOnUnresolvedCause) -> String {
-  match c {
-    RunsOnMissing => "missing"
-    RunsOnEmptyLabel => "empty_label"
-    RunsOnGroupMapping => "group_mapping"
-    RunsOnLabelListWithoutSelfHosted => "label_list_without_self_hosted"
-    RunsOnListElementNotAString => "list_element_not_a_string"
-    RunsOnNotAStringListOrMapping => "not_a_string_list_or_mapping"
-  }
+// The bytes are carried as canonical RFC 4648 base64 - re-encoded from the decoded octets rather than
+// copied from the endpoint's line-wrapped text - so one blob has exactly one stored spelling and a byte
+// that is not valid UTF-8 is stored as faithfully as one that is.
+fn encode_workflow_source_record(r: WorkflowSourceRecord) -> NonEmptyStr {
+  concat(join([
+    workflow_source_format,
+    join(["repository_id", to_string(value: r.key.repository_id)], " "),
+    join(["repository_full_name_at_observation", enc(s: r.repository_full_name_at_observation)], " "),
+    join(["repository_is_fork", if r.repository_is_fork { "true" } else { "false" }], " "),
+    join(["ref", r.key.ref as String], " "),
+    join(["workflow_path", enc(s: r.key.workflow_path)], " "),
+    join(["blob_sha", r.key.blob_sha], " "),
+    join(["declared_size", to_string(value: r.declared_size)], " "),
+    join(["content_base64", base64_encode(octets: r.octets, variant: Standard)], " "),
+    "end",
+  ], "\n"), "\n") as NonEmptyStr
 }
 
-fn matrix_cause_tag(c: MatrixUnresolvedCause) -> String {
-  match c {
-    MatrixIsExpression { expression } => join(["matrix_is_expression", enc(s: expression)], ":")
-    MatrixNotAMapping => "matrix_not_a_mapping"
-    MatrixAxisIsExpression { axis, expression } => join(["matrix_axis_is_expression", enc(s: axis), enc(s: expression)], ":")
-    MatrixAxisNotASequence { axis } => join(["matrix_axis_not_a_sequence", enc(s: axis)], ":")
-    MatrixCombinationListNotMappings { key } => join(["matrix_combination_list_not_mappings", enc(s: key)], ":")
-    MatrixOverCombinationLimit { at_least, limit } => join(["matrix_over_combination_limit", to_string(value: at_least), to_string(value: limit)], ":")
-  }
-}
+// ---------------------------------------------------------------------------------------------
+// From a resolved hit to a source record, or to the outcome that explains why there is none.
 
-fn strategy_tag(s: StrategyRead) -> String {
-  match s {
-    StrategyAbsent => "absent"
-    StrategyInterpreted { strategy: _ } => "interpreted"
-    StrategyUnresolved { location, cause } => join(["unresolved", enc(s: location), match cause {
-      StrategyNotAMapping => "not_a_mapping"
-      StrategyMatrixUnresolved { cause: m } => matrix_cause_tag(c: m)
-      StrategyFieldNotStatic { key } => join(["field_not_static", enc(s: key)], ":")
-      StrategyKeyNotModeled { key } => join(["key_not_modeled", enc(s: key)], ":")
-    }], " ")
-  }
-}
+type SourceFromHit
+  = SourceRead { record: WorkflowSourceRecord }
+  | SourceBytesUnusable { read: RepositoryFileBytesRead }
+  | SourceNotReached { resolution: HitRevisionResolution }
 
-fn runs_on_tag(r: RunsOnRead) -> String {
-  match r {
-    RunsOnInterpreted { runner } => join(["declared", enc(s: serialize_yaml(v: runner_yaml(spec: runner)))], " ")
-    RunsOnUnresolved { location, cause } => join(["unresolved", enc(s: location), runs_on_cause_tag(c: cause)], " ")
-  }
-}
-
-fn instance_runner_tag(r: InstanceRunnerRead) -> String {
-  match r {
-    InstanceRunner { runner } => join(["runner", enc(s: serialize_yaml(v: runner_yaml(spec: runner)))], " ")
-    InstanceRunnerUnresolved { cause } => join(["unresolved", match cause {
-      InstanceRunnerTemplateUnparsed => "template_unparsed"
-      InstanceRunnerEvaluationRefused { refusal: _ } => "evaluation_refused"
-      InstanceRunnerDeclarationUnresolved { cause: c } => join(["declaration_unresolved", runs_on_cause_tag(c: c)], ":")
-      InstanceRunnerEvaluatedToUnresolved { value, cause: c } => join(["evaluated_to_unresolved", enc(s: value), runs_on_cause_tag(c: c)], ":")
-    }], " ")
-  }
-}
-
-fn step_tag(s: StepRead) -> String {
-  match s {
-    StepInterpreted { step } => match step {
-      RunStep { name, id, run, shell, env, working_directory, if_condition, continue_on_error, timeout_minutes } =>
-        join(["run", enc(s: run)], " ")
-      UsesStep { name, id, uses, with, env, if_condition, continue_on_error, timeout_minutes } =>
-        join(["uses", enc(s: action_ref_uses(ref: uses))], " ")
-    }
-    StepUnresolved { location, cause } => join(["unresolved", enc(s: location), match cause {
-      StepNotAMapping => "not_a_mapping"
-      StepHasNeitherRunNorUses => "neither_run_nor_uses"
-      StepHasBothRunAndUses => "both_run_and_uses"
-      StepUsesNotARepositoryAction { uses } => join(["uses_not_a_repository_action", enc(s: uses)], ":")
-      StepShellNotModeled { shell } => join(["shell_not_modeled", enc(s: shell)], ":")
-      StepFieldShapeNotModeled { key } => join(["field_shape_not_modeled", enc(s: key)], ":")
-      StepKeyNotModeled { key } => join(["key_not_modeled", enc(s: key)], ":")
-    }], " ")
-  }
-}
-
-fn job_lines(job: JobRead) -> List<String> {
-  match job {
-    JobUnresolved { job_key, location, cause } =>
-      [join(["job", enc(s: job_key), "unresolved", enc(s: location), match cause {
-        JobNotAMapping => "not_a_mapping"
-        JobCallsReusableWorkflow { uses } => join(["calls_reusable_workflow", enc(s: uses)], ":")
-        JobStepsNotASequence => "steps_not_a_sequence"
-      }], " ")]
-    JobInterpreted { job_key, runs_on, strategy, instances, steps, uninterpreted_keys, interpreted: _ } => {
-      let k = enc(s: job_key)
-      let head = [
-        join(["job", k, "interpreted"], " "),
-        join(["runs_on", k, runs_on_tag(r: runs_on)], " "),
-        join(["strategy", k, strategy_tag(s: strategy)], " "),
-      ]
-      let instance_lines = match instances {
-        JobInstancesUnknownWhileStrategyUnresolved => [join(["instances", k, "unknown_while_strategy_unresolved"], " ")]
-        JobInstances { instances: is } => map(is, i => join(["instance", k, enc(s: serialize_yaml(v: YamlMapping { entries: i.matrix_selector })), instance_runner_tag(r: i.runner)], " "))
+fn source_from_hit(receipt: ScanHitReceipt) -> SourceFromHit {
+  match receipt.resolution {
+    HitReadAtResolvedRevision { hit, repository, head, canonicalization } =>
+      match canonicalization {
+        HitCanonicalized { identity, file } =>
+          match repository_file_bytes(file: file) {
+            RepositoryFileBytes { octets } =>
+              SourceRead {
+                record: WorkflowSourceRecord {
+                  key: WorkflowSourceKey { repository_id: identity.repository_id, ref: identity.ref, workflow_path: identity.workflow_path, blob_sha: identity.blob_sha },
+                  repository_full_name_at_observation: identity.repository_full_name,
+                  repository_is_fork: identity.repository_is_fork,
+                  declared_size: file.size,
+                  octets: octets,
+                },
+              }
+            other => SourceBytesUnusable { read: other }
+          }
+        HitFileUnreadable { repository_full_name, path, cause } => SourceNotReached { resolution: receipt.resolution }
+        HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => SourceNotReached { resolution: receipt.resolution }
+        HitRefNotExact { repository_full_name, path, ref, cause } => SourceNotReached { resolution: receipt.resolution }
+        HitReadRefused { repository_full_name, path, performance } => SourceNotReached { resolution: receipt.resolution }
       }
-      let step_lines = map(enumerate(steps), p => join(["step", k, to_string(value: p.first), step_tag(s: p.second)], " "))
-      let key_lines = map(uninterpreted_keys, u => join(["uninterpreted", k, enc(s: u)], " "))
-      concat(concat(concat(head, instance_lines), step_lines), key_lines)
-    }
+    HitRevisionUnaddressable { hit, address } => SourceNotReached { resolution: receipt.resolution }
+    HitRepositoryReadRefused { hit, performance } => SourceNotReached { resolution: receipt.resolution }
+    HitRepositoryDisagrees { hit, disagreement } => SourceNotReached { resolution: receipt.resolution }
+    HitBranchReadRefused { hit, repository, performance } => SourceNotReached { resolution: receipt.resolution }
+    HitBranchHeadNotExact { hit, repository, observed, cause } => SourceNotReached { resolution: receipt.resolution }
   }
 }
 
-fn encode_workflow_revision_evidence(e: WorkflowRevisionEvidence) -> NonEmptyStr {
-  let header = [
-    workload_evidence_format,
-    join(["repository_id", to_string(value: e.key.repository_id)], " "),
-    join(["repository_full_name_at_observation", enc(s: e.repository_full_name_at_observation)], " "),
-    join(["repository_is_fork", if e.repository_is_fork { "true" } else { "false" }], " "),
-    join(["ref", e.key.ref as String], " "),
-    join(["workflow_path", enc(s: e.key.workflow_path)], " "),
-    join(["blob_sha", e.key.blob_sha], " "),
-  ]
-  let body = match e.jobs {
-    WorkflowDocumentRefused { refusal } => [join(["document refused", document_refusal_tag(r: refusal)], " ")]
-    WorkflowJobsInterpreted { jobs } => concat(["document interpreted"], fold(jobs, init: [], f: fn(acc, j) { concat(acc, job_lines(job: j)) }))
+// ---------------------------------------------------------------------------------------------
+// The scan attempt's canonical bytes. Every refusal is rendered as its arm name plus the located facts
+// the arm carries, so a later reader can route it without re-running the scan.
+
+fn performance_tag(p: RestExchangePerformance) -> String {
+  match p {
+    RestExchangeSucceeded => "succeeded"
+    RestExchangeStatusRefused { status, body: _ } => join(["status_refused", to_string(value: status)], ":")
+    RestExchangeCommitAmbiguous { detail } => join(["commit_ambiguous", enc(s: detail as String)], ":")
+    RestExchangeUnreached { cause } => join(["unreached", enc(s: cause as String)], ":")
+    RestExchangeUndecodable { status, cause } => join(["undecodable", to_string(value: status), enc(s: cause as String)], ":")
   }
-  concat(join(concat(concat(header, body), ["end"]), "\n"), "\n") as NonEmptyStr
+}
+
+fn bytes_unusable_tag(r: RepositoryFileBytesRead) -> String {
+  match r {
+    RepositoryFileBytes { octets: _ } => "bytes"
+    RepositoryFileNotBase64Encoded { encoding } => join(["not_base64_encoded", enc(s: encoding)], ":")
+    RepositoryFileBase64Invalid => "base64_invalid"
+    RepositoryFileSizeDisagrees { declared, decoded } => join(["size_disagrees", to_string(value: declared), to_string(value: decoded)], ":")
+  }
+}
+
+fn resolution_tag(r: HitRevisionResolution) -> String {
+  match r {
+    HitReadAtResolvedRevision { hit: _, repository: _, head, canonicalization } => match canonicalization {
+      HitCanonicalized { identity: _, file: _ } => join(["read", head as String], ":")
+      HitFileUnreadable { repository_full_name: _, path: _, cause } => join(["file_unreadable", enc(s: cause as String)], ":")
+      HitSubjectsDisagree { repository_full_name: _, path: _, disagreement, cause: _ } => join(["subjects_disagree", match disagreement {
+        RepositoryDiffersFromHit { hit_repository, read_repository } => join(["repository", enc(s: hit_repository), enc(s: read_repository)], ":")
+        RequestedPathDiffersFromHit { hit_path, requested_path } => join(["requested_path", enc(s: hit_path), enc(s: requested_path)], ":")
+        ResponsePathDiffersFromRequest { requested_path, response_path } => join(["response_path", enc(s: requested_path), enc(s: response_path)], ":")
+      }], ":")
+      HitRefNotExact { repository_full_name: _, path: _, ref, cause: _ } => join(["ref_not_exact", enc(s: ref as String)], ":")
+      HitReadRefused { repository_full_name: _, path: _, performance } => join(["file_read_refused", performance_tag(p: performance)], ":")
+    }
+    HitRevisionUnaddressable { hit: _, address: _ } => "repository_unaddressable"
+    HitRepositoryReadRefused { hit: _, performance } => join(["repository_read_refused", performance_tag(p: performance)], ":")
+    HitRepositoryDisagrees { hit: _, disagreement } => join(["repository_disagrees", match disagreement {
+      RepositoryIdDiffersFromHit { hit_id, observed_id, full_name } => join(["id", to_string(value: hit_id), to_string(value: observed_id), enc(s: full_name)], ":")
+      RepositoryRenamedSinceIndex { id, hit_full_name, observed_full_name } => join(["renamed", to_string(value: id), enc(s: hit_full_name), enc(s: observed_full_name)], ":")
+    }], ":")
+    HitBranchReadRefused { hit: _, repository: _, performance } => join(["branch_read_refused", performance_tag(p: performance)], ":")
+    HitBranchHeadNotExact { hit: _, repository: _, observed, cause: _ } => join(["branch_head_not_exact", enc(s: observed)], ":")
+  }
+}
+
+fn query_lines(q: ScanQueryReceipt) -> List<String> {
+  concat(
+    [join(["query", enc(s: q.policy.query_id as String), enc(s: q.policy.query as String), to_string(value: q.policy.per_page), to_string(value: q.policy.max_pages), to_string(value: q.policy.max_distinct_hits), match q.stop {
+      ScanQueryPagesExhausted => "pages_exhausted"
+      ScanQueryPageLimit => "page_limit"
+      ScanQueryHitLimit => "hit_limit"
+      ScanQueryTruncated { page, cause } => join(["truncated", to_string(value: page), enc(s: cause as String)], ":")
+      ScanQueryPageRefused { page, performance } => join(["page_refused", to_string(value: page), performance_tag(p: performance)], ":")
+    }], " ")],
+    map(q.pages, p => join(["page", enc(s: q.policy.query_id as String), to_string(value: p.page), to_string(value: p.items_delivered)], " ")),
+  )
+}
+
+fn sighting_line(s: HitSighting) -> String {
+  join(["sighting", enc(s: s.query_id as String), to_string(value: s.page), to_string(value: s.position), to_string(value: s.hit.repository.id), enc(s: s.hit.repository.full_name), enc(s: s.hit.path), s.hit.sha, if s.admitted { "admitted" } else { "declined_by_bound" }], " ")
+}
+
+// The outcome line names the source record's key when the hit produced one, so the attempt joins to the
+// source it read without either record repeating the other's content.
+fn outcome_line(h: ScanHitReceipt, source: SourceFromHit) -> String {
+  let subject = [to_string(value: h.hit.repository.id), enc(s: h.hit.path)]
+  match source {
+    SourceRead { record } => join(concat(concat(["outcome"], subject), ["source", enc(s: workflow_source_record_key(key: record.key) as String)]), " ")
+    SourceBytesUnusable { read } => join(concat(concat(["outcome"], subject), ["bytes_unusable", bytes_unusable_tag(r: read)]), " ")
+    SourceNotReached { resolution } => join(concat(concat(["outcome"], subject), ["not_reached", resolution_tag(r: resolution)]), " ")
+  }
+}
+
+type HitSource {
+  hit: ScanHitReceipt
+  source: SourceFromHit
+}
+
+fn encode_scan_attempt(observed_at: NonEmptyStr, receipt: WorkloadScanReceipt, sources: List<HitSource>) -> NonEmptyStr {
+  concat(join(concat(concat(concat(concat(
+    [scan_attempt_format, join(["observed_at", observed_at as String], " ")],
+    fold(receipt.queries, init: [], f: fn(acc, q) { concat(acc, query_lines(q: q)) })),
+    map(receipt.sightings, s => sighting_line(s: s))),
+    map(sources, p => outcome_line(h: p.hit, source: p.source))),
+    ["end"]), "\n"), "\n") as NonEmptyStr
 }
 
 // ---------------------------------------------------------------------------------------------
 // Storage.
 
-type EvidenceStorage {
-  key: WorkflowRevisionKey
-  evidence: WorkflowRevisionEvidence
+type SourceStorage {
+  record: WorkflowSourceRecord
   put: ImmutableRecordPut
 }
 
-func store_workflow_revision_evidence(store: GitObjectStoreOpening, evidence: WorkflowRevisionEvidence, attempts: Int) -> EvidenceStorage {
-  EvidenceStorage {
-    key: evidence.key,
-    evidence: evidence,
-    put: git_object_store_put_record(
-      store: store,
-      key: workflow_revision_record_key(key: evidence.key),
-      content: encode_workflow_revision_evidence(e: evidence),
-      attempts: attempts,
-    ),
+type ScanHarvest {
+  attempt: ImmutableRecordPut
+  stored: List<SourceStorage>
+  bytes_unusable: Int
+  not_reached: Int
+}
+
+func store_workflow_source(store: GitObjectStoreOpening, record: WorkflowSourceRecord, attempts: Int) -> SourceStorage {
+  SourceStorage {
+    record: record,
+    put: git_object_store_put_record(store: store, family: workflow_source_family, key: workflow_source_record_key(key: record.key), content: encode_workflow_source_record(r: record), attempts: attempts),
   }
 }
 
-// WHAT ONE SCAN LEFT BEHIND, COUNTED BY OUTCOME. Every distinct hit lands in exactly one list, so the
-// three lists partition the scan's hits and a reader can see how much of the population never reached
-// bytes, and how much reached bytes that could not be read as text.
-type WorkloadEvidenceHarvest {
-  stored: List<EvidenceStorage>
-  text_unreadable: List<EvidenceFromHit>
-  not_reached: List<EvidenceFromHit>
-}
-
-func harvest_workload_evidence(store: GitObjectStoreOpening, receipt: WorkloadScanReceipt, attempts: Int) -> WorkloadEvidenceHarvest {
-  fold(receipt.hits, init: WorkloadEvidenceHarvest { stored: [], text_unreadable: [], not_reached: [] }, f: fn(acc, h) {
-    let from_hit = evidence_from_hit(receipt: h)
-    match from_hit {
-      EvidenceObserved { evidence } => WorkloadEvidenceHarvest {
-        stored: concat(acc.stored, [store_workflow_revision_evidence(store: store, evidence: evidence, attempts: attempts)]),
-        text_unreadable: acc.text_unreadable,
-        not_reached: acc.not_reached,
-      }
-      EvidenceTextUnreadable { identity: _, read: _ } => WorkloadEvidenceHarvest {
-        stored: acc.stored,
-        text_unreadable: concat(acc.text_unreadable, [from_hit]),
-        not_reached: acc.not_reached,
-      }
-      EvidenceNotReached { resolution: _ } => WorkloadEvidenceHarvest {
-        stored: acc.stored,
-        text_unreadable: acc.text_unreadable,
-        not_reached: concat(acc.not_reached, [from_hit]),
-      }
+// Sources first, then the attempt that names them: an attempt record never refers to a source key the
+// store was not at least asked to hold. Every distinct file lands in exactly one of stored, bytes
+// unusable, or not reached, so the three partition the scan's files.
+func harvest_scan(store: GitObjectStoreOpening, observed_at: NonEmptyStr, receipt: WorkloadScanReceipt, attempts: Int) -> ScanHarvest {
+  let sources = map(receipt.hits, h => HitSource { hit: h, source: source_from_hit(receipt: h) })
+  let stored = fold(sources, init: [], f: fn(acc, p) {
+    match p.source {
+      SourceRead { record } => concat(acc, [store_workflow_source(store: store, record: record, attempts: attempts)])
+      SourceBytesUnusable { read: _ } => acc
+      SourceNotReached { resolution: _ } => acc
     }
   })
+  let attempt_bytes = encode_scan_attempt(observed_at: observed_at, receipt: receipt, sources: sources)
+  ScanHarvest {
+    attempt: git_object_store_put_record(store: store, family: scan_attempt_family, key: attempt_bytes, content: attempt_bytes, attempts: attempts),
+    stored: stored,
+    bytes_unusable: count(filter(sources, p => match p.source { SourceBytesUnusable { read: _ } => true  SourceRead { record: _ } => false  SourceNotReached { resolution: _ } => false })),
+    not_reached: count(filter(sources, p => match p.source { SourceNotReached { resolution: _ } => true  SourceRead { record: _ } => false  SourceBytesUnusable { read: _ } => false })),
+  }
 }

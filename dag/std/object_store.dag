@@ -86,8 +86,14 @@ fn percent_decode_payload(s: String) -> String {
 // different bytes and settles as ImmutableRecordConflict. The residual cost of a collision is a
 // false refusal, never a wrong record.
 
-fn immutable_record_name(key: NonEmptyStr) -> String {
-  concat(serialize_content_hash(hash: content_hash_of_value(value: key)) as String, ".record")
+// The FAMILY prefixes the name so a store's listing separates record kinds without reading any of
+// them, and so two families can never collide on one name even if their keys hash alike.
+fn immutable_record_name(family: NonEmptyStr, key: NonEmptyStr) -> String {
+  join([family as String, "-", serialize_content_hash(hash: content_hash_of_value(value: key)) as String, ".record"], "")
+}
+
+fn immutable_record_name_in_family(name: String, family: NonEmptyStr) -> Bool {
+  starts_with(s: name, prefix: concat(family as String, "-")) && ends_with(s: name, suffix: ".record")
 }
 
 type ImmutableRecordPut

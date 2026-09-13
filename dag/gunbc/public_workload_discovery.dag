@@ -19,7 +19,7 @@ import extdeps.languages.yaml.types { YamlMapping }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { runner_label_string }
 import extdeps.languages.yaml.gha_workflow_read {
-  WorkflowJobsInterpreted, WorkflowDocumentRefused,
+  WorkflowJobsInterpreted, WorkflowDocumentRefused, read_workflow_jobs,
   JobInterpreted, JobUnresolved, JobInstances, JobInstancesUnknownWhileStrategyUnresolved,
   InstanceRunner, InstanceRunnerUnresolved,
 }
@@ -36,13 +36,13 @@ import gunbc.runner_label_resolution {
   ProviderFromCatalog, ProviderUnresolved,
 }
 import gunbc.public_workload_scan {
-  WorkloadScanPolicy, WorkloadScanReceipt, WorkloadScanCompleted, WorkloadScanNotStarted, perform_workload_scan,
+  ScanQueryPolicy, WorkloadScanPolicy, WorkloadScanReceipt, WorkloadScanCompleted, WorkloadScanNotStarted, perform_workload_scan,
   ScanQueryPagesExhausted, ScanQueryPageLimit, ScanQueryHitLimit, ScanQueryTruncated, ScanQueryPageRefused,
 }
 import gunbc.public_workload_evidence {
-  WorkflowRevisionEvidence, EvidenceStorage, WorkloadEvidenceHarvest, EvidenceObserved,
-  evidence_from_hit, harvest_workload_evidence,
+  WorkflowSourceRecord, SourceStorage, ScanHarvest, harvest_scan,
 }
+import extdeps.github.repository_contents { RepositoryFileText, RepositoryFileNotUtf8, repository_octets_text }
 
 // FROM A BOUNDED SEARCH TO A SHORTLIST OF ORGANIZATIONS WITH SPECIFIC ARM JOBS.
 //
@@ -160,39 +160,48 @@ fn tally_instance(t: InstanceTally, job_key: String, selector: String, runner: R
   }
 }
 
+// WHAT THE CURRENT READER MAKES OF A STORED SOURCE. Jobs are read from the source's bytes here, at
+// projection time, so a reader improvement changes every report without touching one stored record.
 type RevisionTally {
-  evidence: WorkflowRevisionEvidence
+  source: WorkflowSourceRecord
   instances: InstanceTally
   unresolved_jobs: Int
   jobs_without_instances: Int
   document_refused: Bool
+  not_utf8: Bool
 }
 
-fn tally_revision(e: WorkflowRevisionEvidence, observed_at: Rfc3339Timestamp) -> RevisionTally {
-  match e.jobs {
-    WorkflowDocumentRefused { refusal: _ } => RevisionTally { evidence: e, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: true }
-    WorkflowJobsInterpreted { jobs } =>
-      fold(jobs, init: RevisionTally { evidence: e, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: false }, f: fn(acc, j) {
-        match j {
-          JobUnresolved { job_key: _, location: _, cause: _ } => RevisionTally { evidence: acc.evidence, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs + 1, jobs_without_instances: acc.jobs_without_instances, document_refused: false }
-          JobInterpreted { job_key, runs_on: _, strategy: _, instances, steps: _, uninterpreted_keys: _, interpreted: _ } =>
-            match instances {
-              JobInstancesUnknownWhileStrategyUnresolved => RevisionTally { evidence: acc.evidence, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs, jobs_without_instances: acc.jobs_without_instances + 1, document_refused: false }
-              JobInstances { instances: is } => RevisionTally {
-                evidence: acc.evidence,
-                instances: fold(is, init: acc.instances, f: fn(t, i) {
-                  match i.runner {
-                    InstanceRunner { runner } => tally_instance(t: t, job_key: job_key, selector: serialize_yaml(v: YamlMapping { entries: i.matrix_selector }), runner: runner, observed_at: observed_at)
-                    InstanceRunnerUnresolved { cause: _ } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up + 1 }
+fn tally_source(source: WorkflowSourceRecord, observed_at: Rfc3339Timestamp) -> RevisionTally {
+  let blank = RevisionTally { source: source, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: false, not_utf8: false }
+  match repository_octets_text(octets: source.octets) {
+    RepositoryFileNotUtf8 => RevisionTally { source: source, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: false, not_utf8: true }
+    RepositoryFileText { text } =>
+      match read_workflow_jobs(source: text) {
+        WorkflowDocumentRefused { refusal: _ } => RevisionTally { source: source, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: true, not_utf8: false }
+        WorkflowJobsInterpreted { jobs } =>
+          fold(jobs, init: blank, f: fn(acc, j) {
+            match j {
+              JobUnresolved { job_key: _, location: _, cause: _ } => RevisionTally { source: acc.source, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs + 1, jobs_without_instances: acc.jobs_without_instances, document_refused: false, not_utf8: false }
+              JobInterpreted { job_key, runs_on: _, strategy: _, instances, steps: _, uninterpreted_keys: _, interpreted: _ } =>
+                match instances {
+                  JobInstancesUnknownWhileStrategyUnresolved => RevisionTally { source: acc.source, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs, jobs_without_instances: acc.jobs_without_instances + 1, document_refused: false, not_utf8: false }
+                  JobInstances { instances: is } => RevisionTally {
+                    source: acc.source,
+                    instances: fold(is, init: acc.instances, f: fn(t, i) {
+                      match i.runner {
+                        InstanceRunner { runner } => tally_instance(t: t, job_key: job_key, selector: serialize_yaml(v: YamlMapping { entries: i.matrix_selector }), runner: runner, observed_at: observed_at)
+                        InstanceRunnerUnresolved { cause: _ } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up + 1 }
+                      }
+                    }),
+                    unresolved_jobs: acc.unresolved_jobs,
+                    jobs_without_instances: acc.jobs_without_instances,
+                    document_refused: false,
+                    not_utf8: false,
                   }
-                }),
-                unresolved_jobs: acc.unresolved_jobs,
-                jobs_without_instances: acc.jobs_without_instances,
-                document_refused: false,
-              }
+                }
             }
-        }
-      })
+          })
+      }
   }
 }
 
@@ -205,7 +214,7 @@ fn revision_has_arm(t: RevisionTally) -> Bool {
 
 fn render_scan_section(receipt: WorkloadScanReceipt) -> List<String> {
   concat(["## Scan", "", "| query | pages (items delivered) | stop |", "| --- | --- | --- |"], map(receipt.queries, q => join([
-    "| `", q.query as String, "` | ", join(map(q.pages, p => to_string(value: p.items_delivered)), ", "), " | ",
+    "| `", q.policy.query as String, "` | ", join(map(q.pages, p => to_string(value: p.items_delivered)), ", "), " | ",
     match q.stop {
       ScanQueryPagesExhausted => "pages exhausted"
       ScanQueryPageLimit => "page limit"
@@ -228,10 +237,10 @@ fn put_text(put: ImmutableRecordPut) -> String {
   }
 }
 
-fn render_revision(t: RevisionTally, storage: EvidenceStorage) -> List<String> {
+fn render_revision(t: RevisionTally, storage: SourceStorage) -> List<String> {
   concat(
-    [join(["### ", t.evidence.repository_full_name_at_observation, " (repository id ", to_string(value: t.evidence.key.repository_id), ")"], ""),
-     join(["- workflow `", t.evidence.key.workflow_path, "` at commit `", t.evidence.key.ref as String, "`, blob `", t.evidence.key.blob_sha, "` - evidence ", put_text(put: storage.put)], "")],
+    [join(["### ", t.source.repository_full_name_at_observation, " (repository id ", to_string(value: t.source.key.repository_id), ")"], ""),
+     join(["- workflow `", t.source.key.workflow_path, "` at commit `", t.source.key.ref as String, "`, blob `", t.source.key.blob_sha, "` - source ", put_text(put: storage.put)], "")],
     concat(
       map(t.instances.arm, a => join(["- ARM job `", a.job_key, "` ", if a.matrix_selector == "{}\n" || a.matrix_selector == "" { "" } else { join(["matrix `", replace(a.matrix_selector, "\n", "; "), "` "], "") }, "runs on `", a.label, "` (", a.provider, ")"], "")),
       [join(["- unknowns: ", to_string(value: t.instances.undetermined), " instance(s) with a label the catalogs do not place, ", to_string(value: t.instances.not_looked_up), " self-hosted or unevaluated, ", to_string(value: t.unresolved_jobs + t.jobs_without_instances), " job(s) the reader could not expand; spend, owner interest and permission are unobserved"], ""), ""],
@@ -245,12 +254,12 @@ type DiscoveryReport {
   stored_failures: Int
 }
 
-fn render_discovery_report(receipt: WorkloadScanReceipt, harvest: WorkloadEvidenceHarvest, window: QueryWindow, roster_size: Int, observed_at: Rfc3339Timestamp) -> DiscoveryReport {
-  let paired = map(harvest.stored, s => StoredTally { storage: s, tally: tally_revision(e: s.evidence, observed_at: observed_at) })
+fn render_discovery_report(receipt: WorkloadScanReceipt, harvest: ScanHarvest, window: QueryWindow, roster_size: Int, observed_at: Rfc3339Timestamp) -> DiscoveryReport {
+  let paired = map(harvest.stored, s => StoredTally { storage: s, tally: tally_source(source: s.record, observed_at: observed_at) })
   let shortlisted = filter(paired, p => revision_has_arm(t: p.tally))
   let others = filter(paired, p => !revision_has_arm(t: p.tally))
-  let repositories = fold(shortlisted, init: [], f: fn(acc, p) { if any(acc, id => id == p.tally.evidence.key.repository_id) { acc } else { concat(acc, [p.tally.evidence.key.repository_id]) } })
-  let failures = count(filter(harvest.stored, s => !immutable_record_put_holds(put: s.put)))
+  let repositories = fold(shortlisted, init: [], f: fn(acc, p) { if any(acc, id => id == p.tally.source.key.repository_id) { acc } else { concat(acc, [p.tally.source.key.repository_id]) } })
+  let failures = count(filter(harvest.stored, s => !immutable_record_put_holds(put: s.put))) + if immutable_record_put_holds(put: harvest.attempt) { 0 } else { 1 }
   let lines = concat(concat(concat(concat(
     [
       "# Public ARM workload shortlist",
@@ -258,9 +267,10 @@ fn render_discovery_report(receipt: WorkloadScanReceipt, harvest: WorkloadEviden
       join(["Observed at ", observed_at as String, ". Queries ", to_string(value: window.offset), "..", to_string(value: window.offset + window.count - 1), " of ", to_string(value: roster_size), " catalog Aarch64 labels. ",
         to_string(value: count(repositories)), " repositories with at least one catalog-confirmed ARM job; ",
         to_string(value: count(harvest.stored)), " workflow revisions read; ",
-        to_string(value: count(harvest.text_unreadable)), " unreadable as text; ",
-        to_string(value: count(harvest.not_reached)), " hits whose bytes were not reached; ",
-        to_string(value: failures), " evidence records NOT stored."], ""),
+        to_string(value: count(filter(paired, p => p.tally.not_utf8))), " not UTF-8; ",
+        to_string(value: harvest.bytes_unusable), " whose bytes were unusable; ",
+        to_string(value: harvest.not_reached), " files whose bytes were not reached; ",
+        to_string(value: failures), " source records NOT stored; scan attempt ", put_text(put: harvest.attempt), "."], ""),
       "",
       "These are screening leads, not qualified customers: no spend, contact permission or trial authorization is established by anything here, and a repository absent from this run is not evidence of anything.",
       "",
@@ -269,13 +279,13 @@ fn render_discovery_report(receipt: WorkloadScanReceipt, harvest: WorkloadEviden
     ],
     fold(shortlisted, init: [], f: fn(acc, p) { concat(acc, render_revision(t: p.tally, storage: p.storage)) })),
     ["## Examined without a catalog-confirmed ARM job", ""]),
-    map(others, p => join(["- ", p.tally.evidence.repository_full_name_at_observation, " `", p.tally.evidence.key.workflow_path, "` - ", to_string(value: p.tally.instances.not_arm), " not ARM, ", to_string(value: p.tally.instances.undetermined), " undetermined, ", to_string(value: p.tally.instances.not_looked_up), " not looked up", if p.tally.document_refused { ", document refused by the reader" } else { "" }], ""))),
+    map(others, p => join(["- ", p.tally.source.repository_full_name_at_observation, " `", p.tally.source.key.workflow_path, "` - ", to_string(value: p.tally.instances.not_arm), " not ARM, ", to_string(value: p.tally.instances.undetermined), " undetermined, ", to_string(value: p.tally.instances.not_looked_up), " not looked up", if p.tally.document_refused { ", document refused by the reader" } else if p.tally.not_utf8 { ", not UTF-8" } else { "" }], ""))),
     concat([""], render_scan_section(receipt: receipt)))
   DiscoveryReport { text: concat(join(lines, "\n"), "\n"), shortlisted_repositories: count(repositories), stored_failures: failures }
 }
 
 type StoredTally {
-  storage: EvidenceStorage
+  storage: SourceStorage
   tally: RevisionTally
 }
 
@@ -322,20 +332,20 @@ func discover_public_workloads(
                   match github_token() {
                     GitHubAuthTokenUnavailable { variable } => exit_failure(reason: concat("no GitHub token in ", variable as String))
                     GitHubAuthTokenObserved { token } =>
-                      match perform_workload_scan(auth_token: token.token, policy: WorkloadScanPolicy { queries: map(labels, l => arm_label_query(label: l)), per_page: 30, max_pages_per_query: 1, max_distinct_hits: 50 }) {
-                        WorkloadScanNotStarted { cause } => exit_failure(reason: cause as String)
-                        WorkloadScanCompleted { receipt } => {
-                          let store = GitObjectStoreOpened { layout: layout, head: head }
-                          let harvest = harvest_workload_evidence(store: store, receipt: receipt, attempts: 3)
-                          match clock_now_probed_at() {
-                            Absent => exit_failure(reason: "the clock answered no time, and the catalog reading needs the observation time to decide snapshot staleness")
-                            Present { value: now } => {
-                              let report = render_discovery_report(receipt: receipt, harvest: harvest, window: window, roster_size: roster_size, observed_at: trim(now as String) as Rfc3339Timestamp)
+                      match clock_now_probed_at() {
+                        Absent => exit_failure(reason: "the clock answered no time; a scan attempt is recorded with when it ran, and the catalog reading needs that time to decide snapshot staleness")
+                        Present { value: now } => {
+                          let observed_at = trim(now as String) as NonEmptyStr
+                          match perform_workload_scan(auth_token: token.token, policy: WorkloadScanPolicy { queries: map(labels, l => ScanQueryPolicy { query_id: l as NonEmptyStr, query: arm_label_query(label: l), per_page: 30, max_pages: 1, max_distinct_hits: 30 }) }) {
+                            WorkloadScanNotStarted { cause } => exit_failure(reason: cause as String)
+                            WorkloadScanCompleted { receipt } => {
+                              let harvest = harvest_scan(store: GitObjectStoreOpened { layout: layout, head: head }, observed_at: observed_at, receipt: receipt, attempts: 3)
+                              let report = render_discovery_report(receipt: receipt, harvest: harvest, window: window, roster_size: roster_size, observed_at: observed_at as Rfc3339Timestamp)
                               let w = Filesystem.Write(path: report_path, content: report.text)
                               if !w.success {
                                 exit_failure(reason: concat("the report could not be written: ", w.error))
                               } else if report.stored_failures > 0 {
-                                exit_failure(reason: join([to_string(value: report.stored_failures), " evidence record(s) were not stored; the report at ", report_path, " names them"], ""))
+                                exit_failure(reason: join([to_string(value: report.stored_failures), " record(s) were not stored; the report at ", report_path, " names them"], ""))
                               } else {
                                 ExitSuccess
                               }

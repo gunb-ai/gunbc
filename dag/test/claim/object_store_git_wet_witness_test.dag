@@ -105,8 +105,8 @@ test fn one_host_stores_and_a_second_host_retrying_the_same_record_finds_it_pres
   let root = fresh_fixture()
   let a = initialized(l: layout(root: root, host: "host_a"))
   let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
-  let first = put_arm(p: git_object_store_put_record(store: a, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
-  let again = put_arm(p: git_object_store_put_record(store: b, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let first = put_arm(p: git_object_store_put_record(store: a, family: "wet-v1" as NonEmptyStr, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let again = put_arm(p: git_object_store_put_record(store: b, family: "wet-v1" as NonEmptyStr, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
   let verdict = root != "" && is_opened(o: a) && is_opened(o: b) && first == "stored" && again == "already_present"
   let removed = shell.Remove.RecursiveForce(path: root)
   verdict && removed.success
@@ -116,9 +116,9 @@ test fn different_bytes_under_one_key_from_another_host_is_a_conflict_by_real_ex
   let root = fresh_fixture()
   let a = initialized(l: layout(root: root, host: "host_a"))
   let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
-  let first = put_arm(p: git_object_store_put_record(store: a, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
-  let other = put_arm(p: git_object_store_put_record(store: b, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record TWO\n" as NonEmptyStr, attempts: 3))
-  let still = match git_object_store_read(store: a, name: immutable_record_name(key: "repo:1/wf/job@abc" as NonEmptyStr)) {
+  let first = put_arm(p: git_object_store_put_record(store: a, family: "wet-v1" as NonEmptyStr, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record one\n" as NonEmptyStr, attempts: 3))
+  let other = put_arm(p: git_object_store_put_record(store: b, family: "wet-v1" as NonEmptyStr, key: "repo:1/wf/job@abc" as NonEmptyStr, content: "record TWO\n" as NonEmptyStr, attempts: 3))
+  let still = match git_object_store_read(store: a, name: immutable_record_name(family: "wet-v1" as NonEmptyStr, key: "repo:1/wf/job@abc" as NonEmptyStr)) {
     StoreObjectPresent { content: c } => c == "record one\n"
     StoreObjectAbsent => false
     StoreObjectUnavailable { fault: _ } => false
@@ -132,13 +132,13 @@ test fn a_listing_from_the_second_host_names_both_hosts_objects_at_one_commit_by
   let root = fresh_fixture()
   let a = initialized(l: layout(root: root, host: "host_a"))
   let b = git_object_store_open(layout: layout(root: root, host: "host_b"))
-  let pa = put_arm(p: git_object_store_put_record(store: a, key: "k-a" as NonEmptyStr, content: "from a\n" as NonEmptyStr, attempts: 3))
-  let pb = put_arm(p: git_object_store_put_record(store: b, key: "k-b" as NonEmptyStr, content: "from b\n" as NonEmptyStr, attempts: 3))
+  let pa = put_arm(p: git_object_store_put_record(store: a, family: "wet-v1" as NonEmptyStr, key: "k-a" as NonEmptyStr, content: "from a\n" as NonEmptyStr, attempts: 3))
+  let pb = put_arm(p: git_object_store_put_record(store: b, family: "wet-v1" as NonEmptyStr, key: "k-b" as NonEmptyStr, content: "from b\n" as NonEmptyStr, attempts: 3))
   let listed = match git_object_store_list(store: b) {
     StoreObjectsListed { snapshot: _, names: ns } =>
       count(ns) == 2
-        && any(ns, n => n == immutable_record_name(key: "k-a" as NonEmptyStr))
-        && any(ns, n => n == immutable_record_name(key: "k-b" as NonEmptyStr))
+        && any(ns, n => n == immutable_record_name(family: "wet-v1" as NonEmptyStr, key: "k-a" as NonEmptyStr))
+        && any(ns, n => n == immutable_record_name(family: "wet-v1" as NonEmptyStr, key: "k-b" as NonEmptyStr))
     StoreObjectsListUnavailable { fault: _ } => false
   }
   let verdict = root != "" && pa == "stored" && pb == "stored" && listed

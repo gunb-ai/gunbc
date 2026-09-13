@@ -113,6 +113,61 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
   bottom: ASCII
 }
 
+// WHETHER AN OCTET SEQUENCE IS UTF-8, DECIDED BEFORE ANY DECODE IS ATTEMPTED. utf8_decode_bytes is a
+// host seam whose refusal on malformed input is a runtime error, which stops an entire run rather
+// than refusing the one payload that was malformed. A caller holding bytes from outside - a file read
+// from a public repository, say - asks this first and routes "not UTF-8" as a value.
+//
+// The grammar is RFC 3629 section 4 (UTF8-octets), table-driven by the lead octet: each lead fixes how
+// many continuation octets follow and the range the FIRST of them must fall in, which is what excludes
+// overlong forms (C0, C1, E0 80-9F, F0 80-8F), UTF-16 surrogates (ED A0-BF) and code points above
+// U+10FFFF (F4 90-BF, F5-FF). Every later continuation is 80-BF.
+type Utf8ScanState
+  = Utf8AtBoundary
+  | Utf8ExpectFirst { low: Int, high: Int, remaining_after: Int }
+  | Utf8ExpectContinuation { remaining: Int }
+  | Utf8Malformed
+
+fn utf8_octet_value(o: UInt8) -> Int {
+  o
+}
+
+fn utf8_lead_state(v: Int) -> Utf8ScanState {
+  if v <= 127 { Utf8AtBoundary }
+  else if v >= 194 && v <= 223 { Utf8ExpectFirst { low: 128, high: 191, remaining_after: 0 } }
+  else if v == 224 { Utf8ExpectFirst { low: 160, high: 191, remaining_after: 1 } }
+  else if (v >= 225 && v <= 236) || v == 238 || v == 239 { Utf8ExpectFirst { low: 128, high: 191, remaining_after: 1 } }
+  else if v == 237 { Utf8ExpectFirst { low: 128, high: 159, remaining_after: 1 } }
+  else if v == 240 { Utf8ExpectFirst { low: 144, high: 191, remaining_after: 2 } }
+  else if v >= 241 && v <= 243 { Utf8ExpectFirst { low: 128, high: 191, remaining_after: 2 } }
+  else if v == 244 { Utf8ExpectFirst { low: 128, high: 143, remaining_after: 2 } }
+  else { Utf8Malformed }
+}
+
+fn utf8_scan_step(st: Utf8ScanState, v: Int) -> Utf8ScanState {
+  match st {
+    Utf8Malformed => Utf8Malformed
+    Utf8AtBoundary => utf8_lead_state(v: v)
+    Utf8ExpectFirst { low, high, remaining_after } =>
+      if v < low || v > high { Utf8Malformed }
+      else if remaining_after == 0 { Utf8AtBoundary }
+      else { Utf8ExpectContinuation { remaining: remaining_after } }
+    Utf8ExpectContinuation { remaining } =>
+      if v < 128 || v > 191 { Utf8Malformed }
+      else if remaining == 1 { Utf8AtBoundary }
+      else { Utf8ExpectContinuation { remaining: remaining - 1 } }
+  }
+}
+
+fn utf8_octets_well_formed(octets: List<UInt8>) -> Bool {
+  match fold(octets, init: Utf8AtBoundary, f: (st, o) => utf8_scan_step(st: st, v: utf8_octet_value(o: o))) {
+    Utf8AtBoundary => true
+    Utf8ExpectFirst { low: _, high: _, remaining_after: _ } => false
+    Utf8ExpectContinuation { remaining: _ } => false
+    Utf8Malformed => false
+  }
+}
+
 fn utf8_decode_bytes(payload: Bytes) -> String {
   from_code_point(pure_dag_seam_unreachable())
 }
@@ -126,16 +181,6 @@ fn base64_alphabet(variant: Base64Variant) -> String {
   }
 }
 
-type Base64EncodeBuf
-  = EncEmpty
-  | EncOne { b0: Int }
-  | EncTwo { b0: Int, b1: Int }
-
-type Base64EncodeState {
-  out: String
-  buf: Base64EncodeBuf
-}
-
 fn base64_octet_int(b: UInt8) -> Int {
   b + 0
 }
@@ -144,59 +189,28 @@ fn base64_sextet_char(alphabet: String, n: Int, divisor: Int) -> String {
   char_at(alphabet, (n / divisor) % 64)
 }
 
-fn base64_encode_step(st: Base64EncodeState, octet: Int, alphabet: String) -> Base64EncodeState {
-  match st.buf {
-    EncEmpty => Base64EncodeState { out: st.out, buf: EncOne { b0: octet } }
-    EncOne { b0: x } => Base64EncodeState { out: st.out, buf: EncTwo { b0: x, b1: octet } }
-    EncTwo { b0: x, b1: y } => {
-      let n = x * 65536 + y * 256 + octet
-      let quad = concat(
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
-        char_at(alphabet, n % 64)
-      )
-      Base64EncodeState { out: concat(st.out, quad), buf: EncEmpty }
-    }
-  }
-}
-
-fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String {
-  match st.buf {
-    EncEmpty => st.out
-    EncOne { b0: x } => {
-      let n = x * 65536
-      concat(
-        st.out,
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-        "=="
-      )
-    }
-    EncTwo { b0: x, b1: y } => {
-      let n = x * 65536 + y * 256
-      concat(
-        st.out,
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
-        "="
-      )
-    }
-  }
-}
-
+// INDEXED, NOT ACCUMULATED. Each output quad is a pure function of the three octets at one index, read
+// with get over a list padded by two zeros, and the quads are joined once. The fold this replaces
+// appended every quad to a growing string, so its cost was quadratic in the input: a 17 KB payload
+// took about half a second and a 140 KB one scaled past a minute. Short final groups take "=" for the
+// sextets that consumed only padding zeros, exactly as base64_encode_flush did.
 fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
   let alphabet = base64_alphabet(variant: variant)
-  let st = fold(octets,
-    init: Base64EncodeState { out: "", buf: EncEmpty },
-    f: (acc, octet) => base64_encode_step(st: acc, octet: base64_octet_int(b: octet), alphabet: alphabet)
-  )
-  base64_encode_flush(st: st, alphabet: alphabet)
+  let ints = map(octets, o => base64_octet_int(b: o))
+  let n = count(ints)
+  let padded = concat(ints, [0, 0])
+  join(map(filter(map(enumerate(ints), p => p.first), i => i % 3 == 0), i => {
+    let v = get(padded, i) * 65536 + get(padded, i + 1) * 256 + get(padded, i + 2)
+    concat(
+      base64_sextet_char(alphabet: alphabet, n: v, divisor: 262144),
+      base64_sextet_char(alphabet: alphabet, n: v, divisor: 4096),
+      if i + 1 < n { base64_sextet_char(alphabet: alphabet, n: v, divisor: 64) } else { "=" },
+      if i + 2 < n { char_at(alphabet, v % 64) } else { "=" }
+    )
+  }), "")
 }
 
-fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
-  let cp = code_point(c)
+fn base64_code_point_value(cp: Int, variant: Base64Variant) -> Int? {
   if cp >= 65 && cp <= 90 {
     Present { value: cp - 65 }
   } else if cp >= 97 && cp <= 122 {
@@ -217,66 +231,30 @@ fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
   }
 }
 
-fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, seen_pad: Bool, acc: List<Int>) -> List<Int>? {
-  if i >= len {
-    Present { value: acc }
+fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
+  base64_code_point_value(cp: code_point(c), variant: variant)
+}
+
+// LINEAR IN THE TEXT, AND NEITHER A RECURSION NOR A GROWING ACCUMULATOR. The previous form called
+// itself once per input character, so its depth was the length of the text: a workflow file of about
+// 75 KB - a real one, read from a public repository on 2026-09-13 - produced more than 100,000 base64
+// characters and the interpreter refused the whole run at its call-depth bound. The first repair, a
+// fold pushing each value onto its state, removed the depth but copied the accumulated list on every
+// step and took about ten seconds for 23,000 characters. So the text is split once at the padding,
+// every body code point is mapped to its value in one pass, and the result is admitted only if every
+// value exists and everything after the first "=" is padding - the same acceptance as before.
+fn base64_collect_code_points(s: String, variant: Base64Variant) -> List<Int>? {
+  let parts = split(s: s, delimiter: "=")
+  let body = match parts |> first {
+    Present { value: b } => b
+    Absent => ""
+  }
+  let padding_only = all(parts |> skip(n: 1), p => p == "")
+  let values = map(chars(s: body), cp => base64_code_point_value(cp: cp, variant: variant))
+  if !padding_only || any(values, v => match v { Absent => true  Present { value: _ } => false }) {
+    none
   } else {
-    let c = char_at(s, i)
-    if c == "=" {
-      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: true, acc: acc)
-    } else if seen_pad {
-      none
-    } else {
-      match base64_char_value(c: c, variant: variant) {
-        Absent => none
-        Present { value: v } =>
-          base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: false, acc: acc |> list_push(v))
-      }
-    }
-  }
-}
-
-type Base64DecodeBuf
-  = DecEmpty
-  | DecOne { v0: Int }
-  | DecTwo { v0: Int, v1: Int }
-  | DecThree { v0: Int, v1: Int, v2: Int }
-
-type Base64DecodeState {
-  out: List<Int>
-  buf: Base64DecodeBuf
-}
-
-fn base64_decode_step(st: Base64DecodeState, v: Int) -> Base64DecodeState {
-  match st.buf {
-    DecEmpty => Base64DecodeState { out: st.out, buf: DecOne { v0: v } }
-    DecOne { v0: a } => Base64DecodeState { out: st.out, buf: DecTwo { v0: a, v1: v } }
-    DecTwo { v0: a, v1: b } => Base64DecodeState { out: st.out, buf: DecThree { v0: a, v1: b, v2: v } }
-    DecThree { v0: a, v1: b, v2: c } => {
-      let n = a * 262144 + b * 4096 + c * 64 + v
-      let byte0 = (n / 65536) % 256
-      let byte1 = (n / 256) % 256
-      let byte2 = n % 256
-      Base64DecodeState {
-        out: st.out |> list_push(byte0) |> list_push(byte1) |> list_push(byte2),
-        buf: DecEmpty
-      }
-    }
-  }
-}
-
-fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
-  match st.buf {
-    DecEmpty => Present { value: st.out }
-    DecOne { v0: _ } => none
-    DecTwo { v0: a, v1: b } => {
-      let n = a * 262144 + b * 4096
-      Present { value: st.out |> list_push((n / 65536) % 256) }
-    }
-    DecThree { v0: a, v1: b, v2: c } => {
-      let n = a * 262144 + b * 4096 + c * 64
-      Present { value: st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256) }
-    }
+    Present { value: map(values, v => match v { Present { value: x } => x  Absent => 0 }) }
   }
 }
 
@@ -284,19 +262,31 @@ fn base64_octet_of_int(n: Int) -> UInt8 {
   n
 }
 
+// INDEXED, NOT ACCUMULATED, for the reason base64_encode states. Values are grouped four at a time by
+// index; a final group of one value carries no whole octet and refuses, as base64_decode_flush did, and
+// groups of two or three yield one or two octets.
 fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
-  let st = fold(vals,
-    init: Base64DecodeState { out: [], buf: DecEmpty },
-    f: (acc, v) => base64_decode_step(st: acc, v: v)
-  )
-  match base64_decode_flush(st: st) {
-    Absent => none
-    Present { value: octets } => Present { value: octets |> map(n => base64_octet_of_int(n: n)) }
+  let n = count(vals)
+  if n % 4 == 1 {
+    none
+  } else {
+    let padded = concat(vals, [0, 0, 0])
+    Present { value: flat_map(filter(map(enumerate(vals), p => p.first), i => i % 4 == 0), i => {
+      let v = get(padded, i) * 262144 + get(padded, i + 1) * 4096 + get(padded, i + 2) * 64 + get(padded, i + 3)
+      let remaining = n - i
+      if remaining >= 4 {
+        [base64_octet_of_int(n: (v / 65536) % 256), base64_octet_of_int(n: (v / 256) % 256), base64_octet_of_int(n: v % 256)]
+      } else if remaining == 3 {
+        [base64_octet_of_int(n: (v / 65536) % 256), base64_octet_of_int(n: (v / 256) % 256)]
+      } else {
+        [base64_octet_of_int(n: (v / 65536) % 256)]
+      }
+    }) }
   }
 }
 
 fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
-  match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, seen_pad: false, acc: []) {
+  match base64_collect_code_points(s: s, variant: variant) {
     Absent => none
     Present { value: vals } =>
       match base64_decode_values(vals: vals) {

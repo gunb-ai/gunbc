@@ -434,8 +434,8 @@ func git_object_store_publish(store: GitObjectStoreOpening, name: String, conten
 // second, independent sync, so a publish this realization reported is verified against what the
 // remote actually holds rather than against the worktree that made it.
 
-func git_object_store_put_record(store: GitObjectStoreOpening, key: NonEmptyStr, content: NonEmptyStr, attempts: Int) -> ImmutableRecordPut {
-  let name = immutable_record_name(key: key)
+func git_object_store_put_record(store: GitObjectStoreOpening, family: NonEmptyStr, key: NonEmptyStr, content: NonEmptyStr, attempts: Int) -> ImmutableRecordPut {
+  let name = immutable_record_name(family: family, key: key)
   let published = git_object_store_publish(store: store, name: name, content: content, attempts: attempts)
   match published {
     StoreObjectPublishRefused { fault } => immutable_record_put_settle(offered: content, publish: published, read_back: StoreObjectUnavailable { fault: fault })

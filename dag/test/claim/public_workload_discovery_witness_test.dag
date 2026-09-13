@@ -1,16 +1,16 @@
 module test.claim.public_workload_discovery_witness_test
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.bytes { utf8_encode_bytes, bytes_octets }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.github.actions { HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression, UbuntuLatest }
-import extdeps.languages.yaml.gha_workflow_read { read_workflow_jobs }
-import gunbc.public_workload_evidence { WorkflowRevisionKey, WorkflowRevisionEvidence }
+import gunbc.public_workload_evidence { WorkflowSourceKey, WorkflowSourceRecord }
 import gunbc.public_workload_discovery {
   arm_runner_labels, arm_label_query,
   QueryWindow, QueryWindowSelected, QueryWindowRefused, select_query_window,
   InstanceCatalogLabel, InstanceSelfHosted, InstanceUnevaluatedExpression, instance_label,
-  tally_revision,
+  tally_source,
 }
 import test.claim.gha_workflow_reverse_read_witness_test { biome_main_workflow_bytes }
 
@@ -63,23 +63,26 @@ test fn self_hosted_and_unevaluated_runners_are_not_looked_up() -> Bool {
   hosted && own && expr
 }
 
-fn biome() -> WorkflowRevisionEvidence {
-  WorkflowRevisionEvidence {
-    key: WorkflowRevisionKey { repository_id: 270299983, workflow_path: ".github/workflows/main.yml", ref: "47d7383d049b36ff8eaba50912176928143dd9e9" as CommitSha, blob_sha: "e06a945171c115274945744f65948a07f52e16f2" },
+fn biome() -> WorkflowSourceRecord {
+  let o = bytes_octets(b: utf8_encode_bytes(s: biome_main_workflow_bytes))
+  WorkflowSourceRecord {
+    key: WorkflowSourceKey { repository_id: 270299983, ref: "47d7383d049b36ff8eaba50912176928143dd9e9" as CommitSha, workflow_path: ".github/workflows/main.yml", blob_sha: "e06a945171c115274945744f65948a07f52e16f2" },
     repository_full_name_at_observation: "biomejs/biome",
     repository_is_fork: false,
-    jobs: read_workflow_jobs(source: biome_main_workflow_bytes),
+    declared_size: count(o),
+    octets: o,
   }
 }
 
 // Biome's main workflow at the census commit: format, lint and deny run on Depot ARM labels, and the
 // test and coverage matrices each carry one Depot ARM instance beside Windows and macOS ones.
 test fn biome_main_tallies_its_depot_arm_instances_and_not_its_windows_or_macos_ones() -> Bool {
-  let t = tally_revision(e: biome(), observed_at: observed_at)
+  let t = tally_source(source: biome(), observed_at: observed_at)
   let arm_jobs = map(t.instances.arm, a => a.job_key)
   count(t.instances.arm) == 5
     && all(["format", "lint", "deny", "test", "coverage"], k => any(arm_jobs, j => j == k))
     && all(t.instances.arm, a => a.provider == "extdeps.ci_runner.depot")
     && t.instances.not_arm + t.instances.undetermined == 3
     && t.document_refused == false
+    && t.not_utf8 == false
 }

@@ -128,7 +128,7 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
 // — and the A3 chip collapse holds: zero 'status status-open' and zero activity markup, routine
 // state earns no ink); (3) the PAGE contains all three width frames verbatim, so the frame-level
 // pins transfer to the page without scanning it. Occurrence counting walks an index over the ~2KB
-// frame (the std.encoding base64_collect_values shape), never the full page.
+// frame (an index walk), never the full page.
 
 fn frame_occurrence_count_go(s: String, pattern: String, i: Int, len: Int, plen: Int, acc: Int) -> Int {
   if i + plen > len {

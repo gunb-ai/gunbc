@@ -9,7 +9,7 @@ import std.object_store {
   StoreObjectListing, StoreObjectsListed, StoreObjectsListUnavailable,
   ImmutableRecordPut, ImmutableRecordStored, ImmutableRecordAlreadyPresent, ImmutableRecordConflict,
   ImmutableRecordOccupiedByEmptyObject, ImmutableRecordPublishRefused, ImmutableRecordReadBackRefused,
-  immutable_record_put_settle, immutable_record_name,
+  immutable_record_put_settle, immutable_record_name, immutable_record_name_in_family,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemPermissionDenied, FilesystemExactRead,
@@ -93,9 +93,14 @@ test fn a_refused_publish_carries_its_fault() -> Bool {
   }
 }
 
-test fn a_record_name_is_a_function_of_its_key_alone() -> Bool {
-  immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr)
-    && (immutable_record_name(key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(key: "repo:1/wf/job/x@abd" as NonEmptyStr)) == false
+test fn a_record_name_is_a_function_of_its_family_and_key_alone() -> Bool {
+  let f = "workflow-source-v1" as NonEmptyStr
+  let g = "scan-attempt-v1" as NonEmptyStr
+  immutable_record_name(family: f, key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(family: f, key: "repo:1/wf/job/x@abc" as NonEmptyStr)
+    && (immutable_record_name(family: f, key: "repo:1/wf/job/x@abc" as NonEmptyStr) == immutable_record_name(family: f, key: "repo:1/wf/job/x@abd" as NonEmptyStr)) == false
+    && (immutable_record_name(family: f, key: "k" as NonEmptyStr) == immutable_record_name(family: g, key: "k" as NonEmptyStr)) == false
+    && immutable_record_name_in_family(name: immutable_record_name(family: f, key: "k" as NonEmptyStr), family: f)
+    && immutable_record_name_in_family(name: immutable_record_name(family: f, key: "k" as NonEmptyStr), family: g) == false
 }
 
 // ---- git store: open

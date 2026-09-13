@@ -1,0 +1,30 @@
+module test.claim.long.base64_large_payload_witness_test
+
+import std.types { Bool, Int, List, String }
+import std.encoding { Standard, base64_encode, base64_decode }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PAYLOAD PAST THE INTERPRETER'S CALL-DEPTH BOUND, ROUND-TRIPPED. std.encoding's decoder once recursed
+// once per character and refused a real 75 KB workflow file at the 100,000-frame bound, stopping a whole
+// scan; its first repair removed the depth but grew an accumulator whose copies made a 140 KB round trip
+// cost 855 seconds of CPU. The indexed forms are linear: this 140 KB round trip measured 4.6 s locally,
+// which is why it lives under long/ rather than on the per-PR floor. Doubling builds the input in
+// logarithmic depth, so only the codec's own shape is under test; the RFC 4648 vectors stay in
+// test.claim.base64_rfc4648_witness.
+
+fn doubled(s: String, times: Int) -> String {
+  if times <= 0 { s } else { doubled(s: concat(s, s), times: times - 1) }
+}
+
+test fn a_payload_whose_base64_exceeds_the_call_depth_bound_round_trips() -> Bool {
+  let text = doubled(s: "runs-on: ubicloud-standard-2-arm\n", times: 12)
+  let o = bytes_octets(b: utf8_encode_bytes(s: text))
+  let encoded = base64_encode(octets: o, variant: Standard)
+  string_length(s: encoded) > 100000 && match base64_decode(s: encoded, variant: Standard) {
+    Present { value: d } => count(d) == count(o) && d == o
+    Absent => false
+  }
+}
