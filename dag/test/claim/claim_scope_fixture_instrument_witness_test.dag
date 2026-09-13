@@ -93,23 +93,42 @@ test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> 
   )
 }
 
-// CONDITION: THE FIXTURE MUST NOT COMPETE FOR THE FLOOR'S BOUNDED SUBJECT SLOTS, PROVEN BY
-// EXECUTION RATHER THAN BY READING THE CODE.
+// CONDITION: THE FIXTURE MUST NOT COMPETE FOR THE FLOOR'S BOUNDED SUBJECT SLOTS.
 //
-// `reference_closure_index` memoizes per prepared subject in a `thread_local!` bounded at
-// `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` = 2, and the required floor already holds both: the corpus
-// subject and the `policy_prepared` subject. FIVE DISTINCT fixture subjects therefore cannot all
-// resolve if the fixture registers in that cache -- the third would be refused, and on the floor
-// that is exactly what happened before the non-registering path landed.
+// This block keeps three things apart on purpose, because an earlier draft merged them and
+// overclaimed in both halves: WHAT WAS EXECUTED, WHAT FOLLOWS FROM THE CODE, and WHAT NEITHER
+// ESTABLISHES.
 //
-// Five and not two, so the row fails if the fixture occupies even ONE slot: two would still fit a
-// process that happened to have room, and a probe that passes on a lucky cache is not evidence.
+// WHAT FOLLOWS FROM THE CODE. `reference_closure_index` memoizes per prepared subject in a
+// `thread_local!` bounded at `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` = 2, and the required floor
+// already holds both -- the corpus subject and the `policy_prepared` subject. An implementation
+// that registered EVERY fixture subject in that cache therefore cannot let five distinct subjects
+// all resolve on a worker whose slots are already taken: one of them is refused for a reason that
+// says nothing about its manifest. That is a bound argument, not a run.
 //
-// THE SECOND HALF OF THE CONDITION -- that the corpus and policy subjects still resolve -- is
-// carried by the floor run that executes this row, not by a separate assertion: every other claim
-// in the floor is evaluated against the corpus subject, so if these five had evicted or exhausted
-// that cache the floor would refuse rather than report a verdict. A green floor CONTAINING this
-// row is the joint evidence; this row alone would not be.
+// WHAT WAS EXECUTED, ONCE, AGAINST AN ARM THAT IS NOT IN THIS TREE. The fixture path was mutated
+// to take the registering route (`None` in place of the scope-private index), rebuilt, and this
+// row returned FALSE while `a_well_formed_manifest_builds_a_claim_scope` on the same binary
+// returned true. So the red is authorable and it discriminates -- it is not a row that reds
+// whenever anything is wrong. THAT ARM IS NOT ENROLLED and nothing in the committed tree
+// re-derives it: the observation is a receipt about one mutation on one worker, not a property
+// this file re-checks.
+//
+// WHAT NEITHER ESTABLISHES, and these are the two claims an earlier draft made and could not
+// support. FIRST, five subjects do NOT prove "the row fails if the fixture occupies even ONE
+// slot". A defect that registered only the FIRST fixture, on a worker with spare capacity, would
+// spend a slot while all five calls still accepted -- this row inspects neither occupancy nor
+// memo contents, so the universal form does not follow from it. SECOND, a green enclosing floor
+// does NOT establish that the production subjects remain usable after the fixture runs: nothing
+// here names which production subject is queried afterwards, on which worker, or whether that
+// query reaches the affected memo, and a green aggregate establishes what that run obtained
+// rather than a postcondition over every relevant thread-local.
+//
+// So what this row is: a discriminating probe over the shape the bound argument predicts, wide
+// enough (five, not two) that it cannot pass on a process that merely happened to have room. What
+// closes the remaining gap is occupancy being observable at all, which is the next rung and is not
+// what this row claims to be.
+
 test fn several_distinct_fixture_subjects_all_resolve() -> Bool {
   claim_scope_was_accepted(o: csf_scope_of(path: "csf/user.dag", source: csf_module_source, module_path: "csf.user"))
     && claim_scope_was_accepted(o: csf_scope_of(path: "csf/second.dag", source: csf_second_source, module_path: "csf.second"))

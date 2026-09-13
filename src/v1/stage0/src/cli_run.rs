@@ -3133,11 +3133,28 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
-/// ONE DETECTOR, NOT TWO. This runs `claim_scope_for_without_memos` itself rather than
-/// re-deriving the ambiguity population, so the refusal a control observes IS the refusal the
-/// corpus floor would raise, from the same `ambiguous_reads` vector the census prints from. A
-/// second computation here -- even an identical one -- would be the second authority the census
-/// exists to avoid, and would be free to drift.
+/// THE §3c FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
+/// declared it is replaced rather than left standing. gunbc#11143 admitted this type with its
+/// only consumers being its own witness rows, naming the consumer that would arrive (the
+/// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
+/// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
+/// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
+/// describing a state that no longer holds.
+///
+/// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
+/// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
+/// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
+/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
+/// an identical one, would be the second authority the census exists to avoid and would be free
+/// to drift.
+///
+/// What differs from the floor's call is the memo arguments, which are a caching decision and not
+/// a semantic one: `None` for the fragment cache, and a caller-built reference-closure index so
+/// this throwaway subject does not occupy one of the bounded per-subject slots the floor needs.
+/// `claim_scope_for_without_memos` is the obvious spelling for that and is NOT used -- it is
+/// `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimScopeFixtureOutcome {
     /// The harness itself could not measure: a ragged manifest, an entry naming no source, a
@@ -3151,7 +3168,22 @@ pub enum ClaimScopeFixtureOutcome {
     },
     /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
     ScopeRefused { cause: String },
-    /// `claim_scope_for` accepted, and the scope holds no ambiguous bare-name read.
+    /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
+    /// the scope builder raises applied.
+    ///
+    /// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. On gunbc#11143 this arm was
+    /// deliberately SILENT about ambiguity: the scope builder collected `ambiguous_bare_reads`
+    /// and returned them on the accepted scope without refusing, so acceptance was compatible
+    /// with any number of ambiguous bare reads and a control asserting it established nothing
+    /// about that class. This change adds the refusal, so acceptance now DOES exclude them --
+    /// which is the whole point of the wall and is what lets the negative controls in
+    /// `bare_name_ambiguity_wall_witness_test` assert through this arm.
+    ///
+    /// The scope of that is worth stating exactly, because "no ambiguous read" is a narrower
+    /// claim than it sounds: it means no VALUE-POSITION read of a name two transitively-reached
+    /// modules declare, over the population the census measures. Type-position collisions are
+    /// explicitly outside it -- see the wall's own annotation, which names that as the adjacent
+    /// class it does not cover.
     ScopeAccepted { module_count: i64 },
 }
 
