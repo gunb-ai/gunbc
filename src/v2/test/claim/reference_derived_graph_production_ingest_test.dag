@@ -49,7 +49,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // collector; the tree-side atom-and-label census on the same ingested root is enrolled separately,
 // cause UNVERIFIED (normalization drop vs a representation neither search reaches). No collector
 // trigger on the field-type site row until those separate.
-// Qualified cross-module mentions are under verification, not assigned to eager-raven.
+// Qualified cross-module mentions: declared frontier, triggered on the dotted-reference
+// capability, not on lowering. Collector-only; do not restore the parse-QN walk.
 
 data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
@@ -239,7 +240,7 @@ fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
     && tree_named_edge_count(path: path, needle: needle) == 0
 }
 
-// Absent today. Under verification; not eager-raven.
+// Absent today. Trigger: dotted-reference capability, not lowering.
 test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
 }
@@ -248,7 +249,7 @@ test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
   production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
 }
 
-// Absent today. Same verification as the reference-only qualified body mention, not body-lowering.
+// Absent today. Same dotted-reference trigger as the reference-only qualified body mention.
 test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_both_path, target: provider_module) == 0
 }
@@ -259,7 +260,7 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
 }
 
 // Re-derived: qualified type-position spelling is not a site and makes no edge. Same
-// verification as the qualified body mention, not lowering and not the retracted census.
+// dotted-reference trigger as the qualified body mention, not lowering.
 test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
   site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
 }
