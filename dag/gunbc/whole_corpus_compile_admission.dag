@@ -1,6 +1,7 @@
 module gunbc.whole_corpus_compile_admission
 
-import std.types { Int, String, NonEmptyStr, Bool }
+import std.types { Int, String, NonEmptyStr, Bool, List }
+import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -72,10 +73,11 @@ data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD CO
 // demand note. A run that clears this and dies anyway is a re-measure trigger, not a defect in the
 // refusal.
 //
-// NEXT-RUNG TRIGGER: a per-run resident-set prediction derived from the compile's own declared
-// inputs rather than a fleet-wide constant, at which point the admission becomes a real fit
-// predicate and can climb toward mechanical prevention. Until then the class is declared here
-// rather than left to be rediscovered.
+// NEXT-RUNG TRIGGER: a .dag instrument that measures a root's peak and mints its MeasuredForRoot row
+// in one carrier, so a row cannot be authored without the run behind it. The demand is already a
+// fact of the root compiled (the root join below); what stays unconstructed is the receipt. A
+// resident-set prediction scaled from a root's source census is NOT this trigger: it is a DESIGN
+// section 4d bet, and this admission refuses an unmeasured root rather than admitting on one.
 
 // SCOPED COMPILES REACH NO ADMISSION ARM AT ALL, and that placement is unchanged — but THE
 // ASYMMETRY THIS NOTE USED TO REST ON HAS CLOSED, and saying so is the point of this paragraph. It
@@ -117,14 +119,169 @@ data whole_corpus_compile_measured_demand_note: String = "WHERE THE THRESHOLD CO
 // its own refusal text. An entry measurement needs a runner that exposes a real limit, at which
 // point no declaration is involved and the refusal never fires.
 
-// The demand figure: the highest available COMPLETING-run peak on the compile route (15871708 kB,
-// --target dag), rounded up to whole-gibibyte grain. This session's own three peaks are all lower
-// AND all from REFUSING runs, so declaring one of them would leave the band between them and the
-// completing evidence admitted without evidence it can complete. See
-// whole_corpus_compile_measured_demand_note for why the higher figure is adopted despite being
-// attributed rather than reproduced here, the grain argument, and the re-measure trigger.
-fn whole_corpus_compile_measured_peak_demand() -> ByteSize {
-  byte_size(17179869184)
+// THE DEMAND IS A FACT OF THE ROOT COMPILED, NOT OF THE COMPILER. Until 2026-09-13 the figure below
+// was a population-blind constant: whole_corpus_compile_measured_peak_demand returned 16 GiB for ANY
+// primary root, although whole_corpus_compile_measured_demand_note records that it was measured on
+// ONE subject -- this repository's dag-primary compile with src/v2 as a dependency pool. That one
+// defect read in two directions: a smaller root (gunbc-private, 548 sources on a 6 GiB runner) was
+// refused a whole-root compile on another root's number, and a root larger than the measured one
+// would have been ADMITTED on a number that undercounts it. The constant is deleted rather than
+// kept beside the join, so no consumer can keep answering in its vocabulary.
+//
+// THE KEY IS REPOSITORY, PRIMARY ROOT AND THE ORDERED DEPENDENCY POOLS, because every one of them
+// changes the resident set. A root spelled `dag` is not an identity -- two repositories spell it --
+// so without the repository the defect survives for any repository that happens to reuse the
+// spelling. The pools are in the key because a pool is indexed into the name census even when it is
+// not the compile subject, and gunbc.recurring_failure_mode records resident set tracking that
+// census; a dag compile with no pool and one with src/v2 as pool are different subjects.
+type WholeCorpusCompileRootIdentity {
+  repository: RepositoryIdentity
+  primary_root: SourceRootIdentity
+  dependency_pools: List<SourceRootIdentity>
+}
+
+// The population the measured run REPORTED as its subject. It is evidence of what was measured and
+// deliberately NOT part of the join: a census key would refuse every commit that changes a byte,
+// and a coefficient derived from it (demand per source, demand per byte) is a DESIGN section 4d bet
+// typed as a fact -- the scaling law whole_corpus_compile_measured_demand_note already declines.
+// Bytes are carried with their standing because the public receipt recorded a count and no bytes.
+type WholeCorpusCompileSourceBytes
+  = SourceBytesRecorded { bytes: ByteSize }
+  | SourceBytesNotRecordedByReceipt { read_obligation: NonEmptyStr }
+
+type WholeCorpusCompileSourceCensus {
+  source_count: Int
+  source_bytes: WholeCorpusCompileSourceBytes
+}
+
+type WholeCorpusCompileDemandReceipt {
+  measured_on: NonEmptyStr
+  instrument_run: NonEmptyStr
+  evidence: DeclarationRef
+}
+
+type WholeCorpusCompileDemand
+  = MeasuredForRoot {
+      root: WholeCorpusCompileRootIdentity,
+      census: WholeCorpusCompileSourceCensus,
+      peak: ByteSize,
+      receipt: WholeCorpusCompileDemandReceipt,
+    }
+  | UnmeasuredRoot { root: WholeCorpusCompileRootIdentity }
+
+type WholeCorpusCompileSourceRootsWalk {
+  equal: Bool
+  index: Int
+}
+
+// Element-wise and ordered: pool order is precedence order under primary-precedence indexing, so
+// [a, b] and [b, a] are different subjects.
+fn whole_corpus_compile_source_roots_eq(a: List<SourceRootIdentity>, b: List<SourceRootIdentity>) -> Bool {
+  count(a) == count(b)
+    && fold(a, init: WholeCorpusCompileSourceRootsWalk { equal: true, index: 0 }, f: fn(acc, x) {
+      WholeCorpusCompileSourceRootsWalk {
+        equal: acc.equal && match b.skip(n: acc.index).first() {
+          Absent => false
+          Present { value: y } => (x as String) == (y as String)
+        },
+        index: acc.index + 1,
+      }
+    }).equal
+}
+
+fn whole_corpus_compile_root_identity_eq(a: WholeCorpusCompileRootIdentity, b: WholeCorpusCompileRootIdentity) -> Bool {
+  (a.repository as String) == (b.repository as String)
+    && (a.primary_root as String) == (b.primary_root as String)
+    && whole_corpus_compile_source_roots_eq(a: a.dependency_pools, b: b.dependency_pools)
+}
+
+fn whole_corpus_compile_root_identity_label(r: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
+  concat(
+    concat(r.repository as String, concat(" primary-root ", r.primary_root as String)),
+    if count(r.dependency_pools) == 0 { " (no dependency pools)" }
+    else { concat(" + dependency pools ", r.dependency_pools |> map(p => p as String) |> join(separator: ", ")) }
+  ) as NonEmptyStr
+}
+
+// THE PUBLIC ROOT'S ROW. The peak is the figure this module declared before the root join, CITED
+// and not re-measured: warm-ant-908's completing --target dag run, 15871708 kB rounded up to
+// whole-gibibyte grain, with the adoption argument, the grain rule and the re-measure trigger in
+// whole_corpus_compile_measured_demand_note. The census is the subject line the three receipted
+// runs of that note printed; the adopted completing run recorded no census of its own, which the
+// note already discloses as a provenance weakening and this row does not repair.
+data whole_corpus_compile_public_root: WholeCorpusCompileRootIdentity = WholeCorpusCompileRootIdentity {
+  repository: "gunbc" as RepositoryIdentity,
+  primary_root: "dag" as SourceRootIdentity,
+  dependency_pools: ["src/v2" as SourceRootIdentity],
+}
+
+data whole_corpus_compile_public_root_census: WholeCorpusCompileSourceCensus = WholeCorpusCompileSourceCensus {
+  source_count: 3109,
+  source_bytes: SourceBytesNotRecordedByReceipt {
+    read_obligation: "the next public MeasuredForRoot receipt records the subject's source bytes beside its count, read from the same run that reports the peak" as NonEmptyStr,
+  },
+}
+
+data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt = WholeCorpusCompileDemandReceipt {
+  measured_on: "2026-08-28" as NonEmptyStr,
+  instrument_run: "gunbc compile --source-root dag --source-root src/v2 --target dag under /usr/bin/time -v on srv1: completing run by warm-ant-908 at be89e236c9 (exit 0), refusing runs by clever-tern-899 at 91c05c1b34" as NonEmptyStr,
+  evidence: DeclarationRef {
+    module_path: "gunbc.whole_corpus_compile_admission",
+    decl_name: "whole_corpus_compile_measured_demand_note",
+    field: WholeDeclaration
+  },
+}
+
+data whole_corpus_compile_public_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
+  root: whole_corpus_compile_public_root,
+  census: whole_corpus_compile_public_root_census,
+  peak: byte_size(17179869184),
+  receipt: whole_corpus_compile_public_root_receipt,
+}
+
+// THE ROSTER OF MEASURED ROOTS IN THIS REPOSITORY. A repository carries its own roots' rows; another
+// repository's row is added in that repository, measured once on its own runner with its receipt.
+data whole_corpus_compile_measured_root_demands: List<WholeCorpusCompileDemand> = [
+  whole_corpus_compile_public_root_demand,
+]
+
+// THE JOIN. A root with no MeasuredForRoot row in the roster is UnmeasuredRoot -- never the nearest
+// row, never a scaled row. Root identity is the whole join, so a row for a different root is not a
+// candidate at any budget.
+fn whole_corpus_compile_demand_for_root(
+  root: WholeCorpusCompileRootIdentity,
+  demands: List<WholeCorpusCompileDemand>
+) -> WholeCorpusCompileDemand {
+  fold(demands, init: UnmeasuredRoot { root: root }, f: fn(acc, d) {
+    match acc {
+      MeasuredForRoot { root: _, census: _, peak: _, receipt: _ } => acc
+      UnmeasuredRoot { root: _ } => match d {
+        MeasuredForRoot { root: r, census: _, peak: _, receipt: _ } =>
+          if whole_corpus_compile_root_identity_eq(a: r, b: root) { d } else { acc }
+        UnmeasuredRoot { root: _ } => acc
+      }
+    }
+  })
+}
+
+// THE MEASUREMENT RECIPE an UnmeasuredRoot refusal names, rendered from the root so the argv is the
+// one that produces THAT root's row. No .dag instrument re-derives the peak yet
+// (whole_corpus_compile_measured_demand_note, next-rung trigger), so the recipe is the hand
+// procedure the public row's receipt followed, stated as the row shape it must produce.
+fn whole_corpus_compile_measurement_recipe(root: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
+  concat(
+    concat(
+      "measure once on the runner that will host it: gunbc compile --source-root ",
+      concat(root.primary_root as String,
+        concat(root.dependency_pools |> map(p => concat(" --source-root ", p as String)) |> join(separator: ""),
+          " --target dag under /usr/bin/time -v, with a binary built from the subject sha, on a host whose budget does not censor the peak"))
+    ),
+    concat(
+      "; record EXIT and peak resident set together, then add a MeasuredForRoot row for ",
+      concat(whole_corpus_compile_root_identity_label(r: root) as String,
+        " to gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_root_demands carrying the source count and bytes the run reported, the peak rounded up to whole-gibibyte grain, and a dated receipt naming the run")
+    )
+  ) as NonEmptyStr
 }
 
 type WholeCorpusCompileAdmission
@@ -135,34 +292,57 @@ type WholeCorpusCompileAdmission
       source: NonEmptyStr,
     }
   | WholeCorpusCompileRefusedBudgetUnreadable { reason: NonEmptyStr }
+  | WholeCorpusCompileRefusedUnmeasuredRoot {
+      root: WholeCorpusCompileRootIdentity,
+      recipe: NonEmptyStr,
+    }
 
 fn whole_corpus_compile_admission_at_budget(
   bytes: ByteSize,
-  source: HostBudgetSource
+  source: HostBudgetSource,
+  demand: WholeCorpusCompileDemand
 ) -> WholeCorpusCompileAdmission {
-  if byte_size_count(b: bytes) < byte_size_count(b: whole_corpus_compile_measured_peak_demand()) {
-    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
-      budget: bytes,
-      required: whole_corpus_compile_measured_peak_demand(),
-      source: host_budget_source_label(s: source),
+  match demand {
+    UnmeasuredRoot { root: r } => WholeCorpusCompileRefusedUnmeasuredRoot {
+      root: r,
+      recipe: whole_corpus_compile_measurement_recipe(root: r),
     }
-  } else {
-    WholeCorpusCompileAdmitted {
-      budget: bytes,
-      required: whole_corpus_compile_measured_peak_demand(),
-    }
+    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } =>
+      if byte_size_count(b: bytes) < byte_size_count(b: p) {
+        WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+          budget: bytes,
+          required: p,
+          source: host_budget_source_label(s: source),
+        }
+      } else {
+        WholeCorpusCompileAdmitted { budget: bytes, required: p }
+      }
   }
 }
 
-fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
-  match budget {
-    HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetResolved {
-      effective_bytes: b,
-      requested_bytes: _,
-      observation: HostBudgetObserved { source: s, bytes: _ }
-    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+// The root is resolved against the roster before the budget is read, so an unmeasured root refuses
+// with its recipe even where the budget is unreadable: the missing row is the deficit a larger or
+// better-instrumented host cannot fix.
+fn whole_corpus_compile_admission(
+  budget: HostBudgetResolution,
+  root: WholeCorpusCompileRootIdentity,
+  demands: List<WholeCorpusCompileDemand>
+) -> WholeCorpusCompileAdmission {
+  let demand = whole_corpus_compile_demand_for_root(root: root, demands: demands)
+  match demand {
+    UnmeasuredRoot { root: r } => WholeCorpusCompileRefusedUnmeasuredRoot {
+      root: r,
+      recipe: whole_corpus_compile_measurement_recipe(root: r),
+    }
+    MeasuredForRoot { root: _, census: _, peak: _, receipt: _ } => match budget {
+      HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+      HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+      HostBudgetResolved {
+        effective_bytes: b,
+        requested_bytes: _,
+        observation: HostBudgetObserved { source: s, bytes: _ }
+      } => whole_corpus_compile_admission_at_budget(bytes: b, source: s, demand: demand)
+    }
   }
 }
 
@@ -171,6 +351,7 @@ fn whole_corpus_compile_admits(a: WholeCorpusCompileAdmission) -> Bool {
     WholeCorpusCompileAdmitted { budget: _, required: _ } => true
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, recipe: _ } => false
   }
 }
 
