@@ -1,0 +1,173 @@
+module test.claim.fabric_m0_origin_filesystem_wet_witness_test
+
+import extdeps.shell
+import extdeps.crypto.hash
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
+  OriginFetchOutcome, OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
+}
+import gunbc.fabric_m0_completion {
+  ObligationVerdict, ObligationSatisfied, ObligationUnsatisfied, ObligationUndetermined, ObligationUnenumerable,
+  origin_readback_of_fetch, readback_digest_verdict,
+}
+import gunbc.fabric_m0_origin_filesystem {
+  FilesystemOriginRoot, content_addressed_origin_key, put_filesystem_origin_object, fetch_filesystem_origin_object,
+}
+
+// WET CONTROLS FOR THE FILESYSTEM ORIGIN, against a real throwaway root. Each test makes its own
+// /tmp/gunbc_fsorigin.* directory with objects/ and staging/, writes local files, drives the real put
+// and fetch - mktemp, cp, sync, mkdir, ln, rm, listings and sha256sum - and removes the root. The
+// verdicts are taken through gunbc.fabric_m0_completion readback_digest_verdict, the same judgement the
+// completion authority applies to an R2 origin, so what is shown is that this realization's answers
+// mean what that authority assumes they mean.
+
+fn verdict_arm(v: ObligationVerdict) -> String {
+  match v {
+    ObligationSatisfied => "satisfied"
+    ObligationUnsatisfied { subject: _, cause: _ } => "unsatisfied"
+    ObligationUndetermined { subject: _, cause: _ } => "undetermined"
+    ObligationUnenumerable { subject: _, cause: _ } => "unenumerable"
+  }
+}
+
+fn put_arm(p: OriginPutOutcome) -> String {
+  match p {
+    OriginObjectStored { key: _ } => "stored"
+    OriginObjectAlreadyPresent { key: _ } => "already_present"
+    OriginPutRefused { key: _, cause: _ } => "refused"
+    OriginPutOutcomeUnknown { key: _, cause: _ } => "unknown"
+  }
+}
+
+fn fetch_arm(f: OriginFetchOutcome) -> String {
+  match f {
+    OriginObjectStaged { key: _, reading: _ } => "staged"
+    OriginObjectAbsent { key: _ } => "absent"
+    OriginFetchUnavailable { key: _, cause: _ } => "unavailable"
+  }
+}
+
+// A root with objects/ and staging/, plus a local file holding `content`.
+fn fresh_root(with_objects: Bool) -> String {
+  let base = trim(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fsorigin.XXXXXX").path as String)
+  let made = if with_objects {
+    shell.Mkdir.Parents(path: join([base, "/root/objects"], "") as FilePath).success && shell.Mkdir.Parents(path: join([base, "/root/staging"], "") as FilePath).success
+  } else {
+    shell.Mkdir.Parents(path: join([base, "/root"], "") as FilePath).success
+  }
+  if made { base } else { "" }
+}
+
+fn local_file(base: String, name: String, content: String) -> FilePath {
+  let path = join([base, "/", name], "")
+  let w = Filesystem.Write(path: path, content: content)
+  path as FilePath
+}
+
+fn digest_of(path: FilePath) -> Sha256Digest? {
+  let observed = crypto.Sha256Sum.File(path: path as String)
+  match sha256sum_line_digest(line: observed.line) {
+    Absent => Absent
+    Present { value: d } => sha256_hex_digest(hex: d.hex as String)
+  }
+}
+
+test fn a_content_addressed_put_reads_back_to_its_own_digest_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: true)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let local = local_file(base: base, name: "a.txt", content: "workflow bytes\n")
+  let verdict = match digest_of(path: local) {
+    Absent => false
+    Present { value: d } => {
+      let key = content_addressed_origin_key(digest: d)
+      let put = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
+      let fetched = fetch_filesystem_origin_object(root: root, key: key as String)
+      put_arm(p: put) == "stored"
+        && fetch_arm(f: fetched) == "staged"
+        && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetched))) == "satisfied"
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && verdict && removed.success
+}
+
+test fn the_same_bytes_twice_are_already_present_and_still_satisfy_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: true)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let local = local_file(base: base, name: "a.txt", content: "workflow bytes\n")
+  let verdict = match digest_of(path: local) {
+    Absent => false
+    Present { value: d } => {
+      let key = content_addressed_origin_key(digest: d)
+      let first = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
+      let second = put_filesystem_origin_object(root: root, local_path: local, key: key as String)
+      put_arm(p: first) == "stored"
+        && put_arm(p: second) == "already_present"
+        && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root, key: key as String)))) == "satisfied"
+    }
+  }
+  let staging_empty = match Filesystem.List(path: join([base, "/root/staging"], "")) {
+    l => l.success && trim(l.entries) == ""
+  }
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && verdict && staging_empty && removed.success
+}
+
+test fn different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_verdict_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: true)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let original = local_file(base: base, name: "a.txt", content: "original bytes\n")
+  let impostor = local_file(base: base, name: "b.txt", content: "different bytes\n")
+  let verdict = match digest_of(path: original) {
+    Absent => false
+    Present { value: d } => match digest_of(path: impostor) {
+      Absent => false
+      Present { value: other } => {
+        let key = content_addressed_origin_key(digest: d)
+        let first = put_filesystem_origin_object(root: root, local_path: original, key: key as String)
+        let second = put_filesystem_origin_object(root: root, local_path: impostor, key: key as String)
+        let readback = origin_readback_of_fetch(fetch: fetch_filesystem_origin_object(root: root, key: key as String))
+        put_arm(p: first) == "stored"
+          && put_arm(p: second) == "already_present"
+          && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: readback)) == "satisfied"
+          && verdict_arm(v: readback_digest_verdict(subject: key, recorded: other, readback: readback)) == "unsatisfied"
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && verdict && removed.success
+}
+
+test fn a_key_whose_directories_do_not_exist_is_absent_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: true)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let arm = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "sha256/00/11/0011223344556677889900112233445566778899001122334455667788990011"))
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && arm == "absent" && removed.success
+}
+
+test fn a_root_without_its_objects_directory_is_unavailable_never_absent_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: false)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "sha256/00/11/abc"))
+  let local = local_file(base: base, name: "a.txt", content: "bytes\n")
+  let put = put_arm(p: put_filesystem_origin_object(root: root, local_path: local, key: "sha256/00/11/abc"))
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && fetch == "unavailable" && put == "refused" && removed.success
+}
+
+test fn a_key_that_escapes_the_root_is_refused_before_any_effect_by_real_execution() -> Bool {
+  let base = fresh_root(with_objects: true)
+  let root = FilesystemOriginRoot { root: join([base, "/root"], "") as FilePath }
+  let local = local_file(base: base, name: "a.txt", content: "bytes\n")
+  let put = put_arm(p: put_filesystem_origin_object(root: root, local_path: local, key: "../outside"))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root, key: "../a.txt"))
+  let outside = Filesystem.List(path: base)
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && put == "refused" && fetch == "unavailable" && !string_contains(s: concat("\n", concat(outside.entries, "\n")), pattern: "\noutside\n") && removed.success
+}

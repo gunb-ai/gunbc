@@ -48,6 +48,7 @@ import gunbc.cloudflare.r2_s3_netrc {
   shred_r2_s3_netrc,
 }
 import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginFetchOutcome,
   OriginObjectStaged,
   OriginObjectAbsent,
@@ -139,12 +140,6 @@ fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
 data s3_status_not_found: HttpStatus = 404
 
 data s3_status_precondition_failed: HttpStatus = 412
-
-type OriginPutOutcome
-  = OriginObjectStored { key: NonEmptyStr }
-  | OriginObjectAlreadyPresent { key: NonEmptyStr }
-  | OriginPutRefused { key: NonEmptyStr, cause: NonEmptyStr }
-  | OriginPutOutcomeUnknown { key: NonEmptyStr, cause: NonEmptyStr }
 
 // THE PUT VERDICT IS PURE so both its unknown arms and its refused arm are reachable from a fixture:
 // a 500 and a 000 are representable as observations without a store in the loop.

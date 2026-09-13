@@ -1,0 +1,264 @@
+module gunbc.fabric_m0_origin_filesystem
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemEntryNameAdmission, FilesystemEntryNameAdmitted, FilesystemEntryNameRefused, admit_filesystem_entry_name,
+  FilesystemListingObservation, filesystem_listing_observation,
+  FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused, filesystem_entry_presence,
+}
+import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
+  OriginFetchOutcome, OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
+  OriginReadingTaken, OriginReadingUnavailable, read_origin_staged_file,
+}
+
+// A DURABLE ORIGIN ON A HOST FILESYSTEM: the second realization of the fabric M0 origin contract.
+//
+// gunbc.fabric_m0_origin_readback owns what an origin put and an origin fetch ANSWER
+// (OriginPutOutcome, OriginFetchOutcome); gunbc.cloudflare.r2_origin_object obtains those answers
+// from R2. This module obtains the same answers from a directory tree on a host, so every consumer
+// above the interface - gunbc.fabric_m0_commit, gunbc.fabric_m0_completion readback_digest_verdict -
+// judges a filesystem origin exactly as it judges R2, with no second vocabulary. It holds no policy
+// about which host, which root, or which objects: those are the caller's.
+//
+// LAYOUT, under an origin root the caller names:
+//   <root>/objects/<key segments...>   installed objects, one file per key, never replaced
+//   <root>/staging/                    uniquely named files a put writes before installing
+// A root is usable only when <root>/objects and <root>/staging already exist; creating them is the
+// host's convergence, not a side effect of a put, so a mistyped root refuses instead of founding one.
+//
+// THE PUT IS CREATE-IF-ABSENT BY CONSTRUCTION, NOT BY A CHECK. The bytes are copied into a unique
+// staging file and fsynced, then hard-linked to the object path. link(2) refuses when the destination
+// exists, so "check absent, then write" never happens and there is no window in which a concurrent
+// writer's bytes are replaced. The parent directory is fsynced after the link so the new name itself
+// is durable. Then the staging name is removed; the installed object shares its inode.
+//
+// WHAT A FAILED LINK MEANS IS DECIDED BY A SECOND OBSERVATION, never by the exit status. `ln` exits
+// nonzero both when the name is taken and when anything else went wrong, so the put asks the key's
+// parent directory whether the name now exists: listed means the key was occupied (the fetch that
+// follows decides whether by these bytes), not listed means the link was refused, and a listing that
+// could not be taken is an unknown outcome. Reading the exit status as "occupied" would call every
+// permission failure an already-present object.
+//
+// THE FETCH STAGES ITS OWN OUTPUT, exactly as the R2 fetch does: it copies the installed object into a
+// directory it minted and hands THAT path to read_origin_staged_file, so the confirming digest is
+// taken over the fetch's own copy and never over the caller's file. The staged copy is left where the
+// fetch put it, as the R2 fetch leaves its own: the reading names that path, and a caller that consumes
+// the reading may still need the file.
+//
+// ABSENCE IS ESTABLISHED BY A LISTING THAT SUCCEEDED, never by a copy that failed. A key's parent
+// directories may not exist yet, so the fetch walks the key from <root>/objects one segment at a time:
+// the first segment a successful listing does not contain establishes absence; a listing that fails,
+// or a segment that is listed but cannot be copied, is unavailable.
+//
+// DURABILITY, STATED AT ITS HONEST GRAIN. fsync on the staged file and on the object's directory is
+// what this realization can ask of one host. It says nothing about the disk's write cache, and it is
+// one copy on one machine: surviving the loss of that host is the replication lane's property (the
+// srv1/srv2 pair built over this module), not this module's.
+
+type FilesystemOriginRoot {
+  root: FilePath
+}
+
+fn origin_objects_directory(root: FilesystemOriginRoot) -> String {
+  join([root.root as String, "/objects"], "")
+}
+
+fn origin_staging_directory(root: FilesystemOriginRoot) -> String {
+  join([root.root as String, "/staging"], "")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Keys.
+
+// A KEY IS A SEQUENCE OF ADMITTED DIRECTORY-ENTRY NAMES, joined by "/". Each segment goes through
+// extdeps.filesystem.filesystem_io admit_filesystem_entry_name, so "", ".", "..", an embedded
+// separator and a newline are refused by the authority that owns what a component is, and a key
+// cannot name a path outside <root>/objects.
+type OriginKeyAdmission
+  = OriginKeyAdmitted { key: NonEmptyStr, segments: List<String> }
+  | OriginKeyRefused { key: String, cause: NonEmptyStr }
+
+fn admit_origin_key(key: String) -> OriginKeyAdmission {
+  let segments = split(s: key, delimiter: "/")
+  let refusals = map(segments, seg => match admit_filesystem_entry_name(name: seg) {
+    FilesystemEntryNameRefused { name: _, cause } => cause
+    FilesystemEntryNameAdmitted(_) => ""
+  }) |> filter(c => c != "")
+  if key == "" {
+    OriginKeyRefused { key: key, cause: "an origin key is empty, so it names no object" }
+  } else {
+    match refusals |> first {
+      Present { value: cause } => OriginKeyRefused { key: key, cause: join(["origin key '", key, "' has a segment that is not a directory-entry name: ", cause], "") as NonEmptyStr }
+      Absent => OriginKeyAdmitted { key: key as NonEmptyStr, segments: segments }
+    }
+  }
+}
+
+// THE CONTENT-ADDRESSED KEY OF A SHA-256 DIGEST. Two levels of two-hex-digit fan-out keep any one
+// directory to at most 256 entries at the fan-out levels. The key is derived from the digest alone, so
+// every writer of the same bytes names the same object and create-if-absent arbitrates between them.
+fn content_addressed_origin_key(digest: Sha256Digest) -> NonEmptyStr {
+  let hex = digest.hex as String
+  join(["sha256/", substring(s: hex, start: 0, end: 2), "/", substring(s: hex, start: 2, end: 4), "/", hex], "") as NonEmptyStr
+}
+
+fn origin_object_path(root: FilesystemOriginRoot, segments: List<String>) -> String {
+  join([origin_objects_directory(root: root), "/", join(segments, "/")], "")
+}
+
+fn origin_object_parent(root: FilesystemOriginRoot, segments: List<String>) -> String {
+  if count(segments) <= 1 {
+    origin_objects_directory(root: root)
+  } else {
+    join([origin_objects_directory(root: root), "/", join(segments |> take(n: count(segments) - 1), "/")], "")
+  }
+}
+
+fn last_segment(segments: List<String>) -> String {
+  match segments |> skip(n: count(segments) - 1) |> first {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Put.
+
+// WHAT THE LINK AND THE LISTING AFTER IT OBSERVED. PURE, so every arm is reachable from a fixture.
+type OriginLinkObservation
+  = OriginLinkInstalled { durable: Bool }
+  | OriginLinkFailed { presence: FilesystemEntryPresence }
+
+fn filesystem_put_decide(key: NonEmptyStr, link: OriginLinkObservation) -> OriginPutOutcome {
+  match link {
+    OriginLinkInstalled { durable } =>
+      if durable {
+        OriginObjectStored { key: key }
+      } else {
+        OriginPutOutcomeUnknown { key: key, cause: join(["the object was linked at ", key as String, " but its directory could not be fsynced, so the name may not survive a crash; reconcile by fetching the key"], "") as NonEmptyStr }
+      }
+    OriginLinkFailed { presence } =>
+      match presence {
+        FilesystemEntryListed { directory: _, name: _ } => OriginObjectAlreadyPresent { key: key }
+        FilesystemEntryAbsent(_) => OriginPutRefused { key: key, cause: join(["the link to ", key as String, " failed and the key's directory does not list it, so the store refused the install"], "") as NonEmptyStr }
+        FilesystemEntryPresenceIndeterminate { cause } => OriginPutOutcomeUnknown { key: key, cause: join(["the link to ", key as String, " failed and whether the key is now occupied could not be observed: ", cause], "") as NonEmptyStr }
+        FilesystemEntrySubjectRefused { directory: _, name: _, cause } => OriginPutRefused { key: key, cause: cause as NonEmptyStr }
+      }
+  }
+}
+
+fn list_directory(directory: String) -> FilesystemListingObservation {
+  let l = Filesystem.List(path: directory)
+  filesystem_listing_observation(directory: directory, success: l.success, entries: l.entries, error: l.error)
+}
+
+fn put_filesystem_origin_object(root: FilesystemOriginRoot, local_path: FilePath, key: String) -> OriginPutOutcome {
+  match admit_origin_key(key: key) {
+    OriginKeyRefused { key: k, cause } => OriginPutRefused { key: (if k == "" { "(empty key)" } else { k }) as NonEmptyStr, cause: cause }
+    OriginKeyAdmitted { key: admitted, segments } => {
+      let parent = origin_object_parent(root: root, segments: segments)
+      let staging = shell.Mktemp.FileInDirectory(dir: origin_staging_directory(root: root) as FilePath)
+      if !staging.success {
+        OriginPutRefused { key: admitted, cause: join(["no staging file could be created under ", origin_staging_directory(root: root), "; the origin root is not usable"], "") as NonEmptyStr }
+      } else {
+        let staged = trim(staging.path as String) as FilePath
+        let outcome = if !shell.Copy.File(source: local_path, destination: staged).success {
+          OriginPutRefused { key: admitted, cause: join(["the bytes at ", local_path as String, " could not be copied into staging"], "") as NonEmptyStr }
+        } else if !shell.Sync.Path(path: staged).success {
+          OriginPutRefused { key: admitted, cause: "the staged copy could not be fsynced, so it was not installed" }
+        } else if !shell.Mkdir.Parents(path: parent as FilePath).success {
+          OriginPutRefused { key: admitted, cause: join(["the key's directory ", parent, " could not be created"], "") as NonEmptyStr }
+        } else if shell.Link.Hard(source: staged, destination: origin_object_path(root: root, segments: segments) as FilePath).success {
+          filesystem_put_decide(key: admitted, link: OriginLinkInstalled { durable: shell.Sync.Path(path: parent as FilePath).success })
+        } else {
+          filesystem_put_decide(key: admitted, link: OriginLinkFailed { presence: filesystem_entry_presence(listing: list_directory(directory: parent), name: last_segment(segments: segments)) })
+        }
+        let removed = shell.Remove.FileForce(path: staged)
+        outcome
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fetch.
+
+// WHAT THE SEGMENT WALK FOUND. PURE: each step is a listing of the directory that should contain the
+// next segment, decided by filesystem_entry_presence.
+type OriginKeyPresence
+  = OriginKeyListed
+  | OriginKeyNotListed { missing_under: String }
+  | OriginKeyIndeterminate { cause: NonEmptyStr }
+
+fn origin_key_presence_step(presence: FilesystemEntryPresence) -> OriginKeyPresence {
+  match presence {
+    FilesystemEntryListed { directory: _, name: _ } => OriginKeyListed
+    FilesystemEntryAbsent(_) => OriginKeyNotListed { missing_under: "" }
+    FilesystemEntryPresenceIndeterminate { cause } => OriginKeyIndeterminate { cause: cause as NonEmptyStr }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => OriginKeyIndeterminate { cause: cause as NonEmptyStr }
+  }
+}
+
+fn observe_origin_key_presence(root: FilesystemOriginRoot, segments: List<String>) -> OriginKeyPresence {
+  fold(enumerate(segments), init: OriginKeyListed, f: fn(acc, pair) {
+    match acc {
+      OriginKeyListed => {
+        let directory = if pair.first == 0 { origin_objects_directory(root: root) } else { join([origin_objects_directory(root: root), "/", join(segments |> take(n: pair.first), "/")], "") }
+        match origin_key_presence_step(presence: filesystem_entry_presence(listing: list_directory(directory: directory), name: pair.second)) {
+          OriginKeyNotListed { missing_under: _ } => OriginKeyNotListed { missing_under: directory }
+          other => other
+        }
+      }
+      other => other
+    }
+  })
+}
+
+type OriginCopyObservation
+  = OriginCopyStaged { staged_path: NonEmptyStr }
+  | OriginCopyFailed
+
+fn filesystem_fetch_decide(key: NonEmptyStr, presence: OriginKeyPresence, copy: OriginCopyObservation) -> OriginFetchOutcome {
+  match presence {
+    OriginKeyNotListed { missing_under: _ } => OriginObjectAbsent { key: key }
+    OriginKeyIndeterminate { cause } => OriginFetchUnavailable { key: key, cause: cause }
+    OriginKeyListed =>
+      match copy {
+        OriginCopyFailed => OriginFetchUnavailable { key: key, cause: join(["the object at ", key as String, " is listed but could not be copied out for reading"], "") as NonEmptyStr }
+        OriginCopyStaged { staged_path } =>
+          match read_origin_staged_file(staged_path: staged_path) {
+            OriginReadingTaken { reading } => OriginObjectStaged { key: key, reading: reading }
+            OriginReadingUnavailable { staged_path: _, cause } => OriginFetchUnavailable { key: key, cause: cause }
+          }
+      }
+  }
+}
+
+fn fetch_filesystem_origin_object(root: FilesystemOriginRoot, key: String) -> OriginFetchOutcome {
+  match admit_origin_key(key: key) {
+    OriginKeyRefused { key: k, cause } => OriginFetchUnavailable { key: (if k == "" { "(empty key)" } else { k }) as NonEmptyStr, cause: cause }
+    OriginKeyAdmitted { key: admitted, segments } =>
+      match observe_origin_key_presence(root: root, segments: segments) {
+        OriginKeyListed => {
+          let staging = shell.Mktemp.Dir()
+          if !staging.success {
+            OriginFetchUnavailable { key: admitted, cause: "no private directory could be minted to stage the object's bytes, so nothing was read" }
+          } else {
+            let staged = join([trim(staging.path as String), "/object"], "")
+            if shell.Copy.File(source: origin_object_path(root: root, segments: segments) as FilePath, destination: staged as FilePath).success {
+              filesystem_fetch_decide(key: admitted, presence: OriginKeyListed, copy: OriginCopyStaged { staged_path: staged as NonEmptyStr })
+            } else {
+              filesystem_fetch_decide(key: admitted, presence: OriginKeyListed, copy: OriginCopyFailed)
+            }
+          }
+        }
+        other => filesystem_fetch_decide(key: admitted, presence: other, copy: OriginCopyFailed)
+      }
+  }
+}

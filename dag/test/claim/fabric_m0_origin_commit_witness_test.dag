@@ -14,6 +14,7 @@ import std.durable_compare_and_set {
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginReading,
   OriginFetchOutcome,
   OriginObjectStaged,
@@ -24,13 +25,7 @@ import gunbc.fabric_m0_origin_readback {
   origin_reading_digest,
   read_origin_staged_file,
 }
-import gunbc.cloudflare.r2_origin_object {
-  OriginPutOutcome,
-  OriginObjectStored,
-  OriginObjectAlreadyPresent,
-  OriginPutRefused,
-  OriginPutOutcomeUnknown,
-}
+
 import gunbc.fabric_m0_commit { CommitTransportOutcome, StoreAnswered, StoreDidNotAnswer }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
 import std.process { exit_ok }

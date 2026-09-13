@@ -50,11 +50,6 @@ import gunbc.cloudflare.r2_origin_object {
   classify_s3_transfer,
   classify_origin_put,
   classify_origin_fetch,
-  OriginPutOutcome,
-  OriginObjectStored,
-  OriginObjectAlreadyPresent,
-  OriginPutRefused,
-  OriginPutOutcomeUnknown,
   OriginFetchVerdict,
   OriginFetchStagedAt,
   OriginFetchAbsent,
@@ -70,6 +65,7 @@ import gunbc.cloudflare.r2_origin_object {
   put_is_clean,
 }
 import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginReading,
   OriginReadingOutcome,
   OriginReadingTaken,

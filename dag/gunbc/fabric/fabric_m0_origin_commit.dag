@@ -17,6 +17,7 @@ import std.durable_compare_and_set {
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginFetchOutcome,
   OriginObjectStaged,
   OriginObjectAbsent,
@@ -29,11 +30,6 @@ import gunbc.cloudflare.r2_origin_object {
   WriteCredentialCustody,
   WriteCredentialShredded,
   WriteCredentialResidueRemains,
-  OriginPutOutcome,
-  OriginObjectStored,
-  OriginObjectAlreadyPresent,
-  OriginPutRefused,
-  OriginPutOutcomeUnknown,
   put_origin_object,
   fetch_origin_object,
 }

@@ -142,6 +142,19 @@ type OriginFetchOutcome
   | OriginObjectAbsent { key: NonEmptyStr }
   | OriginFetchUnavailable { key: NonEmptyStr, cause: NonEmptyStr }
 
+// WHAT A CREATE-IF-ABSENT ORIGIN PUT ANSWERS, keyed by the object and never by a path. It lives beside
+// OriginFetchOutcome for the same reason that type does: the shape is the interface, and each origin
+// realization produces it. It was first declared inside gunbc.cloudflare.r2_origin_object, which made
+// the vendor module the authority for what every origin's write means, so a second realization would
+// have had to import a vendor to answer in the interface's vocabulary. Four arms: the object was
+// installed; the key was already occupied (by bytes the fetch then decides about); the store refused;
+// or no verdict was obtained, which is never read as either success or failure.
+type OriginPutOutcome
+  = OriginObjectStored { key: NonEmptyStr }
+  | OriginObjectAlreadyPresent { key: NonEmptyStr }
+  | OriginPutRefused { key: NonEmptyStr, cause: NonEmptyStr }
+  | OriginPutOutcomeUnknown { key: NonEmptyStr, cause: NonEmptyStr }
+
 // THE SOLE MINT. One operation obtains the bytes' digest and the name of the file it was taken
 // from, so the two cannot describe different objects.
 //

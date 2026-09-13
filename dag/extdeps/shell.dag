@@ -322,6 +322,24 @@ service shell.Mkdir {
   }
 }
 
+// GNU coreutils sync(1) (gnu.org/software/coreutils/manual/html_node/sync-invocation.html): given
+// FILE operands, it synchronizes only those files, calling fsync on each; an operand that is a
+// directory is opened and fsynced the same way, which is what makes a link(2) into that directory
+// durable. Given no operand it flushes every filesystem, so this operation always passes one: a
+// caller asking for one file's durability must never be satisfied by a global flush it cannot tell
+// apart. Exit status says whether the fsync succeeded and nothing about which failure occurred.
+service shell.Sync {
+  operation Path {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["sync", "--", "{path}"] }
+    exit {
+      0 => Unit "fsync of the named file or directory succeeded"
+      nonzero => String "sync failed"
+    }
+  }
+}
+
 service shell.Link {
   operation Hard {
     input { source: FilePath, destination: FilePath }
