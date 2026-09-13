@@ -24763,7 +24763,10 @@ pub(crate) struct FloorDiffEdits {
     /// A wholly added file and a brand-new `test fn` in an existing file are new; a
     /// modified sibling whose name was already at the lookup path is not.
     enrolled_test_fns: HashSet<(String, String)>,
-    /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
+    /// `.dag` files with a non-data, non-test-fn declaration touched. Required-floor Strict
+    /// preparation seeds each file's authored module (`module_seeds_from_touched_entry_files`)
+    /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
+    /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
 }
 

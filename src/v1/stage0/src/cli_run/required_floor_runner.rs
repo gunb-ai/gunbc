@@ -1207,7 +1207,7 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
     index: &MultiEntryIndex,
-) -> Result<(Vec<String>, Vec<String>), String> {
+) -> Result<(Vec<String>, Vec<String>, Vec<String>), String> {
     let diff_text = floor_git_diff_range()?;
     let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
     let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
@@ -1250,7 +1250,16 @@ fn changed_and_enrolled_witness_identities_with_index(
         &edits.enrolled_test_fns,
         &quarantined,
     )?;
-    Ok((changed, enrolled))
+    // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
+    // or type-decl edit lands in `touched_entry_files` and until this was consumed only by
+    // skip-before-resolve and module-grain affected proofs -- never by Strict preparation.
+    // That is `check_reachable_only_from_an_entry_point_the_context_never_calls`: check_match
+    // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
+    // resolved the file. Seeding the authored module pulls its both-closure into
+    // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    let compile_subject_modules =
+        module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files)?;
+    Ok((changed, enrolled, compile_subject_modules))
 }
 
 /// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
@@ -1547,6 +1556,32 @@ pub(crate) fn changed_witness_identities_from_edited_test_fns(
     identities.sort();
     identities.dedup();
     Ok(identities)
+}
+
+/// Authored module names of `.dag` files whose non-data, non-test-fn declaration the diff
+/// touched. The spelling is the `module` header, the same key `assemble_prepared_subject_closure`
+/// matches with `starts_with`. A file with no module header refuses: dropping it would silently
+/// exempt the malformed case from the compile seed, which is the class this seed exists to close.
+pub(crate) fn module_seeds_from_touched_entry_files(
+    base: &Path,
+    touched_entry_files: &std::collections::HashSet<String>,
+) -> Result<Vec<String>, String> {
+    let mut modules: Vec<String> = Vec::new();
+    for file in touched_entry_files {
+        let content = std::fs::read_to_string(base.join(file))
+            .map_err(|e| format!("touched-entry compile-subject seed: read {file}: {e}"))?;
+        let module = extract_module_path(&content).ok_or_else(|| {
+            format!(
+                "touched-entry compile-subject seed: {file} has a non-data, non-test-fn \
+                 declaration edit but no module header, so it cannot be seeded into Strict \
+                 preparation"
+            )
+        })?;
+        modules.push(module);
+    }
+    modules.sort();
+    modules.dedup();
+    Ok(modules)
 }
 
 /// Is this identity's declared home under a root the tree declares NON-EXECUTING?
@@ -4409,13 +4444,15 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
-    // ONE DERIVATION, CONSUMED TWICE. #9717's changed-witness identity producer supplies both
-    // the closure seeds that make these modules executable and the tail projection that judges
-    // their terminal rows. Re-observing the diff after execution would create two authorities
+    // ONE DERIVATION, CONSUMED THREE WAYS. The same diff observation supplies changed-witness
+    // identities, newly enrolled identities, and the compile-subject modules of
+    // `touched_entry_files`. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses) =
+    let (changed_witnesses, newly_enrolled_witnesses, touched_compile_modules) =
         match changed_and_enrolled_witness_identities_with_index(&gate_entry_index) {
-            Ok((changed, enrolled)) => (Some(changed), Some(enrolled)),
+            Ok((changed, enrolled, compile_modules)) => {
+                (Some(changed), Some(enrolled), Some(compile_modules))
+            }
             Err(e) if commit != "local" && !commit.is_empty() => {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
@@ -4426,11 +4463,11 @@ pub fn run_required_floor(
                 eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-                // BOTH PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+                // ALL THREE PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
                 // `None` here is "this run could not look", which is a different fact from "this run
                 // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
                 // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None)
+                (None, None, None)
             }
         };
     let changed_witness_set: HashSet<String> = changed_witnesses
@@ -4500,11 +4537,23 @@ pub fn run_required_floor(
         )
         .chain(changed_module_seeds.iter().cloned())
         .chain(
+            touched_compile_modules
+                .iter()
+                .flat_map(|rows| rows.iter().cloned()),
+        )
+        .chain(
             local_repo_wet_schedule_rows
                 .iter()
                 .map(|row| row.entry_module.clone()),
         )
         .collect();
+    if let Some(modules) = &touched_compile_modules {
+        eprintln!(
+            "[floor-phase] phase=touched-entry-compile-subject seeds={} modules={:?}",
+            modules.len(),
+            modules
+        );
+    }
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
@@ -9267,6 +9316,50 @@ mod changed_witness_projection_tests {
         assert_eq!(
             identities,
             vec!["fixture.changed_witness_spelling.added_holds".to_string()]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A helper-fn file with a module header becomes a Strict-prepare seed. This is the
+    /// invocation hole: `touched_entry_files` was populated and unused as a compile subject.
+    #[test]
+    fn helper_fn_file_seeds_its_authored_module() {
+        let dir = std::env::temp_dir().join(format!(
+            "touched_entry_compile_seed_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("consumer.dag"),
+            "module exhaust.consumer\n\nfn accepted_of(c: Bool) -> Bool { c }\n",
+        )
+        .expect("fixture write");
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("consumer.dag".to_string());
+        let seeds = module_seeds_from_touched_entry_files(&dir, &touched).expect("seeds");
+        assert_eq!(seeds, vec!["exhaust.consumer".to_string()]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn helper_fn_file_without_module_header_refuses_rather_than_skipping() {
+        let dir = std::env::temp_dir().join(format!(
+            "touched_entry_compile_seed_no_module_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("consumer.dag"),
+            "fn accepted_of(c: Bool) -> Bool { c }\n",
+        )
+        .expect("fixture write");
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("consumer.dag".to_string());
+        let err = module_seeds_from_touched_entry_files(&dir, &touched)
+            .expect_err("missing module header must refuse");
+        assert!(
+            err.contains("no module header"),
+            "refusal must name the missing header, got {err}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
