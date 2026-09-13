@@ -1,5 +1,7 @@
 module test.claim.pre_os_capture_replay_witness
 
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+
 import test.claim.fleet_observation_capture_witness { t_pos, t_stream, t_other_stream }
 
 import std.types { Bool, String }
@@ -86,14 +88,14 @@ test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log", expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: payload } => {
-      let assessed = pre_os_host_archive_assessment(payload: payload, host_mac: "28:c1:3c:8a:d6:4a")
+      let assessed = pre_os_host_archive_assessment(payload: payload, host_mac: mtcollins1_host_nic_mac)
       let milestones = assessed.milestones
       let truncated = split(s: payload, delimiter: "marker-end=gunbc-runner-host-boot").first()
       contains(payload, "DMI: Memory slots populated: 16/32")
         && match assessed.population_statement { ObservationEstablished { observed: statement } => contains(statement as String, "16/32") _ => false }
         && milestones.boot == BootReachedOperatingSystem
         && match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => true _ => false }
-        && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false } Absent => false }
+        && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false } Absent => false }
     }
   }
 }
@@ -103,11 +105,12 @@ fn firmware_selection_regression() -> Bool {
     expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: payload } => {
-      let selection = pre_os_firmware_boot_selection(text: payload, rendered_host_mac: "28-C1-3C-8A-D6-4A")
+      let selection = pre_os_firmware_boot_selection(text: payload, host_mac: mtcollins1_host_nic_mac)
       let without_selection = join(filter(split(s: payload, delimiter: "\n"), line => !starts_with(s: line, prefix: ">>Start PXE over IPv")), "\n")
       match selection { ObservationEstablished { observed: _ } => true _ => false }
-        && match pre_os_firmware_boot_selection(text: without_selection, rendered_host_mac: "28-C1-3C-8A-D6-4A") { ObservationRefused { cause: _ } => true _ => false }
-        && match pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false }
+        && match pre_os_firmware_boot_selection(text: payload, host_mac: "02:00:00:00:00:01") { ObservationRefused { cause: _ } => true _ => false }
+        && match pre_os_firmware_boot_selection(text: without_selection, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false }
+        && match pre_os_host_userspace_boot(text: payload, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false }
         && contains(payload, "HMA82GR7AFR8N-VK") && contains(payload, "HMA82GR7CJR8N-VK") && contains(payload, "HMA82GR7AFR4N-VK")
     }
   }

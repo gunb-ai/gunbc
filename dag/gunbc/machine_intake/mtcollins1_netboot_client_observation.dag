@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_netboot_client_observation
 
-import std.types { EpochMs, Int, NonEmptyStr }
+import std.types { EpochMs, Int, NonEmptyStr, String }
+import extdeps.numeric.base16 { base16_digit_rows }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 
@@ -26,6 +27,14 @@ import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 // The discriminator is not the address but the VENDOR CLASS: a PXE client identifies itself as
 // PXEClient:Arch:NNNNN and requests a boot file; a Linux DHCP client does neither.
 data mtcollins1_host_nic_mac: NonEmptyStr = "28:c1:3c:8a:d6:4a"
+
+// Firmware's PXE line renders the same host address with dashes and uppercase
+// hexadecimal digits. The alphabet comes from its existing encoding authority.
+fn firmware_pxe_mac_rendering(host_mac: NonEmptyStr) -> NonEmptyStr {
+  fold(base16_digit_rows, init: replace(s: host_mac as String, from: ":", to: "-"),
+    f: (rendered, digit) => replace(s: rendered, from: digit.lower, to: digit.upper)) as NonEmptyStr
+}
+
 
 data mtcollins1_netboot_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "a29f460b5323f1564a75b2102198e56448b6147440629bdc1154d9822b61d69a",

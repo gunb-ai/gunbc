@@ -1,5 +1,7 @@
 module test.claim.pre_os_replay_witness
 
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
@@ -73,9 +75,9 @@ test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admissi
   let envelope = replay_fixture(seq: 1, generation: "console-a", record: "685")
   let observation = PreOsReplayObservation { envelope: envelope, format: PreOsConsoleText,
     payload: ObservationEstablished { observed: concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) } }
-  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [observation, observation], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [observation, observation], host_mac: mtcollins1_host_nic_mac,
     inventory_question: ObservationRefused { cause: "OS milestone question supplies no memory inventory expectation" })
-  let other_machine = pre_os_machine_timeline(machine: "another-machine", observations: [observation], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+  let other_machine = pre_os_machine_timeline(machine: "another-machine", observations: [observation], host_mac: mtcollins1_host_nic_mac,
     inventory_question: ObservationRefused { cause: "no question" })
   count(rows) == 1 && match rows.first() {
     Absent => false
@@ -114,7 +116,7 @@ test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool {
     PreOsReplayObservation { envelope: local, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
     PreOsReplayObservation { envelope: rejected, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
     PreOsReplayObservation { envelope: delivered, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
-  ], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+  ], host_mac: mtcollins1_host_nic_mac,
     inventory_question: ObservationRefused { cause: "no inventory question" })
   count(rows) == 3
     && match rows.first() { Present { value: row } => match row.retention { ExposedToCollectorHostLoss { refusal: _ } => true _ => false } Absent => false }

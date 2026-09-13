@@ -1,5 +1,7 @@
 module gunbc.machine_intake_pre_os_capture_replay
 
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+
 import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import std.types { Bool, List, NonEmptyStr, String }
@@ -135,7 +137,7 @@ func replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessme
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log",
     expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
-    ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_host_archive_assessment(payload: payload, host_mac: "28:c1:3c:8a:d6:4a") }
+    ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_host_archive_assessment(payload: payload, host_mac: mtcollins1_host_nic_mac) }
   }
 }
 
@@ -144,8 +146,8 @@ func replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelect
     expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: payload } => ObservationEstablished { observed: PreOsFirmwareSelectionArchiveAssessment {
-      selection: pre_os_firmware_boot_selection(text: payload, rendered_host_mac: "28-C1-3C-8A-D6-4A"),
-      milestones: pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a")),
+      selection: pre_os_firmware_boot_selection(text: payload, host_mac: mtcollins1_host_nic_mac),
+      milestones: pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: pre_os_host_userspace_boot(text: payload, host_mac: mtcollins1_host_nic_mac)),
     } }
   }
 }

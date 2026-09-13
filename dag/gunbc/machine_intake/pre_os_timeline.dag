@@ -130,7 +130,7 @@ fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition)
   }
 }
 
-fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
+fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
   match span.chunks.first() {
     Absent => []
     Present { value: first } => {
@@ -144,7 +144,7 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
           kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
           anchor: anchor,
           milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
-          firmware_selection: pre_os_firmware_boot_selection(text: part, rendered_host_mac: rendered_host_mac),
+          firmware_selection: pre_os_firmware_boot_selection(text: part, host_mac: host_mac),
         }
         PreOsCycleScan { next_offset: position_advanced_by(p: position_advanced_by(p: acc.next_offset, extent: pre_os_utf8_size(text: marker)), extent: pre_os_utf8_size(text: part)), cycles: concat(acc.cycles, [cycle]) }
       })
@@ -171,7 +171,7 @@ type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCur
 // No clock is read. A SEL observation remains unassociated with console cycles,
 // even if its receive timestamp is very close. Input order is replay order, not
 // a claimed total chronology across source clock domains.
-fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let envelopes = map(observations, o => o.envelope)
   let result = fold(pre_os_unique_occurrences(envelopes: envelopes), init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, envelope) => {
     match filter(observations, candidate => pre_os_same_envelope(a: candidate.envelope, b: envelope)).first() {
@@ -245,7 +245,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
       console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: "SEL snapshot is not a console span" } },
-      cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac, rendered_host_mac: rendered_host_mac) PreOsSelSnapshot => [] } _ => [] },
+      cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac) PreOsSelSnapshot => [] } _ => [] },
       boot: pre_os_boot_assessment(milestones: milestones), training: match configuration {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
         ObservationEstablished { observed: _ } => pre_os_training_assessment(milestones: milestones)
@@ -275,9 +275,9 @@ fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
 // artifacts, assesses them, and returns the derived view without actuation.
 type PreOsReplayRequest { envelope: ObservationEnvelope, format: PreOsSourceFormat }
 
-func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let observations = map(requests, request => pre_os_read_observation(envelope: request.envelope, format: request.format))
-  pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, rendered_host_mac: rendered_host_mac, inventory_question: inventory_question)
+  pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, inventory_question: inventory_question)
 }
 
 // The production absence route obtains the byte standing from acquisition and
