@@ -13,7 +13,10 @@ import gunbc.fleet_observation_collector_ownership {
   OwnerRecording,
   FollowerReadOnly,
   ForeignSessionHeld,
-  may_record,
+  RecordingOwnerIdentity,
+  RecordingOwner,
+  NotTheRecordingOwner,
+  recording_owner,
 }
 import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
@@ -23,11 +26,11 @@ import gunbc.fleet_observation_capture_chunk {
   ContinuityGap,
   ContinuityUnknown,
   LocalCommitStanding,
+  LocallyCommitted,
   DownstreamAcceptanceStanding,
   DownstreamAccepted,
   DownstreamRejected,
   DownstreamNotOffered,
-  chunk_is_locally_committed,
   continuity_covers,
   ContinuityCoverage,
   ContinuityCoversRange,
@@ -177,7 +180,7 @@ type SourceByteFact
 // quiet. Each refusal names what was missing, and none of them widens.
 fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange) -> SourceByteFact {
   let requested_end = range_end(range: requested)
-  match recording_owner_session(ownership: envelope.ownership) {
+  match recording_owner(ownership: envelope.ownership) {
     NotTheRecordingOwner =>
       CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
     RecordingOwner { session: owner_session, generation: owner_generation } =>
@@ -279,38 +282,14 @@ fn collector_host_loss_refusal(promises: List<RetentionPromise>) -> NonEmptyStr 
 }
 
 fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
-  if is_forwarded(envelope: envelope) {
-    RetainedBeyondCollectorHost
-  } else if chunk_is_locally_committed(standing: envelope.local_commit) {
-    ExposedToCollectorHostLoss {
-      refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
-    }
-  } else {
-    NotYetRetained { standing: envelope.local_commit }
-  }
-}
-
-fn is_forwarded(envelope: ObservationEnvelope) -> Bool {
   match envelope.downstream {
-    DownstreamAccepted { accepted_content: _ } => true
-    DownstreamRejected { cause: _ } => false
-    DownstreamNotOffered => false
-  }
-}
-
-// THE RECORDING OWNER'S OWN IDENTITY, extracted once so the fold reads it rather than re-deriving it
-// per guard. Only OwnerRecording yields one: a follower and a foreign-held endpoint are not the
-// recorder and have no ownership generation to offer.
-type RecordingOwnerIdentity
-  = RecordingOwner { session: CollectorSessionId, generation: Int }
-  | NotTheRecordingOwner
-
-fn recording_owner_session(ownership: EndpointOwnership) -> RecordingOwnerIdentity {
-  match ownership {
-    OwnerRecording { session: session, lease: lease, fencing: _ } =>
-      RecordingOwner { session: session, generation: ownership_generation(lease: lease) }
-    FollowerReadOnly { session: _ } => NotTheRecordingOwner
-    ForeignSessionHeld { observed: _ } => NotTheRecordingOwner
+    DownstreamAccepted { accepted_content: _ } => RetainedBeyondCollectorHost
+    _ => match envelope.local_commit {
+      LocallyCommitted { committed_content: _ } => ExposedToCollectorHostLoss {
+        refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+      }
+      standing => NotYetRetained { standing: standing }
+    }
   }
 }
 
@@ -331,4 +310,3 @@ fn evidence_names_one_subject(
   && (owner_generation == chunk.occurrence.ownership_generation)
   && ((binding.enrolled_machine as String) == (owner_session.enrolled_machine as String))
 }
-
