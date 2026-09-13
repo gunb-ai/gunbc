@@ -17,9 +17,8 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
   workflow_job_name_matrix_value_parenthetical,
-  workflow_job_name_matrix_parenthetical_standing,
 }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.runner_label_resolution {
@@ -447,15 +446,38 @@ fn observed_name_matches_inspected_prefix(
   match matrix {
     NoMatrix => job_name == prefix
     MatrixCombination { axes } =>
-      match workflow_job_name_matrix_parenthetical_standing {
-        TranscribedUncited { read_obligation } =>
-          job_name == concat(
-            prefix,
-            workflow_job_name_matrix_value_parenthetical(
-              values: matrix_combination_values(axes: axes),
-            ),
-          )
-        CitedToAuthority { authority } => false
+      job_name == concat(
+        prefix,
+        workflow_job_name_matrix_value_parenthetical(
+          values: matrix_combination_values(axes: axes),
+        ),
+      )
+  }
+}
+
+type InspectedLegBinding
+  = InspectedLegBound
+  | InspectedLegUninspected { cause: NonEmptyStr }
+  | InspectedLegNameMismatch
+
+fn inspected_leg_binding(
+  job_name: String,
+  job_key: NonEmptyStr,
+  matrix: JobMatrixIdentity,
+  repository: NonEmptyStr,
+  workflow_path: NonEmptyStr,
+) -> InspectedLegBinding {
+  match inspected_yaml_job_name_join(
+    repository: repository,
+    workflow_path: workflow_path,
+    job_key: job_key,
+  ) {
+    YamlJobNameUninspected { cause } => InspectedLegUninspected { cause: cause }
+    YamlJobNameBound { prefix } =>
+      if observed_name_matches_inspected_prefix(job_name: job_name, prefix: prefix, matrix: matrix) {
+        InspectedLegBound
+      } else {
+        InspectedLegNameMismatch
       }
   }
 }
@@ -467,14 +489,16 @@ fn observed_job_binds_inspected_leg(
   repository: NonEmptyStr,
   workflow_path: NonEmptyStr,
 ) -> Bool {
-  match inspected_yaml_job_name_join(
+  match inspected_leg_binding(
+    job_name: job_name,
+    job_key: job_key,
+    matrix: matrix,
     repository: repository,
     workflow_path: workflow_path,
-    job_key: job_key,
   ) {
-    YamlJobNameUninspected { cause } => false
-    YamlJobNameBound { prefix } =>
-      observed_name_matches_inspected_prefix(job_name: job_name, prefix: prefix, matrix: matrix)
+    InspectedLegBound => true
+    InspectedLegUninspected { cause } => false
+    InspectedLegNameMismatch => false
   }
 }
 
@@ -678,22 +702,20 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
       } else if (workflow_path as String) != (c.workflow_path as String) {
         RunIdentityMismatched { cause: "observed workflow path is not the inspected workflow" }
       } else {
-        match inspected_yaml_job_name_join(
+        match inspected_leg_binding(
+          job_name: job.name,
+          job_key: c.job_key,
+          matrix: c.matrix_selector,
           repository: c.repository,
           workflow_path: c.workflow_path,
-          job_key: c.job_key,
         ) {
-          YamlJobNameUninspected { cause } => RunIdentityUnresolved { cause: cause }
-          YamlJobNameBound { prefix } =>
-            if !observed_name_matches_inspected_prefix(
-              job_name: job.name,
-              prefix: prefix,
-              matrix: c.matrix_selector,
-            ) {
-              RunIdentityMismatched {
-                cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
-              }
-            } else if c.inspected_commit == head_sha {
+          InspectedLegUninspected { cause } => RunIdentityUnresolved { cause: cause }
+          InspectedLegNameMismatch =>
+            RunIdentityMismatched {
+              cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
+            }
+          InspectedLegBound =>
+            if c.inspected_commit == head_sha {
               ObservedAtInspectedRevision {
                 repository: c.repository,
                 revision: c.inspected_commit,

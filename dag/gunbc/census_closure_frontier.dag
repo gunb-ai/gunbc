@@ -20,6 +20,7 @@ import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
 import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
+  workflow_job_name_matrix_parenthetical_standing_frontier_rows,
 }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
@@ -64,6 +65,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     endpoint_string_type_frontier_rows,
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
+    workflow_job_name_matrix_parenthetical_standing_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
     public_workload_census_run_attempt_consumer_frontier_rows,
