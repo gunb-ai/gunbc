@@ -4,7 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import extdeps.git.inspect
 import extdeps.gunbc
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.ci_release_bins { release_bin_is_enrolled }
