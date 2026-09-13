@@ -243,26 +243,23 @@ type SparkManagedGrant
 // environment becomes readable by gunbc-automation. That environment is exactly the telemetry
 // configuration the usage-stats wall needs, and it is also everything else the launch put there.
 //
-// WHAT "EVERYTHING ELSE" IS, read rather than assumed (2026-09-13, anonymous registry read, no host
-// privilege). The container is created from the local tag
-// extdeps.docker.images.sparkrun_vllm_ds4_gb10 gunbc_spark_pair_runtime_image_tag, which is NOT
-// pinned by digest: it is built on the host from gunbc_spark_pair_runtime_dockerfile, whose FROM is
-// the digest-pinned base (sparkrun_vllm_ds4_gb10_pinned_reference, manifest sha256:f869281d...b630f,
-// re-hashed on read) and whose only other instructions are RUN pip and CMD, so it adds no ENV and its
-// Config.Env is the base's. The base config blob sha256:b2eb4e6e...9f2d carries 50 ENV entries:
-// interface and RDMA endpoint names, NCCL/UCX/OMP tuning, HF/vLLM/Triton/TorchInductor cache paths
-// under /cache/huggingface, HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1, CUDA toolchain paths, and
-// micromamba's user and prefix variables. No entry is a token, key, password or credential, and
-// none is resolved from a SecretRef; spark_pair_container_env adds none either. The one residue is
-// NODE_IP, the upstream build host's private address, which every create overrides. Labels are
-// micromamba-docker's OCI labels. This is a reading of the declared base, so it holds for the
-// running container only while the local tag was built from this Dockerfile; the tag being unpinned
-// is the weaker link, not the environment. THIS GRANT IS ALSO THAT GAP'S OBSERVER: inspect returns
-// .Image, the running container's image id, which is its config digest, so the unpinned tag closes when
-// that id is compared against a digest produced by building gunbc_spark_pair_runtime_dockerfile.
-// TRIGGER: this grant installed AND a build-digest producer for that Dockerfile, SUFFICIENT FOR the
-// running pair container's image to be identified by digest rather than by a host-local tag. No
-// comparison is built here; both halves are missing.
+// WHAT "EVERYTHING ELSE" IS IS NOT ESTABLISHED BY THIS REPOSITORY. spark_pair_container_env declares
+// no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV, and no
+// instrument here reads an image configuration from a registry: a one-off read of the base config
+// was taken while this grant was authored, and its conclusion is deliberately NOT transcribed here,
+// because a transcription is unreachable from the thing it describes (DESIGN 6) and an annotation is
+// never evidence (4c). TRIGGER: an image-configuration reader over
+// extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference, decoding into
+// extdeps.container.oci.image_config ContainerImageConfig, SUFFICIENT FOR the base image's Env to be
+// enumerated and classified by execution at the pinned digest.
+//
+// AND THE IMAGE THE CONTAINER RUNS IS NOT THAT DIGEST. It is created from the host-local tag
+// gunbc_spark_pair_runtime_image_tag, built from gunbc_spark_pair_runtime_dockerfile (FROM the pinned
+// base, RUN pip, CMD; no ENV instruction), so nothing binds the running container to a digest. This
+// grant is also that gap's observer: inspect returns .Image, the running container's image id, which
+// is its config digest. TRIGGER: this grant installed AND a build-digest producer for that Dockerfile,
+// SUFFICIENT FOR the running pair container's image to be identified by digest rather than by a
+// host-local tag. No comparison is built here; both halves are missing.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
