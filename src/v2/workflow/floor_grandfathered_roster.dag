@@ -22,8 +22,27 @@ import std.types { NonEmptyStr }
 // artifact (dispositions `planned` and `planned_as_changed_witness`). (ii) Membership is checked
 // AT IDENTITY GRAIN, never by count -- `floor_grandfathered_holds` compares whole qualified
 // identities, and the size below is a producer rather than a literal precisely so no count can
-// stand in for the join. (iii) ROWS MAY ONLY LEAVE. A removal carries a typed disposition; an
-// ADDITION IS REFUSED, which is what makes this a debt that shrinks rather than a list that grows.
+// stand in for the join. (iii) ROWS MAY ONLY LEAVE -- AND THE TWO HALVES OF THAT SIT AT DIFFERENT
+// RUNGS, which an earlier revision of this sentence flattened into one claim (review 65720).
+//
+//   REMOVALS CARRY A TYPED DISPOSITION, and that half executes: `floor_grandfathered_removals`
+//   is a declared list of `GrandfatheredRemoval` arms, and
+//   `every_declared_removal_names_a_row_the_roster_actually_holds` folds it against the live
+//   roster on the acceptance path.
+//
+//   AN ADDITION IS REFUSED BY `roster_change_verdict` -- WHICH NOTHING ON THE ACCEPTANCE PATH
+//   CALLS AGAINST THIS ROSTER. Its only executing consumers are three-row fixtures in
+//   `test.claim.floor_eval_step_budget_witness_test`. So the refusal is modeled and exercised at
+//   fixture scale, and is a DECLARED FRONTIER at corpus scale; the frontier and its trigger are
+//   stated where the verdict is declared, further down this file.
+//
+// THAT DISTINCTION IS NOT PEDANTIC, AND THIS CHANGE IS THE PROOF. Three witnesses THIS LANE ADDED
+// were enrolled as grandfathered by the cut and left the roster only because a human review
+// caught them -- not because any wall fired. Asserting the refusal as established would have been
+// the rung inflation DESIGN section 4b(1) names: the reported rung must equal the rung executed
+// evidence establishes, and a modeled verdict with no acceptance-path caller establishes nothing
+// at corpus scale. The class is filed at `gunbc.recurring_failure_mode`
+// `prose_repealed_by_the_change_that_wrote_it`.
 //
 // WHY A GROWING ROSTER WOULD DESTROY THE MECHANISM, stated because it is the whole point: the new
 // tier only bites if new work cannot join the old tier. A roster that admitted rows would let every

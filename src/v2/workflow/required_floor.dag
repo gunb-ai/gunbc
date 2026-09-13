@@ -1098,9 +1098,17 @@ fn required_floor_new_witness_envelope_ms() -> Millisecond {
 // THE SELECTOR TAKES AN IDENTITY, NOT A LABEL, AND THAT IS THE LOAD-BEARING PART. There is no
 // `legacy: Bool` parameter, no `is_new` flag, and no caller-supplied tier: an identity outside the
 // roster CANNOT acquire the larger budget by landing, by appearing in the tree, or by having been
-// accepted once. The only way into `GrandfatheredTier` is to be in a closed roster that was cut
-// once and may only shrink. A caller-supplied label would be exactly the escape hatch DESIGN
-// section 5 forbids -- a toggle whose only effect is "proceed as if the refusal had not fired".
+// accepted once. The only way into `GrandfatheredTier` is to be in the roster
+// `v2.workflow.floor_grandfathered_roster` carries, cut once, whose rows leave by typed
+// disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
+// -- a toggle whose only effect is "proceed as if the refusal had not fired".
+//
+// THAT THE ROSTER MAY ONLY SHRINK IS NOT A PROPERTY TO CITE FROM HERE (review 65720). An earlier
+// revision of this sentence said it "may only shrink" as though the refusal were established.
+// `roster_change_verdict` models it and fixtures exercise it, but no acceptance-path caller runs
+// it against the live roster; that frontier and its trigger are stated where the verdict is
+// declared. What THIS function guarantees is only what it does: the tier comes from identity
+// membership and from nothing a caller can pass.
 //
 // A RENAME IS A DELETION PLUS AN ADDITION, so a renamed witness is NEW. That falls out of
 // identity-grain membership rather than being a rule layered on top, and it closes the one move
