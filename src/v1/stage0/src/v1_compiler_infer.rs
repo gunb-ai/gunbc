@@ -204,15 +204,15 @@ pub use crate::v1_compiler_infer_sigs::{
 };
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
-    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
+    bare_map_node, bare_set_node, callable_inferred, callable_return_type, canonical_template_name,
+    child_type_node, emit_map_has, extract_optional_inner_node, for_each_element_type_node,
+    infer_binop_type_node, infer_literal_node, is_declared_container_alias_spelling,
+    is_fully_resolved, is_type_expr_annotation, kernel_profile_lookup, make_callable_type,
+    make_container_type, method_receiver_element_node, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_ownership::fold_terminal_expr;
@@ -20226,10 +20226,10 @@ pub fn refine_generic_constraint(
                         diagnostics: Rc::new(vec![]),
                     })
                 } else {
-                    if ((((type_node_label(
+                    if ((((crate::v1_compiler_infer_types::canonical_template_name(
                         established.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                    ) != type_node_label(
+                    ) != crate::v1_compiler_infer_types::canonical_template_name(
                         incoming.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     )) || (established.connective.clone() != incoming.connective.clone()))
