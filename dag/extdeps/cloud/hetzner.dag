@@ -272,5 +272,42 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
     cx23_listed, cx33_listed, cx43_listed, cx53_listed ]
 }
 
+// ---------------------------------------------------------------------------------------------
+// NEGATIVE AND OVERVIEW READINGS WHOSE CONSUMER IS THE UNREAD PATH, NOT A LOCATED EVIDENCE SLOT.
+//
+// product.fabric.provider_route ProviderPathUnread.consulted is the slot a researched-and-
+// unanswered path uses to cite the documents that were read and did not answer. These two rows
+// are that citation's subject: one is the negative reading (what the TOM page does not say) and
+// the other uniquely records the non-EU transfer / contractual-partner split. They are not
+// Locatable evidence for a path; consuming them as Located.evidence would invent an answer they
+// explicitly do not give. The executing consumer is test.claim.fabric.provider_admission_witness,
+// which constructs an unread telemetry path whose consulted list identity-joins these declarations
+// through first_unread_consulted_citations.
+
+type HetznerPublishedReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  statement: NonEmptyStr
+}
+
+data hetzner_technical_organizational_measures_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" } },
+  read_on: "2026-09-12",
+  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees. WHAT THE PAGE DOES NOT SAY, read for and not found: it names no country for the log system, states no jurisdiction from which administrative access is exercised, and does not mention Finland or Helsinki anywhere.",
+}
+
+data hetzner_data_protection_overview_reading: HetznerPublishedReading = HetznerPublishedReading {
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" } },
+  read_on: "2026-09-12",
+  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
+}
+
+fn hetzner_published_readings() -> List<HetznerPublishedReading> {
+  [
+    hetzner_technical_organizational_measures_reading,
+    hetzner_data_protection_overview_reading,
+  ]
+}
+
 
 
