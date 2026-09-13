@@ -179,12 +179,19 @@ fn object_readback_of_origin_put(put: OriginPutOutcome, fetch: OriginFetchOutcom
   }
 }
 
-// THE OUTPUT BOUNDARY. A job's produced file enters the commit path HERE and nowhere else, and it
-// enters classified: product.data_class classify_build_output is admit_callers-sealed to this
-// declaration, so this is the one place in the tree that says "these bytes are a BuildOutput".
-// The classification is a fact about provenance -- the file is what the job produced -- not a
-// judgement the caller makes, which is why the function takes the path and nothing that could
-// re-label it.
+// THE OUTPUT BOUNDARY. A job's produced file enters the commit path here and enters classified:
+// product.data_class classify_build_output is admit_callers-sealed to this declaration, so the
+// MINT is reachable only through this boundary. THE BOUNDARY ITSELF IS OPEN (review 65270): this
+// is an exported function taking any FilePath, so the seal is one hop deep -- an importer that
+// holds a path can label it BuildOutput by calling here, and the canary and the witnesses do
+// exactly that. What the label therefore establishes today is "these bytes were handed to the
+// commit path as job output", a fact about the ROUTE, not a fact about their producer. Rung 1 for
+// the class "a file not produced by the job is labelled as its output". NEXT-RUNG TRIGGER,
+// capability grain: a job producer in this tree -- the M0 module that runs the work and owns the
+// output directory -- becomes the sole admitted caller of job_output_bytes through its own
+// admit_callers list, with the canary re-homed as that producer's fixture; sufficient for
+// restating this note as "only the job's own producer can say BuildOutput". Not satisfied by
+// sealing to the canary, which is not a producer.
 fn job_output_bytes(local_path: FilePath) -> Classified<BuildOutput, FilePath> {
   classify_build_output(value: local_path)
 }

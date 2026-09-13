@@ -47,8 +47,14 @@ type PrincipalProjection
   = OidcProjected { projection: OidcProjection }
   | PosixProjection { observation: EffectivePosixPrincipalObservation }
 
-// THE BOUNDARY RETURNS THE NARROW TYPE. oidc_projection is the admitted caller of
-// classify_personal_identity and answers OidcProjection directly, so a consumer that holds OIDC
+// THE BOUNDARY RETURNS THE NARROW TYPE, AND THE BOUNDARY IS OPEN (review 65270): oidc_projection
+// is the admitted caller of classify_personal_identity -- the mint is reachable only through it --
+// but it is itself an exported function over any OidcIdTokenClaims, so any importer holding a
+// claim set can mint Classified<PersonalIdentity, _> by calling it, as the probes and witnesses
+// do. The label establishes "these claims entered through the OIDC projection", not that a
+// verified ID token produced them; that becomes a construction fact when a production ID-token
+// decoder (none exists on main) is this function's sole admitted caller. It answers OidcProjection
+// directly, so a consumer that holds OIDC
 // claims never has to eliminate the posix arm of PrincipalProjection to reach the classified
 // claims -- an arm oidc_principal_projection can never produce (review 65254: an unreachable arm
 // realised by hand at every call site is a fabricated answer waiting to be reached).
