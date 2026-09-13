@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_snoc_item, list_tail }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_snoc_item, list_tail, zip_map }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -896,7 +896,7 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
   }
 }
 
-data infer_arrow_domain_binding_heuristic_note: String = "interim: infer_find_arrow_domain_type_in_tree DFS-walks the resolved tree for the first Arrow whose Conj domain names the atom-binding symbol — symbol-name collision across unrelated arrows picks first-visit order, not lexical scope. dissolve-on: namespace-only name resolution consumes containment-tree binding→domain (DESIGN open thread §namespace-only); delete this heuristic walker when SymbolIndex lookup lands."
+data infer_arrow_domain_binding_heuristic_note: String = "interim: two consumers share this dissolve-on, not one identity: infer_find_arrow_domain_type_in_tree walks for a parameter name inside an Arrow domain (operand typing); infer_arrow_declaration_for_binding walks for a Named operator whose target is Arrow (application formals). Both are scope-naive whole-tree lookups. Operator-arrow lookup is unique-or-absent (zero or colliding names are FormalUnresolved, never a first-match refusal). dissolve-on: namespace-only name resolution / SymbolIndex / ResolvedTree.bindings; delete both heuristic walks when that lookup lands."
 
 fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
@@ -1543,31 +1543,35 @@ fn infer_transform_argument_targets(node: Node) -> List<Node> {
 }
 
 fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
-  fold_node(
+  let arrows = fold_node(
     n: root,
     algebra: NodeFold {
-      init: fn(_n) { optional_absent() },
+      init: fn(_n) { Empty },
       step: fn(acc, e, child) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            match e.label {
-              Named { name: nme } =>
-                if nme == binding {
-                  match e.target.kind {
-                    TypeNode { connective: Arrow } =>
-                      optional_present(value: e.target)
-                    _ => child
-                  }
-                } else {
-                  child
-                }
-              Positional => child
+        let merged = fold(child, init: acc, f: fn(xs, arrow) {
+          list_snoc_item(xs: xs, item: arrow)
+        })
+        match e.label {
+          Named { name: nme } =>
+            if nme == binding {
+              match e.target.kind {
+                TypeNode { connective: Arrow } =>
+                  list_snoc_item(xs: merged, item: e.target)
+                _ => merged
+              }
+            } else {
+              merged
             }
+          Positional => merged
         }
       }
     }
   )
+  if length(xs: arrows) == 1 {
+    list_at_optional(xs: arrows, index: 0)
+  } else {
+    optional_absent()
+  }
 }
 
 fn infer_operator_arrow(operator: Node, tree: Node) -> Optional<Node> {
@@ -1615,9 +1619,9 @@ fn infer_application_formals(node: Node, tree: Node) -> Optional<List<Inhabitanc
   }
 }
 
-type InferInhabitanceZipAcc {
-  remaining: List<Node>
-  result: Outcome<Bool>
+type InhabitanceFormalArg {
+  formal: InhabitanceFormal
+  arg: Node
 }
 
 fn infer_inhabitance_undecidable_accepted(
@@ -1699,58 +1703,35 @@ fn infer_application_argument_inhabitance(
           reason: undecidable_arity_shape_unmodeled()
         )
       } else {
-        match fold(
-          formals,
-          init: InferInhabitanceZipAcc {
-            remaining: args,
-            result: Accepted { value: true, diagnostics: None }
-          },
-          f: fn(acc, formal) {
-            match acc.result {
-              Rejected { diagnostics: r } =>
-                InferInhabitanceZipAcc { remaining: acc.remaining, result: Rejected { diagnostics: r } }
+        fold(
+          zip_map(
+            a: formals,
+            b: args,
+            f: fn(formal, arg) {
+              InhabitanceFormalArg { formal: formal, arg: arg }
+            }
+          ),
+          init: Accepted { value: true, diagnostics: None },
+          f: fn(acc, pair) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: pd } =>
-                match list_at_optional(xs: acc.remaining, index: 0) {
-                  Absent =>
-                    InferInhabitanceZipAcc {
-                      remaining: Empty,
-                      result: infer_inhabitance_undecidable_accepted(
-                        application: node,
-                        reason: undecidable_arity_shape_unmodeled()
-                      )
-                    }
-                  Present { value: arg } =>
-                    let rest = match list_tail(xs: acc.remaining) {
-                      TailAbsent => Empty
-                      TailFound { tail: t } => t
-                    }
-                    match infer_judge_application_argument(
-                      application: node,
-                      entries: entries,
-                      formal: formal,
-                      arg: arg
-                    ) {
-                      Rejected { diagnostics: r } =>
-                        InferInhabitanceZipAcc {
-                          remaining: rest,
-                          result: Rejected { diagnostics: r }
-                        }
-                      Accepted { value: _, diagnostics: jd } =>
-                        InferInhabitanceZipAcc {
-                          remaining: rest,
-                          result: Accepted {
-                            value: true,
-                            diagnostics: diagnostics_merge(outer: pd, inner: jd)
-                          }
-                        }
+                match infer_judge_application_argument(
+                  application: node,
+                  entries: entries,
+                  formal: pair.formal,
+                  arg: pair.arg
+                ) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: _, diagnostics: jd } =>
+                    Accepted {
+                      value: true,
+                      diagnostics: diagnostics_merge(outer: pd, inner: jd)
                     }
                 }
             }
           }
-        ).result {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
-        }
+        )
       }
   }
 }
