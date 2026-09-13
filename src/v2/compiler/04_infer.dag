@@ -1540,15 +1540,19 @@ fn infer_transform_argument_targets(node: Node) -> List<Node> {
   }
 }
 
+fn infer_concat_nodes(prefix: List<Node>, suffix: List<Node>) -> List<Node> {
+  fold(suffix, init: prefix, f: fn(xs, n) {
+    list_snoc_item(xs: xs, item: n)
+  })
+}
+
 fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
   let arrows = fold_node(
     n: root,
     algebra: NodeFold {
       init: fn(_n) { Empty },
       step: fn(acc, e, child) {
-        let merged = fold(child, init: acc, f: fn(xs, arrow) {
-          list_snoc_item(xs: xs, item: arrow)
-        })
+        let merged = infer_concat_nodes(prefix: acc, suffix: child)
         match e.label {
           Named { name: nme } =>
             if nme == binding {
