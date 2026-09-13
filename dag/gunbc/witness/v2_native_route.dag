@@ -6,6 +6,12 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerMintAdmitted,
+  ProducerMintRefused,
+  RealizedEmitterClosure,
+  v2_emitter_closure_admission
+}
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -467,20 +473,32 @@ type NativeRouteMalformedControl
 // THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
 // only that this path held no file while the native spawns ran; the stronger property — no v1
 // emitter or interpreter reachable at all, the closure admitted by native ancestry — is
-// OldRouteAbsentByConstruction, which the native ancestry acquisition lane introduces together
-// with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
-// arm can assert the stronger fact instead, at which point this arm deletes rather than being
-// relabelled.
+// OldRouteAbsentByConstruction. Production mint of that arm is a declared frontier
+// (`native_route_old_route_absent_by_construction_production_frontier`): generation 0's producer
+// is the seed, so claiming AbsentByConstruction on the genesis store would be a fabricated
+// native closure. DISSOLVE-ON: that frontier's trigger fires and every consumer of this
+// window arm asserts the stronger fact instead, at which point this arm deletes rather than
+// being relabelled.
 // THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
 // module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
 // stating this one only in a `//` block would leave the condition invisible to every Accepted
 // program, which is the same defect one file over.
-data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — the native ancestry acquisition lane lands a producer that establishes OldRouteAbsentByConstruction (no v1 emitter or interpreter reachable at all, the closure admitted by native ancestry). At that point every consumer of this arm asserts the stronger fact and this arm DELETES rather than being relabelled: the two say different things, and keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — delete this arm when OldRouteAbsentByConstruction is minted on the production native-lane receipt from an admitted native producer closure of a SucceedsNative generation, EXECUTED (native_route_old_route_absent_by_construction_production_frontier). Until then the window arms are the production observation. The two say different things: keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+
+// PRODUCTION CONSUMER of OldRouteAbsentByConstruction (review 64952, DESIGN §3c). The arm is
+// folded by native_route_old_route_closed and by v2.test.v2_native_route fixture receipts. The
+// emitted decoder (05_emit_rust native-lane host facts) still matches only withdrawn /
+// not_present_at_window. TRIGGER: that decoder grows the arm AND write_host_facts emits
+// disposition absent_by_construction carrying a v2_emitter-admitted closure of a SucceedsNative
+// generation, EXECUTED. Unbound: binding this row to a declaration would report fired on the
+// day the row was written.
+data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from an admitted native producer closure of a SucceedsNative generation, EXECUTED rather than fixtured. Until then dag tests are the only consumers of the arm; the live receipt uses the window arms.")
 
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteNotPresentAtWindow { expected_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
+  | OldRouteAbsentByConstruction { admitted_native_producer_closure: RealizedEmitterClosure }
   | OldRouteControlAbsent
 
 // THE EMITTED COMPILER'S BUILD, AS A RECEIPT RATHER THAN AS A SIDE EFFECT OF ONE. Before this row
@@ -513,13 +531,13 @@ type NativeRouteEmittedBuild {
 }
 
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
-// seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
-// native bootstrap); the emitted closure's identity; the executed binary's path AND content
-// identity (route identity is observed, never synthesized from the intended command); the
-// DERIVED universe; the module → source-path relation over the universe's modules (the context
-// reclassification's join key, carried so admission can re-ask the join, not trust it); the
-// OBSERVED population; the per-file front-end refusals the collecting fold gathered; and every
-// control.
+// acquired native generation identity recorded on `preparation_seed_identity` (historical field
+// name — the ordinary route no longer emits from the seed); the emitted closure's identity; the
+// executed binary's path AND content identity (route identity is observed, never synthesized from
+// the intended command); the DERIVED universe; the module → source-path relation over the
+// universe's modules (the context reclassification's join key, carried so admission can re-ask the
+// join, not trust it); the OBSERVED population; the per-file front-end refusals the collecting fold
+// gathered; and every control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -863,6 +881,11 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
+    OldRouteAbsentByConstruction { admitted_native_producer_closure: c } =>
+      match v2_emitter_closure_admission(closure: c) {
+        ProducerMintAdmitted => true
+        ProducerMintRefused { cause: _ } => false
+      }
     OldRouteControlAbsent => false
   }
 }

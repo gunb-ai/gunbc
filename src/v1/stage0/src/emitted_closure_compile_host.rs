@@ -1008,16 +1008,11 @@ pub(crate) fn probe_cargo_invocation(
 /// lock on that directory.
 /// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
 /// emitted compiler crate through this same cargo invocation.
-pub(crate) fn run_cargo(
-    crate_dir: &Path,
-    workspace: &Path,
+fn finish_cargo_command(
+    mut command: std::process::Command,
+    cargo: &str,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    let (mut command, invocation) = match probe_cargo_command(crate_dir, workspace) {
-        Ok(bound) => bound,
-        Err(reason) => return CargoVerdict::NotAttempted { reason },
-    };
-    let cargo = &invocation.argv[0];
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
             detail: format!("spawning {cargo} failed: {e}"),
@@ -1041,6 +1036,45 @@ pub(crate) fn run_cargo(
             }
         },
     }
+}
+
+pub(crate) fn run_cargo(
+    crate_dir: &Path,
+    workspace: &Path,
+    attribution_symbol: &str,
+) -> CargoVerdict {
+    let (command, invocation) = match probe_cargo_command(crate_dir, workspace) {
+        Ok(bound) => bound,
+        Err(reason) => return CargoVerdict::NotAttempted { reason },
+    };
+    finish_cargo_command(command, &invocation.argv[0], attribution_symbol)
+}
+
+/// Native genesis remaps the host build directory out of the artifact. The RUSTFLAGS
+/// string the spawn actually sets is denial plus remap — that same string is the
+/// receipt's rustflags observation (review 64919).
+pub(crate) fn rustflags_with_remap_prefix(remap_flag: &str) -> String {
+    format!("{} {}", WARNING_DENIAL_RUSTFLAGS, remap_flag)
+}
+
+pub(crate) fn run_cargo_with_remap_prefix(
+    crate_dir: &Path,
+    workspace: &Path,
+    attribution_symbol: &str,
+    remap_flag: &str,
+) -> CargoVerdict {
+    let (mut command, invocation) = match probe_cargo_command(crate_dir, workspace) {
+        Ok(bound) => bound,
+        Err(reason) => return CargoVerdict::NotAttempted { reason },
+    };
+    let plain = rustflags_with_remap_prefix(remap_flag);
+    let encoded = format!("{WARNING_DENIAL_ENCODED_RUSTFLAGS}\x1f{remap_flag}");
+    command.env(
+        cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
+        plain,
+    );
+    command.env(CARGO_ENCODED_RUSTFLAGS_ENV, encoded);
+    finish_cargo_command(command, &invocation.argv[0], attribution_symbol)
 }
 
 /// The rust module basenames the emitted `lib.rs` declares, in its own order.

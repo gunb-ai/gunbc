@@ -1,0 +1,69 @@
+module gunbc.native_ancestry_genesis_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// PURPOSE admission (gunbc.v1_maintenance_standing v1_seed_standing): this host exists so the
+// v2-native route's miss path is acquire_native_ancestor, never compile_entry_emission.
+// Genesis is the one-time V1SeedEmitter store writer; ordinary runs only acquire.
+//
+// claim_executor --v2-native-genesis is ExistingSeedItemModified (a match arm on the existing
+// argv loop), not a new citable declaration; it is named in current_boundary, not netted as
+// a deletion-against-addition.
+data native_ancestry_genesis_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ANCESTRY_AUTHORITY_ENTRY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ANCESTRY_GENERATION_ZERO", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "NATIVE_BUILD_CANONICAL_PREFIX", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "PRODUCER_PROVENANCE_ENTRY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "acquire_native_compiler", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "acquisition_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_artifact_digest_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_argv_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_compiler_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_exit_status_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_rustc_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_rustflags_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_build_warning_count_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_closure_identity_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_compiler_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_dir", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_generation_closure_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_generation_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_parent_artifact_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_produced_by_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_remap_from_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_remap_to_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ancestry_seed_binary_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "available_generation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "cargo_profile_from_argv", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "emitter_module_paths_from_closure_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "eval_entry_context", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "eval_named", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "hash_of_observed_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "interpret_acquisition", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "load_stored_build", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "named_build_configuration_hash", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "native_generation_from_store", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "observed_digest_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "optional_absent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "optional_present", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "read_ancestry_lines", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "read_ancestry_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "realized_closure_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "record_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "refuse_if_genesis_already_executed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "run_native_genesis", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "sha512_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "sha512_from_stored_hex", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "strings_from_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "write_ancestry_lines", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "write_ancestry_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "write_stored_build", field: WholeDeclaration }
+  ],
+  reason: "PURPOSE: v2 self-host — the seed is never the ordinary miss path. These items are the host realization of v2.compiler.self_host.ancestry acquire_native_ancestor and the one-time GenesisFromSeed store. They are host because they write and read target/v2-native-lane/ancestry, hash files, and spawn the existing emit-compile cargo path; the hermetic floor cannot perform those effects. Classified against the five refused v1 classes: NewLanguageBehavior -- no; NewCompatibilityObligation -- no; NewEscapeHatchOrAdmissionRow -- no, a missing ancestor refuses rather than falling back to emit; SeedFeatureCompletion -- no; PublicSurfaceGrowth -- one name: v1_compiler::cli_run::run_native_genesis, the same re-export shape as the pre-existing run_required_v2_native. claim_executor is a separate crate from the lib, so pub(crate) is not visible to the bin (required-witnesses-build E0624 on 1d70c0e3). The name exists so --v2-native-genesis can call the store writer; it is not a new language capability.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this host reconstruction when the emitted native compiler writes and acquires NativeGeneration as modeled host operations (filesystem and sha512 as values), so run_native_genesis and native_generation_from_store are one .dag fold rather than hand-built interpreter Values. genesis_migration_deletion_trigger retires GenesisFromSeed after an executed SucceedsNative N+1; it does not by itself delete this acquire reconstruction.",
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_native_genesis, acquire_native_compiler, native_generation_from_store; src/v1/stage0/src/cli_run.rs pub use run_native_genesis (same crate-boundary re-export as run_required_v2_native); src/v1/stage0/src/bin/claim_executor.rs --v2-native-genesis match arm (ExistingSeedItemModified)"
+}
