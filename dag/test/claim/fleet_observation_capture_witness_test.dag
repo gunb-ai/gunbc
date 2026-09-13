@@ -116,7 +116,6 @@ import gunbc.fleet_observation_capture_chunk {
   CommitAttestsOtherPayload,
   CommitBindingIncomparable,
   CommitNoReceipt,
-  range_covers,
   range_end,
 }
 import gunbc.fleet_observation_observation_envelope {
@@ -1387,3 +1386,26 @@ fn taken_over(outcome: OwnershipOutcome) -> Bool {
   }
 }
 
+
+// Continuity and chunk ranges are independent envelope inputs. Covering the
+// requested stream does not establish an order against a different chunk stream.
+test fn w_requested_stream_reach_cannot_order_foreign_chunk() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "payload", first: 0, len: 100)
+  let positive = t_envelope(ownership: t_owner(fencing: t_fenced), chunk: chunk,
+    local_commit: t_commit_for(payload: "payload"), continuity: t_reach(through: 100), downstream: DownstreamNotOffered)
+  match continuity_from_committed_chunks(
+    committed: t_one(c: t_committed_chunk_on_stream(stream: t_other_stream, seq: 1, generation: 4, payload: "foreign reach", first: 0, len: 100)),
+    subject: t_other_stream, from: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 0))) {
+    DerivedContinuity { continuity } => {
+      let negative = t_envelope(ownership: t_owner(fencing: t_fenced), chunk: chunk,
+        local_commit: t_commit_for(payload: "payload"), continuity: continuity, downstream: DownstreamNotOffered)
+      let requested = SourceStreamRange { first: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 0)), length: byte_size(count: 100) }
+      match source_byte_fact(envelope: positive, requested: t_range(first: 0, len: 100)) { SourceBytesObserved { digest: _ } => true _ => false }
+        && match source_byte_fact(envelope: negative, requested: requested) {
+          CoverageGapPositionsIncomparable { left, right } => left == t_stream && right == t_other_stream
+          _ => false
+        }
+    }
+    _ => false
+  }
+}

@@ -23,7 +23,11 @@ import gunbc.fleet_observation_capture_chunk {
   SourceStreamId,
   source_stream_eq,
   StreamPosition,
-  position_at_or_before,
+  compare_positions,
+  PositionBefore,
+  PositionSame,
+  PositionAfter,
+  PositionIncomparable,
   SourceStreamRange,
   StreamContinuity,
   ContinuityEstablished,
@@ -51,7 +55,6 @@ import gunbc.fleet_observation_capture_chunk {
   CommitAttestsOtherPayload,
   CommitBindingIncomparable,
   CommitNoReceipt,
-  range_covers,
   range_end,
 }
 
@@ -247,16 +250,18 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
               ContinuityPositionsIncomparable { left: left, right: right } =>
                 CoverageGapPositionsIncomparable { left: left, right: right }
               ContinuityCoversRange =>
-                if !position_at_or_before(a: envelope.chunk.range.first, b: requested.first) {
-                  CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-                } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
-                  if range_covers(outer: envelope.chunk.range, inner: requested) {
-                    SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                match compare_positions(a: envelope.chunk.range.first, b: requested.first) {
+                  PositionIncomparable { left, right } => CoverageGapPositionsIncomparable { left: left, right: right }
+                  PositionAfter => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                  _ => if chunk_byte_count(chunk: envelope.chunk) > 0 {
+                    match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
+                      PositionIncomparable { left, right } => CoverageGapPositionsIncomparable { left: left, right: right }
+                      PositionAfter => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                      _ => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                    }
                   } else {
-                    CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                    SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
                   }
-                } else {
-                  SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
                 }
             }
         }
