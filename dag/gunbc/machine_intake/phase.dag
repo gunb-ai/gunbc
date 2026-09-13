@@ -1,6 +1,7 @@
 module gunbc.machine_intake_phase
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, content_hash_of_value }
 
 // THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware
 // qualification, OS provisioning and placement commissioning are separate transactions: they
@@ -218,6 +219,17 @@ type IntakeQualificationPolicy {
 
 fn intake_qualification_policy(environment: MachineOperatingEnvironment) -> IntakeQualificationPolicy {
   IntakeQualificationPolicy { environment: environment }
+}
+
+fn production_qualification_policy() -> IntakeQualificationPolicy {
+  intake_qualification_policy(environment: Production)
+}
+
+fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> ContentHash {
+  match policy.environment {
+    DevelopmentAndTest => content_hash_of_value(value: "intake-qualification-policy:development-and-test")
+    Production => content_hash_of_value(value: "intake-qualification-policy:production")
+  }
 }
 
 fn machine_operating_environment_eq(left: MachineOperatingEnvironment, right: MachineOperatingEnvironment) -> Bool {

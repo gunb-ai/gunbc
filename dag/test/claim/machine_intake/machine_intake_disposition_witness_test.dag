@@ -29,7 +29,9 @@ import gunbc.machine_intake_phase {
   Arrival,
   BmcAccess,
   BootDeliveryEstablish,
+  DevelopmentAndTest,
   IntakePhase,
+  IntakeQualificationPolicy,
   MemoryAuthoritativeQualify,
   Placement,
   PlacementIdentityBound,
@@ -38,6 +40,8 @@ import gunbc.machine_intake_phase {
   UnitHardware,
   fleet_admission_required_phases,
   intake_phase_rank,
+  intake_qualification_policy,
+  intake_qualification_policy_digest,
   arrival_phases_all,
   provisioning_phases_all,
   placement_phases_all,
@@ -88,6 +92,7 @@ import gunbc.machine_intake_disposition {
   Admitted,
   FleetAdmissible,
   FleetNotAdmissible,
+  FleetPolicyBarMismatch,
   PartsHold,
   PhaseReceiptBinding,
   PhaseReceiptSubjectMismatch,
@@ -143,7 +148,8 @@ data producer: IntakeProducerIdentity = IntakeProducerIdentity {
   agent_artifact: none,
 }
 
-data policy_digest: ContentHash = content_hash_of_value(value: "policy-fixture")
+data admission_bar: IntakeQualificationPolicy = intake_qualification_policy(environment: DevelopmentAndTest)
+data policy_digest: ContentHash = intake_qualification_policy_digest(policy: admission_bar)
 
 data attempt_two: IntakeAttemptId = "intake-20260829-0002" as IntakeAttemptId
 
@@ -210,7 +216,7 @@ fn chain(receipts: List<IntakeReceiptEnvelope>) -> List<IntakeReceiptEnvelope> {
 // every admission test below must distinguish from a non-admissible verdict.
 fn admission_over(subject: QualificationSubject, receipts: List<IntakeReceiptEnvelope>) -> FleetAdmissionStanding? {
   match validate_intake_receipt_ledger(receipts: chain(receipts: receipts)) {
-    LedgerValidated { ledger: l } => Present { value: derive_fleet_admission(observed_subject: subject, ledger: l, now: 1788000002000) }
+    LedgerValidated { ledger: l } => Present { value: derive_fleet_admission(observed_subject: subject, ledger: l, policy: admission_bar, now: 1788000002000) }
     LedgerRefused { cause: _ } => none
   }
 }
@@ -301,6 +307,7 @@ fn admitted(standing: FleetAdmissionStanding?) -> Bool {
       match a {
         FleetAdmissible { receipt: r } => list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
     Absent => false
   }
@@ -312,6 +319,7 @@ fn not_admissible_missing_count(standing: FleetAdmissionStanding?) -> Int {
       match a {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } => list_length(items: m)
         FleetAdmissible { receipt: _ } => -1
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => -1
       }
     Absent => -2
   }
@@ -342,6 +350,7 @@ test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } =>
           list_length(items: m) == 1 && (m |> any(p => p == omitted))
         FleetAdmissible { receipt: _ } => false
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
     Absent => false
   }
@@ -357,6 +366,7 @@ test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: s, subject_currency: _ } =>
           list_length(items: m) == 0 && list_length(items: s) == list_length(items: fleet_admission_required_phases)
         FleetAdmissible { receipt: _ } => false
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
     Absent => false
   }
@@ -368,6 +378,7 @@ fn currency_of(standing: FleetAdmissionStanding?) -> SubjectCurrency? {
       match a {
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: c } => Present { value: c }
         FleetAdmissible { receipt: _ } => none
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => none
       }
     Absent => none
   }
@@ -583,6 +594,7 @@ test fn later_refusal_supersedes_earlier_success() -> Bool {
         FleetNotAdmissible { missing: m, refused: r, subject_mismatched: _, subject_currency: _ } =>
           list_length(items: m) == 0 && list_length(items: r) == 1
         FleetAdmissible { receipt: _ } => false
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
       }
     Absent => false
   }
@@ -604,8 +616,9 @@ test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
   match validate_intake_receipt_ledger(receipts: receipts) {
     LedgerRefused { cause: _ } => false
     LedgerValidated { ledger: l } =>
-      match derive_fleet_admission(observed_subject: subject_before, ledger: l, now: 1788000002000) {
+      match derive_fleet_admission(observed_subject: subject_before, ledger: l, policy: admission_bar, now: 1788000002000) {
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => false
         FleetAdmissible { receipt: r } => {
           let bound = fold(r.satisfied, init: none, f: fn(acc, b) {
             let here = b.phase == phase
@@ -622,6 +635,7 @@ test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
           binding_is_retry
             && hashes_equal(left: r.ledger_terminal_fingerprint, right: l.terminal_fingerprint)
             && hashes_equal(left: r.policy_digest, right: policy_digest)
+            && r.environment == DevelopmentAndTest
             && list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
         }
       }

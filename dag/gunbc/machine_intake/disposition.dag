@@ -9,17 +9,24 @@ import gunbc.machine_intake_subject {
   SubjectStale,
   merge_subject_currency,
   compare_qualification_subject,
+  content_hash_equal,
 }
 import gunbc.machine_intake_phase {
+  Arrival,
   ArrivalHardwareQualification,
+  BmcSecure,
   IntakePhase,
+  IntakeQualificationPolicy,
   IntakeTransaction,
+  MachineOperatingEnvironment,
   OsProvisioning,
   PlacementCommissioning,
+  QualificationPolicy,
   QualificationRefusalOwner,
   UnitHardware,
   fleet_admission_required_phases,
   intake_phase_transaction,
+  intake_qualification_policy_digest,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -119,6 +126,7 @@ type FleetAdmissionReceipt {
   subject: QualificationSubject
   ledger_terminal_fingerprint: ContentHash
   policy_digest: ContentHash
+  environment: MachineOperatingEnvironment
   satisfied: List<PhaseReceiptBinding>
   derived_at: EpochMs
 }
@@ -131,6 +139,7 @@ type FleetAdmissionStanding
       subject_mismatched: List<IntakePhase>
       subject_currency: SubjectCurrency
     }
+  | FleetPolicyBarMismatch { ledger_digest: ContentHash, bar: IntakeQualificationPolicy }
 
 type AdmissionFold {
   satisfied: List<PhaseReceiptBinding>
@@ -155,43 +164,49 @@ type AdmissionFold {
 fn derive_fleet_admission(
   observed_subject: QualificationSubject,
   ledger: ValidatedIntakeReceiptLedger,
+  policy: IntakeQualificationPolicy,
   now: EpochMs,
 ) -> FleetAdmissionStanding {
-  let receipts = ledger.ordered_receipts
-  let folded = fold(
-    fleet_admission_required_phases,
-    init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [], subject_currency: SubjectCurrent },
-    f: fn(acc, phase) {
-      match phase_standing(phase: phase, subject: observed_subject, receipts: receipts) {
-        PhaseSatisfiedByReceipt { receipt: d } =>
-          AdmissionFold { satisfied: concat(acc.satisfied, [PhaseReceiptBinding { phase: phase, receipt: d }]), missing: acc.missing, refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
-        PhaseRefusedByReceipt { owner: o, cause: c, receipt: _ } =>
-          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: concat(acc.refused, [PhaseRefusal { phase: phase, owner: o, cause: c }]), subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
-        PhaseReceiptSubjectMismatch { receipt: _, currency: cur } =>
-          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: acc.refused, subject_mismatched: concat(acc.subject_mismatched, [phase]), subject_currency: merge_subject_currency(left: acc.subject_currency, right: cur) }
-        PhaseUnobserved =>
-          AdmissionFold { satisfied: acc.satisfied, missing: concat(acc.missing, [phase]), refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
-      }
-    },
-  )
-  if list_length(items: folded.missing) == 0
-      && list_length(items: folded.refused) == 0
-      && list_length(items: folded.subject_mismatched) == 0 {
-    FleetAdmissible {
-      receipt: FleetAdmissionReceipt {
-        subject: observed_subject,
-        ledger_terminal_fingerprint: ledger.terminal_fingerprint,
-        policy_digest: ledger.policy_digest,
-        satisfied: folded.satisfied,
-        derived_at: now,
-      },
-    }
+  if content_hash_equal(left: ledger.policy_digest, right: intake_qualification_policy_digest(policy: policy)) == false {
+    FleetPolicyBarMismatch { ledger_digest: ledger.policy_digest, bar: policy }
   } else {
-    FleetNotAdmissible {
-      missing: folded.missing,
-      refused: folded.refused,
-      subject_mismatched: folded.subject_mismatched,
-      subject_currency: folded.subject_currency,
+    let receipts = ledger.ordered_receipts
+    let folded = fold(
+      fleet_admission_required_phases,
+      init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [], subject_currency: SubjectCurrent },
+      f: fn(acc, phase) {
+        match phase_standing(phase: phase, subject: observed_subject, receipts: receipts) {
+          PhaseSatisfiedByReceipt { receipt: d } =>
+            AdmissionFold { satisfied: concat(acc.satisfied, [PhaseReceiptBinding { phase: phase, receipt: d }]), missing: acc.missing, refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
+          PhaseRefusedByReceipt { owner: o, cause: c, receipt: _ } =>
+            AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: concat(acc.refused, [PhaseRefusal { phase: phase, owner: o, cause: c }]), subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
+          PhaseReceiptSubjectMismatch { receipt: _, currency: cur } =>
+            AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: acc.refused, subject_mismatched: concat(acc.subject_mismatched, [phase]), subject_currency: merge_subject_currency(left: acc.subject_currency, right: cur) }
+          PhaseUnobserved =>
+            AdmissionFold { satisfied: acc.satisfied, missing: concat(acc.missing, [phase]), refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
+        }
+      },
+    )
+    if list_length(items: folded.missing) == 0
+        && list_length(items: folded.refused) == 0
+        && list_length(items: folded.subject_mismatched) == 0 {
+      FleetAdmissible {
+        receipt: FleetAdmissionReceipt {
+          subject: observed_subject,
+          ledger_terminal_fingerprint: ledger.terminal_fingerprint,
+          policy_digest: ledger.policy_digest,
+          environment: policy.environment,
+          satisfied: folded.satisfied,
+          derived_at: now,
+        },
+      }
+    } else {
+      FleetNotAdmissible {
+        missing: folded.missing,
+        refused: folded.refused,
+        subject_mismatched: folded.subject_mismatched,
+        subject_currency: folded.subject_currency,
+      }
     }
   }
 }
@@ -254,6 +269,15 @@ fn derive_disposition(
 ) -> MachineIntakeDisposition {
   match admission {
     FleetAdmissible { receipt: r } => Admitted { admission_receipt: r }
+    FleetPolicyBarMismatch { ledger_digest: _, bar: _ } =>
+      PartsHold {
+        reason: QualificationUnestablished {
+          phase: Arrival { phase: BmcSecure },
+          owner: QualificationPolicy,
+          cause: "ledger qualification policy is not the admission bar; a DevelopmentAndTest standing cannot be inherited for production",
+        },
+        next_action: "derive under the intended bar; promotion requires a fresh BMC-secure pass",
+      }
     FleetNotAdmissible { missing: missing, refused: refused, subject_mismatched: mismatched, subject_currency: currency } =>
       match first_hardware_refusal(refused: refused) {
         Present { value: hw } =>

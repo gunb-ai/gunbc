@@ -47,6 +47,8 @@ import gunbc.machine_intake_phase {
   UnitHardware,
   fleet_admission_required_phases,
   intake_qualification_policy,
+  intake_qualification_policy_digest,
+  production_qualification_policy,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -68,6 +70,7 @@ import gunbc.machine_intake_disposition {
   FleetAdmissible,
   FleetAdmissionStanding,
   FleetNotAdmissible,
+  FleetPolicyBarMismatch,
   MachineIntakeDisposition,
   PartsHold,
   QualificationUnestablished,
@@ -126,7 +129,6 @@ import gunbc.machine_intake_bmc_secure {
   bmc_secure_phase_receipt,
   bmc_secure_refusal_owner,
   derive_bmc_secure,
-  intake_qualification_policy_digest,
   observed_bmc_credential_rotation,
 }
 
@@ -829,6 +831,31 @@ test fn published_factory_retention_refuses_under_production() -> Bool {
   )
 }
 
+// review 65136: a DevTest factory-retention standing is BMC-secured on purpose,
+// but derive_fleet_admission under the Production bar must not mint FleetAdmissible.
+test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -> Bool {
+  let standing = derive_dev(observation: rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: both_lan_accepting(),
+    account: published_account_factory_retained,
+  ))
+  match validate_intake_receipt_ledger(receipts: chain(receipts: ledger_with_bmc_secure(standing: standing))) {
+    LedgerRefused { cause: _ } => false
+    LedgerValidated { ledger: l } =>
+      match derive_fleet_admission(observed_subject: subject, ledger: l, policy: production_qualification_policy(), now: 1788000100000) {
+        FleetPolicyBarMismatch { ledger_digest: _, bar: _ } => is_secured(standing: standing)
+        FleetAdmissible { receipt: _ } => false
+        FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
+      }
+  }
+}
+
 test fn factory_retention_without_acceptance_is_not_retained() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
@@ -1193,7 +1220,7 @@ fn disposition_with_bmc_secure(standing: BmcSecureStanding) -> MachineIntakeDisp
     LedgerValidated { ledger: l } =>
       Present {
         value: derive_disposition(
-          admission: derive_fleet_admission(observed_subject: subject, ledger: l, now: 1788000100000),
+          admission: derive_fleet_admission(observed_subject: subject, ledger: l, policy: standing.policy, now: 1788000100000),
           return_window: ReturnWindowOpen { deadline: 1790000000000 },
           evidence: [],
         ),

@@ -1,7 +1,7 @@
 module gunbc.machine_intake_bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
@@ -31,6 +31,7 @@ import gunbc.machine_intake_phase {
   Production,
   QualificationPolicy,
   QualificationRefusalOwner,
+  intake_qualification_policy_digest,
   machine_operating_environment_eq,
 }
 import gunbc.machine_intake_receipt {
@@ -860,13 +861,6 @@ fn derive_bmc_secure(
     adjudicate_bootstrap(observation: observation, environment: policy.environment)
   }
   BmcSecureStanding { subject: subject, policy: policy, outcome: outcome }
-}
-
-fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> ContentHash {
-  match policy.environment {
-    DevelopmentAndTest => content_hash_of_value(value: "intake-qualification-policy:development-and-test")
-    Production => content_hash_of_value(value: "intake-qualification-policy:production")
-  }
 }
 
 data bmc_secure_phase: IntakePhase = Arrival { phase: BmcSecure }
