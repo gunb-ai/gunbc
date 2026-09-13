@@ -2,6 +2,8 @@ module v2.compiler.repair_input_origin_roster
 
 import std.algebra { Empty, FreeMonoid }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import std.repair_input_origin {
   RepairInputDeclarationProvenance,
   RepairInputDeclared,
@@ -71,6 +73,29 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 // variants of two types in one module one identity -- a name used as a key at the wrong grain,
 // which is a different defect from a name used for display. The owner is the LONGEST rostered
 // module prefix, so the remainder is exactly the declaration path inside that module.
+// THIS DECLARATION IDENTITY IS DERIVED FROM A SPELLING, WHICH IS NOT THE SURVIVING AUTHORITY.
+//
+// carrier_declaration_ref reconstructs decl_name by dropping the owner prefix BY LENGTH and
+// rendering the remainder to a dotted string. That is an identity invented from how a reference was
+// SPELLED, and the v2 binding model being built in gunbc#11264 rules it out in terms that name this
+// construction: no identity invented from a bare spelling, and no ordinal or scope derived from a
+// filename, spelling or path. The relation it approximates already exists and is better founded --
+// std.occurrence_binding OccurrenceBindingResult over ScopedOccurrenceRef, which retains the
+// reference occurrence AND the declaration's exact containment path instead of re-deriving either.
+//
+// IT IS ADMITTED AS A DECLARED FRONTIER RATHER THAN A FORK BECAUSE IT IS DORMANT, AND THE DORMANCY
+// IS A MEASUREMENT, NOT A PLAN. XL-0 stands NotDerivable: the collector sees no cross-module
+// reference on the production route, so the roster is EMPTY there and this function executes only
+// over the hand-built trees in v2.test.claim.namespace_xl0.repair_input_origin_denominator. A second
+// relation that currently answers nothing is not yet a second authority. It becomes one the moment
+// the roster starts producing -- which is the same moment XL-0 stops being NotDerivable, so the two
+// cannot diverge unobserved.
+//
+// The condition below is the section 3c trigger stated BESIDE the declaration rather than in a pull
+// request body, because a reader who opens this module next month can reach an annotation here and
+// cannot reach a discussion elsewhere.
+data repair_input_declared_binding_frontier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON, AT CAPABILITY GRAIN: when the v2 resolver emits std.occurrence_binding OccurrenceBindingResult over ScopedOccurrenceRef BY EXECUTION, std.repair_input_origin RepairInputDeclared.declaring is DERIVED from that binding's declaration containment path, and carrier_declaration_ref -- the owner-prefix drop plus dotted render in this module -- is DELETED rather than retained as a fallback, together with this row. RepairInputIdentityAmbiguous and RepairInputIdentityAbsent map onto that relation's own refusal arms instead of being decided here. NOT retired by gunbc#11264 merging: the trigger is the resolver ANSWERING by execution, because a landed carrier that nothing produces would satisfy a merge-shaped trigger while this spelling-derived identity stayed the only thing answering -- which is the grain mismatch DESIGN section 4b(3) forbids." as NonEmptyStr)
+
 fn carrier_declaration_ref(owner: QualifiedName, target: QualifiedName) -> DeclarationRef {
   decl_ref(
     module_path: qualified_name_to_dotted_string(qn: owner),
