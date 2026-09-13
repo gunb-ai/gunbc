@@ -41,8 +41,8 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
