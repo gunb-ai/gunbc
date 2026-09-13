@@ -335,19 +335,18 @@ fn capture_legacy_baseline<O, R>(
 //
 // CAPABILITY IS WHETHER A LIVE CAPTURE OF A NAMED BASE CAN BE TAKEN, not whether the fold can mint
 // given caller-supplied rows. Fixtures already drive capture_legacy_baseline to LegacyBaselineCaptured.
-// No executing producer yet yields a LegacyRepairObservation for a live checkout: emit_rust
-// reference_derived_census exists in the seed, is not mapped into this envelope, and has no
-// executing consumer that hands capture a graph. Until that tap lands, CaptureAvailable would
-// read as "a capture can be taken". Named later change: a v2 producer that maps the repairer's
-// per-site dispositions into LegacyRepairObservation<R> + RepairSiteRoster over one GitObjectId
-// checkout, without growing the v1 emitter. Trigger: that producer is called from a capture
-// entry that materializes the named base. Dissolve LiveRepairObservationTapAbsent then.
+// The executing producer is v2.workflow.legacy_repair_tap persist_named_base_from_primary_root_tap:
+// it materializes CheckoutMaterialization.requested (a GitObjectId) through
+// emit_rust_reference_derived_rows_bridge into LegacyRepairObservation + RepairSiteRoster and the
+// tap's binding rows. LiveRepairObservationTapAbsent is retained as a refuse cause; capability
+// does not report it while that entry is the consumer. CaptureAvailable is not ACT-0's
+// BaselineCaptureReceipt and is not a corpus-oracle claim.
 type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
-  CaptureBlocked { phase: RepairCensusPhase, cause: LiveRepairObservationTapAbsent }
+  CaptureAvailable
 }
 
 fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {

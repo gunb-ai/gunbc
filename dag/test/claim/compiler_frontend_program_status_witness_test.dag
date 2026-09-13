@@ -606,8 +606,8 @@ test fn xl3_is_not_derivable_while_qualified_cross_module_mentions_are_invisible
 // THE SAME QUESTION. XL-1 used to delegate to NamespaceBaselineObservationComplete outright, which
 // made "the capture transaction can succeed" and "a capture has been taken against THIS base" one
 // row. They separate exactly on the CaptureAvailable arm: the stage clears (its deliverable is the
-// capability) while the milestone reads persisted_legacy_baseline_outstanding (unpinned live pin,
-// so outstanding until ACT-0 names a base). This arm asserts the contract on whichever arm is live.
+// capability) while the milestone reads persisted_legacy_baseline_outstanding (pin+held capture
+// carrier, never ACT-0's BaselineCaptureReceipt). This arm asserts the contract on whichever arm is live.
 test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base() -> Bool {
   match legacy_baseline_capture_capability() {
     CaptureBlocked { phase: p, cause: c } =>

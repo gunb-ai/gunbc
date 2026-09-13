@@ -1,7 +1,37 @@
 module v2.workflow.legacy_baseline_persisted_observation
 
-import std.types { String, List, Bool }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import std.types { String, List, Bool, NonEmptyStr, SourceSpan }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_sha1_object_id }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_repair_observation {
+  RepairSite,
+  RepairSiteRoster,
+  LegacyRepairObservation,
+  LegacyRepairObservationRow,
+  LegacyRepairObservationSubject,
+  repair_site_roster_identity
+}
 import v2.workflow.legacy_baseline_capture {
   LegacyBaselineCapture,
   LegacyBaselineCaptureOutcome,
@@ -15,7 +45,10 @@ import v2.workflow.legacy_baseline_capture {
   LegacyBaselineRepairSubjectDiverged,
   LegacyBaselineRepairIncomplete,
   LegacyBaselineExecutionRefused,
-  LegacyBaselineObservedTransportRefused
+  LegacyBaselineObservedTransportRefused,
+  materialization_receipt,
+  tree_derived_subject,
+  capture_legacy_baseline
 }
 
 // PERSISTENCE IS THE CAPTURE CARRIER, NOT A RECEIPTS ROSTER. A row of (base, identity) is a
@@ -24,11 +57,13 @@ import v2.workflow.legacy_baseline_capture {
 // compares the requested GitObjectId to capture.base_commit; a different id cannot be written onto
 // a held capture.
 //
-// THIS MODULE DOES NOT CLAIM A CORPUS ORACLE. The live pin is PreCutBaseUnpinned until ACT-0 names
-// a base. A fixture capture may be held in tests; it does not enroll HEAD. Consumers: capture
-// mint, gunbc.compiler_frontend_program_status NamespaceBaselineObservationComplete (outstanding
-// fold), ACT-0 BaselineCaptureReceipt (later digest of a re-run), XL-2 chain prerequisite via XL-1
-// capability, and the discriminating witnesses.
+// THIS MODULE DOES NOT CLAIM A CORPUS ORACLE AND DOES NOT HOLD ACT-0's BaselineCaptureReceipt.
+// Enrolment pins a GitObjectId and holds a PersistedLegacyBaseline whose capture.base_commit
+// equals that pin. The pin is not HEAD and is not the activation base; ACT-0 still names B later
+// and re-runs. Consumers: capture mint, gunbc.compiler_frontend_program_status
+// NamespaceBaselineObservationComplete (outstanding fold), ACT-0 BaselineCaptureReceipt (later
+// digest of a re-run), XL-2 chain prerequisite via XL-1 capability,
+// persist_named_base_from_primary_root_tap, and the discriminating witnesses.
 
 type PersistedLegacyBaseline<O, R> sole_constructor {
   capture: LegacyBaselineCapture<O, R>
@@ -68,8 +103,129 @@ type PreCutBasePin
   = PreCutBaseUnpinned
   | PreCutBasePinned { base: GitObjectId }
 
+type EnrolledBindingOutcome
+  = EnrolledBound
+  | EnrolledUnbound
+
+type EnrolledRepairOutcome
+  = EnrolledDeclined
+  | EnrolledApplied
+
+fn enrolled_pin_hex() -> String { "1007efb256a20749f77c3b1295eed144fddeb9fd" }
+fn enrolled_tree_hex() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+fn enrolled_site() -> RepairSite {
+  RepairSite { module_name: "std.logic" as NonEmptyStr, name: "Bool" as NonEmptyStr }
+}
+
+fn enrolled_roster() -> RepairSiteRoster {
+  RepairSiteRoster { sites: [enrolled_site()] }
+}
+
+fn enrolled_span() -> SourceSpan {
+  SourceSpan { file: "legacy-baseline-enrolled-capture.dag", start: 1, end: 2 }
+}
+
+fn enrolled_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn enrolled_transport() -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: OccurrenceIndex { entries: [
+      OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: 900 },
+          authored_name: "root",
+          diagnostic_span: enrolled_span()
+        },
+        containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+      },
+      OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: 10 },
+          authored_name: "r",
+          diagnostic_span: enrolled_span()
+        },
+        containment: OccurrenceContainmentPath {
+          ancestors: [OccurrenceId { value: 900 }],
+          terminal: OccurrenceId { value: 10 }
+        }
+      }
+    ] },
+    declarations: [DeclarationOccurrence {
+      occurrence: OccurrenceId { value: 900 },
+      containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+      category: LexicalValueOccurrence,
+      diagnostic_span: enrolled_span()
+    }],
+    references: [ReferenceOccurrence {
+      occurrence: OccurrenceId { value: 10 },
+      containment: OccurrenceContainmentPath {
+        ancestors: [OccurrenceId { value: 900 }],
+        terminal: OccurrenceId { value: 10 }
+      },
+      category: LexicalValueOccurrence,
+      diagnostic_span: enrolled_span()
+    }]
+  }
+}
+
 fn current_pre_cut_base_pin() -> PreCutBasePin {
-  PreCutBaseUnpinned
+  match git_sha1_object_id(hex: enrolled_pin_hex()) {
+    Absent => PreCutBaseUnpinned
+    Present { value: b } => PreCutBasePinned { base: b }
+  }
+}
+
+fn held_persisted_legacy_baseline() -> PersistedLegacyBaseline<EnrolledBindingOutcome, EnrolledRepairOutcome>? {
+  match git_sha1_object_id(hex: enrolled_pin_hex()) {
+    Absent => none
+    Present { value: a } => match git_sha1_object_id(hex: enrolled_tree_hex()) {
+      Absent => none
+      Present { value: t } =>
+        match occurrence_transport_validate(transport: enrolled_transport()) {
+          OccurrenceTransportRefused { refusal: _ } => none
+          OccurrenceTransportValidated { transport: tr } =>
+            match persist_legacy_baseline(
+              outcome: capture_legacy_baseline(
+                materialization: materialization_receipt(
+                  requested: a, observed_head: a, observed_tree: t, commit_tree: t
+                ),
+                tree_subject: tree_derived_subject(tree: t, subject: enrolled_subject()),
+                observation: LegacyBindingObservation {
+                  subject: enrolled_subject(),
+                  rows: [LegacyBindingObservationRow { occurrence: OccurrenceId { value: 10 }, outcome: EnrolledBound }]
+                },
+                transport: tr,
+                repair_observation: LegacyRepairObservation {
+                  subject: LegacyRepairObservationSubject {
+                    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+                    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+                    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+                    repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_census"),
+                    repair_site_roster_digest: repair_site_roster_identity(roster: enrolled_roster()),
+                    resolution_registry_digest: structural_content_hash(digest: "5555555555555555")
+                  },
+                  rows: [LegacyRepairObservationRow { site: enrolled_site(), outcome: EnrolledDeclined }]
+                },
+                repair_roster: enrolled_roster()
+              )
+            ) {
+              PersistRefusedNotCaptured => none
+              PersistAdmitted { persisted: p } => Present { value: p }
+            }
+        }
+    }
+  }
 }
 
 fn persisted_enrollment_outstanding<O, R>(
@@ -96,6 +252,6 @@ fn persisted_enrollment_outstanding<O, R>(
 fn persisted_legacy_baseline_outstanding() -> List<String> {
   persisted_enrollment_outstanding(
     pin: current_pre_cut_base_pin(),
-    held: none
+    held: held_persisted_legacy_baseline()
   )
 }

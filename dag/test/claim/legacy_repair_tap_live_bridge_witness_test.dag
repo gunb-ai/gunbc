@@ -2,12 +2,28 @@ module test.claim.legacy_repair_tap_live_bridge_witness
 
 import std.types { String, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { git_sha1_object_id }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_baseline_capture {
+  materialization_receipt,
+  tree_derived_subject
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  PersistAdmitted,
+  PersistRefusedNotCaptured
+}
 import v2.workflow.legacy_repair_tap {
   Xl1PrimaryRootObserved,
   Xl1PrimaryRootRefused,
   xl1_live_repair_tap_census,
   Xl1LiveRepairTapRows,
-  Xl1LiveRepairTapUnavailable
+  Xl1LiveRepairTapUnavailable,
+  persist_named_base_from_primary_root_tap
 }
 
 // Discriminating RED for the PrimaryRoot tap (review 64801): empty source_roots must refuse
@@ -30,5 +46,37 @@ test fn empty_source_roots_do_not_tally_as_zero_rows() -> Bool {
   match xl1_live_repair_tap_census([]) {
     Xl1LiveRepairTapUnavailable { cause: c } => string_contains(s: c, pattern: "empty")
     Xl1LiveRepairTapRows { count: _ } => false
+  }
+}
+
+fn lrt_live_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+test fn empty_source_roots_refuse_named_base_persist_through_the_tap() -> Bool {
+  match git_sha1_object_id(hex: "1007efb256a20749f77c3b1295eed144fddeb9fd") {
+    Absent => false
+    Present { value: a } => match git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+      Absent => false
+      Present { value: t } =>
+        match persist_named_base_from_primary_root_tap(
+          materialization: materialization_receipt(
+            requested: a, observed_head: a, observed_tree: t, commit_tree: t
+          ),
+          tree_subject: tree_derived_subject(tree: t, subject: lrt_live_subject()),
+          source_roots: []
+        ) {
+          PersistRefusedNotCaptured => true
+          PersistAdmitted { persisted: _ } => false
+        }
+    }
   }
 }

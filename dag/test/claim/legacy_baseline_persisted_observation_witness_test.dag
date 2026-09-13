@@ -58,7 +58,8 @@ import v2.workflow.legacy_baseline_persisted_observation {
   persisted_legacy_baseline_outstanding,
   PreCutBaseUnpinned,
   PreCutBasePinned,
-  current_pre_cut_base_pin
+  current_pre_cut_base_pin,
+  held_persisted_legacy_baseline
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -215,17 +216,17 @@ test fn persist_binds_only_to_the_capture_base_commit() -> Bool {
   lbp_minted_capture_persisted()
 }
 
-test fn live_outstanding_is_the_enrollment_fold_with_no_held_capture() -> Bool {
+test fn live_outstanding_is_empty_when_the_held_capture_matches_the_pin() -> Bool {
   match current_pre_cut_base_pin() {
-    PreCutBasePinned { base: _ } => false
-    PreCutBaseUnpinned =>
-      let live = persisted_legacy_baseline_outstanding()
-      let via = persisted_enrollment_outstanding(
-        pin: PreCutBaseUnpinned,
-        held: none
-      )
-      (live |> count) == 1
-        && (via |> count) == 1
-        && all(live, s => any(via, t => s == t))
+    PreCutBaseUnpinned => false
+    PreCutBasePinned { base: b } =>
+      match held_persisted_legacy_baseline() {
+        Absent => false
+        Present { value: p } =>
+          persisted_against_requested(persisted: p, requested: b)
+            && (persisted_legacy_baseline_outstanding() |> count) == 0
+            && (persisted_enrollment_outstanding(pin: PreCutBasePinned { base: b }, held: Present { value: p }) |> count) == 0
+            && (persisted_enrollment_outstanding(pin: PreCutBaseUnpinned, held: Present { value: p }) |> count) == 1
+      }
   }
 }
