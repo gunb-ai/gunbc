@@ -103,6 +103,9 @@ fn xmod_case2_module() -> QualifiedName { [^xmod_case2_bare] }
 fn xmod_case3_module() -> QualifiedName { [^xmod_case3_dot_body] }
 fn xmod_case4_module() -> QualifiedName { [^xmod_case4_dot_type] }
 
+// Shared prerequisite for the separate cross-module resolve claims. The warm
+// producer roster carries this nullary ingest across the floor's claim frames;
+// native_test_resolve_module remains inside each claim's measured execution.
 fn xmod_context() -> Outcome<NativeTestContext> {
   native_test_context_from_ingest(
     ingest: [
@@ -130,13 +133,6 @@ fn xmod_resolves(module: QualifiedName) -> Bool {
   }
 }
 
-fn xmod_reject_head_is(module: QualifiedName, reason: Symbol) -> Bool {
-  match xmod_resolve(module: module) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == reason
-  }
-}
-
 test fn case1_same_module_bare_reference_resolves() -> Bool {
   xmod_resolves(module: xmod_case1_module())
 }
@@ -149,14 +145,12 @@ test fn case3_dotted_cross_module_body_reference_resolves() -> Bool {
   xmod_resolves(module: xmod_case3_module())
 }
 
-// Case 4 does not resolve. Enrolled as the unbound receipt (DESIGN 4b(4):
-// greens when types reach the index). Same-module type position on the
-// provider is also unbound, so this is the type-index class (loaded_carrier
-// receipt 2), not a dotted-QN miss — case 3 already bound a dotted fn path.
-test fn case4_dotted_cross_module_type_reference_is_unbound() -> Bool {
-  xmod_reject_head_is(module: xmod_case4_module(), reason: ^resolve_reason_unbound_symbol)
+// These authored type positions are the discriminating RED for the missing
+// declaration binder. Keep the same-module control independent of qualification.
+test fn case4_dotted_cross_module_type_reference_resolves() -> Bool {
+  xmod_resolves(module: xmod_case4_module())
 }
 
-test fn case4_control_same_module_type_position_is_unbound() -> Bool {
-  xmod_reject_head_is(module: xmod_provider_module(), reason: ^resolve_reason_unbound_symbol)
+test fn case4_control_same_module_type_position_resolves() -> Bool {
+  xmod_resolves(module: xmod_provider_module())
 }

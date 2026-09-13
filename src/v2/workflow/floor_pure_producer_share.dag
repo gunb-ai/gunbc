@@ -410,6 +410,7 @@ import v2.std.collection { List }
 // show the eight fills landing at preparation with disposition=Stored and the former interrupted
 // claims serving hits.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.namespace.cross_module_resolve_witness.xmod_context",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
