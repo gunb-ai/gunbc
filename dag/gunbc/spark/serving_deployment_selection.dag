@@ -1162,12 +1162,15 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
 //       it is a reading rather than a parameter.
 //   (2) Sibling components are subtracted at their reported footprint, which for an upstream-reported
 //       size is a floor on what they really occupy -- so the remainder is a ceiling on what is left.
-//   (3) A sibling whose footprint is UNREAD contributes nothing to the subtraction, which overstates
-//       the budget further. This is the one approximation that looks like the prohibited move of
-//       treating an unmeasured quantity as zero, and it is the opposite: a zero here makes the budget
-//       bigger and the screen weaker, so it can only cause a missed exclusion, never a false one. The
-//       count of such siblings travels in the budget's own `how` so a reader can see the screen was
-//       weakened and by how many terms.
+//   (3) A sibling whose footprint is UNREAD makes the budget UNESTABLISHED. It used to contribute zero
+//       to the subtraction, defended on direction: a zero there makes the budget bigger and the screen
+//       weaker, so it could only cause a MISSED exclusion, never a false one. review 65676 is right
+//       that this is the absorbing fallback wearing a safety argument -- a missed exclusion is exactly
+//       the harm this screen exists to prevent, because an infeasible route then passes the one gate
+//       whose job is to rule out the impossible. DESIGN section 5 says a failure arm must refuse, never
+//       widen, and this module's own route authority already says an unknown budget must not become a
+//       permissive bound. So the unread count is a REFUSAL and not a subtraction, and it is a typed
+//       obligation a consumer can read rather than a number rendered into prose.
 //
 // AND THE READING'S OWN GRAIN IS STATED RATHER THAN QUIETLY WIDENED. The idle-free figure was read on a
 // Group A rank; this module does not model which fabric group a candidate lands on, so the reading is
@@ -1177,11 +1180,13 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
 // naturals and re-wrapping at the boundary is a second representation of a quantity `ByteSize` already
 // carries, reconciled by hand at each hop -- DESIGN section 2's failed decomposition, and the unit
 // carrier exists precisely so the reconciliation cannot be got wrong. std.measure owns the addition.
-// WHAT ONE SIBLING CONTRIBUTES, SEPARATED FROM THE SUM SO THE SUM HAS NO BRANCH IN IT. Two zeros meet
-// here for different reasons -- the component itself is not its own sibling, and an unread footprint has
-// no figure to add -- and the second is the one that weakens the screen. They stay distinguishable
-// because `sibling_footprints_unread` counts the unread ones separately and that count travels in the
-// budget's own `how`; collapsing them here would lose only the arithmetic, not the disclosure.
+// WHAT ONE SIBLING CONTRIBUTES, SEPARATED FROM THE SUM SO THE SUM HAS NO BRANCH IN IT.
+//
+// THE UNREAD ARM IS GUARDED RATHER THAN MEANINGFUL. `candidate_component_budget` refuses before this
+// fold runs if any sibling is unread, so the zero below is reached only for the component itself --
+// which is not its own sibling and genuinely contributes nothing. It stays a total function because a
+// partial one would be a worse answer to the same question, but it is no longer where an unmeasured
+// quantity becomes a number: that decision moved up to the budget, where it can refuse.
 fn sibling_contribution(cp: ArtifactComponent, other: ArtifactComponent) -> ByteSize {
   if declaration_ref_eq(a: other.identity, b: cp.identity) {
     byte_size(count: 0)
@@ -1236,6 +1241,15 @@ fn candidate_component_budget(
           obligation: "this candidate declares zero tensor-parallel ranks, so there is no per-rank budget to derive" as NonEmptyStr,
         }
       } else {
+      if sibling_footprints_unread(cp: cp, c: c) > 0 {
+        ComponentBudgetUnestablished {
+          subject: ctx,
+          obligation: join([
+            to_string(sibling_footprints_unread(cp: cp, c: c)),
+            " of this artifact's other components have no read footprint, so the bytes they occupy on a rank are unknown and the remainder available to this component cannot be derived. Treating them as zero would make the budget larger and the memory screen weaker, which can only cause a MISSED exclusion -- and a missed exclusion is the harm this screen exists to prevent. The obligation is a footprint reading for those components under this candidate's own topology",
+          ], "") as NonEmptyStr,
+        }
+      } else {
         match per_rank_bytes_ceiling(total: sibling_footprint_bytes(cp: cp, c: c), ranks: c.topology.tensor_parallel_degree) {
           Absent => ComponentBudgetUnestablished {
             subject: ctx,
@@ -1266,12 +1280,12 @@ fn candidate_component_budget(
                   to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
                   to_string(c.topology.tensor_parallel_degree), " ranks). ",
                   free.precision_caveat as String,
-                  ". Siblings with no read footprint: ", to_string(sibling_footprints_unread(cp: cp, c: c)),
-                  " -- each contributes zero to the subtraction, which OVERSTATES this budget and can only weaken the screen",
+                  ". Every sibling of this component has a read footprint, which is what admits this budget at all",
                 ], "") as NonEmptyStr,
               }
             }
         }
+      }
       }
   }
 }
