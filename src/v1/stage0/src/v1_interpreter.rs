@@ -7405,8 +7405,6 @@ macro_rules! v1_bridge_family_arms {
             // name disagreeing with the roster fails to compile.
             family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
                 lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
-                arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
-                    crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }

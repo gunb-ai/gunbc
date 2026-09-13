@@ -1276,13 +1276,6 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
   },
   SeamStanding {
-    declaration: "resolve_type_node",
-    seam_module: "v2.std.node_reflection",
-    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "resolve_type_node") },
-    emitted_rust_identity: "v2_std_node_reflection.rs::resolve_type_node",
-    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
-  },
-  SeamStanding {
     declaration: "coproduct_nullary_inhabitants",
     seam_module: "v2.std.node_query",
     projection: SeamUnrostered,

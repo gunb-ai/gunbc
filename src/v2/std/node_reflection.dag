@@ -22,14 +22,28 @@ import v2.std.decl_index {
 import v2.std.node { Node, Symbol }
 import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 
-// THE HOST TYPE-REFLECTION SURFACE, AND WHY IT IS ITS OWN MODULE.
+// THE HOST TYPE-REFLECTION SURFACE, AND WHY ONE OF ITS TWO SEAMS IS GONE.
 //
-// Both declarations below are host seams: their whole body is a self-call, answered by
-// the v1 interpreter's live declaration index (roster arms v4_bridge.resolve_type_node
-// and v4_bridge.coproduct_nullary_inhabitants). Nothing in the substrate can give them a
-// body, because neither the resolved Node for a type NAME nor an inhabitant of an
-// arbitrary T is derivable from anything the caller hands them -- the answer is a fact
-// about the running compiler's own source index, not about the arguments.
+// coproduct_nullary_inhabitants below is a host seam: its whole body is a self-call,
+// answered by the v1 interpreter's live declaration index (roster arm
+// v4_bridge.coproduct_nullary_inhabitants). Nothing in the substrate can give it a body,
+// because an inhabitant of an arbitrary T is not derivable from anything the caller hands
+// it -- the answer is a fact about the running compiler's own source index.
+//
+// resolve_type_node USED TO BE THE OTHER ONE, AND IS DELETED RATHER THAN RENAMED. It took a
+// BARE type spelling, and its host arm answered by scanning the interpreter's loaded modules
+// and returning the FIRST item whose authored name matched -- so a spelling two modules
+// declare was answered from whichever load order reached first, with no diagnostic. That is
+// the DESIGN section 5 silent wrongness this module now exists to refuse.
+//
+// It is deleted because after the cutover nothing consumed it: the guarded route establishes
+// multiplicity and shape from the KEYED declaration read and returns the node that read
+// already carries, so it never needs the bare scan, and every other consumer was moved. A
+// rename would have kept a bare-spelling host route alive under a new name, which is exactly
+// the surviving-X attractor DESIGN section 3 warns about -- the old vocabulary stays
+// available and the next question gets answered in it. The host functions it reached,
+// eval_resolve_type_node and the type_item_by_name scan beneath it, had no other caller and
+// are deleted with it, so the seed shrinks (DESIGN section 7) rather than growing a synonym.
 //
 // They used to sit in v2.std.node and v2.std.node_query, which the v2 compiler's import
 // closure carries. Emission is decided at MODULE grain, so both were emitted into the
@@ -45,14 +59,6 @@ import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 // emitted crate -- loudly, at the same grep the census reads. The rule the split states
 // is that reflection is an INTERPRETER-time capability: available to a lens or a witness
 // reading the live tree, never to a declaration the compiler must emit.
-fn resolve_type_node(type_name: Symbol) -> Node {
-  resolve_type_node(type_name: type_name)
-}
-
-fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
-}
-
 fn coproduct_nullary_inhabitants<T>(
   type_name: Symbol,
   discriminant_of: fn(T) -> Symbol
@@ -83,12 +89,19 @@ fn coproduct_nullary_inhabitants<T>(
 // -- "how many declarations answer to this name" -- and whose five-arm refusal law this module
 // deliberately does not restate.
 //
-// Consumers (DESIGN section 3c). Consumed by execution in this change: the conformance witness
-// named above. Declared frontier, with its trigger stated: the floor's cross-claim memo and
-// `coproduct_arm_keys`'s callers (`v2.lens.affected_set`, the generated coproduct witnesses)
-// cut over to `coproduct_arm_keys_at` once a key shape is agreed with the floor-cost lane --
-// that cutover is the trigger, and until it lands the bare pair above stays reachable and
-// stays unguarded, which this annotation states rather than hides.
+// Consumers (DESIGN section 3c), and there is NO open frontier here any more. Consumed by execution
+// in this change: v2.lens.affected_set (through the guarded route, with a refusal landing in
+// UniverseIncomplete), the generated coproduct witnesses, the reflection conformance witness, the
+// wiring-liveness entry, and the conformance claims in
+// v2.test.manual.scoped_type_reflection_conformance.
+//
+// An earlier revision of this annotation classified that cutover as a DECLARED FRONTIER and said the
+// bare pair stayed reachable and unguarded until it landed. review 65702 caught that the sentence
+// had outlived the tree: the cutover HAD landed in this same change, so the classification was the
+// wrong section 3c arm and, worse, it justified leaving a silent-first-match route importable after
+// its consumers were gone -- the escape hatch DESIGN section 5 forbids and the surviving-X attractor
+// section 3 warns about. The bare pair is now deleted rather than described, so there is nothing
+// left for a frontier sentence to be about.
 // WHY THIS IS A KEYED READ AND NOT A FOLD OVER decl_facts. The first version of this guard filtered
 // the whole declaration corpus, which was correct and cost roughly 3.6s per call against 1ms for a
 // keyed read, sharing at no grain -- four calls inside ONE claim frame cost four times one. That put

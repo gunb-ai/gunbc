@@ -552,27 +552,6 @@ macro_rules! eval_algebra_method_inner_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdNodeReflectionArm {
-    V4BridgeResolveTypeNode,
-    V4BridgeCoproductNullaryInhabitants,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_node_reflection(spelling: &str) -> Option<EvalCallBridgeStdNodeReflectionArm> {
-    match spelling {
-        "resolve_type_node" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode),
-        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_std_node_reflection_arm {
-    ("v4_bridge.resolve_type_node") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode };
-    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdCompilersLexingArm {
     V4BridgeSymbolInternLexeme,
     V4BridgeSymbolLexeme,
@@ -609,6 +588,24 @@ pub fn lookup_eval_call_bridge_std_qualified_name(spelling: &str) -> Option<Eval
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_std_qualified_name_arm {
     ("v4_bridge.qualified_name_from_dotted_string") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdQualifiedNameArm::V4BridgeQualifiedNameFromDottedString };
+}
+#[rustfmt::skip]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EvalCallBridgeStdNodeReflectionArm {
+    V4BridgeCoproductNullaryInhabitants,
+}
+
+#[rustfmt::skip]
+pub fn lookup_eval_call_bridge_std_node_reflection(spelling: &str) -> Option<EvalCallBridgeStdNodeReflectionArm> {
+    match spelling {
+        "coproduct_nullary_inhabitants" => Some(EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+macro_rules! eval_call_bridge__v2_std_node_reflection_arm {
+    ("v4_bridge.coproduct_nullary_inhabitants") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeReflectionArm::V4BridgeCoproductNullaryInhabitants };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

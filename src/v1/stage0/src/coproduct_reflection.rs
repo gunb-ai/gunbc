@@ -134,37 +134,6 @@ pub fn eval_symbol_lexeme(
     Ok(str_value(sym))
 }
 
-pub(crate) fn type_item_by_name<'a>(
-    ctx: &'a InterpContext,
-    type_name: &str,
-) -> InterpResult<(&'a Rc<Node>, String)> {
-    let si = ctx.source_indices();
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name != type_name {
-                continue;
-            }
-            let is_type = ctx
-                .item_registry
-                .get(&name)
-                .map(|info| info.kind == ItemKind::TypeItem)
-                .unwrap_or(false)
-                || ctx
-                    .item_registry
-                    .get(&item.name)
-                    .map(|info| info.kind == ItemKind::TypeItem)
-                    .unwrap_or(false);
-            if is_type {
-                return Ok((item, item.span.file.clone()));
-            }
-        }
-    }
-    Err(InterpError::TypeError {
-        msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
-    })
-}
-
 fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
@@ -334,15 +303,6 @@ pub fn marshal_disj_type_item(
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
         edges,
     ))
-}
-
-pub fn eval_resolve_type_node(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    marshal_disj_type_item(ctx, &ctx.source_indices(), item)
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
