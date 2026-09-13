@@ -26,7 +26,7 @@ import extdeps.ci_runner.runs_on { runs_on_arm_linux_offer }
 import extdeps.ci_runner.semaphore { semaphore_arm_linux_offer }
 import extdeps.ci_runner.sprinters { sprinters_arm_linux_offer }
 import extdeps.ci_runner.warpbuild { warpbuild_arm_linux_offer }
-import extdeps.cloud.ubicloud { ubicloud_arm_linux_offer }
+import extdeps.pricing.ubicloud { ubicloud_arm_linux_offer }
 
 // WHICH ARM LINUX CI SELLERS THIS REPOSITORY HAS READ. Observation layer: DESIGN
 // forbids the extdeps hub from enumerating products. Adding a seller is one module
