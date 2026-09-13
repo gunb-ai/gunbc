@@ -50,6 +50,7 @@ import gunbc.spark.snapshot_serving_handoff {
 import gunbc.spark.native_deployment_readback {
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
   inspect_native_deployment, accept_deployment,
+  deployment_unknowns_text, deployment_deviations_text,
 }
 import gunbc.spark.nope_conformance_probe {
   NopeConformanceStanding, NopeConformanceHeld, NopeConformancePartial, NopeConformanceRefused,
@@ -612,10 +613,12 @@ func accept_or_roll_back(
     plan: plan,
     reading: observe_native_population(ctx: ctx, plan: plan),
   )) {
-    DeploymentRejected { deviations: _ } =>
-      roll_back(ctx: ctx, head: head, started: started, failure: "the deployment readback DIVERGED from the plan" as NonEmptyStr)
-    DeploymentUnverified { unknowns: _ } =>
-      roll_back(ctx: ctx, head: head, started: started, failure: "the deployment readback could not establish every fact it must assert" as NonEmptyStr)
+    DeploymentRejected { deviations: ds } =>
+      roll_back(ctx: ctx, head: head, started: started,
+        failure: join(["the deployment readback DIVERGED from the plan: ", deployment_deviations_text(ds: ds)], "") as NonEmptyStr)
+    DeploymentUnverified { unknowns: us } =>
+      roll_back(ctx: ctx, head: head, started: started,
+        failure: join(["the deployment readback could not establish every fact it must assert: ", deployment_unknowns_text(us: us)], "") as NonEmptyStr)
     DeploymentUnverifiable { cause: c } =>
       roll_back(ctx: ctx, head: head, started: started, failure: c)
     DeploymentAccepted { receipt: rec } =>

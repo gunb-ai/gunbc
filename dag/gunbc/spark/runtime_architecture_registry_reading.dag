@@ -1961,11 +1961,18 @@ fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
 // base it stands on. The base's own reading, had one been taken, would be a DIFFERENT reading: the layer
 // replaces FlashInfer, and this type's whole discipline is that two digests are two images.
 //
+// IT IS NAMED BY THE REFERENCE THE LAUNCH USES, WHICH TOOK A REFUSAL TO GET RIGHT. The first reading here
+// was taken by TAG while the arm's pin names the content id, and reading_applies_to demands exact string
+// equality with no near-match arm -- so the cutover refused with "the image was repinned without a new
+// registry probe, so nothing here has looked inside the image this arm would launch", and nothing was
+// started. The two references resolve to the same image on this host, which is exactly the inference the
+// check declines to accept: the reading was re-taken THROUGH the digest rather than argued to apply to it.
+//
 // THE COUNT IS 378 AND THE THREE Glm5Next ENTRIES ARE AMONG THEM, which is the fact a launch depends on:
 // Glm5NextForConditionalGeneration is the architecture zai-org/GLM-5.3-Flash declares. DeepseekV41ForCausalLM
 // is NOT present, which is a measured negative rather than an omission -- this is a GLM build.
 data glm53_nope_derived_registry_reading: ArchitectureRegistryReading = ArchitectureRegistryReading {
-  image_reference: "gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4" as NonEmptyStr,
+  image_reference: "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr,
   host: "spark-0c75" as NonEmptyStr,
   observed_at: "2026-09-13" as NonEmptyStr,
   instrument: vllm_registry_instrument,

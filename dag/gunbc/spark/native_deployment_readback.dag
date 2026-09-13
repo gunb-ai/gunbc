@@ -331,3 +331,51 @@ fn accept_deployment(inspection: NativeDeploymentInspection) -> DeploymentAccept
       }
   }
 }
+
+// ── A REFUSAL THAT DISCARDS ITS OWN CAUSE IS HALF A REFUSAL ───────────────────────────────────
+//
+// THE UNKNOWNS AND DEVIATIONS ARE COMPUTED AND WERE THROWN AWAY. gunbc.spark.native_cutover_wet bound
+// both lists to `_` and rolled back with a sentence naming neither, so a reader was told that some fact
+// could not be established and never which one. Measured 2026-09-13: a cutover whose engine had already
+// answered GET /v1/models with 200 OK on rank zero refused with "the deployment readback could not
+// establish every fact it must assert", and nothing in the output distinguished an unread fabric
+// interface on one rank from an unread endpoint alias -- two facts with entirely different repairs.
+//
+// THE DATA EXISTED THE WHOLE TIME, which is what makes this worth fixing rather than investigating: the
+// assessment already carries typed values naming the rank and the missing reading. Rendering them costs
+// nothing and turns a second twenty-minute launch into a sentence.
+fn deployment_unknown_text(u: DeploymentUnknown) -> String {
+  match u {
+    FabricInterfaceUnread { node_rank: r } =>
+      join(["rank ", to_string(r), ": the selected fabric interface could not be read"], "")
+    EndpointAliasUnread => "the endpoint's served model alias could not be read"
+  }
+}
+
+fn deployment_deviation_text(d: DeploymentDeviation) -> String {
+  match d {
+    RankAbsent { expected_rank: r, expected_host: h } =>
+      join(["rank ", to_string(r), " expected on ", h as String, " is absent"], "")
+    RankOnWrongHost { node_rank: r, expected_host: e, observed_host: o } =>
+      join(["rank ", to_string(r), " expected on ", e as String, " observed on ", o as String], "")
+    RankImageDigestDiffers { node_rank: r, desired: de, observed: o } =>
+      join(["rank ", to_string(r), " image ", o as String, " is not the planned ", de as String], "")
+    RankModelPathDiffers { node_rank: r, desired: de, observed: o } =>
+      join(["rank ", to_string(r), " model path ", o as String, " is not the planned ", de as String], "")
+    RankArgvDiffers { node_rank: r, first_difference_position: p, desired_word_count: dw, observed_word_count: ow } =>
+      join(["rank ", to_string(r), " argv differs first at word ", to_string(p), " (planned ", to_string(dw), " words, observed ", to_string(ow), ")"], "")
+    RankFabricInterfaceDiffers { node_rank: r, desired: de, observed: o } =>
+      join(["rank ", to_string(r), " fabric interface ", o as String, " is not the planned ", de as String], "")
+    DeploymentNotServing { detail: t } => join(["the deployment is not serving: ", t as String], "")
+    EndpointAliasDiffers { desired: de, observed: o } =>
+      join(["the endpoint serves ", o as String, " rather than the planned ", de as String], "")
+  }
+}
+
+fn deployment_unknowns_text(us: List<DeploymentUnknown>) -> String {
+  join(map(us, u => deployment_unknown_text(u: u)), "; ")
+}
+
+fn deployment_deviations_text(ds: List<DeploymentDeviation>) -> String {
+  join(map(ds, d => deployment_deviation_text(d: d)), "; ")
+}

@@ -369,6 +369,21 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // named no prefix-caching flag at all, so every launch took whatever the engine inferred. At the revision
 // this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
 // "nothing said" was not a stable request -- it was a different request per checkpoint.
+// THE TWO NCCL_DEBUG ASSIGNMENTS ARE AN OBSERVATION OBLIGATION, NOT A TUNING KNOB, and they are the
+// whole reason gunbc.spark.native_rank_observer can answer at all. That observer greps the engine log for
+// the interface NCCL actually bound, deliberately refusing to read NCCL_SOCKET_IFNAME back because a check
+// that reads its own request only agrees with itself. But NCCL prints that line ONLY under NCCL_DEBUG, and
+// no launch path in this repository set it -- so the line never existed, the reading was permanently Absent,
+// and the readback refused every rank of an otherwise healthy deployment. Measured 2026-09-13: a cutover
+// whose engine had already answered GET /v1/models with 200 OK rolled back with FabricInterfaceUnread on
+// all four ranks. THE ALL-RANK SYMMETRY IS THE TELL -- a real fabric fault lands on the ranks that have one.
+//
+// SUBSYS IS NARROWED TO INIT,NET BECAUSE VOLUME IS THE REASON TO HESITATE. Bare INFO makes NCCL narrate
+// every channel of every collective; INIT,NET keeps the topology and transport lines that carry the fact and
+// drops the per-collective traffic. Measured on a two-rank no-weights probe in this exact image on srv9 and
+// srv10: NCCL reported "NET/IB : No device found" and bound "NET/Socket : Using [0]enp1s0f1np1", so the
+// socket spelling the observer greps for is the one this fleet actually produces -- the RoCE devices are
+// present on these hosts but NCCL does not select them inside this container.
 fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
   concat([
     "docker", "run", "-d",
@@ -378,6 +393,8 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--ipc", "host",
     "-e", join(["GLOO_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
     "-e", join(["NCCL_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
+    "-e", "NCCL_DEBUG=INFO",
+    "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
     "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: node.rail) as String], ""),
     "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
     "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
