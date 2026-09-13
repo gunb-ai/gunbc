@@ -1,0 +1,747 @@
+module extdeps.safetensors.format
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat, nat_max }
+import std.measure { ByteSize, byte_size, byte_size_count }
+
+// SAFETENSORS, THE STORAGE FORMAT, AS ITS OWN UPSTREAM AUTHORITY. It is an independently
+// versioned specification (huggingface/safetensors) and not a property of any model that happens
+// to ship in it, so the header grammar lives here and every checkpoint module cites it. Without
+// this module a checkpoint's tensor rows would each re-coin "name, dtype, shape, byte span", and
+// the second checkpoint to need them would fork the first.
+//
+// WHAT A HEADER IS, AND WHAT IT IS NOT. A safetensors file is an 8-byte little-endian header
+// length, a JSON header mapping tensor name to { dtype, shape, data_offsets }, then the payload.
+// The header DECLARES structure. It is not a reading of the payload bytes and it is not evidence
+// that the payload matches what it declares -- an intact header over a truncated or corrupted
+// payload parses exactly as well as an intact one. That distinction is carried in the types below
+// rather than in prose, because collapsing it is how a manifest comes to stand for verified
+// content.
+
+// THE DTYPE ROSTER IS THE WHOLE-BYTE SUBSET THIS REPOSITORY HAS GROUNDED, and the byte-width fold
+// below is total over it. SUB-BYTE DTYPES ARE DELIBERATELY ABSENT: a whole-byte width function
+// cannot express a 4-bit element without either lying or rounding, so the state has no constructor
+// here instead of a width function that returns a wrong number for it. Adding a sub-byte dtype is
+// a modelling change to the width carrier, not a row -- which is the point.
+type SafetensorsDtype
+  = SafeBool
+  | SafeU8
+  | SafeI8
+  | SafeF8E5M2
+  | SafeF8E4M3
+  | SafeF8E8M0
+  | SafeI16
+  | SafeU16
+  | SafeF16
+  | SafeBf16
+  | SafeI32
+  | SafeU32
+  | SafeF32
+  | SafeI64
+  | SafeU64
+  | SafeF64
+
+fn safetensors_dtype_wire(d: SafetensorsDtype) -> NonEmptyStr {
+  match d {
+    SafeBool => "BOOL" as NonEmptyStr
+    SafeU8 => "U8" as NonEmptyStr
+    SafeI8 => "I8" as NonEmptyStr
+    SafeF8E5M2 => "F8_E5M2" as NonEmptyStr
+    SafeF8E4M3 => "F8_E4M3" as NonEmptyStr
+    SafeF8E8M0 => "F8_E8M0" as NonEmptyStr
+    SafeI16 => "I16" as NonEmptyStr
+    SafeU16 => "U16" as NonEmptyStr
+    SafeF16 => "F16" as NonEmptyStr
+    SafeBf16 => "BF16" as NonEmptyStr
+    SafeI32 => "I32" as NonEmptyStr
+    SafeU32 => "U32" as NonEmptyStr
+    SafeF32 => "F32" as NonEmptyStr
+    SafeI64 => "I64" as NonEmptyStr
+    SafeU64 => "U64" as NonEmptyStr
+    SafeF64 => "F64" as NonEmptyStr
+  }
+}
+
+fn safetensors_dtype_byte_width(d: SafetensorsDtype) -> Nat {
+  match d {
+    SafeBool => 1
+    SafeU8 => 1
+    SafeI8 => 1
+    SafeF8E5M2 => 1
+    SafeF8E4M3 => 1
+    SafeF8E8M0 => 1
+    SafeI16 => 2
+    SafeU16 => 2
+    SafeF16 => 2
+    SafeBf16 => 2
+    SafeI32 => 4
+    SafeU32 => 4
+    SafeF32 => 4
+    SafeI64 => 8
+    SafeU64 => 8
+    SafeF64 => 8
+  }
+}
+
+// ONE HEADER ENTRY, SPELLED AS THE FORMAT SPELLS IT. data_offsets are begin and end, relative to
+// the start of the payload region, end exclusive.
+type SafetensorsEntry sole_constructor {
+  name: NonEmptyStr
+  dtype: SafetensorsDtype
+  shape: List<Nat>
+  begin_offset: Nat
+  end_offset: Nat
+}
+
+fn safetensors_entry(
+  name: NonEmptyStr,
+  dtype: SafetensorsDtype,
+  shape: List<Nat>,
+  begin_offset: Nat,
+  end_offset: Nat,
+) -> SafetensorsEntry {
+  SafetensorsEntry {
+    name: name,
+    dtype: dtype,
+    shape: shape,
+    begin_offset: begin_offset,
+    end_offset: end_offset,
+  }
+}
+
+// A NON-ASCENDING SPAN IS ZERO BYTES HERE AND IS SEPARATELY A REFUSAL BELOW. The zero is a declared
+// Nat rather than a bare literal so the two branches agree on the measure's own type.
+data safetensors_no_bytes: Nat = 0
+
+fn safetensors_entry_span(e: SafetensorsEntry) -> Nat {
+  if e.end_offset >= e.begin_offset { e.end_offset - e.begin_offset } else { safetensors_no_bytes }
+}
+
+fn safetensors_shape_elements(shape: List<Nat>) -> Nat {
+  fold(shape, init: 1, f: (acc, d) => acc * d)
+}
+
+// THE DECLARED SPAN AND THE DECLARED SHAPE MUST AGREE. This is an internal-consistency relation
+// over the header alone -- it establishes that the manifest is well formed, and establishes
+// nothing whatever about the payload. Keeping the two apart is the whole reason this file exists.
+fn safetensors_entry_declared_bytes(e: SafetensorsEntry) -> Nat {
+  safetensors_shape_elements(shape: e.shape) * safetensors_dtype_byte_width(d: e.dtype)
+}
+
+type SafetensorsEntryDefect
+  = EntrySpanNotAscending { name: NonEmptyStr }
+  | EntryShapeEmpty { name: NonEmptyStr }
+  | EntryShapeHasZeroDimension { name: NonEmptyStr }
+  | EntrySpanDisagreesWithShape { name: NonEmptyStr, span: Nat, declared: Nat }
+  | EntryNameDuplicated { name: NonEmptyStr, occurrences: Nat }
+
+fn safetensors_entry_defect_display(d: SafetensorsEntryDefect) -> NonEmptyStr {
+  match d {
+    EntrySpanNotAscending { name: n } =>
+      join(["safetensors entry ", n as String, " declares end_offset <= begin_offset"], "") as NonEmptyStr
+    EntryShapeEmpty { name: n } =>
+      join(["safetensors entry ", n as String, " declares an empty shape"], "") as NonEmptyStr
+    EntryShapeHasZeroDimension { name: n } =>
+      join(["safetensors entry ", n as String, " declares a zero-length dimension"], "") as NonEmptyStr
+    EntrySpanDisagreesWithShape { name: n, span: s, declared: dd } =>
+      join([
+        "safetensors entry ", n as String, " spans ", to_string(s),
+        " bytes but its shape and dtype declare ", to_string(dd),
+      ], "") as NonEmptyStr
+    EntryNameDuplicated { name: n, occurrences: k } =>
+      join([
+        "safetensors tensor name ", n as String, " occurs ", to_string(k),
+        " times in one population; a tensor subject must be unique",
+      ], "") as NonEmptyStr
+  }
+}
+
+fn safetensors_shape_is_well_formed(shape: List<Nat>) -> Bool {
+  count(shape) > 0 && all(shape, d => d > 0)
+}
+
+fn safetensors_entry_defects(e: SafetensorsEntry) -> List<SafetensorsEntryDefect> {
+  concat(
+    concat(
+      if e.end_offset > e.begin_offset { [] } else { [EntrySpanNotAscending { name: e.name }] },
+      if count(e.shape) > 0 { [] } else { [EntryShapeEmpty { name: e.name }] }),
+    concat(
+      if all(e.shape, d => d > 0) { [] } else { [EntryShapeHasZeroDimension { name: e.name }] },
+      if safetensors_shape_is_well_formed(shape: e.shape)
+        && e.end_offset > e.begin_offset
+        && safetensors_entry_span(e: e) == safetensors_entry_declared_bytes(e: e) {
+        []
+      } else {
+        if safetensors_shape_is_well_formed(shape: e.shape) && e.end_offset > e.begin_offset {
+          [EntrySpanDisagreesWithShape {
+            name: e.name,
+            span: safetensors_entry_span(e: e),
+            declared: safetensors_entry_declared_bytes(e: e),
+          }]
+        } else { [] }
+      }))
+}
+
+fn safetensors_name_occurrences(entries: List<SafetensorsEntry>, name: NonEmptyStr) -> Nat {
+  count(filter(entries, e => (e.name as String) == (name as String)))
+}
+
+fn safetensors_duplicate_defects(entries: List<SafetensorsEntry>) -> List<SafetensorsEntryDefect> {
+  fold(entries, init: [], f: (acc, e) =>
+    if safetensors_name_occurrences(entries: entries, name: e.name) > 1
+      && !any(acc, d => match d {
+        EntryNameDuplicated { name: n, occurrences: _ } => (n as String) == (e.name as String)
+        EntrySpanNotAscending { name: _ } => false
+        EntryShapeEmpty { name: _ } => false
+        EntryShapeHasZeroDimension { name: _ } => false
+        EntrySpanDisagreesWithShape { name: _, span: _, declared: _ } => false
+      }) {
+      concat(acc, [EntryNameDuplicated {
+        name: e.name,
+        occurrences: safetensors_name_occurrences(entries: entries, name: e.name),
+      }])
+    } else { acc })
+}
+
+// ── A SCAN THAT FAILED IS NOT AN EMPTY POPULATION ─────────────────────────────────────────────
+//
+// The reading is the outer fact and the entries are inside it, so there is no way to hand a fold
+// an entry list that has silently lost the information that the scan did not finish. A partial
+// read keeps BOTH the rows it got and the obligation for the rest; it can never be consumed as a
+// complete population, because the completeness fold below has no arm that accepts it.
+// ── THE INDEX AND THE HEADERS ARE TWO SOURCES, AND A POPULATION IS THE JOIN OF THEM ────────────
+//
+// A checkpoint's `model.safetensors.index.json` maps every tensor NAME to the shard that holds it.
+// A shard's own header declares each tensor's dtype, shape and byte span but knows nothing about
+// which shard it is in. So neither source alone identifies a component's population:
+//
+//   the index says WHICH tensors exist and WHERE they live
+//   the header says WHAT each tensor is and WHICH BYTES it occupies
+//
+// A first cut checked only the header side -- non-emptiness, per-entry shape/span consistency, and
+// duplicate names -- and called that established. It was not. Any internally consistent list of
+// entries passed, so RENAMING one tensor to another unique name of the same dtype, shape and span
+// preserved both the count and the byte total and nothing caught it. Equal totals establish
+// arithmetic, never membership: they cannot tell you that a population is THE population at a
+// revision rather than some other set that happens to add up.
+//
+// So membership is a RECONCILIATION against index rows read at the same revision, and its refusal
+// keeps the five ways it can fail apart, because they have different remedies: a MISSING member
+// means the header scan is incomplete, an EXTRA entry means the header holds something the index
+// does not name, a MISASSIGNED one means the two sources disagree about where it lives, a
+// DUPLICATED one means the population is ambiguous, and an OVERLAPPING span means two tensors claim
+// the same bytes.
+type SafetensorsIndexMember sole_constructor {
+  name: NonEmptyStr
+  shard: NonEmptyStr
+}
+
+fn safetensors_index_member(name: NonEmptyStr, shard: NonEmptyStr) -> SafetensorsIndexMember {
+  SafetensorsIndexMember { name: name, shard: shard }
+}
+
+// AN ENTRY KEEPS ITS SHARD THROUGH EVERY COMBINATION. The first cut concatenated two per-shard
+// lists into one flat population, at which point per-shard placement, non-overlap and coverage were
+// no longer decidable from the value -- offsets are shard-relative, so two entries from different
+// shards legitimately share a span and the flat list cannot tell that from a real collision.
+type SafetensorsShardedEntry sole_constructor {
+  shard: NonEmptyStr
+  entry: SafetensorsEntry
+}
+
+fn safetensors_sharded_entry(shard: NonEmptyStr, entry: SafetensorsEntry) -> SafetensorsShardedEntry {
+  SafetensorsShardedEntry { shard: shard, entry: entry }
+}
+
+fn safetensors_sharded_entries(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> List<SafetensorsShardedEntry> {
+  map(entries, e => safetensors_sharded_entry(shard: shard, entry: e))
+}
+
+type SafetensorsMembershipDefect
+  = MemberMissingFromHeaders { name: NonEmptyStr, shard: NonEmptyStr }
+  | EntryAbsentFromIndex { name: NonEmptyStr, shard: NonEmptyStr }
+  | MemberInWrongShard { name: NonEmptyStr, index_shard: NonEmptyStr, header_shard: NonEmptyStr }
+  | MemberDuplicatedInIndex { name: NonEmptyStr, occurrences: Nat }
+  | EntrySpansOverlapWithinShard { shard: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
+
+fn safetensors_membership_defect_display(d: SafetensorsMembershipDefect) -> NonEmptyStr {
+  match d {
+    MemberMissingFromHeaders { name: n, shard: sh } =>
+      join([
+        "the index at this revision names ", n as String, " in ", sh as String,
+        " and no header entry was read for it; a member the headers do not carry is an unfinished scan, not a smaller component",
+      ], "") as NonEmptyStr
+    EntryAbsentFromIndex { name: n, shard: sh } =>
+      join([
+        "a header entry in ", sh as String, " declares ", n as String,
+        ", which the index at this revision does not name; equal counts and equal byte totals do not establish membership",
+      ], "") as NonEmptyStr
+    MemberInWrongShard { name: n, index_shard: i, header_shard: h } =>
+      join([
+        "the index places ", n as String, " in ", i as String,
+        " and its header entry was read from ", h as String, "; the two sources disagree about where it lives",
+      ], "") as NonEmptyStr
+    MemberDuplicatedInIndex { name: n, occurrences: k } =>
+      join([
+        "the index rows name ", n as String, " ", to_string(k), " times; a member must be unique",
+      ], "") as NonEmptyStr
+    EntrySpansOverlapWithinShard { shard: sh, left: l, right: r } =>
+      join([
+        "within ", sh as String, ", ", l as String, " and ", r as String,
+        " claim overlapping byte spans, so they cannot both be what their header says",
+      ], "") as NonEmptyStr
+  }
+}
+
+fn safetensors_entry_for_name(entries: List<SafetensorsShardedEntry>, name: NonEmptyStr) -> SafetensorsShardedEntry? {
+  (filter(entries, se => (se.entry.name as String) == (name as String))).first()
+}
+
+fn safetensors_index_names_occurrences(members: List<SafetensorsIndexMember>, name: NonEmptyStr) -> Nat {
+  count(filter(members, m => (m.name as String) == (name as String)))
+}
+
+fn safetensors_spans_overlap(a: SafetensorsEntry, b: SafetensorsEntry) -> Bool {
+  a.begin_offset < b.end_offset && b.begin_offset < a.end_offset
+}
+
+fn safetensors_overlap_defects(entries: List<SafetensorsShardedEntry>) -> List<SafetensorsMembershipDefect> {
+  flat_map(entries, l =>
+    flat_map(
+      filter(entries, r =>
+        (r.shard as String) == (l.shard as String)
+          && (r.entry.name as String) != (l.entry.name as String)
+          && (l.entry.name as String) < (r.entry.name as String)
+          && safetensors_spans_overlap(a: l.entry, b: r.entry)),
+      r => [EntrySpansOverlapWithinShard { shard: l.shard, left: l.entry.name, right: r.entry.name }]))
+}
+
+fn safetensors_membership_defects(
+  members: List<SafetensorsIndexMember>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<SafetensorsMembershipDefect> {
+  concat(
+    concat(
+      flat_map(members, m =>
+        match safetensors_entry_for_name(entries: entries, name: m.name) {
+          Absent => [MemberMissingFromHeaders { name: m.name, shard: m.shard }]
+          Present { value: se } =>
+            if (se.shard as String) == (m.shard as String) {
+              []
+            } else {
+              [MemberInWrongShard { name: m.name, index_shard: m.shard, header_shard: se.shard }]
+            }
+        }),
+      flat_map(entries, se =>
+        if safetensors_index_names_occurrences(members: members, name: se.entry.name) == 0 {
+          [EntryAbsentFromIndex { name: se.entry.name, shard: se.shard }]
+        } else { [] })),
+    concat(
+      fold(members, init: [], f: (acc, m) =>
+        if safetensors_index_names_occurrences(members: members, name: m.name) > 1
+          && !any(acc, d => match d {
+            MemberDuplicatedInIndex { name: n, occurrences: _ } => (n as String) == (m.name as String)
+            MemberMissingFromHeaders { name: _, shard: _ } => false
+            EntryAbsentFromIndex { name: _, shard: _ } => false
+            MemberInWrongShard { name: _, index_shard: _, header_shard: _ } => false
+            EntrySpansOverlapWithinShard { shard: _, left: _, right: _ } => false
+          }) {
+          concat(acc, [MemberDuplicatedInIndex {
+            name: m.name,
+            occurrences: safetensors_index_names_occurrences(members: members, name: m.name),
+          }])
+        } else { acc }),
+      safetensors_overlap_defects(entries: entries)))
+}
+
+// ── HOW FAR THE RECONCILIATION CLOSES, AS A VALUE A FOLD CAN READ ─────────────────────────────
+//
+// Reconciling against index rows SOMEONE READ establishes that the header population is exactly the
+// set those rows name. It does not establish that those rows are every member at the revision --
+// that needs the full index population, which a caller may not have enumerated. The two are
+// different claims and the weaker one leaves a residual: a member the index holds but nobody listed
+// would be neither reconciled nor refused.
+//
+// THAT RESIDUAL IS CARRIED, NOT ANNOTATED. A scoped claim whose remainder lives in a comment is how
+// a partial population comes to be read as complete by the next author: prose cannot refuse, and
+// nothing downstream can tell the two closures apart. So the closure is a field on the established
+// population, its obligation is reachable by a fold, and discharging it is a value change rather
+// than an edit to a sentence.
+type MembershipClosure
+  = MembershipClosedAgainstFullIndex { index_population_count: Nat, how: NonEmptyStr }
+  | MembershipScopedToReadRows { read_rows: Nat, unenumerated: NonEmptyStr }
+
+fn membership_closure_obligations(c: MembershipClosure) -> List<NonEmptyStr> {
+  match c {
+    MembershipClosedAgainstFullIndex { index_population_count: _, how: _ } => []
+    MembershipScopedToReadRows { read_rows: k, unenumerated: u } =>
+      [join([
+        "membership is reconciled against ", to_string(k),
+        " index rows that were read, not against the revision's full index population: ", u as String,
+      ], "") as NonEmptyStr]
+  }
+}
+
+// THE PARTIAL ROWS SURVIVE THE STANDING. A first cut reduced them to a COUNT, which is exactly the
+// discard this section exists to prevent one level down: a reader holding the standing could say how
+// many rows were read and could not say which, so re-reading only the missing shard was impossible and
+// the rows had to be scanned again from nothing. They are carried whole, and they are carried on the
+// INCOMPLETE arm, so no fold can reach them believing it holds a complete population -- `PopulationEstablished`
+// remains the only arm `SafetensorsPopulation` is constructed on.
+//
+// A SCAN THAT FAILED IS NOT AN EMPTY POPULATION. The reading is the outer fact and the entries are
+// inside it, so there is no way to hand a fold an entry list that has silently lost the information
+// that the scan did not finish. A partial read keeps BOTH the rows it got and the obligation for the
+// rest; it can never be consumed as a complete population, because the fold below has no arm that
+// accepts it.
+type SafetensorsPopulationReading
+  = PopulationScanned { entries: List<SafetensorsShardedEntry> }
+  | PopulationPartiallyScanned { entries: List<SafetensorsShardedEntry>, unread: NonEmptyStr }
+  | PopulationUnscanned { obligation: NonEmptyStr }
+
+type SafetensorsPopulation sole_constructor {
+  members: List<SafetensorsShardedEntry>
+  declared_bytes: ByteSize
+  closure: MembershipClosure
+}
+
+type SafetensorsPopulationStanding
+  = PopulationEstablished { population: SafetensorsPopulation }
+  | PopulationIncomplete { obligation: NonEmptyStr, partial_entries: List<SafetensorsShardedEntry> }
+  | PopulationRefused { defects: List<NonEmptyStr> }
+
+// RECONCILIATION DOES NOT BOUND THE PAYLOAD, AND THAT IS THE GAP THIS FOLD CLOSES. Membership asks
+// which names are present and in which shard; the entry defects ask whether spans are well formed and
+// non-overlapping WITHIN the population. Shift every offset in one shard up by a single byte and all of
+// that still holds -- same names, same shards, same lengths, same non-overlap -- while the last tensor
+// now ends one byte past the payload the shard's own header declares.
+//
+// THE CHECK IS DRIVEN BY THE SHARDS THE ENTRIES OCCUPY, NOT BY THE ROWS SOMEONE SUPPLIED. A first cut
+// folded over the supplied bound rows, so the validation was REMOVABLE BY DELETING ITS OWN INPUT: shift
+// one shard's offsets and omit that shard's bounds row, and no extent check ran at all. An empty bounds
+// list was the extreme case -- every shard unchecked, reported as established. So the occupied shard
+// identities are reconciled against the bound-row identities FIRST, and only an exact one-to-one
+// resolution permits the comparison. Missing bounds are an evidence obligation; duplicate bounds are a
+// defect, because two payload figures for one shard mean neither is the shard's payload.
+//
+// Supplying bounds for shards the entries do NOT occupy is allowed and is not an error: a component
+// occupying two shards of forty-eight needs those two reconciled, not all forty-eight enumerated.
+type ShardBoundsResolution
+  = ShardBoundsResolved { shard: NonEmptyStr, file: SafetensorsShardFile }
+  | ShardBoundsDuplicated { shard: NonEmptyStr, rows: Nat }
+  | ShardBoundsAbsent { shard: NonEmptyStr }
+
+fn safetensors_shard_bounds_resolution(
+  shards: List<SafetensorsShardFile>,
+  shard: NonEmptyStr,
+) -> ShardBoundsResolution {
+  let rows = filter(shards, sh => (sh.path as String) == (shard as String))
+  if count(rows) == 1 {
+    match first(rows) {
+      Present { value: f } => ShardBoundsResolved { shard: shard, file: f }
+      Absent => ShardBoundsAbsent { shard: shard }
+    }
+  } else {
+    if count(rows) == 0 {
+      ShardBoundsAbsent { shard: shard }
+    } else {
+      ShardBoundsDuplicated { shard: shard, rows: count(rows) }
+    }
+  }
+}
+
+fn safetensors_shard_bounds_resolutions(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<ShardBoundsResolution> {
+  map(
+    safetensors_shard_names(entries: entries),
+    n => safetensors_shard_bounds_resolution(shards: shards, shard: n))
+}
+
+// A DUPLICATE BOUND ROW IS A DEFECT AND REFUSES. Two payload figures for one shard identity means the
+// input contradicts itself, and picking either would be the absorbing fallback DESIGN section 5 names.
+fn safetensors_shard_bounds_defects(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsDuplicated { shard: sd, rows: n } =>
+      [join([
+        "safetensors shard ", sd as String, " has ", to_string(n),
+        " bound rows, so it carries that many payload figures and none of them is the shard's payload",
+      ], "") as NonEmptyStr]
+    ShardBoundsResolved { shard: _, file: _ } => []
+    ShardBoundsAbsent { shard: _ } => []
+  })
+}
+
+// A MISSING BOUND ROW IS AN OBLIGATION, NOT A PASS. The entries occupy a shard nobody stated the size
+// of, so the extent comparison has no second operand -- which is a thing not yet read rather than a
+// thing found wrong, and it keeps the population off `PopulationEstablished` either way.
+fn safetensors_shard_bounds_obligations(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsAbsent { shard: sd } =>
+      [join([
+        "the admitted entries occupy safetensors shard ", sd as String,
+        ", and no bound row states that shard's header and file size, so nothing bounds where those tensors end",
+      ], "") as NonEmptyStr]
+    ShardBoundsResolved { shard: _, file: _ } => []
+    ShardBoundsDuplicated { shard: _, rows: _ } => []
+  })
+}
+
+fn safetensors_shard_extent_defects(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(safetensors_shard_bounds_resolutions(shards: shards, entries: entries), r => match r {
+    ShardBoundsResolved { shard: sd, file: f } => safetensors_extent_within_payload(shard: sd, file: f, entries: entries)
+    ShardBoundsDuplicated { shard: _, rows: _ } => []
+    ShardBoundsAbsent { shard: _ } => []
+  })
+}
+
+fn safetensors_extent_within_payload(
+  shard: NonEmptyStr,
+  file: SafetensorsShardFile,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  match safetensors_shard_payload(shard: file) {
+    ShardHeaderExceedsFile { path: _, declared_overhead: _, file_bytes: _ } =>
+      safetensors_shard_payload_defects(shard: file)
+    ShardPayloadDeclared { bytes: payload } =>
+      if safetensors_shard_extent(entries: entries, shard: shard) > byte_size_count(b: payload) {
+        [join([
+          "safetensors shard ", shard as String, " carries tensors reaching byte ",
+          to_string(safetensors_shard_extent(entries: entries, shard: shard)),
+          " while the shard's own header declares a payload of only ",
+          to_string(byte_size_count(b: payload)),
+          " bytes; names, lengths and non-overlap all reconcile and the population still does not fit the file",
+        ], "") as NonEmptyStr]
+      } else {
+        []
+      }
+  }
+}
+
+fn safetensors_shard_extent(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> Nat {
+  fold(
+    filter(entries, se => (se.shard as String) == (shard as String)),
+    init: 0,
+    f: (acc, se) => nat_max(a: acc, b: se.entry.end_offset))
+}
+
+fn safetensors_population_defects(
+  members: List<SafetensorsIndexMember>,
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  concat(
+    concat(
+      if count(members) > 0 {
+        []
+      } else {
+        ["a population reconciled against no index rows is not reconciled; an empty expectation admits anything, which is the shape a dropped read takes" as NonEmptyStr]
+      },
+      if count(entries) > 0 {
+        []
+      } else {
+        ["a safetensors population with no entries is not a component; an empty list is the shape a failed scan takes when its failure was discarded" as NonEmptyStr]
+      }),
+    concat(
+      map(
+        concat(
+          flat_map(entries, se => safetensors_entry_defects(e: se.entry)),
+          safetensors_duplicate_defects(entries: map(entries, se => se.entry))),
+        d => safetensors_entry_defect_display(d: d)),
+      concat(
+        map(
+          safetensors_membership_defects(members: members, entries: entries),
+          d => safetensors_membership_defect_display(d: d)),
+        concat(
+          safetensors_shard_extent_defects(shards: shards, entries: entries),
+          safetensors_shard_bounds_defects(shards: shards, entries: entries)))))
+}
+
+fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
+  byte_size(count: fold(entries, init: 0, f: (acc, se) => acc + safetensors_entry_span(e: se.entry)))
+}
+
+fn safetensors_shard_names(entries: List<SafetensorsShardedEntry>) -> List<NonEmptyStr> {
+  fold(entries, init: [], f: (acc, se) =>
+    if any(acc, n => (n as String) == (se.shard as String)) { acc } else { concat(acc, [se.shard]) })
+}
+
+fn safetensors_population_bytes_in_shard(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> ByteSize {
+  safetensors_population_total(entries: filter(entries, se => (se.shard as String) == (shard as String)))
+}
+
+// DEFECTS ARE DECIDED BEFORE OBLIGATIONS, so a population with a real defect still REFUSES even when
+// its shard bounds were never supplied. Reversing the two would let a missing bound row downgrade a
+// duplicate tensor subject from refused to merely incomplete -- an absorbing arm that answers with less
+// than it knows, and one that would have quietly weakened every existing refusal control here.
+//
+// THE ONLY PRODUCER OF AN ESTABLISHED POPULATION. Membership is reconciled against the index rows
+// read at the same revision, and the total is DERIVED from the entries that reconciliation admitted
+// -- there is no parameter here for a size summary, so a caller cannot supply one.
+fn safetensors_population_standing(
+  members: List<SafetensorsIndexMember>,
+  shards: List<SafetensorsShardFile>,
+  closure: MembershipClosure,
+  reading: SafetensorsPopulationReading,
+) -> SafetensorsPopulationStanding {
+  match reading {
+    PopulationUnscanned { obligation: o } => PopulationIncomplete { obligation: o, partial_entries: [] }
+    PopulationPartiallyScanned { entries: es, unread: u } =>
+      PopulationIncomplete { obligation: u, partial_entries: es }
+    PopulationScanned { entries: es } => {
+      let defects = safetensors_population_defects(members: members, shards: shards, entries: es)
+      if count(defects) > 0 {
+        PopulationRefused { defects: defects }
+      } else {
+        let bounds_open = safetensors_shard_bounds_obligations(shards: shards, entries: es)
+        if count(bounds_open) > 0 {
+          PopulationIncomplete {
+            obligation: join(map(bounds_open, o => o as String), "; ") as NonEmptyStr,
+            partial_entries: es,
+          }
+        } else {
+          PopulationEstablished {
+            population: SafetensorsPopulation {
+              members: es,
+              declared_bytes: safetensors_population_total(entries: es),
+              closure: closure,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+fn safetensors_population_members(s: SafetensorsPopulationStanding) -> List<SafetensorsShardedEntry> {
+  match s {
+    PopulationEstablished { population: p } => p.members
+    PopulationIncomplete { obligation: _, partial_entries: _ } => []
+    PopulationRefused { defects: _ } => []
+  }
+}
+
+fn safetensors_population_entries(s: SafetensorsPopulationStanding) -> List<SafetensorsEntry> {
+  map(safetensors_population_members(s: s), se => se.entry)
+}
+
+// THE RESIDUAL TRAVELS WITH THE POPULATION. A consumer that establishes a subject over this reads
+// the obligation and carries it onto its own evidence axis, so an unenumerated index shows up as an
+// open question in the decision rather than as a sentence in this file.
+fn safetensors_population_closure_obligations(s: SafetensorsPopulationStanding) -> List<NonEmptyStr> {
+  match s {
+    PopulationEstablished { population: p } => membership_closure_obligations(c: p.closure)
+    PopulationIncomplete { obligation: _, partial_entries: _ } => []
+    PopulationRefused { defects: _ } => []
+  }
+}
+
+fn safetensors_population_declared_bytes(s: SafetensorsPopulationStanding) -> ByteSize? {
+  match s {
+    PopulationEstablished { population: p } => Present { value: p.declared_bytes }
+    PopulationIncomplete { obligation: _, partial_entries: _ } => none
+    PopulationRefused { defects: _ } => none
+  }
+}
+
+// ── THE SHARD FILE: DECLARED STRUCTURE AND CRYPTOGRAPHIC BYTES ARE TWO FACTS ───────────────────
+//
+// header_bytes is the JSON header length the 8-byte prefix declares, so a file's total size is
+// 8 + header_bytes + payload. Carrying all three lets the arithmetic be checked rather than
+// asserted -- and the sha256 is over the FILE, which is a different subject from the population
+// the header declares. A digest match proves the bytes are the published bytes. It does not prove
+// the header's shapes describe them, and the header's shapes do not prove the bytes arrived.
+//
+// EVERY FIELD IS A ByteSize. A first cut typed `header_bytes` as a bare `Nat` beside two `ByteSize`
+// siblings on the same record -- two representations of one quantity, which then forced
+// `byte_size_count` unwrapping purely to reconcile them. The prefix length is a byte count like the
+// other two and is carried as one.
+//
+// AND THERE IS NO STORED payload_bytes. The first cut computed it in the constructor and answered
+// ZERO when the declared header exceeded the file size -- a fabricated quantity with no refusal
+// anywhere behind it, so an impossible shard row read as a shard with an empty payload and the
+// agreement test below compared that zero against a real population total. DESIGN section 5's
+// failure arm must refuse, never widen, so the payload is a FOLD with a refusing arm rather than a
+// field, and the impossible state can no longer be carried at all.
+type SafetensorsShardFile sole_constructor {
+  path: NonEmptyStr
+  header_bytes: ByteSize
+  file_bytes: ByteSize
+}
+
+fn safetensors_shard_file(path: NonEmptyStr, header_bytes: ByteSize, file_bytes: ByteSize) -> SafetensorsShardFile {
+  SafetensorsShardFile { path: path, header_bytes: header_bytes, file_bytes: file_bytes }
+}
+
+data safetensors_header_length_prefix_bytes: ByteSize = byte_size(count: 8)
+
+fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> Nat {
+  byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes)
+}
+
+// THE PAYLOAD IS DERIVABLE OR THE SHARD IS IMPOSSIBLE, and those are two values rather than one
+// number the caller has to interpret. A file smaller than its own declared prefix-plus-header is
+// not a file with no tensors in it: it is a row whose two figures contradict each other, and the
+// remedy is to re-read the header rather than to proceed with a zero.
+type SafetensorsShardPayload
+  = ShardPayloadDeclared { bytes: ByteSize }
+  | ShardHeaderExceedsFile { path: NonEmptyStr, declared_overhead: Nat, file_bytes: ByteSize }
+
+fn safetensors_shard_payload(shard: SafetensorsShardFile) -> SafetensorsShardPayload {
+  let overhead = safetensors_shard_declared_overhead(header_bytes: shard.header_bytes)
+  if byte_size_count(b: shard.file_bytes) >= overhead {
+    ShardPayloadDeclared { bytes: byte_size(count: byte_size_count(b: shard.file_bytes) - overhead) }
+  } else {
+    ShardHeaderExceedsFile { path: shard.path, declared_overhead: overhead, file_bytes: shard.file_bytes }
+  }
+}
+
+fn safetensors_shard_payload_defects(shard: SafetensorsShardFile) -> List<NonEmptyStr> {
+  match safetensors_shard_payload(shard: shard) {
+    ShardPayloadDeclared { bytes: _ } => []
+    ShardHeaderExceedsFile { path: pth, declared_overhead: o, file_bytes: fb } =>
+      [join([
+        "safetensors shard ", pth as String, " declares an 8-byte prefix plus a header totalling ",
+        to_string(o), " bytes inside a file of ", to_string(byte_size_count(b: fb)),
+        " bytes; the two figures contradict each other and no payload size follows from them",
+      ], "") as NonEmptyStr]
+  }
+}
+
+// THE AGREEMENT HAS THREE ANSWERS AND NONE OF THEM IS A BARE FALSE. A shard whose payload cannot be
+// derived at all is a different state from one whose derivable payload is the wrong size, and only
+// the first is a defect in the shard row rather than in the join.
+type SafetensorsShardAgreement
+  = ShardPayloadMatchesPopulation { bytes: ByteSize }
+  | ShardPayloadDisagreesWithPopulation { path: NonEmptyStr, payload_bytes: ByteSize, declared: ByteSize }
+  | ShardPayloadUnderivable { path: NonEmptyStr, because: NonEmptyStr }
+
+fn safetensors_shard_payload_agreement(shard: SafetensorsShardFile, declared: ByteSize) -> SafetensorsShardAgreement {
+  match safetensors_shard_payload(shard: shard) {
+    ShardHeaderExceedsFile { path: pth, declared_overhead: o, file_bytes: fb } =>
+      ShardPayloadUnderivable {
+        path: pth,
+        because: join([
+          "the declared prefix plus header is ", to_string(o),
+          " bytes against a file of ", to_string(byte_size_count(b: fb)), " bytes",
+        ], "") as NonEmptyStr,
+      }
+    ShardPayloadDeclared { bytes: b } =>
+      if byte_size_count(b: b) == byte_size_count(b: declared) {
+        ShardPayloadMatchesPopulation { bytes: b }
+      } else {
+        ShardPayloadDisagreesWithPopulation { path: shard.path, payload_bytes: b, declared: declared }
+      }
+  }
+}
+

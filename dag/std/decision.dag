@@ -749,6 +749,21 @@ type RealizationSelectionResult<C>
   | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
   | RealizationSelectionRefused { defects: List<NonEmptyStr> }
 
+// THE NEED, RENDERED FOR A CONSUMER THAT CARRIES IT ONTO ITS OWN AXIS. A caller that consumes one
+// selection's result as evidence for another decision needs the cause as text, and deriving it here
+// keeps the three arms' distinctions visible instead of letting each consumer flatten them its own
+// way.
+fn selection_evidence_need_cause(n: SelectionEvidenceNeed) -> NonEmptyStr {
+  match n {
+    UnfundedAxis { gap: g } =>
+      join(["unfunded axis ", declaration_ref_display_key(ref: g.axis), ": ", g.cause as String], "") as NonEmptyStr
+    CandidateStandingIncomplete { candidate: c, cause: cz } =>
+      join(["candidate ", declaration_ref_display_key(ref: c), " standing incomplete: ", cz as String], "") as NonEmptyStr
+    SubjectClosureIncomplete { subject: sb, obligation: o } =>
+      join(["subject ", declaration_ref_display_key(ref: sb), " closure incomplete: ", o as String], "") as NonEmptyStr
+  }
+}
+
 fn as_unfunded_axis_needs(gaps: List<AxisGap>) -> List<SelectionEvidenceNeed> {
   map(gaps, g => UnfundedAxis { gap: g })
 }
