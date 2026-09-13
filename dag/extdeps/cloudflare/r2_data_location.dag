@@ -130,10 +130,6 @@ data r2_get_bucket_location_reading: CloudflarePublishedReading = CloudflarePubl
   statement: "Get Bucket GET /accounts/{account_id}/r2/buckets/{bucket_name}. Result field location, optional, one of apac, eeur, enam, weur, wnam, oc, described as Location of the bucket. Result field jurisdiction, optional, one of default, eu, us, fedramp, fedramp-high, described as Jurisdiction where objects in this bucket are guaranteed to be stored. Read 2026-09-13.",
 }
 
-// READER FINDING, not a Cloudflare sentence. CloudflarePublishedReading.statement carries only
-// transcription. This row is the absence claim that the table does not cover a named bucket.
-data cloudflare_subprocessors_not_keyed_to_this_bucket: NonEmptyStr = "READER FINDING, not a Cloudflare sentence: cloudflare_subprocessors_reading transcribes a company-wide activity table. That table is not keyed to a named R2 bucket or to the default jurisdiction. It does not cover gunbai-fabric-origin and it does not establish an empty downstream population."
-
 data cloudflare_customer_dpa_reading: CloudflarePublishedReading = CloudflarePublishedReading {
   authority: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_authority"),
   read_on: "2026-09-12",
