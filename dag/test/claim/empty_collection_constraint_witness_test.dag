@@ -67,3 +67,25 @@ data collection_alias_callback_source: String = "module probe_collection_alias_c
 test fn collection_alias_callback_result_binds() -> Bool {
   callback_compiles_clean(source: collection_alias_callback_source)
 }
+
+// Source-level residual controls for the composed v1.compiler.infer.unify_generics
+// constraint rule. The required floor consumes these before the producer/refinement
+// scope extension: constructor owners, application expansions and Optional cardinality.
+
+data empty_constructor_accumulator_source: String = "module probe_empty_constructor\nimport std.types { List, Int }\nimport std.algebra { Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nfn asks(xs: List<Int>) -> List<Int> { fold_list(xs: xs, empty: Empty, cons: fn(acc, n) { list_snoc_item(xs: acc, item: n) }) }\n"
+
+test fn empty_constructor_accumulator_binds() -> Bool {
+  callback_compiles_clean(source: empty_constructor_accumulator_source)
+}
+
+data application_expansion_payload_source: String = "module probe_application_expansion\nimport std.types { Int, List }\nimport v2.std.algebra { fold_list, list_snoc_item }\nfn asks(xs: List<Int>) -> List<Int> { fold_list(xs: xs, empty: xs, cons: fn(acc, n) { list_snoc_item(xs: acc, item: n) }) }\n"
+
+test fn application_expansion_payload_binds() -> Bool {
+  callback_compiles_clean(source: application_expansion_payload_source)
+}
+
+data optional_cardinality_accumulator_source: String = "module probe_optional_cardinality\nimport std.types { Int, List }\nimport v2.std.optional { Optional, Present, Absent, optional_absent }\nimport v2.std.algebra { fold_list }\nfn asks(xs: List<Int>) -> Optional<Int> { fold_list(xs: xs, empty: optional_absent(), cons: fn(acc, n) { match acc { Present { value: v } => Present { value: v } Absent => if n == 0 { optional_absent() } else { Present { value: n } } } }) }\n"
+
+test fn optional_cardinality_accumulator_binds() -> Bool {
+  callback_compiles_clean(source: optional_cardinality_accumulator_source)
+}
