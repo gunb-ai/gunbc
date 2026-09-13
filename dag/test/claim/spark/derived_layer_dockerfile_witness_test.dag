@@ -3,10 +3,12 @@ module test.claim.spark.derived_layer_dockerfile_witness_test
 import std.types { Bool, NonEmptyStr, String, List }
 import std.nat { Nat }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels }
+import extdeps.docker.cli { docker_layers_extend }
 import gunbc.spark.vllm_runtime_image_build {
   DerivedRuntimeLayer, glm53_nope_derived_layer,
   DerivedLayerRender, DerivedLayerRendered, DerivedLayerRenderRefused,
   render_derived_layer_dockerfile, dockerfile_exec_run_line, derived_layer_image_wheel_dir,
+  derived_layer_build_stage,
 }
 
 // ── WHAT A GENERATED BUILD FILE MUST NOT DO ───────────────────────────────────────────────────
@@ -15,33 +17,44 @@ import gunbc.spark.vllm_runtime_image_build {
 // two ways a renderer silently disagrees with its model: it can name the base by something mutable, and
 // it can mangle a word on the way into the file.
 
-data w_base_id: NonEmptyStr = "sha256:0b5e1f5a9c7d4e2a8f3b6c1d0e9a7b5c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a" as NonEmptyStr
+data w_base_reference: NonEmptyStr = "gunbc-vllm-glm53-nope-gb10:8d09804-sm121" as NonEmptyStr
 
 fn w_layer() -> DerivedRuntimeLayer {
   glm53_nope_derived_layer(base_tag: "gunbc-vllm-glm53-nope-gb10:8d09804-sm121" as NonEmptyStr)
 }
 
 fn w_rendered() -> String? {
-  match render_derived_layer_dockerfile(base_image_id: w_base_id, l: w_layer()) {
+  match render_derived_layer_dockerfile(base_reference: w_base_reference, l: w_layer()) {
     DerivedLayerRendered { content: c } => Present { value: c }
     DerivedLayerRenderRefused { cause: _ } => none
   }
 }
 
-// THE BASE IS THE OBSERVED IDENTITY AND NOT THE TAG THE LAYER CARRIES. A FROM naming the tag would build
-// against whatever that tag points at when the build runs, which is a different question from the one the
-// observation answered.
-test fn the_from_line_carries_the_observed_image_id() -> Bool {
+// THE FROM LINE CARRIES THE REFERENCE IT WAS GIVEN, AND THESE TWO FIXTURES USED TO ASSERT THE OPPOSITE.
+// They required the line to carry the observed image ID and NOT the tag, on the reasoning that a tag is
+// mutable. That generator does not build: measured on docker 29.2.1, `FROM sha256:<id>` and
+// `FROM <short id>` resolve as REPOSITORY names and fail with a registry pull denial, and `FROM <64-hex>`
+// is refused with "cannot specify 64-byte hexadecimal strings". A local, never-pushed image has no
+// content spelling a Dockerfile accepts, so the old assertions were green against a file nothing could
+// build -- a renderer verified against a grammar its consumer does not have.
+//
+// THE PROPERTY THEY WERE REACHING FOR IS NOT DROPPED, IT MOVED: which base the build actually stood on is
+// established after the build by comparing layer lists, where it is a fact about the artifact rather than
+// about the instruction. See docker_layers_extend and the base_layers_extended field.
+test fn the_from_line_carries_the_reference_it_was_given() -> Bool {
   match w_rendered() {
     Absent => false
-    Present { value: c } => starts_with(s: c, prefix: join(["FROM ", w_base_id as String, "\n"], ""))
+    Present { value: c } => starts_with(s: c, prefix: join(["FROM ", w_base_reference as String, " AS ", derived_layer_build_stage as String, "\n"], ""))
   }
 }
 
-test fn the_from_line_does_not_carry_the_mutable_tag() -> Bool {
+// AND IT IS A REFERENCE A DOCKERFILE CAN RESOLVE, which is the property the previous pair inverted. A
+// bare digest here is the state that produced a registry pull attempt for an image that never left the
+// host.
+test fn the_from_line_is_not_a_bare_digest() -> Bool {
   match w_rendered() {
     Absent => false
-    Present { value: c } => !string_contains(s: c, pattern: "FROM gunbc-vllm-glm53-nope-gb10")
+    Present { value: c } => !string_contains(s: c, pattern: "FROM sha256:")
   }
 }
 
@@ -101,4 +114,51 @@ test fn an_ordinary_argv_renders_as_a_json_array() -> Bool {
     Absent => false
     Present { value: line } => line == "RUN [\"python3\", \"-m\", \"pip\"]\n"
   }
+}
+
+// THE STAGE THE FILE DECLARES IS THE STAGE THE BUILD ASKS FOR. `--target` is emitted unconditionally
+// from a NonEmptyStr, so a generated file whose stage name differs from the spec's target produces a
+// build that refuses with "target stage not found" -- and the two are only kept in agreement here by
+// both reading one declaration.
+test fn the_generated_stage_is_the_one_the_build_targets() -> Bool {
+  match w_rendered() {
+    Absent => false
+    Present { value: c } =>
+      string_contains(s: c, pattern: join([" AS ", derived_layer_build_stage as String, "\n"], ""))
+  }
+}
+
+// ── THE BINDING THAT REPLACED THE FROM CLAIM ──────────────────────────────────────────────────
+//
+// AN IMAGE BUILT FROM ANOTHER CARRIES THAT OTHER IMAGE'S LAYERS AS A PREFIX OF ITS OWN. These assert the
+// comparison rather than the rendering, because after the measurement above it is the comparison that
+// carries the guarantee.
+data w_base_layers: List<String> = ["sha256:aaa", "sha256:bbb"]
+
+test fn a_derived_image_extends_its_base() -> Bool {
+  docker_layers_extend(base: w_base_layers, derived: ["sha256:aaa", "sha256:bbb", "sha256:ccc"])
+}
+
+test fn a_different_base_does_not_extend() -> Bool {
+  !docker_layers_extend(base: w_base_layers, derived: ["sha256:zzz", "sha256:bbb", "sha256:ccc"])
+}
+
+// A SUFFIX MATCH IS NOT A PREFIX MATCH, which is the near miss a looser comparison would admit: the base's
+// layers are all present, in order, and the image still did not build on it.
+test fn the_base_appearing_later_does_not_count() -> Bool {
+  !docker_layers_extend(base: w_base_layers, derived: ["sha256:ccc", "sha256:aaa", "sha256:bbb"])
+}
+
+test fn a_shorter_derived_cannot_extend() -> Bool {
+  !docker_layers_extend(base: w_base_layers, derived: ["sha256:aaa"])
+}
+
+// AN UNREADABLE BASE READS AS AN EMPTY LIST, and vacuous truth here would pass the one case that must not.
+test fn an_empty_base_extends_nothing() -> Bool {
+  !docker_layers_extend(base: [], derived: ["sha256:aaa"])
+}
+
+// THE EXACT-EQUAL CASE IS ADMITTED, because a build that adds no layer still stands on its base.
+test fn an_identical_layer_list_extends() -> Bool {
+  docker_layers_extend(base: w_base_layers, derived: ["sha256:aaa", "sha256:bbb"])
 }

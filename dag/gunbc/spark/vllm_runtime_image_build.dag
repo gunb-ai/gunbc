@@ -33,15 +33,30 @@ import extdeps.docker.cli {
   docker_image_save_command, docker_image_load_command,
   DockerImageInspectIdRead, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_id_from_stdout,
+  docker_run_ephemeral_command,
+  DockerImageLayersRead, DockerImageLayers, DockerImageLayersUnreadable,
+  docker_image_inspect_layers_from_stdout, docker_layers_extend,
 }
 import extdeps.git {
   git_clone_shallow_command, git_fetch_shallow_revision_command,
   git_checkout_revision_command, git_rev_parse_head_command, git_status_porcelain_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.tools.gnu_coreutils { cp_command }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileConvergence, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  RemoteFileMode, RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFilePrivilege, RemoteFileAsSessionPrincipal,
+  typed_remote_file_write_seal, converge_typed_remote_file,
+}
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.stat { stat_file_type_command }
-import extdeps.tools.sha256sum { sha256sum_digest_command }
+import extdeps.tools.sha256sum {
+  sha256sum_digest_command,
+  sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure,
+}
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionKey, ContentDigestSha256,
   SourceLocator, SourceUrl,
@@ -66,7 +81,10 @@ import gunbc.fleet_known_hosts_anchor {
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
   fleet_openssh_trust_policy_of,
+  shape_fleet_scp_fetch_argv, shape_fleet_scp_push_argv,
 }
+import extdeps.shell
+import extdeps.ssh.scp { scp_copy_portable_words }
 import gunbc.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
   fleet_ssh_credential_verification_refusal_reason,
@@ -471,10 +489,18 @@ fn derived_layer_inputs(required: List<FlashInferWheel>, acquired: List<Acquired
 // decisions are made. What must not happen is the shape this repository keeps paying for: a hand-written
 // build file beside the rows it was transcribed from, agreeing with them on the day it was typed.
 //
-// THE BASE IS BOUND BY OBSERVED CONTENT AND NOT BY ITS TAG. `DerivedRuntimeLayer` carries a base_tag,
-// which is what a person types and what a person can move. A tag read at planning time and a tag read by
-// the build are two reads of a mutable name, so the identity is observed through the privileged leg and
-// the generated FROM carries the local image id that read returned.
+// THE FROM LINE CARRIES THE TAG BECAUSE NOTHING ELSE RESOLVES, AND THAT IS A MEASURED BOUNDARY RATHER
+// THAN A PREFERENCE. An earlier revision of this generator emitted `FROM sha256:<id>` on the reasoning
+// that a tag is mutable and an id is not. It does not build: on docker 29.2.1 with the default BuildKit
+// driver, `FROM sha256:<id>` and `FROM <short id>` are both read as REPOSITORY names and fail with a
+// registry pull denial, and `FROM <64-hex>` is refused outright with "cannot specify 64-byte hexadecimal
+// strings". A local, never-pushed image has no content spelling a Dockerfile accepts.
+//
+// SO THE BINDING MOVED FROM THE REQUEST TO THE RESULT, which is the stronger place for it anyway. The
+// pre-build read still happens and still says what the tag meant at that moment; what ESTABLISHES the
+// base is the layer comparison after the build -- an image built FROM another carries that other image's
+// layers as a prefix of its own. That answers what the FROM line could not express, and answers it about
+// the artifact that exists rather than about the instruction that was issued.
 //
 // RUN IS EXEC FORM, AND A WORD THIS GENERATOR CANNOT SPELL REFUSES RATHER THAN BEING ESCAPED. Shell form
 // hands the install argv to /bin/sh on the far side, which is a second quoting authority over a list this
@@ -491,6 +517,13 @@ fn derived_layer_inputs(required: List<FlashInferWheel>, acquired: List<Acquired
 fn derived_layer_image_wheel_dir() -> NonEmptyStr {
   "/tmp/gunbc-wheels" as NonEmptyStr
 }
+
+// THE STAGE IS NAMED BECAUSE THE BUILD SPEC REQUIRES A TARGET. DockerBuildSpec.target is a
+// NonEmptyStr and docker_build_spec_arguments emits `--target` unconditionally, so a single-stage
+// Dockerfile with no name is not buildable through the modelled invocation at all. Naming the stage
+// is the honest fix: the generated file and the spec then agree by construction rather than by a
+// caller remembering to pass a string that happens to match.
+data derived_layer_build_stage: NonEmptyStr = "derived" as NonEmptyStr
 
 fn dockerfile_json_word(w: String) -> String? {
   if string_contains(s: w, pattern: "\"") || string_contains(s: w, pattern: "\\") {
@@ -530,7 +563,7 @@ fn derived_layer_image_install_argv(l: DerivedRuntimeLayer) -> List<String> {
   )
 }
 
-fn render_derived_layer_dockerfile(base_image_id: NonEmptyStr, l: DerivedRuntimeLayer) -> DerivedLayerRender {
+fn render_derived_layer_dockerfile(base_reference: NonEmptyStr, l: DerivedRuntimeLayer) -> DerivedLayerRender {
   match dockerfile_exec_run_line(argv: derived_layer_image_install_argv(l: l)) {
     Absent => DerivedLayerRenderRefused {
       cause: "a wheel filename carries a quote or a backslash, which this generator refuses to escape" as NonEmptyStr,
@@ -538,13 +571,227 @@ fn render_derived_layer_dockerfile(base_image_id: NonEmptyStr, l: DerivedRuntime
     Present { value: run_line } =>
       DerivedLayerRendered {
         content: join([
-          "FROM ", base_image_id as String, "\n",
+          "FROM ", base_reference as String, " AS ", derived_layer_build_stage as String, "\n",
           join(map(l.wheels, w => join([
             "COPY ", w.filename as String, " ",
             derived_layer_image_wheel_dir() as String, "/", w.filename as String, "\n",
           ], "")), ""),
           run_line,
         ], ""),
+      }
+  }
+}
+
+// ── BUILDING THE DERIVED LAYER, ACROSS TWO PRINCIPALS BECAUSE THE HOST HAS TWO ──────────────
+//
+// THIS LEG IS SPLIT AND THE SPLIT IS FORCED BY MEASURED FACTS RATHER THAN CHOSEN. Two principals reach
+// a Spark: the managed executor over the fleet key, and the bootstrap principal over a password session
+// that can sudo. Measured on srv9 2026-09-12, the managed executor holds NOPASSWD sudo for exactly
+// `loginctl enable-linger` and `systemctl reboot` and belongs to no docker group -- so it cannot build --
+// while the modelled remote file writer runs as the SESSION principal and so cannot write through the
+// privileged leg, whose stdin is already carrying a credential and a command line.
+//
+// SO EACH STEP TAKES THE LEG THAT CAN PERFORM IT: the context directory is created by the executor, which
+// therefore owns it; the wheels are copied in by root, whose leg is the only one that can spell a `+` or
+// a `#`; the Dockerfile is written by the executor into the directory it owns; and the build runs as root.
+// A reader who wonders why this is not one leg should read that paragraph rather than simplify it.
+fn derived_layer_context_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/derived-context"], "") as NonEmptyStr
+}
+
+fn derived_layer_dockerfile_path() -> NonEmptyStr {
+  join([derived_layer_context_dir() as String, "/Dockerfile"], "") as NonEmptyStr
+}
+
+// THE DERIVED TAG IS KEYED BY WHAT WENT INTO IT, mirroring vllm_image_tag rather than inventing a second
+// naming scheme. Two derived images over one base with different wheels are different runtimes, and a tag
+// naming only the base would let one serve for the other -- which is what derived_layer_key already says
+// and what this makes true of the NAME the daemon stores.
+fn derived_layer_build_key_inputs(base_image_id: NonEmptyStr, l: DerivedRuntimeLayer) -> List<ArtifactRealizationInput> {
+  concat(
+    [
+      ArtifactRealizationInput { identity: "base_image_id" as NonEmptyStr, content_digest: content_hash_atom(value: base_image_id) },
+      ArtifactRealizationInput { identity: "acquisition" as NonEmptyStr, content_digest: content_hash_atom(value: flashinfer_acquisition_key(a: l.acquisition) as NonEmptyStr) },
+    ],
+    map(l.wheels, w => ArtifactRealizationInput { identity: w.filename, content_digest: content_hash_atom(value: w.sha256) }),
+  )
+}
+
+fn derived_layer_tag(base_image_id: NonEmptyStr, l: DerivedRuntimeLayer) -> NonEmptyStr {
+  join([
+    vllm_glm53_image_repository as String, ":derived-",
+    serialize_content_hash(hash: artifact_realization_digest(inputs: derived_layer_build_key_inputs(base_image_id: base_image_id, l: l))) as String,
+  ], "") as NonEmptyStr
+}
+
+fn derived_layer_build_spec(base_image_id: NonEmptyStr, l: DerivedRuntimeLayer) -> DockerBuildSpec {
+  DockerBuildSpec {
+    tag: derived_layer_tag(base_image_id: base_image_id, l: l),
+    context_dir: derived_layer_context_dir() as FilePath,
+    dockerfile: derived_layer_dockerfile_path(),
+    target: derived_layer_build_stage,
+    platform: "linux/arm64" as NonEmptyStr,
+    build_args: [],
+  }
+}
+
+// THE BUILD CARRIES ITS INSPECTION RATHER THAN LEAVING IT TO A CALLER TO REMEMBER. A build that exited
+// zero and an image that carries what was asked for are different facts, and the second is the one every
+// consumer downstream actually depends on -- so the result cannot be destructured into an identity
+// without the verdict that identity was checked against coming with it.
+type DerivedLayerBuild
+  = DerivedLayerBuilt {
+      tag: NonEmptyStr
+      local_image_id: NonEmptyStr
+      base_image_id: NonEmptyStr
+      base_layers_extended: Bool
+      inspection: FinalImageInspection
+    }
+  | DerivedLayerBuildRefused { step: NonEmptyStr, cause: String }
+
+// THE WHEELS ARE COPIED FROM WHERE ACQUISITION PUT THEM, by their acquired path, and never reconstructed
+// from a filename. The acquisition fold answers with an identity and a verified path together for exactly
+// this reason: a context assembled by re-deriving paths from names is a second opinion about where the
+// bytes are, and it is wrong the first time a retention directory moves.
+fn derived_layer_stage_wheel_commands(wheels: List<AcquiredWheel>) -> List<ArgvCommand> {
+  map(wheels, w => cp_command(
+    source: w.install_path as String,
+    destination: join([derived_layer_context_dir() as String, "/", w.filename as String], ""),
+  ))
+}
+
+func build_derived_layer(
+  ctx: SparkMaterializeContext,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  l: DerivedRuntimeLayer,
+  base_reference: NonEmptyStr,
+  wheels: List<AcquiredWheel>,
+) -> DerivedLayerBuild
+  uses net: Network
+{
+  match read_image_identity(ctx: ctx, reference: base_reference) {
+    ImageIdentityAbsent { reference: r } =>
+      DerivedLayerBuildRefused { step: "base-absent" as NonEmptyStr, cause: join(["the base image is not on the build host: ", r as String], "") }
+    ImageIdentityUnreadable { reference: r, cause: c } =>
+      DerivedLayerBuildRefused { step: "base-unreadable" as NonEmptyStr, cause: join([r as String, ": ", c], "") }
+    ImageIdentityObserved { reference: _, local_image_id: base_id } =>
+      match render_derived_layer_dockerfile(base_reference: base_reference, l: l) {
+        DerivedLayerRenderRefused { cause: c } =>
+          DerivedLayerBuildRefused { step: "render" as NonEmptyStr, cause: c as String }
+        DerivedLayerRendered { content: dockerfile } =>
+          derived_layer_stage_and_build(
+            ctx: ctx, target: target, context: context, l: l,
+            base_id: base_id, base_reference: base_reference, dockerfile: dockerfile, wheels: wheels)
+      }
+  }
+}
+
+func derived_layer_stage_and_build(
+  ctx: SparkMaterializeContext,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  l: DerivedRuntimeLayer,
+  base_id: NonEmptyStr,
+  base_reference: NonEmptyStr,
+  dockerfile: String,
+  wheels: List<AcquiredWheel>,
+) -> DerivedLayerBuild
+  uses net: Network
+{
+  match vllm_image_leg(target: target, context: context, step: "context-dir" as NonEmptyStr,
+    command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: derived_layer_context_dir() as String)) {
+    ImageLegFailed { step: st, cause: c } => DerivedLayerBuildRefused { step: st, cause: c }
+    ImageLegRan { stdout: _ } =>
+      match derived_layer_copy_wheels(ctx: ctx, wheels: wheels) {
+        Present { value: refusal } => refusal
+        Absent =>
+          match converge_typed_remote_file(
+            target: target,
+            context: context,
+            admission: typed_remote_file_write_seal(
+              path: derived_layer_dockerfile_path() as FilePath,
+              content: dockerfile,
+              allowed_scope: FileTreeScope { root_path: vllm_build_root() },
+            ),
+            mode: RemoteFileModeOwnerReadWriteWorldRead,
+            privilege: RemoteFileAsSessionPrincipal,
+          ) {
+            TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+              DerivedLayerBuildRefused { step: join(["dockerfile-", st], "") as NonEmptyStr, cause: why }
+            TypedRemoteFileConverged { converged: _ } =>
+              derived_layer_run_build(ctx: ctx, l: l, base_id: base_id, base_reference: base_reference)
+          }
+      }
+  }
+}
+
+// A COPY THAT FAILS STOPS THE LINE RATHER THAN LEAVING A SHORT CONTEXT, because a build over a context
+// missing one wheel does not fail -- COPY refuses on a missing file, but a context assembled from two of
+// three would only be caught by that refusal, and naming which copy failed is a better diagnostic than
+// reading it out of docker's output later.
+func derived_layer_copy_wheels(ctx: SparkMaterializeContext, wheels: List<AcquiredWheel>) -> DerivedLayerBuild?
+  uses net: Network
+{
+  fold(derived_layer_stage_wheel_commands(wheels: wheels), init: none, f: (acc, c) =>
+    match acc {
+      Present { value: refusal } => Present { value: refusal }
+      Absent =>
+        match vllm_docker_leg(ctx: ctx, step: "stage-wheel" as NonEmptyStr, command: c) {
+          ImageLegFailed { step: st, cause: why } => Present { value: DerivedLayerBuildRefused { step: st, cause: why } }
+          ImageLegRan { stdout: _ } => none
+        }
+    })
+}
+
+// AND THE IMAGE IS READ BACK RATHER THAN INFERRED FROM A BUILD THAT EXITED ZERO. A successful build says
+// the daemon accepted the instructions; the identity it now holds under this tag is a separate read, and
+// it is the fact everything downstream -- distribution, launch, the runtime row -- actually consumes.
+// THE LAYER READING IS ITS OWN STEP because its failure is its own: an image whose layers cannot be read
+// has not been shown to stand on the wrong base, it has not been shown to stand on any.
+func read_image_layers(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> DockerImageLayersRead
+  uses net: Network
+{
+  match vllm_docker_leg(ctx: ctx, step: "image-layers" as NonEmptyStr, command: docker_image_inspect_command(image: reference)) {
+    ImageLegFailed { step: _, cause: why } => DockerImageLayersUnreadable { cause: why }
+    ImageLegRan { stdout: out } => docker_image_inspect_layers_from_stdout(stdout: out)
+  }
+}
+
+fn base_layers_extended_by(base: DockerImageLayersRead, derived: DockerImageLayersRead) -> Bool {
+  match base {
+    DockerImageLayersUnreadable { cause: _ } => false
+    DockerImageLayers { layers: bl } =>
+      match derived {
+        DockerImageLayersUnreadable { cause: _ } => false
+        DockerImageLayers { layers: dl } => docker_layers_extend(base: bl, derived: dl)
+      }
+  }
+}
+
+func derived_layer_run_build(ctx: SparkMaterializeContext, l: DerivedRuntimeLayer, base_id: NonEmptyStr, base_reference: NonEmptyStr) -> DerivedLayerBuild
+  uses net: Network
+{
+  let spec = derived_layer_build_spec(base_image_id: base_id, l: l)
+  match vllm_docker_leg(ctx: ctx, step: "derived-build" as NonEmptyStr, command: docker_build_spec_command(spec: spec)) {
+    ImageLegFailed { step: st, cause: c } => DerivedLayerBuildRefused { step: st, cause: c }
+    ImageLegRan { stdout: _ } =>
+      match read_image_identity(ctx: ctx, reference: spec.tag) {
+        ImageIdentityAbsent { reference: r } =>
+          DerivedLayerBuildRefused { step: "derived-readback" as NonEmptyStr, cause: join(["the build reported success and the daemon holds no image at ", r as String], "") }
+        ImageIdentityUnreadable { reference: r, cause: c } =>
+          DerivedLayerBuildRefused { step: "derived-readback" as NonEmptyStr, cause: join([r as String, ": ", c], "") }
+        ImageIdentityObserved { reference: _, local_image_id: id } =>
+          DerivedLayerBuilt {
+            tag: spec.tag,
+            local_image_id: id,
+            base_image_id: base_id,
+            base_layers_extended: base_layers_extended_by(
+              base: read_image_layers(ctx: ctx, reference: base_reference),
+              derived: read_image_layers(ctx: ctx, reference: spec.tag),
+            ),
+            inspection: inspect_final_image(ctx: ctx, derived: spec.tag, base: base_reference, l: l),
+          }
       }
   }
 }
@@ -669,6 +916,126 @@ type FinalImageInspection
   | FinalImageDependencyReplaced { observed: NonEmptyStr, expected: NonEmptyStr }
   | FinalImageExtensionStale { observed: NonEmptyStr, expected: NonEmptyStr }
   | FinalImageUnread { cause: NonEmptyStr }
+
+// ── ASKING THE FINAL IMAGE, AND ASKING IT AGAINST SOMETHING IT CANNOT DECIDE FOR ITSELF ─────
+//
+// THE TWO QUESTIONS HAVE DIFFERENT ORACLES AND THAT IS WHY THIS TAKES TWO READINGS. Whether the acquired
+// FlashInfer survived is decidable against a DECLARED value -- the acquisition row names the version, and
+// the layer exists to put exactly that version in the image, so an exact comparison is justified.
+// Whether vLLM survived is not: this repository holds no declared string for what `vllm.__version__`
+// prints in a source build, and inventing one would be a literal with no authority behind it -- the
+// change-detector shape DESIGN section 5 forbids, where updating the literal IS the test's whole content.
+//
+// SO VLLM IS JUDGED BY COMPARISON RATHER THAN BY A LITERAL. The layer installs with --no-deps precisely
+// so that nothing resolves vLLM again; therefore the version the DERIVED image reports must equal the one
+// the BASE image reports, and the base is the oracle. That is an equality between two observations of the
+// same run, needs no authored expectation, and falsifies exactly the failure worth catching: a dependency
+// solve inside the layer quietly replacing the compiled extension this whole exercise exists to keep.
+//
+// THE PROBE NAMES ITS ENTRYPOINT for the reason docker_run_ephemeral_command records: an image built to
+// serve carries a serving entrypoint, and `docker run <image> python3 -c ...` hands those words to the
+// server rather than running python.
+data final_image_dependency_probe_source: String = "import flashinfer, vllm; print('FLASHINFER_VERSION', flashinfer.__version__); print('VLLM_VERSION', vllm.__version__)"
+
+data image_probe_entrypoint: NonEmptyStr = "python3" as NonEmptyStr
+
+type ProbedVersions sole_constructor {
+  flashinfer: NonEmptyStr
+  vllm: NonEmptyStr
+}
+
+type VersionProbe
+  = VersionsProbed { versions: ProbedVersions }
+  | VersionProbeUnread { cause: NonEmptyStr }
+
+// A LABELLED LINE IS READ BY ITS LABEL, not by position: an import warning on stdout would shift every
+// line, and a reader keyed on line number would then report a warning's text as a version.
+fn probe_labelled_value(stdout: String, label: String) -> NonEmptyStr? {
+  fold(split(s: stdout, separator: "\n"), init: none, f: (acc, line) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if starts_with(s: trim(s: line), prefix: join([label, " "], "")) {
+          match get(xs: split(s: trim(s: line), separator: " "), index: 1) {
+            Absent => none
+            Present { value: w } => if trim(s: w) == "" { none } else { Present { value: trim(s: w) as NonEmptyStr } }
+          }
+        } else { acc }
+    })
+}
+
+func probe_image_versions(ctx: SparkMaterializeContext, image: NonEmptyStr) -> VersionProbe
+  uses net: Network
+{
+  match vllm_docker_leg(ctx: ctx, step: "image-version-probe" as NonEmptyStr,
+    command: docker_run_ephemeral_command(
+      image: image, gpus_all: false, mounts: [],
+      entrypoint: image_probe_entrypoint,
+      argv: ["-c", final_image_dependency_probe_source])) {
+    ImageLegFailed { step: _, cause: why } =>
+      VersionProbeUnread { cause: join(["the version probe did not run inside ", image as String, ": ", why], "") as NonEmptyStr }
+    ImageLegRan { stdout: out } =>
+      match probe_labelled_value(stdout: out, label: "FLASHINFER_VERSION") {
+        Absent => VersionProbeUnread { cause: join(["the probe printed no FLASHINFER_VERSION line: ", out], "") as NonEmptyStr }
+        Present { value: fi } =>
+          match probe_labelled_value(stdout: out, label: "VLLM_VERSION") {
+            Absent => VersionProbeUnread { cause: join(["the probe printed no VLLM_VERSION line: ", out], "") as NonEmptyStr }
+            Present { value: vl } => VersionsProbed { versions: ProbedVersions { flashinfer: fi, vllm: vl } }
+          }
+      }
+  }
+}
+
+// THE BASE READING IS TAKEN FIRST AND IS PART OF THE VERDICT, so an unreadable base produces
+// FinalImageUnread rather than a silently unchecked vLLM. An inspection that skipped the comparison when
+// its oracle was missing would report a derived image as carrying the acquisition on strictly less
+// evidence than the arm claims.
+func inspect_final_image(ctx: SparkMaterializeContext, derived: NonEmptyStr, base: NonEmptyStr, l: DerivedRuntimeLayer) -> FinalImageInspection
+  uses net: Network
+{
+  match flashinfer_published_version(a: l.acquisition) {
+    Absent => FinalImageUnread { cause: "the acquisition names no published version, so there is nothing to compare the image against" as NonEmptyStr }
+    Present { value: expected_flashinfer } =>
+      match probe_image_versions(ctx: ctx, image: base) {
+        VersionProbeUnread { cause: why } =>
+          FinalImageUnread { cause: join(["the BASE image could not be read, so the vLLM comparison has no oracle: ", why as String], "") as NonEmptyStr }
+        VersionsProbed { versions: base_versions } =>
+          match probe_image_versions(ctx: ctx, image: derived) {
+            VersionProbeUnread { cause: why } => FinalImageUnread { cause: why }
+            VersionsProbed { versions: derived_versions } =>
+              if (derived_versions.flashinfer as String) != (expected_flashinfer as String) {
+                FinalImageDependencyReplaced { observed: derived_versions.flashinfer, expected: expected_flashinfer }
+              } else if (derived_versions.vllm as String) != (base_versions.vllm as String) {
+                FinalImageExtensionStale { observed: derived_versions.vllm, expected: base_versions.vllm }
+              } else {
+                FinalImageCarriesAcquisition { flashinfer_version: derived_versions.flashinfer, vllm_version: derived_versions.vllm }
+              }
+          }
+      }
+  }
+}
+
+fn final_image_inspection_receipt(i: FinalImageInspection) -> String {
+  match i {
+    FinalImageCarriesAcquisition { flashinfer_version: f, vllm_version: v } =>
+      join(["final image CARRIES the acquisition flashinfer=", f as String, " vllm=", v as String, "\n"], "")
+    FinalImageDependencyReplaced { observed: o, expected: e } =>
+      join(["final image DEPENDENCY REPLACED observed=", o as String, " expected=", e as String, "\n"], "")
+    FinalImageExtensionStale { observed: o, expected: e } =>
+      join(["final image EXTENSION MOVED observed=", o as String, " base=", e as String, "\n"], "")
+    FinalImageUnread { cause: c } =>
+      join(["final image UNREAD cause=", c as String, "\n"], "")
+  }
+}
+
+fn final_image_inspection_passed(i: FinalImageInspection) -> Bool {
+  match i {
+    FinalImageCarriesAcquisition { flashinfer_version: _, vllm_version: _ } => true
+    FinalImageDependencyReplaced { observed: _, expected: _ } => false
+    FinalImageExtensionStale { observed: _, expected: _ } => false
+    FinalImageUnread { cause: _ } => false
+  }
+}
 
 // ── WHETHER A BUILD CAN BE PERFORMED AT ALL, ASKED BEFORE AN HOUR IS SPENT ────────────────────
 //
@@ -1407,6 +1774,21 @@ fn image_archive_dir() -> NonEmptyStr {
 // name from the CONTENT HASH the build already computes. Two references that differ only in a character
 // a sanitiser would strip would otherwise share one archive, and the second export would overwrite the
 // first silently; a content hash collides only when the inputs do.
+// AN ARCHIVE THAT CANNOT BE READ BY THE PRINCIPAL THAT MOVES IT IS NOT A TRAVELABLE ARCHIVE, which is
+// why the mode is part of producing one rather than a fix-up at the transfer. `docker save -o` runs as
+// root and creates the file 0600 -- measured on srv5 2026-09-13, where the export succeeded and the fetch
+// refused with `remote open ... Permission denied` on a 21.9 GB archive that was otherwise complete.
+//
+// 0644 IS WIDER THAN THE INTENT AND THE TIGHTER FORM IS NAMED RATHER THAN WAVED AT. What this actually
+// wants is ownership transferred to the transport principal, which is what extdeps.tools.chown models --
+// but its PosixOwnerSpec is deliberately constructible only from DECODED NUMERIC IDS, and nothing here
+// reads the uid and gid of a NAMED user on a remote host: extdeps.tools.id reads the ids of the CURRENT
+// user only. So the honest position is that this widens the file to every local account on the host,
+// which on these single-purpose Sparks is root, the operator and the automation principal.
+// NEXT-RUNG TRIGGER: a modelled read of a named user's uid and gid on a remote host, at which point this
+// becomes a chown to the transport principal and the archive stops being world-readable.
+data image_archive_mode: NonEmptyStr = "0644" as NonEmptyStr
+
 fn image_archive_path(key: ContentHash) -> NonEmptyStr {
   join([image_archive_dir() as String, "/", serialize_content_hash(hash: key) as String, ".tar"], "") as NonEmptyStr
 }
@@ -1436,6 +1818,10 @@ func export_image_archive(ctx: SparkMaterializeContext, reference: NonEmptyStr, 
           match vllm_docker_leg(ctx: ctx, step: "export-save" as NonEmptyStr, command: docker_image_save_command(image: reference, destination: image_archive_path(key: archive_key))) {
             ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
             ImageLegRan { stdout: _ } =>
+              match vllm_docker_leg(ctx: ctx, step: "export-readable" as NonEmptyStr,
+                command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: image_archive_mode, path: image_archive_path(key: archive_key) as String)) {
+                ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
+                ImageLegRan { stdout: _ } =>
               match vllm_docker_leg(ctx: ctx, step: "export-digest" as NonEmptyStr, command: sha256sum_digest_command(path: image_archive_path(key: archive_key) as String)) {
                 ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
                 ImageLegRan { stdout: out } =>
@@ -1449,7 +1835,180 @@ func export_image_archive(ctx: SparkMaterializeContext, reference: NonEmptyStr, 
                       }
                   }
               }
+              }
           }
+      }
+  }
+}
+
+// ── MOVING AN ARCHIVE BETWEEN TWO HOSTS, THROUGH THE ONE PLACE THAT CAN REACH BOTH ────────
+//
+// NEITHER SPARK CAN AUTHENTICATE TO THE OTHER, AND GIVING ONE THE ABILITY WOULD BE THE REAL CHANGE HERE.
+// A direct host-to-host copy needs a credential on the SOURCE host that reaches the destination, which
+// means putting fleet key material on a machine that had none -- a standing capability added to
+// discharge a one-off transfer. The controller already holds the credential that reaches both, so the
+// archive travels down and then up, and no host gains an authority it did not have.
+//
+// THE COST IS STATED RATHER THAN HIDDEN: the bytes cross the LAN twice and land on the controller's disk
+// in between. For a twenty-gigabyte image that is a real price, and it buys the property above. A direct
+// leg becomes the better trade only once a source-to-destination credential is a modelled, intended
+// capability rather than a side effect of this transfer.
+//
+// WHAT THE MEASURED FIGURES ARE ABOUT, NAMED SO THEY CANNOT BE READ AS SOMETHING BETTER. Observed
+// 2026-09-13 moving the 21.9 GB GLM base from srv5 to srv9: export about a minute, fetch three minutes,
+// controller-side digest verification 31 seconds, push three minutes, destination-side verification 10
+// seconds, load about a minute. THAT IS THIS ROUTE -- two scp hops through the controller over the
+// management endpoints spark_reach_endpoint resolves -- AND IT IS NOT A MEASUREMENT OF THE FABRIC RAIL.
+// No leg here opens a rail address, so the rail's advertised capacity says nothing about the rate above,
+// and a selector comparing routes must not attribute this figure to a direct peer transport that has not
+// run. What a fast interconnect buys is a reason to MODEL a direct realization; the end-to-end rate of
+// that realization is unmeasured until one exists.
+//
+// THE DIGEST IS THE JOIN. export_image_archive already answers with the archive's sha256 measured ON THE
+// SOURCE; each hop is verified against that same value, so a truncated copy is caught at the hop that
+// truncated it rather than as a confusing load failure later.
+//
+// EACH STEP TAKES THE LEG THAT SHOULD OWN ITS RESULT, WHICH IS A RULE AND NOT A PREFERENCE. A directory
+// the transport principal must write into is CREATED by the transport principal, so it owns it; only the
+// operations that genuinely need root -- reading the daemon, saving, loading -- take the privileged leg.
+// Getting this backwards is not a permission detail, it is a directory nobody can use: measured on srv9
+// 2026-09-13, `mkdir -p` over the privileged leg produced a root-owned image-archives and the push
+// refused with `dest open ... Permission denied` after a complete 21.9 GB fetch. `mkdir -p` on an
+// existing directory succeeds WITHOUT changing its ownership, so a wrong-owner directory is sticky and a
+// re-run does not repair it.
+data image_transfer_staging_dir: NonEmptyStr = "target/spark-image-transfer" as NonEmptyStr
+
+fn image_transfer_local_path(key: ContentHash) -> NonEmptyStr {
+  join([image_transfer_staging_dir as String, "/", serialize_content_hash(hash: key) as String, ".tar"], "") as NonEmptyStr
+}
+
+type ArchiveHopOutcome
+  = ArchiveHopCompleted
+  | ArchiveHopRefused { step: NonEmptyStr, cause: String }
+
+fn scp_leg(step: NonEmptyStr, args: List<String>) -> ArchiveHopOutcome {
+  let r = scp_copy_portable_words(client_args: args)
+  if r.success {
+    ArchiveHopCompleted
+  } else {
+    ArchiveHopRefused { step: step, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+  }
+}
+
+// THE LOCAL COPY IS DIGESTED BEFORE IT IS SENT ONWARD, because a hop that silently truncated would
+// otherwise be discovered on the destination, where the natural reading is that the DESTINATION is at
+// fault. Verifying here attributes the failure to the hop that caused it.
+fn verify_local_archive(path: NonEmptyStr, expected: NonEmptyStr) -> ArchiveHopOutcome {
+  match sha256sum_verify_via_shell(path: path, expected_digest: expected) {
+    Sha256Matches => ArchiveHopCompleted
+    Sha256Mismatch =>
+      ArchiveHopRefused { step: "fetch-verify" as NonEmptyStr, cause: join(["the archive fetched to the controller does not match the digest measured on the source: ", expected as String], "") }
+    Sha256VerifyInfraFailure { reason: why } =>
+      ArchiveHopRefused { step: "fetch-verify" as NonEmptyStr, cause: why as String }
+  }
+}
+
+type ImageRelocation
+  = ImageRelocated { destination: HostIdentity, local_image_id: NonEmptyStr, archive_sha256: NonEmptyStr }
+  | ImageRelocationRefused { step: NonEmptyStr, cause: String }
+
+// SOURCE CONTEXT AND DESTINATION CONTEXT ARE SEPARATE PARAMETERS BECAUSE THEY ARE SEPARATE HOSTS, and
+// each outcome names the host of the context that produced it. A single context with a host field passed
+// beside it is the shape distribute_image_to was corrected away from.
+func relocate_image(
+  source_ctx: SparkMaterializeContext,
+  source_target: SshTarget,
+  dest_ctx: SparkMaterializeContext,
+  dest_target: SshTarget,
+  context: FleetSshExecutionContext,
+  reference: NonEmptyStr,
+  archive_key: ContentHash,
+) -> ImageRelocation
+  uses net: Network
+{
+  match export_image_archive(ctx: source_ctx, reference: reference, archive_key: archive_key) {
+    ImageExportRefused { step: st, cause: why } => ImageRelocationRefused { step: st, cause: why }
+    ImageExported { archive_path: remote_archive, archive_sha256: digest, source_image_id: _ } =>
+      match relocate_archive_hops(
+        source_target: source_target, dest_ctx: dest_ctx, dest_target: dest_target, context: context,
+        remote_archive: remote_archive, digest: digest, archive_key: archive_key,
+      ) {
+        ArchiveHopRefused { step: st, cause: why } => ImageRelocationRefused { step: st, cause: why }
+        ArchiveHopCompleted => relocate_load_and_read(dest_ctx: dest_ctx, reference: reference, remote_archive: remote_archive, digest: digest)
+      }
+  }
+}
+
+func relocate_archive_hops(
+  source_target: SshTarget,
+  dest_ctx: SparkMaterializeContext,
+  dest_target: SshTarget,
+  context: FleetSshExecutionContext,
+  remote_archive: NonEmptyStr,
+  digest: NonEmptyStr,
+  archive_key: ContentHash,
+) -> ArchiveHopOutcome
+  uses net: Network
+{
+  let local_archive = image_transfer_local_path(key: archive_key)
+  let made = shell.Mkdir.Parents(path: image_transfer_staging_dir as FilePath)
+  if made.success == false {
+    ArchiveHopRefused { step: "staging-dir" as NonEmptyStr, cause: "the controller staging directory could not be created" }
+  } else {
+    match scp_leg(step: "fetch" as NonEmptyStr, args: shape_fleet_scp_fetch_argv(
+      context: context, target: source_target, remote_path: remote_archive, local_path: local_archive)) {
+      ArchiveHopRefused { step: st, cause: why } => ArchiveHopRefused { step: st, cause: why }
+      ArchiveHopCompleted =>
+        match verify_local_archive(path: local_archive, expected: digest) {
+          ArchiveHopRefused { step: st, cause: why } => ArchiveHopRefused { step: st, cause: why }
+          ArchiveHopCompleted =>
+            match vllm_image_leg(target: dest_target, context: context, step: "dest-archive-dir" as NonEmptyStr,
+              command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: image_archive_dir() as String)) {
+              ImageLegFailed { step: st, cause: why } => ArchiveHopRefused { step: st, cause: why }
+              ImageLegRan { stdout: _ } =>
+                scp_leg(step: "push" as NonEmptyStr, args: shape_fleet_scp_push_argv(
+                  context: context, target: dest_target, local_path: local_archive, remote_path: remote_archive))
+            }
+        }
+    }
+  }
+}
+
+// AND THE DESTINATION IS READ BACK RATHER THAN INFERRED FROM A LOAD THAT EXITED ZERO, for the reason
+// distribute_image_to already states: `docker load` reporting success says an archive was accepted, not
+// which image id the daemon now holds under the reference this deployment will launch.
+func relocate_load_and_read(dest_ctx: SparkMaterializeContext, reference: NonEmptyStr, remote_archive: NonEmptyStr, digest: NonEmptyStr) -> ImageRelocation
+  uses net: Network
+{
+  match vllm_docker_leg(ctx: dest_ctx, step: "dest-verify-archive" as NonEmptyStr,
+    command: sha256sum_digest_command(path: remote_archive as String)) {
+    ImageLegFailed { step: st, cause: why } => ImageRelocationRefused { step: st, cause: why }
+    ImageLegRan { stdout: out } =>
+      match get(xs: split(s: trim(s: out), delimiter: " "), index: 0) {
+        Absent => ImageRelocationRefused { step: "dest-verify-archive" as NonEmptyStr, cause: "sha256sum produced no digest field on the destination" }
+        Present { value: landed } =>
+          if landed != (digest as String) {
+            ImageRelocationRefused { step: "dest-verify-archive" as NonEmptyStr, cause: join(["the archive on the destination does not match the digest measured on the source: expected ", digest as String, " observed ", landed], "") }
+          } else {
+            relocate_load(dest_ctx: dest_ctx, reference: reference, remote_archive: remote_archive, digest: digest)
+          }
+      }
+  }
+}
+
+func relocate_load(dest_ctx: SparkMaterializeContext, reference: NonEmptyStr, remote_archive: NonEmptyStr, digest: NonEmptyStr) -> ImageRelocation
+  uses net: Network
+{
+  match vllm_docker_leg(ctx: dest_ctx, step: "dest-load" as NonEmptyStr, command: docker_image_load_command(archive: remote_archive)) {
+    ImageLegFailed { step: st, cause: why } => ImageRelocationRefused { step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match read_image_identity(ctx: dest_ctx, reference: reference) {
+        ImageIdentityAbsent { reference: r } =>
+          ImageRelocationRefused { step: "dest-readback" as NonEmptyStr, cause: join(["the load reported success and the destination holds no image at ", r as String], "") }
+        ImageIdentityUnreadable { reference: _, cause: why } =>
+          ImageRelocationRefused { step: "dest-readback" as NonEmptyStr, cause: why }
+        ImageIdentityObserved { reference: _, local_image_id: id } =>
+          ImageRelocated { destination: dest_ctx.host, local_image_id: id, archive_sha256: digest }
       }
   }
 }
@@ -2022,4 +2581,280 @@ fn wheel_population_receipt(at: WheelPopulationAt) -> String {
 
 fn acquired_wheel_line(at: WheelPopulationAt, w: AcquiredWheel) -> String {
   join(["wheel ready host=", at.host as String, " name=", w.filename as String, " path=", w.install_path as String, "\n"], "")
+}
+
+// ── THE DERIVED BUILD, AS AN ENTRY THAT RUNS ───────────────────────────────────────
+//
+// THE WHEELS ARE MATERIALIZED AGAIN RATHER THAN ASSUMED, and that is not a wasted step: the acquisition
+// fold observes the destination first and returns AcquisitionAlreadyPresent on a verified copy without
+// touching the network or the index. So a build re-run costs three digest reads and proves the inputs are
+// still the bytes this layer was keyed on, which is exactly what a build should establish before it
+// starts rather than what a previous run's receipt asserts on its behalf.
+//
+// AND THE BUILD CONSUMES THE ACQUISITION'S OWN PATHS. The population answers with identity and verified
+// path together; nothing here reconstructs a location from a filename.
+data spark_derived_build_attempt_raw: String = "spark-glm53-derived-build"
+data spark_derived_build_receipt_path: String = "target/spark-glm53-derived-build-receipt.txt"
+
+func glm53_nope_derived_build_wet(host_raw: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match admit_spark_build_host(raw: host_raw) {
+    SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+    SparkBuildHostAdmitted { host: host } => glm53_nope_derived_build_on(host: host, now: now)
+  }
+}
+
+func glm53_nope_derived_build_on(host: HostIdentity, now: NonEmptyStr?) -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_identity(raw: spark_derived_build_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } =>
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: "the trust policy could not be sealed for the privileged leg")
+                Present { value: trust } =>
+                  match observe_executor_reach() {
+                    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["executor reach: ", c], ""))
+                    ExecutorReachKnown { short_hostname: _, path: path } =>
+                      match spark_reach_endpoint(host: host, path: path) {
+                        Absent => exit_failure(reason: join(["no endpoint for ", host as String], ""))
+                        Present { value: endpoint } =>
+                          match read_bootstrap_credential() {
+                            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                            BootstrapCredentialReady { secret: administrator } =>
+                              match with_materialized_ssh_key_file(
+                                identity_file_name: "gunbc-derived-build-admin-password" as NonEmptyStr,
+                                secret_bytes: administrator as Secret,
+                                use: fn(file) {
+                                  glm53_nope_derived_build_with(
+                                    ctx: SparkMaterializeContext {
+                                      host: host,
+                                      trust: trust,
+                                      path: path,
+                                      admin_credential: administrator as Secret,
+                                      admin_credential_file: file,
+                                      executor: HostCli,
+                                    },
+                                    target: SshTarget {
+                                      endpoint: endpoint as NonEmptyStr,
+                                      principal: spark_managed_executor_login as NonEmptyStr,
+                                    },
+                                    context: context,
+                                  )
+                                },
+                              ) {
+                                MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                                MaterializedSshKeyFileBracketCompleted { value: built } => {
+                                  let body = join([
+                                    join(["glm53 derived build probed_at=", probed_at_word(reading: now) as String, " host=", host as String, "\n"], ""),
+                                    derived_layer_build_receipt(b: built),
+                                  ], "")
+                                  let w = Filesystem.Write(path: spark_derived_build_receipt_path, content: body)
+                                  if !w.success {
+                                    exit_failure(reason: "the derived build receipt could not be written")
+                                  } else {
+                                    match built {
+                                      DerivedLayerBuilt { tag: _, local_image_id: _, base_image_id: _, base_layers_extended: ext, inspection: i } =>
+                                        if ext && final_image_inspection_passed(i: i) { ExitSuccess }
+                                        else { exit_failure(reason: derived_layer_build_receipt(b: built)) }
+                                      DerivedLayerBuildRefused { step: _, cause: _ } => exit_failure(reason: derived_layer_build_receipt(b: built))
+                                    }
+                                  }
+                                }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+func glm53_nope_derived_build_with(ctx: SparkMaterializeContext, target: SshTarget, context: FleetSshExecutionContext) -> DerivedLayerBuild
+  uses net: Network
+{
+  let at = materialize_wheels_on(
+    ctx: ctx,
+    ws: flashinfer_0_7_0_dev20260910_wheels,
+    parent: wheel_retention_directory(),
+  )
+  match at.population {
+    WheelsIncomplete { failures: _, ready: _ } =>
+      DerivedLayerBuildRefused { step: "wheel-inputs" as NonEmptyStr, cause: wheel_population_receipt(at: at) }
+    WheelsReady { wheels: ws } =>
+      build_derived_layer(
+        ctx: ctx,
+        target: target,
+        context: context,
+        l: glm53_nope_derived_layer(base_tag: glm53_nope_out_of_band_image_tag),
+        base_reference: glm53_nope_out_of_band_image_tag,
+        wheels: ws,
+      )
+  }
+}
+
+fn derived_layer_build_receipt(b: DerivedLayerBuild) -> String {
+  match b {
+    DerivedLayerBuilt { tag: t, local_image_id: id, base_image_id: base, base_layers_extended: ext, inspection: i } =>
+      join([
+        "derived image BUILT tag=", t as String, "\n",
+        "derived image identity=", id as String, "\n",
+        "derived image base=", base as String, "\n",
+        if ext { "derived image STANDS ON the observed base (layer prefix verified)\n" }
+        else { "derived image DOES NOT stand on the observed base: its layers do not extend the base's\n" },
+        final_image_inspection_receipt(i: i),
+      ], "")
+    DerivedLayerBuildRefused { step: st, cause: c } =>
+      join(["derived build REFUSED step=", st as String, " cause=", c, "\n"], "")
+  }
+}
+
+// ── RELOCATING THE BASE, AS AN ENTRY THAT RUNS ───────────────────────────────────
+//
+// THE SOURCE IS NOT ADMITTED AS A BUILD HOST AND MUST NOT BE. This entry exists because the GLM NoPE base
+// was built out of band on srv5 -- a serving member of group A, which admit_spark_build_host correctly
+// refuses for builds -- while the admissible build hosts are exactly the non-serving ones that do not
+// hold it. That is not a defect in the admission rule; it is the rule reporting a real consequence of an
+// out-of-band build, and the repair is to move the artifact rather than to relax the rule.
+//
+// SO THE TWO HOSTS ARE ADMITTED BY DIFFERENT QUESTIONS: the source only has to be a rostered Spark this
+// fleet can reach, because reading and exporting an image does not occupy it the way a build does; the
+// destination has to pass the BUILD admission, because that is what it is about to be used for.
+data spark_relocate_attempt_raw: String = "spark-image-relocate"
+data spark_relocate_receipt_path: String = "target/spark-image-relocate-receipt.txt"
+
+func glm53_nope_base_relocate_wet(source_raw: String, dest_raw: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  if source_raw == "" {
+    exit_failure(reason: "a source host is required")
+  } else {
+    match admit_spark_build_host(raw: dest_raw) {
+      SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+      SparkBuildHostAdmitted { host: dest } =>
+        glm53_nope_base_relocate_on(source: source_raw as HostIdentity, dest: dest, now: now)
+    }
+  }
+}
+
+func glm53_nope_base_relocate_on(source: HostIdentity, dest: HostIdentity, now: NonEmptyStr?) -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_identity(raw: spark_relocate_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } =>
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: "the trust policy could not be sealed for the privileged leg")
+                Present { value: trust } =>
+                  match observe_executor_reach() {
+                    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["executor reach: ", c], ""))
+                    ExecutorReachKnown { short_hostname: _, path: path } =>
+                      match spark_reach_endpoint(host: source, path: path) {
+                        Absent => exit_failure(reason: join(["no endpoint for source ", source as String], ""))
+                        Present { value: source_endpoint } =>
+                          match spark_reach_endpoint(host: dest, path: path) {
+                            Absent => exit_failure(reason: join(["no endpoint for destination ", dest as String], ""))
+                            Present { value: dest_endpoint } =>
+                              match read_bootstrap_credential() {
+                                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                                BootstrapCredentialReady { secret: administrator } =>
+                                  match with_materialized_ssh_key_file(
+                                    identity_file_name: "gunbc-relocate-admin-password" as NonEmptyStr,
+                                    secret_bytes: administrator as Secret,
+                                    use: fn(file) {
+                                      relocate_image(
+                                        source_ctx: SparkMaterializeContext {
+                                          host: source, trust: trust, path: path,
+                                          admin_credential: administrator as Secret,
+                                          admin_credential_file: file, executor: HostCli,
+                                        },
+                                        source_target: SshTarget {
+                                          endpoint: source_endpoint as NonEmptyStr,
+                                          principal: spark_managed_executor_login as NonEmptyStr,
+                                        },
+                                        dest_ctx: SparkMaterializeContext {
+                                          host: dest, trust: trust, path: path,
+                                          admin_credential: administrator as Secret,
+                                          admin_credential_file: file, executor: HostCli,
+                                        },
+                                        dest_target: SshTarget {
+                                          endpoint: dest_endpoint as NonEmptyStr,
+                                          principal: spark_managed_executor_login as NonEmptyStr,
+                                        },
+                                        context: context,
+                                        reference: glm53_nope_out_of_band_image_tag,
+                                        archive_key: artifact_realization_digest(inputs: [
+                                          ArtifactRealizationInput {
+                                            identity: "image_reference" as NonEmptyStr,
+                                            content_digest: content_hash_atom(value: glm53_nope_out_of_band_image_tag),
+                                          },
+                                        ]),
+                                      )
+                                    },
+                                  ) {
+                                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                                    MaterializedSshKeyFileBracketCompleted { value: moved } => {
+                                      let body = join([
+                                        join(["glm53 base relocate probed_at=", probed_at_word(reading: now) as String,
+                                              " source=", source as String, " destination=", dest as String, "\n"], ""),
+                                        image_relocation_receipt(r: moved),
+                                      ], "")
+                                      let w = Filesystem.Write(path: spark_relocate_receipt_path, content: body)
+                                      if !w.success {
+                                        exit_failure(reason: "the relocation receipt could not be written")
+                                      } else {
+                                        match moved {
+                                          ImageRelocated { destination: _, local_image_id: _, archive_sha256: _ } => ExitSuccess
+                                          ImageRelocationRefused { step: _, cause: _ } => exit_failure(reason: image_relocation_receipt(r: moved))
+                                        }
+                                      }
+                                    }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn image_relocation_receipt(r: ImageRelocation) -> String {
+  match r {
+    ImageRelocated { destination: d, local_image_id: id, archive_sha256: a } =>
+      join([
+        "image RELOCATED destination=", d as String, "\n",
+        "image identity=", id as String, "\n",
+        "archive sha256=", a as String, "\n",
+      ], "")
+    ImageRelocationRefused { step: st, cause: c } =>
+      join(["relocation REFUSED step=", st as String, " cause=", c, "\n"], "")
+  }
 }
