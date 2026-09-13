@@ -213,7 +213,7 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self,
+    template_return_is_receiver_self, value_binding_expr_type_node,
 };
 pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -20234,7 +20234,10 @@ pub fn unify_generics(
                     Some(fc) => match actual.children.clone().first().cloned() {
                         Some(ac) => {
                             let __tco_0 = fc.clone();
-                            let __tco_1 = ac.clone();
+                            let __tco_1 =
+                                crate::v1_compiler_infer_types::value_binding_expr_type_node(
+                                    ac.clone(),
+                                );
                             formal = __tco_0;
                             actual = __tco_1;
                             continue;
