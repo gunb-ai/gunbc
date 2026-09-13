@@ -2109,13 +2109,6 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
              cpu_at_least={}ms wall_at_least={}ms/{}ms enrolled_expected_red={} {}",
             refused.qualified,
             refused.interrupt.raised_by.label(),
-            // BOTH CLOCKS, EACH AGAINST ITS OWN LIMIT. These are LOWER BOUNDS, which is what
-            // `at_least` says: the deadline preempted the witness, so the true cost is above
-            // them by an unbounded amount. They are printed anyway because the PAIR is what a
-            // reader needs — a row blocked on I/O that went away shows a small cpu figure beside
-            // a wall figure at its ceiling, and a row that genuinely computed shows cpu at or
-            // above the cpu limit. `cost=UNMEASURED` in the sentence that follows stays true of
-            // both and is what stops either figure being read as this row's cost.
             // BOTH CLOCKS, AND ONLY ONE LIMIT, BECAUSE ONLY ONE IS ARMED. These are LOWER
             // BOUNDS, which is what `at_least` says: the deadline preempted the witness, so the
             // true cost is above them by an unbounded amount. The CPU figure is printed WITHOUT a

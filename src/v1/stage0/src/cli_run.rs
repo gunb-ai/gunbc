@@ -10560,11 +10560,14 @@ impl SafetyInterruptTrigger {
 /// says `cost=UNMEASURED`, correctly — the row's cost is a lower bound with no upper bound. Read
 /// as the system's silence rather than as one surface's, it says the fact does not exist. It
 /// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
-/// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
+/// claim ends, and threads in the one limit `WitnessSafetyPolicy` still arms — the wall.
 ///
-/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A reading at or above its own limit PROVES
-/// real in-process computation: a thread-cpu observation cannot reach `cpu_safety_limit_ms` on a
-/// claim that burned no CPU. That direction is sound and it is the one a reader may use.
+/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A wall reading at or above its limit PROVES
+/// the claim was stopped rather than finished. The CPU figure is printed beside it and is
+/// compared against no ceiling: since 2026-09-12 the required floor arms no CPU deadline, so
+/// there is no CPU limit a reading could reach. An earlier revision of this paragraph said a
+/// thread-cpu observation "cannot reach `cpu_safety_limit_ms`" — a field this same change
+/// deletes.
 ///
 /// THE CONVERSE IS NOT SOUND, and the reason is not that these are bounds. Both readings are
 /// genuine observations at interrupt time — `run_claim_measured` samples both clocks around the
@@ -11009,32 +11012,40 @@ pub enum ClaimTerminality {
     },
 }
 
-/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
-/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
-/// protects against a blocked or descheduled process — different jobs, so the wall limit must
-/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
-/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
-/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
-/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
-/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
-/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+/// ONE ARMED SAFETY LIMIT, THE WALL, protecting against a blocked or descheduled process. It is
+/// not a cost allowance: crossing it is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `wall_safety_limit_ms` field for the live-wired instantiation of this policy
+/// (`v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms` is its declared
+/// value).
 ///
-/// PREEMPTION-1 (operator-directed, 2026-08-19): "crossing either blocks" holds only when
+/// IT USED TO BE A PAIR, AND THE CPU HALF IS DELETED RATHER THAN LOOSENED. This doc described
+/// "two independently derived safety limits" with the wall derived LOOSER than a CPU limit, and
+/// cited a `cpu_safety_limit_ms` field that this same change removes. What replaced the CPU half
+/// is not another clock: the claim ceiling now gates on EVAL STEPS, a property of the tree rather
+/// than of the runner, and CPU is observed and published for every claim without deciding
+/// anything (`v2.workflow.required_floor` `claim_cost_basis_standing`). So there is no longer a
+/// CPU envelope for the wall to be derived looser than, and the independence argument that
+/// sentence made has no second limit to be independent of.
+///
+/// PREEMPTION-1 (operator-directed, 2026-08-19), RESTATED FOR ONE LIMIT: "crossing it blocks" holds only when
 /// `eval_expr`'s cooperative stride-poll actually observes the crossing (see that function's own
 /// comment on the residue this leaves, and `std.evaluation_budget`
 /// `evaluation_budget_opaque_host_call_note` for the modeled fact). A claim whose cost accrues
 /// entirely inside one opaque host call — a native `free_call.*` arm such as
 /// `compile_dag_rust_emit_check`, which runs synchronously and never calls back into `eval_expr`
-/// — crosses neither limit as far as the poll can tell, however long it runs, and completes as
+/// — does not cross the limit as far as the poll can tell, however long it runs, and completes as
 /// `ClaimTerminality::VerdictReached` rather than `SafetyInterrupted`. Measured, not suspected:
 /// floor run 32301212975 recorded `root_d_checkpoint_scalar_declared_arity_witness_holds`
 /// (dominated by a `compile_dag_rust_emit_check` call) reaching a verdict at 60317ms CPU against
 /// a 5000ms `cpu_ms` limit, twelve times over and uninterrupted, reported through
 /// `RequiredFloorOutcome`'s `completed_over_cost_requirement` population rather than through a
-/// safety interrupt. These two limits are real protection for cost that accrues across many
-/// `eval_expr` calls and no protection — not weaker, none — for cost that accrues inside a
-/// single opaque host call; nothing downstream may be built on the assumption that arming them
-/// makes a host call interruptible.
+/// safety interrupt. That measurement is kept because it is the evidence for the residue, and it
+/// is reported against the CPU limit standing at the time; the residue itself is unchanged by
+/// that limit's deletion, because it was never the CPU clock that made a host call
+/// uninterruptible — it is the absent stride-poll. The wall limit is real protection for cost
+/// that accrues across many `eval_expr` calls and no protection — not weaker, none — for cost
+/// that accrues inside a single opaque host call; nothing downstream may be built on the
+/// assumption that arming it makes a host call interruptible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WitnessSafetyPolicy {
     pub wall_ms: u64,

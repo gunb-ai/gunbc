@@ -96,7 +96,7 @@ population authority. The comparison is also cross-head, so it cannot separate t
 machine, scheduling, or fill-order variance. This document therefore does not transcribe the
 derived distribution or promote either run's threshold membership into a roster. The two lines in
 the receipt remain distinct: `cost_line_ms` is diagnostic, while
-`required_floor_claim_cpu_safety_limit_ms` is the merge-blocking deadline over marginal CPU.
+`required_floor_claim_cpu_safety_limit_ms` WAS the merge-blocking deadline over marginal CPU, until the banner above superseded it.
 
 ## Ownership at the commit boundary
 
