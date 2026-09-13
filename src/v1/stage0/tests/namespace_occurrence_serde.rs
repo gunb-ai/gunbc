@@ -36,6 +36,7 @@ fn parse_source(
         Rc::new(source_indices),
         empty_intern_table(),
         allocator,
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
     )
 }
 

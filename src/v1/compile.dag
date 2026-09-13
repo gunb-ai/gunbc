@@ -2,7 +2,7 @@ module v1.compiler.compile
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
 
-import std.syntax { LiteralValue, BinOp }
+import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -1114,7 +1114,8 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
         p.newline_index
       ),
       intern_table: acc.intern_table,
-      occurrence_allocator: acc.occurrence_allocator
+      occurrence_allocator: acc.occurrence_allocator,
+      env: dag_parse_environment
     )
     let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
@@ -1281,14 +1282,20 @@ fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetent
 // heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
 // planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
 // closure: it must keep refusing with `expected name, found Eq`.
-// Singleton occurrence and namespace consumers retain their existing full-node view.
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
-  parse_census_fill_sources_with_retention(sources: sources, retention: RetainParsedModules)
-}
-
-// Annotation admission consumes the full parse. Both accumulator references then
-// share the selected projection so neither retains a discarded body.
-fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
+// ONE CENSUS FOLD, TWO AXES. Main parameterized this fold on RETENTION while this branch
+// parameterized it on the parse ENVIRONMENT; keeping both variants would fork one fold into two
+// bodies that drift (section 3), so the axes meet in a single core and the named wrappers delegate
+// to it. A caller says only what it means to vary.
+//
+// THE ENVIRONMENT AXIS EXISTS because reading one revision's sources means reading them under THAT
+// revision's grammar. `dag_parse_environment` is named in the wrappers and nowhere in the core, so a
+// base-reading caller cannot pick up head rules by omission -- the defect
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names.
+fn parse_census_fill_sources_with(
+  sources: List<SourceFile>,
+  retention: CensusModuleRetention,
+  environment: ParseEnvironment
+) -> CensusFillParse {
   let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
@@ -1298,7 +1305,7 @@ fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention
     annotations: source_annotation_graph_empty(),
     annotation_diagnostics: [],
   }, f: (acc, s) =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
@@ -1313,7 +1320,8 @@ fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention
         p.newline_index
       ),
       intern_table: pre_intern_tokens(tokens: p.tokens, table: acc.intern_table),
-      occurrence_allocator: acc.occurrence_allocator
+      occurrence_allocator: acc.occurrence_allocator,
+      env: environment
     )
     let bound = admit_source_annotations(
       transport: parsed.occurrence_transport,
@@ -1356,6 +1364,42 @@ fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention
     ),
     annotations: parsed.annotations,
   }
+}
+
+// THE THREE WRAPPERS, each varying ONE axis and defaulting the other. Every ordinary consumer
+// parses the running binary's own corpus at full retention, so naming both axes at every call site
+// would be noise; these are the only places `dag_parse_environment` is named on the census path. A
+// caller reading ANOTHER revision must reach the environment form -- arriving here with base-side
+// sources is precisely the silent head-rules read the parameter exists to prevent.
+fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+  parse_census_fill_sources_with(
+    sources: sources,
+    retention: RetainParsedModules,
+    environment: dag_parse_environment
+  )
+}
+
+// Singleton occurrence and namespace consumers select their module-retention projection; the
+// grammar is the running binary's.
+fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
+  parse_census_fill_sources_with(
+    sources: sources,
+    retention: retention,
+    environment: dag_parse_environment
+  )
+}
+
+// Base-side readers select the grammar and keep full retention, because a baseline compared against
+// the head must carry the same declaration detail the head side carries.
+fn parse_census_fill_sources_with_environment(
+  sources: List<SourceFile>,
+  environment: ParseEnvironment
+) -> CensusFillParse {
+  parse_census_fill_sources_with(
+    sources: sources,
+    retention: RetainParsedModules,
+    environment: environment
+  )
 }
 
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {

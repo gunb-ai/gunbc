@@ -28,7 +28,7 @@ pub use crate::std_source_annotation::{
 pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
-pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
@@ -2690,6 +2690,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     acc.intern_table.clone(),
                     acc.occurrence_allocator.clone(),
+                    dag_parse_environment(),
                 );
                 let bound = crate::v1_compiler_annotation_bind::admit_source_annotations(
                     parsed.occurrence_transport.clone(),
@@ -2885,16 +2886,10 @@ pub fn census_retain_parse_result(
     })
 }
 
-pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
-    parse_census_fill_sources_with_retention(
-        sources.clone(),
-        CensusModuleRetention::RetainParsedModules,
-    )
-}
-
-pub fn parse_census_fill_sources_with_retention(
+pub fn parse_census_fill_sources_with(
     sources: Rc<Vec<Rc<SourceFile>>>,
     retention: CensusModuleRetention,
+    environment: Rc<ParseEnvironment>,
 ) -> Rc<CensusFillParse> {
     {
         let parsed = sources.iter().cloned().fold(
@@ -2912,7 +2907,7 @@ pub fn parse_census_fill_sources_with_retention(
                 let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
                     s.content.clone(),
                     s.path.clone(),
-                    dag_parse_environment(),
+                    environment.clone(),
                 );
                 let p = Rc::new(FrontendPrepared {
                     tokens: artifact.tokens.clone(),
@@ -2935,6 +2930,7 @@ pub fn parse_census_fill_sources_with_retention(
                         acc.intern_table.clone(),
                     ),
                     acc.occurrence_allocator.clone(),
+                    environment.clone(),
                 );
                 let bound = crate::v1_compiler_annotation_bind::admit_source_annotations(
                     parsed.occurrence_transport.clone(),
@@ -3015,6 +3011,32 @@ pub fn parse_census_fill_sources_with_retention(
             annotations: parsed.annotations.clone(),
         })
     }
+}
+
+pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
+    parse_census_fill_sources_with(
+        sources.clone(),
+        CensusModuleRetention::RetainParsedModules,
+        dag_parse_environment(),
+    )
+}
+
+pub fn parse_census_fill_sources_with_retention(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    retention: CensusModuleRetention,
+) -> Rc<CensusFillParse> {
+    parse_census_fill_sources_with(sources.clone(), retention.clone(), dag_parse_environment())
+}
+
+pub fn parse_census_fill_sources_with_environment(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    environment: Rc<ParseEnvironment>,
+) -> Rc<CensusFillParse> {
+    parse_census_fill_sources_with(
+        sources.clone(),
+        CensusModuleRetention::RetainParsedModules,
+        environment.clone(),
+    )
 }
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {

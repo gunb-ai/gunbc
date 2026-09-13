@@ -371,6 +371,7 @@ mod compiler_tests {
                     std::rc::Rc::new(expected_source_indices),
                     crate::v1_std_core::empty_intern_table(),
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                 );
                 assert!(expected_left.result.error.is_none());
                 let resolved = crate::v1_compiler_compile::compile_to_resolved(
