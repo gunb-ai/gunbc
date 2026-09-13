@@ -1047,14 +1047,14 @@ pub struct AccountCredit {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CreditRate<P> {
-    pub count: Nat,
+    pub count: i64,
     pub credit: Rc<AccountCredit>,
     pub _phantom: std::marker::PhantomData<P>,
 }
 
 pub type CreditsPerMinute = Rc<CreditRate<PerMinute>>;
 
-pub fn account_credit(issuer: NonEmptyStr) -> Rc<AccountCredit> {
+pub fn account_credit(issuer: String) -> Rc<AccountCredit> {
     Rc::new(AccountCredit {
         issuer: issuer.clone(),
     })
@@ -1072,8 +1072,8 @@ pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
     r.count.clone()
 }
 
-pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> NonEmptyStr {
-    r.credit.issuer.clone()
+pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> String {
+    r.credit.clone().issuer.clone()
 }
 
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
