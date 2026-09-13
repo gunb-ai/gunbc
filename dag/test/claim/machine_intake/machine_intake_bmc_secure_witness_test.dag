@@ -110,6 +110,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialCensusNotTaken,
   PublishedCredentialChannelAccessNotClosed,
   PublishedCredentialUserAccessUnestablished,
+  PublishedCredentialUserAccessDuplicate,
   PublishedCredentialDisabledNotRetired,
   PublishedCredentialLanMemberUnaddressed,
   PublishedCredentialLanProbe,
@@ -1206,6 +1207,8 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
   PublishedCredentialChannelAccessNotClosed { channel: channel_two },
+  PublishedCredentialUserAccessUnestablished { channel: channel_seven },
+  PublishedCredentialUserAccessDuplicate { channel: channel_seven },
   PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
   PublishedCredentialProbeDuplicate { channel: channel_one },
   PublishedCredentialProbeUnmatched { channel: channel_eight },
@@ -1248,11 +1251,13 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialNoAddressableLanMember => 15
     PublishedCredentialLanMemberUnaddressed { channel: _ } => 16
     PublishedCredentialChannelAccessNotClosed { channel: _ } => 17
-    PublishedCredentialCensusMemberUnprobed { channel: _ } => 18
-    PublishedCredentialProbeDuplicate { channel: _ } => 19
-    PublishedCredentialProbeUnmatched { channel: _ } => 20
-    PublishedCredentialRetainedNotAdmittedForProduction => 21
-    PublishedCredentialNotRetained { channel: _ } => 22
+    PublishedCredentialUserAccessUnestablished { channel: _ } => 18
+    PublishedCredentialUserAccessDuplicate { channel: _ } => 19
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => 20
+    PublishedCredentialProbeDuplicate { channel: _ } => 21
+    PublishedCredentialProbeUnmatched { channel: _ } => 22
+    PublishedCredentialRetainedNotAdmittedForProduction => 23
+    PublishedCredentialNotRetained { channel: _ } => 24
   }
 }
 
