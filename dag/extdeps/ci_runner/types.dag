@@ -258,8 +258,8 @@ fn catalog_is_on_surface(catalog: RunnerLabelCatalog, surface: DeclarationRef) -
 // own words; a catalog DeclarationRef is used only when this repository already
 // carries the named SKU (Ampere Altra Q80-30) and the seller names that SKU.
 type ArmSiliconStanding
-  = ArmSiliconCitedSku { cpu: DeclarationRef }
-  | ArmSiliconCitedWords { quoted_family: NonEmptyStr }
+  = ArmSiliconCitedSku { cpu: DeclarationRef, cited_surface: NonEmptyStr }
+  | ArmSiliconCitedWords { quoted_family: NonEmptyStr, cited_surface: NonEmptyStr }
   | ArmSiliconUnread
 
 // WHO PROVISIONS THE ARM CAPACITY, IN THE SELLER'S OWN WORDS. The wholesale

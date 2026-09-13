@@ -7,8 +7,6 @@ import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
-  ArmSiliconCitedWords,
-  ArmSiliconStanding,
   ArmUsdPerMinute,
   ArmListPriceStanding,
   CatalogSnapshot,
@@ -107,8 +105,6 @@ data namespace_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: namespace_catalog_snapshot,
   availability: namespace_runner_catalog,
 )
-
-data namespace_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords { quoted_family: "AmpereOne" }
 
 data namespace_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
   per_minute: MoneyPerMinute {

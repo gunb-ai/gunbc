@@ -120,7 +120,10 @@ data depot_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 // Live-fetched 2026-09-13 from the same runner-types page: Arm runners use Graviton4
 // EC2 instances; the Ubuntu 24.04 arm 2 vCPU row is $0.006/min. That is a resale of
 // AWS ARM, in Depot's own words. Offer standing is unread in the census (pricing page only).
-data depot_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords { quoted_family: "Graviton4 EC2" }
+data depot_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords {
+  quoted_family: "Graviton4 EC2",
+  cited_surface: "depot.dev/docs/github-actions/runner-types: Arm runners use Graviton4 EC2 instances (read 2026-09-13).",
+}
 
 data depot_arm_capacity: ArmCapacityChannel = ResoldNamedCloud { vendor_words: "Graviton4 EC2 instances" }
 

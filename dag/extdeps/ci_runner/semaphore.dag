@@ -90,4 +90,7 @@ data semaphore_q8030_sku_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data semaphore_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku { cpu: semaphore_q8030_sku_ref }
+data semaphore_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku {
+  cpu: semaphore_q8030_sku_ref,
+  cited_surface: "docs.semaphore.io/reference/machine-types: CPU: emulated ARM on Ampere Altra Q80-30 (read 2026-09-13).",
+}

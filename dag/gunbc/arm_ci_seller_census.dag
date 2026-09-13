@@ -97,7 +97,6 @@ import extdeps.ci_runner.namespace {
   namespace_provider_identity,
   namespace_catalog_snapshot,
   namespace_runner_catalog,
-  namespace_arm_silicon,
   namespace_arm_list_price,
   namespace_offer_standing,
 }
@@ -225,7 +224,7 @@ data namespace_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   provider: namespace_provider_identity,
   snapshot: namespace_catalog_snapshot,
   shapes: namespace_runner_catalog,
-  silicon: namespace_arm_silicon,
+  silicon: ArmSiliconUnread,
   capacity: CapacityChannelUnread,
   list_price: namespace_arm_list_price,
   standing: namespace_offer_standing,

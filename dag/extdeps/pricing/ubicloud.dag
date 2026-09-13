@@ -108,7 +108,10 @@ data ubicloud_q8030_sku_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data ubicloud_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku { cpu: ubicloud_q8030_sku_ref }
+data ubicloud_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku {
+  cpu: ubicloud_q8030_sku_ref,
+  cited_surface: "ubicloud.com/docs/github-actions-integration/runner-types.md: arm64 runners run on Ampere Altra Q80-30 (read 2026-09-13).",
+}
 
 data ubicloud_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
   per_minute: ubicloud_arm_standard_2_price.per_minute,

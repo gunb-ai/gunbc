@@ -128,6 +128,7 @@ data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 // Offer standing is unread in the census (hosted-label docs are not a signup surface).
 data github_actions_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords {
   quoted_family: "Cobalt 100-based processors",
+  cited_surface: "GitHub changelog 2025-01-16: Cobalt 100-based processors for public ubuntu-*-arm 4 vCPU (read 2026-09-13).",
 }
 
 data github_actions_arm_capacity: ArmCapacityChannel = ResoldNamedCloud {
