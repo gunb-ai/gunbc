@@ -1,7 +1,8 @@
 module product.inventory
 
-import std.types { Bool, Int, List, NonEmptyStr, Map, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
+import std.list { index_first_occurrences }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -1256,54 +1257,32 @@ type InventoryPopulationBalance
   = InventoryPopulationSummed { balance: InventoryBalance }
   | InventoryPopulationRepeatedLot { repetition: InventoryLotRepetition }
 
-// Internal fold state: positions are consumed by the repeated-lot diagnostic and
-// are not published as part of a successful population reading.
-type InventoryPopulationFold {
-  distribution: StockDistribution
-  lot_positions: Map<InventoryLotIdentity, Nat>
-  repetition: InventoryLotRepetition?
-}
-
 fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
-  let settled = fold(ledgers, init: InventoryPopulationFold {
-    distribution: empty_stock_distribution(),
-    lot_positions: empty_map(),
-    repetition: none,
-  }, f: fn(acc, ledger) {
-    match acc.repetition {
-      Present { value: _ } => acc
-      Absent => match lookup(acc.lot_positions, ledger.lot.identity) {
-        Present { value: first } => InventoryPopulationFold {
-          distribution: acc.distribution,
-          lot_positions: acc.lot_positions,
-          repetition: Present { value: InventoryLotRepetition {
-            lot: ledger.lot.identity, first_ordinal: first, ledger_ordinal: acc.lot_positions.length(),
-          } },
-        }
-        Absent => {
-          let d = ledger.distribution
-          let total = acc.distribution
-          InventoryPopulationFold {
-            lot_positions: map_insert(acc.lot_positions, ledger.lot.identity, acc.lot_positions.length()),
-            repetition: none,
-            distribution: StockDistribution {
-              awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
-              unqualified: total.unqualified + d.unqualified,
-              quarantined: total.quarantined + d.quarantined,
-              available: total.available + d.available,
-              reserved: total.reserved + d.reserved,
-              installed: total.installed + d.installed,
-              departed: total.departed + d.departed,
-            },
-          }
-        }
-      }
+  let indexed = index_first_occurrences(xs: ledgers, key: ledger => ledger.lot.identity)
+  match indexed.repetition {
+    Present { value: repeated } => InventoryPopulationRepeatedLot {
+      repetition: InventoryLotRepetition {
+        lot: repeated.key,
+        first_ordinal: repeated.first_ordinal,
+        ledger_ordinal: repeated.repeated_ordinal,
+      },
     }
-  })
-  match settled.repetition {
-    Present { value: repeated } => InventoryPopulationRepeatedLot { repetition: repeated }
-    Absent => InventoryPopulationSummed {
-      balance: inventory_balance_from_distribution(distribution: settled.distribution),
+    Absent => {
+      let distribution = fold(ledgers, init: empty_stock_distribution(), f: fn(total, ledger) {
+        let d = ledger.distribution
+        StockDistribution {
+          awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
+          unqualified: total.unqualified + d.unqualified,
+          quarantined: total.quarantined + d.quarantined,
+          available: total.available + d.available,
+          reserved: total.reserved + d.reserved,
+          installed: total.installed + d.installed,
+          departed: total.departed + d.departed,
+        }
+      })
+      InventoryPopulationSummed {
+        balance: inventory_balance_from_distribution(distribution: distribution),
+      }
     }
   }
 }

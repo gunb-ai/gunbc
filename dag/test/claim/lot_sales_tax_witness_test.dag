@@ -1,6 +1,7 @@
 module test.claim.lot_sales_tax_witness
 
 import std.types { Bool, List, NonEmptyStr }
+import std.list { index_first_occurrences }
 import product.inventory {
   InventoryLotAllocator,
   InventoryLotIdentity,
@@ -370,4 +371,17 @@ test fn w_indexed_tax_join_retains_duplicate_priority_and_ordinals() -> Bool {
     LedgerMissingTax { lot: _ } => false
     TaxWithoutLedger { lot: _ } => false
   }
+}
+
+// A later new key must retain its input ordinal, not the number of distinct keys.
+// Repetitions do not truncate the coverage index or replace the first diagnostic.
+test fn w_first_occurrence_index_retains_suffix_and_input_ordinals() -> Bool {
+  let indexed = index_first_occurrences(xs: [7, 4, 7, 9, 4], key: value => value)
+  (match indexed.repetition {
+    Present { value: r } => r.key == 7 && r.first_ordinal == 0 && r.repeated_ordinal == 2
+    Absent => false
+  }) && (match lookup(indexed.positions, 9) {
+    Present { value: ordinal } => ordinal == 3
+    Absent => false
+  }) && indexed.positions.length() == 3 && indexed.next_ordinal == 5
 }

@@ -2,11 +2,11 @@ module product.lot_sales_tax
 
 import std.types { Bool, List, Map, NonEmptyStr }
 import std.nat { Nat }
-import std.list { list_cover }
+import std.list { list_cover, index_first_occurrences }
 import std.measure { PartsPerMillion }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
-import product.inventory { InventoryLotIdentity, InventoryLotRepetition, inventory_lot_identity_eq }
+import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
 // census exists to carry: whether tax was collected, at which jurisdiction and rate, and
@@ -137,44 +137,12 @@ type LotTaxPopulation
   = LotTaxPopulationComplete { rows: List<LotTaxEvidence> }
   | LotTaxPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
 
-// Keep only the first position for each identity. A refusal retains its original
-// ordinals; successful admission returns the input rows without rebuilding their list.
-type LotTaxPopulationFold {
-  lot_positions: Map<InventoryLotIdentity, Nat>
-  repetition: InventoryLotRepetition?
-}
-
-fn index_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulationFold {
-  fold(rows, init: LotTaxPopulationFold {
-    lot_positions: empty_map(),
-    repetition: none,
-  }, f: fn(acc, row) {
-    match acc.repetition {
-      Present { value: _ } => acc
-      Absent => match lookup(acc.lot_positions, row.lot) {
-        Present { value: first } => LotTaxPopulationFold {
-          lot_positions: acc.lot_positions,
-          repetition: Present { value: InventoryLotRepetition {
-            lot: row.lot,
-            first_ordinal: first,
-            ledger_ordinal: acc.lot_positions.length(),
-          } },
-        }
-        Absent => LotTaxPopulationFold {
-          lot_positions: map_insert(acc.lot_positions, row.lot, acc.lot_positions.length()),
-          repetition: none,
-        }
-      }
-    }
-  })
-}
-
 fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
-  match index_lot_tax_population(rows: rows).repetition {
+  match index_first_occurrences(xs: rows, key: row => row.lot).repetition {
     Present { value: repeated } => LotTaxPopulationRepeatedLot {
-      lot: repeated.lot,
+      lot: repeated.key,
       first_ordinal: repeated.first_ordinal,
-      ledger_ordinal: repeated.ledger_ordinal,
+      ledger_ordinal: repeated.repeated_ordinal,
     }
     Absent => LotTaxPopulationComplete { rows: rows }
   }
@@ -244,23 +212,18 @@ fn first_uncovered_identity(requested: List<InventoryLotIdentity>, indexed: Map<
 }
 
 fn lot_tax_covers_ledgers(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> LotTaxJoin {
-  let indexed_tax = index_lot_tax_population(rows: tax)
+  let indexed_tax = index_first_occurrences(xs: tax, key: row => row.lot)
   match indexed_tax.repetition {
     Present { value: repeated } => LotTaxJoinRepeatedLot {
-      lot: repeated.lot,
+      lot: repeated.key,
       first_ordinal: repeated.first_ordinal,
-      ledger_ordinal: repeated.ledger_ordinal,
+      ledger_ordinal: repeated.repeated_ordinal,
     }
-    Absent => match first_uncovered_identity(requested: lots, indexed: indexed_tax.lot_positions) {
+    Absent => match first_uncovered_identity(requested: lots, indexed: indexed_tax.positions) {
       Present { value: lot } => LedgerMissingTax { lot: lot }
       Absent => {
-        let ledger_positions: Map<InventoryLotIdentity, Nat> = fold(lots, init: empty_map(), f: fn(acc, id) {
-          match lookup(acc, id) {
-            Present { value: _ } => acc
-            Absent => map_insert(acc, id, acc.length())
-          }
-        })
-        match first_uncovered_identity(requested: map(tax, row => row.lot), indexed: ledger_positions) {
+        let ledger_index = index_first_occurrences(xs: lots, key: id => id)
+        match first_uncovered_identity(requested: map(tax, row => row.lot), indexed: ledger_index.positions) {
           Present { value: lot } => TaxWithoutLedger { lot: lot }
           Absent => LotTaxJoinCovered { rows: tax }
         }

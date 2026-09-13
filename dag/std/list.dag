@@ -1,15 +1,49 @@
 module std.list
 
-import std.types { List, Bool }
-
-// Membership and mutual cover under a caller-supplied equality. Predicate any/filter/count
-// stay the substrate methods; this module does not nickname them.
-
-fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
-  xs.any(y => eq(y, x))
-}
+import std.types { List, Bool, Map }
+import std.nat { Nat }
+import v2.std.algebra { contains }
 
 fn list_cover<T>(held: List<T>, expected: List<T>, eq: fn(T, T) -> Bool) -> Bool {
-  expected.all(e => list_member(xs: held, x: e, eq: eq))
-    && held.all(h => list_member(xs: expected, x: h, eq: eq))
+  expected.all(e => contains(xs: held, item: e, eq: eq))
+    && held.all(h => contains(xs: expected, item: h, eq: eq))
+}
+
+// Input ordinals count every row, including repetitions. Keep the full first-position
+// index for coverage consumers and the earliest repetition for admission consumers.
+type KeyRepetition<K> {
+  key: K
+  first_ordinal: Nat
+  repeated_ordinal: Nat
+}
+
+type FirstOccurrenceIndex<K> {
+  positions: Map<K, Nat>
+  repetition: KeyRepetition<K>?
+  next_ordinal: Nat
+}
+
+fn index_first_occurrences<T, K>(xs: List<T>, key: fn(T) -> K) -> FirstOccurrenceIndex<K> {
+  fold(xs, init: FirstOccurrenceIndex {
+    positions: empty_map(), repetition: none, next_ordinal: 0,
+  }, f: fn(acc, row) {
+    let k = key(row)
+    match lookup(acc.positions, k) {
+      Present { value: first } => FirstOccurrenceIndex {
+        positions: acc.positions,
+        next_ordinal: acc.next_ordinal + 1,
+        repetition: match acc.repetition {
+          Present { value: previous } => Present { value: previous }
+          Absent => Present { value: KeyRepetition {
+            key: k, first_ordinal: first, repeated_ordinal: acc.next_ordinal,
+          } }
+        },
+      }
+      Absent => FirstOccurrenceIndex {
+        positions: map_insert(acc.positions, k, acc.next_ordinal),
+        repetition: acc.repetition,
+        next_ordinal: acc.next_ordinal + 1,
+      }
+    }
+  })
 }
