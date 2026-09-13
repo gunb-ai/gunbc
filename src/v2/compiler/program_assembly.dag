@@ -69,8 +69,26 @@ fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
 // declarations at all is that a phase span is a REALIZATION fact -- `.dag` is pure and cannot read
 // a clock -- so the only honest way to attribute the fold's cost per phase is to let the driver
 // that owns the clock enter each phase and time the call. The same seam is what a fold-parallel
-// realization needs: `program_assembly_file_front_end` is pure in (read, lm, prepared, residue),
-// so the per-file unit is already the parallel unit.
+// realization needs: each phase is pure in its inputs, so the per-file sequence is also the
+// parallel unit.
+//
+// DIVERGENCE, STATED (DESIGN section 3b, review 65114). `v2.compiler.staged_front_end` is the
+// declared authority for the .dag front-end ORDER, and its own header warns that re-inlining the
+// calls beside it is "a second copy of the order -- the section-3 nickname class". These phases
+// ARE a second stepwise spelling of tokenize -> parse -> normalize, and the divergence is
+// deliberate rather than unnoticed. THE REASON IS MEASURED, not asserted: `run_front_end_to` calls
+// `dag_language_model()` per call and `front_end_parse_step` calls `parse_module` with a RAW
+// grammar, so routing this fold through it would re-derive the language model and re-run
+// `prepare_grammar` ONCE PER FILE -- the two per-file recomputes this fold exists to have already
+// hoisted, and which this instrument's own receipt prices at one call and 0.13 s for the whole
+// 2243-file closure. It also runs a fourth stage, resolve, which the context fold does not
+// perform, and it returns a whole FrontEndRun rather than stages a clock can sit between.
+//
+// SO THE CONSOLIDATION IS NAMED AND IT IS NOT THIS PR'S: a prepared-grammar, resolve-free, per-
+// stage entry on `v2.compiler.staged_front_end`, after which these phases are projections of that
+// authority and this comment is deleted. That is a modeling change to a load-bearing module with
+// its own witness suite, and it is tracked by the trigger on
+// `gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it`.
 //
 // A NON-SOURCE ARTIFACT REFUSES IN THE TOKENIZE PHASE, not before it, so every file enters
 // exactly one phase sequence and no refusal escapes the attribution.
