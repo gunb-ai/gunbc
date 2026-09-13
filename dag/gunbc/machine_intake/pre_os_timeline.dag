@@ -1,17 +1,16 @@
 module gunbc.machine_intake_pre_os_timeline
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
 import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
-import std.measure { byte_size_count }
+import std.measure { ByteSize, byte_size }
 import std.content_hash { Sha256Hash }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalAssessmentRefused, GoalIndeterminate }
 import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
-import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityCoversRange, range_end }
+import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
 import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
@@ -26,7 +25,7 @@ type PreOsReplayObservation {
   payload: ObservationAttempt<String, NonEmptyStr>
 }
 
-fn pre_os_utf8_size(text: String) -> Nat { count(bytes_octets(b: utf8_encode_bytes(s: text))) }
+fn pre_os_utf8_size(text: String) -> ByteSize { byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: text)))) }
 
 // Only immutable artifact bytes verified against the envelope's digest and byte
 // count enter replay through this effectful reader. Unsupported hash families
@@ -36,7 +35,7 @@ func pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceF
     Sha256Hash(digest) => match read_verified_memory_capture(path: envelope.chunk.artifact_ref, expected_sha256: digest.hex as NonEmptyStr) {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
       ObservationEstablished { observed: text } =>
-        if pre_os_utf8_size(text: text) == byte_size_count(b: envelope.chunk.range.length) {
+        if pre_os_utf8_size(text: text) == envelope.chunk.range.length {
           ObservationEstablished { observed: text }
         } else { ObservationRefused { cause: "artifact byte count differs from recorded stream range" } }
     }
@@ -47,7 +46,7 @@ func pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceF
 
 // A DRAM cycle marker is not a firmware boot id. These anchors name captured
 // cycles only; neither one-to-one boot mapping nor a kernel UUID is presumed.
-type PreOsCapturedCycleAnchor { occurrence: ChunkOccurrence, stream_offset: Nat }
+type PreOsCapturedCycleAnchor { occurrence: ChunkOccurrence, stream_offset: StreamPosition }
 type PreOsCapturedCycleReading {
   anchor: ObservationAttempt<PreOsCapturedCycleAnchor, NonEmptyStr>
   firmware_attempt: ObservationAttempt<NonEmptyStr, NonEmptyStr>
@@ -55,7 +54,7 @@ type PreOsCapturedCycleReading {
   milestones: PreOsMilestones
   firmware_selection: ObservationAttempt<NonEmptyStr, NonEmptyStr>
 }
-type PreOsCycleScan { next_offset: Nat, cycles: List<PreOsCapturedCycleReading> }
+type PreOsCycleScan { next_offset: StreamPosition, cycles: List<PreOsCapturedCycleReading> }
 
 type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, NonEmptyStr> }
 
@@ -88,9 +87,10 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
               || last.envelope.chunk.occurrence.ownership_generation != current.envelope.chunk.occurrence.ownership_generation
               || current.envelope.chunk.occurrence.receive_sequence != last.envelope.chunk.occurrence.receive_sequence + 1 {
               ObservationRefused { cause: concat("nonadjacent collector occurrences: ", to_string(last.envelope.chunk.occurrence), " -> ", to_string(current.envelope.chunk.occurrence)) as NonEmptyStr }
-            } else if range_end(range: last.envelope.chunk.range) != current.envelope.chunk.range.first_offset {
-              ObservationRefused { cause: concat("nonadjacent source ranges: ", to_string(last.envelope.chunk.range), " -> ", to_string(current.envelope.chunk.range)) as NonEmptyStr }
-            } else { ObservationEstablished { observed: concat(before.payload, current_text) } }
+            } else { match compare_positions(a: range_end(range: last.envelope.chunk.range), b: current.envelope.chunk.range.first) {
+              PositionSame => ObservationEstablished { observed: concat(before.payload, current_text) }
+              order => ObservationRefused { cause: concat(to_string(order), ": nonadjacent source ranges: ", to_string(last.envelope.chunk.range), " -> ", to_string(current.envelope.chunk.range)) as NonEmptyStr }
+            } }
         }
       }
     }
@@ -104,18 +104,32 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
   }
 }
 
+// A byte position cannot be compared with an anchor in another source stream.
+// Preserve that refusal, rather than treating it as a nonmatching chunk.
+fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition) -> ObservationAttempt<PreOsCapturedCycleAnchor, NonEmptyStr> {
+  match chunks.first() {
+    Absent => ObservationRefused { cause: "cycle marker is outside the supplied source ranges" }
+    Present { value: chunk } => match compare_positions(a: chunk.envelope.chunk.range.first, b: at) {
+      PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+      PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+      _ => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
+        PositionBefore => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: at } }
+        PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+        _ => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+      }
+    }
+  }
+}
+
 fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
   match span.chunks.first() {
     Absent => []
     Present { value: first } => {
       let marker = "NOTICE:  DRAM FW version 210525"
       let parts = split(s: span.payload, delimiter: marker)
-      let prefix_bytes = match parts.first() { Absent => 0 Present { value: prefix } => pre_os_utf8_size(text: prefix) }
-      let scanned = fold(parts.skip(n: 1), init: PreOsCycleScan { next_offset: first.envelope.chunk.range.first_offset + prefix_bytes, cycles: [] }, f: (acc, part) => {
-        let anchor = match filter(span.chunks, chunk => chunk.envelope.chunk.range.first_offset <= acc.next_offset && acc.next_offset < range_end(range: chunk.envelope.chunk.range)).first() {
-          Present { value: chunk } => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: acc.next_offset } }
-          Absent => ObservationRefused { cause: "cycle marker is outside the supplied source ranges" }
-        }
+      let prefix_bytes = match parts.first() { Absent => byte_size(count: 0) Present { value: prefix } => pre_os_utf8_size(text: prefix) }
+      let scanned = fold(parts.skip(n: 1), init: PreOsCycleScan { next_offset: position_advanced_by(p: first.envelope.chunk.range.first, extent: prefix_bytes), cycles: [] }, f: (acc, part) => {
+        let anchor = pre_os_cycle_anchor(chunks: span.chunks, at: acc.next_offset)
         let cycle = PreOsCapturedCycleReading {
           firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
           kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
@@ -123,7 +137,7 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
           milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
           firmware_selection: pre_os_firmware_boot_selection(text: part, rendered_host_mac: rendered_host_mac),
         }
-        PreOsCycleScan { next_offset: acc.next_offset + pre_os_utf8_size(text: marker) + pre_os_utf8_size(text: part), cycles: concat(acc.cycles, [cycle]) }
+        PreOsCycleScan { next_offset: position_advanced_by(p: position_advanced_by(p: acc.next_offset, extent: pre_os_utf8_size(text: marker)), extent: pre_os_utf8_size(text: part)), cycles: concat(acc.cycles, [cycle]) }
       })
       scanned.cycles
     }

@@ -1,5 +1,7 @@
 module test.claim.pre_os_capture_replay_witness
 
+import test.claim.fleet_observation_capture_witness { t_pos }
+
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate, GoalDiverged, GoalAssessmentRefused }
@@ -124,7 +126,7 @@ test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool {
         let mismatch = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapEvidenceNamesAnotherSubject {
           disagreement: BindingMachineDisagrees { binding: "wrong-fixture-machine", owner: "recording-fixture-machine" }
         }, diagnostic: diagnostic)
-        let missing_range = SourceStreamRange { first_offset: 0, length: byte_size(count: 10) }
+        let missing_range = SourceStreamRange { first: t_pos(at: 0), length: byte_size(count: 10) }
         let unattributed = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapContinuityBroken {
           continuity: ContinuityGap { gap: missing_range, cause: GapCauseUnattributed }
         }, diagnostic: diagnostic)
