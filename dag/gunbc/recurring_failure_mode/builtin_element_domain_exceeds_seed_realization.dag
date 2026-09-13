@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.builtin_element_domain_exceeds_seed_realization
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: the directory-derived recurring_failure_mode.roster feeds
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+// Generated-artifact healing regenerates the roster from sibling row files.
+data builtin_element_domain_exceeds_seed_realization: RecurringFailureMode = RecurringFailureMode {
+  identity: "builtin_element_domain_exceeds_seed_realization" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a builtin's generic element domain admits a source value whose runtime carrier the seed realization cannot handle. HARM: accepted source fails only during execution, and the dispatch miss reports an absent function instead of locating the unsupported element type. A successful typecheck therefore overstates the callable surface.",
+    "SPECIMEN, gunbc#11182 on 2026-09-12: the inventory population sum used empty_set() as Set<Int> and set_contains with an allocator-minted integer ordinal. claim_batch resolved the actual Spark witness closure, then reported runtime no-such-function for set_contains. The generic signatures in v1.compiler.infer_method admit Set<element>, while v1_interpreter eval_builtin_inner arms free_call.set_contains and free_call.set_insert accept only Value::Set paired with Value::Str; their other-value arm returns no result and falls through dispatch. This is an element-domain mismatch, not an undeclared source function. It was discovered during execution before the Set<Int> implementation was committed; it is not claimed as a passing witness or as a repaired seed capability.",
+    "DISTINGUISHING FACTS: the callee exists and its generic signature accepts the argument; the realization dispatch recognizes only a proper subset of those inhabitants. Inspect both the declared signature and the accepted value patterns, then exercise a non-string element alongside a supported string control. Merely checking the function name or an empty set cannot discriminate this class.",
+    "FOUND AT MITIGATABLE: execution exposes the mismatch, but construction does not prevent it. CEILING: STRUCTURALLY GUARANTEED for the declared builtin surface, because accepted element types and realized value carriers are decidable. NEXT TRIGGER: seed set operations realize every inhabitable admitted element type, or source admission refuses unsupported element types with a located compile diagnostic. The capability includes all set operations, not just the first failing function spelling.",
+    "The inventory caller uses a map from typed lot identity to first-occurrence position because a repeated-lot diagnostic needs both the first and repeated positions. CanonKey structural identity provides the existing keyed realization; positions are values, not identity keys. This is not a seed-set repair, a string encoding of identity, or a license to replace missing keyed operations with quadratic scans. The substrate gap remains open here.",
+  ],
+  evidence: [],
+}

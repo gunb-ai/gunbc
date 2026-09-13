@@ -26,3 +26,10 @@ fn parts_per_ten_thousand_unity_count() -> Nat {
 fn percent_unity_hundred_count() -> Nat {
   100
 }
+
+// Parts per million: one part per million of unity (ISO 80000-1 factor, unitless, applied to
+// the millionth submultiple). Exact Nat encoding of rates Percent cannot carry (6.625 percent
+// is 66250 ppm).
+fn parts_per_million_unity_count() -> Nat {
+  1000000
+}

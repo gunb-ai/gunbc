@@ -1,0 +1,189 @@
+module test.claim.dgx_spark_inventory_witness
+
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import std.decl_ref { declaration_ref_eq }
+import product.inventory {
+  InventoryLotEvidence, AllLedgersAdmitted, LedgerEvidenceRefused,
+  admit_ledger_evidence, sum_inventory_balances,
+  InventoryPopulationSummed, InventoryPopulationRepeatedLot,
+  LotAcquired, LotReceived, CatalogRowUnread, CatalogRowExact,
+  ReceiptHeldPrivately, ReceiptRecorded,
+  LandedCostHeldPrivately, LandedCostUnsettled, LandedCostRecorded,
+  inventory_lot_identity_eq, ledger_refusal_cause_label,
+  asset_source_lot_standing, AssetSourceLotUnobserved, AssetSourceLotResolved,
+  AssetSourceLotEvidenceDuplicate, AssetSourceLotConflict,
+}
+import product.placement_supply { physical_asset_identity_eq }
+import gunbc.fleet_physical_inventory {
+  dgx_spark_micro_center_lot, dgx_spark_micro_center_lot_ledger,
+  dgx_spark_ebay_pair_lot, dgx_spark_ebay_pair_lot_ledger,
+  dimm_lot_64gib_32x_identity,
+  dgx_spark_procurement_ledgers, dgx_spark_asset_identities,
+  dgx_spark_serialized_assets, dgx_spark_micro_center_catalog_reference,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: Nat, owned: Nat) -> Bool {
+  match admit_ledger_evidence(evidence: evidence) {
+    AllLedgersAdmitted { ledgers: ledgers } => {
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
+          b.acquired == acquired && b.received == received && b.owned == owned
+      }
+    }
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+// Eight is the independently operator-confirmed physical count, not copied from
+// dgx_spark_procurement_intent (which is intentionally not imported). Six and two
+// are independent acquisitions. Omitting either lot must change the result; an
+// implementation returning eight without folding cannot pass.
+test fn w_independent_acquisitions_reconcile_eight() -> Bool {
+  dgx_spark_procurement_ledgers.length() == 2
+    && population_is(evidence: dgx_spark_procurement_ledgers, acquired: 8, received: 8, owned: 8)
+    && population_is(evidence: [
+      InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+    ], acquired: 6, received: 6, owned: 6)
+    && population_is(evidence: [
+      InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    ], acquired: 2, received: 2, owned: 2)
+    && !inventory_lot_identity_eq(left: dgx_spark_micro_center_lot.identity, right: dgx_spark_ebay_pair_lot.identity)
+    && !inventory_lot_identity_eq(left: dgx_spark_micro_center_lot.identity, right: dimm_lot_64gib_32x_identity)
+    && !inventory_lot_identity_eq(left: dgx_spark_ebay_pair_lot.identity, right: dimm_lot_64gib_32x_identity)
+}
+
+// Same lot rows, different events: neither a sum of quantity_acquired fields nor
+// a count of asset labels can pass this. The empty ledger is a synthetic control,
+// NOT a representation of the real cancelled order (the model lacks that state).
+test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
+  population_is(evidence: [
+    InventoryLotEvidence {
+      lot: dgx_spark_micro_center_lot,
+      events: [LotAcquired { lot: dgx_spark_micro_center_lot.identity }],
+    },
+    InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ], acquired: 8, received: 2, owned: 8)
+    && population_is(evidence: [
+      InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: [] },
+      InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    ], acquired: 2, received: 2, owned: 2)
+    && population_is(evidence: [], acquired: 0, received: 0, owned: 0)
+}
+
+// Valid evidence surrounds an invalid ledger. Admission must publish neither a
+// valid prefix nor a later valid ledger in place of the located refusal.
+test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
+  match admit_ledger_evidence(evidence: [
+    InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    InventoryLotEvidence {
+      lot: dgx_spark_micro_center_lot,
+      events: [LotReceived { lot: dgx_spark_micro_center_lot.identity, quantity: 6 }],
+    },
+    InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ]) {
+    LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: n, event_label: e } =>
+      inventory_lot_identity_eq(left: l, right: dgx_spark_micro_center_lot.identity)
+        && ledger_refusal_cause_label(cause: c) as String == "event_before_acquisition"
+        && n == 0 && e as String == "LotReceived"
+    AllLedgersAdmitted { ledgers: _ } => false
+  }
+}
+
+// Aggregate identity coverage is not an observed host or source-lot binding.
+test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
+  match admit_ledger_evidence(evidence: dgx_spark_procurement_ledgers) {
+    AllLedgersAdmitted { ledgers: ledgers } => {
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
+          unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
+            && dgx_spark_asset_identities.length() == b.received && b.received == b.owned
+      }
+    }
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+// Read every actual lot. The sum must not require money or a guessed storage SKU.
+test fn w_lots_preserve_private_costs_and_catalog_evidence() -> Bool {
+  fold(dgx_spark_procurement_ledgers, init: true, f: fn(acc, ledger) {
+    let private_receipt = match ledger.lot.receipt {
+      ReceiptHeldPrivately => true
+      ReceiptRecorded { receipt: _ } => false
+    }
+    let private_cost = match ledger.lot.landed_cost {
+      LandedCostHeldPrivately => true
+      LandedCostUnsettled => true
+      LandedCostRecorded { cost: _ } => false
+    }
+    let evidenced_sku = match ledger.lot.catalog {
+      CatalogRowUnread { observed_family: family, read_obligation: obligation } =>
+        inventory_lot_identity_eq(left: ledger.lot.identity, right: dgx_spark_ebay_pair_lot.identity)
+          && family as String == "NVIDIA DGX Spark" && (obligation as String).length() > 0
+      CatalogRowExact { row: r } =>
+        inventory_lot_identity_eq(left: ledger.lot.identity, right: dgx_spark_micro_center_lot.identity)
+          && declaration_ref_eq(a: r, b: dgx_spark_micro_center_catalog_reference)
+    }
+    acc && private_receipt && private_cost && evidenced_sku
+  })
+}
+
+// Six distinct serials are real inventory; a source-lot query still has no event
+// carrying receipt-time identification. Do not fabricate QuantityInstalled to
+// force that query to resolve. This gap closes when receipt serialization is
+// modeled and consumed by the existing admitted-ledger provenance scan.
+test fn w_receipt_serials_do_not_fabricate_installation_provenance() -> Bool {
+  let serials = flat_map(dgx_spark_serialized_assets, asset =>
+    match asset.physical_serial {
+      Absent => []
+      Present { value: serial } => [serial]
+    }
+  )
+  match admit_ledger_evidence(evidence: dgx_spark_procurement_ledgers) {
+    AllLedgersAdmitted { ledgers: ledgers } =>
+      serials.length() == 6 && dgx_spark_serialized_assets.length() == 6
+        && unique(xs: serials, eq: (a, b) => a == b)
+        && unique(xs: map(dgx_spark_serialized_assets, asset => asset.identity), eq: physical_asset_identity_eq)
+        && fold(dgx_spark_serialized_assets, init: true, f: fn(acc, asset) {
+          let registered = fold(dgx_spark_asset_identities, init: false, f: fn(found, id) {
+            found || physical_asset_identity_eq(a: id, b: asset.identity)
+          })
+          let unobserved = match asset_source_lot_standing(ledgers: ledgers, asset: asset.identity) {
+            AssetSourceLotUnobserved { asset: _ } => true
+            AssetSourceLotResolved { asset: _, lot: _, event_ordinal: _ } => false
+            AssetSourceLotEvidenceDuplicate { asset: _, occurrences: _ } => false
+            AssetSourceLotConflict { asset: _, first_lot: _, further_lots: _ } => false
+          }
+          acc && registered && unobserved
+            && declaration_ref_eq(a: asset.catalog, b: dgx_spark_micro_center_catalog_reference)
+        })
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+// Individually lawful evidence may still repeat an acquisition. Interleave another
+// lot to locate the duplicate; no prefix balance may escape the refused population.
+test fn w_repeated_acquisition_identity_refuses_population_total() -> Bool {
+  population_is(evidence: dgx_spark_procurement_ledgers, acquired: 8, received: 8, owned: 8)
+    && fold([dgx_spark_micro_center_lot_ledger, []], init: true, f: fn(acc, repeated_events) {
+      acc && match admit_ledger_evidence(evidence: [
+        InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+        InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+        InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: repeated_events },
+        InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+      ]) {
+        LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+        AllLedgersAdmitted { ledgers: ledgers } =>
+          match sum_inventory_balances(ledgers: ledgers) {
+            InventoryPopulationSummed { balance: _ } => false
+            InventoryPopulationRepeatedLot { repetition: r } =>
+              inventory_lot_identity_eq(left: r.lot, right: dgx_spark_micro_center_lot.identity) && r.first_ordinal == 0 && r.ledger_ordinal == 2
+          }
+      }
+  })
+}
