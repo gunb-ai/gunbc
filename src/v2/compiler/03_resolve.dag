@@ -90,8 +90,8 @@ import std.occurrence_binding { OccurrenceBinding }
 // the sole BindsTo authority for DependencyView, the reference-derived namespace
 // graph and repair_input_origin_roster declaration continuity. Structural infer
 // consumers explicitly project root; they do not independently reconstruct bindings.
-// Resolve cache content includes both fields. Sealing replaces the former Node
-// alias at every consumer in this PR, with no implicit erasure projection.
+// Resolve cache content includes both fields: changing a binding changes the
+// resolved answer even when the structural root stays equal.
 type ResolvedTree sole_constructor {
   root: Node
   bindings: FreeMonoid<OccurrenceBinding<ScopedOccurrenceRef>>

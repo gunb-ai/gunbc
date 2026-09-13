@@ -62,20 +62,12 @@ type LexicalLookup
   | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
-// Node storage for one allocator domain, produced by symbol_index_fill and read
-// by resolve's structural node lookup and DependencyView projection. A domain is
-// selected through scoped_occurrence_ref_in_scope before its ordinal map is read;
-// no cross-domain join compares raw digests. Containment paths store references,
-// never copies of ancestor nodes.
-type SymbolIndexOccurrenceDomain {
-  scope: Fnv1a64Structural
-  nodes: Map<OccurrenceId, Node>
-}
-
 // A synthetic node cannot become an endpoint or ancestor of a binding path.
-// symbol_index_fill and resolve convert this refusal at the retained node locus;
-// the known prefix locates the traversal without fabricating a terminal identity.
-// OccurrenceTransportRefusal requires an authored SourceSpan, which an untracked
+// symbol_index_fill and resolve use one conversion to a resolve Diagnostic with
+// a resolve_reason symbol at node_locus, through the existing Rejected channel;
+// resolve consumers never match a second failure channel beside Rejected. The
+// known prefix locates the traversal without fabricating a terminal identity.
+// MissingAuthoredOccurrenceIdentity requires a SourceSpan, which an untracked
 // synthetic v2 node does not supply, so it cannot represent this boundary.
 type SymbolIndexIdentityRefusal
   = SymbolIndexUntrackedSynthetic {
@@ -86,9 +78,13 @@ type SymbolIndexIdentityRefusal
 // The sole qualified-name candidate index, produced by symbol_index_fill and
 // consumed by resolve. Its node storage is addressed by occurrence, not spelling;
 // global_bare is a search projection of entries, not another binding authority.
+// occurrence_domains uses the scope type's map-key equality to select a domain
+// without scanning source files, then selects the ordinal within that domain.
+// Explicit cross-domain joins use scoped_occurrence_ref_same_scope; no consumer
+// compares raw digests. Containment paths store references, not ancestor subtrees.
 type SymbolIndex {
   entries: Map<QualifiedName, BindingCandidate<ScopedOccurrenceRef>>
-  occurrence_domains: FreeMonoid<SymbolIndexOccurrenceDomain>
+  occurrence_domains: Map<Fnv1a64Structural, Map<OccurrenceId, Node>>
   global_bare: Map<Symbol, GlobalBareBindingState>
 }
 
