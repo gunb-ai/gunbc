@@ -85,7 +85,12 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
 // srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
 //
-// FOUR FILES. Teardown drop-in and needrestart deferral are the two halves of the orphan class.
+// THREE FILES UNTIL A HOST-BOUND ACCOUNT OBSERVATION EXISTS. Teardown drop-in and needrestart
+// deferral are the two halves of the orphan class. The unit fragment is always delivered. The
+// depriv drop-in is added only when a PosixAccountObservation grounds DOCKER_HOST; refusing that
+// observation must not overwrite a live depriv.conf by omitting the docker endpoint, and must not
+// refuse the rest of the population. Without a production observation the live hand-placed depriv
+// stays; the fragment still names deploy.runner_user, not root.
 // The unit fragment and the depriv drop-in are the modeled runner bytes: without depriv, delivering
 // the fragment would be correct only while a hand-placed override still won. A missing depriv
 // drop-in must not run job code as root, so the fragment still names deploy.runner_user.
@@ -137,8 +142,32 @@ fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesi
           match gunbc_runner_unit_fragment_for_host(host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
-              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host) {
-                RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
+              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host, observation: none) {
+                RunnerUnitTextRefused { reason: _ } =>
+                  RunnerHostFilesDesired {
+                    files: [
+                      RunnerHostFileDesired {
+                        subject: "runner-unit-fragment" as NonEmptyStr,
+                        path: runner_unit_system_path as FilePath,
+                        content: fragment,
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                      RunnerHostFileDesired {
+                        subject: "runner-teardown-dropin" as NonEmptyStr,
+                        path: runner_unit_teardown_dropin_path() as FilePath,
+                        content: gunbc_runner_unit_teardown_dropin_text(),
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                      RunnerHostFileDesired {
+                        subject: "needrestart-runner-deferral" as NonEmptyStr,
+                        path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+                        content: needrestart_conf_d_text(overrides: [
+                          NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
+                        ]),
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                    ],
+                  }
                 RunnerUnitText { text: depriv } =>
                   RunnerHostFilesDesired {
                     files: [

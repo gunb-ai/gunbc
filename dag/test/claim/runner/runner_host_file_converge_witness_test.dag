@@ -158,10 +158,10 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs } =>
-      length(fs) == 4
+      length(fs) == 3
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-unit-fragment") == "/etc/systemd/system/actions-runner@.service"
-        && desired_path(subject: "runner-depriv-dropin") == "/etc/systemd/system/actions-runner@.service.d/depriv.conf"
+        && desired_path(subject: "runner-depriv-dropin") == ""
   }
 }
 
