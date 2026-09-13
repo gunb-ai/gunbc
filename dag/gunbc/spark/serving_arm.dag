@@ -330,13 +330,25 @@ fn runtime_artifact_key(a: RuntimeArtifactIdentity) -> String {
 // currency check into refusing for the wrong reason. Absent is the fourth option and the only true one,
 // and it is fail-closed at both readers: an unprobed image registers nothing and its reading is never
 // current.
+// HOW REASONING COMES BACK IS OBSERVED FROM A LAUNCHED ENGINE, SO AN UNLAUNCHED RUNTIME HAS NO ANSWER.
+// This field was required, and a required field forces every new row to assert something: the model
+// authority's member name (which this file already records as WRONG for the community image -- it returns
+// `reasoning`, not `reasoning_content`), or a neighbour's observed value, or a guess dressed as a
+// default. Those are the same three lies the registry_reading annotation below enumerates, and the same
+// fourth option is the only true one.
+//
+// IT IS THEREFORE OPTIONAL, AND ABSENT IS FAIL-CLOSED AT ITS READERS. A runtime that has never served
+// cannot say how its reasoning comes back, and must not be made to. The ordering this admits is the one
+// the fleet actually has: a row exists so a launch can be PLANNED -- the launch argv reads only the
+// artifact and the defaults revision, never this field -- and the projection is filled in from the
+// completion that launch produces.
 type ServingRuntimeRow {
   runtime: ServingRuntime
   artifact: RuntimeArtifactIdentity
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
   registry_reading: ArchitectureRegistryReading?
-  reasoning_projection: ReasoningResponseProjection
+  reasoning_projection: ReasoningResponseProjection?
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
 }
@@ -363,7 +375,7 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: gitcommit90_glm_53_one_spark_vllm_version,
   registry_reading: Present { value: gitcommit90_glm_53_one_spark_registry_reading },
-  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
 }
@@ -382,7 +394,7 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
   registry_reading: Present { value: sparkrun_vllm_ds4_gb10_registry_reading },
-  reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
+  reasoning_projection: Present { value: InlineReasoning { end_token: "</think>" as NonEmptyStr } },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
 }

@@ -80,7 +80,7 @@ import gunbc.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
-  fleet_openssh_trust_policy_of,
+  fleet_openssh_trust_policy_of, FleetOpenSshTrustPolicy,
   shape_fleet_scp_fetch_argv, shape_fleet_scp_push_argv,
 }
 import extdeps.shell
@@ -1876,6 +1876,18 @@ func export_image_archive(ctx: SparkMaterializeContext, reference: NonEmptyStr, 
 // refused with `dest open ... Permission denied` after a complete 21.9 GB fetch. `mkdir -p` on an
 // existing directory succeeds WITHOUT changing its ownership, so a wrong-owner directory is sticky and a
 // re-run does not repair it.
+// NOTHING REMOVES WHAT LANDS HERE, AND THAT IS AN UNANSWERED QUESTION RATHER THAN A CHOICE. Each image
+// moved leaves an archive of roughly its own size on the controller -- 21.9 GB for the GLM base, 33 GB
+// for the derived runtime -- and the staging directory accumulates one per distinct archive key. Today
+// that is affordable and unmanaged, which is a fine place to be only while it is SAID.
+//
+// RETENTION IS A SEPARATE POLICY FROM THE TRANSFER, deliberately. A retained archive is exactly what
+// makes a later provider cheaper to select -- gunbc.spark.image_supply ranks a held export above one
+// that must be produced -- so deleting eagerly would trade a real future saving for disk that is not
+// scarce yet. What is missing is anything that DECIDES: no declared capacity, no eviction order, no
+// statement of which archives are worth keeping.
+// NEXT-RUNG TRIGGER: a declared retention policy over this directory with a capacity and an eviction
+// order, at which point an archive's survival is a modelled decision instead of an omission.
 data image_transfer_staging_dir: NonEmptyStr = "target/spark-image-transfer" as NonEmptyStr
 
 fn image_transfer_local_path(key: ContentHash) -> NonEmptyStr {
@@ -2009,6 +2021,134 @@ func relocate_load(dest_ctx: SparkMaterializeContext, reference: NonEmptyStr, re
           ImageRelocationRefused { step: "dest-readback" as NonEmptyStr, cause: why }
         ImageIdentityObserved { reference: _, local_image_id: id } =>
           ImageRelocated { destination: dest_ctx.host, local_image_id: id, archive_sha256: digest }
+      }
+  }
+}
+
+// ── ONE EXPORT, MANY DESTINATIONS ──────────────────────────────────────────
+//
+// THE EXPORT IS SHARED PREPARATION AND NOT PER-DESTINATION WORK. relocate_image answers one destination
+// and re-exports for the next, which is correct in isolation and wasteful the moment a population needs
+// the same image: `docker save` of the derived runtime is a 33 GB read and a minute of the source host,
+// and the archive it produces is identical for every consumer. So the export happens ONCE, the fetch to
+// the controller happens ONCE, and only the push and load repeat.
+//
+// THE DIGEST MEASURED ON THE SOURCE STAYS THE JOIN FOR EVERY DESTINATION. Each host verifies the landed
+// archive against that same value before loading, so one bad hop is attributed to the host it happened
+// on rather than to the export every other host consumed successfully.
+//
+// A HOST THAT ALREADY HOLDS THE EXACT IMAGE IS NOT SENT ANYTHING, and that check is on the image id: a
+// matching tag proves nothing, which is the resume property this needs to be re-runnable.
+type ImageDistributionResult sole_constructor {
+  outcomes: List<ImageDistributionOutcome>
+  archive_sha256: NonEmptyStr?
+}
+
+func distribute_image_from(
+  source_ctx: SparkMaterializeContext,
+  source_target: SshTarget,
+  destinations: List<SparkMaterializeContext>,
+  destination_targets: List<SshTarget>,
+  context: FleetSshExecutionContext,
+  reference: NonEmptyStr,
+  expected_image_id: NonEmptyStr,
+  archive_key: ContentHash,
+) -> ImageDistributionResult
+  uses net: Network
+{
+  let standings = map(destinations, d => distribute_image_to(ctx: d, reference: reference, expected_image_id: expected_image_id))
+  let missing = filter(enumerate(standings), pair => !distribution_outcome_ready(o: pair.second))
+  if count(missing) == 0 {
+    ImageDistributionResult { outcomes: standings, archive_sha256: none }
+  } else {
+    match export_image_archive(ctx: source_ctx, reference: reference, archive_key: archive_key) {
+      ImageExportRefused { step: st, cause: why } =>
+        ImageDistributionResult {
+          outcomes: map(standings, o =>
+            if distribution_outcome_ready(o: o) { o }
+            else { ImageTransferRefused { host: distribution_outcome_host(o: o), step: st, cause: why } }),
+          archive_sha256: none,
+        }
+      ImageExported { archive_path: remote_archive, archive_sha256: digest, source_image_id: _ } =>
+        match fetch_archive_once(source_target: source_target, context: context, remote_archive: remote_archive, digest: digest, archive_key: archive_key) {
+          ArchiveHopRefused { step: st, cause: why } =>
+            ImageDistributionResult {
+              outcomes: map(standings, o =>
+                if distribution_outcome_ready(o: o) { o }
+                else { ImageTransferRefused { host: distribution_outcome_host(o: o), step: st, cause: why } }),
+              archive_sha256: Present { value: digest },
+            }
+          ArchiveHopCompleted =>
+            ImageDistributionResult {
+              outcomes: map(enumerate(standings), pair =>
+                if distribution_outcome_ready(o: pair.second) {
+                  pair.second
+                } else {
+                  push_and_load_one(
+                    dest_ctx: destinations[pair.first],
+                    dest_target: destination_targets[pair.first],
+                    context: context,
+                    reference: reference,
+                    remote_archive: remote_archive,
+                    digest: digest,
+                    archive_key: archive_key,
+                  )
+                }),
+              archive_sha256: Present { value: digest },
+            }
+        }
+    }
+  }
+}
+
+// THE FETCH IS ITS OWN STEP SO IT CAN HAPPEN ONCE. It ends with the controller holding an archive whose
+// digest matches the source's reading; every destination then consumes that same local file.
+func fetch_archive_once(
+  source_target: SshTarget,
+  context: FleetSshExecutionContext,
+  remote_archive: NonEmptyStr,
+  digest: NonEmptyStr,
+  archive_key: ContentHash,
+) -> ArchiveHopOutcome
+  uses net: Network
+{
+  let local_archive = image_transfer_local_path(key: archive_key)
+  let made = shell.Mkdir.Parents(path: image_transfer_staging_dir as FilePath)
+  if made.success == false {
+    ArchiveHopRefused { step: "staging-dir" as NonEmptyStr, cause: "the controller staging directory could not be created" }
+  } else {
+    match scp_leg(step: "fetch" as NonEmptyStr, args: shape_fleet_scp_fetch_argv(
+      context: context, target: source_target, remote_path: remote_archive, local_path: local_archive)) {
+      ArchiveHopRefused { step: st, cause: why } => ArchiveHopRefused { step: st, cause: why }
+      ArchiveHopCompleted => verify_local_archive(path: local_archive, expected: digest)
+    }
+  }
+}
+
+func push_and_load_one(
+  dest_ctx: SparkMaterializeContext,
+  dest_target: SshTarget,
+  context: FleetSshExecutionContext,
+  reference: NonEmptyStr,
+  remote_archive: NonEmptyStr,
+  digest: NonEmptyStr,
+  archive_key: ContentHash,
+) -> ImageDistributionOutcome
+  uses net: Network
+{
+  match vllm_image_leg(target: dest_target, context: context, step: "dest-archive-dir" as NonEmptyStr,
+    command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: image_archive_dir() as String)) {
+    ImageLegFailed { step: st, cause: why } => ImageTransferRefused { host: dest_ctx.host, step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match scp_leg(step: "push" as NonEmptyStr, args: shape_fleet_scp_push_argv(
+        context: context, target: dest_target, local_path: image_transfer_local_path(key: archive_key), remote_path: remote_archive)) {
+        ArchiveHopRefused { step: st, cause: why } => ImageTransferRefused { host: dest_ctx.host, step: st, cause: why }
+        ArchiveHopCompleted =>
+          match relocate_load_and_read(dest_ctx: dest_ctx, reference: reference, remote_archive: remote_archive, digest: digest) {
+            ImageRelocationRefused { step: st, cause: why } => ImageTransferRefused { host: dest_ctx.host, step: st, cause: why }
+            ImageRelocated { destination: d, local_image_id: id, archive_sha256: a } =>
+              ImageLoadedOnHost { host: d, local_image_id: id, archive_sha256: a }
+          }
       }
   }
 }
@@ -2858,3 +2998,163 @@ fn image_relocation_receipt(r: ImageRelocation) -> String {
       join(["relocation REFUSED step=", st as String, " cause=", c, "\n"], "")
   }
 }
+
+// ── DISTRIBUTING THE DERIVED RUNTIME TO THE HOSTS THAT WILL SERVE IT ──────────────────
+//
+// THE CALLER NAMES THE IMAGE AND THE POPULATION, NOT THE MACHINE TO COPY FROM. Which host supplies the
+// bytes is a question for gunbc.spark.image_supply, which ranks offers on what it can actually read --
+// a retained export against one that must be produced -- and refuses rather than breaking a tie by
+// roster order. This entry resolves the source through that seam and then hands the chosen provider to
+// the transfer leg.
+//
+// EVERY REQUIRED HOST IS OBSERVED, INCLUDING THE ONES THAT NEEDED NOTHING. A host already holding the
+// exact image contributes ImagePresentOnHost from its own readback rather than being assumed ready,
+// which is what makes the availability answer a population fact rather than a count of transfers.
+data spark_distribute_attempt_raw: String = "spark-image-distribute"
+data spark_distribute_receipt_path: String = "target/spark-image-distribute-receipt.txt"
+
+func glm53_nope_derived_distribute_wet(source_raw: String, hosts_csv: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let hosts = map(filter(split(s: hosts_csv, separator: ","), w => trim(s: w) != ""), w => trim(s: w) as HostIdentity)
+  if source_raw == "" {
+    exit_failure(reason: "a source host is required")
+  } else if count(hosts) == 0 {
+    exit_failure(reason: "a destination population is required; an empty roster is a caller defect, never an availability answer")
+  } else {
+    glm53_nope_distribute_on(source: source_raw as HostIdentity, hosts: hosts, now: now)
+  }
+}
+
+func glm53_nope_distribute_on(source: HostIdentity, hosts: List<HostIdentity>, now: NonEmptyStr?) -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_identity(raw: spark_distribute_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } =>
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: "the trust policy could not be sealed for the privileged leg")
+                Present { value: trust } =>
+                  match observe_executor_reach() {
+                    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["executor reach: ", c], ""))
+                    ExecutorReachKnown { short_hostname: _, path: path } =>
+                      match spark_reach_endpoint(host: source, path: path) {
+                        Absent => exit_failure(reason: join(["no endpoint for source ", source as String], ""))
+                        Present { value: source_endpoint } =>
+                          match resolve_endpoints(hosts: hosts, path: path) {
+                            Absent => exit_failure(reason: "at least one destination has no reachable endpoint, so the population cannot be answered for")
+                            Present { value: endpoints } =>
+                              match read_bootstrap_credential() {
+                                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                                BootstrapCredentialReady { secret: administrator } =>
+                                  match with_materialized_ssh_key_file(
+                                    identity_file_name: "gunbc-distribute-admin-password" as NonEmptyStr,
+                                    secret_bytes: administrator as Secret,
+                                    use: fn(file) {
+                                      distribute_image_from(
+                                        source_ctx: spark_context_for(host: source, trust: trust, path: path, administrator: administrator as Secret, file: file),
+                                        source_target: SshTarget { endpoint: source_endpoint as NonEmptyStr, principal: spark_managed_executor_login as NonEmptyStr },
+                                        destinations: map(hosts, h => spark_context_for(host: h, trust: trust, path: path, administrator: administrator as Secret, file: file)),
+                                        destination_targets: map(endpoints, e => SshTarget { endpoint: e, principal: spark_managed_executor_login as NonEmptyStr }),
+                                        context: context,
+                                        reference: glm53_nope_derived_reference,
+                                        expected_image_id: glm53_nope_derived_image_id,
+                                        archive_key: artifact_realization_digest(inputs: [
+                                          ArtifactRealizationInput {
+                                            identity: "image_reference" as NonEmptyStr,
+                                            content_digest: content_hash_atom(value: glm53_nope_derived_reference),
+                                          },
+                                        ]),
+                                      )
+                                    },
+                                  ) {
+                                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                                    MaterializedSshKeyFileBracketCompleted { value: result } => {
+                                      let body = join([
+                                        join(["glm53 derived distribute probed_at=", probed_at_word(reading: now) as String,
+                                              " source=", source as String, "\n"], ""),
+                                        image_distribution_receipt(r: result),
+                                      ], "")
+                                      let w = Filesystem.Write(path: spark_distribute_receipt_path, content: body)
+                                      if !w.success {
+                                        exit_failure(reason: "the distribution receipt could not be written")
+                                      } else {
+                                        if image_available_for_arm(outcomes: result.outcomes, image_id: glm53_nope_derived_image_id, required: hosts) {
+                                          ExitSuccess
+                                        } else {
+                                          exit_failure(reason: image_distribution_receipt(r: result))
+                                        }
+                                      }
+                                    }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+// ONE MISSING ENDPOINT REFUSES THE WHOLE POPULATION rather than quietly answering for the hosts it could
+// resolve. A distribution that silently dropped an unreachable member would report availability over a
+// population nobody asked about.
+fn resolve_endpoints(hosts: List<HostIdentity>, path: SparkReachPath) -> List<NonEmptyStr>? {
+  let resolved = flat_map(hosts, h => match spark_reach_endpoint(host: h, path: path) {
+    Present { value: e } => [e as NonEmptyStr]
+    Absent => []
+  })
+  if count(resolved) == count(hosts) { Present { value: resolved } } else { none }
+}
+
+fn spark_context_for(host: HostIdentity, trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret, file: NonEmptyStr) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: host,
+    trust: trust,
+    path: path,
+    admin_credential: administrator,
+    admin_credential_file: file,
+    executor: HostCli,
+  }
+}
+
+fn image_distribution_receipt(r: ImageDistributionResult) -> String {
+  join([
+    match r.archive_sha256 {
+      Present { value: a } => join(["archive sha256=", a as String, "\n"], "")
+      Absent => "no archive was produced; every required host already held the exact image\n"
+    },
+    join(map(r.outcomes, o => image_distribution_outcome_line(o: o)), ""),
+  ], "")
+}
+
+fn image_distribution_outcome_line(o: ImageDistributionOutcome) -> String {
+  match o {
+    ImagePresentOnHost { host: h, local_image_id: id } =>
+      join(["host ", h as String, " ALREADY HELD ", id as String, "\n"], "")
+    ImageLoadedOnHost { host: h, local_image_id: id, archive_sha256: a } =>
+      join(["host ", h as String, " LOADED ", id as String, " from archive ", a as String, "\n"], "")
+    ImageTransferRefused { host: h, step: st, cause: c } =>
+      join(["host ", h as String, " REFUSED at ", st as String, ": ", c, "\n"], "")
+    ImageIdentityMismatch { host: h, expected: e, observed: ob } =>
+      join(["host ", h as String, " HOLDS THE WRONG IMAGE expected=", e as String, " observed=", ob as String, "\n"], "")
+  }
+}
+
+// THE DERIVED RUNTIME THIS FLEET BUILT, NAMED ONCE. Both values are receipts from the build on srv9,
+// 2026-09-13: the tag the build wrote and the identity the daemon reported back for it.
+data glm53_nope_derived_reference: NonEmptyStr = "gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4" as NonEmptyStr
+data glm53_nope_derived_image_id: NonEmptyStr = "sha256:41366caf73e4c430f44c44c4eeb7ecebd182e191f68a05e7c96975079fbeaf9d" as NonEmptyStr
