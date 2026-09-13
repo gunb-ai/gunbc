@@ -38,6 +38,10 @@ import gunbc.cloudflare.r2_origin_object {
   fetch_origin_object,
 }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.data_category { BuildOutput }
+import product.data_class { Classified, DataEffectPermit, classify_build_output }
+import product.fabric.provider_route { ProviderRoute }
 import gunbc.fabric_m0_commit {
   CommitNamespace,
   CommitTransportOutcome,
@@ -173,9 +177,41 @@ fn object_readback_of_origin_put(put: OriginPutOutcome, fetch: OriginFetchOutcom
   }
 }
 
+// THE OUTPUT BOUNDARY. A job's produced file enters the commit path HERE and nowhere else, and it
+// enters classified: product.data_class classify_build_output is admit_callers-sealed to this
+// declaration, so this is the one place in the tree that says "these bytes are a BuildOutput".
+// The classification is a fact about provenance -- the file is what the job produced -- not a
+// judgement the caller makes, which is why the function takes the path and nothing that could
+// re-label it.
+fn job_output_bytes(local_path: FilePath) -> Classified<BuildOutput, FilePath> {
+  classify_build_output(value: local_path)
+}
+
+// THE ROUTE THE DURABLE ORIGIN IS, BY DECLARATION. The provider is the Cloudflare vendor row, the
+// service the R2 upstream authority, the region the fleet bucket's jurisdiction as
+// gunbc.cloudflare.r2_origin declares it -- cited so a data-handling row and this sink agree by
+// declaration identity and not by matching strings (the same rule product.fabric.provider_route
+// states for every route).
+fn fabric_durable_origin_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+    service: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "extdeps_external_authority_anchor"),
+    region: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "gunbc_fleet_r2_bucket_allocations"),
+  }
+}
+
 // ONE PUT, ONE FETCH, ONE KEY, for a required object. The readback the completion authority
 // joins under the caller's obligation is derived here from both answers and never assembled by
 // the caller from one of them.
+//
+// THE WRITE TAKES THE PERMIT, NEVER THE BARE PATH. The object put to the durable origin is
+// classified data (BuildOutput) leaving the process, so this effect is reachable only with a
+// DataEffectPermit<BuildOutput, FilePath> -- minted by product.data_class admit_data_effect for a
+// DurableOrigin sink on this route, under the data-handling map and the active posture, and by
+// nothing else. A caller holding the path and not the permit cannot spell this call
+// (test.probe.durable_write_takes_the_value_probe), and a caller cannot author the permit
+// (test.probe.data_effect_permit_forged_probe). The path the PUT reads is the permit's revealed
+// payload, so the bytes written are exactly the bytes admitted.
 //
 // CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending; the fold above is
 // exercised by test.claim.fabric_m0_origin_commit_witness.
@@ -184,8 +220,8 @@ type OriginObjectCommit sole_constructor {
   credential: WriteCredentialCustody
 }
 
-func commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
-  let put = put_origin_object(local_path: local_path, key: key, token_source: token_source)
+func commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
+  let put = put_origin_object(local_path: permit.value, key: key, token_source: token_source)
   let fetch = fetch_origin_object(key: key, token_source: token_source)
   OriginObjectCommit {
     readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch),

@@ -1,0 +1,230 @@
+module test.claim.fabric.data_class_admission_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.data_category { BuildOutput, PersonalIdentity, build_output_ref, personal_identity_ref, job_log_ref }
+import product.data_class {
+  Classified, Sink, SinkKind, DurableOrigin, LogChannel, Telemetry,
+  DataHandlingRow, DataHandlingMap, DataOperation, StoreDurably, Transmit,
+  DataEffectAdmission, DataEffectAdmitted, DataEffectRefused,
+  DataEffectRefusal, CategoryDisagreesWithSink, CategoryUnmapped, SinkNotPermittedForCategory,
+  RouteNotPermittedForCategory, PostureRevisionStale,
+  DataErasureStanding, ErasureApplied, Redacted,
+  admit_data_effect, durable_origin_sink, log_channel_sink, build_output_category, personal_identity_category,
+  classified_map, classified_category, redact, public_fabric_map, public_fabric_posture,
+}
+import gunbc.fabric_m0_origin_commit { job_output_bytes, fabric_durable_origin_route }
+import gunbc.principal_projection { PrincipalProjection, OidcProjected, PosixProjection, oidc_principal_projection }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD, EXERCISED ON THE INTERPRETATION PATH. The compile-time probes
+// (test.claim.data_class_refusal_probe_witness) establish what cannot be WRITTEN; this witness
+// establishes what the one admission fold ANSWERS for what can: the accepted positive control -- a
+// BuildOutput admitted to the durable origin on the fleet route under a row that names it -- and
+// every refusal arm, each reached by changing exactly one term of that control. The classified
+// values are minted through the two real boundaries, never by a fixture, because the boundaries
+// are the only mints there are.
+
+fn fx_hash(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+data fixture_posture_authority: NonEmptyStr = "fixture-data-posture-authority"
+data fixture_retention: NonEmptyStr = "fixture-retention-row"
+data fixture_lawful_basis: NonEmptyStr = "fixture-lawful-basis-row"
+data fixture_purpose: NonEmptyStr = "fixture-purpose"
+data fixture_recipient: NonEmptyStr = "fixture-recipient"
+
+fn fx_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: name)
+}
+
+fn fx_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision { authority: fx_ref(name: "fixture_posture_authority"), revision: fx_hash(seed: "fixture-data-posture-r1") }
+}
+
+fn fx_stale_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision { authority: fx_ref(name: "fixture_posture_authority"), revision: fx_hash(seed: "fixture-data-posture-r2") }
+}
+
+fn fx_other_route() -> ProviderRoute {
+  ProviderRoute { provider: fx_ref(name: "other_provider"), service: fx_ref(name: "other_service"), region: fx_ref(name: "other_region") }
+}
+
+fn fx_row(category: DeclarationRef, sink: SinkKind, posture: CompliancePostureRevision) -> DataHandlingRow {
+  DataHandlingRow {
+    category: category,
+    sink: sink,
+    retention: fx_ref(name: "fixture_retention"),
+    lawful_basis: fx_ref(name: "fixture_lawful_basis"),
+    posture: posture,
+  }
+}
+
+fn fx_map(rows: List<DataHandlingRow>) -> DataHandlingMap {
+  DataHandlingMap { authority: fx_ref(name: "fixture_map"), rows: rows }
+}
+
+fn fx_admitting_map() -> DataHandlingMap {
+  fx_map(rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())])
+}
+
+fn fx_output() -> Classified<BuildOutput, FilePath> {
+  job_output_bytes(local_path: "dag/test/fixture/fabric_m0_origin_readback/other_object.txt" as FilePath)
+}
+
+fn fx_output_sink() -> Sink<BuildOutput> {
+  durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: fx_ref(name: "fixture_purpose"), recipient: fx_ref(name: "fixture_recipient"))
+}
+
+fn fx_claims() -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://issuer.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "external-subject" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
+    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: Present { value: true }, name: Present { value: "A Person" } },
+  }
+}
+
+fn fx_pii() -> Classified<PersonalIdentity, OidcStandardClaims> {
+  match oidc_principal_projection(claims: fx_claims()) {
+    OidcProjected { projection: p } => p.standard
+    PosixProjection { observation: _ } => oidc_only_fixture_unreachable()
+  }
+}
+
+// The posix arm cannot be reached from an OIDC claim set; the fixture says so by refusing to
+// answer rather than by minting a value.
+fn oidc_only_fixture_unreachable() -> Classified<PersonalIdentity, OidcStandardClaims> {
+  match oidc_principal_projection(claims: fx_claims()) {
+    OidcProjected { projection: p } => p.standard
+    PosixProjection { observation: _ } => oidc_only_fixture_unreachable()
+  }
+}
+
+fn admit_output(handling_map: DataHandlingMap, posture: CompliancePostureRevision, sink: Sink<BuildOutput>) -> DataEffectAdmission<BuildOutput, FilePath> {
+  admit_data_effect(classified: fx_output(), sink: sink, operation: StoreDurably, handling_map: handling_map, posture: posture)
+}
+
+fn refused_with(a: DataEffectAdmission<BuildOutput, FilePath>, want: fn(DataEffectRefusal) -> Bool) -> Bool {
+  match a {
+    DataEffectAdmitted { permit: _ } => false
+    DataEffectRefused { cause: c } => want(c)
+  }
+}
+
+// POSITIVE CONTROL. The permit carries the revealed path -- the permit is the exit -- and every
+// fact the fold read: the row's retention and lawful basis, the map authority, the posture
+// revision, the sink, the operation.
+test fn a_build_output_is_admitted_to_the_durable_origin_under_a_row_naming_the_route() -> Bool {
+  match admit_output(handling_map: fx_admitting_map(), posture: fx_posture(), sink: fx_output_sink()) {
+    DataEffectRefused { cause: _ } => false
+    DataEffectAdmitted { permit: p } =>
+      (p.value as String) == "dag/test/fixture/fabric_m0_origin_readback/other_object.txt"
+        && declaration_ref_eq(a: p.category, b: build_output_ref())
+        && declaration_ref_eq(a: p.retention, b: fx_ref(name: "fixture_retention"))
+        && declaration_ref_eq(a: p.lawful_basis, b: fx_ref(name: "fixture_lawful_basis"))
+        && declaration_ref_eq(a: p.map_authority, b: fx_ref(name: "fixture_map"))
+        && p.posture == fx_posture().revision
+        && declaration_ref_eq(a: p.sink.purpose, b: fx_ref(name: "fixture_purpose"))
+        && match p.operation {
+          StoreDurably => true
+          Transmit => false
+        }
+  }
+}
+
+test fn the_public_map_admits_nothing() -> Bool {
+  refused_with(a: admit_output(handling_map: public_fabric_map(), posture: public_fabric_posture(), sink: fx_output_sink()), want: fn(c) {
+    match c {
+      CategoryUnmapped { category: cat, map: m } =>
+        declaration_ref_eq(a: cat, b: build_output_ref()) && (m.decl_name as String) == "public_fabric_map"
+      other => false
+    }
+  })
+}
+
+test fn a_category_with_rows_for_another_sink_only_is_refused_at_the_sink() -> Bool {
+  let m = fx_map(rows: [fx_row(category: build_output_ref(), sink: LogChannel, posture: fx_posture())])
+  refused_with(a: admit_output(handling_map: m, posture: fx_posture(), sink: fx_output_sink()), want: fn(c) {
+    match c {
+      SinkNotPermittedForCategory { category: cat, sink: s } =>
+        declaration_ref_eq(a: cat, b: build_output_ref())
+          && match s {
+            DurableOrigin { route: _ } => true
+            other => false
+          }
+      other => false
+    }
+  })
+}
+
+test fn a_durable_row_on_another_route_is_refused_at_the_route() -> Bool {
+  let m = fx_map(rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fx_other_route() }, posture: fx_posture())])
+  refused_with(a: admit_output(handling_map: m, posture: fx_posture(), sink: fx_output_sink()), want: fn(c) {
+    match c {
+      RouteNotPermittedForCategory { category: cat, route: r } =>
+        declaration_ref_eq(a: cat, b: build_output_ref()) && declaration_ref_eq(a: r.provider, b: fabric_durable_origin_route().provider)
+      other => false
+    }
+  })
+}
+
+test fn a_row_under_a_superseded_posture_is_stale_not_admitting() -> Bool {
+  refused_with(a: admit_output(handling_map: fx_admitting_map(), posture: fx_stale_posture(), sink: fx_output_sink()), want: fn(c) {
+    match c {
+      PostureRevisionStale { evaluated: e, active: a } => count(e) == 1 && a == fx_stale_posture().revision
+      other => false
+    }
+  })
+}
+
+// THE RUNTIME FORM OF THE MARKER WALL. On the interpretation path a Classified<PersonalIdentity,_>
+// reaches a Sink<BuildOutput> without a compile refusal (the checker does not judge marker
+// identity at generic positions; the compile-time probe is enrolled as an expecting-red hole), so
+// the fold compares the runtime witnesses FIRST and refuses before consulting any map -- an
+// admitting map for both categories is handed in to show that no row rescues the disagreement.
+test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read() -> Bool {
+  let m = fx_map(rows: [
+    fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
+    fx_row(category: personal_identity_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
+  ])
+  match admit_data_effect(classified: fx_pii(), sink: fx_output_sink(), operation: StoreDurably, handling_map: m, posture: fx_posture()) {
+    DataEffectAdmitted { permit: _ } => false
+    DataEffectRefused { cause: c } =>
+      match c {
+        CategoryDisagreesWithSink { classified: cl, sink: s } =>
+          declaration_ref_eq(a: cl, b: personal_identity_ref()) && declaration_ref_eq(a: s, b: build_output_ref())
+        other => false
+      }
+  }
+}
+
+// LABEL PRESERVATION AND ERASURE. A projection of a classified value is classified in the same
+// category; the erased form keeps the category and the basis and has no payload at all.
+test fn a_projection_of_classified_data_keeps_its_category() -> Bool {
+  let email_length = classified_map(c: fx_pii(), f: fn(claims) {
+    match claims.email {
+      Present { value: e } => count(e as String)
+      Absent => 0
+    }
+  })
+  declaration_ref_eq(a: classified_category(c: email_length), b: personal_identity_ref())
+}
+
+test fn a_redacted_value_keeps_the_category_and_the_basis_and_nothing_else() -> Bool {
+  let r = redact(c: fx_pii(), basis: fx_ref(name: "fixture_lawful_basis"))
+  declaration_ref_eq(a: r.category, b: personal_identity_ref())
+    && match r.erasure {
+      ErasureApplied { basis: b } => declaration_ref_eq(a: b, b: fx_ref(name: "fixture_lawful_basis"))
+    }
+}

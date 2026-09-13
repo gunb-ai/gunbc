@@ -1,0 +1,26 @@
+module test.probe.data_effect_permit_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A DataEffectPermit is minted by product.data_class
+// admit_data_effect and by nothing else: it is sole_constructor, so the record literal below --
+// a permit authored beside the decision that is supposed to produce it, with a category, a sink,
+// an operation and the payload all chosen by the author -- refuses as SoleConstructorViolation.
+// The sink literal inside it is a second forged sealed record and refuses the same way.
+
+import std.types { FilePath }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value }
+import product.data_category { BuildOutput, build_output_ref }
+import product.data_class { DataEffectPermit, Sink, LogChannel, Transmit }
+
+fn forged_permit(path: FilePath) -> DataEffectPermit<BuildOutput, FilePath> {
+  DataEffectPermit {
+    category: build_output_ref(),
+    sink: Sink { category: build_output_ref(), kind: LogChannel, purpose: build_output_ref(), recipient: build_output_ref() },
+    operation: Transmit,
+    value: path,
+    map_authority: decl_ref(module_path: "test.probe.data_effect_permit_forged_probe", decl_name: "forged_permit"),
+    posture: content_hash_of_value(value: "forged"),
+    retention: build_output_ref(),
+    lawful_basis: build_output_ref(),
+  }
+}

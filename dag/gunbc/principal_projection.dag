@@ -2,7 +2,9 @@ module gunbc.principal_projection
 
 import std.types { NonEmptyStr }
 import extdeps.auth.jwt { JwtStringOrUri }
-import extdeps.auth.oidc { OidcIdTokenClaims }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import product.data_category { PersonalIdentity }
+import product.data_class { Classified, classify_personal_identity }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalObservation, effective_posix_principal_name,
 }
@@ -21,12 +23,36 @@ type GunbcPrincipal
   = OidcPrincipal { principal: OidcProjectedPrincipal }
   | PosixPrincipal { principal: PosixProjectedPrincipal }
 
+// THE OIDC INGEST BOUNDARY (product.data_class). An ID token's standard claims -- email,
+// email_verified, name -- are the identity of the account or admin principal who signed in, and
+// this is where they enter our program. The projection no longer carries the raw
+// OidcIdTokenClaims onward: the pseudonymous principal identity (issuer, subject) is carried in the
+// clear, because it is what a principal IS to every consumer, and the standard claims are carried
+// as Classified<PersonalIdentity, OidcStandardClaims>, minted here and only here
+// (classify_personal_identity is admit_callers-sealed to oidc_principal_projection). A consumer
+// that wants an email out of a projection cannot spell it (test.probe.bare_string_from_boundary_probe);
+// it must admit a data effect and hold the permit. The upstream schema in extdeps is untouched:
+// the wall is at OUR ingest, not in the vendor's carrier.
+//
+// Whether the subject claim is itself personal identity is a policy question the data-handling map
+// answers, not this module: it is a stable pseudonymous identifier the product cannot function
+// without, and it is left in the clear here on that basis, stated rather than assumed.
+type OidcProjection {
+  issuer: JwtStringOrUri
+  subject: JwtStringOrUri
+  standard: Classified<PersonalIdentity, OidcStandardClaims>
+}
+
 type PrincipalProjection
-  = OidcProjection { claims: OidcIdTokenClaims }
+  = OidcProjected { projection: OidcProjection }
   | PosixProjection { observation: EffectivePosixPrincipalObservation }
 
 fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
-  OidcProjection { claims: claims }
+  OidcProjected { projection: OidcProjection {
+    issuer: claims.issuer,
+    subject: claims.subject,
+    standard: classify_personal_identity(value: claims.standard),
+  } }
 }
 
 fn posix_principal_projection(
@@ -37,9 +63,9 @@ fn posix_principal_projection(
 
 fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
   match projection {
-    OidcProjection { claims: claims } => OidcPrincipal { principal: OidcProjectedPrincipal {
-      issuer: claims.issuer,
-      subject: claims.subject,
+    OidcProjected { projection: projection } => OidcPrincipal { principal: OidcProjectedPrincipal {
+      issuer: projection.issuer,
+      subject: projection.subject,
     } }
     PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
       effective_name: effective_posix_principal_name(observation: observation),

@@ -1,0 +1,16 @@
+module test.probe.durable_write_takes_the_value_probe
+
+// THIS MODULE MUST NOT RESOLVE. The durable-origin write of job output takes a
+// DataEffectPermit<BuildOutput, FilePath>, never the file. The tempting construction is the one
+// every caller wrote before this change: hand the write the path. The argument is a FilePath where
+// a sealed permit record is declared, which refuses as TypeMismatch; the write cannot be reached
+// without a permit, and a permit cannot be authored (test.probe.data_effect_permit_forged_probe).
+
+import std.types { NonEmptyStr, FilePath }
+import std.resources { Network }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.fabric_m0_origin_commit { OriginObjectCommit, commit_object_to_origin }
+
+func write_the_path(token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
+  commit_object_to_origin(permit: "dag/test/fixture/fabric_m0_origin_readback/other_object.txt" as FilePath, key: "probe/never" as NonEmptyStr, token_source: token_source)
+}
