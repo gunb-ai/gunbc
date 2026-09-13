@@ -30,7 +30,7 @@ test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -
           reading.banner_present
             && reading.script_exit_footer_present == (contains(spec.path as String, "3ds-mixture") || contains(spec.path as String, "socket0-reseated"))
             && match reading.firmware { TrainingRefusedByFirmware { statement, locus: _ } => contains(statement as String, spec.completion as String) _ => false }
-            && match reading.inventory { ObservationEstablished { observed: true } => true _ => false }
+            && match reading.inventory { ObservationEstablished { observed: configuration } => configuration == reading.spec.configuration _ => false }
             && match reading.continuous_collection { ObservationRefused { cause: _ } => true _ => false }
         }
       })
@@ -53,7 +53,7 @@ test fn w_truncated_configuration_cannot_support_absence() -> Bool {
           let question = pre_os_archive_inventory_question(spec: spec)
           let diagnostic = "Non-identical DIMM mixture NOT supported!"
           let absence = pre_os_diagnostic_absence(question: question, payload: payload, source: source, diagnostic: diagnostic)
-          match positive.inventory { ObservationEstablished { observed: true } => match negative.inventory { ObservationRefused { cause: _ } => true _ => false } _ => false }
+          match positive.inventory { ObservationEstablished { observed: _ } => match negative.inventory { ObservationRefused { cause: _ } => true _ => false } _ => false }
             && match absence { GoalSatisfied { evidence: _ } => !contains(payload, diagnostic) GoalDiverged { deviations: _ } => contains(payload, diagnostic) _ => false }
             && match pre_os_diagnostic_absence(question: question, payload: incomplete, source: source, diagnostic: diagnostic) { GoalAssessmentRefused { cause: _ } => true _ => false }
 

@@ -1,6 +1,6 @@
 module gunbc.machine_intake_pre_os_inventory_assessment
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_configuration { MemoryConfiguration }
@@ -18,14 +18,14 @@ type PreOsInventoryQuestion {
   expected_payload_token: NonEmptyStr
 }
 
-fn pre_os_inventory_observation(question: PreOsInventoryQuestion, payload: String) -> ObservationAttempt<Bool, NonEmptyStr> {
+fn pre_os_inventory_observation(question: PreOsInventoryQuestion, payload: String) -> ObservationAttempt<MemoryConfiguration, NonEmptyStr> {
   match question.coverage {
     MemoryCaptureInterval { required_start: _, required_end: _, collector_start: _, collector_end: _ } => ObservationRefused { cause: "wall-clock interval cannot establish pre-OS phase coverage" }
     MemoryCaptureCycles { required_cycles: _, start_token: _, completion_token: _ } => match memory_cycle_coverage_refusal(coverage: question.coverage, payload: payload) {
     Present { value: cause } => ObservationRefused { cause: cause }
     Absent => if memory_inventory_in_capture(configuration: question.configuration, coverage: question.coverage, payload: payload,
       printed_parts: question.printed_parts, printed_positions: question.printed_positions, expected_payload_token: question.expected_payload_token) {
-      ObservationEstablished { observed: true }
+      ObservationEstablished { observed: question.configuration }
     } else { ObservationRefused { cause: "complete positioned inventory is absent from a captured cycle" } }
   }
   }
@@ -40,9 +40,7 @@ fn pre_os_diagnostic_absence(question: PreOsInventoryQuestion, payload: String, 
       ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
       ObservationEstablished { observed: _ } => match pre_os_inventory_observation(question: question, payload: payload) {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
-        ObservationEstablished { observed: covered } => if !covered {
-          GoalAssessmentRefused { cause: "inventory did not establish the diagnostic-emitting phase" }
-        } else if contains(payload, diagnostic as String) {
+        ObservationEstablished { observed: _ } => if contains(payload, diagnostic as String) {
           GoalDiverged { deviations: FreeSemigroup { head: "named diagnostic was observed", tail: Empty } }
         } else { GoalSatisfied { evidence: "named diagnostic absent from the captured complete inventory phase only" } }
       }

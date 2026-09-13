@@ -123,7 +123,7 @@ data firmware_training_refusal_statements: List<NonEmptyStr> = [
 fn is_training_refusal_statement(line: String) -> Bool {
   let clean = trim(line)
   if !starts_with(s: clean, prefix: firmware_error_line_prefix as String) { false }
-  else { any(firmware_training_refusal_statements, st => trim(substring(s: clean, start: 6, end: clean.length())) == st as String) }
+  else { any(firmware_training_refusal_statements, st => trim(substring(s: clean, start: (firmware_error_line_prefix as String).length(), end: clean.length())) == st as String) }
 }
 
 data firmware_err_code_line_prefix: NonEmptyStr = "ERR:"
@@ -169,7 +169,7 @@ fn is_firmware_error_line(line: String) -> Bool {
 fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
   let clean = trim(line)
   if !is_firmware_error_line(line: clean) { false } else {
-    let body = trim(substring(s: clean, start: 6, end: clean.length()))
+    let body = trim(substring(s: clean, start: (firmware_error_line_prefix as String).length(), end: clean.length()))
     let fields = split(s: body, delimiter: "]:")
     starts_with(s: body, prefix: marker as String) && count(fields) == 2
       && match fields.skip(n: 1).first() {

@@ -32,7 +32,7 @@ fn pre_os_host_archive_assessment(payload: String, host_mac: NonEmptyStr) -> Pre
 type PreOsQuietArchiveAssessment {
   sel: ObservationAttempt<NonEmptyStr, NonEmptyStr>
   milestones: PreOsMilestones
-  configuration: ObservationAttempt<Bool, NonEmptyStr>
+  configuration: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
 }
 
 fn pre_os_quiet_archive_assessment(payload: String) -> PreOsQuietArchiveAssessment {
@@ -69,7 +69,7 @@ type PreOsArchiveReading {
   firmware: FirmwareConsoleReport
   banner_present: Bool
   script_exit_footer_present: Bool
-  inventory: ObservationAttempt<Bool, NonEmptyStr>
+  inventory: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
   continuous_collection: ObservationAttempt<Bool, NonEmptyStr>
 }
 

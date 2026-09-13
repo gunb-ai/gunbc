@@ -2,6 +2,7 @@ module gunbc.machine_intake_pre_os_timeline
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
+import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.measure { byte_size_count }
 import std.content_hash { Sha256Hash }
@@ -114,7 +115,7 @@ type PreOsTimelineRow {
   association: ObservationAttempt<Bool, NonEmptyStr>
   cycles: List<PreOsCapturedCycleReading>
   sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr>
-  configuration: ObservationAttempt<Bool, NonEmptyStr>
+  configuration: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
   boot: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
   training: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
   present_admission: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
