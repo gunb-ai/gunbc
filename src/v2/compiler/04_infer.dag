@@ -51,14 +51,16 @@ import v2.std.constraints {
 import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceFormal,
-  InhabitanceRefused,
-  Inhabits,
   application_argument_does_not_inhabit_diagnostic,
   application_argument_type_not_derived_diagnostic,
   application_arity_mismatch_diagnostic,
-  application_parameter_type_not_derived_diagnostic,
   declared_type_inhabitance,
-  position_direct_call_argument
+  inhabitance_inhabits_homomorphism,
+  inhabitance_refused_find_witness_reason,
+  inhabitance_undecidable_diagnostic,
+  inhabitance_undecidable_reason,
+  position_direct_call_argument,
+  undecidable_formal_unresolved
 }
 import v2.std.diagnostic {
   Diagnostic,
@@ -1573,7 +1575,7 @@ fn infer_list_drop_first(xs: List<Node>) -> List<Node> {
   ).args
 }
 
-fn infer_find_arrow_by_name(root: Node, name: Symbol) -> Optional<Node> {
+fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: Absent, f: fn(acc, e) {
@@ -1582,15 +1584,15 @@ fn infer_find_arrow_by_name(root: Node, name: Symbol) -> Optional<Node> {
           Absent =>
             match e.label {
               Named { name: nme } =>
-                if nme == name {
+                if nme == binding {
                   match e.target.kind {
                     TypeNode { connective: Arrow } => Present { value: e.target }
-                    _ => infer_find_arrow_by_name(root: e.target, name: name)
+                    _ => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
                   }
                 } else {
-                  infer_find_arrow_by_name(root: e.target, name: name)
+                  infer_arrow_declaration_for_binding(root: e.target, binding: binding)
                 }
-              Positional => infer_find_arrow_by_name(root: e.target, name: name)
+              Positional => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
             }
         }
       })
@@ -1598,7 +1600,7 @@ fn infer_find_arrow_by_name(root: Node, name: Symbol) -> Optional<Node> {
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => infer_find_arrow_by_name(root: e.target, name: name)
+          Absent => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
         }
       })
   }
@@ -1608,7 +1610,7 @@ fn infer_operator_arrow(operator: Node, tree: Node) -> Optional<Node> {
   match operator.kind {
     TypeNode { connective: Arrow } => Present { value: operator }
     TypeNode { connective: Atom { identity: id } } =>
-      infer_find_arrow_by_name(root: tree, name: id)
+      infer_arrow_declaration_for_binding(root: tree, binding: id)
     _ => Absent
   }
 }
@@ -1633,42 +1635,19 @@ fn infer_formals_from_domain(domain: Node) -> List<InhabitanceFormal> {
   }
 }
 
-fn infer_add_operand_formals() -> List<InhabitanceFormal> {
-  [
-    InhabitanceFormal {
-      parameter_identity: ^infer_add_left_operand,
-      declared: infer_branch_int_binding_type_node()
-    },
-    InhabitanceFormal {
-      parameter_identity: ^infer_add_right_operand,
-      declared: infer_branch_int_binding_type_node()
-    }
-  ]
-}
-
-fn infer_application_formals(node: Node, tree: Node) -> Outcome<List<InhabitanceFormal>> {
-  if infer_transform_is_binary_infix_int_add_shape(node: node) {
-    Accepted { value: infer_add_operand_formals(), diagnostics: None }
-  } else {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-      Absent =>
-        outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
-      Present { value: operator } =>
-        match infer_operator_arrow(operator: operator, tree: tree) {
-          Absent =>
-            outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
-          Present { value: arrow } =>
-            match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-              Absent =>
-                outcome_rejected(application_parameter_type_not_derived_diagnostic(application: node))
-              Present { value: domain } =>
-                Accepted {
-                  value: infer_formals_from_domain(domain: domain),
-                  diagnostics: None
-                }
-            }
-        }
-    }
+fn infer_application_formals(node: Node, tree: Node) -> Optional<List<InhabitanceFormal>> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Absent => Absent
+    Present { value: operator } =>
+      match infer_operator_arrow(operator: operator, tree: tree) {
+        Absent => Absent
+        Present { value: arrow } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+            Absent => Absent
+            Present { value: domain } =>
+              Present { value: infer_formals_from_domain(domain: domain) }
+          }
+      }
   }
 }
 
@@ -1695,7 +1674,7 @@ fn infer_judge_application_argument(
             )
           )
         Holds { value: produced } =>
-          match declared_type_inhabitance(
+          let verdict = declared_type_inhabitance(
             obligation: DeclaredTypeObligation {
               position: position_direct_call_argument(),
               parameter_identity: formal.parameter_identity,
@@ -1703,17 +1682,45 @@ fn infer_judge_application_argument(
               produced: produced,
               application: application
             }
-          ) {
-            Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
-            InhabitanceRefused { reason: _ } =>
-              outcome_rejected(
-                application_argument_does_not_inhabit_diagnostic(
-                  application: application,
-                  parameter_identity: formal.parameter_identity,
-                  argument_type: produced,
-                  parameter_type: formal.declared
-                )
-              )
+          )
+          match inhabitance_inhabits_homomorphism(verdict: verdict) {
+            Present { value: _ } => Accepted { value: true, diagnostics: None }
+            Absent =>
+              match inhabitance_undecidable_reason(verdict: verdict) {
+                Present { value: reason } =>
+                  Accepted {
+                    value: true,
+                    diagnostics: Some {
+                      diagnostics: diagnostics_singleton(
+                        d: inhabitance_undecidable_diagnostic(
+                          application: application,
+                          reason: reason
+                        )
+                      )
+                    }
+                  }
+                Absent =>
+                  match inhabitance_refused_find_witness_reason(verdict: verdict) {
+                    Present { value: _ } =>
+                      outcome_rejected(
+                        application_argument_does_not_inhabit_diagnostic(
+                          application: application,
+                          parameter_identity: formal.parameter_identity,
+                          argument_type: produced,
+                          parameter_type: formal.declared
+                        )
+                      )
+                    Absent =>
+                      outcome_rejected(
+                        application_argument_does_not_inhabit_diagnostic(
+                          application: application,
+                          parameter_identity: formal.parameter_identity,
+                          argument_type: produced,
+                          parameter_type: formal.declared
+                        )
+                      )
+                  }
+              }
           }
       }
   }
@@ -1725,8 +1732,19 @@ fn infer_application_argument_inhabitance(
   tree: Node
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node, tree: tree) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: formals, diagnostics: fd } =>
+    Absent =>
+      Accepted {
+        value: true,
+        diagnostics: Some {
+          diagnostics: diagnostics_singleton(
+            d: inhabitance_undecidable_diagnostic(
+              application: node,
+              reason: undecidable_formal_unresolved()
+            )
+          )
+        }
+      }
+    Present { value: formals } =>
       let args = infer_transform_argument_targets(node: node)
       if length(xs: formals) != length(xs: args) {
         outcome_rejected(application_arity_mismatch_diagnostic(application: node))
@@ -1735,7 +1753,7 @@ fn infer_application_argument_inhabitance(
           formals,
           init: InferInhabitanceZipAcc {
             remaining: args,
-            result: Accepted { value: true, diagnostics: fd }
+            result: Accepted { value: true, diagnostics: None }
           },
           f: fn(acc, formal) {
             match acc.result {

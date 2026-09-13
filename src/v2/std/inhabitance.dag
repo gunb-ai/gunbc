@@ -1,23 +1,36 @@
 module v2.std.inhabitance
 
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
   Suggested,
   Unavailable,
   node_locus
 }
+import v2.std.find_witness {
+  CandidateSet,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  Cardinality,
   Conj,
   Edge,
+  Instantiation,
   Named,
   Node,
   Symbol,
   TypeNode
 }
-import v2.std.witness { HomomorphismWitness }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
 type DeclaredTypePosition
   = PositionDirectCallArgument
@@ -35,38 +48,144 @@ type InhabitanceFormal {
   declared: Node
 }
 
-type InhabitanceRefusalReason
-  = RefusedDistinctConstructor
+type InhabitanceUndecidableReason
+  = UndecidableGenericFormal
+  | UndecidableOptionalCarrier
+  | UndecidableRefinementChain
+  | UndecidableKernelNumeric
+  | UndecidableFormalUnresolved
 
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
-  | InhabitanceRefused { reason: InhabitanceRefusalReason }
+  | InhabitanceRefused { find_witness_reason: Symbol }
+  | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
 fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
 }
 
-fn inhabitance_types_equal(declared: Node, produced: Node) -> Bool {
-  match declared.kind {
-    TypeNode { connective: Atom { identity: id_a } } =>
-      match produced.kind {
-        TypeNode { connective: Atom { identity: id_b } } => id_a == id_b
-        _ => false
-      }
-    _ => declared == produced
+fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
+  CandidateSet {
+    candidates: [declared],
+    closedness: StructuralPropertyWitness {
+      property: ^inhabitance_declared_singleton_closed,
+      evidence: declared
+    }
+  }
+}
+
+fn inhabitance_node_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
+fn inhabitance_node_is_cardinality(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Cardinality } => true
+    _ => false
+  }
+}
+
+fn inhabitance_pair_undecidable_reason(
+  declared: Node,
+  produced: Node
+) -> Optional<InhabitanceUndecidableReason> {
+  if inhabitance_node_is_cardinality(n: declared)
+    || inhabitance_node_is_cardinality(n: produced) {
+    Present { value: UndecidableOptionalCarrier }
+  } else if inhabitance_node_is_instantiation(n: declared)
+    || inhabitance_node_is_instantiation(n: produced) {
+    Present { value: UndecidableGenericFormal }
+  } else {
+    Absent
   }
 }
 
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
-  if inhabitance_types_equal(declared: obligation.declared, produced: obligation.produced) {
-    Inhabits {
-      homomorphism: HomomorphismWitness {
-        rule: ^homomorphism_rule_declared_type_identity,
-        evidence: obligation.produced
+  match inhabitance_pair_undecidable_reason(
+    declared: obligation.declared,
+    produced: obligation.produced
+  ) {
+    Present { value: reason } => InhabitanceUndecidable { reason: reason }
+    Absent =>
+      match find_witness(
+        source_facts: obligation.produced,
+        candidates: inhabitance_declared_singleton(declared: obligation.declared),
+        predicate: PreservationPredicate {
+          algebra: obligation.produced,
+          preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: _ } =>
+          Inhabits {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_exact_structural_equality,
+              evidence: fw.witness.evidence
+            }
+          }
+        Rejected { diagnostics: r } =>
+          InhabitanceRefused { find_witness_reason: r.head.reason }
       }
-    }
-  } else {
-    InhabitanceRefused { reason: RefusedDistinctConstructor }
+  }
+}
+
+fn inhabitance_inhabits_homomorphism(
+  verdict: InhabitanceVerdict
+) -> Optional<HomomorphismWitness> {
+  match verdict {
+    Inhabits { homomorphism: h } => Present { value: h }
+    InhabitanceRefused { find_witness_reason: _ } => Absent
+    InhabitanceUndecidable { reason: _ } => Absent
+  }
+}
+
+fn inhabitance_refused_find_witness_reason(
+  verdict: InhabitanceVerdict
+) -> Optional<Symbol> {
+  match verdict {
+    InhabitanceRefused { find_witness_reason: r } => Present { value: r }
+    Inhabits { homomorphism: _ } => Absent
+    InhabitanceUndecidable { reason: _ } => Absent
+  }
+}
+
+fn inhabitance_undecidable_reason(
+  verdict: InhabitanceVerdict
+) -> Optional<InhabitanceUndecidableReason> {
+  match verdict {
+    InhabitanceUndecidable { reason: r } => Present { value: r }
+    Inhabits { homomorphism: _ } => Absent
+    InhabitanceRefused { find_witness_reason: _ } => Absent
+  }
+}
+
+fn undecidable_formal_unresolved() -> InhabitanceUndecidableReason {
+  UndecidableFormalUnresolved
+}
+
+fn inhabitance_undecidable_reason_symbol(
+  reason: InhabitanceUndecidableReason
+) -> Symbol {
+  match reason {
+    UndecidableGenericFormal => ^inhabitance_undecidable_generic_formal
+    UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
+    UndecidableRefinementChain => ^inhabitance_undecidable_refinement_chain
+    UndecidableKernelNumeric => ^inhabitance_undecidable_kernel_numeric
+    UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
+  }
+}
+
+fn inhabitance_undecidable_diagnostic(
+  application: Node,
+  reason: InhabitanceUndecidableReason
+) -> Diagnostic {
+  Diagnostic {
+    reason: inhabitance_undecidable_reason_symbol(reason: reason),
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -100,14 +219,6 @@ fn application_argument_type_not_derived_diagnostic(
     reason: ^application_argument_type_not_derived,
     at: node_locus(node: application),
     correction: Suggested { node: argument }
-  }
-}
-
-fn application_parameter_type_not_derived_diagnostic(application: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^application_parameter_type_not_derived,
-    at: node_locus(node: application),
-    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
