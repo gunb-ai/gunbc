@@ -3,9 +3,12 @@ module extdeps.github.workflows
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
-import std.types { CommitSha, NonEmptyStr }
+import std.types { CommitSha, List, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,11 +33,24 @@ type WorkflowDispatchReceipt {
   html_url: NonEmptyStr
 }
 
-// CreateDispatch is intentionally single-attempt. Once the heal push has created a new subject, a
-// dispatch refusal must be visible as HealDispatchRefused and leave revalidation required; silently
-// retrying a permission, rate-limit, or server refusal into apparent success would erase the
-// classification operators need. The owning workflow may be retriggered deliberately after
-// diagnosis, but this operation never assumes that the GITHUB_TOKEN push created a run.
+// CreateDispatch is the cited GitHub REST shape (Create a workflow dispatch event), not a heal
+// coproduct. It is intentionally single-attempt: silently retrying 401/403/429/5xx into a
+// WorkflowDispatchReceipt would fabricate a run that was refused. The owning workflow may be
+// retriggered after diagnosis; this operation never assumes a git push created a run.
+//
+// FROZEN UPSTREAM SHAPE: tools.ci_heal_dispatch, the only production caller, is deleted. Restoring
+// heal auto-dispatch does not consume this operation. `expected_healed_sha` is the `inputs`
+// key GitHub accepts for this repository's workflow_dispatch contract; it is not a second heal
+// policy and must not grow more heal-specific keys here. Disposition:
+// create_dispatch_unconsumed_frontier_rows.
+
+data create_dispatch_unconsumed_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.workflows", decl_name: "WorkflowDispatchReceipt"),
+    reason: "github.Workflows CreateDispatch and WorkflowDispatchReceipt are the cited REST shape with no production caller after tools.ci_heal_dispatch was deleted; frozen: no new heal-specific keys or auto-invoke rows",
+    dissolution: unbound_dissolution(description: "a production fold that is not heal auto-dispatch calls github.Workflows CreateDispatch, or CreateDispatch and WorkflowDispatchReceipt are deleted. NOT satisfied by restoring tools.ci_heal_dispatch, nor by a witness constructing WorkflowDispatchReceipt"),
+  )
+]
 
 service github.Workflows {
   config {

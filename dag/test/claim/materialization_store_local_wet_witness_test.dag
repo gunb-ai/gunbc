@@ -101,11 +101,11 @@ fn commit_tag(c: StoreCommit) -> String {
   store_commit_refusal_tag(c: c)
 }
 
-func fresh_root_path() -> String {
+fn fresh_root_path() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
 }
 
-func opened(root: MaterializationStoreRoot) -> OpenedMaterializationStore? {
+fn opened(root: MaterializationStoreRoot) -> OpenedMaterializationStore? {
   match local_store_initialize(root: root, instance_label: "wet-witness") {
     LocalStoreInitialized { opening: o } => match o {
       LocalStoreOpened { root: _, store: s, durability: _ } => Present { value: s }
