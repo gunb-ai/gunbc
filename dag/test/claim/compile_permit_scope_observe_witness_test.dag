@@ -3,7 +3,7 @@ module test.claim.compile_permit_scope_observe_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
-import std.measure { hardware_thread_count_value }
+import std.measure { hardware_thread_count, hardware_thread_count_value }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_fifo_path_from_makeflags }
 import gunbc.compile_permit_scope {
   BorrowerHeldCooperativeHostFifo,
@@ -18,6 +18,9 @@ import gunbc.compile_permit_scope_observe {
   realization_from_unit_text,
   host_standing_from_unit_text,
   compile_permit_scope_probe_unit,
+  join_host_slot_realizations,
+  SlotRealizationObserved,
+  SlotRealizationUnreadable,
 }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
@@ -81,6 +84,46 @@ test fn w_fifo_unit_text_is_borrower_held_host_fifo() -> Bool {
       (p as String == fifo_path()) && ((d as String) == gunbc_runner_jobserver_service)
     Present { value: InvocationLocalCargo { jobs_per_slot: _ } } => false
     Absent => false
+  }
+}
+
+test fn w_malformed_makeflags_is_unreadable_even_with_cargo_jobs() -> Bool {
+  match realization_from_unit_text(
+    environment: "CARGO_BUILD_JOBS=6 MAKEFLAGS=--jobserver-auth=fifo:",
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_mixed_slot_realizations_are_unreadable() -> Bool {
+  match join_host_slot_realizations(
+    host: operator_host_srv3,
+    reads: [
+      SlotRealizationObserved {
+        realization: BorrowerHeldCooperativeHostFifo {
+          fifo_path: fifo_path() as NonEmptyStr,
+          daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+        },
+      },
+      SlotRealizationObserved {
+        realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 6) },
+      },
+    ],
+  ) {
+    HostCancellationUnreadable { host: h, cause: _ } => h == operator_host_srv3
+    HostCancellationObserved { host: _, realization: _ } => false
+    _ => false
+  }
+}
+
+test fn w_empty_slot_reads_are_unreadable() -> Bool {
+  match join_host_slot_realizations(host: operator_host_srv3, reads: []) {
+    HostCancellationUnreadable { host: _, cause: _ } => true
+    HostCancellationObserved { host: _, realization: _ } => false
+    _ => false
   }
 }
 

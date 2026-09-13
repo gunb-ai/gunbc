@@ -3,7 +3,7 @@ module gunbc.compile_permit_scope_observe
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
-import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty }
 import extdeps.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
@@ -30,17 +30,80 @@ import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
+import gunbc.runner_slot_allocation { committed_slot_identities }
 
 data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
 
 // WHAT THIS MODULE READS, AND WHAT IT MUST NOT SAY. gunbc.compile_permit_scope derives whether
-// cancellation is safe; this module reports the realization a runner slot unit is running. An
-// observation that labelled itself safe would be the self-certifying carrier that module already
-// refused. Present fifo-auth evidence is BorrowerHeldCooperativeHostFifo; complete absence of that
-// evidence is InvocationLocalCargo. A mixed set is unreadable, not a guess at either arm.
+// cancellation is safe; this module reports the realization the host's committed runner slots are
+// running. An observation that labelled itself safe would be the self-certifying carrier that
+// module already refused. Present fifo-auth evidence is BorrowerHeldCooperativeHostFifo; complete
+// absence of that evidence is InvocationLocalCargo. A mixed set — across properties or across
+// slots — is unreadable, not a guess at either arm. Slot 1 alone is not a host (review 65523).
 
 fn compile_permit_scope_probe_unit(host: HostIdentity) -> NonEmptyStr {
   runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: 1 })
+}
+
+fn realizations_agree(a: CompileParallelismRealization, b: CompileParallelismRealization) -> Bool {
+  match a {
+    BorrowerHeldCooperativeHostFifo { fifo_path: p1, daemon_service: d1 } =>
+      match b {
+        BorrowerHeldCooperativeHostFifo { fifo_path: p2, daemon_service: d2 } =>
+          (p1 == p2) && (d1 == d2)
+        InvocationLocalCargo { jobs_per_slot: _ } => false
+      }
+    InvocationLocalCargo { jobs_per_slot: j1 } =>
+      match b {
+        InvocationLocalCargo { jobs_per_slot: j2 } =>
+          hardware_thread_count_value(t: j1) == hardware_thread_count_value(t: j2)
+        BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: _ } => false
+      }
+  }
+}
+
+type SlotRealizationRead
+  = SlotRealizationObserved { realization: CompileParallelismRealization }
+  | SlotRealizationUnreadable { cause: NonEmptyStr }
+
+fn join_host_slot_realizations(
+  host: HostIdentity,
+  reads: List<SlotRealizationRead>,
+) -> HostCompileCancellationStanding {
+  if length(reads) == 0 {
+    HostCancellationUnreadable {
+      host: host,
+      cause: "committed runner-slot population was empty; refusing a host standing with no slots" as NonEmptyStr,
+    }
+  } else {
+    let unread = filter(reads, r => match r {
+      SlotRealizationUnreadable { cause: _ } => true
+      SlotRealizationObserved { realization: _ } => false
+    })
+    if length(unread) > 0 {
+      HostCancellationUnreadable {
+        host: host,
+        cause: "one or more committed runner slots were unreadable; refusing a narrowed host standing" as NonEmptyStr,
+      }
+    } else {
+      match reads.first() {
+        SlotRealizationUnreadable { cause: why } =>
+          HostCancellationUnreadable { host: host, cause: why }
+        SlotRealizationObserved { realization: first } =>
+          if any(reads, r => match r {
+            SlotRealizationObserved { realization: other } => !realizations_agree(a: first, b: other)
+            SlotRealizationUnreadable { cause: _ } => true
+          }) {
+            HostCancellationUnreadable {
+              host: host,
+              cause: "committed runner slots did not jointly evidence one realization" as NonEmptyStr,
+            }
+          } else {
+            HostCancellationObserved { host: host, realization: first }
+          }
+      }
+    }
+  }
 }
 
 fn env_assignment_value(tokens: List<String>, key: String) -> String? {
@@ -134,27 +197,27 @@ fn realization_from_unit_text(
   let daemon = gunbc_runner_jobserver_service
   let fifo_env = env_assignment_value(tokens: env_tokens, key: "CTRL_JOBSERVER_FIFO")
   let makeflags = env_assignment_value(tokens: env_tokens, key: "MAKEFLAGS")
-  let fifo_from_flags = match makeflags {
-    Present { value: flags } => jobserver_fifo_path_from_makeflags(makeflags: flags)
-    Absent => none
-  }
   let after_daemon = word_present(tokens: after_tokens, word: daemon)
   let wants_daemon = word_present(tokens: wants_tokens, word: daemon)
-  match fifo_from_flags {
-    Present { value: path } =>
-      match fifo_env {
-        Present { value: env_path } =>
-          if (env_path == path) && after_daemon && wants_daemon && (path != "") {
-            Present {
-              value: BorrowerHeldCooperativeHostFifo {
-                fifo_path: path as NonEmptyStr,
-                daemon_service: daemon as NonEmptyStr,
-              }
-            }
-          } else {
-            none
-          }
+  match makeflags {
+    Present { value: flags } =>
+      match jobserver_fifo_path_from_makeflags(makeflags: flags) {
         Absent => none
+        Present { value: path } =>
+          match fifo_env {
+            Present { value: env_path } =>
+              if (env_path == path) && after_daemon && wants_daemon && (path != "") {
+                Present {
+                  value: BorrowerHeldCooperativeHostFifo {
+                    fifo_path: path as NonEmptyStr,
+                    daemon_service: daemon as NonEmptyStr,
+                  }
+                }
+              } else {
+                none
+              }
+            Absent => none
+          }
       }
     Absent =>
       if (match fifo_env { Present { value: _ } => true, Absent => false }) || after_daemon || wants_daemon {
@@ -185,32 +248,50 @@ fn host_standing_from_unit_text(
   }
 }
 
+fn observe_slot_realization(
+  transport: HostEffectTransport,
+  unit: NonEmptyStr,
+) -> SlotRealizationRead {
+  match read_environment(transport: transport, unit: unit) {
+    PermitScopePropertyUnreadable { cause: why } =>
+      SlotRealizationUnreadable { cause: why }
+    PermitScopePropertyText { text: environment } =>
+      match read_after(transport: transport, unit: unit) {
+        PermitScopePropertyUnreadable { cause: why } =>
+          SlotRealizationUnreadable { cause: why }
+        PermitScopePropertyText { text: after } =>
+          match read_wants(transport: transport, unit: unit) {
+            PermitScopePropertyUnreadable { cause: why } =>
+              SlotRealizationUnreadable { cause: why }
+            PermitScopePropertyText { text: wants } =>
+              match realization_from_unit_text(
+                environment: environment,
+                after: after,
+                wants: wants,
+              ) {
+                Present { value: realization } =>
+                  SlotRealizationObserved { realization: realization }
+                Absent =>
+                  SlotRealizationUnreadable {
+                    cause: "runner unit Environment/After/Wants did not jointly evidence a fifo pool or an invocation-local cargo bound" as NonEmptyStr,
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn observe_host_compile_cancellation(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> HostCompileCancellationStanding {
-  let unit = compile_permit_scope_probe_unit(host: host)
-  match read_environment(transport: transport, unit: unit) {
-    PermitScopePropertyUnreadable { cause: why } =>
-      HostCancellationUnreadable { host: host, cause: why }
-    PermitScopePropertyText { text: environment } =>
-      match read_after(transport: transport, unit: unit) {
-        PermitScopePropertyUnreadable { cause: why } =>
-          HostCancellationUnreadable { host: host, cause: why }
-        PermitScopePropertyText { text: after } =>
-          match read_wants(transport: transport, unit: unit) {
-            PermitScopePropertyUnreadable { cause: why } =>
-              HostCancellationUnreadable { host: host, cause: why }
-            PermitScopePropertyText { text: wants } =>
-              host_standing_from_unit_text(
-                host: host,
-                environment: environment,
-                after: after,
-                wants: wants,
-              )
-          }
-      }
-  }
+  join_host_slot_realizations(
+    host: host,
+    reads: map(
+      committed_slot_identities(host: host),
+      slot => observe_slot_realization(transport: transport, unit: runner_slot_unit_name(slot: slot)),
+    ),
+  )
 }
 
 fn observe_host_compile_cancellation_for_fleet_host(host: HostIdentity) -> HostCompileCancellationStanding {
