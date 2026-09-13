@@ -1,0 +1,129 @@
+module test.claim.fleet_observation_seal
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING REDS FOR THE ACQUISITION SEALS, ENROLLED RATHER THAN RUN ONCE.
+//
+// gunbc.fleet_observation_capture_chunk and gunbc.fleet_observation_observation_envelope claim that
+// four values cannot be SPELLED outside their owning modules: the durable-commit proof, the
+// continuity reach, the committed chunk, and the silence proof that the one dangerous arm of
+// SourceByteFact must carry. Those refusals were measured once, by hand, in scratch files that were
+// then deleted -- so the annotations asserting them were TRANSCRIBED OUTPUT, which DESIGN section 6
+// forbids and which section 4b(4) says decays the moment nobody re-runs it. Nothing would have gone
+// red if a sole_constructor were later removed. This file is that evidence, enrolled.
+//
+// COUNTS ARE KEYED (class, subject_name, blocking) AND NEVER BY CLASS ALONE. gunbc.compile_diagnostic_census
+// states that CensusObserved carries every diagnostic the compile produced, THE IMPORTED CLOSURE
+// INCLUDED -- so a class-only count over a fixture that imports production modules can be satisfied by
+// an unrelated refusal elsewhere in the closure, and a class-only zero is a property of the corpus
+// rather than of the probe. Each probe below names its own subject.
+//
+// EXACTLY ONE refusal is the proposition in each case, so each assertion says one. `>= 1` would hide a
+// second, unintended refusal on the same key and let a probe pass for the wrong reason.
+//
+// WHY THE SEALS ARE ON RECORDS AND NOT ON THE SUMS: sole_constructor on a COPRODUCT does not refuse
+// cross-module variant construction -- the declared hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is red.
+// Sealing SourceByteFact or LocalCommitStanding directly would have been permanently green by
+// construction, which is worse than absent. The records the arms CARRY are the form the wall refuses.
+//
+// WHAT THESE PROBES DO NOT ESTABLISH, stated here so the file cannot be cited for more than it shows:
+// they establish that the arms cannot be SPELLED. They say nothing about whether the arms can be
+// OBTAINED through an admitted mint whose own input is caller-authored -- which they can, because
+// std.durable_compare_and_set leaves CasSlotVersion unsealed. That is the open half of the rung split
+// recorded at gunbc.fleet_observation_capture_chunk, and it is a different proposition.
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn seal_violations(source: String, subject: String) -> Int {
+  keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+// ── RED 1: the durable-commit proof ────────────────────────────────────────────────────────────
+
+data forged_commit_proof_source: String = "module probe_fleet_obs_forged_commit\nimport gunbc.fleet_observation_capture_chunk { LocalCommitStanding, LocallyCommitted, DurableCommitProof }\nimport std.content_hash { ContentHash, content_hash_of_value }\nfn forged() -> LocalCommitStanding {\n  LocallyCommitted { proof: DurableCommitProof { committed_content: content_hash_of_value(value: \"nothing-was-ever-stored\") } }\n}\n"
+
+test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_commit_proof_source, subject: "DurableCommitProof") == 1
+}
+
+// ── RED 2: the continuity reach ────────────────────────────────────────────────────────────────
+
+data forged_continuity_reach_source: String = "module probe_fleet_obs_forged_reach\nimport gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityReach }\nfn forged() -> StreamContinuity {\n  ContinuityEstablished { reach: ContinuityReach { verified_through: 999999 } }\n}\n"
+
+test fn a_forged_continuity_reach_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_continuity_reach_source, subject: "ContinuityReach") == 1
+}
+
+// ── RED 3: the committed chunk ─────────────────────────────────────────────────────────────────
+
+data forged_committed_chunk_source: String = "module probe_fleet_obs_forged_chunk\nimport gunbc.fleet_observation_capture_chunk { CommittedChunk, CaptureChunk }\nfn forged(c: CaptureChunk) -> CommittedChunk {\n  CommittedChunk { chunk: c, committed_content: c.payload_digest }\n}\n"
+
+test fn a_forged_committed_chunk_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_committed_chunk_source, subject: "CommittedChunk") == 1
+}
+
+// ── RED 4: the silence proof, and this is the one the lane exists for ───────────────────────────
+
+// "The host produced no bytes" must not be spellable without a token only source_byte_fact mints.
+// This is the 2026-09-12 reading -- a quiet channel published as a successful boot -- as a compile
+// refusal rather than as a review comment.
+data forged_silence_source: String = "module probe_fleet_obs_forged_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceProducedNoBytesInRange, SilenceProof }\nimport std.measure { byte_size }\nfn forged() -> SourceByteFact {\n  SourceProducedNoBytesInRange { proof: SilenceProof { range: SourceStreamRange { first_offset: 0, length: byte_size(count: 100) } } }\n}\n"
+
+test fn a_forged_silence_proof_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_silence_source, subject: "SilenceProof") == 1
+}
+
+// ── THE GREEN CONTROLS ─────────────────────────────────────────────────────────────────────────
+
+// WITHOUT THESE THE REDS ABOVE CARRY NO INFORMATION. A probe that refuses because the module failed
+// to resolve, or because a name was misspelled, looks identical to one that refuses because the wall
+// fired. Each control imports the SAME modules and reaches the SAME types through the sanctioned
+// route, and must draw ZERO violations on the same key.
+data sanctioned_commit_source: String = "module probe_fleet_obs_sanctioned_commit\nimport gunbc.fleet_observation_capture_chunk { LocalCommitStanding, local_commit_from_cas }\nimport std.durable_compare_and_set { CasOutcome }\nimport std.types { NonEmptyStr }\nfn sanctioned(o: CasOutcome<NonEmptyStr>) -> LocalCommitStanding {\n  local_commit_from_cas(outcome: o)\n}\n"
+
+test fn the_sanctioned_commit_route_draws_no_violation() -> Bool {
+  seal_violations(source: sanctioned_commit_source, subject: "DurableCommitProof") == 0
+}
+
+data sanctioned_chunk_source: String = "module probe_fleet_obs_sanctioned_chunk\nimport gunbc.fleet_observation_capture_chunk { CommittedChunk, CaptureChunk, LocalCommitStanding, committed_chunk }\nfn sanctioned(c: CaptureChunk, s: LocalCommitStanding) -> CommittedChunk? {\n  committed_chunk(chunk: c, standing: s)\n}\n"
+
+test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool {
+  seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk") == 0
+}
+
+// BOTH ARMS MUST ACTUALLY HAVE COMPILED. keyed_count returns -1 on CensusNotRunnable, so a probe that
+// never ran would otherwise be indistinguishable from one that ran and found nothing.
+test fn every_probe_in_this_file_actually_compiled() -> Bool {
+  census_ran(source: forged_commit_proof_source)
+  && census_ran(source: forged_continuity_reach_source)
+  && census_ran(source: forged_committed_chunk_source)
+  && census_ran(source: forged_silence_source)
+  && census_ran(source: sanctioned_commit_source)
+  && census_ran(source: sanctioned_chunk_source)
+}
+
+fn census_ran(source: String) -> Bool {
+  match census_of(source: source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
