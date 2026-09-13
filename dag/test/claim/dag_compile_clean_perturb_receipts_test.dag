@@ -4,8 +4,10 @@ import tools.dag_compile_clean_transport {
   SubjectGreen,
   SubjectRed,
   RefusedBeforeSubject,
+  dcc_cli_not_executed_phase,
   dcc_compile_staged_outside_workspace_root,
   dcc_fixture_perturb_compile_report,
+  dcc_staged_under_workspace,
   dcc_subject_expectation_holds,
   perturb_fixture_green_module_source,
   run_perturb_optional_skew_fixture_red_receipt,
@@ -40,7 +42,7 @@ test fn perturb_fixture_green_holds() -> Bool {
 
 test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
   match dcc_compile_staged_outside_workspace_root() {
-    RefusedBeforeSubject { earlier_phase: _, cause: _ } => true
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
     SubjectGreen => false
     SubjectRed => false
   }

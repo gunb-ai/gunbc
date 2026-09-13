@@ -7,6 +7,7 @@ import tools.dag_compile_clean_transport {
   dcc_cli_not_executed_phase,
   dcc_compile_report_from_bin,
   dcc_instrument_earlier_phase,
+  dcc_staged_under_workspace,
   dcc_subject_expectation_holds,
 }
 import gunbc.cli_dispatch_surface {
@@ -20,6 +21,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Hermetic classification on compile_cli_exit_* (not stderr templates, not an earlier_phase allowlist).
+
+test fn staged_tmp_is_not_under_workspace_root() -> Bool {
+  !dcc_staged_under_workspace(root: "/home/repo", staged: "/tmp/dcc_stage")
+}
+
+test fn staged_under_target_is_under_workspace_root() -> Bool {
+  dcc_staged_under_workspace(root: "/home/repo", staged: "/home/repo/target/dcc_stage")
+}
+
+test fn sibling_prefix_is_not_under_workspace_root() -> Bool {
+  !dcc_staged_under_workspace(root: "/home/repo", staged: "/home/repo-other/target")
+}
 
 test fn dcc_report_classifies_refused_exit_as_subject_red() -> Bool {
   match dcc_compile_report_from_bin(

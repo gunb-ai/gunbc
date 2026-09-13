@@ -13,14 +13,17 @@ import gunbc.cli_dispatch_surface {
   compile_cli_exit_refused
 }
 import gunbc.output_policy { OutcomeIsData }
+import std.effect_grant { position_under }
+import std.filesystem_path_grant { absolute_path_position }
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
-// Compile-clean transports return DccCompileReport, not Bool. WitnessBin.Run is a process
-// record; folding it to Bool made a compile CLI NotExecuted (workspace-root admission)
-// indistinguishable from a subject refusal. Classify on compile_cli_exit_* (the compile
-// verb's process status): completed / refused / not-executed. ExpectFailure never holds on
-// RefusedBeforeSubject.
+// Compile-clean transports return DccCompileReport, not Bool. Root admission for a staged
+// --source-root is decided BEFORE WitnessBin.Run: std.effect_grant position_under over
+// std.filesystem_path_grant absolute_path_position (construction — the compiler is not invoked
+// for a path the relation already refuses). WitnessBin.Run.exit_code is then classified on
+// compile_cli_exit_* for NotExecuted phases only the compiler can decide. ExpectFailure never
+// holds on RefusedBeforeSubject.
 
 type DccCompileReport
   = SubjectGreen
@@ -59,6 +62,13 @@ fn dcc_compile_report_arm(report: DccCompileReport) -> String {
 
 fn dcc_host_refused_before_subject(cause: String) -> DccCompileReport {
   RefusedBeforeSubject { earlier_phase: dcc_instrument_earlier_phase, cause: cause }
+}
+
+fn dcc_staged_under_workspace(root: String, staged: String) -> Bool {
+  position_under(
+    target: absolute_path_position(path: staged),
+    root: absolute_path_position(path: root)
+  )
 }
 
 fn dcc_subject_expectation_holds(report: DccCompileReport, expect_success: Bool) -> Bool {
@@ -184,11 +194,17 @@ fn dcc_perturb_compile_with_args(
   module_file: String,
   source: String
 ) -> DccCompileReport {
+  let root = git.Inspect.Toplevel()
+  if !dcc_staged_under_workspace(root: root.path, staged: tmp_path) {
+    dcc_host_refused_before_subject(cause: concat(
+      "primary source root is outside the workspace root (instrument admission, compiler not invoked): ",
+      tmp_path
+    ))
+  } else {
   let wrote = Filesystem.Write(
     path: concat(tmp_path, concat("/", module_file)),
     content: source
   )
-  let root = git.Inspect.Toplevel()
   if wrote.success && dcc_gunbc_ready(root: root.path) {
     let compile = gunbc.WitnessBin.Run(
       workdir: root.path,
@@ -213,6 +229,7 @@ fn dcc_perturb_compile_with_args(
     } else {
       dcc_host_refused_before_subject(cause: "fixture write or gunbc binary not ready, and stage cleanup failed")
     }
+  }
   }
 }
 
@@ -283,22 +300,57 @@ fn dcc_fixture_perturb_compile_report(module_file: String, source: String) -> Dc
   }
 }
 
-// Enrolled RED: stage OUTSIDE the workspace root on purpose (shell.Mktemp.Dir, the path that
-// compile_not_executed refuses at root-admission). Must produce RefusedBeforeSubject. Must not
-// satisfy dcc_subject_expectation_holds as an expected failure. Keep enrolled after the under-root
-// staging fix (DESIGN §4b meta-obligation 4).
+// Enrolled RED (DESIGN §4b meta-obligation 4): stage OUTSIDE the workspace root on purpose
+// (shell.Mktemp.Dir). This control INVOKES the compiler — it is the agreement check between
+// dcc_staged_under_workspace and cli_run's root-admission (including the seed
+// COMPILE_CLI_EXIT_NOT_EXECUTED spelling of compile_cli_exit_not_executed). Production
+// transports must not invoke on this path. Host faults stay instrument-phase so they cannot
+// satisfy a witness that requires the CLI not-executed status. Must not satisfy
+// dcc_subject_expectation_holds as an expected failure.
 
 fn dcc_compile_staged_outside_workspace_root() -> DccCompileReport {
   let root = git.Inspect.Toplevel()
   if dcc_gunbc_ready(root: root.path) {
     let tmp = shell.Mktemp.Dir()
     if tmp.success {
-      dcc_perturb_compile_with_args(
-        tmp_path: tmp.path,
-        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path),
-        module_file: "_perturb_compile_clean_fixture_green.dag",
-        source: perturb_fixture_green_module_source
-      )
+      if dcc_staged_under_workspace(root: root.path, staged: tmp.path) {
+        let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+        if cleaned.success {
+          SubjectRed
+        } else {
+          dcc_host_refused_before_subject(cause: "outside-root control staged a path the containment relation reports as under the workspace root, and stage cleanup failed")
+        }
+      } else {
+        let wrote = Filesystem.Write(
+          path: concat(tmp.path, "/_perturb_compile_clean_fixture_green.dag"),
+          content: perturb_fixture_green_module_source
+        )
+        if wrote.success {
+          let compile = gunbc.WitnessBin.Run(
+            workdir: root.path,
+            bin_path: dcc_gunbc_path(root: root.path),
+            args: dcc_fixture_only_compile_args(tmp: tmp.path),
+            expect: OutcomeIsData
+          )
+          let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+          if cleaned.success {
+            dcc_compile_report_from_bin(
+              exit_code: compile.exit_code,
+              stdout: compile.stdout,
+              stderr: compile.stderr
+            )
+          } else {
+            dcc_host_refused_before_subject(cause: "outside-root control stage cleanup failed")
+          }
+        } else {
+          let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+          if cleaned.success {
+            dcc_host_refused_before_subject(cause: "outside-root control fixture write failed")
+          } else {
+            dcc_host_refused_before_subject(cause: "outside-root control fixture write failed, and stage cleanup failed")
+          }
+        }
+      }
     } else {
       dcc_host_refused_before_subject(cause: "outside-root mktemp failed")
     }

@@ -14,7 +14,8 @@ import tools.dag_compile_clean_transport {
   dcc_ensure_workspace_target,
   dcc_gunbc_path,
   dcc_gunbc_ready,
-  dcc_host_refused_before_subject
+  dcc_host_refused_before_subject,
+  dcc_staged_under_workspace
 }
 
 // Dedicated fixture pair (2026-07-25 falsifier green): the prior live-corpus seam (dag/std/bit.dag
@@ -99,6 +100,23 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
         source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)),
         destination: stage_x.path
       )
+      if !(dcc_staged_under_workspace(root: root.path, staged: stage_y.path)
+        && dcc_staged_under_workspace(root: root.path, staged: stage_x.path)
+        && dcc_staged_under_workspace(root: root.path, staged: broken_dag)) {
+        let cleaned_broken = shell.Remove.RecursiveForce(path: broken.path)
+        let cleaned_sy = shell.Remove.RecursiveForce(path: stage_y.path)
+        let cleaned_sx = shell.Remove.RecursiveForce(path: stage_x.path)
+        let cleaned_oy = shell.Remove.RecursiveForce(path: out_y.path)
+        let cleaned_ox = shell.Remove.RecursiveForce(path: out_x.path)
+        let cleaned_om = shell.Remove.RecursiveForce(path: out_m.path)
+        if copied.success && seam_broken && staged_y.success && staged_x.success
+          && cleaned_broken.success && cleaned_sy.success && cleaned_sx.success
+          && cleaned_oy.success && cleaned_ox.success && cleaned_om.success {
+          cross_shard_seam_probe_failed(cause: "seam primary source root is outside the workspace root (instrument admission, compiler not invoked)")
+        } else {
+          cross_shard_seam_probe_failed(cause: "seam primary source root is outside the workspace root, and stage cleanup failed")
+        }
+      } else {
       let gunbc_path = dcc_gunbc_path(root: root.path)
       let compile_y = gunbc.WitnessBin.Run(
         workdir: root.path,
@@ -141,6 +159,7 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
         y_output: concat(compile_y.stdout, compile_y.stderr),
         x_output: concat(compile_x.stdout, compile_x.stderr),
         m_output: concat(compile_m.stdout, compile_m.stderr)
+      }
       }
     } else {
       cross_shard_seam_probe_failed(cause: "workspace-root seam stage mktemp failed")

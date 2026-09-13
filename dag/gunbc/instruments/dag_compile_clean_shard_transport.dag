@@ -17,6 +17,7 @@ import tools.dag_compile_clean_transport {
   dcc_gunbc_path,
   dcc_gunbc_ready,
   dcc_host_refused_before_subject,
+  dcc_staged_under_workspace,
   dcc_stage_template_suffix
 }
 
@@ -34,6 +35,17 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport
         destination: stage.path
       )
       if staged.success {
+        if !dcc_staged_under_workspace(root: root.path, staged: stage.path) {
+          let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+          if cleaned_stage.success {
+            dcc_host_refused_before_subject(cause: concat(
+              "shard primary source root is outside the workspace root (instrument admission, compiler not invoked): ",
+              stage.path
+            ))
+          } else {
+            dcc_host_refused_before_subject(cause: "shard primary source root is outside the workspace root, and stage cleanup failed")
+          }
+        } else {
         let compile = gunbc.WitnessBin.Run(
           workdir: root.path,
           bin_path: dcc_gunbc_path(root: root.path),
@@ -49,6 +61,7 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport
           )
         } else {
           dcc_host_refused_before_subject(cause: "shard stage cleanup failed")
+        }
         }
       } else {
         let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
