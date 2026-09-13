@@ -9,7 +9,13 @@ import std.declaring_identity_spelling {
   declaring_identity_spelling_resolved,
   declaring_identity_spelling_unresolvable
 }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import std.repair_input_origin {
+  RepairInputDeclared,
+  RepairInputIdentityAbsent,
+  RepairInputIdentityAmbiguous,
+  RepairInputTargetWithoutDeclarationIdentity
+}
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Node }
@@ -20,13 +26,14 @@ import v2.compiler.reference_site_collector {
   UnreadableModuleRoot,
   collect_reference_sites
 }
-import v2.compiler.repair_input_origin_roster { carrier_declaration_ref }
+import v2.compiler.repair_input_origin_roster { carrier_provenance }
 import v2.compiler.resolution_provenance {
   ProvenanceAmbiguous,
   ProvenanceOwnerless,
   ProvenanceResolved,
   ProvenanceUnbound,
   ResolutionProvenance,
+  answer_site,
   module_roster_from_roots,
   resolve_reference_sites
 }
@@ -59,31 +66,43 @@ type DeclaringIdentitySpellingCensus {
 }
 
 fn spelling_from_answer(answer: ResolutionProvenance) -> DeclaringIdentitySpelling {
-  match answer {
-    ProvenanceResolved { site: site, target: target, owner: owner } =>
-      if length(xs: target) > length(xs: owner) {
-        declaring_identity_spelling_resolved(
-          authored: site.spelling,
-          declaring: carrier_declaration_ref(owner: owner, target: target),
-          canonical: target
-        )
-      } else {
-        declaring_identity_spelling_unresolvable(
-          authored: site.spelling,
-          cause: IdentityOwnerless
-        )
+  let site = answer_site(answer: answer)
+  match carrier_provenance(answer: answer) {
+    RepairInputDeclared { declaring: declaring } =>
+      match answer {
+        ProvenanceResolved { site: _, target: target, owner: _ } =>
+          declaring_identity_spelling_resolved(
+            authored: site.spelling,
+            declaring: declaring,
+            canonical: target
+          )
+        ProvenanceOwnerless { site: _, target: _ } =>
+          declaring_identity_spelling_unresolvable(
+            authored: site.spelling,
+            cause: IdentityOwnerless
+          )
+        ProvenanceAmbiguous { site: _ } =>
+          declaring_identity_spelling_unresolvable(
+            authored: site.spelling,
+            cause: IdentityAmbiguous
+          )
+        ProvenanceUnbound { site: _ } =>
+          declaring_identity_spelling_unresolvable(
+            authored: site.spelling,
+            cause: IdentityUnbound
+          )
       }
-    ProvenanceOwnerless { site: site, target: _ } =>
+    RepairInputTargetWithoutDeclarationIdentity { target_spelling: _ } =>
       declaring_identity_spelling_unresolvable(
         authored: site.spelling,
         cause: IdentityOwnerless
       )
-    ProvenanceAmbiguous { site: site } =>
+    RepairInputIdentityAmbiguous =>
       declaring_identity_spelling_unresolvable(
         authored: site.spelling,
         cause: IdentityAmbiguous
       )
-    ProvenanceUnbound { site: site } =>
+    RepairInputIdentityAbsent =>
       declaring_identity_spelling_unresolvable(
         authored: site.spelling,
         cause: IdentityUnbound

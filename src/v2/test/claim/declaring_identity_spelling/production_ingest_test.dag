@@ -21,7 +21,7 @@ import v2.std.algebra { fold_list, is_empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present }
@@ -46,27 +46,26 @@ import std.declaring_identity_spelling {
 }
 import extdeps.communication.medium { Lossless, Medium }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// FILE FIXTURES INGESTED ON THE PRODUCTION ROUTE (bytes match the committed files).
-// Inline Medium is the same tokenize→parse→normalize as a SourceFile read; it is not a
-// hand-built Node tree.
+// FILE FIXTURES ARE THE AUTHORITY. Ingest reads those bytes via filesystem_read; there is
+// no second inline copy of the same source.
 
-data value_outside_call_source: String = "module v2.test.fixture.declaring_identity_spelling.value_outside_call\n\ndata marker: Int = 0\n\nfn go() -> Int { marker }\n"
+data value_outside_call_path: String = "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag"
 
-data shorter_source: String = "module v2.test.fixture.declaring_identity_spelling.shorter\n\ntype Marker {}\n\nfn f(x: Marker) -> Int { 0 }\n"
+data shorter_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
 
-data unresolvable_source: String = "module v2.test.fixture.declaring_identity_spelling.unresolvable\n\ndata row: ThisNameIsNotDeclaredInThisFixture = 0\n"
+data unresolvable_path: String = "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag"
 
-data call_only_source: String = "module v2.test.fixture.declaring_identity_spelling.call_only\n\ntype LocalParam {}\n\nfn helper() -> Int { 0 }\n\nfn go(x: LocalParam) -> Int { helper() }\n"
+data call_only_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
 
-data matched_type_vs_value_source: String = "module v2.test.fixture.declaring_identity_spelling.matched_type_vs_value\n\nimport v2.std.logic { Bool }\n\ntype type_only {}\n\ndata value_only: Int = 0\n\nfn go(x: type_only, flag: Bool) -> Int { value_only }\n"
+data matched_type_vs_value_path: String = "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag"
 
-data field_vs_parameter_source: String = "module v2.test.fixture.declaring_identity_spelling.field_vs_parameter\n\ntype ParamOnly {}\n\ntype FieldOnly {}\n\nfn uses(x: ParamOnly) -> Int { 0 }\n\ntype Wrapper { f: FieldOnly }\n"
+data field_vs_parameter_path: String = "src/v2/test/fixture/declaring_identity_spelling/field_vs_parameter.dag"
 
-data cross_provider_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_provider\n\ndata Probe: Int = 0\n\ntype ProvidedMarker {}\n\ntype ProvidedFieldMarker {}\n"
+data cross_provider_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag"
 
-data cross_consumer_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_consumer\n\ntype LocalParam {}\n\nfn go() -> Int { v2.test.fixture.declaring_identity_spelling.cross_provider.Probe }\n\nfn uses(x: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker) -> Int { 0 }\n\nfn uses_local(x: LocalParam) -> Int { 0 }\n\ntype Wrapper { f: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker }\n"
+data cross_consumer_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag"
 
 data qualified_cross_module_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.Probe"
 
@@ -74,9 +73,9 @@ data qualified_type_position_spelling: String = "v2.test.fixture.declaring_ident
 
 data qualified_field_type_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker"
 
-fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+fn fixture_read(path: String, unit: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
-    source: Medium { carried: text, fidelity: Lossless },
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
     artifact: Artifact {
       kind: SourceFile,
       id: unit,
@@ -106,16 +105,16 @@ fn authored_unbound(census: DeclaringIdentitySpellingCensus, spelling: String) -
   )
 }
 
-fn ingest_of(text: String, path: String, unit: Symbol) -> SourceRootIngest {
+fn ingest_of(path: String, unit: Symbol) -> SourceRootIngest {
   Cons {
-    head: fixture_read(text: text, path: path, unit: unit),
+    head: fixture_read(path: path, unit: unit),
     tail: Empty
   }
 }
 
-fn census_of(text: String, path: String, unit: Symbol) -> Optional<DeclaringIdentitySpellingCensus> {
+fn census_of(path: String, unit: Symbol) -> Optional<DeclaringIdentitySpellingCensus> {
   match spelling_census_from_ingest(
-    ingest: ingest_of(text: text, path: path, unit: unit),
+    ingest: ingest_of(path: path, unit: unit),
     lm: dag_language_model()
   ) {
     Accepted { value: census, diagnostics: _ } => Present { value: census }
@@ -145,8 +144,7 @@ fn authored_is(census: DeclaringIdentitySpellingCensus, spelling: String) -> Boo
 test fn value_outside_call_ingests_holds() -> Bool {
   match spelling_census_from_ingest(
     ingest: ingest_of(
-      text: value_outside_call_source,
-      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      path: value_outside_call_path,
       unit: ^xl3_value_outside_call
     ),
     lm: dag_language_model()
@@ -158,8 +156,7 @@ test fn value_outside_call_ingests_holds() -> Bool {
 
 test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
   match census_of(
-    text: value_outside_call_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+    path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
     Present { value: census } => authored_is(census: census, spelling: "marker")
@@ -186,8 +183,7 @@ test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
 fn value_outside_call_roots() -> Optional<FreeMonoid<Node>> {
   match module_roots_from_source_root_ingest(
     ingest: ingest_of(
-      text: value_outside_call_source,
-      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      path: value_outside_call_path,
       unit: ^xl3_value_outside_call
     ),
     lm: dag_language_model()
@@ -237,8 +233,7 @@ test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
 // row is Unbound because fill missed, not because the name cannot compile.
 test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
   match census_of(
-    text: value_outside_call_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+    path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
     Present { value: census } => authored_unbound(census: census, spelling: "marker")
@@ -250,8 +245,7 @@ test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
 // "Type position" is too coarse: a bare FIELD type does not reach.
 test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
   match census_of(
-    text: shorter_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/shorter.dag",
+    path: shorter_path,
     unit: ^xl3_shorter
   ) {
     Present { value: census } => authored_is(census: census, spelling: "Marker")
@@ -261,8 +255,7 @@ test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
 
 test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
   match census_of(
-    text: unresolvable_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag",
+    path: unresolvable_path,
     unit: ^xl3_unresolvable
   ) {
     Present { value: census } =>
@@ -273,8 +266,7 @@ test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
 
 test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
   match census_of(
-    text: call_only_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/call_only.dag",
+    path: call_only_path,
     unit: ^xl3_call_only
   ) {
     Present { value: census } =>
@@ -289,8 +281,7 @@ test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
 // type-position collector miss and not a lowering class.
 test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
   match census_of(
-    text: value_outside_call_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+    path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
     Present { value: census } =>
@@ -302,8 +293,7 @@ test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
 
 fn matched_census() -> Optional<DeclaringIdentitySpellingCensus> {
   census_of(
-    text: matched_type_vs_value_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag",
+    path: matched_type_vs_value_path,
     unit: ^xl3_matched_type_vs_value
   )
 }
@@ -337,14 +327,12 @@ test fn matched_imported_kernel_type_position_is_absent_from_the_census_today() 
 fn two_module_ingest() -> SourceRootIngest {
   Cons {
     head: fixture_read(
-      text: cross_provider_source,
-      path: "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag",
+      path: cross_provider_path,
       unit: ^xl3_cross_provider
     ),
     tail: Cons {
       head: fixture_read(
-        text: cross_consumer_source,
-        path: "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag",
+        path: cross_consumer_path,
         unit: ^xl3_cross_consumer
       ),
       tail: Empty
@@ -401,8 +389,7 @@ test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool
 
 fn field_vs_parameter_census() -> Optional<DeclaringIdentitySpellingCensus> {
   census_of(
-    text: field_vs_parameter_source,
-    path: "src/v2/test/fixture/declaring_identity_spelling/field_vs_parameter.dag",
+    path: field_vs_parameter_path,
     unit: ^xl3_field_vs_parameter
   )
 }
