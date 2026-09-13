@@ -607,9 +607,11 @@ data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 // THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
 // job credential, and H1 must be judged on its own tree rather than inherit H0's receipts, which
-// describe a tree that no longer exists. tools.ci_heal_dispatch closes that by dispatching this
-// workflow, and a dispatch that cannot say WHICH head it got would report a verdict about a head
-// it cannot name: a fabricated revalidation, worse than the honest gap.
+// describe a tree that no longer exists. Auto-dispatch via tools.ci_heal_dispatch is deleted
+// (gunbc.rung_drop.heal_healed_head_executed_verdict_without_human): it could not clear the merge
+// gate and shadowed a name-keyed PR rollup. This input remains so a GitHub UI workflow_dispatch
+// can still name the head it claims. A dispatch that cannot say WHICH head it got would report a
+// verdict about a head it cannot name: a fabricated revalidation, worse than the honest gap.
 //
 // CREATED-AND-HELD IS NOT NEVER-CREATED, AND THAT DISTINCTION IS AT TOP BILLING BECAUSE EVERY
 // WORDING ERROR THIS CARRIER WENT THROUGH -- IN BOTH DIRECTIONS -- FOLLOWED FROM NOT HAVING THE TWO
@@ -618,10 +620,8 @@ data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 // the dispatch route that cannot say which state it is in cannot say what the dispatch buys.
 //
 // GITHUB WITHHOLDS EXECUTION, NOT CREATION, AND THE HOLD KEYS ON THE EVENT. A `pull_request` run IS
-// created for the healed head and executes nothing; the dispatched run on the same head executes.
-// So nothing judges H1 automatically by the ordinary route, and the dispatch is the DECLARED path
-// because it is the only route to a healed head that runs without a human -- not because no run
-// appears. THE MEASURED POPULATIONS LIVE ONCE, IN gunbc.rung_drop floor_cut_heal, whose subject is
+// created for the healed head and executes nothing. A workflow_dispatch on the same head used to
+// execute; that was the only no-human route and is deleted. THE MEASURED POPULATIONS LIVE ONCE, IN gunbc.rung_drop floor_cut_heal, whose subject is
 // this actuation boundary; they are cited here and deliberately not restated, so one count has one
 // authority.
 //
@@ -2208,22 +2208,17 @@ fn heal_repo_local_git_config_step() -> Step {
 
 data heal_commit_push_step_id: String = "heal_commit_push"
 
-// GITHUB_TOKEN IS PROJECTED HERE BECAUSE THE DISPATCH READS IT AS A PROCESS VARIABLE, and the
-// grant is added WITH its executing consumer rather than in advance of one. GitHub Actions injects
-// `github.token` into `secrets.GITHUB_TOKEN` and into the checkout action's credential, but not
-// into the step environment; extdeps.github.workflows github.Workflows resolves its bearer solely
-// from auth_source EnvVar GITHUB_TOKEN, so without this binding CreateDispatch would refuse 401.
-// This is the only step in the workflow that carries it, and it carries it because the heal
-// dispatch composed into its script is the only caller.
+// env is none: git push uses the checkout action's persisted credential. The former GITHUB_TOKEN
+// binding existed solely so tools.ci_heal_dispatch could auth CreateDispatch; that caller is
+// deleted. A token no step spends is the same capability-without-consumer shape as a dormant
+// actions: write grant.
 fn heal_commit_push_step() -> Step {
   RunStep {
     name: Present { value: "Commit and push the regeneration" },
     id: Present { value: heal_commit_push_step_id },
     run: gunbc_ci_heal_commit_push_script(),
     shell: none,
-    env: Present {
-      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
-    },
+    env: none,
     working_directory: none,
     if_condition: none,
     continue_on_error: none,

@@ -2,7 +2,7 @@ module gunbc.auth.netrc_binding
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // A CREDENTIAL BINDING: THE ONE SANCTIONED WAY A SECRET REACHES A SUBPROCESS ON THIS FLEET.
 //
