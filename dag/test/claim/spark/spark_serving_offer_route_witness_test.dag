@@ -267,12 +267,29 @@ test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bo
 }
 
 // RED -- AND THAT REFUSAL SURVIVES THE BINDER, which is where it would otherwise be ignored.
-test fn a_matching_configuration_does_not_bind_an_offer() -> Bool {
-  match t_bind(route: spark_serving_route_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))) {
-    SparkOfferBound { bound: _ } => false
-    SparkOfferBindingRefused { group_wire: _, cause: c } =>
-      string_contains(s: c as String, pattern: "The SERVICE is not")
+// THE BINDER REFUSAL IS COMPARED AGAINST THE STANDING'S OWN OBLIGATION, not against a substring.
+// SparkOfferBindingRefused carries cause as a NonEmptyStr and the binder forwards the standing's
+// obligation verbatim, so a region refusal and a service refusal are the SAME SHAPE and only their
+// text differs. An earlier spelling discriminated them with string_contains "The SERVICE is not",
+// which is a literal a rewording silently defeats -- and a case mismatch in exactly that pattern
+// already cost a floor run on this branch. Comparing the forwarded cause to the obligation the
+// standing produced FOR THE SAME REALIZATION is a join between two producers: it fails if the binder
+// forwards a different refusal, and it cannot drift into agreeing with a copy of itself.
+fn t_service_refusal_cause_matches_the_standing(realization: SparkServingRealization) -> Bool {
+  match spark_serving_route_standing(realization: realization) {
+    ServingRouteServiceUnidentified { allocation: _, obligation: o } =>
+      match t_bind(route: spark_serving_route_standing(realization: realization)) {
+        SparkOfferBound { bound: _ } => false
+        SparkOfferBindingRefused { group_wire: _, cause: c } => (c as String) == (o as String)
+      }
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
   }
+}
+
+test fn a_matching_configuration_does_not_bind_an_offer() -> Bool {
+  t_service_refusal_cause_matches_the_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
 
 
@@ -339,9 +356,5 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
 // whose service cannot be identified must not bind, for the same reason an uncovered region must
 // not: the refusal is only worth its type if something downstream acts on it.
 test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
-  match t_bind(route: spark_serving_route_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))) {
-    SparkOfferBound { bound: _ } => false
-    SparkOfferBindingRefused { group_wire: _, cause: c } =>
-      string_contains(s: c as String, pattern: "The SERVICE is not")
-  }
+  t_service_refusal_cause_matches_the_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
