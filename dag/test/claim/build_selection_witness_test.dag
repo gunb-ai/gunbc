@@ -26,6 +26,7 @@ import product.build_fulfillment {
   CashNoPurchaseLines,
   CashRefused,
   CashLineUnfulfilled,
+  ConstructibleCeiling,
   CeilingDerived,
   CeilingUnconstrainedByAnyLine,
   CompatibilityUnread,
@@ -72,13 +73,14 @@ fn purchase_line() -> BomLine {
   }
 }
 
-fn selection_fixture_resolution(fixture_roles: List<MtCollinsChannelPopulationRole>, lines: List<LineResolution>) -> BuildResolution {
+fn selection_fixture_resolution(fixture_roles: List<MtCollinsChannelPopulationRole>, lines: List<LineResolution>, ceiling: ConstructibleCeiling) -> BuildResolution {
   BuildResolution {
     memory_context: MemoryFulfillmentContext {
       assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: mtcollins_witnessed_configuration(roles: fixture_roles)), evidence: mtcollins_memory_evidence_from_capture(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: "")),
       purpose: ProductionMemoryPurchase,
     },
     lines: lines,
+    ceiling: ceiling,
   }
 }
 
@@ -98,9 +100,8 @@ fn candidate(fixture_roles: List<MtCollinsChannelPopulationRole>,
     memory_capacity: capacity,
     wall_power: wall_power,
     memory_bandwidth: bandwidth,
-    resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+    resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 }),
     cash: CashDerived { cash: cash },
-    ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 },
   }
 }
 
@@ -184,9 +185,8 @@ fn pending_build(fixture_roles: List<MtCollinsChannelPopulationRole>) -> BuildCa
           obligation: "sample-qualify one module on this platform" as NonEmptyStr,
         },
       },
-    ]),
+    ], ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 }),
     cash: CashDerived { cash: usd_micros(count: 1) },
-    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
 }
 
@@ -231,9 +231,8 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
         memory_capacity: one_terabyte,
         wall_power: watt(count: 300),
         memory_bandwidth: Bandwidth { count: 204800000000 },
-        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 }),
         cash: CashDerived { cash: MoneyOnce { amount: money_amount_micro(count: 1), currency: Eur } },
-        ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
       }
       match build_standing(subject: eur, field: [cheap_build(fixture_roles: fixture_roles), eur], declared: Usd) {
         NotComputable { missing: _ } => true
@@ -256,9 +255,8 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
         memory_capacity: one_terabyte,
         wall_power: watt(count: 300),
         memory_bandwidth: Bandwidth { count: 204800000000 },
-        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 }),
         cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
-        ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
       }
       match build_standing(subject: broken, field: [cheap_build(fixture_roles: fixture_roles), broken], declared: Usd) {
         NotComputable { missing: _ } => true
@@ -282,9 +280,8 @@ test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
         memory_capacity: one_terabyte,
         wall_power: watt(count: 300),
         memory_bandwidth: Bandwidth { count: 204800000000 },
-        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 }),
         cash: CashNoPurchaseLines,
-        ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
       }
       match build_standing(subject: owned, field: [cheap_build(fixture_roles: fixture_roles), owned], declared: Usd) {
         ProvisionallyNonDominated { sensitivities: _ } => true
@@ -306,9 +303,8 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
         memory_capacity: one_terabyte,
         wall_power: watt(count: 300),
         memory_bandwidth: Bandwidth { count: 204800000000 },
-        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingUnconstrainedByAnyLine),
         cash: CashNoPurchaseLines,
-        ceiling: CeilingUnconstrainedByAnyLine,
       }
       match build_standing(subject: unbounded, field: [cheap_build(fixture_roles: fixture_roles), unbounded], declared: Usd) {
         NotComputable { missing: _ } => true

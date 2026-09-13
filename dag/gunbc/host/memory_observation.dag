@@ -1,6 +1,7 @@
 module gunbc.memory_observation
 
-import std.types { Bool, Int, Seconds, List, NonEmptyStr, String }
+import std.types { Bool, Seconds, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.integer { UInt8 }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
@@ -42,14 +43,18 @@ type MemoryCollectorReceipt {
   required_end: Seconds
   collector_start: Seconds
   collector_end: Seconds
-  exit_code: Int
+  process_exit: ProcessExit
   payload: String
   capture_digest: NonEmptyStr
   previous_capture_digest: NonEmptyStr?
 }
 
 fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
-  let refusal = if c.exit_code != 0 { Present { value: "collector process failed" as NonEmptyStr } }
+  let process_refusal = match c.process_exit {
+    ExitSuccess => none
+    ExitFailure { code, reason } => Present { value: concat("collector process failed (", to_string(code), "): ", reason) as NonEmptyStr }
+  }
+  let refusal = if match process_refusal { Present { value: _ } => true Absent => false } { process_refusal }
   else if c.required_end <= c.required_start || c.collector_start > c.required_start || c.collector_end < c.required_end {
     Present { value: "collector did not cover the required stimulus interval" as NonEmptyStr }
   } else {

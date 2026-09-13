@@ -4,6 +4,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
   MtCollinsChannelConnectorPair, mt_collins_population_role_standing, BothMembersAtOneDpc, NeitherMemberAtOneDpc,
 }
+import std.process { ExitSuccess, exit_failure }
 import std.types { Bool, List, NonEmptyStr, String, Seconds }
 import std.dissolution { dissolution_status, DissolutionPending, DissolutionFired }
 import std.decl_ref { decl_ref, declaration_ref_eq }
@@ -33,7 +34,7 @@ import gunbc.mtcollins_memory_change {
 }
 import product.build_fulfillment {
   BuildResolution, NodeRecipe, SupplyRow, SystemInclusion, IncludedInSystem, MarketDepthCited, MarketNotOffered, NoOwnedLot, CompatibilityEstablished, CompatibilityEvidenceUnread,
-  LineRefused, LineResolved, CompatibilityUnread, SupplyMissing, MemoryProposalNotAdmitted, NewPurchase, CashRefused, CashNoPurchaseLines, CeilingDerived,
+  LineRefused, LineResolved, CompatibilityUnread, SupplyMissing, MemoryProposalNotAdmitted, NewPurchase, CashRefused, CashNoPurchaseLines, CeilingDerived, CeilingRefused, CeilingLineRefused,
   resolve_build, derive_bom, incremental_cash_now, memory_screened_rows,
 }
 import gunbc.memory_change_report { explain_memory_change }
@@ -129,7 +130,6 @@ fn memory_test_candidate(build: BuildResolution) -> BuildCandidate {
     display_label: "qualification projection control",
     memory_capacity: byte_size(count: 1), wall_power: watt(count: 1), memory_bandwidth: Bandwidth { count: 1 },
     resolutions: build, cash: CashNoPurchaseLines,
-    ceiling: CeilingDerived { builds: 1, bottlenecks: [], bottleneck_units: 1 },
   }
 }
 
@@ -264,7 +264,7 @@ fn memory_test_broken_collector(fixture_roles: List<MtCollinsChannelPopulationRo
   MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { memory_test_short_capture_seconds },
-    exit_code: if failed { 1 } else { 0 }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
+    process_exit: if failed { exit_failure(reason: "controlled collector failure") } else { ExitSuccess }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
 }
 
 test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
@@ -273,7 +273,7 @@ test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
     PopulationRolesResolved { roles: fixture_roles } => {
       fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(
         attempt: "control", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: memory_test_broken_collector(fixture_roles: fixture_roles, failed: failed)) {
-          ObservationRefused { cause: _ } => true
+          ObservationRefused { cause } => !failed || contains(cause as String, "controlled collector failure")
           ObservationEstablished { observed: _ } => false
         })
     }
@@ -344,12 +344,12 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
       let c = mtcollins_training_collector(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: memory_test_payload(fixture_roles: fixture_roles))
       let repeated = MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session, expected_stimulus: c.expected_stimulus,
         observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
-        collector_start: c.collector_start, collector_end: c.collector_end, exit_code: c.exit_code,
+        collector_start: c.collector_start, collector_end: c.collector_end, process_exit: c.process_exit,
         payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: Present { value: c.capture_digest } }
       let incomplete = MemoryCollectorReceipt { source: repeated.source, printed_parts: repeated.printed_parts, printed_positions: repeated.printed_positions, expected_payload_token: repeated.expected_payload_token,
         session: repeated.session, expected_stimulus: repeated.expected_stimulus, observed_stimulus: repeated.observed_stimulus,
         required_start: repeated.required_start, required_end: repeated.required_end,
-        collector_start: repeated.collector_start, collector_end: repeated.collector_start, exit_code: repeated.exit_code,
+        collector_start: repeated.collector_start, collector_end: repeated.collector_start, process_exit: repeated.process_exit,
         payload: repeated.payload, capture_digest: repeated.capture_digest, previous_capture_digest: repeated.previous_capture_digest }
       let explained = match memory_collector_refusal(c: incomplete) {
         Present { value: cause } => contains(cause as String, "repeated capture digest") && contains(cause as String, "required stimulus interval")
@@ -458,6 +458,11 @@ test fn w_production_fulfillment_conflict_is_decisive_with_other_obligations_sat
       let bad = resolve_build(recipe: mixed, rows: memory_test_market(recipe: mixed))
       let good = resolve_build(recipe: homogeneous, rows: memory_test_market(recipe: homogeneous))
       count(bad.lines) > 0 && count(good.lines) > 0
+        && match bad.ceiling {
+          CeilingRefused { cause: CeilingLineRefused { part: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } } => assessment == bad.memory_context.assessment
+          _ => false
+        }
+        && match good.ceiling { CeilingDerived { builds, bottlenecks: _, bottleneck_units: _ } => builds > 0 _ => false }
         && fold(bad.lines, init: true, f: (ok, r) => ok && match r {
           LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } => memory_test_package_violates(a: assessment.final_configuration)
           _ => false
@@ -584,7 +589,7 @@ test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
       let unbound = MemoryCollectorReceipt { source: c.source, printed_parts: [], printed_positions: c.printed_positions, expected_payload_token: c.expected_payload_token, session: c.session,
         expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
         required_start: c.required_start, required_end: c.required_end, collector_start: c.collector_start,
-        collector_end: c.collector_end, exit_code: c.exit_code, payload: c.payload,
+        collector_end: c.collector_end, process_exit: c.process_exit, payload: c.payload,
         capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
       match mtcollins_training_mixture_finding(attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: unbound) {
         ObservationRefused { cause } => contains(cause as String, "binding")
@@ -633,7 +638,8 @@ test fn w_qualification_gap_survives_unread_and_missing_supply_once() -> Bool {
         let gaps = candidate_missing_inputs(candidate: memory_test_candidate(build: build), declared: Usd)
         ok && count(build.lines) > 1
           && count(filter(gaps, gap => gap.cause == "qualification experiment is not a production-admitted build")) == 2
-          && count(gaps) == 2 + 2 * count(build.lines)
+          && count(filter(gaps, gap => gap.cause == "constructible ceiling refused")) == (if unread { 1 } else { 0 })
+          && count(gaps) == 2 + 2 * count(build.lines) + (if unread { 1 } else { 0 })
           && fold(build.lines, init: true, f: (valid, line) => valid && match line {
             LineResolved { line: _, fulfillment: CompatibilityUnread { part: _, obligation: _ } } => unread
             LineResolved { line: _, fulfillment: SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } } => !unread
@@ -701,7 +707,7 @@ test fn w_collector_format_belongs_to_observing_producer() -> Bool {
           expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
           required_start: c.required_start, required_end: c.required_end,
           collector_start: c.collector_start, collector_end: c.collector_end,
-          exit_code: c.exit_code, payload: payload, capture_digest: "controlled alternative format", previous_capture_digest: none,
+          process_exit: c.process_exit, payload: payload, capture_digest: "controlled alternative format", previous_capture_digest: none,
         }
         ok && match memory_collector_refusal(c: collector) { Absent => true, Present { value: _ } => false }
           && memory_capture_covers_population(configuration: configuration, collector: collector) == complete

@@ -102,7 +102,7 @@ fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: Str
     expected_stimulus: "2026-09-12T02:37:23Z failing boot",
     observed_stimulus: Present { value: "2026-09-12T02:37:23Z failing boot" },
     required_start: 0, required_end: 645, collector_start: 0, collector_end: 645,
-    exit_code: 0, payload: payload, capture_digest: mtcollins_training_capture_sha256,
+    process_exit: ExitSuccess, payload: payload, capture_digest: mtcollins_training_capture_sha256,
     previous_capture_digest: none,
   }
 }
@@ -137,7 +137,9 @@ fn mtcollins_training_mixture_finding(
           Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
             attempt: attempt, configuration: configuration, collector: collector,
             comparison_socket: 0, mismatch_position: dimm.position,
-            expected_byte: 145, actual_byte: 0,
+            // EXP[91] is a fact of these captured bytes, independent of the
+            // prospective catalog evidence joined by configuration evaluation.
+            expected_byte: 145, actual_byte: mtcollins_observed_hynix_package.value.Data,
           } }
         } }
       }
