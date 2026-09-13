@@ -42,8 +42,6 @@ import gunbc.repo_ruleset {
   repo_ruleset_ensure_decision_for,
   ruleset_observation_satisfies_goal,
   desired_repo_ruleset_goal,
-  repo_ruleset_converge_entry,
-  repo_ruleset_converge_function,
 }
 import v2.std.collection { Absent, Present }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -748,11 +746,6 @@ test fn w_RED_an_unobservable_bypass_roster_refuses_apply_rather_than_assuming()
     Noop => false
     Apply { plan: _ } => false
   }
-}
-
-test fn w_the_converge_entry_is_this_module() -> Bool {
-  repo_ruleset_converge_entry == "dag/gunbc/repo/repo_ruleset.dag"
-    && repo_ruleset_converge_function == "converge"
 }
 
 test fn w_RED_an_unreadable_readback_is_not_treated_as_satisfied() -> Bool {

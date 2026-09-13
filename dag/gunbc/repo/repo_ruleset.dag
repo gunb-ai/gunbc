@@ -1405,11 +1405,6 @@ fn verify() -> ProcessExit {
   }
 }
 
-data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
-data repo_ruleset_converge_function: String = "converge"
-// Operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity
-// can hold that scope. Workers do not actuate the live ruleset.
-
 type RepoRulesetApplyPlan sole_constructor {
   ruleset_id: Int
   rules: List<RulesetRuleWire>
@@ -1662,6 +1657,9 @@ fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
   read_refusal_of_outcome(outcome: r.outcome)
 }
 
+// Operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity
+// can hold that scope. Workers do not actuate the live ruleset. The executing route
+// is this function via `gunbc run`; the namespace names it — no second path/string roster.
 fn converge() -> ProcessExit {
   let before = passing_ci_ruleset_observation()
   match repo_ruleset_ensure_decision(observed: before) {
