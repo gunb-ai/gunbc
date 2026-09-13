@@ -18,7 +18,23 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
-import v2.std.node { Symbol }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  fold_node,
+  NodeFold
+}
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -29,11 +45,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // collector. Not a second parse_module ingest.
 // Call-argument and callee: tree-side; go red when eager-raven-113 lowering lands, then this ingest.
 // "Type position" is too coarse. Bare PARAMETER type names are FOUND (LocalMarker;
-// LocalParamMarker in consumer_field_bare_local). Bare FIELD type names are a fourth class:
-// LocalFieldOnly is ABSENT. Qualification is a separate class from field position.
-// Qualified cross-module body mention: collector/resolver representation gap (dag_field_access_body_node).
-// That pair retires when the collector reassembles the chain into one ReferenceSite, not when
-// body-lowering lands.
+// LocalParamMarker in consumer_field_bare_local). Bare FIELD type names are absent at the
+// collector; the tree-side atom-and-label census on the same ingested root is enrolled separately,
+// cause UNVERIFIED (normalization drop vs a representation neither search reaches). No collector
+// trigger on the field-type site row until those separate.
+// Qualified cross-module mentions are under verification, not assigned to eager-raven.
 
 data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
@@ -130,6 +146,14 @@ data local_field_only_bare: String = "LocalFieldOnly"
 
 data local_param_marker_bare: String = "LocalParamMarker"
 
+data local_wrapper_sym: Symbol = ^LocalWrapper
+
+data local_field_only_sym: Symbol = ^LocalFieldOnly
+
+data local_param_marker_sym: Symbol = ^LocalParamMarker
+
+data local_wrapper_field_name_sym: Symbol = ^f
+
 fn production_edge_count(path: String, target: String) -> Int {
   match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
     Rejected { diagnostics: _ } => production_ingest_refused_count
@@ -158,7 +182,64 @@ fn site_spelling_count(path: String, needle: String) -> Int {
   }
 }
 
-// Absent today. Trigger is collector reassembly of dag_field_access_body_node, not body-lowering.
+fn node_atom_is(n: Node, needle: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == needle
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn tree_named_edge_count_in_root(root: Node, needle: Symbol) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(_) { 0 },
+      step: fn(acc, edge, child_count) {
+        let here = match edge.label {
+          Named { name: nm } => if nm == needle { 1 } else { 0 }
+          Positional => 0
+        }
+        acc + here + child_count
+      }
+    }
+  )
+}
+
+fn tree_atom_count(path: String, needle: Symbol) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(xs: node_subtree_nodes(root: item.root) |> filter(n => node_atom_is(n: n, needle: needle)))
+      }
+  }
+}
+
+fn tree_named_edge_count(path: String, needle: Symbol) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          tree_named_edge_count_in_root(root: item.root, needle: needle)
+      }
+  }
+}
+
+fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
+  tree_atom_count(path: path, needle: needle) == 0
+    && tree_named_edge_count(path: path, needle: needle) == 0
+}
+
+// Absent today. Under verification; not eager-raven.
 test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
 }
@@ -167,7 +248,7 @@ test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
   production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
 }
 
-// Absent today. Same trigger as the reference-only qualified body mention, not body-lowering.
+// Absent today. Same verification as the reference-only qualified body mention, not body-lowering.
 test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_both_path, target: provider_module) == 0
 }
@@ -177,8 +258,8 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
 }
 
-// Re-derived: qualified type-position spelling is not a site and makes no edge. Same trigger
-// as the qualified body mention (collector reassembly), not lowering and not the retracted census.
+// Re-derived: qualified type-position spelling is not a site and makes no edge. Same
+// verification as the qualified body mention, not lowering and not the retracted census.
 test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
   site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
 }
@@ -203,14 +284,35 @@ test fn production_route_bare_local_type_position_site_is_present_holds() -> Boo
   site_spelling_count(path: consumer_type_bare_local_path, needle: local_marker_bare) > 0
 }
 
-// Same module, two bare names: parameter reaches, field does not. Field absence is not
-// qualification. Qualified field types are untested (absent for two reasons; not a discriminator).
+// Same module, two bare names: parameter reaches the collector, field type does not.
+// No collector trigger on the field-type site row until the tree-side census below separates
+// a drop from a third representation. Qualified field types remain untested.
 test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> Bool {
   site_spelling_count(path: consumer_field_bare_local_path, needle: local_param_marker_bare) > 0
 }
 
 test fn production_route_bare_field_type_site_is_missing_today_holds() -> Bool {
   site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) == 0
+}
+
+// Tree-side discriminator (atom AND named-edge search over node_subtree_nodes, not the
+// collector). Cause UNVERIFIED: ingest ACCEPTs this root; LocalParamMarker is an atom;
+// LocalWrapper, field name f, and LocalFieldOnly are findable as neither. That is not yet
+// "normalization dropped the declaration" vs a representation these two searches do not reach.
+test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool {
+  tree_atom_count(path: consumer_field_bare_local_path, needle: local_param_marker_sym) > 0
+}
+
+test fn production_tree_field_fixture_wrapper_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
+}
+
+test fn production_tree_field_fixture_field_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
+}
+
+test fn production_tree_field_fixture_field_type_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
 }
 
 // Tree-side (whole call expression). Trigger: eager-raven-113 lowering, then this ingest.
