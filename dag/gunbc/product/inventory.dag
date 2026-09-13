@@ -2,6 +2,7 @@ module product.inventory
 
 import std.types { Bool, Int, List, NonEmptyStr, Map, String }
 import std.nat { Nat }
+import std.list { list_member }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -51,6 +52,18 @@ fn mint_inventory_lot_identity(alloc: InventoryLotAllocator) -> InventoryLotAllo
 
 fn inventory_lot_identity_eq(left: InventoryLotIdentity, right: InventoryLotIdentity) -> Bool {
   minted_id_eq(left: left, right: right)
+}
+
+// MEMBERSHIP OVER LOT IDENTITIES IS AN INVENTORY FACT AND LIVES BESIDE THE EQUALITY IT USES.
+// It was authored in product.lot_sales_tax, which meant that asking "is this lot identity in this
+// list" - a question with nothing to do with tax - reached its answer through the SALES-TAX module.
+// gunbc.fleet_host_assembly then imported it from there to decide component-lot admission, so the
+// host-assembly model depended on the tax model for plain identity membership. DESIGN section 3:
+// a fact's home is its LAYER, not its file. This is that layer, because it is where
+// inventory_lot_identity_eq is declared, and a membership helper separated from the equality it
+// closes over is the split that put it in the wrong place to begin with. (review 65235)
+fn inventory_lot_identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
+  list_member(xs: lots, x: lot, eq: inventory_lot_identity_eq)
 }
 
 // A lot identity is ALLOCATOR-MINTED and carries no text. There is deliberately no fn from a

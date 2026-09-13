@@ -2,7 +2,6 @@ module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
 import std.list { list_cover }
-import product.lot_sales_tax { identities_contain }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -21,6 +20,7 @@ import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
   inventory_lot_identity_eq,
+  inventory_lot_identities_contain,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_intent_network {
@@ -265,7 +265,7 @@ data srv_assembly_containments: List<PhysicalContainment> = [
 // earlier to the catalog refs, which were consumed from the census while the lot membership set
 // was not. (review 65187)
 fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
-  identities_contain(lots: fleet_ledger_identities(), lot: lot)
+  inventory_lot_identities_contain(lots: fleet_ledger_identities(), lot: lot)
 }
 
 fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {

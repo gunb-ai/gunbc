@@ -6,7 +6,9 @@ import std.list { list_member, list_cover }
 import std.measure { PartsPerMillion }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
-import product.inventory { InventoryLotIdentity, InventoryLotRepetition, inventory_lot_identity_eq }
+import product.inventory { InventoryLotIdentity, InventoryLotRepetition, inventory_lot_identity_eq,
+  inventory_lot_identities_contain,
+}
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
 // census exists to carry: whether tax was collected, at which jurisdiction and rate, and
@@ -181,8 +183,10 @@ fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
   inventory_lot_identity_eq(left: a, right: b)
 }
 
+// The membership authority is product.inventory, beside the equality it closes over; this stays as
+// the spelling this module's own folds already use and adds no second implementation.
 fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
-  list_member(xs: lots, x: lot, eq: lot_eq)
+  inventory_lot_identities_contain(lots: lots, lot: lot)
 }
 
 fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
