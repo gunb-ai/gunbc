@@ -1,6 +1,6 @@
 module gunbc.machine_intake_bmc_secure
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -13,10 +13,9 @@ import extdeps.bmc.ipmi_channel {
   IpmiLanIpv4Assigned,
   IpmiLanIpv4Unassigned,
   IpmiNonLanChannelMember,
-  ipmi_channel_number_eq,
   IpmiPrivilegeNoAccess,
 }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
+import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_phase {
@@ -458,62 +457,60 @@ fn published_account_requires_published_closed(account: PublishedCredentialAccou
   }
 }
 
-fn probe_matches_lan_member(
-  probe: PublishedCredentialLanProbe,
+// Join identity is (channel, address). Packed as one Int so the census fold looks up
+// rather than scanning probes per member (DESIGN §6: a quadratic fold is always fixed).
+fn published_lan_identity_key(channel: IpmiChannelNumber, address: Ipv4Address) -> Int {
+  ((channel as Int) * 4294967296)
+    + ((((address.octet1 as Int) * 16777216) + ((address.octet2 as Int) * 65536))
+      + ((address.octet3 as Int) * 256) + (address.octet4 as Int))
+}
+
+type PublishedProbeSlot
+  = OneProbe { probe: PublishedCredentialLanProbe }
+  | SeveralProbes
+
+fn insert_published_probe_slot(
+  acc: Map<Int, PublishedProbeSlot>,
+  p: PublishedCredentialLanProbe,
+) -> Map<Int, PublishedProbeSlot> {
+  let key = published_lan_identity_key(channel: p.channel, address: p.address)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, OneProbe { probe: p })
+    Present { value: slot } =>
+      match slot {
+        OneProbe { probe: _ } => map_insert(acc, key, SeveralProbes)
+        SeveralProbes => acc
+      }
+  }
+}
+
+fn index_published_probes(probes: List<PublishedCredentialLanProbe>) -> Map<Int, PublishedProbeSlot> {
+  fold(probes, init: empty_map(), f: (acc, p) => insert_published_probe_slot(acc: acc, p: p))
+}
+
+fn bump_assigned_lan_identity(
+  acc: Map<Int, Int>,
   channel: IpmiChannelNumber,
   address: Ipv4Address,
-) -> Bool {
-  ipmi_channel_number_eq(a: probe.channel, b: channel) && ipv4_address_eq(a: probe.address, b: address)
+) -> Map<Int, Int> {
+  let key = published_lan_identity_key(channel: channel, address: address)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, 1)
+    Present { value: n } => map_insert(acc, key, n + 1)
+  }
 }
 
-fn published_probes_matching_member(
-  probes: List<PublishedCredentialLanProbe>,
-  channel: IpmiChannelNumber,
-  address: Ipv4Address,
-) -> List<PublishedCredentialLanProbe> {
-  fold(
-    probes,
-    init: [],
-    f: (acc, p) =>
-      if probe_matches_lan_member(probe: p, channel: channel, address: address) {
-        concat(acc, [p])
-      } else {
-        acc
-      },
-  )
-}
-
-fn assigned_lan_members(members: List<IpmiChannelCensusMember>) -> List<IpmiChannelCensusMember> {
+fn index_assigned_lan_identities(members: List<IpmiChannelCensusMember>) -> Map<Int, Int> {
   fold(
     members,
-    init: [],
-    f: (acc, m) =>
-      match m {
-        IpmiNonLanChannelMember { channel: _, medium: _, published_user_access: _ } => acc
-        IpmiLanChannelMember { channel: _, medium: _, ipv4: cfg, published_user_access: _ } =>
-          match cfg {
-            IpmiLanIpv4Unassigned => acc
-            IpmiLanIpv4Assigned { address: _ } => concat(acc, [m])
-          }
-      },
-  )
-}
-
-fn probe_match_count_against_assigned(
-  probe: PublishedCredentialLanProbe,
-  members: List<IpmiChannelCensusMember>,
-) -> Int {
-  fold(
-    members,
-    init: 0,
+    init: empty_map(),
     f: (acc, m) =>
       match m {
         IpmiNonLanChannelMember { channel: _, medium: _, published_user_access: _ } => acc
         IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: _ } =>
           match cfg {
             IpmiLanIpv4Unassigned => acc
-            IpmiLanIpv4Assigned { address: a } =>
-              if probe_matches_lan_member(probe: probe, channel: ch, address: a) { acc + 1 } else { acc }
+            IpmiLanIpv4Assigned { address: a } => bump_assigned_lan_identity(acc: acc, channel: ch, address: a)
           }
       },
   )
@@ -589,30 +586,26 @@ fn join_open_assigned_lan(
   previous: EpochMs?,
   channel: IpmiChannelNumber,
   address: Ipv4Address,
-  probes: List<PublishedCredentialLanProbe>,
+  probe_index: Map<Int, PublishedProbeSlot>,
   applied_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
-  let matches = published_probes_matching_member(probes: probes, channel: channel, address: address)
-  let n = list_length(items: matches)
-  if n == 0 {
-    CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
-  } else if n > 1 {
-    CensusJoinClosed { cause: PublishedCredentialProbeDuplicate { channel: channel } }
-  } else {
-    match matches |> get(0) {
-      Absent => CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
-      Present { value: probe } =>
-        match adjudicate_published_probe(probe: probe, channel: channel, applied_at: applied_at, require_published_closed: require_published_closed) {
-          PublishedProbeRefused { cause: c } => CensusJoinClosed { cause: c }
-          PublishedProbeAdmitted { evidence: pe, observed_at: at } =>
-            CensusJoinOpen {
-              evidence: concat(ev, [pe]),
-              latest_admitted_probe_at: Present { value: later_admitted_probe_at(previous: previous, observed_at: at) },
-              saw_addressable_lan: true,
-            }
-        }
-    }
+  match map_get(probe_index, published_lan_identity_key(channel: channel, address: address)) {
+    Absent => CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralProbes => CensusJoinClosed { cause: PublishedCredentialProbeDuplicate { channel: channel } }
+        OneProbe { probe: probe } =>
+          match adjudicate_published_probe(probe: probe, channel: channel, applied_at: applied_at, require_published_closed: require_published_closed) {
+            PublishedProbeRefused { cause: c } => CensusJoinClosed { cause: c }
+            PublishedProbeAdmitted { evidence: pe, observed_at: at } =>
+              CensusJoinOpen {
+                evidence: concat(ev, [pe]),
+                latest_admitted_probe_at: Present { value: later_admitted_probe_at(previous: previous, observed_at: at) },
+                saw_addressable_lan: true,
+              }
+          }
+      }
   }
 }
 
@@ -620,7 +613,7 @@ fn join_assigned_lan_member(
   progress: CensusJoinProgress,
   channel: IpmiChannelNumber,
   address: Ipv4Address,
-  probes: List<PublishedCredentialLanProbe>,
+  probe_index: Map<Int, PublishedProbeSlot>,
   applied_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
@@ -632,7 +625,7 @@ fn join_assigned_lan_member(
         previous: latest,
         channel: channel,
         address: address,
-        probes: probes,
+        probe_index: probe_index,
         applied_at: applied_at,
         require_published_closed: require_published_closed,
       )
@@ -642,7 +635,7 @@ fn join_assigned_lan_member(
 fn join_census_member(
   progress: CensusJoinProgress,
   member: IpmiChannelCensusMember,
-  probes: List<PublishedCredentialLanProbe>,
+  probe_index: Map<Int, PublishedProbeSlot>,
   applied_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
@@ -669,7 +662,7 @@ fn join_census_member(
                 progress: CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: true },
                 channel: ch,
                 address: a,
-                probes: probes,
+                probe_index: probe_index,
                 applied_at: applied_at,
                 require_published_closed: require_published_closed,
               )
@@ -680,21 +673,22 @@ fn join_census_member(
 
 fn probe_unmatched_or_duplicate(
   probe: PublishedCredentialLanProbe,
-  assigned: List<IpmiChannelCensusMember>,
+  assigned_index: Map<Int, Int>,
 ) -> BmcSecureRefusalCause? {
-  let n = probe_match_count_against_assigned(probe: probe, members: assigned)
-  if n == 0 {
-    Present { value: PublishedCredentialProbeUnmatched { channel: probe.channel } }
-  } else if n > 1 {
-    Present { value: PublishedCredentialProbeDuplicate { channel: probe.channel } }
-  } else {
-    none
+  match map_get(assigned_index, published_lan_identity_key(channel: probe.channel, address: probe.address)) {
+    Absent => Present { value: PublishedCredentialProbeUnmatched { channel: probe.channel } }
+    Present { value: n } =>
+      if n > 1 {
+        Present { value: PublishedCredentialProbeDuplicate { channel: probe.channel } }
+      } else {
+        none
+      }
   }
 }
 
 fn unmatched_published_probe_cause(
   probes: List<PublishedCredentialLanProbe>,
-  assigned: List<IpmiChannelCensusMember>,
+  assigned_index: Map<Int, Int>,
 ) -> BmcSecureRefusalCause? {
   fold(
     probes,
@@ -702,7 +696,7 @@ fn unmatched_published_probe_cause(
     f: (acc, p) =>
       match acc {
         Present { value: c } => Present { value: c }
-        Absent => probe_unmatched_or_duplicate(probe: p, assigned: assigned)
+        Absent => probe_unmatched_or_duplicate(probe: p, assigned_index: assigned_index)
       },
   )
 }
@@ -749,10 +743,12 @@ fn adjudicate_published_census_join(
     }
   } else {
     let require_closed = published_account_requires_published_closed(account: published_account)
+    let probe_index = index_published_probes(probes: probes)
+    let assigned_index = index_assigned_lan_identities(members: census.members)
     let joined = fold(
       census.members,
       init: CensusJoinOpen { evidence: [], latest_admitted_probe_at: none, saw_addressable_lan: false },
-      f: (acc, m) => join_census_member(progress: acc, member: m, probes: probes, applied_at: applied_at, require_published_closed: require_closed),
+      f: (acc, m) => join_census_member(progress: acc, member: m, probe_index: probe_index, applied_at: applied_at, require_published_closed: require_closed),
     )
     match joined {
       CensusJoinClosed { cause: c } => BmcSecureRefused { cause: c }
@@ -760,7 +756,7 @@ fn adjudicate_published_census_join(
         if saw == false {
           BmcSecureRefused { cause: PublishedCredentialNoAddressableLanMember }
         } else {
-          match unmatched_published_probe_cause(probes: probes, assigned: assigned_lan_members(members: census.members)) {
+          match unmatched_published_probe_cause(probes: probes, assigned_index: assigned_index) {
             Present { value: c } => BmcSecureRefused { cause: c }
             Absent =>
               match latest {
