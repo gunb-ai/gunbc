@@ -1,0 +1,8 @@
+module test.fixture.complexity_accumulator_copy.planted_copy_nested_arrow
+
+fn planted_nested_arrow(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => list_append(
+    left: inner(y: fold(x, init: acc, f: fn(a, b) { a })),
+    right: acc
+  ))
+}
