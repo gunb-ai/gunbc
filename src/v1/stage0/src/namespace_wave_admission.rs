@@ -1769,15 +1769,29 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// gunbc#11156 SHRINK, SAME RULE (2026-09-13). The two `gunbc#11156` rows -- the
-/// `ubuntu_seeded_install_media_remaster` anchor candidate-set narrowing and `srv3_boot_once_cd`
-/// naming the `Filesystem` it was reaching -- dissolved on their stated trigger: #11156 merged, so
-/// base and head of every pull_request build carry the named imports, the deltas stopped being
-/// producible, and the required floor on this branch reported them as `2 consumed admission(s) due
-/// for deletion`. Their own TRIGGER paragraph said the deletion comes due on this roster's next
-/// touch; the gunbc#11214 rows below are that touch, so the debt is paid here rather than left for
-/// an unrelated lane to inherit -- the same convention by which main's sweep of 181 rows was
-/// charged to the change that next touched this file.
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
+///
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
 /// gunbc#11214 operator-supplied-token realizer move (2026-09-13). Fifteen rows for one move:
 /// `read_supplied_access_token`, `SuppliedTokenReady` and `SuppliedTokenUnavailable` relocate from
 /// `gunbc.auth.gcp_secret_access` to `gunbc.auth.access_token_source`. The realizer of the
@@ -1806,7 +1820,7 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: gunbc#11214 merging. Once the relocation is on main, base and head of every
 /// pull_request build both carry it, all fifteen report stale and refuse every unrelated PR -- the
 /// shape every shrink above records. Remove them by that trigger, not by reinterpreting it.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
         subject: AdmissionSubject::Binding {
@@ -1958,7 +1972,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
 ];
-
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

@@ -12125,6 +12125,44 @@ fn compile_diagnostic_census_value(
     }
 }
 
+/// Projects a host CLAIM SCOPE fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. Four arms, kept distinct for the reason the compile projection keeps three: a
+/// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
+/// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
+/// scope construction must arrive as `ClaimScopeCompileRefused` carrying its diagnostics rather
+/// than as a bare non-acceptance (DESIGN §5 — could-not-measure conflated with a verdict).
+fn claim_scope_fixture_value(
+    outcome: crate::cli_run::ClaimScopeFixtureOutcome,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ClaimScopeFixtureOutcome"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match outcome {
+        crate::cli_run::ClaimScopeFixtureOutcome::InstrumentRefused { cause } => variant(
+            "ClaimScopeInstrumentRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => variant(
+            "ClaimScopeCompileRefused",
+            vec![(
+                ctx.sym("blocking_count"),
+                Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
+            )],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeRefused { cause } => variant(
+            "ClaimScopeRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeAccepted { module_count } => variant(
+            "ClaimScopeAccepted",
+            vec![(ctx.sym("module_count"), Value::Int(module_count))],
+        ),
+    }
+}
+
 /// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
 /// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
 /// the compiler's verdict, and a compile that never ran must never arrive as
@@ -18668,6 +18706,16 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(multi_module_compile_fixture_value(
                     crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.claim_scope_dag_multi_module_fixture" { "claim_scope_dag_multi_module_fixture" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(claim_scope_fixture_value(
+                    crate::cli_run::claim_scope_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
                 )))
             },
