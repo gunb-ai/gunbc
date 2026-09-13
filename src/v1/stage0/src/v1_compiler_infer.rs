@@ -10030,14 +10030,14 @@ Rc::new(InferResult {
                                     })
                                 }
                                 std::option::Option::None => {
-                                    let unconstrained_tv =
-                                        is_unconstrained_type_variable_base(resolved_base.clone());
-                                    let deferred_uninstantiated_generic =
-                                        is_deferred_field_access_base(
-                                            resolved_base.clone(),
-                                            scope.type_env.clone(),
-                                        ) && (!unconstrained_tv.clone());
-                                    if deferred_uninstantiated_generic.clone() {
+                                    let defer_field_miss = is_deferred_field_access_base(
+                                        resolved_base.clone(),
+                                        scope.type_env.clone(),
+                                    ) && (!is_never_constrained_enclosing_generic_base(
+                                        resolved_base.clone(),
+                                        scope.clone(),
+                                    ));
+                                    if defer_field_miss.clone() {
                                         {
                                             let fa_texpr = crate::v1_std_core::make_named_expr_node(
                                                 texpr.occurrence_identity.clone(),
@@ -12944,6 +12944,42 @@ pub fn is_unconstrained_type_variable_base(n: Rc<Node>) -> bool {
     match n.inferred.clone() {
         Some(inf) => is_type_variable(inf.clone()),
         std::option::Option::None => false,
+    }
+}
+
+pub fn enclosing_fn_generic_names(scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    if (scope.caller_decl_name.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        match crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            scope.caller_decl_name.clone(),
+        )
+        .as_ref()
+        {
+            FuncSigLookup::FuncSigResolved { sig: s, .. } => {
+                split_sig_params(s.params.clone(), scope.type_env.clone().source_indices.clone())
+                    .generic_names
+                    .clone()
+            }
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn is_never_constrained_enclosing_generic_base(
+    n: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id, .. }) => {
+            let names = enclosing_fn_generic_names(scope.clone());
+            let label =
+                type_node_label(n.clone(), scope.type_env.clone().source_indices.clone());
+            names.iter().any(|g| (g.clone() == id) || (g.clone() == label))
+        }
+        _ => false,
     }
 }
 

@@ -6579,9 +6579,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: concat(base_diags, resolved_base_diags)
           }
         Absent =>
-          let unconstrained_tv = is_unconstrained_type_variable_base(n: resolved_base)
-          let deferred_uninstantiated_generic = is_deferred_field_access_base(n: resolved_base, env: scope.type_env) && !unconstrained_tv
-          if deferred_uninstantiated_generic {
+          let defer_field_miss = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
+            && !is_never_constrained_enclosing_generic_base(n: resolved_base, scope: scope)
+          if defer_field_miss {
             let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: field_name,
               expr_data: ExprFieldAccess { summary: Present { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
@@ -8017,21 +8017,41 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
   }
 }
 
-// is_deferred_field_access_base answers two different questions. An unconstrained type
-// variable (inferred TypeVariable, including a generic parameter with no field-carrying
-// bound) will never grow fields in a later pass of THIS infer_expr — the two-round
-// generic-argument fold re-runs infer_expr from the AST once substitution exists
-// (test.claim.generic_lambda_parameter_binding_witness
-// a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields). Fabricating
-// field_of_type_var on that arm is DESIGN §5 silent acceptance. The remaining true arm
-// is an uninstantiated generic constructor (bare name, params>0, inferred=none) whose
-// fields are not yet on the node; expansion still skips it. ExprFieldAccess therefore
-// refuses the type-variable miss with the existing "no field 'F' on type 'T'" InternalError
-// and keeps field_of_type_var only for that uninstantiated-constructor miss.
+// is_deferred_field_access_base is the population whose BASE TYPE IS NOT YET KNOWN at this
+// infer_expr: a TypeVariable (including a callee generic the two-round argument fold will
+// re-infer once a non-lambda argument binds it — positive control
+// test.claim.generic_lambda_parameter_binding_witness
+// a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields) or an uninstantiated
+// generic constructor. An enclosing function's own type parameter is never bound by a later
+// pass of that function (fn asks<T>(…) { item.value } with item: T). That arm refuses with
+// the existing "no field 'F' on type 'T'" InternalError. Inference placeholders
+// (callable_param, a callee's R before substitution) stay deferred.
 fn is_unconstrained_type_variable_base(n: Node) -> Bool {
   match n.inferred {
     Present { value: inf } => is_type_variable(inferred: inf)
     Absent => false
+  }
+}
+
+fn enclosing_fn_generic_names(scope: InferScope) -> List<String> {
+  if scope.caller_decl_name == "" {
+    []
+  } else {
+    match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: scope.caller_decl_name) {
+      FuncSigResolved { sig: s, declared: _ } =>
+        split_sig_params(params: s.params, source_indices: scope.type_env.source_indices).generic_names
+      _ => []
+    }
+  }
+}
+
+fn is_never_constrained_enclosing_generic_base(n: Node, scope: InferScope) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } =>
+      let names = enclosing_fn_generic_names(scope: scope)
+      let label = type_node_label(n: n, source_indices: scope.type_env.source_indices)
+      names |> any(g => g == id || g == label)
+    _ => false
   }
 }
 
