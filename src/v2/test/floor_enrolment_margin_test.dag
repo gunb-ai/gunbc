@@ -9,6 +9,9 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
   EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
   EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome,
+  enrolment_expensiveness_declaration,
+  EnrolmentPairingHole, EnrolmentPairingHoleNone, EnrolmentPairingHoleDeclared,
+  EnrolmentPairingHoleOutsideExecution, enrolment_unpaired_pairing_hole,
   enrolment_margin_standing_name,
   enrolment_margin_standing,
   enrolment_margin_standing_blocks,
@@ -286,16 +289,14 @@ test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool {
   }) == "fixture.over=enrolment_measured_over_margin;"
 }
 
-// HALF ONE: DECLARED EXPENSIVENESS IS CONSUMED, NOT RE-DERIVED, AND DOES NOT BLOCK HERE.
-// 325ms is the gunbc#10994 specimen's observed CPU against a 302ms margin. On main it refuses
-// as over-margin (the positive control below). With the declaration this gate reports the
-// standing and admits — the identity still executes, the verdict still counts, wall and
-// semantic reds stay armed. IT IS NOT AN EXEMPTION.
+// HALF ONE: DECLARED EXPENSIVENESS IS CONSUMED FROM
+// `enrolment_expensiveness_declaration`, NOT FROM THE STRING ROSTER. Long home at 325ms
+// does not block here. IT IS NOT AN EXEMPTION.
 test fn a_declared_identity_measured_over_the_margin_does_not_block_here() -> Bool {
   let s = standing_declared(
     reading: observed(cpu_ms: 325),
     identity: "fixture.declared_over_margin",
-    ground: EnrolmentExpensivenessRoster,
+    ground: EnrolmentExpensivenessLongHome,
   )
   standing_kind(s: s) == "expensiveness-declared"
     && !enrolment_margin_standing_blocks(standing: s)
@@ -321,7 +322,7 @@ test fn a_declared_identity_the_runner_withheld_stays_outside_this_runs_executio
       disposition: "declined_changed_witness_outside_discovery",
     },
     identity: "outside.roots.declared_holds",
-    ground: EnrolmentExpensivenessRoster,
+    ground: EnrolmentExpensivenessLongHome,
   )
   standing_kind(s: s) == "outside-this-run"
     && !enrolment_margin_standing_blocks(standing: s)
@@ -341,6 +342,85 @@ test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() ->
   )
   standing_kind(s: s) == "expensiveness-declared"
     && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// STRING-ROSTER MEMBERSHIP DOES NOT DECLARE AT ENROLMENT. The ungated identity-string
+// chunks cannot mint EnrolmentExpensivenessIsDeclared (review 65637 / review 65665).
+test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.tripwire_325",
+    string_roster_holds: true,
+    typed_admission_holds: false,
+    long_home_holds: false,
+  ) {
+    EnrolmentExpensivenessNotDeclared => true
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: _ } => false
+  }
+}
+
+test fn a_long_home_without_the_string_roster_declares_at_enrolment() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.long_home",
+    string_roster_holds: false,
+    typed_admission_holds: false,
+    long_home_holds: true,
+  ) {
+    EnrolmentExpensivenessNotDeclared => false
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
+      match g {
+        EnrolmentExpensivenessLongHome => true
+        EnrolmentExpensivenessRoster => false
+      }
+  }
+}
+
+test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.typed_501",
+    string_roster_holds: false,
+    typed_admission_holds: true,
+    long_home_holds: false,
+  ) {
+    EnrolmentExpensivenessNotDeclared => false
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
+      match g {
+        EnrolmentExpensivenessRoster => true
+        EnrolmentExpensivenessLongHome => false
+      }
+  }
+}
+
+test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool {
+  match enrolment_unpaired_pairing_hole(
+    standing: standing_of(reading: observed(cpu_ms: 1))
+  ) {
+    EnrolmentPairingHoleNone =>
+      match enrolment_unpaired_pairing_hole(
+        standing: standing_declared(
+          reading: observed(cpu_ms: 325),
+          identity: "fixture.declared",
+          ground: EnrolmentExpensivenessLongHome,
+        )
+      ) {
+        EnrolmentPairingHoleDeclared =>
+          match enrolment_unpaired_pairing_hole(
+            standing: standing_of(
+              reading: EnrolmentNotPlanned {
+                witness_identity: "outside.roots.withheld",
+                disposition: "declined_changed_witness_outside_discovery",
+              }
+            )
+          ) {
+            EnrolmentPairingHoleOutsideExecution => true
+            EnrolmentPairingHoleNone => false
+            EnrolmentPairingHoleDeclared => false
+          }
+        EnrolmentPairingHoleNone => false
+        EnrolmentPairingHoleOutsideExecution => false
+      }
+    EnrolmentPairingHoleDeclared => false
+    EnrolmentPairingHoleOutsideExecution => false
+  }
 }
 
 // HALF TWO RED JOINED TO THE CEILING AUTHORITY: 325ms observed against

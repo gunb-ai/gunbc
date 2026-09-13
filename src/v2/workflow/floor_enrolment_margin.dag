@@ -177,20 +177,52 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
 }
 
-// GROUND OF A DECLARED-EXPENSIVENESS FACT, TAKEN FROM
-// `v2.workflow.required_floor` `changed_witness_expensiveness_is_declared` AND NEVER RE-DERIVED.
-// That function is the one declaration class wearing two names (roster or long home). This
-// coproduct names which name fired so the standing can report it; the predicate that decides
-// membership stays in required_floor.
+// GROUND OF A DECLARED-EXPENSIVENESS FACT THIS GATE MAY HONOUR.
+//
+// THIS IS NOT `changed_witness_expensiveness_is_declared`. That function is roster OR long
+// home, and it still decides changed-witness CPU policy. Enrolment may not honour the
+// string-roster disjunct: those identities are still hand-authored (review 65585), and
+// honouring them here would let a 325ms append disable the margin (review 65637). Roster
+// ground here is ONLY `floor_cost_debt_row` typed admission. Long home is the structural
+// disjunct, and only when the identity is not also on the string roster.
 type EnrolmentExpensivenessGround =
     EnrolmentExpensivenessRoster
   | EnrolmentExpensivenessLongHome
 
-// WHETHER THIS IDENTITY'S EXPENSIVENESS IS ALREADY DECLARED. Consumed by
-// `enrolment_margin_standing` after the execution-join arm; never consulted in its place.
 type EnrolmentExpensivenessDeclaration =
     EnrolmentExpensivenessNotDeclared
   | EnrolmentExpensivenessIsDeclared { witness_identity: String, ground: EnrolmentExpensivenessGround }
+
+// THE MEMBERSHIP RULE THIS GATE CONSUMES. Host realizes this function; it does not
+// re-derive it. typed_admission_holds is the constructor in
+// `v2.workflow.floor_cost_debt_admission`; that attempt list is empty until a censored
+// or over-500ms reading is authored there.
+fn enrolment_expensiveness_declaration(
+  witness_identity: String,
+  string_roster_holds: Bool,
+  typed_admission_holds: Bool,
+  long_home_holds: Bool,
+) -> EnrolmentExpensivenessDeclaration {
+  if typed_admission_holds {
+    EnrolmentExpensivenessIsDeclared {
+      witness_identity: witness_identity,
+      ground: EnrolmentExpensivenessRoster,
+    }
+  } else {
+    if long_home_holds {
+      if string_roster_holds {
+        EnrolmentExpensivenessNotDeclared
+      } else {
+        EnrolmentExpensivenessIsDeclared {
+          witness_identity: witness_identity,
+          ground: EnrolmentExpensivenessLongHome,
+        }
+      }
+    } else {
+      EnrolmentExpensivenessNotDeclared
+    }
+  }
+}
 
 // THE STANDING OF ONE NEWLY ENROLLED IDENTITY AGAINST THE MARGIN.
 //
@@ -202,13 +234,10 @@ type EnrolmentExpensivenessDeclaration =
 // named for a cost, reintroducing that invalid state inside the gate built to respect it. Both
 // arms block; they are told apart so the remedy and the reported figure stay honest.
 //
-// `EnrolmentExpensivenessDeclared` IS THE SAME FACT `ChangedCostDebtVerdictOnly` ALREADY HONOUR.
-// It is NON-BLOCKING: the declaration is observed and reported with the reading beside it, and
-// this gate DECIDES NOTHING from the CPU. Wall deadline and semantic red stay armed on their own
-// gates. It is not an exemption: the declaration is the counted shrink-only roster
-// `floor_cost_debt` itself defends (or the long home, the same class), and the identity still
-// executes with its verdict still counting. An exemption would be this section's absorbing
-// fallback, which this module already refuses for `EnrolmentOutsideThisRunsExecution`.
+// `EnrolmentExpensivenessDeclared` IS NON-BLOCKING for a ground selected by
+// `enrolment_expensiveness_declaration`: typed cost-debt admission, or long home that
+// is not a string-roster append. The CPU figure is reported and this gate DECIDES
+// NOTHING from it. Wall deadline and semantic red stay armed. It is not an exemption.
 type EnrolmentMarginStanding =
     EnrolmentWithinMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
@@ -326,6 +355,28 @@ fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness_declared"
+  }
+}
+
+// PAIRING HOLE, A TWO-ARM COPRODUCT. A standing that defers to changed-witness without a
+// changed-projection row is one of these, or it is not a pairing hole. Exhaustive over
+// EnrolmentMarginStanding so a new non-blocking arm cannot silently acquire an exemption
+// (review 65665). EnrolmentPairingHoleNone is not a hole.
+type EnrolmentPairingHole =
+    EnrolmentPairingHoleNone
+  | EnrolmentPairingHoleDeclared
+  | EnrolmentPairingHoleOutsideExecution
+
+fn enrolment_unpaired_pairing_hole(standing: EnrolmentMarginStanding) -> EnrolmentPairingHole {
+  match standing {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => EnrolmentPairingHoleNone
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => EnrolmentPairingHoleNone
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => EnrolmentPairingHoleNone
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => EnrolmentPairingHoleNone
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } =>
+      EnrolmentPairingHoleOutsideExecution
+    EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } =>
+      EnrolmentPairingHoleDeclared
   }
 }
 

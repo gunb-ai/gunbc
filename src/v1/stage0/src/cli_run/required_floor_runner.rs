@@ -1345,18 +1345,19 @@ impl EnrolmentMarginStanding {
         }
     }
 
-    /// Non-blocking here because another gate owns the verdict. Without a changed-projection
-    /// row that deferral is a silent admit — the unpaired pairing hole. The two standings
-    /// are different classes (review 65637): a withheld identity is not a declaration.
-    fn unpaired_pairing_origin(&self) -> Option<RequiredFloorBlockerOrigin> {
+    /// Mirror of `v2.workflow.floor_enrolment_margin` `enrolment_unpaired_pairing_hole`.
+    /// Exhaustive over `EnrolmentMarginStanding` so a new non-blocking arm cannot silently
+    /// acquire a pairing exemption (review 65665).
+    fn unpaired_pairing_hole(&self) -> EnrolmentPairingHole {
         match self {
-            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => {
-                Some(RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing)
-            }
+            EnrolmentMarginStanding::WithinMargin { .. }
+            | EnrolmentMarginStanding::OverMargin { .. }
+            | EnrolmentMarginStanding::CeilingCensored { .. }
+            | EnrolmentMarginStanding::NotMeasured { .. } => EnrolmentPairingHole::None,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
-                Some(RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing)
+                EnrolmentPairingHole::OutsideExecution
             }
-            _ => None,
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => EnrolmentPairingHole::Declared,
         }
     }
 
@@ -1517,19 +1518,24 @@ fn enrolment_gate_execution_disposition<'a>(
     dispositions.get(identity).copied()
 }
 
-/// Which declaration, if any, enrolment may honour for a newly enrolled identity.
+/// Mirror of `v2.workflow.floor_enrolment_margin` `enrolment_expensiveness_declaration`.
 ///
-/// `changed_witness_expensiveness_is_declared` is roster OR long home. This gate consumes
-/// the long-home disjunct (`cost_debt_verdict_only` and not the string roster). It does NOT
-/// honour a hand-authored string-roster append: that membership is still ungated (review
-/// 65585), and honouring it would let a 325ms identity disable the margin (review 65637).
-/// Roster ground waits on `floor_cost_debt_row` minting; that attempt list is empty.
+/// `changed_witness_expensiveness_is_declared` remains roster OR long home for changed-witness
+/// CPU policy. This gate's membership is a different function: typed `floor_cost_debt_row`
+/// admission (Roster) or long home that is not also on the string roster. A string-roster
+/// append does not declare (review 65637 / review 65665).
 pub(crate) fn enrolment_expensiveness_declaration(
     identity: &str,
     cost_debt_roster: &HashSet<String>,
     cost_debt_verdict_only: &HashSet<String>,
+    typed_admission: &HashSet<String>,
 ) -> Option<EnrolmentExpensivenessGround> {
-    if cost_debt_verdict_only.contains(identity) && !cost_debt_roster.contains(identity) {
+    let string_roster_holds = cost_debt_roster.contains(identity);
+    let typed_admission_holds = typed_admission.contains(identity);
+    let long_home_holds = cost_debt_verdict_only.contains(identity) && !string_roster_holds;
+    if typed_admission_holds {
+        Some(EnrolmentExpensivenessGround::Roster)
+    } else if long_home_holds {
         Some(EnrolmentExpensivenessGround::LongHome)
     } else {
         None
@@ -1611,6 +1617,15 @@ pub(crate) fn enrolment_margin_standing_for(
     }
 }
 
+/// Mirror of `v2.workflow.floor_enrolment_margin` `EnrolmentPairingHole`.
+/// `None` is not a hole; the other two arms are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EnrolmentPairingHole {
+    None,
+    Declared,
+    OutsideExecution,
+}
+
 /// Which of the two gates (or the pairing wall between them) produced a blocker.
 /// Callers MATCH this coproduct; they do not recover origin from the cause string.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1661,24 +1676,25 @@ pub(crate) fn required_floor_blockers_for(
         }
         None => {
             if !standing.blocks() {
-                if let Some(origin) = standing.unpaired_pairing_origin() {
-                    let cause = match origin {
-                        RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing => {
-                            "declared_expensiveness_without_changed_witness_pairing"
-                        }
-                        RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing => {
-                            "enrolment_outside_execution_without_changed_witness_pairing"
-                        }
-                        RequiredFloorBlockerOrigin::Enrolment
-                        | RequiredFloorBlockerOrigin::Changed => {
-                            unreachable!("unpaired_pairing_origin only names pairing holes")
-                        }
-                    };
-                    blockers.push(RequiredFloorIdentityBlocker {
-                        identity: identity.to_string(),
-                        cause: cause.to_string(),
-                        origin,
-                    });
+                match standing.unpaired_pairing_hole() {
+                    EnrolmentPairingHole::None => {}
+                    EnrolmentPairingHole::Declared => {
+                        blockers.push(RequiredFloorIdentityBlocker {
+                            identity: identity.to_string(),
+                            cause: "declared_expensiveness_without_changed_witness_pairing"
+                                .to_string(),
+                            origin: RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing,
+                        });
+                    }
+                    EnrolmentPairingHole::OutsideExecution => {
+                        blockers.push(RequiredFloorIdentityBlocker {
+                            identity: identity.to_string(),
+                            cause: "enrolment_outside_execution_without_changed_witness_pairing"
+                                .to_string(),
+                            origin:
+                                RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
+                        });
+                    }
                 }
             }
         }
@@ -8550,18 +8566,15 @@ pub fn run_required_floor(
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
+        // Realizes `enrolment_expensiveness_declaration`. Empty until a
+        // `floor_cost_debt_row` reading is authored (declared §3c frontier).
+        let typed_admission: HashSet<String> = HashSet::new();
         for identity in newly_enrolled {
-            // Consumed from `changed_witness_expensiveness_is_declared`'s long-home
-            // disjunct (`cost_debt_verdict_only` minus the string roster). The roster
-            // disjunct is NOT an enrolment exemption: membership is still hand-authored
-            // identity strings (review 65585), so honouring it here would let a 325ms
-            // append disable this gate (review 65637). Typed `floor_cost_debt_row`
-            // admission is the mint path for Roster ground; that list is empty until a
-            // reading that exceeds the 500ms ceiling (or is censored) is authored there.
             let declared_expensiveness = enrolment_expensiveness_declaration(
                 identity,
                 &cost_debt_roster,
                 &cost_debt_verdict_only,
+                &typed_admission,
             );
             let standing = enrolment_margin_standing_for(
                 identity,
@@ -9952,7 +9965,7 @@ mod changed_witness_projection_tests {
         let identity = "fixture.declared_unmeasured";
         let composed = enrolment_and_changed_composition(
             identity,
-            EnrolmentExpensivenessGround::Roster,
+            EnrolmentExpensivenessGround::LongHome,
             None,
             None,
             &HashMap::new(),
@@ -9983,7 +9996,7 @@ mod changed_witness_projection_tests {
         let identity = "fixture.declared_wall_interrupted";
         let composed = enrolment_and_changed_composition(
             identity,
-            EnrolmentExpensivenessGround::Roster,
+            EnrolmentExpensivenessGround::LongHome,
             None,
             Some(terminal(
                 identity,
@@ -10030,7 +10043,7 @@ mod changed_witness_projection_tests {
         };
         let composed = enrolment_and_changed_composition(
             identity,
-            EnrolmentExpensivenessGround::Roster,
+            EnrolmentExpensivenessGround::LongHome,
             Some(&occurrence),
             Some(terminal(identity, ClaimOutcome::Fail)),
             &observation(325),
@@ -10068,7 +10081,7 @@ mod changed_witness_projection_tests {
             &cost_owned,
             &dispositions,
             302,
-            Some(EnrolmentExpensivenessGround::Roster),
+            Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(standing.name(), "expensiveness_declared");
         assert!(!standing.blocks());
@@ -10117,19 +10130,26 @@ mod changed_witness_projection_tests {
         roster.insert(identity.to_string());
         let mut verdict_only = HashSet::new();
         verdict_only.insert(identity.to_string());
+        let empty = HashSet::new();
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &roster, &verdict_only),
+            enrolment_expensiveness_declaration(identity, &roster, &verdict_only, &empty),
             None
         );
         let mut long_only = HashSet::new();
         long_only.insert(identity.to_string());
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &HashSet::new(), &long_only),
+            enrolment_expensiveness_declaration(identity, &HashSet::new(), &long_only, &empty),
             Some(EnrolmentExpensivenessGround::LongHome)
         );
         assert_eq!(
-            enrolment_expensiveness_declaration(identity, &HashSet::new(), &HashSet::new()),
+            enrolment_expensiveness_declaration(identity, &HashSet::new(), &HashSet::new(), &empty),
             None
+        );
+        let mut typed = HashSet::new();
+        typed.insert(identity.to_string());
+        assert_eq!(
+            enrolment_expensiveness_declaration(identity, &HashSet::new(), &HashSet::new(), &typed),
+            Some(EnrolmentExpensivenessGround::Roster)
         );
     }
 }
