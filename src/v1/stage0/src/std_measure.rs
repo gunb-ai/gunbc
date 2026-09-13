@@ -942,6 +942,22 @@ pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r.clone())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AccountCredit(pub std::marker::PhantomData<()>);
+
+pub type CreditsPerMinute = Rc<Measure<AccountCredit, One, i64>>;
+
+pub fn credits_per_minute(count: Nat) -> CreditsPerMinute {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type MoneyAmount<S> = Rc<Measure<Currency, S, i64>>;
 
 pub type MoneyAmountMicro = MoneyAmount<Micro>;
