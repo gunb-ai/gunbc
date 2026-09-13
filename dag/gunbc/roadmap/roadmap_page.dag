@@ -22,11 +22,12 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
   roadmap_authority, authored_merged_prs,
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  frontier_sets_from_live_history,
+  frontier_sets_projection,
   FrontierSetsProjected, FrontierSetsProjectionRefused,
   declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
@@ -131,7 +132,7 @@ fn finish_line_progress_markup_for_accepted(accepted_ids: List<RoadmapNodeId>) -
 }
 
 fn finish_line_progress_markup() -> Fragment {
-  match frontier_sets_from_live_history() {
+  match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjectionRefused { detail: detail } =>
       el_class("section", "finish-line-progress", [
         el("h2", [ txt("v1 exit: four finish lines") ]),
@@ -1232,7 +1233,7 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
 // actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor.
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_for_projection(proj: roadmap_authority_projection())
+  roadmap_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
@@ -1329,7 +1330,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> Fragment {
-  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection())
+  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
 }
 
 fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
