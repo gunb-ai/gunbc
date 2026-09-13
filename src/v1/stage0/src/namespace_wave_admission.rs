@@ -1769,92 +1769,27 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
-/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
-/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
-/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
-/// narrowing, which an admission row would have recorded as an intent -- and these two are the
-/// real transitions.
+/// THIRTY-EIGHTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
 ///
-/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
-/// drags the whole module into the candidate set for every name it declares, so
-/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
-/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
-/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
-/// authored region, so the removed candidate could not have won either way. What narrowed is the
-/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written; the required
+/// floor on this branch then reported exactly those two as `CONSUMED ADMISSION ... already
+/// satisfied at the base`. Trigger, floor report and merge agree, which is what distinguishes a
+/// discharged debt from a row swept up by whoever the wall stopped.
 ///
-/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
-/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
-/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
-/// declaring module under no spelling at all, so the name reached its declaration only through
-/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
-/// already asserted.
+/// BOTH WERE MY OWN ROWS, which is why this lane pays rather than passing it on: the roster's rule
+/// puts a consumed row's deletion on its next touch, and the alternative -- another lane deleting
+/// admissions it did not author -- is how an unexamined deletion gets made on someone else's
+/// judgement.
 ///
-/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
-/// stop being producible, and CONSUMED comes due on the roster's next touch.
-/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
-/// change makes, one per call site the required floor enumerated.
+/// A RECEIPT THIS RUN ALSO PROVIDES, worth recording because it answers a question rather than
+/// restating one: this branch's own content did not change between the run that reported 181
+/// consumed rows and the run that reported these 2. Only the base moved. So the 181 were the whole
+/// of this branch's earlier `namespace-wave-admission` red, measured rather than assumed.
 ///
-/// NOTHING IS RETIRED BY THIS ENTRY. This change was authored believing it owed both the
-/// `gunbc#11137` row and the three `gunbc#11071` consumed-row deletions; other branches reached
-/// the roster first and paid them, and main carries that history above. The original claims are
-/// retracted rather than carried: a ledger recording one deletion twice is worse than one
-/// recording it once, and a cohort header carrying an already-satisfied trigger is how the wrong
-/// rows get retired on the next roster touch (§4b(3)).
-///
-/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared NINE
-/// times, byte-identical, across `v2.lens`. Those nine are deleted and an authority is landed in
-/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
-/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
-/// `string_eq` is the `eq` argument to `contains`.
-///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
-/// both sides at every one of the 37 sites below, and what changed is which declaration it
-/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
-/// consumer's own copy is now answered by the shared one. That is a relocation, not an
-/// `AuthoredReferenceResolution`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. THE NINE DELETED BODIES WERE
-/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
-/// it denoted at the base. A body differing anywhere would have made this a semantic change
-/// wearing a relocation's name, which is what this adjudication exists to rule out, so all nine
-/// were compared before the collapse rather than assumed equal from the shared spelling.
-///
-/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than the
-/// nine copies this change deletes.
-///
-/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
-/// enumeration in this file is a transcription that rots -- and the first attempt at one was
-/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
-/// under. Re-derive with:
-///
-///   grep -rn '^fn [a-z_]*string_eq[a-z_]*(' --include=*.dag dag/ src/v2
-///
-/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
-/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
-///
-/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: four survivors are in `v2.lens`
-/// itself -- `grammar_coverage`, `lens_module_gate`, `fn_index_depth_agreement`,
-/// `module_impact_query` -- all byte-identical, all under NICKNAMED spellings. So this change
-/// does not clear even its own stated scope: it collapsed the copies spelled exactly `string_eq`
-/// and left the ones spelled otherwise, which is §3's NICKNAME surviving precisely because a
-/// name-shaped search does not find it.
-///
-/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
-/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
-/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
-/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
-/// inflation this phrasing exists to avoid.
-///
-/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
-/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
-/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
-/// and one that deserves its own evidence.
-///
-/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
-/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
-/// next touch -- adjudicated by the declaring-module join, not by this sentence.
 const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
@@ -2227,32 +2162,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             expected_candidates: &["v2.std.text"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &[
-                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-                "extdeps.shell",
-                "extdeps.tools.grep",
-                "extdeps.tools.sed",
-                "extdeps.tools.xorriso",
-            ],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "Filesystem",
-            expected_candidates: &["extdeps.filesystem.filesystem_io"],
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
     },
 ];
 
