@@ -337,3 +337,67 @@ test fn the_faithful_population_is_accepted() -> Bool {
     DeploymentUnverifiable { cause: _ } => false
   }
 }
+
+
+// ── A POPULATION THAT IS NOT A BIJECTION IS NOT AN AGREEMENT ──────────────────────────────────
+//
+// EVERY PLANNED RANK FINDING AT LEAST ONE AGREEABLE ROW IS NOT THE DEPLOYMENT AGREEING, and these two
+// rows are the inputs that used to pass. observation_for_rank takes the FIRST row for a rank and the
+// assessment iterates the PLANNED lines, so a rank observed twice was reduced to whichever row came
+// first, and a rank running that the plan never named was examined by nothing at all. The receipt's
+// ranks_agreed is derived from the planned count, so it reported full agreement over a population
+// that was neither complete nor exclusive.
+data rank_zero_twice: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  rank_observation(
+    host: operator_host_srv9,
+    node_rank: 0,
+    image_digest: pinned_digest,
+    model_path: pinned_model_path,
+    argv: planned_argv_for(rank: 0),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+// THE DUPLICATE ROW AGREES WITH THE PLAN ON EVERY FIELD EXCEPT THE IMAGE, which is what makes this
+// discriminating rather than decorative: a check that only counted rows would pass it, and the old
+// first-row lookup passed it because the FIRST row for rank zero was the faithful one.
+test fn a_rank_observed_twice_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: rank_zero_twice, endpoint_alias: served() }) {
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+    DeploymentRejected { deviations: ds } => count(ds) != 0
+  }
+}
+
+// AND A PROCESS THE PLAN NEVER NAMED IS A DEVIATION, NOT A SPARE. Four planned ranks all agreeing
+// while a fifth serves something else on the same group is the case where a turn would be placed on
+// an engine nobody assessed -- and the old fold, which walked only the planned lines, could not see
+// it however wrong the extra rank was.
+data an_unexpected_fifth_rank: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+  rank_observation(
+    host: operator_host_srv9,
+    node_rank: 4,
+    image_digest: pinned_digest,
+    model_path: pinned_model_path,
+    argv: planned_argv_for(rank: 0),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+]
+
+test fn an_unexpected_extra_rank_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: an_unexpected_fifth_rank, endpoint_alias: served() }) {
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+    DeploymentRejected { deviations: ds } => count(ds) != 0
+  }
+}

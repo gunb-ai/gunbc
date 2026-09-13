@@ -89,6 +89,8 @@ type DeploymentDeviation
   | RankFabricInterfaceDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
   | DeploymentNotServing { detail: NonEmptyStr }
   | EndpointAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+  | DuplicateObservedRank { node_rank: Nat, observations: Nat }
+  | UnexpectedObservedRank { node_rank: Nat }
 
 type DeploymentUnknown
   = FabricInterfaceUnread { node_rank: Nat }
@@ -226,6 +228,48 @@ fn rank_unknowns(desired: ArmNodeLaunch, observed: RankObservation) -> List<Depl
   }
 }
 
+// ── THE POPULATIONS MUST BE A BIJECTION, NOT A LOOKUP THAT SUCCEEDED ──────────────────────────
+//
+// EVERY PLANNED RANK FINDING AT LEAST ONE AGREEABLE ROW IS NOT THE SAME AS THE DEPLOYMENT AGREEING.
+// observation_for_rank takes the FIRST row for a rank, and the assessment iterates the PLANNED lines,
+// so two failures slipped through both: a rank observed twice whose first row agrees and whose second
+// disagrees was reduced to the agreeable one, and a rank running that the plan never named was not
+// looked at by anything. The receipt's ranks_agreed is derived from the planned count, so it would
+// have reported full agreement over a population that was neither complete nor exclusive.
+//
+// THIS MATTERS MOST TO WHAT CONSUMES THE VERDICT. An incarnation receipt built on "all ranks agree"
+// must not mean "each planned rank had a row we liked": a fifth process serving different weights on
+// the same group is exactly the case where a turn would be placed on an engine nobody observed.
+fn observations_for_rank(observed: List<RankObservation>, rank: Nat) -> List<RankObservation> {
+  filter(observed, o => o.node_rank == rank)
+}
+
+fn planned_rank_present(plan_lines: List<ArmNodeLaunch>, rank: Nat) -> Bool {
+  count(filter(plan_lines, l => l.node.node_rank == rank)) != 0
+}
+
+fn duplicate_rank_deviations(observed: List<RankObservation>, ls: List<ArmNodeLaunch>) -> List<DeploymentDeviation> {
+  flat_map(ls, l =>
+    if count(observations_for_rank(observed: observed, rank: l.node.node_rank)) > 1 {
+      [DuplicateObservedRank {
+        node_rank: l.node.node_rank,
+        observations: count(observations_for_rank(observed: observed, rank: l.node.node_rank)),
+      }]
+    } else { [] })
+}
+
+fn unexpected_rank_deviations(observed: List<RankObservation>, ls: List<ArmNodeLaunch>) -> List<DeploymentDeviation> {
+  flat_map(observed, o =>
+    if planned_rank_present(plan_lines: ls, rank: o.node_rank) { [] }
+    else { [UnexpectedObservedRank { node_rank: o.node_rank }] })
+}
+
+fn population_deviations(observed: List<RankObservation>, ls: List<ArmNodeLaunch>) -> List<DeploymentDeviation> {
+  concat(
+    duplicate_rank_deviations(observed: observed, ls: ls),
+    unexpected_rank_deviations(observed: observed, ls: ls))
+}
+
 fn line_deviations(observed: List<RankObservation>, l: ArmNodeLaunch) -> List<DeploymentDeviation> {
   match observation_for_rank(observed: observed, rank: l.node.node_rank) {
     Absent => [RankAbsent { expected_rank: l.node.node_rank, expected_host: l.node.host as NonEmptyStr }]
@@ -245,7 +289,9 @@ fn deployment_deviations(plan: ArmLaunchPlan, observed: NativeDeploymentObserved
     DeploymentNothingRunning { detail: d } => [DeploymentNotServing { detail: d }]
     DeploymentRanksRead { ranks: rs, endpoint_alias: ep } =>
       concat(
-        flat_map(plan_lines(plan: plan), l => line_deviations(observed: rs, l: l)),
+        concat(
+          population_deviations(observed: rs, ls: plan_lines(plan: plan)),
+          flat_map(plan_lines(plan: plan), l => line_deviations(observed: rs, l: l))),
         match ep {
           Absent => []
           Present { value: a } =>
@@ -373,6 +419,10 @@ fn deployment_deviation_text(d: DeploymentDeviation) -> String {
     DeploymentNotServing { detail: t } => join(["the deployment is not serving: ", t as String], "")
     EndpointAliasDiffers { desired: de, observed: o } =>
       join(["the endpoint serves ", o as String, " rather than the planned ", de as String], "")
+    DuplicateObservedRank { node_rank: r, observations: n } =>
+      join(["rank ", to_string(r), " was observed ", to_string(n), " times and a rank is one process"], "")
+    UnexpectedObservedRank { node_rank: r } =>
+      join(["rank ", to_string(r), " is running and the plan names no such rank"], "")
   }
 }
 
