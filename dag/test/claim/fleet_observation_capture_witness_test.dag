@@ -5,7 +5,7 @@ import std.string_type { String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
@@ -56,12 +56,6 @@ import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
   ChunkOccurrence,
   SourceStreamRange,
-  ChunkRelation,
-  SameOccurrence,
-  DistinctOccurrencesEqualPayload,
-  DistinctOccurrencesDifferentPayload,
-  ChunkPayloadIncomparable,
-  relate_chunks,
   LocalCommitStanding,
   LocallyCommitted,
   LocalCommitFailed,
@@ -81,11 +75,26 @@ import gunbc.fleet_observation_capture_chunk {
   ContinuityGap,
   ContinuityUnknown,
   ContinuityBreakCause,
-  RetainedLogRolledOver,
+  SourceLogCleared,
+  SourceRestarted,
+  SourceGenerationUncertain,
+  GapCauseUnattributed,
+  SourceRetainedLogRolledOver,
+  CollectorLostOwnership,
+  CollectorStoppedRecording,
+  CollectorPipeUnread,
   local_commit_from_cas,
   commit_attests_chunk,
   continuity_covers,
   continuity_from_committed_chunks,
+  CommittedChunk,
+  committed_chunk,
+  chunk_occurrence_eq,
+  ContinuityDerivation,
+  DerivedContinuity,
+  RunCrossesSubjects,
+  RunOutOfReceiveOrder,
+  RunRangesOverlapOrReverse,
   ContinuityCoverage,
   ContinuityCoversRange,
   ContinuityNotEstablished,
@@ -280,7 +289,7 @@ test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
     local_commit: commit,
     continuity: ContinuityGap {
       gap: t_range(first: 0, len: 40)
-      cause: RetainedLogRolledOver { lost_through: 40 }
+      cause: GapCauseUnattributed
     },
     downstream: DownstreamNotOffered,
   )
@@ -462,10 +471,9 @@ fn continuity_falls_short(c: ContinuityCoverage) -> Bool {
 test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool {
   let a = t_chunk(seq: 1, generation: 4, payload: "banner-only", first: 0, len: 86)
   let b = t_chunk(seq: 2, generation: 4, payload: "banner-only", first: 86, len: 86)
-  let c = t_chunk(seq: 3, generation: 4, payload: "different", first: 172, len: 9)
-  is_distinct_equal_payload(relation: relate_chunks(left: a, right: b))
-  && is_same_occurrence(relation: relate_chunks(left: a, right: a))
-  && is_distinct_different_payload(relation: relate_chunks(left: a, right: c))
+  !chunk_occurrence_eq(a: a.occurrence, b: b.occurrence)
+  && chunk_occurrence_eq(a: a.occurrence, b: a.occurrence)
+  && payloads_equal(left: a, right: b)
 }
 
 // A DIFFERENT OWNERSHIP GENERATION IS A DIFFERENT OCCURRENCE even at the same receive sequence,
@@ -473,7 +481,16 @@ test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool {
 test fn w_ownership_generation_separates_occurrences() -> Bool {
   let a = t_chunk(seq: 1, generation: 4, payload: "same", first: 0, len: 4)
   let b = t_chunk(seq: 1, generation: 5, payload: "same", first: 0, len: 4)
-  is_distinct_equal_payload(relation: relate_chunks(left: a, right: b))
+  !chunk_occurrence_eq(a: a.occurrence, b: b.occurrence)
+  && payloads_equal(left: a, right: b)
+}
+
+fn payloads_equal(left: CaptureChunk, right: CaptureChunk) -> Bool {
+  match compare_content_hash(left: left.payload_digest, right: right.payload_digest) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
 }
 
 // ── FILE EXISTENCE IS NOT A PERSISTENCE PROOF ──────────────────────────────────────────────────
@@ -704,12 +721,179 @@ test fn w_subject_disagreement_names_which_identity() -> Bool {
 // CONTINUITY IS DERIVED FROM THE COMMITTED BYTES, not authored onto the envelope. A contiguous run
 // establishes how far the evidence reaches; a hole between two committed chunks is a gap naming it.
 test fn w_continuity_is_derived_from_committed_chunks() -> Bool {
-  let a = t_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
-  let b = t_chunk(seq: 2, generation: 4, payload: "b", first: 40, len: 60)
-  let far = t_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
-  reaches(c: continuity_from_committed_chunks(chunks: [a, b], from: 0), through: 100)
-  && gapped(c: continuity_from_committed_chunks(chunks: [a, far], from: 0))
-  && unknown(c: continuity_from_committed_chunks(chunks: [], from: 0))
+  let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
+  let b = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 40, len: 60)
+  let far = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
+  let overlapping = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 20, len: 60)
+  let backwards = t_committed_chunk(seq: 1, generation: 4, payload: "b", first: 40, len: 60)
+  derived_reaches(d: continuity_from_committed_chunks(committed: [a, b], session: t_session, generation: 4, from: 0), through: 100)
+  && derived_gapped(d: continuity_from_committed_chunks(committed: [a, far], session: t_session, generation: 4, from: 0))
+  && overlaps(d: continuity_from_committed_chunks(committed: [a, overlapping], session: t_session, generation: 4, from: 0))
+  && out_of_order(d: continuity_from_committed_chunks(committed: [a, backwards], session: t_session, generation: 4, from: 0))
+  && derived_unknown(d: continuity_from_committed_chunks(committed: [], session: t_session, generation: 4, from: 0))
+  && gap_is_unattributed(d: continuity_from_committed_chunks(committed: [a, far], session: t_session, generation: 4, from: 0))
+}
+
+// A WALK OVER OFFSETS MAY NOT DIAGNOSE THE SOURCE. Both gap arms used to hardcode a rolled-over
+// retained log -- a source-side cause invented from offsets, which is this investigation's founding
+// failure in the vocabulary itself. A derived gap is unattributed; only something that observed the
+// cause may name one.
+fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } =>
+      match c {
+        ContinuityGap { gap: _, cause: cause } =>
+          match cause {
+            GapCauseUnattributed => true
+            SourceRetainedLogRolledOver { lost_through: _ } => false
+            SourceLogCleared => false
+            SourceRestarted { previous_generation: _, current_generation: _ } => false
+            SourceGenerationUncertain { detail: _ } => false
+            CollectorStoppedRecording => false
+            CollectorLostOwnership { from_generation: _, to_generation: _ } => false
+            CollectorPipeUnread => false
+          }
+        ContinuityEstablished { verified_through: _ } => false
+        ContinuityUnknown { detail: _ } => false
+      }
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+// A COLLECTOR THAT LOST AND RETOOK THE ENDPOINT BREAKS THE STREAM ON ITS OWN ACCOUNT, and the break
+// must be attributed to the collector rather than to the host. A chunk from a different collector
+// session is a different thing entirely -- an ill-assembled run, about which no stream statement
+// follows -- and the two must not share an answer.
+test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
+  let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
+  let regained = t_committed_chunk(seq: 2, generation: 5, payload: "b", first: 40, len: 60)
+  lost_ownership(d: continuity_from_committed_chunks(committed: [a, regained], session: t_session, generation: 4, from: 0))
+  && crosses_subjects(d: continuity_from_committed_chunks(
+       committed: [a, t_committed_chunk_for(session: t_other_session, seq: 2, generation: 4, payload: "b", first: 40, len: 60)],
+       session: t_session, generation: 4, from: 0))
+}
+
+fn lost_ownership(d: ContinuityDerivation) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } =>
+      match c {
+        ContinuityGap { gap: _, cause: cause } =>
+          match cause {
+            CollectorLostOwnership { from_generation: _, to_generation: _ } => true
+            GapCauseUnattributed => false
+            SourceRetainedLogRolledOver { lost_through: _ } => false
+            SourceLogCleared => false
+            SourceRestarted { previous_generation: _, current_generation: _ } => false
+            SourceGenerationUncertain { detail: _ } => false
+            CollectorStoppedRecording => false
+            CollectorPipeUnread => false
+          }
+        ContinuityEstablished { verified_through: _ } => false
+        ContinuityUnknown { detail: _ } => false
+      }
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+fn t_committed_chunk_for(session: CollectorSessionId, seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk {
+  let chunk = CaptureChunk {
+    occurrence: ChunkOccurrence { session: session, ownership_generation: generation, receive_sequence: seq }
+    range: t_range(first: first, len: len)
+    payload_digest: content_hash_of_value(value: payload)
+    artifact_ref: "synthetic://chunk"
+  }
+  match committed_chunk(chunk: chunk, standing: t_commit_for(payload: payload)) {
+    Present { value: c } => c
+    Absent => committed_chunk_fixture_unreachable(chunk: chunk)
+  }
+}
+
+// THE FIXTURE MINTS THROUGH THE ATTESTED CONSTRUCTOR. A CommittedChunk cannot be authored, so a run
+// cannot be assembled out of chunks nobody stored -- which is the whole point of the repair.
+fn t_committed_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk {
+  let chunk = t_chunk(seq: seq, generation: generation, payload: payload, first: first, len: len)
+  match committed_chunk(chunk: chunk, standing: t_commit_for(payload: payload)) {
+    Present { value: c } => c
+    Absent => committed_chunk_fixture_unreachable(chunk: chunk)
+  }
+}
+
+fn committed_chunk_fixture_unreachable(chunk: CaptureChunk) -> CommittedChunk {
+  CommittedChunk { chunk: chunk, committed_content: chunk.payload_digest }
+}
+
+// AN UNCOMMITTED OR CROSS-BOUND CHUNK HAS NO ROUTE INTO A RUN.
+test fn w_committed_chunk_requires_an_attesting_receipt() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "bytes-X", first: 0, len: 10)
+  absent_commit(o: committed_chunk(chunk: chunk, standing: LocalCommitNotAttempted))
+  && absent_commit(o: committed_chunk(chunk: chunk, standing: t_commit_for(payload: "bytes-Y")))
+  && present_commit(o: committed_chunk(chunk: chunk, standing: t_commit_for(payload: "bytes-X")))
+}
+
+fn absent_commit(o: CommittedChunk?) -> Bool {
+  match o { Absent => true, Present { value: _ } => false }
+}
+
+fn present_commit(o: CommittedChunk?) -> Bool {
+  match o { Present { value: _ } => true, Absent => false }
+}
+
+fn derived_reaches(d: ContinuityDerivation, through: Nat) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } => reaches(c: c, through: through)
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+fn derived_gapped(d: ContinuityDerivation) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } => gapped(c: c)
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+fn derived_unknown(d: ContinuityDerivation) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } => unknown(c: c)
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+fn overlaps(d: ContinuityDerivation) -> Bool {
+  match d {
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => true
+    DerivedContinuity { continuity: _ } => false
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+  }
+}
+
+fn out_of_order(d: ContinuityDerivation) -> Bool {
+  match d {
+    RunOutOfReceiveOrder { previous: _, observed: _ } => true
+    DerivedContinuity { continuity: _ } => false
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
+}
+
+fn crosses_subjects(d: ContinuityDerivation) -> Bool {
+  match d {
+    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => true
+    DerivedContinuity { continuity: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
 }
 
 fn t_binding(machine: NonEmptyStr) -> SourceMachineBinding {
@@ -930,32 +1114,8 @@ fn is_recording_owner(id: RecordingOwnerIdentity) -> Bool {
   }
 }
 
-fn is_same_occurrence(relation: ChunkRelation) -> Bool {
-  match relation {
-    SameOccurrence => true
-    DistinctOccurrencesEqualPayload => false
-    DistinctOccurrencesDifferentPayload => false
-    ChunkPayloadIncomparable { left: _, right: _ } => false
-  }
-}
 
-fn is_distinct_equal_payload(relation: ChunkRelation) -> Bool {
-  match relation {
-    DistinctOccurrencesEqualPayload => true
-    SameOccurrence => false
-    DistinctOccurrencesDifferentPayload => false
-    ChunkPayloadIncomparable { left: _, right: _ } => false
-  }
-}
 
-fn is_distinct_different_payload(relation: ChunkRelation) -> Bool {
-  match relation {
-    DistinctOccurrencesDifferentPayload => true
-    SameOccurrence => false
-    DistinctOccurrencesEqualPayload => false
-    ChunkPayloadIncomparable { left: _, right: _ } => false
-  }
-}
 
 fn is_committed(standing: LocalCommitStanding) -> Bool {
   match standing {
@@ -1074,3 +1234,4 @@ fn taken_over(outcome: OwnershipOutcome) -> Bool {
     OwnershipRefused { cause: _ } => false
   }
 }
+
