@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.qualified_constructor_roster_disagrees_with_pattern_key
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumed by the recurring-failure-mode projection and namespace-program review
+// of the shared declaration identity used by constructor coverage.
+data qualified_constructor_roster_disagrees_with_pattern_key: RecurringFailureMode = RecurringFailureMode {
+  identity: "qualified_constructor_roster_disagrees_with_pattern_key" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: constructor coverage compares a qualified declaration name against a pattern leaf name, so a complete set of bare variant arms is refused as non-exhaustive. The constructor roster and the pattern describe the same variants using different keys.",
+    "EXECUTED INSTRUMENTS: infer_semantics_witness::coproduct_exhaustiveness_qualified_declared_names_accept_bare_arms and infer_semantics_witness::coproduct_exhaustiveness_missing_arm_names_only_gap retain their original assertions. The paired standalone reduction and its executable source are preserved on gunb-ai/gunbc#11277 comment 5655360167; it changes only whether the two declared variant names have a module prefix. Its variants have no fields, generic arguments, or Resolved wrappers.",
+    "BASELINE RECEIPT: untouched origin/main 72cd7840544a3b6627e2b41284936e9008596591 was built in an isolated worktree and target directory with a capped one-bin build. The main infer_semantics_witness executable refuses at the same qualified-name assertion. The identical paired reduction linked to the main inference shard and to the canonical-argument PR shard yields identical observations. Full build and execution evidence is preserved on gunb-ai/gunbc#11277 comment 5655408711. This defect predates the argument canonicalization; source-diff similarity alone was not treated as a behavioral receipt.",
+    "MECHANISM: v1.compiler.infer_patterns.constructor_roster_for retains authored qualified variant names. v1.compiler.infer_patterns.pattern_matches_constructor applies variant_pattern_coverage_key to the pattern name alone before comparing it with the roster key. These two representations of constructor identity disagree even when all declared variants have corresponding arms.",
+    "HARM AND CURRENT RUNG: legitimate exhaustive source is refused and the missing-variant diagnostic can include already covered variants. The observed boundary is seed pattern coverage, not emitted native v2 execution. This is a known, mitigatable failure; the preserved assertions detect it but this row does not make the invalid comparison impossible.",
+    "RESTORATION TRIGGER: constructor declarations and reached pattern arms derive their coverage key from one resolved declaration identity authority, preserving scoped distinctions. Complete coverage must accept and an omitted arm must name only the actual gap on the same qualified-declaration path; a blanket leaf-name collapse, comparator widening, fixture spelling change, or skipped assertion cannot retire the row.",
+    "OWNER AND SCOPE: the namespace program owns the qualified-versus-bare pattern-key frontier under gatekeeper ruling msg_216a6d32-7c6e-424e-b25c-5142797f2d8e; repair work item pending routing by the v2 self-host direction lane. The two existing assertions remain expected-RED evidence in #11277 without changing the witness runner or the exhaustiveness implementation. This row does not authorize an unrelated seed repair inside the canonical-argument cut.",
+  ],
+  evidence: [],
+}

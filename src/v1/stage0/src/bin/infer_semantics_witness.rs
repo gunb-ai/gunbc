@@ -22,8 +22,8 @@ use v1_compiler::v1_compiler_infer_resolve::resolve_node;
 use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
 use v1_compiler::v1_compiler_infer_types::{
     bare_map_node, is_fully_resolved, make_container_type, make_map_type, node_is_keyed_collection,
-    node_type_compatible, nominal_type_ref, resolved_type, type_argument_node,
-    type_resolution_verdict, TypeResolutionVerdict,
+    node_type_compatible, nominal_type_ref, type_argument_node, type_resolution_verdict,
+    TypeResolutionVerdict,
 };
 use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
