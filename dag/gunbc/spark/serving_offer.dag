@@ -104,8 +104,8 @@ type SparkServingReadiness
 //
 // SupplierOffer carries a ProviderRoute because admission is decided over provider x service x
 // region and never over a company. A route's region is therefore an OBSERVATION, exactly as
-// product.supplier.ubicloud ubicloud_route treats it: unread, it refuses as
-// UbicloudRouteRegionUnobserved rather than filling the slot. This module has the same obligation
+// product.fabric.provider_route provider_route_from_region treats it: unread, it refuses as
+// ProviderRouteRegionUnobserved rather than filling the slot. This module has the same obligation
 // and, today, no observer -- so it refuses for the same reason the readiness arm above refuses.
 // Binding an offer whose route nothing established would put a candidate in front of selection
 // carrying a region no one measured, and every admission decision downstream would be taken

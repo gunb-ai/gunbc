@@ -66,7 +66,7 @@ fn fabric_rail_apply_legs(trust: FleetOpenSshTrustPolicy, plans: List<SparkPairH
   map(plans, p => spark_pair_privileged_leg(trust: trust, path: ReachManagementLan, plan: p, admin_credential: administrator, admin_credential_file: file))
 }
 
-func fabric_rail_apply_wet() -> ProcessExit
+fn fabric_rail_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

@@ -55,6 +55,46 @@ fn provider_route_eq(a: ProviderRoute, b: ProviderRoute) -> Bool {
     && declaration_ref_eq(a: a.region, b: b.region)
 }
 
+// A REGION IS OBSERVED OR THE ROUTE DOES NOT EXIST. product.supplier.ubicloud wrote this
+// coproduct first (UbicloudRegionObservation / UbicloudRouteStanding); product.supplier.cloudflare_r2
+// was the proven coincidence (DESIGN section 6). The minting law lives here so a third supplier
+// cannot independently edit it. A ProviderRoute is minted ONLY in the read arm: there is no
+// value of ProviderRegionObservation that yields a route with an unobserved region.
+//
+// NOT A MEMBER: gunbc.spark.serving_offer SparkServingRoute. The reason it is not this coproduct
+// is stated at that type's declaration (DESIGN section 3b: diverges with a stated reason).
+//
+// OBLIGATION IS DeclarationRef, NOT NonEmptyStr. That is the grain ProviderPathUnread already
+// uses, so a refusal can locate the named row. Ubicloud's first instance carried the sentence
+// itself; the coincidence is the reason that form is retired rather than kept as a stated
+// divergence.
+type ProviderRegionObservation
+  = ProviderRegionRead { region: DeclarationRef }
+  | ProviderRegionUnread { obligation: DeclarationRef }
+
+type ProviderRouteStanding
+  = ProviderRouteObserved { route: ProviderRoute }
+  | ProviderRouteRegionUnobserved { obligation: DeclarationRef }
+
+fn provider_route_from_region(
+  provider: DeclarationRef,
+  service: DeclarationRef,
+  region: ProviderRegionObservation,
+) -> ProviderRouteStanding {
+  match region {
+    ProviderRegionUnread { obligation } =>
+      ProviderRouteRegionUnobserved { obligation: obligation },
+    ProviderRegionRead { region: observed } =>
+      ProviderRouteObserved {
+        route: ProviderRoute {
+          provider: provider,
+          service: service,
+          region: observed,
+        },
+      },
+  }
+}
+
 // The posture is a REVISION, never an ambient "current". A permit records the exact revision it
 // was evaluated against, so a posture change makes standing permits STALE rather than silently
 // tolerated - the difference between a decision that can be re-derived and one that merely
