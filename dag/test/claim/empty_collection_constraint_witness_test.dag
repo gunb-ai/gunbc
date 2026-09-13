@@ -89,3 +89,10 @@ data optional_cardinality_accumulator_source: String = "module probe_optional_ca
 test fn optional_cardinality_accumulator_binds() -> Bool {
   callback_compiles_clean(source: optional_cardinality_accumulator_source)
 }
+
+// Literal none and a Present sibling consume the same Optional application rule.
+data none_present_branch_source: String = "module probe_none_present_branch\nimport std.types { Int, Bool }\nimport v2.std.optional { Present }\nfn asks(flag: Bool) -> Int? { if flag { none } else { Present { value: 1 } } }\n"
+
+test fn none_present_branch_binds() -> Bool {
+  callback_compiles_clean(source: none_present_branch_source)
+}

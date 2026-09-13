@@ -6383,9 +6383,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span)
+      let literal_type = infer_literal_node(lit: lit)
+      let literal_result = match lit {
+        LitNull => match lookup_type_by_name(env: scope.type_env, name: "Optional") {
+          Present { value: owner } =>
+            let element = match expected {
+              Present { value: exp } =>
+                if (exp.return_cardinality == CardOptional) { with_required_cardinality(n: exp) }
+                else if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: "Optional")
+                  && exposure_is_application(exposure: expected_type_head_exposure(formal: exp, scope: scope)) {
+                  match exp.children |> first { Present { value: arg } => type_argument_node(ch: arg)  Absent => literal_type }
+                } else { literal_type }
+              Absent => literal_type
+            }
+            NodeResolveResult { resolved: variant_owner_application(owner: owner, arguments: [element]), diagnostics: [] }
+          Absent => NodeResolveResult {
+            resolved: error_type,
+            diagnostics: [inference_error(message: "optional literal owner unavailable", span: span, module_name: scope.module_name)]
+          }
+        }
+        _ => NodeResolveResult { resolved: literal_type, diagnostics: [] }
+      }
+      let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: literal_result.resolved } }, span: span)
       match literal_boundary_elaboration(lit: lit, expected: expected, scope: scope) {
-        LiteralBoundaryPlain => ok_infer(texpr: plain)
+        LiteralBoundaryPlain => InferResult { typed: plain, diagnostics: literal_result.diagnostics }
         LiteralBoundaryElaborated { elaboration: e, destination_type: dt } =>
           ok_infer(texpr: make_expr_node(
             occurrence_identity: texpr.occurrence_identity,
@@ -6442,7 +6463,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 name: name,
                 expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
                 children: [],
-                inferred: Present { value: Resolved { node: binding.resolved } },
+                inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved), scope: scope, fallback: binding.resolved) } },
                 span: span,
                 name_span: span
               ))
@@ -6512,7 +6533,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               name: name,
                               expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
                               children: [],
-                              inferred: Present { value: Resolved { node: gbinding.resolved } },
+                              inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: gbinding.resolved), scope: scope, fallback: gbinding.resolved) } },
                               span: span,
                               name_span: span
                             ),
@@ -8877,7 +8898,35 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node_result = if is_present_ctor {
+    let application_owner = if is_present_ctor {
+      match owner_from_locals {
+        Present { value: owner } => owner
+        Absent => match owner_from_variant_node {
+          Present { value: owner } => owner
+          Absent => match expected_owner { Present { value: owner } => owner  Absent => raw_resolved }
+        }
+      }
+    } else { raw_resolved }
+    let resolved_node_result = if application_owner.connective == Disj && count(application_owner.params) > 0 {
+      let generic_names = map(application_owner.params, p => generic_param_name_at(n: p, source_indices: scope.type_env.source_indices))
+      let variant_fields = match find_child_named(n: application_owner, name: type_name.value, source_indices: scope.type_env.source_indices) {
+        Present { value: variant } => variant.children
+        Absent => []
+      }
+      let typed_record = make_named_expr_node(occurrence_identity: occurrence_identity, name: type_name.value,
+        expr_data: ExprRecordLit { parent_enum: local_variant_parent }, children: typed_fields,
+        inferred: Present { value: Resolved { node: application_owner } }, span: span, name_span: name_span)
+      let unification = unify_record_lit_field_walk(struct_fields: variant_fields, record: typed_record,
+        generic_names: generic_names, scope: scope, acc: GenericUnification { subst: empty_map(), diagnostics: [] })
+      NodeResolveResult {
+        resolved: variant_owner_application(owner: application_owner, arguments: map(generic_names, name =>
+          match map_get(unification.subst, name) {
+            Present { value: argument } => argument
+            Absent => type_variable_node(id: name)
+          })),
+        diagnostics: unification.diagnostics
+      }
+    } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       let optional_owner = match owner_from_locals {
         Present { value: owner } => Present { value: owner }

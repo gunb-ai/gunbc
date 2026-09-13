@@ -1205,7 +1205,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitInt { value: _ } => int_type
     LitFloat { value: _ } => float_type
     LitBool { value: _ } => bool_type
-    LitNull => with_optional_cardinality(n: unit_type)
+    LitNull => type_variable_node(id: "empty_optional_element")
 
     LitSymbol { value: _ } => string_type
   }
