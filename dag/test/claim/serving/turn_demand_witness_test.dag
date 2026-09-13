@@ -11,8 +11,16 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { hardware_thread_count }
+import std.content_hash { content_hash_of_value }
+import gunbc.serving.incarnation_provenance {
+  ServingTurnExecutionClosure, ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation,
+  ServingSourceEvidenceRung, RevisionAddressedUpstreamVerification,
+  SourceManifestResolved, SourceManifestUnestablished, RuntimeManifestResolved, RuntimeManifestUnestablished,
+  ExecutionClosureResolved, ExecutionClosureUnestablished,
+  resolve_serving_source, resolve_serving_runtime, seal_serving_execution_closure,
+}
 import gunbc.serving.turn_demand {
-  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, serving_turn_source_unestablished,
+  ServingTurnRequest, ServingTurnExecution, TurnExecutionBound, serving_turn_source_unestablished,
   serving_turn_steps, serving_turn_output_obligations, TurnWorkBound, TurnWorkUnestablished,
   serving_turn_work, serving_turn_requirements, serving_turn_satisfaction,
 }
@@ -27,13 +35,44 @@ fn probe_requirements() -> ExecutionRequirements {
   )
 }
 
-fn request_with(source: ServingTurnSource) -> ServingTurnRequest {
+fn request_with(execution: ServingTurnExecution) -> ServingTurnRequest {
   ServingTurnRequest {
-    source: source,
-    runtime_closure: "probe.runtime" as ArtifactManifestRef,
+    execution: execution,
     inputs: "probe.inputs" as ArtifactManifestRef,
     effect_contract: "probe.effects" as EffectContractRef,
     output_contract: "probe.outputs" as OutputContractRef,
+  }
+}
+
+
+// A CLOSURE BUILT THROUGH THE REAL SEAL, NOT ASSEMBLED HERE. ServingTurnExecutionClosure is
+// sole_constructor in its own module, so a fixture cannot fabricate one: these go through the same
+// resolution the Spark observer uses, which is what makes the positive control below a control over
+// the production path rather than over a shape invented in this file.
+fn t_closure(checkpoint: String) -> ServingTurnExecution {
+  let source = resolve_serving_source(
+    checkpoint: CoordinateObserved { hash: content_hash_of_value(value: checkpoint as NonEmptyStr) },
+    model_config: CoordinateObserved { hash: content_hash_of_value(value: "model-config" as NonEmptyStr) },
+    tokenizer: CoordinateObserved { hash: content_hash_of_value(value: "tokenizer" as NonEmptyStr) },
+    tokenizer_config: CoordinateObserved { hash: content_hash_of_value(value: "tokenizer-config" as NonEmptyStr) },
+    special_tokens: CoordinateAbsentByObservation,
+    chat_template: CoordinateObserved { hash: content_hash_of_value(value: "chat-template" as NonEmptyStr) },
+    model_side_code: CoordinateAbsentByObservation,
+    generation_defaults: CoordinateObserved { hash: content_hash_of_value(value: "generation-defaults" as NonEmptyStr) },
+    processor_config: CoordinateObserved { hash: content_hash_of_value(value: "processor-config" as NonEmptyStr) },
+    rung: RevisionAddressedUpstreamVerification {
+      authority: "probe/repo" as NonEmptyStr, revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    },
+  )
+  let runtime = resolve_serving_runtime(
+    runtime_image: CoordinateObserved { hash: content_hash_of_value(value: "runtime-image" as NonEmptyStr) },
+    runtime_extensions: CoordinateAbsentByObservation,
+    runtime_configuration: CoordinateAbsentByObservation,
+  )
+  match seal_serving_execution_closure(source: source, runtime: runtime, receipt: "test.claim.serving.turn_demand_witness" as ObservationReceiptRef) {
+    ExecutionClosureUnestablished { obligations: _ } => serving_turn_source_unestablished()
+    ExecutionClosureResolved { closure: c } =>
+      TurnExecutionBound { closure: c }
   }
 }
 
@@ -45,11 +84,11 @@ fn request_with(source: ServingTurnSource) -> ServingTurnRequest {
 // until something observes what the launch loaded, and the obligation says which consumer is waiting
 // and what would discharge it.
 test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
-  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: serving_turn_source_unestablished()), requirements: probe_requirements())
+  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(execution: serving_turn_source_unestablished()), requirements: probe_requirements())
   match w {
     TurnWorkUnestablished { obligation: o } =>
-      string_contains(s: o as String, pattern: "no canonical source manifest")
-        && string_contains(s: o as String, pattern: "launch receipt")
+      string_contains(s: o as String, pattern: "no observation establishes the exact model package")
+        && string_contains(s: o as String, pattern: "vllm_incarnation_provenance")
     TurnWorkBound { work: _ } => false
   }
 }
@@ -58,8 +97,7 @@ test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
 // request carrying an observed manifest mints Work, and its key comes from the fabric's own
 // constructor rather than from a second derivation here.
 test fn an_observed_manifest_mints_work_through_the_fabric_constructor() -> Bool {
-  let source = TurnSourceManifest { manifest: "probe.model-manifest" as SourceManifestRef, receipt: "test.claim.serving.turn_demand_witness" as ObservationReceiptRef }
-  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: source), requirements: probe_requirements()) {
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(execution: t_closure(checkpoint: "probe.model-manifest")), requirements: probe_requirements()) {
     TurnWorkBound { work: work } => length(work.contract.steps) == 1 && length(work.id.key as String) > 0
     TurnWorkUnestablished { obligation: _ } => false
   }
@@ -68,12 +106,10 @@ test fn an_observed_manifest_mints_work_through_the_fabric_constructor() -> Bool
 // TWO SOURCES ARE TWO WORKS. This is what the alias cast destroyed: the identity is derived from the
 // contract, so a different manifest is a different key without anyone deciding it should be.
 test fn two_source_manifests_are_two_works() -> Bool {
-  let one = TurnSourceManifest { manifest: "probe.model-a" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  let two = TurnSourceManifest { manifest: "probe.model-b" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: one), requirements: probe_requirements()) {
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(execution: t_closure(checkpoint: "probe.model-a")), requirements: probe_requirements()) {
     TurnWorkUnestablished { obligation: _ } => false
     TurnWorkBound { work: a } =>
-      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: two), requirements: probe_requirements()) {
+      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(execution: t_closure(checkpoint: "probe.model-b")), requirements: probe_requirements()) {
         TurnWorkUnestablished { obligation: _ } => false
         TurnWorkBound { work: b } => (a.id.key as String) != (b.id.key as String)
       }

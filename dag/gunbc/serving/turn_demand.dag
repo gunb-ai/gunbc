@@ -1,6 +1,9 @@
 module gunbc.serving.turn_demand
 
 import std.types { NonEmptyStr, List }
+import gunbc.serving.incarnation_provenance {
+  ServingTurnExecutionClosure, serving_execution_source_ref, serving_execution_runtime_ref,
+}
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
@@ -32,7 +35,7 @@ import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
 // with it: the owned-hardware buy terms were zero against gunbc.spark.serving_offer's zero quote, and
 // that pairing is stated where the quote is.
 
-// ── THE SOURCE MANIFEST IS THE ONE FIELD THAT CANNOT BE FILLED IN TODAY ───────────────────────
+// ── THE EXECUTION CLOSURE IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED ────────────────────
 //
 // WHAT WAS DONE BEFORE AND WHY IT WAS WRONG. The served model ALIAS was cast straight into
 // SourceManifestRef. An alias is a route name -- what the OpenAI-shaped endpoint answers to -- and
@@ -42,23 +45,29 @@ import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
 // them one Work. That is not a missing field; it is a wrong answer about identity, and the fabric's
 // whole reuse and receipt story is keyed on it.
 //
-// SO THE MANIFEST IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED. Nothing in this repository yet
-// observes the exact model, tokenizer and runtime closure a launch loaded -- that is a privileged
-// read against a running engine and it belongs to the launch-receipt lane. Until it exists, a serving
-// turn has no exact Work, and this module says so rather than manufacturing one.
-type ServingTurnSource
-  = TurnSourceManifest { manifest: SourceManifestRef, receipt: ObservationReceiptRef }
-  | TurnSourceUnestablished { obligation: NonEmptyStr }
+// THE SECOND DEFECT WAS THAT THE TWO HALVES ARRIVED SEPARATELY. This request took a source and a
+// runtime_closure as INDEPENDENT inputs, so a caller could pair one model's source with another
+// model's runtime and every identity downstream would accept the combination. They are still separate
+// FIELDS on WorkContract -- a runtime change must not read as a source change -- but they may now only
+// be obtained TOGETHER, from one observed incarnation, so the separation is in the contract rather
+// than in the opportunity to mismatch.
+//
+// AND THE OBLIGATION NO LONGER CLAIMS THE SOURCE COVERS THE RUNTIME. Its previous wording said the
+// missing observation was of "the exact model weights, tokenizer and runtime closure ... so an
+// inference turn has no canonical source manifest", folding the runtime into the source's scope and
+// contradicting the two fields WorkContract carries. The runtime closure is its own coordinate.
+type ServingTurnExecution
+  = TurnExecutionBound { closure: ServingTurnExecutionClosure }
+  | TurnExecutionUnestablished { obligation: NonEmptyStr }
 
-data serving_turn_source_obligation: NonEmptyStr = "no observation in this repository establishes the exact model weights, tokenizer and runtime closure a serving launch loaded, so an inference turn has no canonical source manifest; the named consumer is gunbc.serving.turn_demand serving_turn_work and the trigger is a launch receipt that reads them from the running engine" as NonEmptyStr
+data serving_turn_source_obligation: NonEmptyStr = "no observation establishes the exact model package a serving launch loaded -- its checkpoint, model configuration, tokenizer, tokenizer configuration, special tokens, chat template, processor configuration, model-side code and generation defaults -- nor, separately, the runtime closure that executed it; the named consumer is gunbc.serving.turn_demand serving_turn_work and the producer is gunbc.spark.vllm_incarnation_provenance bound to the exact launch" as NonEmptyStr
 
-fn serving_turn_source_unestablished() -> ServingTurnSource {
-  TurnSourceUnestablished { obligation: serving_turn_source_obligation }
+fn serving_turn_source_unestablished() -> ServingTurnExecution {
+  TurnExecutionUnestablished { obligation: serving_turn_source_obligation }
 }
 
 type ServingTurnRequest {
-  source: ServingTurnSource
-  runtime_closure: ArtifactManifestRef
+  execution: ServingTurnExecution
   inputs: ArtifactManifestRef
   effect_contract: EffectContractRef
   output_contract: OutputContractRef
@@ -91,16 +100,16 @@ type ServingTurnContract
   | TurnContractUnestablished { obligation: NonEmptyStr }
 
 fn serving_turn_contract(request: ServingTurnRequest) -> ServingTurnContract {
-  match request.source {
-    TurnSourceUnestablished { obligation: o } => TurnContractUnestablished { obligation: o }
-    TurnSourceManifest { manifest: m, receipt: _ } =>
+  match request.execution {
+    TurnExecutionUnestablished { obligation: o } => TurnContractUnestablished { obligation: o }
+    TurnExecutionBound { closure: c } =>
       TurnContractBound {
         contract: WorkContract {
           program: serving_turn_program,
           steps: serving_turn_steps(),
-          source: m,
+          source: serving_execution_source_ref(c: c),
           inputs: request.inputs,
-          runtime_closure: request.runtime_closure,
+          runtime_closure: serving_execution_runtime_ref(c: c),
           effect_contract: request.effect_contract,
           output_contract: request.output_contract,
           output_obligations: serving_turn_output_obligations(),
