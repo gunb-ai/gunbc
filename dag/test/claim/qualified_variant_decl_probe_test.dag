@@ -1,0 +1,39 @@
+module test.claim.qualified_variant_decl_probe
+
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixtureOutcome, FixtureInstrumentRefused, FixtureCompileRefused,
+  FixtureCompileCompleted, MultiModuleCompileFixture, fixture_source, compile_fixture,
+  fixture_blocking_rows, fixture_rows_of_class,
+}
+import gunbc.compile_diagnostic_census { census_total_count }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data dotted_first_arm: String = "module qvd.first\ntype T = a.b.Alpha | Beta\nfn f(t: T) -> Bool { match t { Alpha => true Beta => false } }\n"
+data dotted_second_arm: String = "module qvd.second\ntype T = Alpha | a.b.Beta\nfn f(t: T) -> Bool { match t { Alpha => true Beta => false } }\n"
+
+fn run_one(path: String, src: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source(path, src)],
+    entry: path
+  })
+}
+
+fn blocking_total(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Int {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
+    FixtureInstrumentRefused { cause: _ } => -1
+  }
+}
+
+test fn p_dotted_first_arm_non_exhaustive_count_is_zero() -> Bool {
+  blocking_total(o: run_one(path: "qvd/first.dag", src: dotted_first_arm), wanted: "NonExhaustiveMatch") == 0
+}
+
+test fn p_dotted_second_arm_non_exhaustive_count_is_zero() -> Bool {
+  blocking_total(o: run_one(path: "qvd/second.dag", src: dotted_second_arm), wanted: "NonExhaustiveMatch") == 0
+}
