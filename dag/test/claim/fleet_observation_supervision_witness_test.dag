@@ -31,7 +31,7 @@ import gunbc.fleet_observation_collector_supervision {
   SupervisionDisposition,
   ClosedAtDeadline,
   InterruptedBeforeDeadline,
-  StillRunningPastDeadline,
+  TerminationNotObserved,
   NeverSpawned,
   CleanupFailed,
   SupervisionUndecidable,
@@ -178,7 +178,7 @@ test fn w_never_spawned_is_not_a_process_failure() -> Bool {
   )
   is_never_spawned(d: refused)
   && !supervision_covered_window(disposition: refused)
-  && is_still_running(d: still_running)
+  && is_termination_unobserved(d: still_running)
   && !supervision_covered_window(disposition: still_running)
 }
 
@@ -188,7 +188,7 @@ fn is_interrupted(d: SupervisionDisposition) -> Bool {
   match d {
     InterruptedBeforeDeadline { termination: _, drained: _ } => true
     ClosedAtDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
@@ -199,16 +199,16 @@ fn is_closed_at_deadline(d: SupervisionDisposition) -> Bool {
   match d {
     ClosedAtDeadline { termination: _, drained: _ } => true
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
   }
 }
 
-fn is_still_running(d: SupervisionDisposition) -> Bool {
+fn is_termination_unobserved(d: SupervisionDisposition) -> Bool {
   match d {
-    StillRunningPastDeadline { drained: _ } => true
+    TerminationNotObserved { drained: _ } => true
     ClosedAtDeadline { termination: _, drained: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
     NeverSpawned { cause: _ } => false
@@ -222,7 +222,7 @@ fn is_never_spawned(d: SupervisionDisposition) -> Bool {
     NeverSpawned { cause: _ } => true
     ClosedAtDeadline { termination: _, drained: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     CleanupFailed { detail: _ } => false
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
   }
@@ -233,7 +233,7 @@ fn is_undecidable(d: SupervisionDisposition) -> Bool {
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => true
     ClosedAtDeadline { termination: _, drained: _ } => false
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
   }
@@ -248,7 +248,7 @@ fn carries_signal(d: SupervisionDisposition, signal: Int) -> Bool {
         ProcessTerminationUnobserved => false
       }
     ClosedAtDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false

@@ -28,14 +28,18 @@ import gunbc.fleet_observation_capture_chunk {
   DownstreamRejected,
   DownstreamNotOffered,
   chunk_is_locally_committed,
-  continuity_is_established,
-  continuity_reaches,
+  continuity_covers,
+  ContinuityCoverage,
+  ContinuityCoversRange,
+  ContinuityNotEstablished,
+  ContinuityShortOfRange,
   commit_attests_chunk,
   chunk_byte_count,
   CommitBinding,
   CommitAttestsThisChunk,
   CommitAttestsOtherPayload,
   CommitBindingIncomparable,
+  CommitNoReceipt,
   range_covers,
   range_end,
 }
@@ -186,10 +190,10 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
         CoverageGapEvidenceNamesAnotherSubject {
           detail: "the recording owner, the chunk occurrence and the source-machine binding do not name one subject"
         }
-      } else if !chunk_is_locally_committed(standing: envelope.local_commit) {
-        CoverageGapNotDurablyCommitted { standing: envelope.local_commit }
       } else {
         match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
+          CommitNoReceipt { standing: standing } =>
+            CoverageGapNotDurablyCommitted { standing: standing }
           CommitAttestsOtherPayload { attested: a, chunk_payload: c } =>
             CoverageGapCommitDoesNotBindThisChunk {
               binding: CommitAttestsOtherPayload { attested: a, chunk_payload: c }
@@ -199,23 +203,23 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
               binding: CommitBindingIncomparable { attested: a, chunk_payload: c }
             }
           CommitAttestsThisChunk =>
-            if !continuity_is_established(continuity: envelope.continuity) {
-              CoverageGapContinuityBroken { continuity: envelope.continuity }
-            } else if !continuity_reaches(continuity: envelope.continuity, through: requested_end) {
-              CoverageGapContinuityShortOfRange {
-                verified_through: continuity_verified_through(continuity: envelope.continuity),
-                requested_end: requested_end,
-              }
-            } else if envelope.chunk.range.first_offset > requested.first_offset {
-              CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-            } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
-              if range_covers(outer: envelope.chunk.range, inner: requested) {
-                SourceBytesObserved { digest: envelope.chunk.payload_digest }
-              } else {
-                CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-              }
-            } else {
-              SourceProducedNoBytesInRange { range: requested }
+            match continuity_covers(continuity: envelope.continuity, through: requested_end) {
+              ContinuityNotEstablished { continuity: continuity } =>
+                CoverageGapContinuityBroken { continuity: continuity }
+              ContinuityShortOfRange { verified_through: verified, requested_end: asked } =>
+                CoverageGapContinuityShortOfRange { verified_through: verified, requested_end: asked }
+              ContinuityCoversRange =>
+                if envelope.chunk.range.first_offset > requested.first_offset {
+                  CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
+                  if range_covers(outer: envelope.chunk.range, inner: requested) {
+                    SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                  } else {
+                    CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                  }
+                } else {
+                  SourceProducedNoBytesInRange { range: requested }
+                }
             }
         }
       }
@@ -328,12 +332,3 @@ fn evidence_names_one_subject(
   && ((binding.enrolled_machine as String) == (owner_session.enrolled_machine as String))
 }
 
-// HOW FAR CONTINUITY REACHES, as a figure rather than a standing, so a shortfall can name the gap it
-// leaves. A non-established continuity has verified nothing and answers zero.
-fn continuity_verified_through(continuity: StreamContinuity) -> Nat {
-  match continuity {
-    ContinuityEstablished { verified_through: verified } => verified
-    ContinuityGap { gap: _, cause: _ } => 0
-    ContinuityUnknown { detail: _ } => 0
-  }
-}

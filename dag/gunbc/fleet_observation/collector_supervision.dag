@@ -62,6 +62,13 @@ type DrainProgress
 
 // WHAT HAPPENED TO THE COLLECTOR CHILD.
 //
+// TerminationNotObserved IS NOT "STILL RUNNING", and the distinction is the imported authority's, not
+// a nicety of this module. std.process_termination defines ProcessTerminationUnobserved as the state
+// where the spawn never produced a status -- nobody read one -- and it is explicitly NOT an error arm
+// there. This module previously mapped it to StillRunningPastDeadline, which ASSERTS the child is
+// alive: a claim about the process that an unread status cannot support, and the same absent-reads-as-
+// present shape the whole lane exists to close. A supervisor that did not read a status says so.
+//
 // SupervisionUndecidable is not an error arm and not a default. It is what an honest supervisor
 // returns when the deadline and the observed end were read from clocks that do not share an origin,
 // so their order is not a fact anyone holds. Defaulting that to ClosedAsExpected would fabricate
@@ -69,7 +76,7 @@ type DrainProgress
 type SupervisionDisposition
   = ClosedAtDeadline { termination: ProcessTermination, drained: DrainProgress }
   | InterruptedBeforeDeadline { termination: ProcessTermination, drained: DrainProgress }
-  | StillRunningPastDeadline { drained: DrainProgress }
+  | TerminationNotObserved { drained: DrainProgress }
   | NeverSpawned { cause: NonEmptyStr }
   | CleanupFailed { detail: NonEmptyStr }
   | SupervisionUndecidable { deadline_domain: ClockDomain, observed_domain: ClockDomain }
@@ -113,7 +120,7 @@ fn supervision_disposition(
     SpawnProducedChild { child_identity: _ } =>
       match termination {
         ProcessTerminationUnobserved =>
-          StillRunningPastDeadline { drained: drained }
+          TerminationNotObserved { drained: drained }
         ProcessExited { code: _ } =>
           disposition_by_order(
             order: compare_instants(a: observed_end, b: deadline),
@@ -166,7 +173,7 @@ fn supervision_covered_window(disposition: SupervisionDisposition) -> Bool {
         DrainNotObserved => false
       }
     InterruptedBeforeDeadline { termination: _, drained: _ } => false
-    StillRunningPastDeadline { drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
     NeverSpawned { cause: _ } => false
     CleanupFailed { detail: _ } => false
     SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false

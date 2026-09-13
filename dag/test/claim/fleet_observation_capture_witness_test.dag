@@ -81,12 +81,17 @@ import gunbc.fleet_observation_capture_chunk {
   RetainedLogRolledOver,
   local_commit_from_cas,
   commit_attests_chunk,
-  continuity_reaches,
+  continuity_covers,
+  ContinuityCoverage,
+  ContinuityCoversRange,
+  ContinuityNotEstablished,
+  ContinuityShortOfRange,
   chunk_byte_count,
   CommitBinding,
   CommitAttestsThisChunk,
   CommitAttestsOtherPayload,
   CommitBindingIncomparable,
+  CommitNoReceipt,
   range_covers,
   range_end,
 }
@@ -223,11 +228,19 @@ fn t_envelope(
   }
 }
 
+// THE FIXTURE MINTS THROUGH THE REAL CONSTRUCTOR, not by authoring a standing. That is the whole
+// point of the repair: a receipt exists only because a compare-and-set committed something, and what
+// it attests is what the store committed. A fixture that built LocallyCommitted directly could still
+// line the digests up by hand, which is the circularity being removed.
 fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding {
-  LocallyCommitted {
-    committed_content: content_hash_of_value(value: "synthetic-slot-digest")
-    attests_payload: content_hash_of_value(value: payload)
+  let outcome: CasOutcome<NonEmptyStr> = CasCommitted {
+    committed: CasSlotVersion {
+      generation: 1
+      content: content_hash_of_value(value: payload)
+      value: payload
+    }
   }
+  local_commit_from_cas(outcome: outcome)
 }
 
 // ── THE CENTRAL WALL ───────────────────────────────────────────────────────────────────────────
@@ -287,8 +300,8 @@ test fn w_continuity_must_reach_the_requested_end() -> Bool {
     downstream: DownstreamNotOffered,
   )
   is_continuity_short(fact: source_byte_fact(envelope: short, requested: requested))
-  && continuity_reaches(continuity: ContinuityEstablished { verified_through: 100 }, through: 100)
-  && !continuity_reaches(continuity: ContinuityEstablished { verified_through: 99 }, through: 100)
+  && continuity_covers_range(c: continuity_covers(continuity: ContinuityEstablished { verified_through: 100 }, through: 100))
+  && continuity_falls_short(c: continuity_covers(continuity: ContinuityEstablished { verified_through: 99 }, through: 100))
 }
 
 // A COMMIT RECEIPT MUST ATTEST THIS CHUNK'S BYTES. A valid receipt for a DIFFERENT payload used to
@@ -349,6 +362,87 @@ test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
   && is_observed(fact: source_byte_fact(envelope: spoke, requested: requested))
 }
 
+// COMMIT BYTES X, ASK ABOUT CHUNK Y: THE BINDING MUST NOT AGREE. This is the control for the
+// circularity that used to sit in the CONSTRUCTOR rather than in the fold. LocallyCommitted once
+// carried a caller-supplied attests_payload, so a caller could commit one payload and hand in the
+// digest of another chunk, and commit_attests_chunk would answer CommitAttestsThisChunk by
+// construction -- the binding guard proving nothing while looking verified.
+//
+// The attestation is now read off CasSlotVersion.content, so this fixture commits "bytes-X" through
+// the real constructor and asks about a chunk whose payload is "bytes-Y". There is no argument left
+// to pass that would make them agree.
+test fn w_commit_over_other_bytes_cannot_bind_this_chunk() -> Bool {
+  let commit_of_x = t_commit_for(payload: "bytes-X")
+  let chunk_of_y = t_chunk(seq: 1, generation: 4, payload: "bytes-Y", first: 0, len: 10)
+  let chunk_of_x = t_chunk(seq: 1, generation: 4, payload: "bytes-X", first: 0, len: 10)
+  attests_other(b: commit_attests_chunk(standing: commit_of_x, chunk: chunk_of_y))
+  && attests(b: commit_attests_chunk(standing: commit_of_x, chunk: chunk_of_x))
+  && is_commit_unbound(fact: source_byte_fact(
+    envelope: t_envelope(
+      ownership: t_owner(fencing: t_unfenced),
+      chunk: chunk_of_y,
+      local_commit: commit_of_x,
+      continuity: ContinuityEstablished { verified_through: 100 },
+      downstream: DownstreamNotOffered,
+    ),
+    requested: t_range(first: 0, len: 100),
+  ))
+}
+
+fn attests_other(b: CommitBinding) -> Bool {
+  match b {
+    CommitAttestsOtherPayload { attested: _, chunk_payload: _ } => true
+    CommitAttestsThisChunk => false
+    CommitNoReceipt { standing: _ } => false
+    CommitBindingIncomparable { attested: _, chunk_payload: _ } => false
+  }
+}
+
+// A MISSING RECEIPT IS A NAMED ABSENCE, NOT A MANUFACTURED DIGEST PAIR. commit_attests_chunk used to
+// answer the no-receipt cases with the chunk's own digest in BOTH fields -- reporting "attests a
+// different payload" while naming one payload twice, and inventing an attested digest for a receipt
+// that does not exist. CommitNoReceipt carries the standing instead.
+test fn w_absent_receipt_is_named_not_fabricated() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
+  no_receipt(b: commit_attests_chunk(standing: LocalCommitNotAttempted, chunk: chunk))
+  && no_receipt(b: commit_attests_chunk(standing: LocalCommitFailed { cause: ChunkCommitRefused { detail: "synthetic" } }, chunk: chunk))
+  && attests(b: commit_attests_chunk(standing: t_commit_for(payload: "x"), chunk: chunk))
+}
+
+fn no_receipt(b: CommitBinding) -> Bool {
+  match b {
+    CommitNoReceipt { standing: _ } => true
+    CommitAttestsThisChunk => false
+    CommitAttestsOtherPayload { attested: _, chunk_payload: _ } => false
+    CommitBindingIncomparable { attested: _, chunk_payload: _ } => false
+  }
+}
+
+fn attests(b: CommitBinding) -> Bool {
+  match b {
+    CommitAttestsThisChunk => true
+    CommitNoReceipt { standing: _ } => false
+    CommitAttestsOtherPayload { attested: _, chunk_payload: _ } => false
+    CommitBindingIncomparable { attested: _, chunk_payload: _ } => false
+  }
+}
+
+fn continuity_covers_range(c: ContinuityCoverage) -> Bool {
+  match c {
+    ContinuityCoversRange => true
+    ContinuityNotEstablished { continuity: _ } => false
+    ContinuityShortOfRange { verified_through: _, requested_end: _ } => false
+  }
+}
+
+fn continuity_falls_short(c: ContinuityCoverage) -> Bool {
+  match c {
+    ContinuityShortOfRange { verified_through: _, requested_end: _ } => true
+    ContinuityCoversRange => false
+    ContinuityNotEstablished { continuity: _ } => false
+  }
+}
+
 // ── EQUAL PAYLOADS ARE NOT DUPLICATE EVENTS ────────────────────────────────────────────────────
 
 // THE SEVEN IDENTICAL CAPTURES, as a test. Two chunks received at different sequences carrying
@@ -389,9 +483,9 @@ test fn w_commit_standing_comes_only_from_cas() -> Bool {
   let refused: CasOutcome<NonEmptyStr> = CasStoreRefused {
     cause: CasUnreadableReadRefused { detail: "synthetic store refusal" }
   }
-  is_committed(standing: local_commit_from_cas(outcome: good, attests_payload: content_hash_of_value(value: "chunk")))
-  && is_reference_missing(standing: local_commit_from_cas(outcome: missing, attests_payload: content_hash_of_value(value: "chunk")))
-  && is_commit_refused(standing: local_commit_from_cas(outcome: refused, attests_payload: content_hash_of_value(value: "chunk")))
+  is_committed(standing: local_commit_from_cas(outcome: good))
+  && is_reference_missing(standing: local_commit_from_cas(outcome: missing))
+  && is_commit_refused(standing: local_commit_from_cas(outcome: refused))
 }
 
 // ── OWNERSHIP IS OBSERVED, AND A FOREIGN SESSION IS NEVER STOLEN ────────────────────────────────
@@ -700,7 +794,7 @@ fn is_distinct_different_payload(relation: ChunkRelation) -> Bool {
 
 fn is_committed(standing: LocalCommitStanding) -> Bool {
   match standing {
-    LocallyCommitted { committed_content: _, attests_payload: _ } => true
+    LocallyCommitted { committed_content: _ } => true
     LocalCommitFailed { cause: _ } => false
     LocalCommitNotAttempted => false
   }
@@ -716,7 +810,7 @@ fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
         ChunkRetentionExpired { artifact_ref: _ } => false
         ChunkCommitRefused { detail: _ } => false
       }
-    LocallyCommitted { committed_content: _, attests_payload: _ } => false
+    LocallyCommitted { committed_content: _ } => false
     LocalCommitNotAttempted => false
   }
 }
@@ -731,7 +825,7 @@ fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
         ChunkReferenceMissing { referenced: _ } => false
         ChunkRetentionExpired { artifact_ref: _ } => false
       }
-    LocallyCommitted { committed_content: _, attests_payload: _ } => false
+    LocallyCommitted { committed_content: _ } => false
     LocalCommitNotAttempted => false
   }
 }
