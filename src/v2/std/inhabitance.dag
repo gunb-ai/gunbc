@@ -54,6 +54,8 @@ type InhabitanceUndecidableReason
   | UndecidableRefinementChain
   | UndecidableKernelNumeric
   | UndecidableFormalUnresolved
+  | UndecidableArgumentTypeNotDerived
+  | UndecidableArityShapeUnmodeled
 
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
@@ -166,6 +168,14 @@ fn undecidable_formal_unresolved() -> InhabitanceUndecidableReason {
   UndecidableFormalUnresolved
 }
 
+fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
+  UndecidableArgumentTypeNotDerived
+}
+
+fn undecidable_arity_shape_unmodeled() -> InhabitanceUndecidableReason {
+  UndecidableArityShapeUnmodeled
+}
+
 fn inhabitance_undecidable_reason_symbol(
   reason: InhabitanceUndecidableReason
 ) -> Symbol {
@@ -175,6 +185,8 @@ fn inhabitance_undecidable_reason_symbol(
     UndecidableRefinementChain => ^inhabitance_undecidable_refinement_chain
     UndecidableKernelNumeric => ^inhabitance_undecidable_kernel_numeric
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
+    UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
+    UndecidableArityShapeUnmodeled => ^inhabitance_undecidable_arity_shape_unmodeled
   }
 }
 
@@ -188,6 +200,10 @@ fn inhabitance_undecidable_diagnostic(
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+
+data inhabitance_undecidable_frontier_note: String = "InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation, arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND find_witness over the singleton {declared} refusing. The RFM row's v2 arm retires when the frontier count over reached applications is zero on both routes; the count is the census."
+
+data inhabitance_rung_honesty_note: String = "RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): mechanically preventable for a decidable incompatible argument (both sides derived, singleton find_witness refuses) — that is the claim, not 'every reached application is judged'. Until the InhabitanceUndecidable frontier count over reached applications is zero, most applications are counted-undecidable rather than judged. Native emission is unclaimed until the same RED refuses on the native route. v1 seed path is a different path and is not this item."
 
 fn application_argument_does_not_inhabit_diagnostic(
   application: Node,
@@ -208,24 +224,5 @@ fn application_argument_does_not_inhabit_diagnostic(
         occurrence_id: application.occurrence_id
       }
     }
-  }
-}
-
-fn application_argument_type_not_derived_diagnostic(
-  application: Node,
-  argument: Node,
-) -> Diagnostic {
-  Diagnostic {
-    reason: ^application_argument_type_not_derived,
-    at: node_locus(node: application),
-    correction: Suggested { node: argument }
-  }
-}
-
-fn application_arity_mismatch_diagnostic(application: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^application_arity_mismatch,
-    at: node_locus(node: application),
-    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

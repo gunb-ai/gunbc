@@ -51,15 +51,15 @@ import v2.std.constraints {
 import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceFormal,
+  InhabitanceUndecidableReason,
   application_argument_does_not_inhabit_diagnostic,
-  application_argument_type_not_derived_diagnostic,
-  application_arity_mismatch_diagnostic,
   declared_type_inhabitance,
   inhabitance_inhabits_homomorphism,
-  inhabitance_refused_find_witness_reason,
   inhabitance_undecidable_diagnostic,
   inhabitance_undecidable_reason,
   position_direct_call_argument,
+  undecidable_argument_type_not_derived,
+  undecidable_arity_shape_unmodeled,
   undecidable_formal_unresolved
 }
 import v2.std.diagnostic {
@@ -1656,6 +1656,20 @@ type InferInhabitanceZipAcc {
   result: Outcome<Bool>
 }
 
+fn infer_inhabitance_undecidable_accepted(
+  application: Node,
+  reason: InhabitanceUndecidableReason
+) -> Outcome<Bool> {
+  Accepted {
+    value: true,
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(
+        d: inhabitance_undecidable_diagnostic(application: application, reason: reason)
+      )
+    }
+  }
+}
+
 fn infer_judge_application_argument(
   application: Node,
   entries: List<InferredFactsEntry>,
@@ -1663,15 +1677,17 @@ fn infer_judge_application_argument(
   arg: Node
 ) -> Outcome<Bool> {
   match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
-    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: arg))
+    Absent =>
+      infer_inhabitance_undecidable_accepted(
+        application: application,
+        reason: undecidable_argument_type_not_derived()
+      )
     Present { value: facts } =>
       match inferred_facts_resolved_type(facts: facts) {
         Violates { diagnostic: _ } =>
-          outcome_rejected(
-            application_argument_type_not_derived_diagnostic(
-              application: application,
-              argument: arg
-            )
+          infer_inhabitance_undecidable_accepted(
+            application: application,
+            reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
           let verdict = declared_type_inhabitance(
@@ -1688,38 +1704,19 @@ fn infer_judge_application_argument(
             Absent =>
               match inhabitance_undecidable_reason(verdict: verdict) {
                 Present { value: reason } =>
-                  Accepted {
-                    value: true,
-                    diagnostics: Some {
-                      diagnostics: diagnostics_singleton(
-                        d: inhabitance_undecidable_diagnostic(
-                          application: application,
-                          reason: reason
-                        )
-                      )
-                    }
-                  }
+                  infer_inhabitance_undecidable_accepted(
+                    application: application,
+                    reason: reason
+                  )
                 Absent =>
-                  match inhabitance_refused_find_witness_reason(verdict: verdict) {
-                    Present { value: _ } =>
-                      outcome_rejected(
-                        application_argument_does_not_inhabit_diagnostic(
-                          application: application,
-                          parameter_identity: formal.parameter_identity,
-                          argument_type: produced,
-                          parameter_type: formal.declared
-                        )
-                      )
-                    Absent =>
-                      outcome_rejected(
-                        application_argument_does_not_inhabit_diagnostic(
-                          application: application,
-                          parameter_identity: formal.parameter_identity,
-                          argument_type: produced,
-                          parameter_type: formal.declared
-                        )
-                      )
-                  }
+                  outcome_rejected(
+                    application_argument_does_not_inhabit_diagnostic(
+                      application: application,
+                      parameter_identity: formal.parameter_identity,
+                      argument_type: produced,
+                      parameter_type: formal.declared
+                    )
+                  )
               }
           }
       }
@@ -1733,21 +1730,17 @@ fn infer_application_argument_inhabitance(
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node, tree: tree) {
     Absent =>
-      Accepted {
-        value: true,
-        diagnostics: Some {
-          diagnostics: diagnostics_singleton(
-            d: inhabitance_undecidable_diagnostic(
-              application: node,
-              reason: undecidable_formal_unresolved()
-            )
-          )
-        }
-      }
+      infer_inhabitance_undecidable_accepted(
+        application: node,
+        reason: undecidable_formal_unresolved()
+      )
     Present { value: formals } =>
       let args = infer_transform_argument_targets(node: node)
       if length(xs: formals) != length(xs: args) {
-        outcome_rejected(application_arity_mismatch_diagnostic(application: node))
+        infer_inhabitance_undecidable_accepted(
+          application: node,
+          reason: undecidable_arity_shape_unmodeled()
+        )
       } else {
         match fold(
           formals,
@@ -1764,7 +1757,10 @@ fn infer_application_argument_inhabitance(
                   Absent =>
                     InferInhabitanceZipAcc {
                       remaining: Empty,
-                      result: outcome_rejected(application_arity_mismatch_diagnostic(application: node))
+                      result: infer_inhabitance_undecidable_accepted(
+                        application: node,
+                        reason: undecidable_arity_shape_unmodeled()
+                      )
                     }
                   Present { value: arg } =>
                     match infer_judge_application_argument(
