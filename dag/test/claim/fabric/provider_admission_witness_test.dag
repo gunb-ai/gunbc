@@ -9,7 +9,7 @@ import product.fabric.provider_route {
   ProviderDataPathClosure, ProviderPathStanding,
   ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
-  first_unread_standing, downstream_obligation, path_unread_consulted,
+  first_unread_standing, downstream_obligation,
 }
 import product.supplier.hetzner_path_reading {
   hetzner_published_readings,
@@ -646,7 +646,11 @@ fn w_jurisdiction_one() -> DeclarationRef {
 test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
   let paths = closure_telemetry_unread(where_it_is: w_jurisdiction_one())
   count(first_unread_standing(c: paths)) == 1
-    && count(path_unread_consulted(p: paths.telemetry)) == 0
+    && match paths.telemetry {
+      ProviderPathLocated { operator, jurisdiction, evidence } => false
+      ProviderPathAbsent { evidence } => false
+      ProviderPathUnread { obligation, consulted } => count(consulted) == 0
+    }
 }
 
 // THE READING ROWS ARE EXERCISED, NOT MERELY COUNTED. A count equality over hetzner_published_readings
@@ -739,7 +743,11 @@ test fn w_later_researched_unread_does_not_fill_a_never_looked_first_path() -> B
   )
   denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
     && count(admission_consulted(a: a)) == 0
-    && count(path_unread_consulted(p: paths.administrative_access)) == 2
+    && match paths.administrative_access {
+      ProviderPathLocated { operator, jurisdiction, evidence } => false
+      ProviderPathAbsent { evidence } => false
+      ProviderPathUnread { obligation, consulted } => count(consulted) == 2
+    }
 }
 
 // RED - the permit RECORDS the clearance evidence it gated on. The three evidences were once

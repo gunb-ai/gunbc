@@ -192,14 +192,6 @@ fn first_unread_standing(c: ProviderDataPathClosure) -> List<ProviderPathStandin
   )
 }
 
-fn path_unread_consulted(p: ProviderPathStanding) -> List<DeclarationRef> {
-  match p {
-    ProviderPathLocated { operator, jurisdiction, evidence } => [],
-    ProviderPathAbsent { evidence } => [],
-    ProviderPathUnread { obligation, consulted } => consulted,
-  }
-}
-
 // Same discipline for the downstream population: one match, and the unread arm's own obligation
 // comes back rather than a provider row standing in for it.
 fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef> {
