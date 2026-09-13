@@ -175,6 +175,7 @@ import std.operator_realization {
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
+  type_node_children, type_node_child_type,
   type_argument_node,
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -2058,7 +2059,7 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: if (n.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) }, generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
+  if type_node_children(n: n) |> any(c => type_node_has_closure_unbound_generic_atom(n: type_node_child_type(child: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
     true
   } else {
     match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
@@ -2078,7 +2079,7 @@ fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_unbound_type_variable(n: if (n.connective == NoConnective) { type_argument_node(ch: c) } else { child_type_node(ch: c) }, generic_param_names: generic_param_names, source_indices: source_indices)) {
+  if type_node_children(n: n) |> any(c => type_node_has_unbound_type_variable(n: type_node_child_type(child: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
     true
   } else {
     match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
@@ -10611,8 +10612,8 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
 // depth limit that would have to answer "unknown" and pick an arm.
 fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, seen: Map<String, Bool>) -> Bool {
   let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-  let child_reaches = n.children |> any(child =>
-    type_expr_reaches_sealed_carrier(n: if (n.connective == NoConnective) { type_argument_node(ch: child) } else { child_type_node(ch: child) }, emit_info: emit_info, source_indices: source_indices, seen: seen)
+  let child_reaches = type_node_children(n: n) |> any(child =>
+    type_expr_reaches_sealed_carrier(n: type_node_child_type(child: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
   if child_reaches {
     true
@@ -10625,8 +10626,8 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
           true
         } else {
           let next_seen = map_insert(seen, name, true)
-          decl.children |> any(child =>
-            type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: next_seen)
+          type_node_children(n: decl) |> any(child =>
+            type_expr_reaches_sealed_carrier(n: type_node_child_type(child: child), emit_info: emit_info, source_indices: source_indices, seen: next_seen)
           )
         }
       Absent => false
@@ -10634,10 +10635,10 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   }
 }
 
-fn decl_children_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn decl_children_forbid_deserialize(name: String, item: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
   let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
-  children |> any(child =>
-    type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
+  type_node_children(n: item) |> any(child =>
+    type_expr_reaches_sealed_carrier(n: type_node_child_type(child: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
 }
 
@@ -10645,7 +10646,7 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
   if item_seals_construction(item: item) {
     true
   } else {
-    decl_children_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), children: item.children, emit_info: emit_info, source_indices: source_indices)
+    decl_children_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), item: item, emit_info: emit_info, source_indices: source_indices)
   }
 }
 

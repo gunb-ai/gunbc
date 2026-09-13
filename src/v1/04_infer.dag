@@ -93,6 +93,7 @@ import v1.std.core {
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
+  type_node_children, type_node_child_type,
   type_argument_node,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
@@ -4734,7 +4735,7 @@ fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool 
     _ => false
   }
   here
-    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: if (n.connective == NoConnective) { type_argument_node(ch: ch) } else { child_type_node(ch: ch) }, depth: depth + 1)))
+    || (type_node_children(n: n) |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: type_node_child_type(child: ch), depth: depth + 1)))
     || (n.params |> any(p => direct_call_formal_has_unbound_type_variable_at(n: param_node_type_expr(n: p), depth: depth + 1)))
   }
 }

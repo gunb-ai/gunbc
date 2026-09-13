@@ -75,3 +75,27 @@ data empty_set_source: String = "module probe_generic_empty_set\nfn asks() -> Se
 test fn empty_set_argument_binds() -> Bool {
   callback_inference_error_count(source: empty_set_source) == 0
 }
+
+// Consumed by the semantic type-child projection repair: branch typing runs
+// type_resolution_verdict through this nested optional fold path.
+data nested_optional_fold_source: String = "module probe\ntype Record { value: Int }\ntype Rejected { item: Record }\nfn asks(xs: List<Record>) -> Rejected? {\n fold(xs, init: Absent, f: fn(acc, a) {\n  match acc {\n   Present { value: r } => Present { value: r }\n   Absent => if a.value > 0 {\n    match a.value { 0 => Absent _ => Present { value: Rejected { item: a } } }\n   } else { Absent }\n  }\n })\n}\n"
+
+test fn nested_optional_fold_binds() -> Bool {
+  callback_inference_error_count(source: nested_optional_fold_source) == 0
+}
+
+// Consumed by the semantic type-child projection repair: branch typing runs
+// type_resolution_verdict through this record field branch path.
+data record_field_branch_source: String = "module probe_record_field_branch\ntype Record { value: Int }\nfn asks(flag: Bool, record: Record) -> Record {\n if flag { record } else { Record { value: 3 } }\n}\n"
+
+test fn record_field_branch_binds() -> Bool {
+  callback_inference_error_count(source: record_field_branch_source) == 0
+}
+
+// Consumed by the semantic type-child projection repair: branch typing runs
+// type_resolution_verdict through this generic argument branch path.
+data generic_argument_branch_source: String = "module probe_generic_argument_branch\ntype Envelope<T> { value: T }\nfn asks(flag: Bool, xs: List<Envelope<Int>>) -> List<Envelope<Int>> {\n if flag { xs } else { [Envelope { value: 1 }] }\n}\n"
+
+test fn generic_argument_branch_binds() -> Bool {
+  callback_inference_error_count(source: generic_argument_branch_source) == 0
+}
