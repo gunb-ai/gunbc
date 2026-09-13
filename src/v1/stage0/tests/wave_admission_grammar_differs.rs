@@ -27,8 +27,8 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    base_records, load_parse_environment_at, materialize_revision_paths,
-    run_wave_admission_between, WaveAdmissionOutcome,
+    base_records, environment_load_refusal_text, load_parse_environment_at,
+    materialize_revision_paths, run_wave_admission_between, WaveAdmissionOutcome,
 };
 use v1_compiler::cli_run::{run_dag_parse_sweep, workspace_root};
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -99,8 +99,12 @@ fn build_grammar_differing_pair(label: &str) -> (std::path::PathBuf, String, Str
 
     // The whole `dag/` tree, through the same acquisition route the loader itself uses -- one
     // checked implementation rather than a hand-shell pipeline beside it.
-    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"])
-        .unwrap_or_else(|e| panic!("materializing the scratch corpus failed: {e}"));
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"]).unwrap_or_else(|e| {
+        panic!(
+            "materializing the scratch corpus failed: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
 
     // BASE: the grammar admits `zzfunc`, and one module uses it.
     let env_path = scratch.join(ENVIRONMENT_MODULE_PATH);
@@ -176,8 +180,12 @@ fn the_base_probe_refuses_under_the_head_grammar_and_reads_under_its_own() {
         "refusal text does not name the class the row records: {refusal}"
     );
 
-    let base_env = load_parse_environment_at(&scratch, &base)
-        .unwrap_or_else(|e| panic!("base environment did not load: {e}"));
+    let base_env = load_parse_environment_at(&scratch, &base).unwrap_or_else(|e| {
+        panic!(
+            "base environment did not load: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
     let under_base = base_records(PROBE_PATH, &base_probe, base_env);
     let records = under_base.unwrap_or_else(|e| {
         panic!("the base probe did not parse under the base's OWN grammar: {e}")

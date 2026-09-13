@@ -2824,7 +2824,7 @@ pub fn run_wave_admission_between(
         Err(e) => {
             return Ok(WaveAdmissionOutcome::NotEvaluated {
                 reason: format!(
-                    "the base revision's parse environment could not be established ({e}), so its declarations cannot be read under any grammar this run can justify"
+                    "the base revision's parse environment could not be established ({}), so its declarations cannot be read under any grammar this run can justify", environment_load_refusal_text(&e)
                 ),
             })
         }
@@ -2844,7 +2844,7 @@ pub fn run_wave_admission_between(
         }
         Err(e) => {
             return Ok(WaveAdmissionOutcome::NotEvaluated {
-                reason: format!("the kernel declaring file could not be compared ({e})"),
+                reason: format!("the kernel declaring file could not be compared ({})", environment_load_refusal_text(&e)),
             })
         }
     }
@@ -3092,38 +3092,39 @@ pub enum EnvironmentLoadRefusal {
     ValueNotDecodable { revision: String, cause: String },
 }
 
-impl std::fmt::Display for EnvironmentLoadRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::RevisionUnreadable {
-                revision,
-                step,
-                cause,
-            } => write!(f, "reading revision {revision} failed at {step}: {cause}"),
-            Self::EnvironmentModuleMissing { revision, path } => write!(
-                f,
-                "{path} does not exist at revision {revision}, so that revision's parse \
+/// The operator-facing text of a refusal.
+///
+/// A FREE FUNCTION, NOT A `Display` IMPL, because this module's seed-growth roster enumerates every
+/// declaration it carries by `DeclarationRef`, and an `impl` block is the one item that roster
+/// structurally cannot cite -- the reason an earlier lane converted the module's methods to free
+/// functions. An earlier revision of this change added `impl Display` here and left the roster's
+/// "carries no impl block" sentence standing over it; this keeps the sentence true.
+pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String {
+    match refusal {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision,
+            step,
+            cause,
+        } => format!("reading revision {revision} failed at {step}: {cause}"),
+        EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
+            "{path} does not exist at revision {revision}, so that revision's parse \
                  environment cannot be read"
-            ),
-            Self::ClosureNotEvaluable { revision, cause } => write!(
-                f,
-                "the parse environment closure at revision {revision} did not evaluate: {cause}"
-            ),
-            Self::EnvironmentItemNotOwned {
-                revision,
-                item,
-                module,
-            } => write!(
-                f,
-                "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
+        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
+            "the parse environment closure at revision {revision} did not evaluate: {cause}"
+        ),
+        EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision,
+            item,
+            module,
+        } => format!(
+            "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
                  bare-name lookup would return is not the grammar authority"
-            ),
-            Self::ValueNotDecodable { revision, cause } => write!(
-                f,
-                "the parse environment at revision {revision} evaluated but did not decode into \
+        ),
+        EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
+            "the parse environment at revision {revision} evaluated but did not decode into \
                  this binary's `ParseEnvironment`: {cause}"
-            ),
-        }
+        ),
     }
 }
 
@@ -3358,6 +3359,22 @@ pub fn load_parse_environment_at(
     repo: &std::path::Path,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    load_parse_environment_with_closure(repo, revision, &closure)
+}
+
+/// The loader over an ALREADY-RESOLVED closure.
+///
+/// `environment_agreement` resolves the closure to decide whether the grammars differ and then, on
+/// the differing path, loads the base's environment -- the same closure, same inputs, with the
+/// caller already holding the answer. Section 2: carry the first value rather than recompute it at
+/// the least common ancestor. This is that carried value; `load_parse_environment_at` resolves once
+/// for callers that hold nothing.
+pub fn load_parse_environment_with_closure(
+    repo: &std::path::Path,
+    revision: &str,
+    closure: &BTreeSet<String>,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -3371,11 +3388,9 @@ pub fn load_parse_environment_at(
         super::workspace_root()
             .join("target")
             .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
-    // The closure is asked of the resolver at the LIVE tree, then read from `repo` at `revision`.
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
-    let closure = environment_closure_paths()?;
-    let outcome = materialize_environment_closure_at(repo, revision, &dest, &closure)
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
@@ -3456,7 +3471,7 @@ pub fn environment_agreement(
         return Ok(EnvironmentAgreement::Identical);
     }
     Ok(EnvironmentAgreement::Differs {
-        base_environment: load_parse_environment_at(repo, base)?,
+        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
         differing_paths: differing,
     })
 }

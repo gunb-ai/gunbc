@@ -19,7 +19,8 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    blob_id_at, evaluate_environment_in, load_parse_environment_at, materialize_revision_paths,
+    blob_id_at, environment_load_refusal_text, evaluate_environment_in, load_parse_environment_at,
+    materialize_revision_paths,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -36,7 +37,10 @@ fn the_decoder_reproduces_the_compiled_in_environment() {
     let root = workspace_root();
     let decoded = match evaluate_environment_in(&root, "live-tree") {
         Ok(env) => env,
-        Err(e) => panic!("decode refused on the live tree: {e}"),
+        Err(e) => panic!(
+            "decode refused on the live tree: {}",
+            environment_load_refusal_text(&e)
+        ),
     };
     assert_eq!(
         *decoded,
@@ -100,8 +104,12 @@ fn the_loader_reads_the_revision_not_the_worktree() {
 
     // The whole `dag/` tree, so the closure resolves through the repository's own index -- acquired
     // through the loader's own route rather than a hand-shell pipeline beside it.
-    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"])
-        .unwrap_or_else(|e| panic!("materializing the scratch corpus failed: {e}"));
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"]).unwrap_or_else(|e| {
+        panic!(
+            "materializing the scratch corpus failed: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
 
     git(&scratch, &["init", "--quiet"]);
     git(&scratch, &["config", "user.email", "probe@example.invalid"]);
@@ -136,7 +144,10 @@ fn the_loader_reads_the_revision_not_the_worktree() {
 
     let loaded = match load_parse_environment_at(&scratch, &baseline) {
         Ok(env) => env,
-        Err(e) => panic!("loader refused on the scratch revision: {e}"),
+        Err(e) => panic!(
+            "loader refused on the scratch revision: {}",
+            environment_load_refusal_text(&e)
+        ),
     };
 
     let keywords: Vec<String> = loaded
