@@ -109,6 +109,8 @@ fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: Str
 
 // Recognizer for this witnessed attempt only. The transcript tokens, roster,
 // firmware and compared pair are observing facts, not universal firmware rules.
+// EXP[91] is a fact of these captured bytes, independent of the prospective
+// catalog evidence joined by configuration evaluation.
 fn mtcollins_training_mixture_finding(
   attempt: NonEmptyStr,
   configuration: MemoryConfiguration,
@@ -137,8 +139,6 @@ fn mtcollins_training_mixture_finding(
           Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
             attempt: attempt, configuration: configuration, collector: collector,
             comparison_socket: 0, mismatch_position: dimm.position,
-            // EXP[91] is a fact of these captured bytes, independent of the
-            // prospective catalog evidence joined by configuration evaluation.
             expected_byte: 145, actual_byte: mtcollins_observed_hynix_package.value.Data,
           } }
         } }
