@@ -6,6 +6,7 @@ import std.content_hash { content_hash_atom, content_hash_combine_structural, co
 import gunbc.roadmap_status {
   RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
   TicketFields, line_ticket,
+  DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
   RedControlEvidence, HandbackEvidence,
   RedControlNotRun, RedControlExecuted,
   HandbackNotDelivered, HandbackDelivered,
@@ -162,6 +163,29 @@ fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
     }
 }
 
+type ReceiptNodeMatchVerdict
+  = ReceiptMatchesNode
+  | LiveReceiptOnSupersededLine { node: RoadmapNodeId }
+  | ReceiptDoesNotMatchNode
+
+fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> ReceiptNodeMatchVerdict {
+  if r.node != rn.node {
+    ReceiptDoesNotMatchNode
+  } else {
+    match rn.line {
+      SupersededLine { by: _, content: _ } => LiveReceiptOnSupersededLine { node: rn.node }
+      DerivableLine { prs: _, title: _, description: _ } =>
+        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+      AuthoredLine { done: _, content: _ } =>
+        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+      PlainLine { content: _ } =>
+        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+      TicketLine { done: _, ticket: _ } =>
+        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+    }
+  }
+}
+
 fn receipts_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId) -> List<RoadmapAcceptanceReceipt> {
   receipts |> filter(r => r.node == id)
 }
@@ -187,7 +211,33 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
 
 type AcceptanceNodeReopensActiveFrontier {}
 
-type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
+type AcceptanceNodeSuperseded { by: String }
+
+type AcceptanceRevocationDisposition
+  = AcceptanceNodeReopensActiveFrontier
+  | AcceptanceNodeSuperseded
+
+fn revocation_reopens_active_frontier(disposition: AcceptanceRevocationDisposition) -> Bool {
+  match disposition {
+    AcceptanceNodeReopensActiveFrontier {} => true
+    AcceptanceNodeSuperseded { by: _ } => false
+  }
+}
+
+fn revocation_disposition_eq(a: AcceptanceRevocationDisposition, b: AcceptanceRevocationDisposition) -> Bool {
+  match a {
+    AcceptanceNodeReopensActiveFrontier {} =>
+      match b {
+        AcceptanceNodeReopensActiveFrontier {} => true
+        AcceptanceNodeSuperseded { by: _ } => false
+      }
+    AcceptanceNodeSuperseded { by: aby } =>
+      match b {
+        AcceptanceNodeReopensActiveFrontier {} => false
+        AcceptanceNodeSuperseded { by: bby } => aby == bby
+      }
+  }
+}
 
 type RoadmapAcceptanceEvent
   = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
@@ -305,12 +355,7 @@ fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> 
         AcceptanceRecorded { receipt: _ } => false
         AcceptanceRevoked { exact_prior_receipt: bpr, disposition: bd, reason: br, revoked_by: bb, revoked_on: bo } =>
           acceptance_receipt_eq(a: apr, b: bpr)
-            && match ad {
-              AcceptanceNodeReopensActiveFrontier {} =>
-                match bd {
-                  AcceptanceNodeReopensActiveFrontier {} => true
-                }
-            }
+            && revocation_disposition_eq(a: ad, b: bd)
             && ar == br
             && ab == bb
             && ao == bo
@@ -421,6 +466,11 @@ fn acceptance_revocation_disposition_digest(
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-reopens-active-frontier-v1",
         payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+    AcceptanceNodeSuperseded { by } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-superseded-v1",
+        payload: content_hash_atom(value: by as NonEmptyStr),
       )
   }
 }
@@ -588,6 +638,28 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
     Present { value: state } => state.live
     Absent => []
   }
+}
+
+fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapNodeId> {
+  fold(
+    history,
+    init: [],
+    f: fn(acc, event) {
+      match event {
+        AcceptanceRecorded { receipt } =>
+          acc |> filter(id => !(id == receipt.node))
+        AcceptanceRevoked { exact_prior_receipt, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+          if revocation_reopens_active_frontier(disposition: disposition) {
+            acc |> filter(id => !(id == exact_prior_receipt.node))
+          } else {
+            concat(
+              acc |> filter(id => !(id == exact_prior_receipt.node)),
+              [exact_prior_receipt.node],
+            )
+          }
+      }
+    },
+  )
 }
 
 fn acceptance_history_integrity_verdict(

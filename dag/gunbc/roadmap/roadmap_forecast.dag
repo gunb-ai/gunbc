@@ -43,6 +43,7 @@ import gunbc.roadmap_authority {
   declared_roadmap_nodes,
   active_roadmap_nodes_for_accepted,
   active_roadmap_edges_for_accepted,
+  withheld_node_ids_from_live_history,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   roadmap_acceptance_receipts,
@@ -875,8 +876,14 @@ fn roadmap_schedule_forecast_over(
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
       let builds = roadmap_cycle_time_observation_builds()
       schedule_forecast(
-        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
-        edges: active_roadmap_edges_for_accepted(accepted: accepted),
+        nodes: active_roadmap_nodes_for_accepted(
+          accepted: accepted,
+          withheld: withheld_node_ids_from_live_history(),
+        ),
+        edges: active_roadmap_edges_for_accepted(
+          accepted: accepted,
+          withheld: withheld_node_ids_from_live_history(),
+        ),
         observations: accepted_cycle_time_observations(builds: builds),
         history_refusals: cycle_time_history_refusals(builds: builds),
         population_exclusions: cycle_time_population_exclusions(builds: builds),

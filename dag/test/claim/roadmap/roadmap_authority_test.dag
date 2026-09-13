@@ -18,6 +18,7 @@ import gunbc.roadmap_authority {
   accepted_roadmap_node_ids_projection,
   AcceptedRoadmapNodeIdsProjected,
   AcceptedRoadmapNodeIdsProjectionRefused,
+  withheld_node_ids_from_live_history,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
@@ -66,6 +67,11 @@ import gunbc.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
+  receipt_node_match_verdict,
+  ReceiptMatchesNode,
+  LiveReceiptOnSupersededLine,
+  ReceiptDoesNotMatchNode,
+  node_ids_held_off_active_frontier,
   node_accepted,
   receipt_matches_node,
   node_criteria_digest,
@@ -117,13 +123,21 @@ fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
 fn active_nodes() -> List<RoadmapNode> {
   match live_accepted_node_ids() {
-    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
+    Present { value: accepted } =>
+      active_roadmap_nodes_for_accepted(
+        accepted: accepted,
+        withheld: withheld_node_ids_from_live_history(),
+      )
     Absent => []
   }
 }
 fn active_edges() -> List<RoadmapEdge> {
   match live_accepted_node_ids() {
-    Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
+    Present { value: accepted } =>
+      active_roadmap_edges_for_accepted(
+        accepted: accepted,
+        withheld: withheld_node_ids_from_live_history(),
+      )
     Absent => []
   }
 }
@@ -329,8 +343,9 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
         && (accepted |> any(a => a == "2-claim-indexed-evidence"))
         && (accepted |> any(a => a == "2-scm-compatibility-shape"))
         && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && count(active_nodes()) == count(nodes()) - count(accepted)
+        && count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld_node_ids_from_live_history())
         && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+        && all(active_nodes(), n => !(withheld_node_ids_from_live_history() |> any(w => w == n.node)))
         && all(accepted, a => id_exists(id: a))
   }
 }
@@ -342,8 +357,62 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
       count(receipts) > 0
         && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
         && all(receipts, r => id_exists(id: r.node))
-        && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+        && all(receipts, r => all(declared_node(id: r.node as String), n =>
+          match receipt_node_match_verdict(r: r, rn: n) {
+            ReceiptMatchesNode => true
+            LiveReceiptOnSupersededLine { node: _ } => false
+            ReceiptDoesNotMatchNode => false
+          }
+        ))
   }
+}
+
+test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bool {
+  let victims = declared_node(id: "entry-graph-union-construction")
+  count(victims) == 1
+    && all(victims, n =>
+      match receipt_node_match_verdict(
+        r: receipt_fixture(node: "entry-graph-union-construction", digest: tchash(s: "3502539e920d9e40")),
+        rn: n,
+      ) {
+        LiveReceiptOnSupersededLine { node } => node == n.node
+        ReceiptMatchesNode => false
+        ReceiptDoesNotMatchNode => false
+      }
+    )
+}
+
+test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
+  !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
+    && (withheld_node_ids_from_live_history() |> any(w => w == tnid(s: "entry-graph-union-construction")))
+}
+
+test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
+  let prior = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let reopened = concat(prior, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-09-13" as NonEmptyStr,
+    },
+  ])
+  let accepted = declared_roadmap_nodes()
+    |> filter(n => node_accepted(receipts: project_live_acceptance_receipts(history: reopened), rn: n))
+    |> map(n => n.node)
+  let withheld = node_ids_held_off_active_frontier(history: reopened)
+  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+    |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+}
+
+test fn witness_revocation_frontier_disposition_discriminates() -> Bool {
+  witness_superseded_revocation_does_not_reopen_active_frontier()
+    && witness_reopen_revocation_returns_node_to_active_frontier()
 }
 
 test fn witness_accepted_parents_precede_dependents() -> Bool {
@@ -881,7 +950,13 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       match projected_roadmap_dependency_edges_projection() {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(active_roadmap_edges_for_accepted(accepted: accepted), init: true, f: fn(acc, edge) {
+          fold(
+            active_roadmap_edges_for_accepted(
+              accepted: accepted,
+              withheld: withheld_node_ids_from_live_history(),
+            ),
+            init: true,
+            f: fn(acc, edge) {
             acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
           })
         ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false

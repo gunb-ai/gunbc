@@ -66,6 +66,7 @@ enum JsonEvent {
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonAcceptanceRevocationDisposition {
     AcceptanceNodeReopensActiveFrontier,
+    AcceptanceNodeSuperseded { by: String },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -221,6 +222,13 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
                         fields: Rc::new(Vec::new()),
                     }
                 }
+                JsonAcceptanceRevocationDisposition::AcceptanceNodeSuperseded { by } => {
+                    Value::Variant {
+                        type_name: ctx.sym("AcceptanceRevocationDisposition"),
+                        variant_name: ctx.sym("AcceptanceNodeSuperseded"),
+                        fields: Rc::new(sorted_fields(vec![(ctx.sym("by"), str_value(by))])),
+                    }
+                }
             };
             Value::Variant {
                 type_name: ctx.sym("RoadmapAcceptanceEvent"),
@@ -364,6 +372,11 @@ fn event_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonEvent, String
                 match variant_name(field_value(value, "disposition", ctx)?, ctx)?.as_str() {
                     "AcceptanceNodeReopensActiveFrontier" => {
                         JsonAcceptanceRevocationDisposition::AcceptanceNodeReopensActiveFrontier
+                    }
+                    "AcceptanceNodeSuperseded" => {
+                        JsonAcceptanceRevocationDisposition::AcceptanceNodeSuperseded {
+                            by: field_str(field_value(value, "disposition", ctx)?, "by", ctx)?,
+                        }
                     }
                     name => {
                         return Err(format!(
@@ -513,6 +526,18 @@ mod tests {
                 assert!(detail.starts_with("line 1:"));
             }
             RoadmapAcceptanceEventHistoryParse::Parsed { .. } => panic!("expected refusal"),
+        }
+    }
+
+    #[test]
+    fn superseded_disposition_parses() {
+        let ctx = empty_ctx();
+        let jsonl = r#"{"variant":"acceptance_revoked","exact_prior_receipt":{"node":"n","criteria_digest":"0123456789abcdef","red_control":{"variant":"red_control_not_run"},"handback":{"variant":"handback_not_delivered"},"accepted_by":"op","accepted_on":"2026-01-01"},"disposition":{"variant":"acceptance_node_superseded","by":"successor"},"reason":"rationale","revoked_by":"operator","revoked_on":"2026-09-13"}"#;
+        match parse_roadmap_acceptance_event_history_jsonl(jsonl, &ctx) {
+            RoadmapAcceptanceEventHistoryParse::Parsed { events } => assert_eq!(events.len(), 1),
+            RoadmapAcceptanceEventHistoryParse::Refused { detail } => {
+                panic!("unexpected refusal: {detail}")
+            }
         }
     }
 }

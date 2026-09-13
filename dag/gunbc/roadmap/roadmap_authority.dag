@@ -19,6 +19,7 @@ import gunbc.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
+  node_ids_held_off_active_frontier,
   node_accepted,
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
@@ -3194,8 +3195,29 @@ fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
   }
 }
 
-fn active_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
-  declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+fn withheld_node_ids_from_live_history() -> List<RoadmapNodeId> {
+  match roadmap_acceptance_event_history_load() {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      node_ids_held_off_active_frontier(history: events)
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
+fn withheld_node_ids_from_carrier_text(text: String) -> List<RoadmapNodeId> {
+  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      node_ids_held_off_active_frontier(history: events)
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
+fn active_roadmap_nodes_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapNode> {
+  declared_roadmap_nodes() |> filter(n =>
+    !(accepted |> any(a => a == n.node)) && !(withheld |> any(w => w == n.node))
+  )
 }
 
 type ActiveRoadmapNodesProjection
@@ -3210,7 +3232,10 @@ fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       ActiveRoadmapNodesProjected {
-        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+        nodes: active_roadmap_nodes_for_accepted(
+          accepted: accepted,
+          withheld: withheld_node_ids_from_live_history(),
+        ),
       }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
@@ -3221,7 +3246,10 @@ fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       ActiveRoadmapEdgesProjected {
-        edges: active_roadmap_edges_for_accepted(accepted: accepted),
+        edges: active_roadmap_edges_for_accepted(
+          accepted: accepted,
+          withheld: withheld_node_ids_from_live_history(),
+        ),
       }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
@@ -3503,7 +3531,10 @@ fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependency
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       ProjectedRoadmapDependencyEdgesProjected {
-        edges: projected_roadmap_edges_for_accepted(accepted: accepted),
+        edges: projected_roadmap_edges_for_accepted(
+          accepted: accepted,
+          withheld: withheld_node_ids_from_live_history(),
+        ),
       }
   }
 }
@@ -3516,9 +3547,15 @@ fn closing_contract_task_edges_for_accepted(accepted: List<RoadmapNodeId>) -> Li
     })
 }
 
-fn active_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+fn active_roadmap_edges_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapEdge> {
   declared_roadmap_edges() |> filter(e =>
-    !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+    !(accepted |> any(a => a == e.child))
+      && !(accepted |> any(a => a == e.parent))
+      && !(withheld |> any(w => w == e.child))
+      && !(withheld |> any(w => w == e.parent)))
 }
 
 fn preamble() -> List<MarkdownBlock> {
@@ -3574,24 +3611,34 @@ data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
   owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard"],
 }
 
-fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
+fn projected_roadmap_nodes_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapNode> {
   concat(
-    active_roadmap_nodes_for_accepted(accepted: accepted),
+    active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
     startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
       |> map(n => closing_contract_task_for(n: n)),
   )
 }
 
-fn projected_roadmap_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
+fn projected_roadmap_edges_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapEdge> {
   concat(
-    active_roadmap_edges_for_accepted(accepted: accepted),
+    active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
     closing_contract_task_edges_for_accepted(accepted: accepted),
   )
 }
 
-fn active_section_for_acceptance(focus: RoadmapFocus, accepted: List<RoadmapNodeId>) -> RoadmapSection {
-  let nodes = projected_roadmap_nodes_for_accepted(accepted: accepted)
-  let edges = projected_roadmap_edges_for_accepted(accepted: accepted)
+fn active_section_for_acceptance(
+  focus: RoadmapFocus,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> RoadmapSection {
+  let nodes = projected_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+  let edges = projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
   RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
@@ -3645,6 +3692,7 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
             active_section_for_acceptance(
               focus: roadmap_focus_selection,
               accepted: accepted_node_ids_from_receipts(receipts: receipts),
+              withheld: withheld_node_ids_from_carrier_text(text: text),
             ),
           ],
         },
@@ -3664,7 +3712,11 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
         doc: RoadmapDocument {
           preamble: preamble(),
           lead_lanes: [],
-          sections: [active_section_for_acceptance(focus: roadmap_focus_selection, accepted: accepted)],
+          sections: [active_section_for_acceptance(
+            focus: roadmap_focus_selection,
+            accepted: accepted,
+            withheld: withheld_node_ids_from_live_history(),
+          )],
         },
         accepted: accepted,
       }
@@ -3701,7 +3753,11 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
         ],
       }
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      active_section_for_acceptance(focus: focus, accepted: accepted)
+      active_section_for_acceptance(
+        focus: focus,
+        accepted: accepted,
+        withheld: withheld_node_ids_from_live_history(),
+      )
   }
 }
 
