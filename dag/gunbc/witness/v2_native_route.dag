@@ -508,9 +508,11 @@ type NativeRouteOldRouteControl
 // toolchain action defaults RUSTFLAGS to `-D warnings`, a workstation exports none, and the same
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
-// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
-// (never inherited -- the value is the repository's own row, gunbc.repo_self_warning_policy
-// repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
+// with another's: the exact argv cargo was spawned with, the warning-denial RUSTFLAGS the lane
+// SET (never inherited -- gunbc.repo_self_warning_policy repo_self_warning_denial_rustflags,
+// applied at the invocation, on BOTH channels cargo reads; path remap is BuildPathTreatment on
+// the generation, not concatenated into this string — equality here is the denial row, not a
+// contains check),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a
 // wrapper would be evidence about a build that did not happen), that executable's
