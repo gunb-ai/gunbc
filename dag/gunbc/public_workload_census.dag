@@ -227,6 +227,9 @@ type ObservedExecution
   = NoRunObserved { obligation: NonEmptyStr }
   | JobRunObserved {
       job: WorkflowJobRun
+      repository: NonEmptyStr
+      workflow_path: NonEmptyStr
+      workflow_blob_sha_at_head: NonEmptyStr
       head_sha: CommitSha
       correctness: CorrectnessObservation
     }
@@ -247,7 +250,7 @@ type ObservedLabelStanding
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
   match o {
     NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
-    JobRunObserved { job, head_sha, correctness } =>
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
       match observed_job_labels(job: job).first() {
         Absent => JobResourceCarriedNoLabels { job_id: job.id }
         Present { value: l } => ObservedLabel { label: l }
@@ -284,61 +287,25 @@ type BaselineAdmission
     }
   | BaselineRefused { cause: NonEmptyStr }
 
-fn baseline_admission(o: ObservedExecution) -> BaselineAdmission {
-  match o {
-    NoRunObserved { obligation } =>
-      BaselineRefused { cause: concat("no run observed: ", obligation) }
-    JobRunObserved { job, head_sha, correctness } =>
-      match job.conclusion {
-        Absent => BaselineRefused {
-          cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-        }
-        Present { value: conclusion } => match conclusion {
-          Success => match correctness {
-            TestsExecuted { step } => match observed_label_standing(o: o) {
-              ObservedLabel { label } => BaselineAdmitted {
-                job_id: job.id,
-                run_id: job.run_id,
-                run_attempt: observed_job_run_attempt(job: job),
-                head_sha: head_sha,
-                test_step: step,
-                observed_label: label,
-              }
-              NoRunObservedForLabel { obligation } => BaselineRefused {
-                cause: concat("no run observed: ", obligation),
-              }
-              JobResourceCarriedNoLabels { job_id } => BaselineRefused {
-                cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
-              }
-            }
-            NoTestsExecuted { note } =>
-              BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
-          }
-          Failure => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Cancelled => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Neutral => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Skipped => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          TimedOut => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          ActionRequired => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          StartupFailure => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-        }
-      }
-  }
-}
+type RunIdentityStanding
+  = ObservedAtInspectedRevision {
+      repository: NonEmptyStr
+      revision: CommitSha
+      workflow_path: NonEmptyStr
+      job_key: NonEmptyStr
+      matrix_selector: NonEmptyStr
+    }
+  | WorkflowBlobEquivalent {
+      repository: NonEmptyStr
+      inspected_commit: CommitSha
+      observed_head: CommitSha
+      workflow_path: NonEmptyStr
+      workflow_blob_sha: NonEmptyStr
+      job_key: NonEmptyStr
+      matrix_selector: NonEmptyStr
+    }
+  | RunIdentityMismatched { cause: NonEmptyStr }
+  | RunIdentityUnresolved { cause: NonEmptyStr }
 
 fn observed_arm_standing(o: ObservedExecution, observed_at: Rfc3339Timestamp) -> ArmStanding {
   match observed_label_standing(o: o) {
@@ -492,8 +459,113 @@ fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
   observed_provider_standing(o: c.observed, observed_at: c.observation_time)
 }
 
+fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
+  match c.observed {
+    NoRunObserved { obligation } => RunIdentityUnresolved { cause: obligation }
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
+      if (repository as String) != (c.repository as String) {
+        RunIdentityMismatched { cause: "observed repository is not the inspected repository" }
+      } else if (workflow_path as String) != (c.workflow_path as String) {
+        RunIdentityMismatched { cause: "observed workflow path is not the inspected workflow" }
+      } else if job.name != (c.job_display_name as String) {
+        RunIdentityMismatched { cause: "observed job name is not the inspected job display name" }
+      } else if c.inspected_commit == head_sha {
+        ObservedAtInspectedRevision {
+          repository: c.repository,
+          revision: c.inspected_commit,
+          workflow_path: c.workflow_path,
+          job_key: c.job_key,
+          matrix_selector: c.matrix_selector,
+        }
+      } else if (c.workflow_blob_sha as String) == (workflow_blob_sha_at_head as String) {
+        WorkflowBlobEquivalent {
+          repository: c.repository,
+          inspected_commit: c.inspected_commit,
+          observed_head: head_sha,
+          workflow_path: c.workflow_path,
+          workflow_blob_sha: c.workflow_blob_sha,
+          job_key: c.job_key,
+          matrix_selector: c.matrix_selector,
+        }
+      } else {
+        RunIdentityMismatched {
+          cause: "inspected revision and observed head differ, and the workflow blob at the observed head is not the inspected blob",
+        }
+      }
+  }
+}
+
+fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission {
+  match c.observed {
+    NoRunObserved { obligation } =>
+      BaselineRefused { cause: concat("no run observed: ", obligation) }
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
+      match job.conclusion {
+        Absent => BaselineRefused {
+          cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+        }
+        Present { value: conclusion } => match conclusion {
+          Success => match correctness {
+            TestsExecuted { step } => match observed_label_standing(o: c.observed) {
+              ObservedLabel { label } => BaselineAdmitted {
+                job_id: job.id,
+                run_id: job.run_id,
+                run_attempt: observed_job_run_attempt(job: job),
+                head_sha: head_sha,
+                test_step: step,
+                observed_label: label,
+              }
+              NoRunObservedForLabel { obligation } => BaselineRefused {
+                cause: concat("no run observed: ", obligation),
+              }
+              JobResourceCarriedNoLabels { job_id } => BaselineRefused {
+                cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
+              }
+            }
+            NoTestsExecuted { note } =>
+              BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
+          }
+          Failure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Cancelled => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Neutral => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Skipped => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          TimedOut => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          ActionRequired => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          StartupFailure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+        }
+      }
+  }
+}
+
+fn baseline_admission(c: WorkloadCandidate) -> BaselineAdmission {
+  match candidate_run_identity(c: c) {
+    RunIdentityUnresolved { cause } =>
+      BaselineRefused { cause: concat("no run identity: ", cause) }
+    RunIdentityMismatched { cause } =>
+      BaselineRefused { cause: concat("observed run is not the inspected workload: ", cause) }
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+      baseline_from_observed_correctness(c: c)
+    WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
+      baseline_from_observed_correctness(c: c)
+  }
+}
+
 fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
-  baseline_admission(o: c.observed)
+  baseline_admission(c: c)
 }
 
 fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
@@ -506,26 +578,9 @@ fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
 
 fn observed_job_attempt(o: ObservedExecution) -> Int? {
   match o {
-    JobRunObserved { job, head_sha, correctness } => Present { value: observed_job_run_attempt(job: job) }
+    JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
+      Present { value: observed_job_run_attempt(job: job) }
     NoRunObserved { obligation } => Absent
-  }
-}
-
-fn baseline_attempt(b: BaselineAdmission) -> Int? {
-  match b {
-    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
-      Present { value: run_attempt }
-    BaselineRefused { cause } => Absent
-  }
-}
-
-fn baseline_attempt_matches_observed_job(c: WorkloadCandidate) -> Bool {
-  match observed_job_attempt(o: c.observed) {
-    Present { value: job_attempt } => match baseline_attempt(b: candidate_baseline(c: c)) {
-      Present { value: admitted_attempt } => job_attempt == admitted_attempt
-      Absent => false
-    }
-    Absent => false
   }
 }
 
@@ -558,6 +613,9 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-04T16:03:32Z" },
       completed_at: Present { value: "2026-09-04T16:08:13Z" },
     },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
     head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
     correctness: TestsExecuted {
       step: "Run tests on depot-ubuntu-24.04-arm-16",
@@ -612,6 +670,9 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-04T09:57:28Z" },
       completed_at: Present { value: "2026-09-04T10:07:09Z" },
     },
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    workflow_blob_sha_at_head: "f9f3f705735c2fe01922f075194c735246fe97aa",
     head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
     correctness: TestsExecuted {
       step: "inv ci-dnsdist-run-unit-tests",
@@ -677,6 +738,9 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-01T10:02:21Z" },
       completed_at: Present { value: "2026-09-01T10:27:44Z" },
     },
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
     head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
     correctness: NoTestsExecuted {
       note: "the step named 'Build and run binary' runs cargo build, then mkdir and mv; no test binary is executed",
@@ -744,6 +808,9 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-01T10:02:15Z" },
       completed_at: Absent,
     },
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
     head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
     correctness: NoTestsExecuted { note: "compile and registry push; no test step" },
   },
@@ -795,6 +862,9 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-01T10:28:12Z" },
       completed_at: Absent,
     },
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
     head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
     correctness: NoTestsExecuted { note: "manifest publish only; no compile and no test" },
   },
@@ -844,6 +914,9 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-04T16:03:31Z" },
       completed_at: Present { value: "2026-09-04T16:13:50Z" },
     },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
     head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
     correctness: TestsExecuted { step: "Run tests on depot-windows-2022-16" },
   },
@@ -887,6 +960,9 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-04T16:08:06Z" },
       completed_at: Absent,
     },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
     head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
     correctness: TestsExecuted { step: "Run tests on depot-macos-latest" },
   },
@@ -930,6 +1006,9 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
       started_at: Present { value: "2026-09-01T10:29:11Z" },
       completed_at: Absent,
     },
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
     head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
     correctness: NoTestsExecuted { note: "aggregates sibling job conclusions; no compile or test" },
   },
@@ -950,6 +1029,53 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
   },
 }
 
+data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: "os=depot-ubuntu-24.04-arm-16",
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: observed head differs from inspected_commit and the workflow blob at that head is not the inspected blob",
+  },
+}
+
 data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test,
   candidate_pdns_dnsdist_arm,
@@ -959,6 +1085,7 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test_windows,
   candidate_biome_test_macos,
   candidate_openobserve_summary,
+  candidate_biome_blob_mismatch_control,
 ]
 
 fn selected_workloads() -> List<WorkloadCandidate> {
@@ -971,8 +1098,7 @@ fn selected_workloads() -> List<WorkloadCandidate> {
 
 fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
   filter(selected_workloads(), c => match candidate_baseline(c: c) {
-    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
-      baseline_attempt_matches_observed_job(c: c)
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
     BaselineRefused { cause } => false
   })
 }
