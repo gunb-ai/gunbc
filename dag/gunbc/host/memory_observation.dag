@@ -153,7 +153,7 @@ type MemoryEvaluationEvidence {
 
 // Recognition receives only the value whose digest was checked; the path is
 // read once, and every capture producer uses the same content verifier.
-func read_verified_memory_capture(path: NonEmptyStr, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
+fn read_verified_memory_capture(path: NonEmptyStr, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
   let read = Filesystem.Read(path: path as String)
   if read.success { verify_memory_capture_content(content: read.content, expected_sha256: expected_sha256) }
   else { ObservationRefused { cause: concat("capture could not be read: ", path as String) as NonEmptyStr } }

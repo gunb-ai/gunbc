@@ -89,7 +89,7 @@ fn mtcollins_two_capture_evidence(
     mixtures: concat(first, [second]), qualifications: [], training_failures: [] }
 }
 
-func replay_mtcollins_two_configurations() -> ObservationAttempt<List<MemoryChangeAssessment>, List<MtCollinsPopulationRoleRefusal>> {
+fn replay_mtcollins_two_configurations() -> ObservationAttempt<List<MemoryChangeAssessment>, List<MtCollinsPopulationRoleRefusal>> {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
     PopulationRolesResolved { roles } => {
@@ -106,7 +106,7 @@ func replay_mtcollins_two_configurations() -> ObservationAttempt<List<MemoryChan
 
 // Read-only report; failure is withheld production admission, not a newly
 // executed physical trial. Each explanation retains its own proposal/evidence.
-func assess_mtcollins_two_configurations() -> ProcessExit {
+fn assess_mtcollins_two_configurations() -> ProcessExit {
   match replay_mtcollins_two_configurations() {
     ObservationRefused { cause } => exit_failure(reason: concat("UNEVALUATED: population-role authority refused: ", to_string(cause)))
     ObservationEstablished { observed: assessments } => {
