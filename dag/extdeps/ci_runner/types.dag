@@ -327,7 +327,7 @@ fn aarch64_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerSha
 }
 
 fn aarch64_row_label_is_cited(row: RunnerShapeRow, cited_labels: List<NonEmptyStr>) -> Bool {
-  fold(cited_labels, init: false, f: (acc, label) => acc || row.label == label)
+  any(cited_labels, label => row.label == label)
 }
 
 fn aarch64_rows_missing_cited_label(
