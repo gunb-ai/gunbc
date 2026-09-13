@@ -156,7 +156,7 @@ fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
   }
 }
 
-func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
+fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
   uses net: Network
 {
   match source {
@@ -221,7 +221,7 @@ fn classify_supplied_token(success: Bool, error: String, content: String) -> Sup
   }
 }
 
-func read_supplied_access_token() -> SuppliedTokenResolution {
+fn read_supplied_access_token() -> SuppliedTokenResolution {
   match shell.Env.Get(name: secret_access_token_path_env).value {
     Absent =>
       SuppliedTokenUnavailable {
@@ -303,7 +303,7 @@ fn selected_access_token_source(
   }
 }
 
-func select_access_token_source() -> AccessTokenSourceSelection {
+fn select_access_token_source() -> AccessTokenSourceSelection {
   match shell.Env.Get(name: workload_identity_token_env).value {
     Present { value: _ } => selected_access_token_source(workload_present: true, supplied: none)
     Absent =>
@@ -329,7 +329,7 @@ func select_access_token_source() -> AccessTokenSourceSelection {
 // exactly the arms a caller has to distinguish, and an unavailable SOURCE is a refused ENSURE from
 // where a caller stands: nothing downstream acts differently on "no variable was set" than on "the
 // variable was set and empty", and both must refuse rather than proceed.
-func resolve_access_token() -> AccessTokenResolution uses net: Network {
+fn resolve_access_token() -> AccessTokenResolution uses net: Network {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: cause } => AccessTokenEnsureRefused { reason: cause }
     AccessTokenSourceSelected { source: source } => ensure_access_token(source: source)

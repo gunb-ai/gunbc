@@ -95,7 +95,7 @@ fn select_wet_run_printer(supplied: String) -> WetRunPrinterSelection {
   }
 }
 
-func run() -> ProcessExit uses net: Network {
+fn run() -> ProcessExit uses net: Network {
   let requested_printer = shell.Env.Get(name: wet_run_printer_env)
   match requested_printer.value {
     Absent =>
