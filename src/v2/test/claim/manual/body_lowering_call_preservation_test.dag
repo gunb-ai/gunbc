@@ -1,0 +1,214 @@
+module v2.test.manual.body_lowering_call_preservation
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module, parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.staged_front_end {
+  FrontEndBoundReached,
+  FrontEndRefused,
+  FrontEndResolvedModule,
+  FrontEndStageRejected,
+  FrontEndStagePassed,
+  run_front_end
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import v2.std.collection { list_at_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.node_query { call_argument_targets, call_callee_target, node_is_call }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data call_preservation_declared_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
+
+data call_preservation_two_arg_source: String = "module m\n\nfn g(x: Int, y: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1, y: 2) }\n"
+
+data call_preservation_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
+
+data call_preservation_undeclared_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
+
+fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
+  if node_is_call(node: root) {
+    match call_callee_target(node: root) {
+      Accepted { value: c, diagnostics: _ } =>
+        match node_atom_identity_optional(node: c) {
+          Present { value: id } =>
+            if id == callee {
+              Present { value: root }
+            } else {
+              search_call_named_children(root: root, callee: callee)
+            }
+          Absent => search_call_named_children(root: root, callee: callee)
+        }
+      Rejected { diagnostics: _ } => search_call_named_children(root: root, callee: callee)
+    }
+  } else {
+    search_call_named_children(root: root, callee: callee)
+  }
+}
+
+fn search_call_named_children(root: Node, callee: Symbol) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => search_call_named(root: e.target, callee: callee)
+    }
+  })
+}
+
+fn tree_has_lbrace_operator(root: Node) -> Bool {
+  let here = match call_callee_target(node: root) {
+    Accepted { value: c, diagnostics: _ } =>
+      match node_atom_identity_optional(node: c) {
+        Present { value: id } => id == ^dag_token_lbrace
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+  here || fold(root.children, init: false, f: fn(acc, e) {
+    acc || tree_has_lbrace_operator(root: e.target)
+  })
+}
+
+fn normalize_unprepared(src: String, file: Symbol) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: normalized, diagnostics: _ } => Present { value: normalized.root }
+          }
+      }
+  }
+}
+
+fn normalize_prepared(src: String, file: Symbol) -> Optional<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: src, file: file, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module_prepared(
+            tokens: ts,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: normalized, diagnostics: _ } => Present { value: normalized.root }
+              }
+          }
+      }
+  }
+}
+
+fn call_arity_named(root: Node, callee: Symbol) -> Int {
+  match search_call_named(root: root, callee: callee) {
+    Absent => 0
+    Present { value: call } => count(call_argument_targets(node: call))
+  }
+}
+
+fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
+  match search_call_named(root: root, callee: outer) {
+    Absent => false
+    Present { value: call } =>
+      match list_at_optional(xs: call_argument_targets(node: call), index: 0) {
+        Absent => false
+        Present { value: arg0 } =>
+          match search_call_named(root: arg0, callee: inner) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+fn unprepared_declared_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_declared_source, file: ^call_pres_unprep) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && (call_arity_named(root: root, callee: ^g) == 1)
+  }
+}
+
+fn prepared_declared_call_preserved() -> Bool {
+  match normalize_prepared(src: call_preservation_declared_source, file: ^call_pres_prep) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && (call_arity_named(root: root, callee: ^g) == 1)
+  }
+}
+
+test fn call_preservation_unprepared_keeps_callee_and_one_arg() -> Bool {
+  unprepared_declared_call_preserved()
+}
+
+test fn call_preservation_prepared_keeps_callee_and_one_arg() -> Bool {
+  prepared_declared_call_preserved()
+}
+
+test fn call_preservation_two_arg_control_fails_if_erasure_restored() -> Bool {
+  match normalize_unprepared(src: call_preservation_two_arg_source, file: ^call_pres_two) {
+    Absent => false
+    Present { value: root } => call_arity_named(root: root, callee: ^g) == 2
+  }
+}
+
+test fn call_preservation_nested_call_arg_control_fails_if_erasure_restored() -> Bool {
+  match normalize_unprepared(src: call_preservation_nested_source, file: ^call_pres_nested) {
+    Absent => false
+    Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+  }
+}
+
+fn undeclared_callee_refuses_at_resolve() -> Bool {
+  let run = run_front_end(
+    source: call_preservation_undeclared_source,
+    file: ^call_pres_undef
+  )
+  match run.completion {
+    FrontEndResolvedModule { resolved: _ } => false
+    FrontEndBoundReached { last: _ } => false
+    FrontEndRefused =>
+      fold(run.steps, init: false, f: fn(acc, step) {
+        match step {
+          FrontEndStageRejected { stage: _, diagnostics: d } =>
+            acc || (d.head.reason == ^resolve_reason_unbound_symbol)
+          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+        }
+      })
+  }
+}
+
+fn declared_callee_resolves() -> Bool {
+  let run = run_front_end(
+    source: call_preservation_declared_source,
+    file: ^call_pres_decl_res
+  )
+  match run.completion {
+    FrontEndResolvedModule { resolved: _ } => true
+    FrontEndBoundReached { last: _ } => false
+    FrontEndRefused => false
+  }
+}
+
+test fn call_preservation_undeclared_callee_refuses_at_resolve() -> Bool {
+  undeclared_callee_refuses_at_resolve()
+}
+
+test fn call_preservation_declared_callee_resolves() -> Bool {
+  declared_callee_resolves()
+}
