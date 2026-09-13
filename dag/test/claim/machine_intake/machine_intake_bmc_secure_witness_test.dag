@@ -8,14 +8,18 @@ import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
   IpmiChannelCensusMember,
   IpmiChannelNumber,
+  IpmiChannelPrivilegeLimit,
   IpmiControllerChannelCensus,
   IpmiMedium8023Lan,
   IpmiMediumSerialAsync,
   IpmiPrivilegeAdministrator,
   IpmiPrivilegeNoAccess,
+  IpmiUserChannelAccess,
+  IpmiUserId,
   ipmi_controller_channel_census,
   ipmi_lan_channel_member,
   ipmi_non_lan_channel_member,
+  ipmi_user_channel_access,
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
@@ -105,6 +109,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialCensusMemberUnprobed,
   PublishedCredentialCensusNotTaken,
   PublishedCredentialChannelAccessNotClosed,
+  PublishedCredentialUserAccessUnestablished,
   PublishedCredentialDisabledNotRetired,
   PublishedCredentialLanMemberUnaddressed,
   PublishedCredentialLanProbe,
@@ -167,58 +172,105 @@ data channel_two: IpmiChannelNumber = 2
 data channel_seven: IpmiChannelNumber = 7
 data channel_eight: IpmiChannelNumber = 8
 
-fn lan_member_admin(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
-  ipmi_lan_channel_member(
-    channel: channel,
-    medium: IpmiMedium8023Lan,
-    address: address,
-    published_user_access: IpmiPrivilegeAdministrator,
-  )
+data published_user: IpmiUserId = 2
+data other_user: IpmiUserId = 3
+
+fn lan_member(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
+  ipmi_lan_channel_member(channel: channel, medium: IpmiMedium8023Lan, address: address)
 }
 
-fn lan_member_no_access(channel: IpmiChannelNumber, address: Ipv4Address) -> IpmiChannelCensusMember {
-  ipmi_lan_channel_member(
-    channel: channel,
-    medium: IpmiMedium8023Lan,
-    address: address,
-    published_user_access: IpmiPrivilegeNoAccess,
-  )
+fn user_access(channel: IpmiChannelNumber, user: IpmiUserId, privilege: IpmiChannelPrivilegeLimit) -> IpmiUserChannelAccess {
+  ipmi_user_channel_access(channel: channel, user: user, privilege: privilege)
 }
 
-data census_two_lan: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  lan_member_admin(channel: channel_one, address: lan_228),
-  lan_member_admin(channel: channel_eight, address: lan_231),
-])
+fn published_access(channel: IpmiChannelNumber, privilege: IpmiChannelPrivilegeLimit) -> IpmiUserChannelAccess {
+  user_access(channel: channel, user: published_user, privilege: privilege)
+}
 
-data census_empty: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [])
+data two_lan_access: List<IpmiUserChannelAccess> = [
+  published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+  published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+]
 
-data census_unaddressed_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  lan_member_admin(channel: channel_one, address: lan_228),
-  lan_member_admin(channel: channel_seven, address: lan_unspecified),
-  lan_member_admin(channel: channel_eight, address: lan_231),
-])
+data census_two_lan: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: two_lan_access,
+)
 
-data census_unaddressed_no_access: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  lan_member_admin(channel: channel_one, address: lan_228),
-  lan_member_no_access(channel: channel_seven, address: lan_unspecified),
-  lan_member_admin(channel: channel_eight, address: lan_231),
-])
+data census_empty: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [], user_access: [])
 
-data census_with_serial: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  lan_member_admin(channel: channel_one, address: lan_228),
-  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeNoAccess),
-  lan_member_admin(channel: channel_eight, address: lan_231),
-])
+data census_unaddressed_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    lan_member(channel: channel_seven, address: lan_unspecified),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: [
+    published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_seven, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+  ],
+)
 
-data census_serial_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  lan_member_admin(channel: channel_one, address: lan_228),
-  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeAdministrator),
-  lan_member_admin(channel: channel_eight, address: lan_231),
-])
+data census_unaddressed_no_access: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    lan_member(channel: channel_seven, address: lan_unspecified),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: [
+    published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_seven, privilege: IpmiPrivilegeNoAccess),
+    published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+  ],
+)
 
-data census_serial_only: IpmiControllerChannelCensus = ipmi_controller_channel_census(members: [
-  ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync, published_user_access: IpmiPrivilegeNoAccess),
-])
+data census_unaddressed_other_user_no_access: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    lan_member(channel: channel_seven, address: lan_unspecified),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: [
+    published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+    user_access(channel: channel_seven, user: other_user, privilege: IpmiPrivilegeNoAccess),
+    published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+  ],
+)
+
+data census_with_serial: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: [
+    published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_two, privilege: IpmiPrivilegeNoAccess),
+    published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+  ],
+)
+
+data census_serial_administrator: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [
+    lan_member(channel: channel_one, address: lan_228),
+    ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync),
+    lan_member(channel: channel_eight, address: lan_231),
+  ],
+  user_access: [
+    published_access(channel: channel_one, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_two, privilege: IpmiPrivilegeAdministrator),
+    published_access(channel: channel_eight, privilege: IpmiPrivilegeAdministrator),
+  ],
+)
+
+data census_serial_only: IpmiControllerChannelCensus = ipmi_controller_channel_census(
+  members: [ipmi_non_lan_channel_member(channel: channel_two, medium: IpmiMediumSerialAsync)],
+  user_access: [published_access(channel: channel_two, privilege: IpmiPrivilegeNoAccess)],
+)
 
 data managed_secret: SecretRef = SecretRef {
   project: "gunbai-secrets",
@@ -335,6 +387,7 @@ fn rotation_observed(
     census_evidence: evidence(label: "channel-census"),
     census_observed_at: applied_at,
     published_probes: probes,
+    published_user: published_user,
     published_account: account,
   )
 }
@@ -677,6 +730,26 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
   is_secured(standing: standing)
 }
 
+// review 65645: Get User Access is (channel, user). NO ACCESS for a different
+// user cannot close the published factory account on an unaddressed LAN member.
+test fn unaddressed_lan_no_access_for_other_user_does_not_close() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_unaddressed_other_user_no_access,
+    probes: both_lan_rejecting(),
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialUserAccessUnestablished { channel: channel_seven },
+  )
+}
+
 // review 65304 / 65557: a census taken before rotation is not the join universe,
 // including when every member is assigned LAN. MUTATION: drop the
 // census_observed_at < applied_at arm in adjudicate_published_census_join.
@@ -692,6 +765,7 @@ test fn census_before_rotation_refuses() -> Bool {
     census_evidence: evidence(label: "channel-census"),
     census_observed_at: 1788000002000,
     published_probes: both_lan_rejecting(),
+    published_user: published_user,
     published_account: published_account_retired,
   )
   refused_with(
@@ -712,6 +786,7 @@ test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
     census_evidence: evidence(label: "channel-census"),
     census_observed_at: 1788000002000,
     published_probes: both_lan_rejecting(),
+    published_user: published_user,
     published_account: published_account_retired,
   )
   refused_with(
@@ -1029,6 +1104,7 @@ test fn rotation_not_attempted_refuses() -> Bool {
     census_evidence: evidence(label: "channel-census"),
     census_observed_at: rotation_at,
     published_probes: both_lan_rejecting(),
+    published_user: published_user,
     published_account: published_account_retired,
   )
   refused_with(standing: derive_dev(observation: observation), expected: CredentialRotationNotApplied)
@@ -1046,6 +1122,7 @@ test fn account_management_unavailable_refuses() -> Bool {
     census_evidence: evidence(label: "channel-census"),
     census_observed_at: rotation_at,
     published_probes: both_lan_rejecting(),
+    published_user: published_user,
     published_account: published_account_retired,
   )
   refused_with(

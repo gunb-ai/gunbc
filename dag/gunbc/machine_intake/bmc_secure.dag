@@ -14,6 +14,8 @@ import extdeps.bmc.ipmi_channel {
   IpmiLanIpv4Unassigned,
   IpmiNonLanChannelMember,
   IpmiPrivilegeNoAccess,
+  IpmiUserChannelAccess,
+  IpmiUserId,
 }
 import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -210,6 +212,7 @@ type BmcCredentialRotationObservation sole_constructor {
   census_evidence: EvidenceRef
   census_observed_at: EpochMs
   published_probes: List<PublishedCredentialLanProbe>
+  published_user: IpmiUserId
   published_account: PublishedCredentialAccountObservation
 }
 
@@ -224,6 +227,7 @@ fn observed_bmc_credential_rotation(
   census_evidence: EvidenceRef,
   census_observed_at: EpochMs,
   published_probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcCredentialRotationObservation {
   BmcCredentialRotationObservation {
@@ -237,6 +241,7 @@ fn observed_bmc_credential_rotation(
     census_evidence: census_evidence,
     census_observed_at: census_observed_at,
     published_probes: published_probes,
+    published_user: published_user,
     published_account: published_account,
   }
 }
@@ -273,6 +278,8 @@ type BmcSecureRefusalCause
   | PublishedCredentialNoAddressableLanMember
   | PublishedCredentialLanMemberUnaddressed { channel: IpmiChannelNumber }
   | PublishedCredentialChannelAccessNotClosed { channel: IpmiChannelNumber }
+  | PublishedCredentialUserAccessUnestablished { channel: IpmiChannelNumber }
+  | PublishedCredentialUserAccessDuplicate { channel: IpmiChannelNumber }
   | PublishedCredentialCensusMemberUnprobed { channel: IpmiChannelNumber }
   | PublishedCredentialProbeDuplicate { channel: IpmiChannelNumber }
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
@@ -307,6 +314,8 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialNoAddressableLanMember => BmcAccess
     PublishedCredentialLanMemberUnaddressed { channel: _ } => BmcAccess
     PublishedCredentialChannelAccessNotClosed { channel: _ } => OperatorAction
+    PublishedCredentialUserAccessUnestablished { channel: _ } => BmcAccess
+    PublishedCredentialUserAccessDuplicate { channel: _ } => QualificationPolicy
     PublishedCredentialCensusMemberUnprobed { channel: _ } => BmcAccess
     PublishedCredentialProbeDuplicate { channel: _ } => QualificationPolicy
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
@@ -335,6 +344,8 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialNoAddressableLanMember => "the channel census contained no addressable LAN member to probe"
     PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and the published account still has access on that channel"
     PublishedCredentialChannelAccessNotClosed { channel: _ } => "the published account still has channel access (not NO ACCESS) on a census member"
+    PublishedCredentialUserAccessUnestablished { channel: _ } => "Get User Access for the published user was not present on a census member"
+    PublishedCredentialUserAccessDuplicate { channel: _ } => "more than one Get User Access row matched the published user on the same census member"
     PublishedCredentialCensusMemberUnprobed { channel: _ } => "a census LAN member has no matching published-credential probe"
     PublishedCredentialProbeDuplicate { channel: _ } => "more than one published-credential probe matched the same census LAN member"
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
@@ -506,8 +517,8 @@ fn index_assigned_lan_identities(members: List<IpmiChannelCensusMember>) -> Map<
     init: empty_map(),
     f: (acc, m) =>
       match m {
-        IpmiNonLanChannelMember { channel: _, medium: _, published_user_access: _ } => acc
-        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: _ } =>
+        IpmiNonLanChannelMember { channel: _, medium: _ } => acc
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
           match cfg {
             IpmiLanIpv4Unassigned => acc
             IpmiLanIpv4Assigned { address: a } => bump_assigned_lan_identity(acc: acc, channel: ch, address: a)
@@ -632,10 +643,79 @@ fn join_assigned_lan_member(
   }
 }
 
+fn published_user_access_key(channel: IpmiChannelNumber, user: IpmiUserId) -> Int {
+  ((channel as Int) * 64) + (user as Int)
+}
+
+type PublishedUserAccessSlot
+  = OneUserAccess { access: IpmiUserChannelAccess }
+  | SeveralUserAccess
+
+fn insert_published_user_access_slot(
+  acc: Map<Int, PublishedUserAccessSlot>,
+  row: IpmiUserChannelAccess,
+) -> Map<Int, PublishedUserAccessSlot> {
+  let key = published_user_access_key(channel: row.channel, user: row.user)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, OneUserAccess { access: row })
+    Present { value: slot } =>
+      match slot {
+        OneUserAccess { access: _ } => map_insert(acc, key, SeveralUserAccess)
+        SeveralUserAccess => acc
+      }
+  }
+}
+
+fn index_published_user_access(rows: List<IpmiUserChannelAccess>) -> Map<Int, PublishedUserAccessSlot> {
+  fold(rows, init: empty_map(), f: (acc, row) => insert_published_user_access_slot(acc: acc, row: row))
+}
+
+fn published_user_privilege_on_channel(
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  channel: IpmiChannelNumber,
+  published_user: IpmiUserId,
+) -> BmcSecureRefusalCause? {
+  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+    Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralUserAccess => Present { value: PublishedCredentialUserAccessDuplicate { channel: channel } }
+        OneUserAccess { access: row } =>
+          if row.privilege == IpmiPrivilegeNoAccess {
+            none
+          } else {
+            Present { value: PublishedCredentialChannelAccessNotClosed { channel: channel } }
+          }
+      }
+  }
+}
+
+fn unaddressed_lan_published_access_cause(
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  channel: IpmiChannelNumber,
+  published_user: IpmiUserId,
+) -> BmcSecureRefusalCause? {
+  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+    Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralUserAccess => Present { value: PublishedCredentialUserAccessDuplicate { channel: channel } }
+        OneUserAccess { access: row } =>
+          if row.privilege == IpmiPrivilegeNoAccess {
+            none
+          } else {
+            Present { value: PublishedCredentialLanMemberUnaddressed { channel: channel } }
+          }
+      }
+  }
+}
+
 fn join_census_member(
   progress: CensusJoinProgress,
   member: IpmiChannelCensusMember,
   probe_index: Map<Int, PublishedProbeSlot>,
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  published_user: IpmiUserId,
   applied_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
@@ -643,19 +723,17 @@ fn join_census_member(
     CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
     CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
       match member {
-        IpmiNonLanChannelMember { channel: ch, medium: _, published_user_access: access } =>
-          if access == IpmiPrivilegeNoAccess {
-            CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
-          } else {
-            CensusJoinClosed { cause: PublishedCredentialChannelAccessNotClosed { channel: ch } }
+        IpmiNonLanChannelMember { channel: ch, medium: _ } =>
+          match published_user_privilege_on_channel(access_index: access_index, channel: ch, published_user: published_user) {
+            Present { value: c } => CensusJoinClosed { cause: c }
+            Absent => CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
           }
-        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: access } =>
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
           match cfg {
             IpmiLanIpv4Unassigned =>
-              if access == IpmiPrivilegeNoAccess {
-                CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
-              } else {
-                CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
+              match unaddressed_lan_published_access_cause(access_index: access_index, channel: ch, published_user: published_user) {
+                Present { value: c } => CensusJoinClosed { cause: c }
+                Absent => CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
               }
             IpmiLanIpv4Assigned { address: a } =>
               join_assigned_lan_member(
@@ -703,8 +781,10 @@ fn unmatched_published_probe_cause(
 
 // THE PUBLISHED-CREDENTIAL READBACK IS A FOLD OVER THE CONTROLLER CHANNEL
 // CENSUS. Assigned LAN members still require an identity-joined login probe.
-// Unaddressed LAN (0.0.0.0) and non-LAN members join on Get User Access for the
-// published account: NO ACCESS closes the member; any other privilege refuses.
+// Unaddressed LAN (0.0.0.0) and non-LAN members join on Get User Access for
+// observation.published_user: NO ACCESS closes the member; any other privilege
+// refuses; a missing or duplicated (channel, user) row refuses. A NO ACCESS
+// row for a different user does not close this one (review 65645).
 // That is the unit-1 fact: channel 7 is 802.3 with a permanent unspecified
 // address, and the rotation set admin to NO ACCESS on ch2, ch7 and ch8.
 // Treating unaddressed as unconditionally open would refuse that controller
@@ -733,6 +813,7 @@ fn adjudicate_published_census_join(
   census_evidence: EvidenceRef,
   census_observed_at: EpochMs,
   probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcSecureOutcome {
   if list_length(items: census.members) == 0 {
@@ -745,10 +826,19 @@ fn adjudicate_published_census_join(
     let require_closed = published_account_requires_published_closed(account: published_account)
     let probe_index = index_published_probes(probes: probes)
     let assigned_index = index_assigned_lan_identities(members: census.members)
+    let access_index = index_published_user_access(rows: census.user_access)
     let joined = fold(
       census.members,
       init: CensusJoinOpen { evidence: [], latest_admitted_probe_at: none, saw_addressable_lan: false },
-      f: (acc, m) => join_census_member(progress: acc, member: m, probe_index: probe_index, applied_at: applied_at, require_published_closed: require_closed),
+      f: (acc, m) => join_census_member(
+        progress: acc,
+        member: m,
+        probe_index: probe_index,
+        access_index: access_index,
+        published_user: published_user,
+        applied_at: applied_at,
+        require_published_closed: require_closed,
+      ),
     )
     match joined {
       CensusJoinClosed { cause: c } => BmcSecureRefused { cause: c }
@@ -794,6 +884,7 @@ fn adjudicate_published_census(
   census_evidence: EvidenceRef,
   census_observed_at: EpochMs,
   probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
   environment: MachineOperatingEnvironment,
 ) -> BmcSecureOutcome {
@@ -819,6 +910,7 @@ fn adjudicate_published_census(
             census_evidence: census_evidence,
             census_observed_at: census_observed_at,
             probes: probes,
+            published_user: published_user,
             published_account: published_account,
           )
       }
@@ -834,6 +926,7 @@ fn adjudicate_published_census(
         census_evidence: census_evidence,
         census_observed_at: census_observed_at,
         probes: probes,
+        published_user: published_user,
         published_account: published_account,
       )
     PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: _ } =>
@@ -848,6 +941,7 @@ fn adjudicate_published_census(
         census_evidence: census_evidence,
         census_observed_at: census_observed_at,
         probes: probes,
+        published_user: published_user,
         published_account: published_account,
       )
   }
@@ -883,6 +977,7 @@ fn adjudicate_managed_probe(
           census_evidence: observation.census_evidence,
           census_observed_at: observation.census_observed_at,
           probes: observation.published_probes,
+          published_user: observation.published_user,
           published_account: observation.published_account,
           environment: environment,
         )
