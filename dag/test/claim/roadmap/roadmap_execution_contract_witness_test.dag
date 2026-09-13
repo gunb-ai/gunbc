@@ -12,6 +12,12 @@ import gunbc.roadmap_execution_contract {
   CargoTestValidation,
   ExecutionContract,
   ExecutionContractUnspecified,
+  NotAgentWork,
+  OperatorExclusiveMode,
+  ExternalLeadMode,
+  CalendarObservationMode,
+  PublicWorktreeLayout,
+  PathsUnrestricted,
   CapabilityRealization,
   DispatchHostEnvironment,
   execution_capability_label,
@@ -20,6 +26,7 @@ import gunbc.roadmap_execution_contract {
   dispatch_required_capabilities,
   gunbc_claim_execution_contract,
   validation_operation_command,
+  contract_awaits_closing_validation_authoring,
 }
 
 fn claim_runner_environment() -> DispatchHostEnvironment {
@@ -62,6 +69,8 @@ test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
         CargoTestValidation { filter: "two" as NonEmptyStr },
       ],
       extra_capabilities: [CargoCapability],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
     },
   )
   count(capabilities) == 2
@@ -80,6 +89,8 @@ test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
     contract: ExecutionContract {
       validations: [CargoFmtValidation],
       extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
     },
   )
   count(caps) == 2
@@ -118,6 +129,7 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
       function: "example_holds" as NonEmptyStr,
     },
     environment: claim_runner_environment(),
+    source_roots: PublicWorktreeLayout,
   ) {
     Present { value: command } =>
       command.program == ("/opt/gunbc/bin/gunbc" as FilePath)
@@ -133,7 +145,8 @@ test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
     function: "example_holds" as NonEmptyStr,
   ) {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    NotAgentWork { mode: _ } => false
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && match validations.first() {
@@ -151,6 +164,27 @@ test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
   }
 }
 
+test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
+  contract_awaits_closing_validation_authoring(contract: ExecutionContractUnspecified)
+    && contract_awaits_closing_validation_authoring(
+      contract: ExecutionContract {
+        validations: [],
+        extra_capabilities: [],
+        path_scope: PathsUnrestricted,
+        source_roots: PublicWorktreeLayout,
+      },
+    )
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: OperatorExclusiveMode })
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: ExternalLeadMode })
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: CalendarObservationMode })
+    && !contract_awaits_closing_validation_authoring(
+      contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/example_test.dag" as FilePath,
+        function: "example_holds" as NonEmptyStr,
+      ),
+    )
+}
+
 test fn roadmap_execution_contract_keystone_holds() -> Bool {
   dag_claim_derives_only_the_claim_runner()
     && cargo_test_derives_cargo_and_rustc_once()
@@ -158,4 +192,5 @@ test fn roadmap_execution_contract_keystone_holds() -> Bool {
     && dispatch_platform_capabilities_join_at_admission_only()
     && claim_validation_projects_exact_typed_argv()
     && claim_contract_declares_exactly_one_claim_validation()
+    && non_agent_work_does_not_await_closing_validation_authoring()
 }

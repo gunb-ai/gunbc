@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.admitted_reclaim_charged_by_first_touch
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data admitted_reclaim_charged_by_first_touch: RecurringFailureMode = RecurringFailureMode {
+  identity: "admitted_reclaim_charged_by_first_touch" as NonEmptyStr,
+
+  receipts: [
+    "**a per-subject budget charges a shared, scheduling-determined reclaim cost to whichever subject touches first** INVALID STATE: a per-claim CPU ceiling (`v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`) is applied to a claim whose measured CPU includes page-refault cost that is a property of the RUN's memory pressure and of TOUCH ORDER, not of the claim.",
+
+    "HARM: which claim is billed is an ordering accident, so the ceiling refuses an arbitrary subject; PRs red at random on a fold that is progressing correctly; and the reading cannot be used to rank claims by cost because it does not measure the claim.",
+
+    "THE DISTINGUISHING FACT THAT MAKES THIS A CLASS AND NOT AN INCIDENT: `gunbc.memory_stall_refusal` DELIBERATELY ADMITS running under reclaim. Its refusal is a conjunction of fault RATE and a cpu-share floor precisely so that slow-but-progressing passes, and `memory_stall_admitted_under_pressure_receipt_note` says so in terms, naming this runner class. The system knowingly runs at the high watermark. What is unmodelled is that the ADMITTED cost is then charged to per-claim ceilings by first-touch order. THE ADMISSION IS CORRECT AND IS NOT THE DEFECT; the defect is that a cost one module deliberately tolerates is silently billed to a different module's budget.",
+
+    "RECOGNITION RULE, AND IT IS THE QUESTION THAT SEPARATES THIS FROM THE SHARED-MEMO FIRST-TOUCHER: IS ANYTHING BUILT. The neighbouring class (`claim_forced_and_unbracketed`, and the unlanded first-toucher notes that name a shared MEMO FILL billed to the first reader) has a miss path: something is computed on first touch, and `record_shared_artifact_fill_cpu` can bracket that fill with a built-by-preparation receipt. THIS class has NO miss path. Strict-preparation already materialised TypedModule.items, NewlineIndex and char_codes, so nothing is computed on first touch and none of the existing `record_shared_artifact_fill_cpu` sites can bracket it. A proposed repair that reused those brackets was refuted on exactly this ground. If a first-touch interval is a fill of an artifact that did not yet exist, it is the neighbour; if the bytes already exist and the interval is page reclaim, it is this row.",
+
+    "SPECIMEN, all from gunbc PR 11178 (instrument, unlanded, draft) runs 34701185130 and 34703550173 on srv3-01. Subject identity `v2.test.claim.affected_set_universe.affected_set_universe_gate_processes_match_declared_gates`. The SAME scan, back-to-back inside one claim with nothing between: lookup 427769us then repeat 23170us -- 18.5x. Warm rows flat at 1.0x (23876/23186, 23346/23142). Cold cost is per ITEM TOUCHED (~31us/item; three independent readings agree), split index 7% / text 42% / Node objects 51% -- one page-reclaim effect over three memory regions, not three causes. Floor heartbeat at the time: cgroup memory.high=16106127360 (15 GiB) with the charge at 14.9 GiB through claim-evaluation-fold; cgroup events high 5724 -> 10054; process major-faults 315k -> 597k; stall rates 45665 and 182726 faults/min around the subject claim's 16:19:29; host swap-in in step; user-cpu share falling to 89% then 64%. CLOCK_THREAD_CPUTIME_ID is user+sys, so refault lands on the claim's ceiling with BYTE-IDENTICAL eval_steps (2884 across all runs).",
+
+    "REPAIRS ALREADY RETIRED BY MEASUREMENT, stated so nobody re-proposes them: marshalling is not the cost (<=181us); memoising the search cannot help a claim with calls=1; a registry-filtered or narrowed scan does not address a reclaim effect and narrowing also changes scope semantics; a pre-warm touch loop in preparation cannot hold because pages evicted under memory.high are evicted again; bracketing the scan out of the ceiling would exempt ~24ms of real warm work and is a DESIGN section 5 escape hatch.",
+
+    "RUNG FOUND AT: mitigatable. The measured interval is a real CLOCK_THREAD_CPUTIME_ID reading, not a fabricated number; the fail-stop is a typed interrupt. What is not contained is WHICH SUBJECT the interrupt names: the ceiling is a total operation over a misattributed quantity. Naming this outside the ladder would be the fabricated-plausible-output class, and that class requires a figure that is not a measurement of anything; here the figure measures the thread, including admitted reclaim. Naming it mechanically preventable would be inflation: nothing currently refuses the misattribution, and safety depends on review noticing that a 18.5x cold/warm split is reclaim rather than the claim.",
+
+    "ATTAINABLE CEILING: mechanically preventable, and not higher. The kernel bills a refault to the faulting thread; that is not a constructor the substrate can delete. A structurally-guaranteed or structurally-impossible claim inside reflection would be inflation. The subject of the pressure -- the floor's resident set against memory.high -- is owned by whoever owns the floor's memory budget, and no repair inside reflection addresses it. What this billing class can climb to is a construction in which a per-claim ceiling cannot be applied to an interval that includes reclaim `gunbc.memory_stall_refusal` has already classified as admitted.",
+
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: per-claim CPU ceilings consume a reading from which admitted reclaim has already been attributed to the RUN -- the subject `memory_stall_refusal` already names -- sufficient that a first-touch refault cannot inhabit the claim's ceiling. A trigger that names `record_shared_artifact_fill_cpu`, a pre-warm loop, a narrowed scan, or an exemption of the warm 24ms does not discharge this: those are artifacts that would contribute to a different class, and measurement has already retired them here.",
+
+    "UNCERTAINTIES CARRIED RATHER THAN ROUNDED OFF. Two runs on ONE runner (srv3-01). The 'neither' 51% bucket includes ~31ms of unsubtracted instrument clock reads. The answering module sitting last in scope precedence (reported as 437/438, 1093/1094) is an observation 2-of-2 whose mechanism was explicitly retracted as unverified inference; this row does not revive that mechanism.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.memory_stall_refusal", decl_name: "memory_stall_admitted_under_pressure_receipt_note", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "required_floor_claim_cpu_safety_limit_ms", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.claim_forced_and_unbracketed", decl_name: "claim_forced_and_unbracketed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.affected_set_universe", decl_name: "affected_set_universe_gate_processes_match_declared_gates", field: WholeDeclaration },
+  ],
+}
