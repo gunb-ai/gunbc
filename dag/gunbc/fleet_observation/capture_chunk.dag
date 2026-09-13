@@ -274,14 +274,6 @@ type StreamContinuity
   | ContinuityGap { gap: SourceStreamRange, cause: ContinuityBreakCause }
   | ContinuityUnknown { detail: NonEmptyStr }
 
-fn continuity_is_established(continuity: StreamContinuity) -> Bool {
-  match continuity {
-    ContinuityEstablished { verified_through: _ } => true
-    ContinuityGap { gap: _, cause: _ } => false
-    ContinuityUnknown { detail: _ } => false
-  }
-}
-
 // WHETHER A COMMITTED CHUNK ACTUALLY COVERS A REQUESTED RANGE. Coverage is arithmetic over the
 // source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
 // lets a machine-lifetime collector license a negative observation at all. A bounded client that
