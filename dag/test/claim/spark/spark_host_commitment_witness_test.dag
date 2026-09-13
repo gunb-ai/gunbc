@@ -14,7 +14,6 @@ import gunbc.spark.cell_role {
   SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell, spark_cell_role_assignments,
 }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
-import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_canary_host_claim, spark_serving_arm_host_claims }
 import gunbc.spark.host_commitment {
   spark_host_standings,
@@ -284,9 +283,13 @@ test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population()
 // red for the right reason when srv9 was found to be claimed is not a defence of it: the identity
 // lines below are what state which hosts, and they are what changed.
 //
-// WHAT IS NOT A TRANSCRIBED MEASUREMENT, so it stays: the vacuity check on the reservation arm
-// asserts ZERO, which is the arm's own emptiness stated as such rather than a population size, and
-// the partition claim below is a structural identity between two derived sets and their universe.
+// THE SAME RULING REACHED THE RESERVATION ARM (claude review 65522 on #11107). A conjunct asserting
+// that the live undischarged-reservation set has length ZERO was defended here as "emptiness stated
+// as such"; it is not -- emptiness of a live derived set is a population measurement too, and it
+// would go red when a reservation is legitimately minted. It is deleted: srv7 and srv8 are checked
+// by identity in the claim that carried it, whose commitment payload must be group membership with
+// an Empty tail. What stays is the partition claim below, a structural identity between two derived
+// sets and their universe.
 test fn the_production_uncommitted_set_excludes_every_claimed_unit_by_identity() -> Bool {
   contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv10)
     && contains_host(hosts: spark_uncommitted_hosts, host: operator_host_srv11)
@@ -389,7 +392,6 @@ test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
 test fn srv7_and_srv8_are_committed_by_the_claimed_serving_group_and_by_nothing_else() -> Bool {
   contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv7)
     && contains_host(hosts: spark_claimed_serving_group_hosts(), host: operator_host_srv8)
-    && length(llama_cpp_rpc_undischarged_peer_reservation_hosts()) == 0
     && production_commitment_is_group_membership_alone(host: operator_host_srv7)
     && production_commitment_is_group_membership_alone(host: operator_host_srv8)
 }
