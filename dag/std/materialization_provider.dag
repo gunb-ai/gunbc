@@ -178,13 +178,14 @@ type ArtifactRequest
 // NativeCompilerArtifactRequest: the executable built from the seed-prepared emitted closure. Its
 // identity is NOT re-invented here. v2.compiler.self_host.generation is the sole authority for what
 // identifies a compiler generation, and this request carries that module's PRE-MATERIALIZATION
-// projection -- the five CAUSAL axes (producer compiler, source closure, target model, toolchain,
-// build configuration) -- with the key derived by its own pre_materialization_digest. An earlier
+// projection -- the CAUSAL axes (producer compiler, source closure, target model, toolchain,
+// build configuration, required lens contract) -- with the key derived by its own
+// pre_materialization_digest. An earlier
 // shape keyed on {emitted closure, toolchain, target platform}, which dropped the producer compiler
 // and the build configuration: two generations differing only in those read as ONE computation, and
 // the differing artifact then reads as a same-key content CONFLICT rather than as a changed input.
 // That is the section 3 fork this lane was told not to create, and it is closed by consumption
-// rather than by a check. The sixth axis, materialized_artifact, is deliberately absent: it is
+// rather than by a check. The materialized_artifact axis is deliberately absent: it is
 // EARNED from verified stored bytes (a committed artifact read back and verified) and joined back to
 // GenerationIdentity afterwards, so it can never be caller-authored into a pre-build lookup.
 // Requires the executable AND the build diagnostics: a build whose warnings were dropped is not the
@@ -192,7 +193,7 @@ type ArtifactRequest
 //
 // THE IMPORT DIRECTION IS A STATED DEPARTURE, not an oversight. This is the only std module that
 // imports a v2 COMPILER module (other std modules import v2.std.*). The alternative was to restate
-// the five axes here, which is precisely the fork this change exists to close, and DESIGN section 3
+// the axes here, which is precisely the fork this change exists to close, and DESIGN section 3
 // puts a fact's home in its LAYER rather than its folder, with acyclicity as the import graph's only
 // structural law -- v2.compiler.self_host.generation imports nothing from this module, so the edge is
 // acyclic. If the axes ever need a home below the compiler, the move is generation's to make and this
@@ -304,7 +305,8 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
       DeclaredInput { ref: "generation.source_closure", digest: g.source_closure },
       DeclaredInput { ref: "generation.target_model", digest: g.target_model },
       DeclaredInput { ref: "generation.toolchain", digest: g.toolchain },
-      DeclaredInput { ref: "generation.build_configuration", digest: g.build_configuration }
+      DeclaredInput { ref: "generation.build_configuration", digest: g.build_configuration },
+      DeclaredInput { ref: "generation.required_lens_contract", digest: g.required_lens_contract }
     ],
     universe: (tt, rb) => [rb],
     module_verdict_bundle: subject => []
