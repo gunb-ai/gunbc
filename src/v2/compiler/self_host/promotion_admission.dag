@@ -180,7 +180,7 @@ type SelfHostCandidate {
 //
 // A transport executes emit → compile → run → compare against the seed oracle and
 // learns exactly three things: whether the driver built, whether behavior agreed, and
-// whether a planted fault was caught. It does NOT learn the six generation axes — those
+// whether a planted fault was caught. It does NOT learn the generation axes — those
 // are derived from the build's own inputs and artifacts, elsewhere. Fusing them would
 // put the transport in the position of asserting the identity of the thing it measured,
 // which is the self-authorization hole one layer down: a run that names its own subject

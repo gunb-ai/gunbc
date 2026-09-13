@@ -179,7 +179,7 @@ data ancestry_read_back_diverged: String = "native generation mint refused: the 
 // refusal cause therefore cannot tell a declared row from a typo or from a row someone deleted,
 // and the strongest-looking evidence in this module — a refusal matched by name — was the
 // weakest against exactly the failure that occurred. Caught by review 64013, not by the suite.
-data ancestry_build_path_unresolved: String = "native generation mint refused: BuildPathUnresolved leaves an input the six generation axes do not name, so the artifact axis cannot falsify anything"
+data ancestry_build_path_unresolved: String = "native generation mint refused: BuildPathUnresolved leaves an input the generation axes do not name, so the artifact axis cannot falsify anything"
 
 data ancestry_successor_build_path_pinned: String = "native generation mint refused: BuildPathPinned is admissible only for the one-time genesis; a recurring generation's artifact is acquired as an ancestor and must not depend on the directory it was built in"
 
@@ -216,7 +216,7 @@ fn read_back_agrees(
 // BUILD PATH IS ADMITTED ASYMMETRICALLY, and the asymmetry is the whole content of this fold.
 // A one-time genesis runs on one host and nothing cross-host consumes its artifact, so pinning
 // the directory is honest there. A RECURRING generation's artifact is acquired as an ancestor
-// by a later generation, so an unremapped build path leaves an input the six generation axes do
+// by a later generation, so an unremapped build path leaves an input the generation axes do
 // not name — the artifact axis stops being able to falsify anything precisely where it is load
 // bearing. Unresolved is admitted for neither.
 //
