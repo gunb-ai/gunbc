@@ -1,0 +1,130 @@
+module v2.test.manual.scoped_type_reflection_conformance
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node_reflection {
+  coproduct_arm_keys_checked,
+  resolve_type_node_at,
+  resolve_type_node_checked
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE POOL ROOTS THIS CLAIM READS. Named, not discovered: the claim is about what the live
+// declaration index says under a stated population, and a population the claim does not state
+// is one a reader cannot re-derive (DESIGN section 6 -- name the instrument).
+data scoped_reflection_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn outcome_is_rejected<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn outcome_is_accepted<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED. `Representation` is declared as a closed coproduct in two modules of
+// this very pool -- `v2.lens.intent_linearity` and `v2.std.integer` -- with DISJOINT arm sets.
+// The bare host seam answers it by first match over the interpreter's loaded modules, so before
+// this change `coproduct_arm_keys` returned one of two different answers with no diagnostic and
+// no way for a caller to know which. The claim is not that two declarations exist -- that is a
+// fact about the corpus and would be a change detector. The claim is that the GUARDED route
+// REFUSES rather than answering, which is a fact about this module's behaviour and goes red the
+// moment the guard is removed or widened to a first match.
+test fn ambiguous_type_spelling_refuses_rather_than_first_matching() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Representation
+    )
+  )
+}
+
+test fn ambiguous_type_spelling_refuses_at_the_node_route_too() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Representation
+    )
+  )
+}
+
+// THE POSITIVE CONTROL, and it is the one that keeps the wall from being satisfied by refusing
+// everything. `Connective` is declared once in this pool, so the guard must let it through and
+// the arm keys must still come back. A guard that refused here would pass the two claims above
+// while destroying the surface, which is why this claim is enrolled beside them and not after.
+test fn unique_type_spelling_still_resolves() -> Bool {
+  outcome_is_accepted(
+    o: coproduct_arm_keys_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Connective
+    )
+  )
+}
+
+// AN ABSENT SPELLING REFUSES ON ITS OWN ARM rather than falling through to the seam, which is
+// what makes the zero case a refusal and not a divergent host call.
+test fn absent_type_spelling_refuses() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^NoSuchTypeIsDeclaredAnywhereInThisPool
+    )
+  )
+}
+
+// THE CITATION ROUTE. Naming the module resolves a unique spelling; it does NOT yet rescue an
+// ambiguous one, because the bare host seam it delegates to cannot be told which module to read
+// -- so that case refuses too, and says so on its own arm rather than guessing. Shrinking that
+// refusal is what consuming #11264's occurrence binding buys, and this claim is where the change
+// will show.
+test fn cited_unique_type_resolves_through_its_module() -> Bool {
+  outcome_is_accepted(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.node",
+        decl_name: "Connective",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
+
+test fn cited_ambiguous_type_refuses_until_the_seam_is_scope_carrying() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.integer",
+        decl_name: "Representation",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
+
+// THE SECOND SPECIMEN, AND THE ONE WHOSE CONTRAST IS ALREADY ENROLLED. UriScheme is declared in
+// two modules of this pool -- a closed coproduct in extdeps.uri and a RECORD in v2.std.network --
+// and the unguarded seam answers it today rather than refusing: the enrolled claim
+// v2.test.manual.coproduct_reflection_conformance witness_uri_scheme_reflected_arm_keys_are_non_empty asserts that
+// coproduct_arm_keys(^UriScheme) returns a non-empty list, and it is green on main. So this pair
+// is the case where the bare seam picks one of two declarations and says nothing, while the pair
+// in the claims above is the case where it raises an untyped host error instead. Both are the same
+// missing scope; only the guarded route below tells them apart from a caller's position, and the
+// contrast claim is CITED rather than restated here so this module does not fork it.
+test fn forked_spelling_answered_today_by_the_bare_seam_refuses_when_guarded() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^UriScheme
+    )
+  )
+}

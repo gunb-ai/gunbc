@@ -1,7 +1,19 @@
 module v2.std.node_reflection
 
+import std.decl_ref { DeclarationRef }
 import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  invariant_port_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.decl_index { DeclFact, TypeItem, decl_facts, logical_qualified_name_from_module }
 import v2.std.node { Node, Symbol }
 import v2.std.node_query { coproduct_arm_key_list_from_node }
 
@@ -44,4 +56,119 @@ fn coproduct_nullary_inhabitants<T>(
     type_name: type_name,
     discriminant_of: discriminant_of
   )
+}
+
+// THE SCOPE-CARRYING ROUTE, AND WHY THE BARE ONE ABOVE CANNOT STAY THE ONLY ONE.
+//
+// `resolve_type_node` keys on a BARE spelling. Its host arm (v4_bridge.resolve_type_node,
+// realized by v1.stage0.coproduct_reflection type_item_by_name) answers it by scanning the
+// interpreter's loaded modules in order and returning the FIRST item whose authored name
+// matches. When one spelling is declared as a closed coproduct in two modules, that scan
+// returns whichever module the load order reached first -- a different arm set, with no
+// diagnostic. It is DESIGN section 5 silent wrongness: not a refusal, a wrong answer that
+// typechecks. The corpus inhabits the invalid state today, so this is a live class and not a
+// hypothetical one; the discriminating pair enrolled against it is in
+// `v2.test.claim.manual.scoped_type_reflection_conformance`.
+//
+// The fix mints NO new identity and NO new host seam, which is the whole point (DESIGN
+// section 3). The multiplicity that decides ambiguity is already a substrate fact:
+// `v2.std.decl_index` decl_facts carries one row per declaration with its bare `name`, its
+// `kind`, and its `qualified_name`. So the guard is derivable here, in `.dag`, from the index
+// that `v2.std.decl_ref_resolution` already treats as the authority for exactly this question
+// -- "how many declarations answer to this name" -- and whose five-arm refusal law this module
+// deliberately does not restate.
+//
+// Consumers (DESIGN section 3c). Consumed by execution in this change: the conformance witness
+// named above. Declared frontier, with its trigger stated: the floor's cross-claim memo and
+// `coproduct_arm_keys`'s callers (`v2.lens.affected_set`, the generated coproduct witnesses)
+// cut over to `coproduct_arm_keys_at` once a key shape is agreed with the floor-cost lane --
+// that cutover is the trigger, and until it lands the bare pair above stays reachable and
+// stays unguarded, which this annotation states rather than hides.
+fn type_decl_facts_named(pool_roots: List<String>, type_name: Symbol) -> List<DeclFact> {
+  filter(
+    xs: decl_facts(pool_roots: pool_roots),
+    predicate: fn(fact) {
+      fact.name == symbol_lexeme(sym: type_name) && fact.kind == TypeItem
+    }
+  )
+}
+
+fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: invariant,
+    at: invariant_port_locus(port: type_name, invariant: invariant),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+// A bare spelling resolves ONLY where the index proves exactly one type declaration answers to
+// it; zero and many each refuse, typed and located, rather than widening to a first match
+// (DESIGN section 5 -- a failure arm refuses, never widens). The single-row arm is the only one
+// that may reach the bare host seam, and it may do so precisely because uniqueness has been
+// established BEFORE the call rather than assumed by it.
+fn resolve_type_node_checked(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
+  let candidates = type_decl_facts_named(pool_roots: pool_roots, type_name: type_name)
+  let n = length(xs: candidates)
+  if n == 0 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_declaration_absent
+      )
+    )
+  } else if n > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_spelling_ambiguous_across_modules
+      )
+    )
+  } else {
+    outcome_accepted(value: resolve_type_node(type_name: type_name))
+  }
+}
+
+fn coproduct_arm_keys_checked(
+  pool_roots: List<String>,
+  type_name: Symbol
+) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: resolve_type_node_checked(pool_roots: pool_roots, type_name: type_name),
+    f: fn(node) {
+      outcome_accepted(value: coproduct_arm_key_list_from_node(node: node))
+    }
+  )
+}
+
+// THE ROUTE THAT MAKES A CALLER SAY WHICH MODULE IT MEANT. `resolve_type_node_checked` refuses an
+// ambiguous spelling but cannot resolve one; a caller that legitimately means one of several
+// same-spelled types names it by citation instead, reusing `std.decl_ref` DeclarationRef -- the
+// corpus's existing carrier for "this declaration, in this module" -- so no second spelling of a
+// scoped type identity is minted here. When PR #11264 lands its occurrence bindings, this is the
+// declaration whose parameter becomes that binding: the citation is refined in place, not forked.
+fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcome<Node> {
+  let wanted = logical_qualified_name_from_module(
+    module_name: ref.module_path as String,
+    name: ref.decl_name as String
+  )
+  let type_name = symbol_intern_lexeme(lexeme: ref.decl_name as String)
+  let candidates = type_decl_facts_named(pool_roots: pool_roots, type_name: type_name)
+  let scoped = filter(xs: candidates, predicate: fn(fact) { fact.qualified_name == wanted })
+  if length(xs: scoped) == 1 && length(xs: candidates) == 1 {
+    outcome_accepted(value: resolve_type_node(type_name: type_name))
+  } else if length(xs: scoped) == 0 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_declaration_absent
+      )
+    )
+  } else {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_unreachable_through_bare_host_seam
+      )
+    )
+  }
 }
