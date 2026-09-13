@@ -32,7 +32,7 @@ import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_tool_call_parser,
 }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_arm_placement { glm_canary_host_claim }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   Glm53Exl3_205, Gitcommit90Sm121Exl3, SingleSparkTp1,
@@ -162,7 +162,7 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
   topology: SingleSparkTp1,
-  host: operator_host_srv9,
+  host: glm_canary_host_claim.host,
   served_model_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   max_model_len: token_count(count: 262144),
   max_num_seqs: ExperimentalOperatorBound {

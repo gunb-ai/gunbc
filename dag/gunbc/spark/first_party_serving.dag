@@ -676,16 +676,19 @@ fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> Pro
     UsageStatsLaunchUnread { obligation: _ } =>
       ProviderPathUnread {
         obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+        consulted: [],
       }
     UsageStatsDisabledByLaunch { mechanism: _ } =>
       ProviderPathUnread {
         obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_declared_environment_obligation"),
+        consulted: [],
       }
     UsageStatsEnabledByDefault { basis: _ } =>
       match vllm_usage_stats_reporting.content_class {
         CarriesRequestMaterial =>
           ProviderPathUnread {
             obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_usage_stats_carrying_request_material_obligation"),
+            consulted: [],
           }
         ConfigurationAndHardwareMetadataOnly =>
           ProviderPathLocated {

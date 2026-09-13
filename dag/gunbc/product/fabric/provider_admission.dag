@@ -11,7 +11,7 @@ import product.fabric.provider_route {
   PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
   JurisdictionDropEnrollment, jurisdiction_drop_enrolled,
   data_bearing_paths, provider_access_paths,
-  first_unresolved_obligation, downstream_obligation,
+  first_unread_standing, downstream_obligation,
 }
 
 // THE MISSING NON-ECONOMIC GATE. The code in this tree that actually places work admits an offer
@@ -227,7 +227,11 @@ type ProviderUsePermit<P> sole_constructor {
 // it REFUSES. It never widens to "all permitted".
 type ProviderUseRefusal
   = ProviderRouteUnclassified { route: ProviderRoute }
-  | ProviderRouteFactsIncomplete { route: ProviderRoute, obligation: DeclarationRef }
+  | ProviderRouteFactsIncomplete {
+      route: ProviderRoute,
+      obligation: DeclarationRef,
+      consulted: List<DeclarationRef>,
+    }
   | DownstreamProviderUnassessed { obligation: DeclarationRef }
   | PostureJurisdictionsUnread { obligation: DeclarationRef }
   | TransferOrLocationUnresolved { route: ProviderRoute, jurisdiction: DeclarationRef }
@@ -261,7 +265,7 @@ type ProviderUseAdmission<P>
 fn refusal_reason(c: ProviderUseRefusal) -> String {
   match c {
     ProviderRouteUnclassified { route } => "route unclassified",
-    ProviderRouteFactsIncomplete { route, obligation } => "route facts incomplete",
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => "route facts incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream unassessed",
     PostureJurisdictionsUnread { obligation } => "posture jurisdictions unread",
     TransferOrLocationUnresolved { route, jurisdiction } => "transfer or location unresolved",
@@ -374,10 +378,28 @@ fn disposition_program_refusal(p: DispositionProgram, obligation: DeclarationRef
 // the coproduct that caused the refusal, so there is no seed anywhere and no arm carries a value
 // that had to be invented to fill a slot. An empty result means the condition does not hold; a
 // one-element result IS the refusal, carrying the obligation its own arm named.
+//
+// consulted TRAVELS ON THE FACTS-INCOMPLETE ARM because the remedy differs: empty means go read
+// a source for the first time, nonempty means the published sources have been read and do not
+// answer, so the next step is to ask the provider. path_refusals matches first_unread_standing
+// ONCE and projects both fields from that standing, so obligation and consulted cannot name
+// different paths (DESIGN sections 2 and 3).
 fn path_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
-  map(
-    first_unresolved_obligation(c: facts.data_paths),
-    o => ProviderRouteFactsIncomplete { route: facts.route, obligation: o },
+  fold(
+    first_unread_standing(c: facts.data_paths),
+    init: [],
+    f: fn(acc, p) {
+      match p {
+        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+        ProviderPathAbsent { evidence } => acc,
+        ProviderPathUnread { obligation, consulted } =>
+          [ProviderRouteFactsIncomplete {
+            route: facts.route,
+            obligation: obligation,
+            consulted: consulted,
+          }],
+      }
+    },
   )
 }
 
@@ -461,7 +483,7 @@ fn nonpermitted_jurisdiction_refusals(
                 s: subject, route: route, operator: operator, jurisdiction: jurisdiction)]
             },
           ProviderPathAbsent { evidence } => acc,
-          ProviderPathUnread { obligation } => acc,
+          ProviderPathUnread { obligation, consulted } => acc,
         }
       }
     },
