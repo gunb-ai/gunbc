@@ -12,7 +12,7 @@ import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
 import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityCoversRange, range_end }
-import gunbc.machine_intake_pre_os_replay { pre_os_commit_binds_chunk, pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
 // Parser selection is an observation request, not a success goal. A platform
@@ -57,28 +57,49 @@ type PreOsCapturedCycleReading {
 }
 type PreOsCycleScan { next_offset: Nat, cycles: List<PreOsCapturedCycleReading> }
 
-type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String }
+type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, NonEmptyStr> }
+
+// Check each supplied range through its carrier and keep the refusal at the
+// preceding/current chunk location. No isolation silently discards its cause.
+fn pre_os_composable_payload(observation: PreOsReplayObservation) -> ObservationAttempt<String, NonEmptyStr> {
+  match pre_os_committed_envelope(envelope: observation.envelope) {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: _ } => match pre_os_chunk_continuity(envelope: observation.envelope) {
+      ContinuityCoversRange => observation.payload
+      coverage => ObservationRefused { cause: to_string(coverage) as NonEmptyStr }
+    }
+  }
+}
 
 fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation) -> PreOsConsoleSpan {
   let text = match current.payload { ObservationEstablished { observed: payload } => payload ObservationRefused { cause: _ } => "" }
-  let isolated = PreOsConsoleSpan { chunks: [current], payload: text }
-  match previous {
-    Absent => isolated
-    Present { value: before } => match before.chunks.skip(n: if count(before.chunks) == 0 { 0 } else { count(before.chunks) - 1 }).first() {
-      Absent => isolated
-      Present { value: last } =>
-        if pre_os_same_source_generation(a: last.envelope, b: current.envelope)
-          && last.envelope.chunk.occurrence.session == current.envelope.chunk.occurrence.session
-          && last.envelope.chunk.occurrence.ownership_generation == current.envelope.chunk.occurrence.ownership_generation
-          && current.envelope.chunk.occurrence.receive_sequence == last.envelope.chunk.occurrence.receive_sequence + 1
-          && range_end(range: last.envelope.chunk.range) == current.envelope.chunk.range.first_offset
-          && match pre_os_chunk_continuity(envelope: last.envelope) { ContinuityCoversRange => true _ => false }
-          && match pre_os_chunk_continuity(envelope: current.envelope) { ContinuityCoversRange => true _ => false }
-          && pre_os_commit_binds_chunk(envelope: last.envelope) && pre_os_commit_binds_chunk(envelope: current.envelope)
-          && pre_os_envelope_binding_consistent(envelope: last.envelope) && pre_os_envelope_binding_consistent(envelope: current.envelope)
-          && match current.payload { ObservationEstablished { observed: _ } => true _ => false } {
-          PreOsConsoleSpan { chunks: concat(before.chunks, [current]), payload: concat(before.payload, text) }
-        } else { isolated }
+  let composition: ObservationAttempt<String, NonEmptyStr> = match pre_os_composable_payload(observation: current) {
+    ObservationRefused { cause } => ObservationRefused { cause: concat("current chunk: ", cause as String) as NonEmptyStr }
+    ObservationEstablished { observed: current_text } => match previous {
+      Absent => ObservationRefused { cause: "no preceding console span" }
+      Present { value: before } => match before.chunks.skip(n: if count(before.chunks) == 0 { 0 } else { count(before.chunks) - 1 }).first() {
+        Absent => ObservationRefused { cause: "preceding console span has no chunks" }
+        Present { value: last } => match pre_os_composable_payload(observation: last) {
+          ObservationRefused { cause } => ObservationRefused { cause: concat("preceding chunk: ", cause as String) as NonEmptyStr }
+          ObservationEstablished { observed: _ } =>
+            if !pre_os_same_source_generation(a: last.envelope, b: current.envelope) {
+              ObservationRefused { cause: concat("source generation/binding differs: ", to_string(last.envelope.binding), " / ", to_string(last.envelope.source_generation), " -> ", to_string(current.envelope.binding), " / ", to_string(current.envelope.source_generation)) as NonEmptyStr }
+            } else if last.envelope.chunk.occurrence.session != current.envelope.chunk.occurrence.session
+              || last.envelope.chunk.occurrence.ownership_generation != current.envelope.chunk.occurrence.ownership_generation
+              || current.envelope.chunk.occurrence.receive_sequence != last.envelope.chunk.occurrence.receive_sequence + 1 {
+              ObservationRefused { cause: concat("nonadjacent collector occurrences: ", to_string(last.envelope.chunk.occurrence), " -> ", to_string(current.envelope.chunk.occurrence)) as NonEmptyStr }
+            } else if range_end(range: last.envelope.chunk.range) != current.envelope.chunk.range.first_offset {
+              ObservationRefused { cause: concat("nonadjacent source ranges: ", to_string(last.envelope.chunk.range), " -> ", to_string(current.envelope.chunk.range)) as NonEmptyStr }
+            } else { ObservationEstablished { observed: concat(before.payload, current_text) } }
+        }
+      }
+    }
+  }
+  match composition {
+    ObservationRefused { cause: _ } => PreOsConsoleSpan { chunks: [current], payload: text, composition: composition }
+    ObservationEstablished { observed: combined } => match previous {
+      Present { value: before } => PreOsConsoleSpan { chunks: concat(before.chunks, [current]), payload: combined, composition: composition }
+      Absent => PreOsConsoleSpan { chunks: [current], payload: text, composition: composition }
     }
   }
 }
@@ -112,7 +133,8 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
 type PreOsTimelineRow {
   observation: PreOsReplayObservation
   retention: RetentionExposure
-  association: ObservationAttempt<Bool, NonEmptyStr>
+  association: ObservationAttempt<ObservationEnvelope, NonEmptyStr>
+  console_composition: ObservationAttempt<String, NonEmptyStr>
   cycles: List<PreOsCapturedCycleReading>
   sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr>
   configuration: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
@@ -130,13 +152,13 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
   let envelopes = map(observations, o => o.envelope)
   let result = fold(observations, init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, o) => {
     if any(acc.rows, row => pre_os_same_envelope(a: row.observation.envelope, b: o.envelope)) { acc } else {
-    let association = if o.envelope.binding.enrolled_machine != machine || !pre_os_envelope_binding_consistent(envelope: o.envelope) {
-      ObservationRefused { cause: "observation source/owner binding does not establish this machine" }
+    let association: ObservationAttempt<ObservationEnvelope, NonEmptyStr> = if o.envelope.binding.enrolled_machine != machine {
+      ObservationRefused { cause: concat("timeline machine ", machine as String, " differs from binding ", o.envelope.binding.enrolled_machine as String) as NonEmptyStr }
     } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {
       ObservationRefused { cause: "same occurrence has conflicting source or artifact identity; all versions retained" }
     } else { match o.payload {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
-      ObservationEstablished { observed: _ } => ObservationEstablished { observed: true }
+      ObservationEstablished { observed: _ } => pre_os_bound_envelope(envelope: o.envelope)
     } }
     let previous = match filter(acc.cursors, c => pre_os_same_source(a: c.envelope, b: o.envelope)).first() {
       Absent => ObservationRefused { cause: "no source cursor" }
@@ -197,6 +219,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     let row = PreOsTimelineRow {
       retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
+      console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: "SEL snapshot is not a console span" } },
       cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac, rendered_host_mac: rendered_host_mac) PreOsSelSnapshot => [] } _ => [] },
       boot: pre_os_boot_assessment(milestones: milestones), training: match configuration {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
@@ -215,6 +238,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
 // cannot be published as structural proof of durable storage.
 fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
   join(map(rows, row => concat(to_string(row.observation.envelope), "\nassociation=", to_string(row.association),
+    "\nconsole_composition=", to_string(row.console_composition),
     "\nretention=", to_string(row.retention),
     "\npersistence_evidence=mitigatable; supplied commit and continuity do not structurally prove stored bytes",
     "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),

@@ -1,12 +1,13 @@
 module test.claim.pre_os_replay_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
+import gunbc.fleet_observation_collector_ownership { FollowerReadOnly }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
-import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused }
-import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for }
-import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
+import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, LocalCommitStanding, LocalCommitNotAttempted }
+import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session }
+import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
 import gunbc.machine_intake_pre_os_timeline { pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
 import test.claim.pre_os_observer_witness { observer_test_boot_payload }
@@ -142,4 +143,36 @@ test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
   let interrupted = pre_os_console_span(previous: Present { value: before }, current: gap)
   joined.payload == "NOTICE:  DRAM FW version 210525" && count(joined.chunks) == 2
     && interrupted.payload == "sion 210525" && count(interrupted.chunks) == 1
+    && match joined.composition { ObservationEstablished { observed: combined } => combined == joined.payload _ => false }
+    && match interrupted.composition { ObservationRefused { cause } => contains(cause as String, "current chunk") && contains(cause as String, "reconnect lost continuity") _ => false }
+}
+
+// The SEL cursor consumer must preserve independent commit and ownership causes.
+// These fixtures change the evidence, not the observer's refusal implementation.
+test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
+  let base = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let positive = pre_os_sel_cursor(envelope: base, payload: baseline_text())
+  let commits: List<LocalCommitStanding> = [LocalCommitNotAttempted, t_commit_for(payload: "different payload")]
+  match positive { ObservationEstablished { observed: _ } => true _ => false }
+    && all(commits, standing => {
+      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+        ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        local_commit: standing, downstream: base.downstream, continuity: base.continuity }
+      match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
+        ObservationRefused { cause } => match standing {
+          LocalCommitNotAttempted => contains(cause as String, "CommitNoReceipt")
+          _ => contains(cause as String, "CommitAttestsOtherPayload")
+        }
+        _ => false
+      }
+    })
+    && {
+      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+        ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
+      match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
+        ObservationRefused { cause } => contains(cause as String, "FollowerReadOnly")
+        _ => false
+      }
+    }
 }
