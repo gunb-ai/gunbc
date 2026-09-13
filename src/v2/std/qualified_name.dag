@@ -215,51 +215,48 @@ fn qualified_name_snoc(qn: QualifiedName, segment: Symbol) -> QualifiedName {
   list_snoc_item(xs: qn, item: segment)
 }
 
-// THE CHEAP PRECONDITION ON THIS FOLD, HOMED BESIDE IT SO THERE IS ONE RECOGNISER AND NOT TWO.
+// THE CHEAP REJECT LIVES INSIDE THIS ENTRY, NOT BESIDE IT.
 //
-// qualified_name_from_node must FOLD AN ENTIRE SUBTREE before it can answer, which makes it
-// quadratic for any walker that asks it at every node and then descends into the same subtree.
-// v2.compiler.reference_site_collector needed an O(1) guard for exactly that reason and grew its
-// own -- and a second place deciding what a qualified-name spine LOOKS LIKE is the section 3 fork,
-// with a specific and silent failure: widen the accepted spine here (a third labelled edge, a
-// differently-labelled tail) and the far-away prefilter answers `false`, so a walker falls through
-// and emits every segment of `a.b.C` as its own bare mention. The names would still resolve; the
-// denominator would quietly change shape.
+// This fold must walk an ENTIRE SUBTREE before it can answer, so a walker that asks it at every
+// node and then descends into the same subtree is quadratic in nesting depth --
+// v2.compiler.reference_site_collector needed an O(1) guard for exactly that reason. That guard was
+// first written as a pair of Bool predicates in this module beside the fold. Homing them here fixed
+// the second-SITE nickname and left a second SURFACE: two things deciding what a spine looks like,
+// one of them a Bool restatement of an answer this Outcome already gives. DESIGN section 2's test
+// is net concepts, not net files.
 //
-// So the guard lives HERE, next to the fold whose shape it asserts, and qn_fold_init's own arity
-// rule is what it mirrors: a spine is a Conj of exactly two children labelled head and tail. A
-// change to that rule now has one obvious neighbour to update rather than one distant consumer to
-// remember.
-fn qualified_name_spine_edge_label(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: sym } =>
-      (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
-    Positional => false
-  }
-}
-
-fn node_is_qualified_name_spine(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 2 {
-        fold(node.children, init: true, f: fn(acc, edge) {
-          acc && qualified_name_spine_edge_label(edge: edge)
-        })
-      } else {
-        false
-      }
-    _ => false
-  }
-}
-
+// SO THE REJECT IS THE FOLD'S OWN FIRST STEP, AND THE ACCEPTANCE SET IS UNCHANGED BY CONSTRUCTION.
+// qn_fold_init already admits exactly two Conj shapes -- zero children (the empty name) and two
+// children -- and errors on every other arity; the two-child case is only a spine when its labels
+// are the head/tail pair qn_fold_step reads. Checking those conditions BEFORE folding returns the
+// identical verdict on every input and merely stops the walk on inputs that were always going to
+// be rejected. Seven call sites outside this module consume this function, which is why the
+// acceptance set was preserved rather than narrowed to what one caller happened to need.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
-      match acc {
-        QnFoldDone { qn: qn } => outcome_accepted(value: qn)
-        QnFoldError { diag: d } => outcome_rejected(d: d)
-        _ => outcome_rejected(d: Diagnostic {
+      if count(root.children) == 0 {
+        outcome_accepted(value: Empty)
+      } else if count(root.children) == 2
+        && fold(root.children, init: true, f: fn(acc, edge) {
+             acc && match edge.label {
+               Named { name: sym } =>
+                 (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
+               Positional => false
+             }
+           }) {
+        let acc = fold_node(n: root, algebra: NodeFold { init: qn_fold_init, step: qn_fold_step })
+        match acc {
+          QnFoldDone { qn: qn } => outcome_accepted(value: qn)
+          QnFoldError { diag: d } => outcome_rejected(d: d)
+          _ => outcome_rejected(d: Diagnostic {
+            reason: ^qualified_name_structure_invalid,
+            at: node_locus(node: root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        }
+      } else {
+        outcome_rejected(d: Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }

@@ -18,7 +18,6 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
-  node_is_qualified_name_spine,
   qualified_name_from_node,
   qualified_name_snoc
 }
@@ -108,7 +107,7 @@ import v2.extdeps.languages.dag {
 // not. The two rules agree wherever a binding and a mention coincide and differ only where the
 // index deliberately stops walking, which is the difference between the two questions rather than
 // a divergence between two answers to one question.
-// THE O(1) GUARD THAT KEEPS THIS WALK LINEAR LIVES IN v2.std.qualified_name, NOT HERE.
+// THE O(1) REJECT THAT KEEPS THIS WALK LINEAR IS INSIDE qualified_name_from_node ITSELF.
 //
 // qualified_name_from_node FOLDS AN ENTIRE SUBTREE before it can answer, and this walk then
 // descends into that same subtree -- so asking it at every Conj made the traversal quadratic in
@@ -122,8 +121,10 @@ import v2.extdeps.languages.dag {
 // the children and emits every segment of `a.b.C` as its own BARE SAME-MODULE mention -- which is
 // the cross-module class XL-0's denominator is made of, quietly turned into local noise.
 //
-// node_is_qualified_name_spine now sits beside the fold whose shape it asserts, and this module
-// consumes it.
+// It was written here first, then moved beside that fold as a pair of Bool predicates, and is now
+// the fold's OWN FIRST STEP -- because a Bool sitting beside the Outcome was still a second surface
+// deciding the same thing, and section 2's test is net CONCEPTS rather than net files. This module
+// matches the Outcome and gets the linear behaviour for free.
 fn reference_sites_in_edge(
   acc: ReferenceSiteCollection,
   position: QualifiedName,
@@ -206,76 +207,48 @@ fn reference_sites_in_node(
   inside_import: Bool,
   node: Node
 ) -> ReferenceSiteCollection {
-  if node_is_qualified_name_spine(node: node) {
-    match qualified_name_from_node(root: node) {
-      Accepted { value: qn, diagnostics: _ } =>
-        if is_empty(xs: qn) {
+  match qualified_name_from_node(root: node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      if is_empty(xs: qn) {
+        reference_sites_in_children(
+          acc: acc,
+          position: position,
+          inside_import: inside_import,
+          node: node
+        )
+      } else {
+        collection_snoc_site(
+          acc: acc,
+          inside_import: inside_import,
+          site: ReferenceSite { position: position, spelling: qn }
+        )
+      }
+    Rejected { diagnostics: _ } =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          if dag_node_is_int_literal_atom(node: node) {
+            acc
+          } else {
+            collection_snoc_site(
+              acc: acc,
+              inside_import: inside_import,
+              site: ReferenceSite {
+                position: position,
+                spelling: Cons { head: sym, tail: Empty }
+              }
+            )
+          }
+        _ =>
           reference_sites_in_children(
             acc: acc,
             position: position,
             inside_import: inside_import,
             node: node
           )
-        } else {
-          collection_snoc_site(
-            acc: acc,
-            inside_import: inside_import,
-            site: ReferenceSite { position: position, spelling: qn }
-          )
-        }
-      Rejected { diagnostics: _ } =>
-        reference_sites_in_children(
-          acc: acc,
-          position: position,
-          inside_import: inside_import,
-          node: node
-        )
-    }
-  } else {
-    match node.kind {
-      TypeNode { connective: Atom { identity: sym } } =>
-        if dag_node_is_int_literal_atom(node: node) {
-          acc
-        } else {
-          collection_snoc_site(
-            acc: acc,
-            inside_import: inside_import,
-            site: ReferenceSite {
-              position: position,
-              spelling: Cons { head: sym, tail: Empty }
-            }
-          )
-        }
-      _ =>
-        reference_sites_in_children(
-          acc: acc,
-          position: position,
-          inside_import: inside_import,
-          node: node
-        )
-    }
+      }
   }
 }
 
-// A module whose header does not yield a qualified name has no position to sit its mentions at, so
-// it contributes none. That is a refusal to answer rather than a widened answer: the same module
-// is absent from the roster v2.compiler.resolution_provenance resolves owners against, so a site
-// collected at a guessed position could only have produced a mis-attributed owner.
-// AN UNREADABLE ROOT IS COUNTED, NOT DROPPED.
-//
-// This arm used to be `Rejected => acc`: a root whose module header does not resolve contributed
-// nothing and SAID nothing, so a caller could not tell an unreadable module from one that genuinely
-// contains no mentions. That is a silent, uncounted degradation, which DESIGN section 5 names a
-// hard reject rather than a weak arm -- "a failure arm must refuse, never widen", every degradation
-// a typed, located, countable diagnostic. It is carried here as all three: TYPED (its own
-// constructor, not a missing row), LOCATED (the locus of the root that could not be read), and
-// COUNTABLE (a list a consumer folds, so "n roots were unreadable" is answerable rather than
-// inferred from a short denominator).
-//
-// THE CONSEQUENCE FOR THE DENOMINATOR IS THE WHOLE POINT: XL-0 is a DENOMINATOR, so a root silently
-// missing from it does not make the number slightly small, it makes the number a different
-// question. A consumer that wants a total must join the sites with this list and refuse if it is
-// non-empty; one that wants a partial may proceed knowing exactly what it lost.
 type UnreadableModuleRoot {
   locus: Locus
 }
