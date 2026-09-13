@@ -134,6 +134,12 @@ type SeedMirrorRow {
   expected: Int
 }
 
+// THE THREE MEMORY-STALL MIRRORS were marked in the seed by the memory-stall governor landing
+// (2f75219598b, 2026-08-30) with no roster row, so the backward arm has been false since. Each
+// expected value derives from its gunbc.memory_stall_refusal row. authority_symbol is the string
+// the seed's marker CARRIES: for the first two that string names no declaration (the rows are
+// memory_stall_major_fault_rate_threshold and memory_stall_verdict_window_minimum_wall), a seed
+// citation defect this roster records rather than hides.
 fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
   [
     SeedMirrorRow {
@@ -172,12 +178,6 @@ fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
       authority_symbol: "whole_corpus_compile_measured_peak_demand",
       expected: byte_size_count(b: whole_corpus_compile_measured_peak_demand()),
     },
-    // THE THREE MEMORY-STALL MIRRORS were marked in the seed by the memory-stall governor landing
-    // (2f75219598b, 2026-08-30) with no roster row, so the backward arm has been false since. Each
-    // expected value derives from its gunbc.memory_stall_refusal row. authority_symbol is the string
-    // the seed's marker CARRIES: for the first two that string names no declaration (the rows are
-    // memory_stall_major_fault_rate_threshold and memory_stall_verdict_window_minimum_wall), a seed
-    // citation defect this roster records rather than hides.
     SeedMirrorRow {
       seed_path: memory_governor_seed_path,
       decl_prefix: "pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = ",
