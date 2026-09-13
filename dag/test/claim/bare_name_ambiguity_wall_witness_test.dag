@@ -8,7 +8,6 @@ import tools.multi_module_compile_fixture {
   FixtureSource,
   fixture_source,
   claim_scope_fixture,
-  claim_scope_was_refused,
   claim_scope_refusal_names,
   claim_scope_was_accepted,
   claim_scope_compile_refusal_has_class
@@ -147,8 +146,18 @@ fn amb_marker_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
   )
 }
 
+// PINNED TO THE CAUSE, NOT TO "SOME REFUSAL". `claim_scope_was_refused` was the obvious reader
+// and is deliberately not used: gunbc#11143 deleted it as a dangling declaration, and restoring
+// it to satisfy this row would re-add a weaker predicate than the one that survived. The reader
+// that did survive requires the refusal to NAME its cause, which is the difference the
+// instrument's own doc argues for -- a probe satisfied by ANY refusal goes green the day an
+// unrelated one starts firing first, and would then be cited as coverage for a cause it never
+// observed.
 test fn bare_value_read_of_an_ambiguous_name_refuses() -> Bool {
-  claim_scope_was_refused(o: amb_scope_over(user_source: amb_bare_read_user_source))
+  claim_scope_refusal_names(
+    cause_marker: "AmbiguousBareNameRead",
+    o: amb_scope_over(user_source: amb_bare_read_user_source)
+  )
 }
 
 test fn a_field_label_sharing_an_ambiguous_name_does_not_refuse() -> Bool {
