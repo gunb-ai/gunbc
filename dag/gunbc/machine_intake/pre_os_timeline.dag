@@ -66,7 +66,7 @@ fn pre_os_composable_payload(observation: PreOsReplayObservation) -> Observation
   match pre_os_committed_envelope(envelope: observation.envelope) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: _ } => match pre_os_chunk_continuity(envelope: observation.envelope) {
-      ContinuityCoversRange => observation.payload
+      ContinuityCoversRange { reach: _ } => observation.payload
       coverage => ObservationRefused { cause: to_string(coverage) as NonEmptyStr }
     }
   }

@@ -412,14 +412,6 @@ test fn w_evidence_must_name_one_subject() -> Bool {
 // count, so there is no caller-supplied flag left in the middle of the wall -- which is what the
 // first draft got wrong.
 test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
-  let requested = t_range(first: 0, len: 100)
-  let silent = t_envelope(
-    ownership: t_owner(fencing: t_unfenced),
-    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
-    local_commit: t_commit_for(payload: "no-host-bytes-received"),
-    continuity: t_reach(through: 100),
-    downstream: DownstreamNotOffered,
-  )
   let spoke = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "host bytes", first: 0, len: 100),
@@ -427,8 +419,40 @@ test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
     continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
-  is_silence(fact: source_byte_fact(envelope: silent, requested: requested))
-  && is_observed(fact: source_byte_fact(envelope: spoke, requested: requested))
+  let silent = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
+    local_commit: t_commit_for(payload: "no-host-bytes-received"),
+    continuity: t_reach_of_the_empty_chunk(),
+    downstream: DownstreamNotOffered,
+  )
+  is_observed(fact: source_byte_fact(envelope: spoke, requested: t_range(first: 0, len: 100)))
+  && is_silence(fact: source_byte_fact(envelope: silent, requested: t_range(first: 0, len: 0)))
+}
+
+// THE SILENT ENVELOPE'S CONTINUITY IS DERIVED FROM ITS OWN EMPTY CHUNK, which is the repair to a
+// control that used to encode the very hole it was guarding. It previously carried a chunk of length
+// zero beside t_reach(through: 100) -- a reach derived from a DIFFERENT, hundred-byte committed chunk
+// -- and minted silence on the strength of bytes the envelope did not hold. Continuity advanced by
+// positive-length committed windows is evidence those offsets WERE captured; attaching it to an empty
+// chunk is the fabricated quiet reading this lane exists to make unwritable, sitting in the positive
+// control for that very wall.
+//
+// Derived from the empty chunk itself, the reach lands exactly at its start, so the only range this
+// envelope can answer for is the degenerate one there -- which is the honest limit, because offsets
+// ARE bytes and a chunk holding none covers no width.
+fn t_reach_of_the_empty_chunk() -> StreamContinuity {
+  match continuity_from_committed_chunks(
+    committed: t_one(c: t_committed_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0)),
+    subject: t_stream,
+    from: t_pos(at: 0),
+  ) {
+    DerivedContinuity { continuity: c } => c
+    RunCrossesSubjects { expected: _, chunk: _ } => ContinuityUnknown { detail: "fixture crossed subjects" }
+    RunOutOfReceiveOrder { previous: _, observed: _ } => ContinuityUnknown { detail: "fixture out of order" }
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => ContinuityUnknown { detail: "fixture overlapped" }
+    RunPositionsIncomparable { left: _, right: _ } => ContinuityUnknown { detail: "fixture mixed streams" }
+  }
 }
 
 // COMMIT BYTES X, ASK ABOUT CHUNK Y: THE BINDING MUST NOT AGREE. This is the control for the
@@ -498,7 +522,7 @@ fn attests(b: CommitBinding) -> Bool {
 
 fn continuity_covers_range(c: ContinuityCoverage) -> Bool {
   match c {
-    ContinuityCoversRange => true
+    ContinuityCoversRange { reach: _ } => true
     ContinuityNotEstablished { continuity: _ } => false
     ContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     ContinuityPositionsIncomparable { left: _, right: _ } => false
@@ -508,7 +532,7 @@ fn continuity_covers_range(c: ContinuityCoverage) -> Bool {
 fn continuity_falls_short(c: ContinuityCoverage) -> Bool {
   match c {
     ContinuityShortOfRange { verified_through: _, requested_end: _ } => true
-    ContinuityCoversRange => false
+    ContinuityCoversRange { reach: _ } => false
     ContinuityNotEstablished { continuity: _ } => false
     ContinuityPositionsIncomparable { left: _, right: _ } => false
   }
@@ -1129,6 +1153,56 @@ fn unknown(c: StreamContinuity) -> Bool {
     ContinuityEstablished { reach: _ } => false
     ContinuityGap { gap: _, cause: _ } => false
   }
+}
+
+// BORROWED REACH CANNOT MINT SILENCE, and this is the case the positive control used to BE.
+//
+// An empty chunk at offset 0 beside a continuity derived from a DIFFERENT hundred-byte committed
+// chunk: the reach says the stream advanced to 100, the envelope holds none of those bytes, and the
+// old fold answered SourceProducedNoBytesInRange over [0,100). That is a quiet reading fabricated from
+// somebody else's captured bytes -- the exact class this lane exists to end, reached through the one
+// witness that was supposed to prove the wall real.
+//
+// THE DISCRIMINATING RED: this refuses only because the empty branch now takes the same end check as
+// the non-empty one AND requires the reach to EQUAL the requested end. Remove either and it greens.
+test fn w_reach_borrowed_from_another_chunk_cannot_mint_silence() -> Bool {
+  let borrowed = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
+    local_commit: t_commit_for(payload: "no-host-bytes-received"),
+    continuity: t_reach(through: 100),
+    downstream: DownstreamNotOffered,
+  )
+  !is_silence(fact: source_byte_fact(envelope: borrowed, requested: t_range(first: 0, len: 100)))
+  && is_range_not_covered(fact: source_byte_fact(envelope: borrowed, requested: t_range(first: 0, len: 100)))
+}
+
+// THE DEGENERATE CASE THE REACH GUARD ACTUALLY COVERS, written because the borrowed-reach witness
+// above does NOT reach it: that one is stopped by the end check, so mutating the reach guard left it
+// green. A control that does not exercise the guard it is cited for is the defect this branch keeps
+// finding in other people's code.
+//
+// Here the request is the ZERO-LENGTH range at the empty chunk's own position, so the end check
+// passes -- and continuity reaches BEYOND that position, meaning the stream demonstrably advanced past
+// it. Silence would be trivially true of an empty range and materially misleading beside a stream
+// known to have moved on, so the fold refuses instead.
+test fn w_silence_refuses_where_the_stream_advanced_past_the_point() -> Bool {
+  let stream_moved_on = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
+    local_commit: t_commit_for(payload: "no-host-bytes-received"),
+    continuity: t_reach(through: 100),
+    downstream: DownstreamNotOffered,
+  )
+  let stopped_here = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
+    local_commit: t_commit_for(payload: "no-host-bytes-received"),
+    continuity: t_reach_of_the_empty_chunk(),
+    downstream: DownstreamNotOffered,
+  )
+  !is_silence(fact: source_byte_fact(envelope: stream_moved_on, requested: t_range(first: 0, len: 0)))
+  && is_silence(fact: source_byte_fact(envelope: stopped_here, requested: t_range(first: 0, len: 0)))
 }
 
 // ── readers ────────────────────────────────────────────────────────────────────────────────────

@@ -130,7 +130,7 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, 
         if !pre_os_same_source_generation(a: before.envelope, b: envelope) {
           ObservationRefused { cause: "source generation or binding changed; retain both snapshots without association" }
         } else { match pre_os_chunk_continuity(envelope: envelope) {
-          ContinuityCoversRange => sel_after(watermark: before.watermark, text: payload)
+          ContinuityCoversRange { reach: _ } => sel_after(watermark: before.watermark, text: payload)
           gap => ObservationRefused { cause: to_string(gap) as NonEmptyStr }
         } }
     }

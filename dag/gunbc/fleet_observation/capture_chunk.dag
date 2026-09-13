@@ -601,7 +601,7 @@ fn continuity_walk(
 // is worse than saying nothing, because it is a positive, plausible, actionable claim. It is the class
 // this branch filed, in the position code the branch added to fix a different instance of it.
 type ContinuityCoverage
-  = ContinuityCoversRange
+  = ContinuityCoversRange { reach: StreamPosition }
   | ContinuityNotEstablished { continuity: StreamContinuity }
   | ContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
   | ContinuityPositionsIncomparable { left: SourceStreamId, right: SourceStreamId }
@@ -614,8 +614,8 @@ fn continuity_covers(continuity: StreamContinuity, through: StreamPosition) -> C
       ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
     ContinuityEstablished { reach: reach } =>
       match compare_positions(a: through, b: reach.verified_through) {
-        PositionBefore => ContinuityCoversRange
-        PositionSame => ContinuityCoversRange
+        PositionBefore => ContinuityCoversRange { reach: reach.verified_through }
+        PositionSame => ContinuityCoversRange { reach: reach.verified_through }
         PositionAfter =>
           ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
         PositionIncomparable { left: left, right: right } =>
@@ -677,7 +677,7 @@ type StreamContinuity
 // A caller that wants coverage matches compare_positions and says what an incomparable pair means for
 // its own question. That is three lines at the call site instead of one, and the three lines cannot
 // quietly answer `false` for two different streams.
-
+//
 // WHETHER A COMMITTED CHUNK ACTUALLY COVERS A REQUESTED RANGE. Coverage is arithmetic over the
 // source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
 // lets a machine-lifetime collector license a negative observation at all. A bounded client that
