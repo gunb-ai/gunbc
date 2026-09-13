@@ -162,8 +162,11 @@ fn expected_not_accepting_identities() -> List<DeclarationRef> {
 
 fn expected_unread_standing_identities() -> List<DeclarationRef> {
   [
+    github_actions_provider_identity,
     depot_provider_identity,
     circleci_provider_identity,
+    gitlab_provider_identity,
+    aws_codebuild_provider_identity,
     semaphore_provider_identity,
     google_cloud_build_provider_identity,
   ]

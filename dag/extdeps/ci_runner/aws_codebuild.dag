@@ -18,7 +18,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
-  CurrentlyAcceptingCustomers,
+  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -100,7 +100,5 @@ data aws_codebuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconUnread,
   capacity: CloudOperatorIsTheSeller { vendor_words: "AWS CodeBuild" },
   list_price: ArmListPriceUnread,
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-compute-types.html still lists ARM compute types (read 2026-09-13).",
-  },
+  standing: OfferStandingUnread,
 }
