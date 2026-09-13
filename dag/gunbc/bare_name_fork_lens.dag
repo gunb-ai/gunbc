@@ -1,7 +1,7 @@
 module gunbc.bare_name_fork_lens
 
 import std.types { Bool, Int, String }
-import v2.std.decl_index { DeclFact, ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts }
+import v2.std.decl_index { DeclFact, ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts }
 import std.materialization_ladder { string_list_contains }
 
 // WHAT THIS ANSWERS, AND WHY A COMPILE CANNOT.
@@ -39,7 +39,6 @@ import std.materialization_ladder { string_list_contains }
 fn item_kind_text(kind: ItemKind) -> String {
   match kind {
     FnItem => "fn"
-    FuncItem => "fn"
     TypeItem => "type"
     DataItem => "data"
     ServiceItem => "service"
