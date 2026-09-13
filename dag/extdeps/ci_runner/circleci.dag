@@ -126,4 +126,5 @@ data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 data circleci_arm_list_price: ArmListPriceStanding = ArmCreditsPerMinute {
   per_minute: credits_per_minute(count: 13),
   priced_label: "arm.medium",
+  issuer: circleci_provider_identity,
 }

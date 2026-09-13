@@ -1,12 +1,14 @@
 module test.claim.arm_ci_seller_census_witness
 
 import std.types { Bool, List, NonEmptyStr }
-import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { credits_per_minute_count, hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
   QuotedWithoutBasis,
+  ArmListPriceStanding,
+  ArmCreditsPerMinute,
   RunnerCatalogAvailability,
   RunnerShapeRow,
   RunnerShapesCited,
@@ -16,7 +18,7 @@ import extdeps.ci_runner.types {
 import extdeps.ci_runner.blacksmith { blacksmith_provider_identity }
 import extdeps.ci_runner.depot { depot_provider_identity }
 import extdeps.ci_runner.warpbuild { warpbuild_provider_identity }
-import extdeps.ci_runner.circleci { circleci_provider_identity }
+import extdeps.ci_runner.circleci { circleci_provider_identity, circleci_arm_list_price }
 import extdeps.ci_runner.github_actions { github_actions_provider_identity }
 import extdeps.ci_runner.namespace { namespace_provider_identity }
 import extdeps.ci_runner.buildjet { buildjet_provider_identity }
@@ -259,6 +261,16 @@ test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool {
         },
       ),
     )
+}
+
+test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
+  match circleci_arm_list_price {
+    ArmCreditsPerMinute { per_minute, priced_label, issuer } =>
+      credits_per_minute_count(r: per_minute) == 13
+        && priced_label == "arm.medium"
+        && declaration_ref_eq(a: issuer, b: circleci_provider_identity)
+    _ => false
+  }
 }
 
 test fn a_row_claiming_aarch64_without_a_cited_label_is_red() -> Bool {

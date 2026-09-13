@@ -1002,9 +1002,6 @@ pub type MoneyPerMonth = Rc<MoneyRate<PerMonth>>;
 
 pub type MoneyOnce = Rc<MoneyRate<Once>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AccountCredit(pub std::marker::PhantomData<()>);
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CreditRate<P> {
     pub count: Nat,

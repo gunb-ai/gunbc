@@ -283,7 +283,11 @@ type ArmCapacityChannel
 type ArmListPriceStanding
   = ArmUsdPerMinute { per_minute: MoneyPerMinute, priced_label: NonEmptyStr }
   | ArmUsdPerVcpuMinute { per_vcpu_minute: MoneyPerMinute }
-  | ArmCreditsPerMinute { per_minute: CreditsPerMinute, priced_label: NonEmptyStr }
+  | ArmCreditsPerMinute {
+      per_minute: CreditsPerMinute,
+      priced_label: NonEmptyStr,
+      issuer: DeclarationRef,
+    }
   | ArmUsdPerMonth { per_month: MoneyPerMonth }
   | ArmUsdPerJob { per_job: MoneyOnce }
   | ArmListPriceUnread
