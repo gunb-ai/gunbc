@@ -343,8 +343,11 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
   }
 }
 
-// RLM-1: the unsized row's manual out-of-order dispatch is GONE; the button is disabled with SizeMissing.
-test fn witness_unsized_open_sizing_expectation_refused_size_missing() -> Bool {
+// RLM-1: the open row's manual out-of-order dispatch is GONE; the button is disabled carrying
+// LaunchDispatchBindingMissing. The node refuses because it has NO DISPATCH BINDING, which is a
+// fact about its WorkItemDispatch and not about a size -- sizing is derived now and this row
+// never had a cell to be missing.
+test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> Bool {
   match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -396,7 +399,7 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
 // RLM-1 red control (d, page half): the blocked child renders NO ordinary Launch -- the button is
 // disabled and carries the admission's DependenciesBlocked label naming the exact parents; the
 // override arm that used to make it operable is gone.
-test fn witness_upcoming_sizing_expectation_refused_dependencies_blocked() -> Bool {
+test fn witness_upcoming_node_dispatch_refused_dependencies_blocked() -> Bool {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
