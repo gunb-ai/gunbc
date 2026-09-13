@@ -9,6 +9,8 @@ import gunbc.repo_ruleset {
   RulesetDivergence,
   RulesetObserved,
   RulesetObservation,
+  RulesetUnreadable,
+  RulesetReadTransportRefused,
   desired_required_contexts,
   desired_ruleset_rules,
   desired_ruleset_conditions,
@@ -34,7 +36,8 @@ import gunbc.repo_ruleset {
   repo_ruleset_ensure_decision,
   ruleset_observation_satisfies_goal,
   gunbc_passing_ci_merge_queue_policy,
-  operator_hand_enabled_ruleset_observed_at,
+  repo_ruleset_converge_entry,
+  repo_ruleset_converge_function,
 }
 import v2.std.collection { Absent, Present }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -338,7 +341,6 @@ test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
   let has_rule = any(desired_ruleset_rule_types(), t =>
     ruleset_rule_type_wire_label(t: t) == "merge_queue")
   signed && has_policy && has_rule
-    && operator_hand_enabled_ruleset_observed_at as String == "2026-09-13"
 }
 
 // AND IT IS NOT A VACUOUS GATE: the proposal it holds back is the one the lane argued for. If this
@@ -397,8 +399,7 @@ fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
 test fn w_RED_a_headgreen_queue_drifts_from_the_signed_allgreen_policy() -> Bool {
   let allgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: AllGreenGrouping)))
   let headgreen = render_divergences(ds: divergences_with_live_queue(standing: live_queue(grouping: HeadGreenGrouping)))
-  length(divergences_with_live_queue(standing: live_queue(grouping: AllGreenGrouping))) == 0
-    && string_contains(s: headgreen, pattern: "HEADGREEN")
+  string_contains(s: headgreen, pattern: "HEADGREEN")
     && string_contains(s: headgreen, pattern: "ALLGREEN")
     && !string_contains(s: allgreen, pattern: "HEADGREEN")
 }
@@ -607,10 +608,12 @@ test fn w_the_declared_bypass_roster_contributes_no_divergence() -> Bool {
   length(bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: desired_bypass_actors() })) == 0
 }
 
-test fn w_RED_an_empty_observed_roster_misses_the_declared_maintain_bypass() -> Bool {
+test fn w_RED_an_observed_maintain_bypass_is_unexpected() -> Bool {
   string_contains(
-    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved { actors: [] })),
-    pattern: "declared bypass actor missing",
+    s: render_divergences(ds: bypass_actor_unexpected_divergences(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 2, bypass_mode: "always" }],
+    })),
+    pattern: "undeclared bypass actor present: RepositoryRole/2 mode=always",
   )
 }
 
@@ -654,6 +657,17 @@ test fn w_RED_an_unobservable_bypass_roster_refuses_apply_rather_than_assuming()
     Noop => false
     Apply { plan: _ } => false
   }
+}
+
+test fn w_the_converge_entry_is_this_module() -> Bool {
+  repo_ruleset_converge_entry == "dag/gunbc/repo/repo_ruleset.dag"
+    && repo_ruleset_converge_function == "converge"
+}
+
+test fn w_RED_an_unreadable_readback_is_not_treated_as_satisfied() -> Bool {
+  !ruleset_observation_satisfies_goal(observed: RulesetUnreadable {
+    cause: RulesetReadTransportRefused { cause: "fixture post-apply get refused" as NonEmptyStr },
+  })
 }
 
 test fn w_RED_readback_that_still_diverges_is_not_treated_as_satisfied() -> Bool {

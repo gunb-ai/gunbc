@@ -38,6 +38,7 @@ import gunbc.repo_ruleset {
   render_unknowns,
   ruleset_assess,
   desired_repo_ruleset_goal,
+  ruleset_observation_satisfies_goal,
 }
 
 
@@ -166,6 +167,7 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
     cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
   }
   length(observation_unknowns(observation: unreadable)) == 0
+    && !ruleset_observation_satisfies_goal(observed: unreadable)
 }
 
 // DISCRIMINATING RED FOR THE SECOND SHORT-CIRCUIT, found by review 62287 after the first was fixed.

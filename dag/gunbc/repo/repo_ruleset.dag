@@ -377,8 +377,10 @@ data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
 // ~DEFAULT_BRANCH, current_user_can_bypass never. bypass_actors KEY OMITTED. updated_at
 // 2026-09-13T02:37:39.085Z. The in-force policy is these numbers so the first Noop is
 // against a read. The floor-derived proposal above (timeout 180+30, wait 5) remains the
-// alignment trigger, not tonight's live values.
-data operator_hand_enabled_ruleset_observed_at: NonEmptyStr = "2026-09-13"
+// alignment trigger, not tonight's live values. The operator stated Maintain/always-allow in
+// the UI; this GET omitted bypass_actors so that grant is not established here.
+// gunbc.merge_queue_admission already rules RepositoryRole/2 always as a defect to revoke,
+// so the desired roster is empty: an observed grant is unexpected, and Apply sends [].
 data gunbc_passing_ci_merge_queue_policy: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
@@ -394,22 +396,11 @@ data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
   ruling: "Operator direction 2026-09-13: converge branch ruleset via dag workflows after they enabled merge queue by hand on passing CI. In-force parameters are the GET of that night, not the floor-derived proposal." as NonEmptyStr,
 }
 
-// RepositoryRole actor_id 2 is GitHub's documented Maintain role id (REST rules bypass_actors).
-// The operator stated Maintain / always-allow in the UI; this session's GET omitted bypass_actors,
-// so the grant is declared from that statement plus GitHub's role-id table, not from a roster
-// read. converge REFUSES to PUT while the roster is unobservable.
-data github_repository_role_maintain_actor_id: Int = 2
-data desired_bypass_actor_mode: String = "always"
-data desired_bypass_actor_type: String = "RepositoryRole"
-
+// Desired bypass roster is empty. gunbc.merge_queue_admission treats RepositoryRole/2 always as
+// a defect to revoke; declaring Maintain as desired would PUT the grant back. An observed
+// Maintain actor is unexpected drift. converge REFUSES to PUT while the roster is unobservable.
 fn desired_bypass_actors() -> List<RulesetBypassActor> {
-  [
-    RulesetBypassActor {
-      actor_type: desired_bypass_actor_type,
-      actor_id: github_repository_role_maintain_actor_id,
-      bypass_mode: desired_bypass_actor_mode,
-    }
-  ]
+  []
 }
 
 // THE DECLARED GOAL AS ONE VALUE. The desired side used to be reached by nullary calls from inside
@@ -1494,7 +1485,8 @@ func verify() -> ProcessExit {
 
 data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
 data repo_ruleset_converge_function: String = "converge"
-data repo_ruleset_converge_scope_residual: NonEmptyStr = "operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity can hold that scope. This residual is declared. Workers do not actuate the live ruleset."
+// Operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity
+// can hold that scope. Workers do not actuate the live ruleset.
 
 type RepoRulesetApplyPlan sole_constructor {
   ruleset_id: Int
@@ -1511,26 +1503,56 @@ fn passing_ci_ruleset_observation() -> RulesetObservation {
 }
 
 fn ruleset_observation_satisfies_goal(observed: RulesetObservation) -> Bool {
-  match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
-    GoalSatisfied { evidence: _ } => true
-    GoalDiverged { deviations: _ } => false
-    GoalIndeterminate { known_deviations: _, unknowns: _ } => false
-    GoalAssessmentRefused { cause: _ } => false
+  match observed {
+    RulesetUnreadable { cause: _ } => false
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } =>
+      match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
+        GoalSatisfied { evidence: _ } => true
+        GoalDiverged { deviations: _ } => false
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => false
+        GoalAssessmentRefused { cause: _ } => false
+      }
   }
 }
 
 fn ruleset_observation_mismatch_reason(observed: RulesetObservation) -> String {
-  match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
-    GoalSatisfied { evidence: _ } => "live ruleset already equals the declaration"
-    GoalDiverged { deviations: ds } => render_divergences(ds: non_empty_to_list(xs: ds))
-    GoalIndeterminate { known_deviations: ds, unknowns: us } => join(
-      [
-        render_unknowns(us: non_empty_to_list(xs: us)),
-        if length(ds) == 0 { "" } else { concat(" -- ", render_divergences(ds: ds)) },
-      ],
-      "",
-    )
-    GoalAssessmentRefused { cause: _ } => "unreachable assessment refusal"
+  match observed {
+    RulesetUnreadable { cause: c } => render_read_refusal(cause: c)
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } =>
+      match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
+        GoalSatisfied { evidence: _ } => "live ruleset already equals the declaration"
+        GoalDiverged { deviations: ds } => render_divergences(ds: non_empty_to_list(xs: ds))
+        GoalIndeterminate { known_deviations: ds, unknowns: us } => join(
+          [
+            render_unknowns(us: non_empty_to_list(xs: us)),
+            if length(ds) == 0 { "" } else { concat(" -- ", render_divergences(ds: ds)) },
+          ],
+          "",
+        )
+        GoalAssessmentRefused { cause: _ } => "unreachable assessment refusal"
+      }
   }
 }
 

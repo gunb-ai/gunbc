@@ -23,7 +23,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // check_response_timeout_minutes, grouping_strategy, max_entries_to_build,
 // max_entries_to_merge, merge_method, min_entries_to_merge,
 // min_entries_to_merge_wait_minutes.
-data github_repository_rulesets_rest_retrieved_at: String = "2026-09-13"
 
 // THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
 // ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
