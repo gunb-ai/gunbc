@@ -739,58 +739,6 @@ fn authorized_retirement_actuation(
   }
 }
 
-// THE ATTEMPT'S STANDING COMES FROM THE READBACK, NEVER FROM THE ACTUATION'S EXIT CODE, and that
-// separation is the entire safety content of this function.
-//
-// `systemctl mask --now` exiting 0 means systemd accepted the request. It does NOT mean the unit is
-// gone, and it emphatically does not mean the unit's cgroup is empty -- a Runner.Worker,
-// claim_executor or gunbc child can outlive the unit that spawned it, which is the orphan class
-// `gunbc.runner_unit`'s teardown drop-in exists for. So the actuation's own result is discarded for
-// the purpose of deciding retirement, and `observe_runner_retirement` is called afterwards as an
-// INDEPENDENT postcondition read. A success-implies-retired shortcut here would fabricate exactly
-// the completion the cap gate consumes, and it would do so on the one host where surplus work is
-// being interrupted.
-//
-// A REFUSED ACTUATION PRODUCES NO ATTEMPT AND THEREFORE NO COMPLETION. It cannot borrow the
-// readback's answer either: a unit that happens to be absent for unrelated reasons is not evidence
-// that an unauthorized interruption succeeded.
-func perform_authorized_retirement(
-  transport: HostEffectTransport,
-  auth: InterruptionAuthorization,
-  unit: NonEmptyStr,
-) -> RetirementAttempt
-  uses net: Network
-{
-  match authorized_retirement_actuation(auth: auth, unit: unit) {
-    RetirementActuationRefused { unit: u, cause: c } =>
-      RetirementMethodRefused { unit: u, method_label: "AuthorizedDisruptiveRetirement", cause: c }
-    RetirementActuationAuthorized { unit: u, operation: op } =>
-      match host_operation_exec(transport: transport, operation: op) {
-        HostOperationRefused { operation: label, reason: why } =>
-          RetirementMethodRefused {
-            unit: u as String,
-            method_label: "AuthorizedDisruptiveRetirement",
-            cause: join(["the authorized mask --now was refused before execution (", label, "): ", why], ""),
-          }
-        HostOperationObserved { stdout: _, success: ok, stderr: err } =>
-          if !ok {
-            RetirementMethodRefused {
-              unit: u as String,
-              method_label: "AuthorizedDisruptiveRetirement",
-              cause: join(["the authorized mask --now executed and failed, so this attempt interrupted nothing and proves nothing: ", trim(s: err)], ""),
-            }
-          } else {
-            attempt_retirement(
-              method: AuthorizedDisruptiveRetirement { authorization: auth },
-              observation: observe_runner_retirement(transport: transport, unit: u),
-              work_interrupted: true,
-            )
-          }
-      }
-  }
-}
-
-
 // ── THE OBSERVATION THE FLEET ROUTE CONSUMES; THE MUTATION BELONGS TO THE REVIEWED ARTIFACT ───
 //
 // AN EFFECTFUL `perform_transition_retirement` WAS WRITTEN HERE AND IS DELETED RATHER THAN WIRED.
@@ -812,7 +760,7 @@ func perform_authorized_retirement(
 // WHAT SURVIVES IS THE OBSERVATION HALF, which mutates nothing and is what the request was missing.
 // The completion bar was never "this function has a caller" -- it is "the sole production route
 // consumes this evidence".
-func observe_transition_retirement_evidence(
+fn observe_transition_retirement_evidence(
   transport: HostEffectTransport,
   host: HostIdentity,
   auth: InterruptionAuthorization,

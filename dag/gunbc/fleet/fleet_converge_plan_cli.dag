@@ -436,7 +436,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 //
 // AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
 // a host with no deploy row has no transition and nothing here may speak for it.
-func observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
+fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
   uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {

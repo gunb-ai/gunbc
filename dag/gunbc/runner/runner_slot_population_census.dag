@@ -230,7 +230,7 @@ fn slot_census_from_command_outcome(
 // A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. An unreachable host or a nonzero
 // exit says nothing about how many slots it is running, and rendering either as "no surplus" is the
 // narrow that would let a shrink raise caps on a host it could not read.
-func observe_slot_population_over_ssh(
+fn observe_slot_population_over_ssh(
   host: HostIdentity,
   target: SshTarget,
   context: FleetSshExecutionContext,
