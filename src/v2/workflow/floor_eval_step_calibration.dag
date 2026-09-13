@@ -4,6 +4,7 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int, int_add, int_mul, int_ge }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILINGS.
 //
@@ -56,6 +57,27 @@ import std.types { NonEmptyStr }
 // membership fold cost 400x the CPU at a LOWER step count. The conversion is sound for the quantity
 // the ceilings gate -- interpreted work -- and says nothing about host-realized cost, which is the
 // CPU clock's subject and is published as an observation rather than gated.
+// THE TWO EVAL-STEP FIELDS ARE BARE `Int` AND THAT IS A DECLARED GAP, NOT AN OVERSIGHT (review
+// 65209, BLOCKING on `steps_per_ms`). The reviewer is right that a bare scalar beside a
+// `std.measure` carrier is the re-mint DESIGN section 2's test names, and `specimen_cpu` above IS
+// the carrier -- it was the same finding one field over, and it was fixed.
+//
+// WHAT STOPS THE SAME FIX HERE IS THAT THE QUANTITY DOES NOT EXIST. `std.measure` `Quantity` is a
+// CLOSED roster of named quantities -- Time, Memory, Information, DataRate, Frequency, Count,
+// Currency and so on -- and rates in it are named quantities rather than quotients
+// (`MegatransfersPerSecond = Measure<Frequency, Mega, Nat>`). There is no arm for INTERPRETER
+// EVALUATION STEPS, and no quotient former to build "steps per millisecond" out of one. So typing
+// these fields means adding a `Quantity` arm to a shared std module for a compiler-internal
+// counter, which is a modeling decision in `std.measure`'s roster and not a floor-ceiling one.
+//
+// TYPING ONLY THE DENOMINATOR WOULD BE WORSE THAN LEAVING IT. A rate declared as `Millisecond`
+// carries a name for the half of itself that is not what it measures, which is the clock fusion
+// `measure_clock_basis_note` exists to forbid, arriving through the fix rather than through
+// neglect.
+data eval_step_scalar_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: specimen_eval_steps and steps_per_ms convert from bare Int to std.measure carriers once std.measure's Quantity roster carries an arm for interpreter evaluation steps and a form for a steps-per-time rate. Owner: whoever owns the Quantity roster in dag/std/measure.dag; this lane consumes that roster and does not widen it. Until then the two fields are scalars whose unit lives in their names, which is exactly what the carrier exists to prevent -- recorded here so it is a tracked gap rather than an invisible one, and so the next reader does not re-derive the same refusal. The sibling gap on this file's millisecond fields was CLOSED rather than declared: specimen_cpu is a std.measure Millisecond and eval_step_budget_for takes a Millisecond envelope." as NonEmptyStr,
+)
+
 type EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: NonEmptyStr
   instrument: NonEmptyStr

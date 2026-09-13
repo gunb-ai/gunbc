@@ -5,7 +5,7 @@ import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_budget_ms,
   EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
   EnrolmentMarginStanding,
-  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
+  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
   EnrolmentOutsideThisRunsExecution,
   enrolment_margin_standing_name,
   enrolment_margin_standing,
@@ -62,6 +62,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "within-margin"
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "over-margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "ceiling-censored"
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => "bound-without-ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
   }

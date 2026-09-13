@@ -2,7 +2,7 @@ module v2.workflow.floor_enrolment_margin
 
 import v2.workflow.required_floor { required_floor_claim_work_envelope_ms }
 import gunbc.floor_cost_distribution {
-  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
 }
 import v2.std.collection { List }
@@ -204,9 +204,18 @@ type EnrolmentMarginStanding =
     EnrolmentWithinMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
   | EnrolmentCeilingCensored { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
+  | EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: Millisecond }
   | EnrolmentNotMeasured { witness_identity: String, cause: String }
   | EnrolmentOutsideThisRunsExecution { witness_identity: String, disposition: String }
 
+// A BOUND WITH NO CEILING IS NOT MEASURED, AND IS NOT A CENSORED READING EITHER. Since gunbc#11195
+// the floor arms no CPU deadline, so a preempted row's CPU is a lower bound that nothing on this
+// clock stopped -- there is no ceiling to report beside it. Reporting it as
+// `EnrolmentCeilingCensored` would put a foreign clock's limit in a field named for a CPU one;
+// reporting it as a cost would write a bound into a slot named for an exact figure. It gets its own
+// arm, which blocks exactly as the other two do, so nothing is widened: the enrolment question
+// stays unanswered and the row stays refused, with a cause that names why.
+//
 // THE CLASSIFICATION. Total over both coproducts, so neither a new reading arm nor a new absence
 // can be absorbed into a neighbour.
 fn enrolment_margin_standing(
@@ -226,6 +235,8 @@ fn enrolment_margin_standing(
           } else {
             EnrolmentWithinMargin { exact_cpu_ms: c, budget_ms: budget_ms }
           }
+        CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } =>
+          EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: b }
         RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
           EnrolmentCeilingCensored {
             cpu_lower_bound_ms: b,
@@ -252,6 +263,7 @@ fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => false
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => true
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => true
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
   }
@@ -262,14 +274,24 @@ fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
 // is spelled and answers with the empty string: it is never read, and returning a plausible cause
 // for a row that does not block would be a fabricated diagnostic waiting to be printed.
 //
-// THE THREE CAUSES ARE DISTINCT STRINGS BECAUSE THEY HAVE THREE DIFFERENT REMEDIES: reduce the
-// cost; reduce the cost or declare a lane with its own ceiling; produce a measurement at all.
-// One shared cause would offer the rerun that discharges none of them.
+// THE FOUR CAUSES ARE DISTINCT STRINGS BECAUSE THEY HAVE FOUR DIFFERENT REMEDIES: reduce the cost;
+// reduce the cost or declare a lane with its own ceiling; make the row reach a verdict at all, since
+// nothing on the CPU clock stopped it and its bound is not comparable to anything; produce a
+// measurement at all. One shared cause would offer the rerun that discharges none of them.
+//
+// `EnrolmentBoundWithoutCeiling` IS SEPARATE FROM `EnrolmentNotMeasured` AND FROM
+// `EnrolmentCeilingCensored`, AND COLLAPSING IT INTO EITHER LOSES THE REMEDY. It is not
+// unmeasured -- there IS a reading, a CPU lower bound -- so the "produce a measurement" remedy is
+// wrong. It is not ceiling-censored either, because since gunbc#11195 no CPU ceiling is armed and
+// there is nothing to report beside the bound; reporting one would mean writing a foreign clock's
+// limit into a CPU-named field, which is the clock fusion `std.measure` `measure_clock_basis_note`
+// forbids.
 fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String {
   match standing {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => ""
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "enrolment_measured_over_margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "enrolment_censored_at_ceiling"
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => "enrolment_bound_without_ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
   }
@@ -283,6 +305,7 @@ fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "admitted"
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "measured_over_margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "censored_at_ceiling"
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => "bound_without_ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
   }
