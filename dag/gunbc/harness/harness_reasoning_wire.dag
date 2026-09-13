@@ -198,7 +198,12 @@ fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr {
 // end token, so the list is empty rather than carrying a name that will never appear. The model
 // authorities keep their rows -- `reasoning_content` IS what Zhipu's and DeepSeek's own APIs return --
 // and they are simply not what this fleet's engines emit.
-fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection {
+// AN UNOBSERVED PROJECTION IS NOT A UNIT THIS HARNESS CAN DECODE FOR, so the option is carried to the
+// caller rather than collapsed here. Both units this coproduct names DO carry an observed projection --
+// each was read from a completion against its own launched engine -- so the Absent arm is unreachable
+// for them today, and it exists so that adding a unit whose runtime has never served cannot silently
+// inherit a decoding rule nobody measured.
+fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection? {
   match unit {
     DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
     Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
@@ -207,8 +212,12 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
 
 fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
   match harness_unit_reasoning_projection(unit: unit) {
-    ParsedReasoningField { field: f } => f
-    InlineReasoning { end_token: _ } => harness_unit_model_reasoning_field(unit: unit)
+    Present { value: p } =>
+      match p {
+        ParsedReasoningField { field: f } => f
+        InlineReasoning { end_token: _ } => harness_unit_model_reasoning_field(unit: unit)
+      }
+    Absent => harness_unit_model_reasoning_field(unit: unit)
   }
 }
 
@@ -226,10 +235,17 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 // THE ALIASES ARE THE OTHER NAMES A READER SHOULD TRY, and for a parsed unit that is the model
 // authority's own spelling -- the one the vendor's hosted API returns, which a future engine build
 // may well switch to. For an inline unit there is no member to alias.
+// AN UNOBSERVED PROJECTION OFFERS NO ALIASES, which is the fail-closed direction: a reader handed the
+// model authority spelling for a unit nobody has launched would be trying a name this fleet has no
+// evidence any engine emits, and this file exists because that exact substitution was made once.
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match harness_unit_reasoning_projection(unit: unit) {
-    ParsedReasoningField { field: _ } => [harness_unit_model_reasoning_field(unit: unit)]
-    InlineReasoning { end_token: _ } => [] as List<NonEmptyStr>
+    Present { value: p } =>
+      match p {
+        ParsedReasoningField { field: _ } => [harness_unit_model_reasoning_field(unit: unit)]
+        InlineReasoning { end_token: _ } => [] as List<NonEmptyStr>
+      }
+    Absent => [] as List<NonEmptyStr>
   }
 }
 

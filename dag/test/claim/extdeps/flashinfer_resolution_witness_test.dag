@@ -1,0 +1,160 @@
+module test.claim.extdeps.flashinfer_resolution_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels,
+  WheelResolution, WheelResolved, WheelIndexUnreadable, WheelNotInIndex, WheelCandidatesConflict,
+  resolve_wheel_from_hrefs, wheel_matches_requirement, wheel_resolution_is_resolved,
+  flashinfer_wheel_for,
+  flashinfer_nightly_index_for,
+  FlashInferAcquisition, FlashInferPublishedRelease, FlashInferSourceRevision,
+  FlashInferChannel, FlashInferPyPi, FlashInferProjectStable, FlashInferProjectNightly,
+  flashinfer_reachable_by_upstream_dockerfile,
+  flashinfer_0_6_18_post1, flashinfer_0_7_0_dev20260910,
+  Sm120NopeSupport, Sm120NopeSupported, Sm120NopeAbsent, Sm120NopeUnread,
+  flashinfer_sm120_nope_support, sm120_nope_is_supported,
+}
+
+// ── THE INCIDENT THIS SUITE EXISTS FOR ────────────────────────────────────────────────────────
+//
+// A BUILD SCRIPT CONSTRUCTED A WHEEL URL BY JOINING THE INDEX, THE PACKAGE AND THE FILENAME. That path
+// is not where the file lives: the simple repository API lets an index link anywhere, and this project
+// links to release assets on another host. The constructed path returned a 404 page, whose bytes failed
+// the digest check -- the good ending, and an accidental one. An index that served 200 for unknown
+// paths, or a requirement nobody had pinned by digest, would have ended with wrong bytes installed.
+//
+// THE FIXTURE IS THE REAL LISTING SHAPE, not a simplified one: hrefs that point at a different domain,
+// carry a digest fragment, and sit beside the same package's other versions and architectures.
+fn w_python_wheel() -> FlashInferWheel? {
+  flashinfer_wheel_for(wheels: flashinfer_0_7_0_dev20260910_wheels, package: "flashinfer-python" as NonEmptyStr)
+}
+
+fn w_jit_wheel() -> FlashInferWheel? {
+  flashinfer_wheel_for(wheels: flashinfer_0_7_0_dev20260910_wheels, package: "flashinfer-jit-cache" as NonEmptyStr)
+}
+
+data w_real_hrefs: List<NonEmptyStr> = [
+  "https://github.com/flashinfer-ai/flashinfer/releases/download/nightly-v0.7.0-20260910/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as NonEmptyStr,
+  "https://github.com/flashinfer-ai/flashinfer/releases/download/nightly-v0.6.7-20260406/flashinfer_python-0.6.7.dev20260406-py3-none-any.whl#sha256=deadbeef" as NonEmptyStr,
+]
+
+// THE RESOLVED LOCATOR IS THE INDEX'S OWN LINK AND NOT A PATH UNDER THE INDEX, which is the whole
+// content of the repair. A resolver that returned `<index>/<package>/<filename>` would pass a test that
+// only checked "something was resolved", so this asserts the locator's HOST.
+test fn resolution_returns_the_index_link_rather_than_a_path_under_the_index() -> Bool {
+  match w_python_wheel() {
+    Absent => false
+    Present { value: w } =>
+  match resolve_wheel_from_hrefs(w: w, index: flashinfer_nightly_index_for(package: "flashinfer-python" as NonEmptyStr), hrefs: w_real_hrefs) {
+    WheelResolved { filename: _, locator: loc, expected_sha256: _ } =>
+      string_contains(s: loc as String, pattern: "github.com/flashinfer-ai/flashinfer/releases/download")
+        && !string_contains(s: loc as String, pattern: "flashinfer.ai/whl/nightly/flashinfer-python/flashinfer_python")
+    WheelIndexUnreadable { index: _, cause: _ } => false
+    WheelNotInIndex { index: _, filename: _ } => false
+    WheelCandidatesConflict { filename: _, locators: _ } => false
+  }
+  }
+}
+
+// AND THE OTHER VERSION IN THE SAME LISTING IS NOT A MATCH. The listing carries every nightly this
+// project ever published; matching on the package name would resolve whichever came first.
+test fn a_neighbouring_version_in_the_same_listing_is_not_a_match() -> Bool {
+  match w_python_wheel() {
+    Absent => false
+    Present { value: w } => !wheel_matches_requirement(
+      href: "https://github.com/flashinfer-ai/flashinfer/releases/download/nightly-v0.6.7-20260406/flashinfer_python-0.6.7.dev20260406-py3-none-any.whl" as NonEmptyStr,
+      w: w)
+  }
+}
+
+// AN INDEX THAT WAS READ AND HOLDS NOTHING MATCHING IS ITS OWN OUTCOME, distinct from an unreadable
+// one: on a nightly channel a withdrawn build is ordinary, and it owes a repin rather than a retry.
+test fn a_read_index_without_the_file_is_not_the_same_as_an_unreadable_index() -> Bool {
+  match w_python_wheel() {
+    Absent => false
+    Present { value: w } =>
+  match resolve_wheel_from_hrefs(w: w, index: "https://example.invalid/idx/" as NonEmptyStr, hrefs: []) {
+    WheelNotInIndex { index: _, filename: f } => (f as String) == (w.filename as String)
+    WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+    WheelIndexUnreadable { index: _, cause: _ } => false
+    WheelCandidatesConflict { filename: _, locators: _ } => false
+  }
+  }
+}
+
+// TWO DIFFERENT LOCATORS FOR ONE FILENAME REFUSE RATHER THAN PICKING. `head -1` over candidates that are
+// not the same artifact is a coin flip; the digest check behind it turns a wrong choice into a confusing
+// failure instead of a located one.
+test fn two_different_locators_for_one_filename_conflict() -> Bool {
+  match w_python_wheel() {
+    Absent => false
+    Present { value: w } =>
+  match resolve_wheel_from_hrefs(
+    w: w,
+    index: "https://example.invalid/idx/" as NonEmptyStr,
+    hrefs: [
+      "https://a.example/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "https://b.example/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    ]) {
+    WheelCandidatesConflict { filename: _, locators: ls } => count(ls) == 2
+    WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+    WheelNotInIndex { index: _, filename: _ } => false
+    WheelIndexUnreadable { index: _, cause: _ } => false
+  }
+  }
+}
+
+// AND THE SAME LOCATOR LISTED TWICE IS NOT A CONFLICT, which is the legitimate empty this rule must not
+// break: an index may republish one artifact under several mirror lines.
+test fn one_locator_listed_twice_resolves() -> Bool {
+  let dup = "https://a.example/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr
+  match w_python_wheel() {
+    Absent => false
+    Present { value: w } => wheel_resolution_is_resolved(r: resolve_wheel_from_hrefs(
+      w: w, index: "https://example.invalid/idx/" as NonEmptyStr, hrefs: [dup, dup]))
+  }
+}
+
+// ── THE ARCHITECTURE IS IN THE FILENAME AND THAT IS LOAD-BEARING ──────────────────────────────
+//
+// The jit-cache wheel is built per CUDA version and machine, and the x86_64 build sits beside the
+// aarch64 one at the same version on the same index. Matching on package and version alone would
+// install a wheel that cannot run on a GB10, and would do it without any error.
+test fn the_x86_jit_cache_wheel_does_not_satisfy_the_aarch64_requirement() -> Bool {
+  match w_jit_wheel() {
+    Present { value: w } =>
+      !wheel_matches_requirement(
+        href: "https://github.com/flashinfer-ai/flashinfer/releases/download/nightly-v0.7.0-20260910/flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_x86_64.whl" as NonEmptyStr,
+        w: w)
+    Absent => false
+  }
+}
+
+// ── THE CHANNEL DECIDES REACHABILITY, AND A NIGHTLY IS A PUBLISHED RELEASE THAT IS STILL UNREACHABLE ──
+//
+// This is the distinction a first draft got wrong by answering `true` for every published release.
+// Upstream's Dockerfile varies the VERSION against a hardcoded index, so a nightly version asks the
+// stable index for a wheel that is not there -- a resolution failure an hour into a build rather than a
+// refusal before it.
+test fn a_published_nightly_is_still_not_reachable_by_the_upstream_dockerfile() -> Bool {
+  !flashinfer_reachable_by_upstream_dockerfile(a: flashinfer_0_7_0_dev20260910)
+    && flashinfer_reachable_by_upstream_dockerfile(a: flashinfer_0_6_18_post1)
+}
+
+// AND THE CAPABILITY ANSWER IS THREE-VALUED, so a measured refusal and an unasked revision stay apart.
+test fn the_pinned_release_supports_sm120_nope_and_the_stable_one_is_a_measured_negative() -> Bool {
+  sm120_nope_is_supported(s: flashinfer_sm120_nope_support(a: flashinfer_0_7_0_dev20260910))
+    && match flashinfer_sm120_nope_support(a: flashinfer_0_6_18_post1) {
+      Sm120NopeAbsent { evidence: _ } => true
+      Sm120NopeSupported { evidence: _ } => false
+      Sm120NopeUnread { obligation: _ } => false
+    }
+}
+
+// THE JIT-CACHE INDEX IS PER CUDA VERSION AND THE OTHERS ARE NOT, which is why the index is derived per
+// package rather than carried once on the acquisition.
+test fn the_jit_cache_index_is_cuda_specific_and_the_others_are_not() -> Bool {
+  string_contains(s: flashinfer_nightly_index_for(package: "flashinfer-jit-cache" as NonEmptyStr) as String, pattern: "/cu130/")
+    && !string_contains(s: flashinfer_nightly_index_for(package: "flashinfer-python" as NonEmptyStr) as String, pattern: "/cu130/")
+}

@@ -260,6 +260,80 @@ fn docker_inspect_json_first_of_one(v: JsonValue) -> JsonValue? {
   }
 }
 
+// ── WHICH IMAGE A BUILD ACTUALLY STOOD ON, WHICH IS NOT WHAT ITS FROM LINE ASKED FOR ──────────
+//
+// A DOCKERFILE CANNOT NAME A LOCAL IMAGE BY CONTENT, MEASURED RATHER THAN ASSUMED. On docker 29.2.1 with
+// the default BuildKit driver, `FROM sha256:<id>` and `FROM <short id>` are both read as REPOSITORY names
+// and fail with a registry pull denial, and `FROM <64-hex>` is refused outright -- "cannot specify
+// 64-byte hexadecimal strings". A tag is the only spelling that resolves a local, never-pushed image.
+//
+// SO THE CONTENT BINDING MOVES FROM THE REQUEST TO THE RESULT. A tag read before a build says what the
+// tag meant at that moment; it does not say what the build stood on. The layer list does: an image built
+// FROM another carries that other image's layers as a PREFIX of its own, so comparing them answers the
+// question the FROM line could not express -- and answers it about the artifact that now exists rather
+// than about the instruction that was issued.
+type DockerImageLayersRead
+  = DockerImageLayers { layers: List<String> }
+  | DockerImageLayersUnreadable { cause: String }
+
+fn json_array_string_elements(v: JsonValue) -> List<String>? {
+  match v {
+    JsonArray { elements: es } => Present { value: map(es, e => json_string_value_or_empty(v: e)) }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn docker_image_inspect_layers_from_stdout(stdout: String) -> DockerImageLayersRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageLayersUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageLayersUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "RootFS") {
+            JsonMemberAbsent => DockerImageLayersUnreadable { cause: "docker image inspect JSON names no RootFS" }
+            JsonMemberNotAnObject => DockerImageLayersUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageLayersUnreadable { cause: join(["docker image inspect JSON names RootFS ", to_string(n), " times"], "") }
+            JsonMemberFound { value: rootfs } =>
+              match json_object_unique_member(v: rootfs, key: "Layers") {
+                JsonMemberAbsent => DockerImageLayersUnreadable { cause: "docker image inspect RootFS names no Layers" }
+                JsonMemberNotAnObject => DockerImageLayersUnreadable { cause: "docker image inspect RootFS is not an object" }
+                JsonMemberDuplicated { count: n } =>
+                  DockerImageLayersUnreadable { cause: join(["docker image inspect RootFS names Layers ", to_string(n), " times"], "") }
+                JsonMemberFound { value: layers } =>
+                  match json_array_string_elements(v: layers) {
+                    Absent => DockerImageLayersUnreadable { cause: "docker image inspect RootFS.Layers is not an array" }
+                    Present { value: ls } =>
+                      if count(ls) == 0 {
+                        DockerImageLayersUnreadable { cause: "docker image inspect RootFS.Layers is empty, which no built image has" }
+                      } else {
+                        DockerImageLayers { layers: ls }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// AN EMPTY BASE IS NOT A PREFIX OF ANYTHING HERE, deliberately. Vacuous truth would make this check pass
+// for an unreadable base, which is the one reading where it must not.
+fn docker_layers_extend(base: List<String>, derived: List<String>) -> Bool {
+  if count(base) == 0 {
+    false
+  } else if count(derived) < count(base) {
+    false
+  } else {
+    all(enumerate(base), pair => derived[pair.first] == pair.second)
+  }
+}
+
 fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRead {
   match parse_json_document(s: trim(s: stdout)) {
     JsonDocumentUnreadable { gap: g } =>
@@ -331,4 +405,27 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
+}
+
+// ── MOVING AN IMAGE BETWEEN DAEMONS WITHOUT A REGISTRY ────────────────────────────────────────
+//
+// `save` AND `load` ARE THE PAIR A FLEET NEEDS WHEN THE BUILD HOST IS NOT THE SERVING HOST and nothing
+// is published. They are modelled here rather than at the caller for the ordinary reason: an argv is a
+// fact about docker, and a caller that spelled these itself would be a second authority on what docker's
+// command line is.
+//
+// `-o` AND `-i` RATHER THAN A REDIRECT. A shell redirect is not expressible as an argv and would force
+// the caller into a shell, which is the thing the portable-word allowlist exists to prevent; docker's own
+// flags take the path, so the operation stays one command with one operand.
+fn docker_image_save_command(image: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "save", "-o", destination as String, image as String])
+}
+
+// LOAD IS NOT THE INVERSE OF SAVE FOR IDENTITY PURPOSES, and that is why this builder exists beside a
+// separate readback rather than returning anything useful itself. `docker image load` restores images
+// and their tags and reports what it loaded on stdout, but a caller must not take that report as the
+// destination's state: if the tag already existed on the target it has simply been moved, and the id
+// behind it afterwards is a question only `docker image inspect` answers.
+fn docker_image_load_command(archive: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "load", "-i", archive as String])
 }

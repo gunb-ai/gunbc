@@ -1,0 +1,83 @@
+module test.claim.spark.serving_group_exclusivity_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.remote_execution { SparkRemoteRun, RemoteRan, RemoteUnreachable }
+import gunbc.spark.serving_group_exclusivity {
+  HostExclusionStanding, HostUnitAbsent, HostUnitDisabled, HostUnitStillEnabled, HostExclusionUnread,
+  classify_exclusion, host_is_excluded, pair_worker_unit,
+}
+
+// ── THE DISCRIMINATORS FOR GROUP B EXCLUSIVITY ─────────────────────────────────────────────────
+//
+// THESE ROWS EXIST BECAUSE THE FLEET ANSWERED DIFFERENTLY ON DIFFERENT HOSTS AND NOTHING NOTICED. Measured
+// 2026-09-11: `gunbc-spark-pair-worker.service` is enabled and active on srv10, srv11 and srv12, and
+// not-found on srv9. A check that asked one host, or that folded the group into a single answer, would have
+// been right three times and wrong once with no way to tell which -- and the once is the rank whose
+// container a unit may replace mid-transaction.
+//
+// THE FIXTURES ARE THE EXACT STDOUT SHAPES THE PROBE PRODUCES, so these rows exercise the parse rather than
+// the intent. `exclusion_argv` prints `enabled=%s active=%s` from systemctl's own words, and the strings
+// below are what those two commands actually answered on the four Group B hosts.
+fn ran(host: HostIdentity, stdout: String) -> SparkRemoteRun {
+  RemoteRan { host: host, exit_code: 0, stdout: stdout, stderr: "" }
+}
+
+// srv9's answer. `systemctl disable` exits non-zero on a unit that does not exist, and that is a SUCCESSFUL
+// exclusion -- a host with nothing to disable is exactly as excluded as one that has been disabled. This row
+// is why the verdict comes from the re-read and not from the disable's exit code.
+test fn an_absent_unit_is_excluded() -> Bool {
+  host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv9, r: ran(host: operator_host_srv9, stdout: "enabled=not-found active=inactive")))
+}
+
+// srv10, srv11 and srv12's answer AFTER the operation.
+test fn a_disabled_and_stopped_unit_is_excluded() -> Bool {
+  host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv10, r: ran(host: operator_host_srv10, stdout: "enabled=disabled active=inactive")))
+}
+
+// ── THE RED THAT MATTERS: A COMPETING ACTUATOR IS NOT EXCLUDED ─────────────────────────────────
+//
+// THIS IS THE STATE ALL THREE PEERS WERE IN WHEN ATTEMPT 5 RAN, and the state in which a `gunbc-spark-pair`
+// container appeared on two of them mid-transaction. If this row ever passes, the legacy pair-serving
+// actuator can mutate Group B while a native launch believes it owns the hosts.
+test fn an_enabled_unit_is_not_excluded() -> Bool {
+  !host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv12, r: ran(host: operator_host_srv12, stdout: "enabled=enabled active=active")))
+}
+
+// A UNIT LEFT RUNNING IS NOT EXCLUDED EVEN WHEN DISABLED, because `disable` only stops it starting NEXT
+// time. A host reporting disabled-but-active still holds a container this transaction did not create, and
+// treating that as excluded is how the effect outlives the cause.
+test fn a_disabled_but_still_running_unit_is_not_excluded() -> Bool {
+  !host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv11, r: ran(host: operator_host_srv11, stdout: "enabled=disabled active=active")))
+}
+
+// A STATIC UNIT IS NOT EXCLUDED. systemd's vocabulary is larger than the two answers this probe expects, and
+// `static` is a real state in which a unit cannot be disabled but can still be started by another unit's
+// dependency. It must not arrive as agreement.
+test fn an_unrecognised_systemd_state_refuses_rather_than_passing() -> Bool {
+  !host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv12, r: ran(host: operator_host_srv12, stdout: "enabled=static active=inactive")))
+}
+
+// AN UNREACHABLE HOST IS UNREAD, NOT EXCLUDED. A host that cannot be asked whether its actuator is disabled
+// is a host this transaction knows nothing about, and the absorbing arm would be to treat silence as
+// absence.
+test fn an_unreachable_host_is_not_excluded() -> Bool {
+  !host_is_excluded(s: classify_exclusion(
+    host: operator_host_srv10,
+    r: RemoteUnreachable { host: operator_host_srv10, cause: "ssh timed out" }))
+}
+
+// THE UNIT IS NAMED ONCE AND THIS ROW IS WHAT KEEPS THE SPELLING HONEST. If the fleet's unit is ever renamed,
+// the probe silently reports not-found on every host -- which this module would read as EXCLUDED EVERYWHERE,
+// the most dangerous possible failure of this check. The name is therefore asserted against the exact
+// string observed on the fleet rather than left to a future edit.
+test fn the_excluded_unit_is_the_one_observed_on_the_fleet() -> Bool {
+  pair_worker_unit as String == "gunbc-spark-pair-worker.service"
+}

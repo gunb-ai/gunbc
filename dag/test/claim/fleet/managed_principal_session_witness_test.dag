@@ -1,0 +1,534 @@
+module test.claim.fleet.managed_principal_session_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.ssh { SshPublicKey, ssh_public_key_line }
+import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import std.realization_dependency {
+  RealizationLocus, LocalRunner, ManagedPrincipalOnHost,
+  CapabilityRequirement, requirement_key, requirement_key_eq,
+  CapabilityProvider,
+  DependencyClosureStanding, DependencyClosureResolved,
+  RequirementWithoutProvider, RequirementWithMultipleProviders, DependencyCycle,
+  resolve_dependency_closure,
+  RealizedCapability, DependentAdmission, DependentRunnable, DependentUnattempted, admit_dependent,
+}
+import gunbc.managed_principal_session {
+  FleetCredentialIdentity, fleet_credential_identity, fleet_declared_credential_identity,
+  PosixAccountReadback, AuthorizedKeyReadback,
+  ManagedPrincipalAuthenticationReceipt,
+  ManagedPosixAccountReady, ManagedPosixAccountAdmission,
+  ManagedPosixAccountAdmitted, ManagedPosixAccountRefused, admit_managed_posix_account,
+  ManagedAuthorizedKeyReady, ManagedAuthorizedKeyAdmission, ManagedAuthorizedKeyAdmitted,
+  ManagedAuthorizedKeyRefusedLine, ManagedAuthorizedKeyRefusedOwnership, admit_managed_authorized_key,
+  FleetPrivateKeyBindingReady, FleetPrivateKeyBindingAdmission,
+  FleetPrivateKeyBindingAdmitted, FleetPrivateKeyBindingRefused, admit_fleet_private_key_binding,
+  ManagedPrincipalSessionReady, ManagedPrincipalSessionAdmission, ManagedPrincipalSessionAdmitted,
+  ManagedPrincipalSessionRefusedPrincipal, ManagedPrincipalSessionRefusedCredentialSplit,
+  ManagedPrincipalSessionRefusedCredentialUsed, ManagedPrincipalSessionRefusedMembership,
+  ManagedPrincipalSessionRefusedUnreachable, admit_managed_principal_session,
+  ManagedPrivilegedPrincipalReady, ManagedPrivilegedPrincipalAdmission,
+  ManagedPrivilegedPrincipalAdmitted, ManagedPrivilegedPrincipalRefused, admit_managed_privileged_principal,
+  ManagedPrincipalInvocation, invoke_as_managed_principal,
+  PrivilegedInvocationAdmission, PrivilegedInvocationAdmitted, PrivilegedInvocationRefused, invoke_privileged,
+  managed_principal_providers, principal_session_requirement, private_key_binding_requirement,
+  realized_principal_session,
+}
+
+data w_host: NonEmptyStr = "192.168.1.225" as NonEmptyStr
+data w_other_host: NonEmptyStr = "192.168.1.232" as NonEmptyStr
+data w_principal: NonEmptyStr = "gunbc-automation" as NonEmptyStr
+data w_admin: NonEmptyStr = "briansrls" as NonEmptyStr
+data w_group: NonEmptyStr = "docker" as NonEmptyStr
+data w_target: SshTarget = SshTarget { endpoint: w_host, principal: w_principal }
+data w_foreign_fingerprint: NonEmptyStr = "SHA256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr
+
+fn w_declared() -> FleetCredentialIdentity { fleet_declared_credential_identity() }
+
+fn w_foreign() -> FleetCredentialIdentity { fleet_credential_identity(fingerprint: w_foreign_fingerprint) }
+
+// ── THE ACCOUNT HANDLE: A useradd EXIT IS NOT THE CAPABILITY ──────────────────────────────────
+fn w_account_readback(principal: String, home: String) -> PosixAccountReadback {
+  PosixAccountReadback {
+    observed_principal: principal as NonEmptyStr,
+    observed_home: home as NonEmptyStr,
+    observed_shell: "/bin/bash" as NonEmptyStr,
+    instrument: "getent passwd, read after the account was created" as NonEmptyStr,
+  }
+}
+
+fn w_account(principal: String, home: String) -> ManagedPosixAccountAdmission {
+  admit_managed_posix_account(
+    occurrence: PosixAccountOccurrence { host: w_host as HostIdentity, principal: FleetAccountAutomation },
+    expected_local_name: w_principal,
+    readback: w_account_readback(principal: principal, home: home))
+}
+
+fn w_account_ready() -> ManagedPosixAccountReady? {
+  match w_account(principal: "gunbc-automation", home: "/home/gunbc-automation") {
+    ManagedPosixAccountAdmitted { ready: r } => Present { value: r }
+    ManagedPosixAccountRefused { expected: _, cause: _ } => none
+  }
+}
+
+test fn an_account_the_host_reports_with_a_home_is_admitted() -> Bool {
+  match w_account(principal: "gunbc-automation", home: "/home/gunbc-automation") {
+    ManagedPosixAccountAdmitted { ready: r } => (r.observed_local_name as String) == "gunbc-automation"
+    ManagedPosixAccountRefused { expected: _, cause: _ } => false
+  }
+}
+
+// AN ACCOUNT WITH NO HOME IS REFUSED, because there is nowhere to place authorized_keys -- so a `useradd -M`
+// that exited zero would have produced a principal sshd authenticates and then cannot find a key for.
+test fn an_account_with_no_home_directory_is_refused() -> Bool {
+  match w_account(principal: "gunbc-automation", home: "") {
+    ManagedPosixAccountRefused { expected: _, cause: _ } => true
+    ManagedPosixAccountAdmitted { ready: _ } => false
+  }
+}
+
+test fn an_account_the_host_reports_under_another_name_is_refused() -> Bool {
+  match w_account(principal: "nobody", home: "/home/nobody") {
+    ManagedPosixAccountRefused { expected: e, cause: _ } => (e as String) == "gunbc-automation"
+    ManagedPosixAccountAdmitted { ready: _ } => false
+  }
+}
+
+// ── THE KEY HANDLE: LINE, OWNER AND MODE ──────────────────────────────────────────────────────
+fn w_key_readback(line: String, owner: String, mode: String) -> AuthorizedKeyReadback {
+  AuthorizedKeyReadback {
+    observed_line: line as NonEmptyStr,
+    observed_owner: owner as NonEmptyStr,
+    observed_mode: mode as NonEmptyStr,
+    instrument: "cat, stat -c %U and stat -c %a on the principal's authorized_keys" as NonEmptyStr,
+  }
+}
+
+fn w_key_with(credential: FleetCredentialIdentity, line: String, owner: String, mode: String) -> ManagedAuthorizedKeyAdmission? {
+  match w_account_ready() {
+    Absent => none
+    Present { value: account } => Present { value: admit_managed_authorized_key(
+      account: account,
+      credential: credential,
+      expected_key: fleet_automation_ssh_key,
+      readback: w_key_readback(line: line, owner: owner, mode: mode),
+    ) }
+  }
+}
+
+fn w_key_ready_with(credential: FleetCredentialIdentity) -> ManagedAuthorizedKeyReady? {
+  match w_key_with(credential: credential, line: ssh_public_key_line(k: fleet_automation_ssh_key), owner: "gunbc-automation", mode: "600") {
+    Absent => none
+    Present { value: a } =>
+      match a {
+        ManagedAuthorizedKeyAdmitted { ready: r } => Present { value: r }
+        ManagedAuthorizedKeyRefusedLine { expected_line: _, observed_line: _ } => none
+        ManagedAuthorizedKeyRefusedOwnership { expected_owner: _, observed_owner: _, observed_mode: _ } => none
+      }
+  }
+}
+
+test fn the_exact_declared_line_owned_by_the_principal_at_600_is_admitted() -> Bool {
+  match w_key_ready_with(credential: w_declared()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A DIFFERENT LINE IS REFUSED EVEN WHERE OWNERSHIP AND MODE ARE PERFECT, because a file holding somebody
+// else's key is not this capability.
+test fn a_line_that_is_not_the_declared_key_is_refused() -> Bool {
+  match w_key_with(credential: w_declared(), line: "ssh-ed25519 AAAASOMEOTHERKEY other@host", owner: "gunbc-automation", mode: "600") {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedAuthorizedKeyRefusedLine { expected_line: _, observed_line: _ } => true
+        ManagedAuthorizedKeyAdmitted { ready: _ } => false
+        ManagedAuthorizedKeyRefusedOwnership { expected_owner: _, observed_owner: _, observed_mode: _ } => false
+      }
+  }
+}
+
+// AND A GROUP-WRITABLE FILE IS REFUSED, which is the case a presence check reports as converged: sshd silently
+// ignores it, so the key is installed and authenticates nothing.
+test fn a_group_writable_authorized_keys_is_refused() -> Bool {
+  match w_key_with(credential: w_declared(), line: ssh_public_key_line(k: fleet_automation_ssh_key), owner: "gunbc-automation", mode: "660") {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedAuthorizedKeyRefusedOwnership { expected_owner: _, observed_owner: _, observed_mode: m } => (m as String) == "660"
+        ManagedAuthorizedKeyAdmitted { ready: _ } => false
+        ManagedAuthorizedKeyRefusedLine { expected_line: _, observed_line: _ } => false
+      }
+  }
+}
+
+// AND A FILE OWNED BY ROOT IN THE PRINCIPAL'S HOME IS EQUALLY INERT.
+test fn an_authorized_keys_owned_by_another_user_is_refused() -> Bool {
+  match w_key_with(credential: w_declared(), line: ssh_public_key_line(k: fleet_automation_ssh_key), owner: "root", mode: "600") {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedAuthorizedKeyRefusedOwnership { expected_owner: e, observed_owner: o, observed_mode: _ } =>
+          (e as String) == "gunbc-automation" && (o as String) == "root"
+        ManagedAuthorizedKeyAdmitted { ready: _ } => false
+        ManagedAuthorizedKeyRefusedLine { expected_line: _, observed_line: _ } => false
+      }
+  }
+}
+
+// ── THE LOCAL BINDING: THE KEY WE HOLD MUST BE THE KEY WE DECLARE ─────────────────────────────
+fn w_binding_with(credential: FleetCredentialIdentity) -> FleetPrivateKeyBindingAdmission? {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } => Present { value: admit_fleet_private_key_binding(derived_credential: credential, context: ctx) }
+  }
+}
+
+fn w_binding_ready() -> FleetPrivateKeyBindingReady? {
+  match w_binding_with(credential: w_declared()) {
+    Absent => none
+    Present { value: a } =>
+      match a {
+        FleetPrivateKeyBindingAdmitted { ready: r } => Present { value: r }
+        FleetPrivateKeyBindingRefused { expected: _, derived: _ } => none
+      }
+  }
+}
+
+test fn a_binding_deriving_the_declared_fingerprint_is_admitted() -> Bool {
+  match w_binding_ready() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn a_binding_deriving_an_undeclared_fingerprint_is_refused() -> Bool {
+  match w_binding_with(credential: w_foreign()) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        FleetPrivateKeyBindingRefused { expected: e, derived: d } =>
+          (e as String) == fleet_automation_ssh_key_fingerprint && (d as String) == (w_foreign_fingerprint as String)
+        FleetPrivateKeyBindingAdmitted { ready: _ } => false
+      }
+  }
+}
+
+// ── THE SESSION: THE JOIN OF EVERY EARLIER HANDLE ─────────────────────────────────────────────
+fn w_receipt(principal: String, groups: List<NonEmptyStr>, used: FleetCredentialIdentity) -> ManagedPrincipalAuthenticationReceipt? {
+  match w_binding_ready() {
+    Absent => none
+    Present { value: b } => Present { value: ManagedPrincipalAuthenticationReceipt {
+      observed_principal: principal as NonEmptyStr,
+      observed_groups: groups,
+      used_credential: used,
+      attempt: b.context.attempt,
+      probe_detail: "a fresh key-only ssh session running `id`" as NonEmptyStr,
+    } }
+  }
+}
+
+fn w_session(
+  installed_credential: FleetCredentialIdentity,
+  used_credential: FleetCredentialIdentity,
+  principal: String,
+  groups: List<NonEmptyStr>,
+  required_groups: List<NonEmptyStr>,
+  reachable: Bool,
+) -> ManagedPrincipalSessionAdmission? {
+  match w_account_ready() {
+    Absent => none
+    Present { value: account } =>
+      match w_key_ready_with(credential: installed_credential) {
+        Absent => none
+        Present { value: key } =>
+          match w_binding_ready() {
+            Absent => none
+            Present { value: binding } =>
+              match w_receipt(principal: principal, groups: groups, used: used_credential) {
+                Absent => none
+                Present { value: receipt } => Present { value: admit_managed_principal_session(
+                  account: account, key: key, binding: binding,
+                  required_groups: required_groups, target: w_target, receipt: receipt,
+                  reachable: reachable,
+                  unreachable_cause: "the ssh client could not open a session" as NonEmptyStr,
+                ) }
+              }
+          }
+      }
+  }
+}
+
+fn w_good_session() -> ManagedPrincipalSessionReady? {
+  match w_session(installed_credential: w_declared(), used_credential: w_declared(), principal: "gunbc-automation", groups: [w_group], required_groups: [w_group], reachable: true) {
+    Absent => none
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionAdmitted { ready: r } => Present { value: r }
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => none
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => none
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => none
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => none
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => none
+      }
+  }
+}
+
+test fn a_proven_session_with_every_handle_and_membership_is_admitted() -> Bool {
+  match w_good_session() {
+    Present { value: r } => (r.principal as String) == "gunbc-automation"
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED: a connection that authenticated as somebody else. It exits zero.
+test fn a_session_authenticating_as_another_principal_is_refused() -> Bool {
+  match w_session(installed_credential: w_declared(), used_credential: w_declared(), principal: "briansrls", groups: [w_group], required_groups: [w_group], reachable: true) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionRefusedPrincipal { expected: e, observed: o } =>
+          (e as String) == "gunbc-automation" && (o as String) == "briansrls"
+        ManagedPrincipalSessionAdmitted { ready: _ } => false
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => false
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => false
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => false
+      }
+  }
+}
+
+// THE CREDENTIAL SPLIT: public key A installed, private key B bound. Both facts true, and prose calls them one
+// fleet key. Nothing but this comparison catches it.
+test fn an_installed_key_differing_from_the_bound_key_refuses() -> Bool {
+  match w_session(installed_credential: w_foreign(), used_credential: w_declared(), principal: "gunbc-automation", groups: [w_group], required_groups: [w_group], reachable: true) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: i, in_use: u } => (i as String) != (u as String)
+        ManagedPrincipalSessionAdmitted { ready: _ } => false
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => false
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => false
+      }
+  }
+}
+
+// AND A SESSION THAT USED A KEY NEITHER SIDE DECLARES IS REFUSED, which is the agent offering something else.
+test fn a_session_using_a_third_credential_refuses() -> Bool {
+  match w_session(installed_credential: w_declared(), used_credential: w_foreign(), principal: "gunbc-automation", groups: [w_group], required_groups: [w_group], reachable: true) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: d, used: u } =>
+          (d as String) == fleet_automation_ssh_key_fingerprint && (u as String) == (w_foreign_fingerprint as String)
+        ManagedPrincipalSessionAdmitted { ready: _ } => false
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => false
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => false
+      }
+  }
+}
+
+// MEMBERSHIP IS OBSERVED BY THE SAME CONNECTION THAT PROVED THE PRINCIPAL. A handle minted before a membership
+// change and used after it would still typecheck, so a required group the session did not see refuses here
+// rather than failing later inside the command that needed it.
+test fn a_required_membership_the_session_did_not_observe_refuses() -> Bool {
+  match w_session(installed_credential: w_declared(), used_credential: w_declared(), principal: "gunbc-automation", groups: [], required_groups: [w_group], reachable: true) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionRefusedMembership { required: r, observed: o } =>
+          (r as String) == (w_group as String) && count(o) == 0
+        ManagedPrincipalSessionAdmitted { ready: _ } => false
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => false
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => false
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => false
+      }
+  }
+}
+
+// AND REQUIRING NO MEMBERSHIP DOES NOT ACQUIRE ONE, so a consumer needing only key access is not made to
+// depend on a group it never asked for.
+test fn a_session_requiring_no_membership_is_admitted_without_groups() -> Bool {
+  match w_session(installed_credential: w_declared(), used_credential: w_declared(), principal: "gunbc-automation", groups: [], required_groups: [], reachable: true) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionAdmitted { ready: _ } => true
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => false
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => false
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => false
+      }
+  }
+}
+
+test fn an_unreachable_host_establishes_nothing() -> Bool {
+  match w_session(installed_credential: w_declared(), used_credential: w_declared(), principal: "gunbc-automation", groups: [w_group], required_groups: [w_group], reachable: false) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrincipalSessionRefusedUnreachable { cause: _ } => true
+        ManagedPrincipalSessionAdmitted { ready: _ } => false
+        ManagedPrincipalSessionRefusedPrincipal { expected: _, observed: _ } => false
+        ManagedPrincipalSessionRefusedCredentialSplit { installed: _, in_use: _ } => false
+        ManagedPrincipalSessionRefusedCredentialUsed { declared: _, used: _ } => false
+        ManagedPrincipalSessionRefusedMembership { required: _, observed: _ } => false
+      }
+  }
+}
+
+// ── THE ELIMINATOR: THE HANDLE IS THE ONLY WAY TO SPELL A MANAGED COMMAND ──────────────────────
+//
+// THE ROW THAT REPLACES THE PUBLISHED PROJECTIONS. `session_target` and `session_context` are gone, so a caller
+// cannot pair one proven session's context with another's target; the invocation comes out whole or not at all.
+test fn an_invocation_carries_the_proven_target_and_principal_together() -> Bool {
+  match w_good_session() {
+    Absent => false
+    Present { value: r } => {
+      let inv = invoke_as_managed_principal(ready: r, words: ["id", "-un"])
+      (inv.as_principal as String) == "gunbc-automation"
+        && (inv.target.principal as String) == "gunbc-automation"
+        && (inv.target.endpoint as String) == (w_host as String)
+        && count(inv.words) == 2
+    }
+  }
+}
+
+// ── PRIVILEGE IS A SEPARATE CAPABILITY ────────────────────────────────────────────────────────
+data w_linger_command: NonEmptyStr = "/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr
+
+fn w_privileged(listing: String) -> ManagedPrivilegedPrincipalAdmission? {
+  match w_good_session() {
+    Absent => none
+    Present { value: r } => Present { value: admit_managed_privileged_principal(session: r, required_command: w_linger_command, sudo_listing: listing) }
+  }
+}
+
+test fn a_sudo_listing_naming_the_command_admits_the_privileged_handle() -> Bool {
+  match w_privileged(listing: join(["(root) NOPASSWD: ", w_linger_command as String], "")) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrivilegedPrincipalAdmitted { ready: _ } => true
+        ManagedPrivilegedPrincipalRefused { required_command: _, listing: _ } => false
+      }
+  }
+}
+
+// A LISTING WITHOUT THE COMMAND REFUSES, so a drop-in that was written successfully is not mistaken for a
+// principal actually permitted to run it.
+test fn a_sudo_listing_without_the_command_refuses() -> Bool {
+  match w_privileged(listing: "(root) NOPASSWD: /usr/bin/something-else") {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrivilegedPrincipalRefused { required_command: c, listing: _ } => (c as String) == (w_linger_command as String)
+        ManagedPrivilegedPrincipalAdmitted { ready: _ } => false
+      }
+  }
+}
+
+// AND A PRIVILEGED HANDLE MAY ONLY RUN THE COMMAND IT WAS ADMITTED FOR, which keeps the narrow grant narrow at
+// the call site as well as in the sudoers file.
+test fn a_privileged_handle_refuses_a_command_other_than_the_admitted_one() -> Bool {
+  match w_privileged(listing: join(["(root) NOPASSWD: ", w_linger_command as String], "")) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        ManagedPrivilegedPrincipalAdmitted { ready: r } =>
+          match invoke_privileged(ready: r, command: "/usr/bin/rm -rf /" as NonEmptyStr, words: ["rm", "-rf", "/"]) {
+            PrivilegedInvocationRefused { admitted_command: c, requested: q } =>
+              (c as String) == (w_linger_command as String) && (q as String) == "/usr/bin/rm -rf /"
+            PrivilegedInvocationAdmitted { invocation: _ } => false
+          }
+        ManagedPrivilegedPrincipalRefused { required_command: _, listing: _ } => false
+      }
+  }
+}
+
+// ── THE GRAPH THIS VERTICAL DECLARES ──────────────────────────────────────────────────────────
+fn w_graph(required_groups: List<NonEmptyStr>) -> DependencyClosureStanding {
+  resolve_dependency_closure(
+    providers: managed_principal_providers(host: w_host, principal: w_principal, admin_principal: w_admin, credential: w_declared(), required_groups: required_groups),
+    roots: [principal_session_requirement(host: w_host, principal: w_principal, credential: w_declared())],
+  )
+}
+
+test fn requiring_the_session_closes_over_the_whole_access_chain() -> Bool {
+  match w_graph(required_groups: [w_group]) {
+    DependencyClosureResolved { bindings: bs, batches: _ } => count(bs) == 6
+    RequirementWithoutProvider { requirement: _, demanded_by: _ } => false
+    RequirementWithMultipleProviders { requirement: _, provider_identities: _ } => false
+    DependencyCycle { unresolved_keys: _ } => false
+  }
+}
+
+// AND REQUIRING NO GROUP PRODUCES NO MEMBERSHIP NODE, so the graph a caller gets is the graph its needs imply.
+test fn requiring_no_membership_produces_no_membership_node() -> Bool {
+  match w_graph(required_groups: []) {
+    DependencyClosureResolved { bindings: bs, batches: _ } => count(bs) == 5
+    RequirementWithoutProvider { requirement: _, demanded_by: _ } => false
+    RequirementWithMultipleProviders { requirement: _, provider_identities: _ } => false
+    DependencyCycle { unresolved_keys: _ } => false
+  }
+}
+
+// THE PRIVATE-KEY BINDING IS A LOCAL-RUNNER REQUIREMENT IN THIS VERTICAL'S OWN GRAPH, not a host one -- the
+// locus doing visible work on the real provider rows rather than only in the generic witness.
+test fn the_private_key_binding_is_required_on_the_runner() -> Bool {
+  string_contains(s: requirement_key(r: private_key_binding_requirement(credential: w_declared())) as String, pattern: "local-runner")
+}
+
+// ── AND NO COMMAND RUNS WITHOUT THE HANDLE ────────────────────────────────────────────────────
+data w_no_sessions: List<RealizedCapability<ManagedPrincipalSessionReady>> = []
+
+test fn a_command_needing_the_session_is_unattempted_without_it() -> Bool {
+  match admit_dependent(
+    required: [principal_session_requirement(host: w_host, principal: w_principal, credential: w_declared())],
+    realized: w_no_sessions,
+  ) {
+    DependentUnattempted { unmet_keys: ks } => count(ks) == 1
+    DependentRunnable => false
+  }
+}
+
+test fn a_command_needing_the_session_is_runnable_once_the_probe_produced_it() -> Bool {
+  match w_good_session() {
+    Absent => false
+    Present { value: r } =>
+      match admit_dependent(
+        required: [principal_session_requirement(host: w_host, principal: w_principal, credential: w_declared())],
+        realized: [realized_principal_session(host: w_host, principal: w_principal, credential: w_declared(), ready: r)],
+      ) {
+        DependentRunnable => true
+        DependentUnattempted { unmet_keys: _ } => false
+      }
+  }
+}
+
+// AND A SESSION PROVEN FOR ANOTHER HOST DOES NOT ADMIT THIS ONE'S WORK.
+test fn a_session_realized_for_another_host_does_not_admit_this_hosts_command() -> Bool {
+  match w_good_session() {
+    Absent => false
+    Present { value: r } =>
+      match admit_dependent(
+        required: [principal_session_requirement(host: w_other_host, principal: w_principal, credential: w_declared())],
+        realized: [realized_principal_session(host: w_host, principal: w_principal, credential: w_declared(), ready: r)],
+      ) {
+        DependentUnattempted { unmet_keys: ks } =>
+          any(ks, k => string_contains(s: k as String, pattern: w_other_host as String))
+        DependentRunnable => false
+      }
+  }
+}

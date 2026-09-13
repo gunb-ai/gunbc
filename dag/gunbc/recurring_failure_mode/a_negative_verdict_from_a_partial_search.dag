@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.a_negative_verdict_from_a_partial_search
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_negative_verdict_from_a_partial_search: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_negative_verdict_from_a_partial_search" as NonEmptyStr,
+
+  receipts: [
+    "**a negative verdict from a partial search** (a search over several possible sources ends early, and the absence found in the places that were checked is recorded as absence everywhere. The verdict is unbounded -- `this does not exist` -- and the evidence behind it is bounded, and nothing about running out of places to look distinguishes the two. ",
+
+    "THE ASYMMETRY IS THE WHOLE CLASS, AND IT IS WHY THIS IS NOT JUST CARELESSNESS. A POSITIVE answer is self-terminating and self-verifying: the artifact is in hand, and it either works or it does not. A NEGATIVE answer is also self-terminating -- there is nothing left to look at -- but it verifies nothing, and from the inside the two feel identical. The search stops in both cases and the stopping feels like completion in both cases. ",
+
+    "THE INSTANCE (2026-09-12). A deployment needed a kernel that exists in FlashInfer v0.7.0rc1. PyPI was queried: latest 0.6.18.post1, no 0.7.x at any pre-release. The project's stable index was queried: only one of the three packages, and not at that version. The verdict recorded was `no wheel is published for this tag on ANY CUDA version or architecture`, and the plan built on it was a source build of the dependency, a derived Dockerfile, an ahead-of-time kernel compile, and this repository maintaining all of it until upstream released. The operator approved that scope. ",
+
+    "THE THIRD INDEX WAS NAMED IN THE PROJECT'S OWN INSTALLATION DOCUMENT, four lines below the source-build procedure that had been read closely enough to plan against. It publishes all three packages at 0.7.0.dev20260910, including a jit-cache wheel built for manylinux_2_28_aarch64 against cu130 -- prebuilt kernels, which was the exact thing whose absence made the source build expensive. The capability was installable the entire time. ",
+
+    "AND THE COST LANDS WHERE THE SEARCH WAS CHEAPEST TO EXTEND. One more index listing was seconds of work; the plan the verdict authorised was hours of build time, a new maintained dependency, and a Dockerfile this repository would own. THAT IS THE GENERAL SHAPE: a not-obtainable verdict is precisely what licenses building the thing yourself, so this class bites hardest at the moment a plan turns expensive, and the evidence that would have stopped it is always small. ",
+
+    "THE NEIGHBOURING CLASS IS NOT THE SAME ONE. gunbc.recurring_failure_mode.a_capability_established_upstream_but_not_obtainable is about establishing that something EXISTS and never asking whether it can be had. This is the opposite direction: asking whether it can be had, asking incompletely, and recording the answer as final. The two were committed within hours of each other by the same author, the second while the first was already written down, which is the evidence that neither rule catches the other. ",
+
+    "RECOGNITION RULE: A NEGATIVE VERDICT ABOUT AVAILABILITY IS A CLAIM ABOUT EVERY ROUTE, SO IT OWES AN ENUMERATION OF THE ROUTES AND WHICH ONES WERE CHECKED. For a package: the language's package index, the project's own index, its pre-release or nightly channel, and its release attachments. For an image: the registry, the project's published tags, and any local store. For a fact: the upstream source, its issue tracker, and its documentation. Record the routes searched beside the verdict; a verdict that cannot say what it searched is an opinion. ",
+
+    "AND THE SECOND HALF OF THE RULE IS WHERE TO SPEND THE EFFORT: extend the search in proportion to what the NEGATIVE would authorise, not in proportion to how hard the artifact seems to find. A negative that ends in `wait for upstream` is cheap to be wrong about. A negative that ends in `build and maintain it ourselves` is not. ",
+
+    "RUNG FOUND AT: mitigatable. It was caught by a reviewer asking the operator-facing question `what are these scripts doing`, which surfaced the plan whose premise was the verdict. Nothing in the corpus refused it, and nothing could have: the verdict lived in an annotation and a declaration's prose field, where an enumeration of searched routes has nowhere to go. ",
+
+    "ATTAINABLE CEILING: mechanically preventable, and not higher, which is worth stating precisely. Whether a search was COMPLETE is not decidable -- there is always another place to look, and `every publication route` has no closed definition. What IS decidable is whether a refusal names the routes it searched: a typed acquisition refusal can carry a non-empty population of attempted routes, and a reviewer or a gate can then see that one index was consulted where the project publishes to three. That converts an unfalsifiable claim into a checkable one without pretending the underlying question is closed. ",
+
+    "NEXT TRIGGER: an acquisition refusal type whose not-available arm carries the routes attempted, so that recording a negative requires naming what was searched. extdeps.flashinfer.flashinfer's WheelResolution is the first instance of the shape -- it separates an unreadable index from a read index holding nothing -- and what remains is making the ROUTE POPULATION part of the refusal rather than a single index per resolution. Until then this row is review diligence and the recognition rule above is the whole of it.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.flashinfer.flashinfer", decl_name: "flashinfer_0_7_0_dev20260910", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.flashinfer.flashinfer", decl_name: "WheelResolution", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,354 @@
+module std.realization_dependency
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+
+// ── REALIZATION BEFORE USE ────────────────────────────────────────────────────────────────────
+//
+// A CONSUMER MAY USE A TARGET CAPABILITY ONLY THROUGH A GROUNDED HANDLE PRODUCED BY THAT CAPABILITY'S
+// CONVERGER. Declaring the use creates a REQUIREMENT; resolution binds that requirement to exactly one
+// provider, recursively closes the provider's own prerequisites, and derives the execution order. A missing,
+// ambiguous or cyclic provider is a PLAN-CONSTRUCTION refusal. A provider that exists but cannot converge is
+// a RUNTIME refusal, and its dependents are not attempted.
+//
+// SEQUENCING IS NOT DEPENDENCY ADMISSION, and that distinction is what this module exists for. The corpus
+// already orders effects three ways -- a hand-written chain of `let` bindings, std.temporal_effect's
+// prior-receipt cursor, and gunbc.spark.remote_step_sequence's linear fold -- and none of them can say that an
+// Apply is INADMISSIBLE because a prerequisite is not converged.
+//
+// WHY THIS IS NOT A SECOND UPSERT VOCABULARY. std.upsert_decision answers the question at ONE node, and since
+// almost every real convergence node eventually depends on another, a `DependentUpsert` sum would mix the
+// decision for a node with the relation between nodes and swallow the decision authority. Dependence belongs
+// on the GRAPH; each node keeps using std.upsert_decision and gunbc.ensure inside itself.
+//
+// AND IT IS NOT A SCHEDULER. std.realization_schedule owns what a batch MEANS. This module derives the PARTIAL
+// ORDER and hands it over as batches of requirement keys. NEXT-RUNG TRIGGER: `Schedule` there is
+// `List<List<Runnable>>`, concretely typed to the witness floor, so these batches cannot inhabit it today;
+// generalising that carrier to `List<List<T>>` lets the two join at the type level instead of by shape.
+//
+// THE REQUIREMENTS ARE HAND-DECLARED, WHICH IS THIS AUTHORITY'S HONEST RUNG. A consumer states what it needs;
+// nothing derives the requirement from the consumer's SIGNATURE. So a function that takes a ready handle and
+// forgets to declare the matching requirement still compiles, and the wall holds only where the declaration
+// was written. NEXT-RUNG TRIGGER: requirement derivation from operation signatures, with refusal at plan
+// admission -- at which point the `requires` rows disappear and the graph is a consequence of the types.
+
+// ── WHERE A CAPABILITY MUST EXIST ─────────────────────────────────────────────────────────────
+//
+// THE LOCUS IS PART OF THE IDENTITY AND ITS ABSENCE WOULD BIND THE RIGHT SOFTWARE TO THE WRONG MACHINE. The
+// live case is `sshpass`: it is required on the RUNNER that opens the password session, and not on the Spark
+// being converged -- gunbc.host_cli_dependency already treats its absence as a local PATH prerequisite and
+// refuses rather than installing inside the leg. A capability keyed without locus would let that requirement
+// be satisfied by installing sshpass on the remote host and calling the closure closed.
+//
+// IT ALSO KEEPS THREE GIT REQUIREMENTS APART: git on the convergence runner, git on srv9, and git inside a
+// serving image are three capabilities that happen to share a name, and one of them being converged is not
+// evidence about the others.
+//
+// THE HOST AND PRINCIPAL ARE STRINGS HERE BECAUSE `std` MAY NOT IMPORT A PRODUCT LAYER. The domain's own
+// requirement constructors take their typed HostIdentity and render into this key; what std owns is that the
+// locus is part of the identity at all, not how a host is spelled.
+type RealizationLocus
+  = LocalRunner
+  | RemoteHost { host: NonEmptyStr }
+  | ContainerImage { artifact: NonEmptyStr }
+  | ManagedPrincipalOnHost { host: NonEmptyStr, principal: NonEmptyStr }
+
+fn locus_key(l: RealizationLocus) -> String {
+  match l {
+    LocalRunner => "local-runner"
+    RemoteHost { host: h } => join(["host:", h as String], "")
+    ContainerImage { artifact: a } => join(["image:", a as String], "")
+    ManagedPrincipalOnHost { host: h, principal: p } => join(["host:", h as String, "/principal:", p as String], "")
+  }
+}
+
+// THE SUBJECT IS THE REST OF WHAT MAKES TWO REQUIREMENTS THE SAME, and it is separate from the capability so
+// that "git at or above version X" and "git at or above version Y" are different requirements over one
+// capability rather than two capabilities.
+type CapabilityRequirement sole_constructor {
+  capability: NonEmptyStr
+  locus: RealizationLocus
+  subject: NonEmptyStr
+}
+
+fn capability_requirement(capability: NonEmptyStr, locus: RealizationLocus, subject: NonEmptyStr) -> CapabilityRequirement {
+  CapabilityRequirement { capability: capability, locus: locus, subject: subject }
+}
+
+// THE KEY IS DERIVED FROM EVERY FIELD, so a caller cannot make two different requirements share an identity by
+// naming them alike. This replaces an earlier revision where the key was a caller-supplied string and the
+// host was embedded in it by convention -- which made a locus mistake unspellable rather than impossible.
+fn requirement_key(r: CapabilityRequirement) -> NonEmptyStr {
+  join([r.capability as String, "@", locus_key(l: r.locus), "#", r.subject as String], "") as NonEmptyStr
+}
+
+fn requirement_key_eq(a: CapabilityRequirement, b: CapabilityRequirement) -> Bool {
+  (requirement_key(r: a) as String) == (requirement_key(r: b) as String)
+}
+
+// A PROVIDER DECLARES WHAT IT PROVIDES AND WHAT IT NEEDS, and both are REQUIREMENTS rather than providers.
+// Naming a provider would let a consumer pick a realization, which is the layer inversion DESIGN section 3
+// forbids: the dispatch that selects a realization is itself realization.
+type CapabilityProvider sole_constructor {
+  identity: NonEmptyStr
+  provides: CapabilityRequirement
+  prerequisites: List<CapabilityRequirement>
+}
+
+fn capability_provider(
+  identity: NonEmptyStr,
+  provides: CapabilityRequirement,
+  prerequisites: List<CapabilityRequirement>,
+) -> CapabilityProvider {
+  CapabilityProvider { identity: identity, provides: provides, prerequisites: prerequisites }
+}
+
+// ── STANDING ONE: DOES THE GRAPH CLOSE ────────────────────────────────────────────────────────
+//
+// THIS IS WIRING AND NOTHING MORE, and an earlier revision of this module let it read as readiness: its
+// positive arm was called `RealizationClosed` and a caller holding one could reasonably have believed the
+// capability was available. A review named the conflation: a graph being closed is not its providers being
+// executable, and neither is the capabilities having been realized. Three standings, three types.
+//
+// EVERY REFUSAL NAMES THE REQUIREMENT IT FAILED ON, because a refusal reading "dependencies could not be
+// resolved" is the located-half-of-a-diagnostic loss DESIGN section 5 names. And zero providers is separated
+// from many, because the work owed differs: one needs a provider authored, the other needs a POLICY that picks.
+type RequirementProviderBinding sole_constructor {
+  requirement: CapabilityRequirement
+  provider: CapabilityProvider
+}
+
+type DependencyClosureStanding
+  = DependencyClosureResolved { bindings: List<RequirementProviderBinding>, batches: List<List<NonEmptyStr>> }
+  | RequirementWithoutProvider { requirement: CapabilityRequirement, demanded_by: NonEmptyStr }
+  | RequirementWithMultipleProviders { requirement: CapabilityRequirement, provider_identities: List<NonEmptyStr> }
+  | DependencyCycle { unresolved_keys: List<NonEmptyStr> }
+
+fn providers_for(providers: List<CapabilityProvider>, r: CapabilityRequirement) -> List<CapabilityProvider> {
+  filter(providers, p => requirement_key_eq(a: p.provides, b: r))
+}
+
+fn key_is_in(keys: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+  any(keys, k => (k as String) == (key as String))
+}
+
+fn requirement_is_in(rs: List<CapabilityRequirement>, r: CapabilityRequirement) -> Bool {
+  any(rs, x => requirement_key_eq(a: x, b: r))
+}
+
+fn closure_requirements(providers: List<CapabilityProvider>, roots: List<CapabilityRequirement>, rounds: Nat) -> List<CapabilityRequirement> {
+  if rounds == 0 { roots } else {
+    let widened = fold(providers, init: roots, f: (acc, p) =>
+      if requirement_is_in(rs: acc, r: p.provides) {
+        fold(p.prerequisites, init: acc, f: (inner, q) => if requirement_is_in(rs: inner, r: q) { inner } else { concat(inner, [q]) })
+      } else { acc })
+    if count(widened) == count(roots) { roots } else { closure_requirements(providers: providers, roots: widened, rounds: rounds - 1) }
+  }
+}
+
+fn first_binding_refusal(providers: List<CapabilityProvider>, rs: List<CapabilityRequirement>) -> DependencyClosureStanding? {
+  fold(rs, init: none, f: (acc, r) => match acc {
+    Present { value: x } => Present { value: x }
+    Absent => {
+      let matches = providers_for(providers: providers, r: r)
+      if count(matches) == 0 {
+        Present { value: RequirementWithoutProvider {
+          requirement: r,
+          demanded_by: "the declared roots and the prerequisites they close over" as NonEmptyStr,
+        } }
+      } else {
+        if count(matches) > 1 {
+          Present { value: RequirementWithMultipleProviders {
+            requirement: r,
+            provider_identities: map(matches, m => m.identity),
+          } }
+        } else { none }
+      }
+    }
+  })
+}
+
+fn prerequisite_keys_of(providers: List<CapabilityProvider>, key: NonEmptyStr) -> List<NonEmptyStr> {
+  fold(filter(providers, p => (requirement_key(r: p.provides) as String) == (key as String)),
+    init: [], f: (acc, p) => concat(acc, map(p.prerequisites, q => requirement_key(r: q))))
+}
+
+fn ready_keys(providers: List<CapabilityProvider>, remaining: List<NonEmptyStr>, placed: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(remaining, k => all(prerequisite_keys_of(providers: providers, key: k), q => key_is_in(keys: placed, key: q)))
+}
+
+type PeelAcc sole_constructor {
+  batches: List<List<NonEmptyStr>>
+  placed: List<NonEmptyStr>
+  remaining: List<NonEmptyStr>
+  stalled: Bool
+}
+
+// ONE ROUND PLACES EVERY REQUIREMENT WHOSE PREREQUISITES ARE ALL PLACED, and a round that places NOTHING while
+// requirements remain IS the cycle -- detected rather than assumed, as a bounded forward fold, which is the
+// acyclic encoding of a cyclic relation DESIGN section 4 requires instead of a cyclic value.
+fn peel_round(providers: List<CapabilityProvider>, acc: PeelAcc) -> PeelAcc {
+  if count(acc.remaining) == 0 { acc } else {
+    let ready = ready_keys(providers: providers, remaining: acc.remaining, placed: acc.placed)
+    if count(ready) == 0 {
+      PeelAcc { batches: acc.batches, placed: acc.placed, remaining: acc.remaining, stalled: true }
+    } else {
+      PeelAcc {
+        batches: concat(acc.batches, [ready]),
+        placed: concat(acc.placed, ready),
+        remaining: filter(acc.remaining, k => !key_is_in(keys: ready, key: k)),
+        stalled: false,
+      }
+    }
+  }
+}
+
+fn peel_batches(providers: List<CapabilityProvider>, acc: PeelAcc, rounds: Nat) -> PeelAcc {
+  if rounds == 0 { acc } else {
+    if count(acc.remaining) == 0 { acc } else {
+      let next = peel_round(providers: providers, acc: acc)
+      if next.stalled { next } else { peel_batches(providers: providers, acc: next, rounds: rounds - 1) }
+    }
+  }
+}
+
+fn resolve_dependency_closure(
+  providers: List<CapabilityProvider>,
+  roots: List<CapabilityRequirement>,
+) -> DependencyClosureStanding {
+  let bound = count(providers) + count(roots) + 1
+  let rs = closure_requirements(providers: providers, roots: roots, rounds: bound)
+  match first_binding_refusal(providers: providers, rs: rs) {
+    Present { value: refusal } => refusal
+    Absent => {
+      let keys = map(rs, r => requirement_key(r: r))
+      let peeled = peel_batches(
+        providers: providers,
+        acc: PeelAcc { batches: [], placed: [], remaining: keys, stalled: false },
+        rounds: bound,
+      )
+      if peeled.stalled || count(peeled.remaining) != 0 {
+        DependencyCycle { unresolved_keys: peeled.remaining }
+      } else {
+        DependencyClosureResolved {
+          bindings: fold(rs, init: [], f: (acc, r) =>
+            match (providers_for(providers: providers, r: r)).first() {
+              Absent => acc
+              Present { value: p } => concat(acc, [RequirementProviderBinding { requirement: r, provider: p }])
+            }),
+          batches: peeled.batches,
+        }
+      }
+    }
+  }
+}
+
+fn closure_standing_text(s: DependencyClosureStanding) -> String {
+  match s {
+    DependencyClosureResolved { bindings: bs, batches: batches } =>
+      join([
+        "the dependency closure RESOLVES over ", to_string(count(bs)), " requirement(s) in ",
+        to_string(count(batches)), " batch(es). This is WIRING ONLY: it does not say a provider can run, and it",
+        " does not say any capability has been realized",
+      ], "")
+    RequirementWithoutProvider { requirement: r, demanded_by: d } =>
+      join([
+        "no provider realizes ", requirement_key(r: r) as String, ", demanded by ", d as String,
+        ". A requirement with no provider is a PLAN refusal rather than a late failure on a host or an",
+        " instruction to a human: either a provider is authored, or the consumer stops declaring the use",
+      ], "")
+    RequirementWithMultipleProviders { requirement: r, provider_identities: ps } =>
+      join([
+        requirement_key(r: r) as String, " is realized by more than one provider (",
+        join(map(ps, p => p as String), ", "),
+        "), and resolution may not break the tie by list position. Target policy must produce exactly one binding",
+      ], "")
+    DependencyCycle { unresolved_keys: ks } =>
+      join([
+        "the realization graph has a cycle: these requirements never became ready because each waits on another (",
+        join(map(ks, k => k as String), ", "), ")",
+      ], "")
+  }
+}
+
+// ── STANDING TWO: CAN EVERY BOUND PROVIDER ACTUALLY RUN ───────────────────────────────────────
+//
+// A PROVIDER ROW IS A DECLARATION AND A HANDLER IS AN IMPLEMENTATION, and the gap between them is where an
+// inert graph hides. Three of the first access vertical's four providers were declared before any of them had
+// a handler, and the closure resolved -- so a caller reading only standing one would have had a resolved graph
+// that could realize nothing.
+//
+// THE CHECK IS A CALLER-SUPPLIED PREDICATE BECAUSE ONLY THE DOMAIN KNOWS. What std owns is that the question
+// is ASKED before a schedule is called executable, and that an unimplemented provider is NAMED. The domain's
+// executor should match its own closed provider vocabulary exhaustively, so adding a variant without a handler
+// breaks compilation rather than silently producing a row nothing can run.
+type ProviderExecutionStanding
+  = ProviderScheduleExecutable { batches: List<List<NonEmptyStr>>, provider_identities: List<NonEmptyStr> }
+  | ProviderHandlerMissing { provider_identity: NonEmptyStr, requirement_key: NonEmptyStr }
+
+fn admit_provider_schedule(
+  standing: DependencyClosureStanding,
+  has_handler: fn(CapabilityProvider) -> Bool,
+) -> ProviderExecutionStanding? {
+  match standing {
+    DependencyClosureResolved { bindings: bs, batches: batches } =>
+      match (filter(bs, b => !has_handler(b.provider))).first() {
+        Present { value: missing } => Present { value: ProviderHandlerMissing {
+          provider_identity: missing.provider.identity,
+          requirement_key: requirement_key(r: missing.requirement),
+        } }
+        Absent => Present { value: ProviderScheduleExecutable {
+          batches: batches,
+          provider_identities: map(bs, b => b.provider.identity),
+        } }
+      }
+    RequirementWithoutProvider { requirement: _, demanded_by: _ } => none
+    RequirementWithMultipleProviders { requirement: _, provider_identities: _ } => none
+    DependencyCycle { unresolved_keys: _ } => none
+  }
+}
+
+// ── STANDING THREE: HAS THE CAPABILITY BEEN REALIZED ──────────────────────────────────────────
+//
+// THE HANDLE'S TYPE IS THE DOMAIN'S AND SO IS ITS CONSTRUCTOR. Only the effect that PERFORMED and
+// independently OBSERVED the convergence may mint it, which is why this module carries handles and never makes
+// them: std.realization_reconcile grounds a readback against a supplied read and says outright that it cannot
+// prove the effect ran or that the read came afterwards, so the positive relation must be minted where the
+// observation was taken.
+//
+// THE PAIRING IS NOT SEALED AND THAT IS DELIBERATE. It was, and the compiler was right to refuse: no domain
+// provider could have minted one without this std module enumerating every product provider as an admitted
+// caller, a growth surface in std for product facts. Sealing it bought nothing either -- a forged pairing
+// still cannot forge the handle inside it, so the forgery carries no usable capability.
+type RealizedCapability<H> {
+  requirement: CapabilityRequirement
+  provider_identity: NonEmptyStr
+  handle: H
+}
+
+fn realized_capability<H>(
+  requirement: CapabilityRequirement,
+  provider_identity: NonEmptyStr,
+  handle: H,
+) -> RealizedCapability<H> {
+  RealizedCapability { requirement: requirement, provider_identity: provider_identity, handle: handle }
+}
+
+type CapabilityRealizationStanding<H>
+  = CapabilityReady { realized: RealizedCapability<H> }
+  | CapabilityNotReady { requirement_key: NonEmptyStr, cause: NonEmptyStr }
+
+// A DEPENDENT IS RUNNABLE ONLY WHEN EVERY PREREQUISITE HAS PRODUCED ITS HANDLE, and the unmet keys are named
+// so a blocked dependent records WHICH capability it waits on rather than being silently skipped.
+type DependentAdmission
+  = DependentRunnable
+  | DependentUnattempted { unmet_keys: List<NonEmptyStr> }
+
+fn admit_dependent<H>(
+  required: List<CapabilityRequirement>,
+  realized: List<RealizedCapability<H>>,
+) -> DependentAdmission {
+  let have = map(realized, r => requirement_key(r: r.requirement))
+  let unmet = filter(map(required, r => requirement_key(r: r)), k => !key_is_in(keys: have, key: k))
+  if count(unmet) == 0 { DependentRunnable } else { DependentUnattempted { unmet_keys: unmet } }
+}

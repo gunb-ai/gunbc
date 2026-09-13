@@ -1,0 +1,377 @@
+module test.claim.realization_dependency_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.realization_dependency {
+  RealizationLocus, LocalRunner, RemoteHost, ContainerImage, ManagedPrincipalOnHost, locus_key,
+  CapabilityRequirement, capability_requirement, requirement_key, requirement_key_eq,
+  CapabilityProvider, capability_provider,
+  RequirementProviderBinding,
+  DependencyClosureStanding, DependencyClosureResolved,
+  RequirementWithoutProvider, RequirementWithMultipleProviders, DependencyCycle,
+  resolve_dependency_closure, closure_standing_text,
+  ProviderExecutionStanding, ProviderScheduleExecutable, ProviderHandlerMissing, admit_provider_schedule,
+  RealizedCapability, realized_capability,
+  DependentAdmission, DependentRunnable, DependentUnattempted, admit_dependent,
+}
+
+// ── THE FLEET-ACCESS CHAIN AS A FIXTURE, BECAUSE IT IS THE SUBJECT THIS AUTHORITY WAS BUILT FOR ──
+//
+// THE EDGES ARE THE REAL ONES: an administrator session reached with the bootstrap password, a managed POSIX
+// account, that account's authorized_keys, the runner's own private-key binding, and finally a key-only session
+// as that principal. The rows declare only EDGES; what each provider does is the domain's business.
+//
+// THE ROOT IS THE LAST LINK, and the providers are authored in an order that is NOT the execution order, so
+// nothing here can pass by list position -- which was the defect in the precedent this authority replaces.
+data w_host: NonEmptyStr = "192.168.1.225" as NonEmptyStr
+data w_other_host: NonEmptyStr = "192.168.1.232" as NonEmptyStr
+data w_principal: NonEmptyStr = "gunbc-automation" as NonEmptyStr
+data w_other_principal: NonEmptyStr = "gunbc-inference" as NonEmptyStr
+data w_admin: NonEmptyStr = "briansrls" as NonEmptyStr
+
+fn req(capability: String, locus: RealizationLocus) -> CapabilityRequirement {
+  capability_requirement(capability: capability as NonEmptyStr, locus: locus, subject: "witness subject" as NonEmptyStr)
+}
+
+fn on_principal(host: NonEmptyStr, principal: NonEmptyStr) -> RealizationLocus {
+  ManagedPrincipalOnHost { host: host, principal: principal }
+}
+
+fn r_bootstrap(host: NonEmptyStr) -> CapabilityRequirement {
+  req(capability: "fleet.bootstrap_administrator_session", locus: on_principal(host: host, principal: w_admin))
+}
+
+fn r_account(host: NonEmptyStr, principal: NonEmptyStr) -> CapabilityRequirement {
+  req(capability: "fleet.managed_posix_account", locus: on_principal(host: host, principal: principal))
+}
+
+fn r_key(host: NonEmptyStr, principal: NonEmptyStr) -> CapabilityRequirement {
+  req(capability: "fleet.managed_authorized_key", locus: on_principal(host: host, principal: principal))
+}
+
+fn r_binding() -> CapabilityRequirement {
+  req(capability: "fleet.private_key_binding", locus: LocalRunner)
+}
+
+fn r_session(host: NonEmptyStr, principal: NonEmptyStr) -> CapabilityRequirement {
+  req(capability: "fleet.managed_principal_session", locus: on_principal(host: host, principal: principal))
+}
+
+fn p(identity: String, provides: CapabilityRequirement, prerequisites: List<CapabilityRequirement>) -> CapabilityProvider {
+  capability_provider(identity: identity as NonEmptyStr, provides: provides, prerequisites: prerequisites)
+}
+
+data w_providers: List<CapabilityProvider> = [
+  p(identity: "key-only-authentication-probe", provides: r_session(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal), r_key(host: w_host, principal: w_principal), r_binding()]),
+  p(identity: "managed-account-upsert", provides: r_account(host: w_host, principal: w_principal),
+    prerequisites: [r_bootstrap(host: w_host)]),
+  p(identity: "bootstrap-password-session", provides: r_bootstrap(host: w_host), prerequisites: []),
+  p(identity: "fleet-private-key-binding", provides: r_binding(), prerequisites: []),
+  p(identity: "authorized-keys-reconcile", provides: r_key(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal), r_bootstrap(host: w_host)]),
+]
+
+fn closure_of(providers: List<CapabilityProvider>, roots: List<CapabilityRequirement>) -> DependencyClosureStanding {
+  resolve_dependency_closure(providers: providers, roots: roots)
+}
+
+fn batches_of(s: DependencyClosureStanding) -> List<List<NonEmptyStr>> {
+  match s {
+    DependencyClosureResolved { bindings: _, batches: b } => b
+    RequirementWithoutProvider { requirement: _, demanded_by: _ } => []
+    RequirementWithMultipleProviders { requirement: _, provider_identities: _ } => []
+    DependencyCycle { unresolved_keys: _ } => []
+  }
+}
+
+fn batch_has(b: List<NonEmptyStr>, r: CapabilityRequirement) -> Bool {
+  any(b, k => (k as String) == (requirement_key(r: r) as String))
+}
+
+// ── STANDING ONE: THE GRAPH CLOSES, AND THAT IS ALL IT SAYS ───────────────────────────────────
+test fn the_fleet_access_chain_closes() -> Bool {
+  match closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]) {
+    DependencyClosureResolved { bindings: bs, batches: _ } => count(bs) == 5
+    _ => false
+  }
+}
+
+// THE CONSUMER NAMED ONE CAPABILITY AND GOT FIVE, which is the recursive closure. A resolution binding only
+// what the root listed would produce one.
+// FOUR BATCHES AND NOT THREE, and the arithmetic is the point rather than the number: the authorized key
+// depends on the ACCOUNT, so it cannot share a batch with it. A first revision of this row asserted three,
+// collapsing key into the account's level -- the mistake an author makes reasoning about a graph instead of
+// running it, and the reason a batch count is worth asserting at all.
+//
+//   batch 1  bootstrap session, private-key binding   (no prerequisites)
+//   batch 2  posix account                            (needs the bootstrap session)
+//   batch 3  authorized key                           (needs the account)
+//   batch 4  principal session                        (needs account, key and binding)
+test fn declaring_the_last_link_closes_over_every_prerequisite() -> Bool {
+  count(batches_of(s: closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]))) == 4
+}
+
+// AND THE ORDER IS DERIVED. The probe is authored FIRST in the provider list and must be placed LAST; the
+// bootstrap session and the local binding have no prerequisites and share the first batch.
+//
+// ITS RED IS AUTHORABLE: reorder the provider rows and this stays green, which is the point -- replace the
+// prerequisite lists with source order and it goes red.
+test fn the_batches_place_prerequisites_before_dependents() -> Bool {
+  let bs = batches_of(s: closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]))
+  match bs.first() {
+    Absent => false
+    Present { value: first } =>
+      match bs.skip(n: 3).first() {
+        Absent => false
+        Present { value: last } =>
+          batch_has(b: first, r: r_bootstrap(host: w_host))
+            && batch_has(b: first, r: r_binding())
+            && batch_has(b: last, r: r_session(host: w_host, principal: w_principal))
+            && !batch_has(b: first, r: r_session(host: w_host, principal: w_principal))
+      }
+  }
+}
+
+// ── THE THREE CLOSURE REFUSALS ────────────────────────────────────────────────────────────────
+data w_without_bootstrap: List<CapabilityProvider> = [
+  p(identity: "managed-account-upsert", provides: r_account(host: w_host, principal: w_principal),
+    prerequisites: [r_bootstrap(host: w_host)]),
+  p(identity: "fleet-private-key-binding", provides: r_binding(), prerequisites: []),
+  p(identity: "authorized-keys-reconcile", provides: r_key(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal)]),
+  p(identity: "key-only-authentication-probe", provides: r_session(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal), r_key(host: w_host, principal: w_principal), r_binding()]),
+]
+
+test fn a_capability_with_no_provider_refuses_and_names_it() -> Bool {
+  match closure_of(providers: w_without_bootstrap, roots: [r_session(host: w_host, principal: w_principal)]) {
+    RequirementWithoutProvider { requirement: r, demanded_by: _ } =>
+      requirement_key_eq(a: r, b: r_bootstrap(host: w_host))
+    _ => false
+  }
+}
+
+data w_two_key_installers: List<CapabilityProvider> = [
+  p(identity: "bootstrap-password-session", provides: r_bootstrap(host: w_host), prerequisites: []),
+  p(identity: "fleet-private-key-binding", provides: r_binding(), prerequisites: []),
+  p(identity: "managed-account-upsert", provides: r_account(host: w_host, principal: w_principal),
+    prerequisites: [r_bootstrap(host: w_host)]),
+  p(identity: "authorized-keys-reconcile", provides: r_key(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal)]),
+  p(identity: "cloud-init-seeded-keys", provides: r_key(host: w_host, principal: w_principal), prerequisites: []),
+  p(identity: "key-only-authentication-probe", provides: r_session(host: w_host, principal: w_principal),
+    prerequisites: [r_key(host: w_host, principal: w_principal)]),
+]
+
+test fn two_providers_for_one_capability_refuse_rather_than_taking_the_first() -> Bool {
+  match closure_of(providers: w_two_key_installers, roots: [r_session(host: w_host, principal: w_principal)]) {
+    RequirementWithMultipleProviders { requirement: r, provider_identities: ps } =>
+      requirement_key_eq(a: r, b: r_key(host: w_host, principal: w_principal)) && count(ps) == 2
+    _ => false
+  }
+}
+
+data w_cyclic: List<CapabilityProvider> = [
+  p(identity: "authorized-keys-reconcile", provides: r_key(host: w_host, principal: w_principal),
+    prerequisites: [r_session(host: w_host, principal: w_principal)]),
+  p(identity: "key-only-authentication-probe", provides: r_session(host: w_host, principal: w_principal),
+    prerequisites: [r_key(host: w_host, principal: w_principal)]),
+]
+
+test fn a_dependency_cycle_refuses_and_names_the_unresolved_keys() -> Bool {
+  match closure_of(providers: w_cyclic, roots: [r_session(host: w_host, principal: w_principal)]) {
+    DependencyCycle { unresolved_keys: ks } => count(ks) == 2
+    _ => false
+  }
+}
+
+test fn every_refusal_text_names_the_capability_it_failed_on() -> Bool {
+  string_contains(
+    s: closure_standing_text(s: closure_of(providers: w_without_bootstrap, roots: [r_session(host: w_host, principal: w_principal)])),
+    pattern: requirement_key(r: r_bootstrap(host: w_host)) as String)
+}
+
+// AND THE RESOLVED TEXT REFUSES TO OVERCLAIM. A caller reading standing one must not come away believing a
+// capability is available, which is exactly what the previous arm name invited.
+test fn the_resolved_text_says_it_is_wiring_only() -> Bool {
+  let t = closure_standing_text(s: closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]))
+  string_contains(s: t, pattern: "WIRING ONLY")
+    && string_contains(s: t, pattern: "does not say any capability has been realized")
+}
+
+// ── LOCUS IS PART OF THE IDENTITY ─────────────────────────────────────────────────────────────
+//
+// THE CONTROL THAT WOULD HAVE CAUGHT A STRING KEY. One host's providers must not realize another host's
+// session, and one principal's must not realize another's -- so BOTH mutations refuse, each naming the
+// unbound requirement.
+test fn one_hosts_providers_do_not_realize_another_hosts_session() -> Bool {
+  match closure_of(providers: w_providers, roots: [r_session(host: w_other_host, principal: w_principal)]) {
+    RequirementWithoutProvider { requirement: r, demanded_by: _ } =>
+      string_contains(s: requirement_key(r: r) as String, pattern: w_other_host as String)
+    _ => false
+  }
+}
+
+test fn one_principals_providers_do_not_realize_anothers_session() -> Bool {
+  match closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_other_principal)]) {
+    RequirementWithoutProvider { requirement: r, demanded_by: _ } =>
+      string_contains(s: requirement_key(r: r) as String, pattern: w_other_principal as String)
+    _ => false
+  }
+}
+
+// AND A LOCAL-RUNNER CAPABILITY IS NOT SATISFIED BY THE SAME NAME ON THE REMOTE TARGET. This is the sshpass
+// case: required on the runner that opens the password session, never on the Spark. A provider that installs it
+// remotely leaves the local requirement unbound, and the refusal says so.
+data w_binding_only_on_host: List<CapabilityProvider> = [
+  p(identity: "bootstrap-password-session", provides: r_bootstrap(host: w_host), prerequisites: []),
+  p(identity: "managed-account-upsert", provides: r_account(host: w_host, principal: w_principal),
+    prerequisites: [r_bootstrap(host: w_host)]),
+  p(identity: "authorized-keys-reconcile", provides: r_key(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal)]),
+  p(identity: "private-key-installed-on-the-remote-host-by-mistake",
+    provides: req(capability: "fleet.private_key_binding", locus: RemoteHost { host: w_host }), prerequisites: []),
+  p(identity: "key-only-authentication-probe", provides: r_session(host: w_host, principal: w_principal),
+    prerequisites: [r_account(host: w_host, principal: w_principal), r_key(host: w_host, principal: w_principal), r_binding()]),
+]
+
+test fn a_local_runner_capability_is_not_satisfied_on_the_remote_target() -> Bool {
+  match closure_of(providers: w_binding_only_on_host, roots: [r_session(host: w_host, principal: w_principal)]) {
+    RequirementWithoutProvider { requirement: r, demanded_by: _ } =>
+      (locus_key(l: r.locus) == "local-runner")
+    _ => false
+  }
+}
+
+// ── STANDING TWO: A RESOLVED GRAPH IS NOT AN EXECUTABLE ONE ───────────────────────────────────
+//
+// THE DISTINCTION THE PREVIOUS REVISION COLLAPSED. Every requirement here has a provider ROW and one of them
+// has no HANDLER, so closure succeeds and execution must not.
+fn handler_for_all(p: CapabilityProvider) -> Bool { true }
+
+fn handler_missing_for_the_probe(p: CapabilityProvider) -> Bool {
+  (p.identity as String) != "key-only-authentication-probe"
+}
+
+test fn a_resolved_graph_with_every_handler_is_executable() -> Bool {
+  match admit_provider_schedule(
+    standing: closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]),
+    has_handler: handler_for_all,
+  ) {
+    Present { value: e } =>
+      match e {
+        ProviderScheduleExecutable { batches: b, provider_identities: ids } => count(b) == 4 && count(ids) == 5
+        ProviderHandlerMissing { provider_identity: _, requirement_key: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn a_provider_row_without_a_handler_cannot_produce_a_runnable_plan() -> Bool {
+  match admit_provider_schedule(
+    standing: closure_of(providers: w_providers, roots: [r_session(host: w_host, principal: w_principal)]),
+    has_handler: handler_missing_for_the_probe,
+  ) {
+    Present { value: e } =>
+      match e {
+        ProviderHandlerMissing { provider_identity: id, requirement_key: k } =>
+          (id as String) == "key-only-authentication-probe"
+            && string_contains(s: k as String, pattern: "managed_principal_session")
+        ProviderScheduleExecutable { batches: _, provider_identities: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// AND AN UNRESOLVED GRAPH HAS NO EXECUTION STANDING AT ALL, rather than an empty one: asking whether handlers
+// exist for a graph that does not close is a question with no subject.
+test fn an_unresolved_graph_has_no_execution_standing() -> Bool {
+  match admit_provider_schedule(
+    standing: closure_of(providers: w_without_bootstrap, roots: [r_session(host: w_host, principal: w_principal)]),
+    has_handler: handler_for_all,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── STANDING THREE: A DEPENDENT WITHOUT A HANDLE IS UNATTEMPTED ───────────────────────────────
+data w_no_realized: List<RealizedCapability<NonEmptyStr>> = []
+
+test fn a_dependent_with_no_realized_prerequisite_is_unattempted_and_names_it() -> Bool {
+  match admit_dependent(required: [r_session(host: w_host, principal: w_principal)], realized: w_no_realized) {
+    DependentUnattempted { unmet_keys: ks } =>
+      count(ks) == 1 && any(ks, k => string_contains(s: k as String, pattern: "managed_principal_session"))
+    DependentRunnable => false
+  }
+}
+
+data w_realized_session: List<RealizedCapability<NonEmptyStr>> = [
+  realized_capability(
+    requirement: r_session(host: w_host, principal: w_principal),
+    provider_identity: "key-only-authentication-probe" as NonEmptyStr,
+    handle: "a witness stand-in; the real handle is the domain's sealed session carrier" as NonEmptyStr),
+]
+
+test fn a_dependent_whose_prerequisite_produced_a_handle_is_runnable() -> Bool {
+  match admit_dependent(required: [r_session(host: w_host, principal: w_principal)], realized: w_realized_session) {
+    DependentRunnable => true
+    DependentUnattempted { unmet_keys: _ } => false
+  }
+}
+
+// AND A HANDLE FOR ANOTHER HOST DOES NOT ADMIT THIS DEPENDENT, which is the same locus join one rung further
+// on: realization is per (capability, locus, subject), so a converged session on srv9 cannot license work on
+// srv10.
+test fn a_handle_realized_for_another_host_does_not_admit_the_dependent() -> Bool {
+  match admit_dependent(required: [r_session(host: w_other_host, principal: w_principal)], realized: w_realized_session) {
+    DependentUnattempted { unmet_keys: ks } =>
+      count(ks) == 1 && any(ks, k => string_contains(s: k as String, pattern: w_other_host as String))
+    DependentRunnable => false
+  }
+}
+
+// ── PAIR 7: COVERAGE IS A RELATION, NOT A QUANTIFIER OVER WHAT WAS OBSERVED ────────────────────
+//
+// THE TELL THIS ROW EXISTS FOR: using "every observed member passed" as though it established "every required
+// member was observed and passed". `all([])` is not the defect -- the quantifier is correct -- and a four-rank
+// launch with three successful observations and one MISSING observation cannot become healthy by filtering the
+// missing rank away. Coverage needs the expected population as well as the observed one.
+//
+// `admit_dependent` is the corpus's smallest instance of that relation: it compares the REQUIRED requirements
+// against the realized ones and names what is unmet, rather than folding over the realized ones and reporting
+// that they were all fine.
+data w_two_host_requirement: List<CapabilityRequirement> = [
+  r_session(host: w_host, principal: w_principal),
+  r_session(host: w_other_host, principal: w_principal),
+]
+
+test fn one_realized_of_two_required_is_unattempted_and_names_the_missing_one() -> Bool {
+  match admit_dependent(required: w_two_host_requirement, realized: w_realized_session) {
+    DependentUnattempted { unmet_keys: ks } =>
+      count(ks) == 1 && any(ks, k => string_contains(s: k as String, pattern: w_other_host as String))
+    DependentRunnable => false
+  }
+}
+
+// AND AN EMPTY REQUIREMENT SET IS RUNNABLE, which is the legitimate empty this rule must not break: an operation
+// that requires no capabilities is not blocked, and a suite that refused every empty population would be a
+// blanket refusal rather than a coverage check.
+data w_no_requirements: List<CapabilityRequirement> = []
+
+test fn requiring_nothing_is_runnable_rather_than_refused() -> Bool {
+  match admit_dependent(required: w_no_requirements, realized: w_no_realized) {
+    DependentRunnable => true
+    DependentUnattempted { unmet_keys: _ } => false
+  }
+}
+
+// AND A REALIZED CAPABILITY NOBODY REQUIRED DOES NOT SATISFY A REQUIREMENT THAT WAS, which is the asymmetry a
+// fold over the realized side would lose: having one handle in hand says nothing about the other host.
+test fn a_realized_capability_for_the_wrong_subject_does_not_cover_the_right_one() -> Bool {
+  match admit_dependent(required: [r_session(host: w_other_host, principal: w_principal)], realized: w_realized_session) {
+    DependentUnattempted { unmet_keys: ks } => count(ks) == 1
+    DependentRunnable => false
+  }
+}

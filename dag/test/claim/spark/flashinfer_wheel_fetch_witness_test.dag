@@ -1,0 +1,204 @@
+module test.claim.spark.flashinfer_wheel_fetch_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels, flashinfer_wheel_for,
+  WheelResolution, WheelResolved, WheelIndexUnreadable, WheelNotInIndex, WheelCandidatesConflict,
+  resolve_wheel_from_hrefs, flashinfer_nightly_index_for,
+}
+import gunbc.spark.flashinfer_wheel_fetch {
+  WheelMaterialization, WheelMaterialized, WheelResolutionFailed, WheelAcquisitionFailed,
+  WheelPopulation, WheelsReady, WheelsIncomplete, AcquiredWheel,
+  wheel_materialized_path, wheel_requirement_subject,
+}
+import gunbc.artifact_acquisition { AcquisitionSubject }
+import extdeps.python.simple_repository_api { index_file_locators }
+
+// ── THE TWO PROPERTIES THAT LIVE IN THE FOLD RATHER THAN THE PARSER ───────────────────────────
+//
+// AN UNREADABLE INDEX MUST NOT BECOME AN ABSENCE VERDICT. "The index could not be read" and "the index
+// was read and holds nothing matching" are the difference between a retry and a repin, and on a nightly
+// channel the second is ordinary while the first is an outage. A fold that collapsed them would tell an
+// operator to change a pin because a network was down.
+fn w_wheel() -> FlashInferWheel? {
+  flashinfer_wheel_for(wheels: flashinfer_0_7_0_dev20260910_wheels, package: "flashinfer-python" as NonEmptyStr)
+}
+
+test fn an_unreadable_index_is_not_a_missing_artifact() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let unreadable = WheelIndexUnreadable {
+        index: flashinfer_nightly_index_for(package: w.package),
+        cause: "the package index could not be fetched" as NonEmptyStr,
+      }
+      match unreadable {
+        WheelIndexUnreadable { index: _, cause: _ } => true
+        WheelNotInIndex { index: _, filename: _ } => false
+        WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+        WheelCandidatesConflict { filename: _, locators: _ } => false
+      }
+    }
+  }
+}
+
+// AND AN EMPTY CANDIDATE LIST FROM A SUCCESSFULLY READ INDEX IS THE OTHER ANSWER, which is what makes
+// the pair meaningful: the same absence of candidates means different things depending on whether the
+// read succeeded, so the resolver must not derive one from the other.
+test fn a_read_index_with_no_candidates_is_not_in_index() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } =>
+      match resolve_wheel_from_hrefs(w: w, index: flashinfer_nightly_index_for(package: w.package), hrefs: []) {
+        WheelNotInIndex { index: _, filename: f } => (f as String) == (w.filename as String)
+        WheelIndexUnreadable { index: _, cause: _ } => false
+        WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+        WheelCandidatesConflict { filename: _, locators: _ } => false
+      }
+  }
+}
+
+// ── THE REQUIREMENT EXISTS WITHOUT A SOURCE, WHICH IS WHAT MAKES LOCAL REUSE POSSIBLE ─────────
+//
+// THE SUBJECT IS CONSTRUCTIBLE WITH NO SOURCES AT ALL. A previous revision resolved the index before it
+// could build a subject, so a verified wheel already on disk was unusable whenever the nightly had moved
+// on -- the artifact was right there, hashing correctly, and the code could not express wanting it.
+//
+// THE ROW ESTABLISHES WHAT BYTES ARE WANTED; RESOLUTION ESTABLISHES WHERE THEY CAN BE FETCHED. This row
+// asserts the first half stands alone, which is the structural precondition for the destination-first
+// observation the acquisition fold performs.
+test fn a_requirement_subject_needs_no_source_to_exist() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let s = wheel_requirement_subject(w: w, parent: "/tmp/wheels" as NonEmptyStr, sources: [])
+      count(s.sources) == 0
+        && (s.identity as String) == (w.filename as String)
+        && string_contains(s: s.install_path as String, pattern: w.filename as String)
+    }
+  }
+}
+
+// AND THE STAGING PATH IS NOT THE INSTALL PATH, which is the property that keeps wrong bytes from
+// becoming a permanent resident: a download lands beside the destination and only a verified one is
+// published over it.
+test fn the_staging_path_differs_from_the_install_path() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let s = wheel_requirement_subject(w: w, parent: "/tmp/wheels" as NonEmptyStr, sources: [])
+      match s.staging_path {
+        Present { value: st } => (st as String) != (s.install_path as String)
+        Absent => false
+      }
+    }
+  }
+}
+
+// ── THE POPULATION IS ALL OR IT IS NAMED ──────────────────────────────────────────────────────
+//
+// TWO OF THREE IS NOT A PARTIAL SUCCESS TO PROCEED FROM: the layer installs them in one invocation, and
+// a missing jit-cache leaves the image carrying whatever the base had -- the released build this whole
+// exercise exists to replace, installed silently.
+test fn an_incomplete_population_names_its_failures_rather_than_counting() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let failed = WheelResolutionFailed {
+        filename: w.filename,
+        resolution: WheelNotInIndex { index: "https://x.invalid/" as NonEmptyStr, filename: w.filename },
+      }
+      match wheel_materialized_path(m: failed) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+  }
+}
+
+// AND IT REPORTS ITS PATH BESIDE ITS IDENTITY, which is the pair a build context needs. A path alone
+// forced the consumer to recover the filename by parsing the destination, and the readiness join that
+// did so compared required FILENAMES against acquired PATHS and matched nothing.
+test fn a_materialized_wheel_reports_its_path_beside_its_identity() -> Bool {
+  match wheel_materialized_path(m: WheelMaterialized {
+    filename: "w.whl" as NonEmptyStr,
+    install_path: "/tmp/wheels/w.whl" as NonEmptyStr,
+  }) {
+    Present { value: a } => (a.install_path as String) == "/tmp/wheels/w.whl" && (a.filename as String) == "w.whl"
+    Absent => false
+  }
+}
+
+// ── THE SPAN THE DEFECT LIVED IN: AN INDEX DOCUMENT THROUGH TO A RESOLUTION ───────────────────
+//
+// EVERY PIECE WAS INDIVIDUALLY GREEN WHILE THE PRODUCT WAS WRONG. The extraction had its own fixtures,
+// the filename comparison had its own fixtures, and the acquisition path called neither -- it split the
+// document on quotes and kept every absolute URL. No fixture on either side of the seam could see that,
+// because the seam was the thing that was broken.
+//
+// SO THESE RUN THE WHOLE SPAN BELOW THE NETWORK: the document the index would return, read exactly as
+// read_index_hrefs reads it, into the resolution the fold acts on. Against the previous revision the
+// first of them is RED -- a commented-out entry was extracted and selected, and the resolution said
+// WheelResolved with a locator from a comment.
+data w_index: NonEmptyStr = "https://flashinfer.ai/whl/nightly/flashinfer-python/" as NonEmptyStr
+
+fn w_resolution_from_document(document: String) -> WheelResolution? {
+  match w_wheel() {
+    Absent => none
+    Present { value: w } => Present { value: resolve_wheel_from_hrefs(
+      w: w, index: w_index, hrefs: index_file_locators(index: w_index, document: document)) }
+  }
+}
+
+test fn a_withdrawn_build_left_in_a_comment_is_not_in_the_index() -> Bool {
+  match w_resolution_from_document(document: join([
+    "<html><body><!-- <a href=\"https://evil.invalid/",
+    "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl\">withdrawn</a> -->",
+    "<p>no builds</p></body></html>"], "")) {
+    Absent => false
+    Present { value: r } => match r {
+      WheelNotInIndex { index: _, filename: _ } => true
+      WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+      WheelIndexUnreadable { index: _, cause: _ } => false
+      WheelCandidatesConflict { filename: _, locators: _ } => false
+    }
+  }
+}
+
+// AND A RELATIVE LINK -- WHICH THE OLD EXTRACTOR COULD NOT SEE AT ALL -- RESOLVES AND IS SELECTED. The
+// old reader reported this document as holding nothing, which reads as a withdrawn pin: the single most
+// misleading answer available, because it sends an operator to change a pin that is correct.
+test fn a_relative_anchor_resolves_to_the_selected_locator() -> Bool {
+  match w_resolution_from_document(document: join([
+    "<html><body><a href=\"flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=abc\">wheel</a>",
+    "</body></html>"], "")) {
+    Absent => false
+    Present { value: r } => match r {
+      WheelResolved { filename: _, locator: loc, expected_sha256: _ } =>
+        (loc as String) == "https://flashinfer.ai/whl/nightly/flashinfer-python/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=abc"
+      WheelNotInIndex { index: _, filename: _ } => false
+      WheelIndexUnreadable { index: _, cause: _ } => false
+      WheelCandidatesConflict { filename: _, locators: _ } => false
+    }
+  }
+}
+
+// THE GENUINE LINK AMONG PROSE AND A COMMENT IS THE POSITIVE CONTROL, so a reader cannot mistake the two
+// refusals above for a reader that has simply stopped finding anything.
+test fn the_genuine_anchor_is_found_beside_prose_and_a_comment() -> Bool {
+  match w_resolution_from_document(document: join([
+    "<html><body><!-- generated by an index --><p>flashinfer_python-0.7.0.dev20260910-py3-none-any.whl</p>",
+    "<a href=\"https://files.invalid/w/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=abc\">get</a>",
+    "<a href=\"https://files.invalid/w/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl.metadata\">meta</a>",
+    "</body></html>"], "")) {
+    Absent => false
+    Present { value: r } => match r {
+      WheelResolved { filename: _, locator: loc, expected_sha256: _ } =>
+        (loc as String) == "https://files.invalid/w/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=abc"
+      WheelNotInIndex { index: _, filename: _ } => false
+      WheelIndexUnreadable { index: _, cause: _ } => false
+      WheelCandidatesConflict { filename: _, locators: _ } => false
+    }
+  }
+}

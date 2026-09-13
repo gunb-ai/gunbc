@@ -1,0 +1,63 @@
+module test.claim.extdeps.scp_operand_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.ssh.scp { scp_remote_operand, scp_fetch_operands, scp_push_operands }
+
+// ── A DIRECTION THAT IS WRONG IS SILENT ───────────────────────────────────────────────────────
+//
+// `scp a b` COPIES a TO b, AND SWAPPING THEM DOES NOT FAIL -- it overwrites the source with the
+// destination, or the destination with an empty local file, depending on which way round the mistake
+// went. There is no exit code for "you meant the other direction", so the property has to be asserted
+// here or it is asserted nowhere.
+
+data w_endpoint: NonEmptyStr = "192.168.1.226" as NonEmptyStr
+data w_remote: NonEmptyStr = "/home/gunbc-automation/gunbc-vllm-build/image-archives/abc.tar" as NonEmptyStr
+data w_local: NonEmptyStr = "target/spark-image-transfer/abc.tar" as NonEmptyStr
+
+test fn the_remote_operand_joins_endpoint_and_path_with_a_colon() -> Bool {
+  scp_remote_operand(endpoint: w_endpoint, path: w_remote)
+    == "192.168.1.226:/home/gunbc-automation/gunbc-vllm-build/image-archives/abc.tar"
+}
+
+// FETCH PUTS THE REMOTE FIRST, because the first operand is the source.
+test fn a_fetch_reads_the_remote_and_writes_the_local() -> Bool {
+  let ops = scp_fetch_operands(endpoint: w_endpoint, remote_path: w_remote, local_path: w_local)
+  count(ops) == 2
+    && match get(xs: ops, index: 0) {
+         Present { value: first } => first == scp_remote_operand(endpoint: w_endpoint, path: w_remote)
+         Absent => false
+       }
+    && match get(xs: ops, index: 1) {
+         Present { value: second } => second == (w_local as String)
+         Absent => false
+       }
+}
+
+// PUSH PUTS THE LOCAL FIRST, and these two tests together are what make the pair discriminating: a
+// single implementation serving both directions would fail exactly one of them.
+test fn a_push_reads_the_local_and_writes_the_remote() -> Bool {
+  let ops = scp_push_operands(endpoint: w_endpoint, local_path: w_local, remote_path: w_remote)
+  count(ops) == 2
+    && match get(xs: ops, index: 0) {
+         Present { value: first } => first == (w_local as String)
+         Absent => false
+       }
+    && match get(xs: ops, index: 1) {
+         Present { value: second } => second == scp_remote_operand(endpoint: w_endpoint, path: w_remote)
+         Absent => false
+       }
+}
+
+// AND THE TWO DIRECTIONS ARE NOT THE SAME LIST, which is the one-line statement of the property above:
+// if this ever passes, the direction has stopped being carried by the call.
+test fn the_two_directions_differ() -> Bool {
+  scp_fetch_operands(endpoint: w_endpoint, remote_path: w_remote, local_path: w_local)
+    != scp_push_operands(endpoint: w_endpoint, local_path: w_local, remote_path: w_remote)
+}
+
+// THE PRINCIPAL IS NOT IN THE OPERAND. It travels as -o User, so one spelling of "who" serves the
+// command legs and the copy legs alike; an operand carrying `user@` would be a second place to change it.
+test fn the_operand_carries_no_principal() -> Bool {
+  !string_contains(s: scp_remote_operand(endpoint: w_endpoint, path: w_remote), pattern: "@")
+}

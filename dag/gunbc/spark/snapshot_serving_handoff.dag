@@ -1,0 +1,114 @@
+module gunbc.spark.snapshot_serving_handoff
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.remote_execution { SparkRemoteExecutionContext }
+import gunbc.spark.serving_arm_launch { ArmNode }
+import gunbc.spark.post_acquisition_memory_remedy {
+  MemoryRemedyOutcome, memory_remedy_text, memory_remedy_succeeded, release_population_page_cache,
+}
+
+// ── MATERIALIZATION HANDS A SNAPSHOT OVER READY TO SERVE, OR SAYS WHAT IS MISSING ───────────────
+//
+// THE CUTOVER HELD A RAW SYSCTL AND THAT WAS THE WRONG LAYER. gunbc.spark.native_cutover_wet wrote
+// `/proc/sys/vm/drop_caches` itself, inline, between its two envelope stages -- so a launch transaction was
+// carrying a host-preparation step that has nothing to do with launching, and every consumer of these
+// snapshots would have had to rediscover the same obligation. The step belongs where the bytes were put on
+// the host, which is materialization (operator ruling, 2026-09-11).
+//
+// SO THE CUTOVER CONSUMES A HANDOFF, NOT A PROCEDURE. SnapshotReadyForNativeServing is the statement that
+// these exact ranks hold this exact snapshot AND are in the state a vLLM startup will accept. A transaction
+// that receives it does not know or care that a cache was released; a transaction that receives
+// SnapshotMaterializedButNotReady gets a list of obligations rather than a silent failure later.
+//
+// ── WHAT THE CACHE RELEASE IS, NAMED EXACTLY ────────────────────────────────────────────────────
+//
+// IT IS A vLLM UNIFIED-MEMORY ADMISSION-GUARD COMPATIBILITY OPERATION. It is NOT recovering memory the
+// kernel could not supply, and the difference is measured rather than argued. On a Group B host holding 53
+// GB of page cache (2026-09-11), `torch.cuda.mem_get_info` reported 62.29 GiB free and a single 90 GiB
+// allocation -- above the free figure, below the kernel's available figure -- SUCCEEDED, ending at 1.04 GiB
+// free. The kernel reclaims clean page cache on demand for a device allocation like any other consumer.
+//
+// WHAT REFUSES IS THE GUARD. vLLM compares its requested budget against `mem_get_info` free, which on
+// unified memory is MemFree and excludes reclaimable cache, so it declines launches the host would have
+// served. Releasing the cache moves the number the guard reads; it adds no capacity. Any annotation here
+// that said "this host cannot supply the memory" would be false, and an earlier revision of the remedy said
+// exactly that.
+//
+// AND IT COSTS A RE-READ, WHICH IS THE PRICE OF THE WORKAROUND: the cache being dropped holds the very
+// snapshot files each rank is about to load, so every rank then reads its weights from NVMe rather than RAM.
+// That is why this is a HANDOFF STEP and not a standing hygiene policy -- it is performed once, for a named
+// consumer, immediately before that consumer starts, and not on any schedule.
+//
+// DISSOLUTION TRIGGER, A CAPABILITY RATHER THAN A PROMISE: an upstream admission guard that consults
+// reclaimable memory on unified-memory devices, or a supported way to supply the true available figure. When
+// a cache-warm host is admitted without this step, CacheCompatibilityReceipt and the remedy it wraps both
+// delete, and materialization keeps the cache it had been doing good with.
+type CacheCompatibilityReceipt sole_constructor {
+  ranks: List<HostIdentity>
+  outcomes: List<MemoryRemedyOutcome>
+  operation: NonEmptyStr
+}
+
+data vllm_startup_guard_compatibility_operation: NonEmptyStr = "page cache released so the vLLM unified-memory startup admission guard reads the memory the kernel would have supplied anyway" as NonEmptyStr
+
+fn cache_receipt_text(r: CacheCompatibilityReceipt) -> String {
+  join([r.operation as String, ": ", join(map(r.outcomes, o => memory_remedy_text(o: o)), "; ")], "")
+}
+
+// ── THE HANDOFF ────────────────────────────────────────────────────────────────────────────────
+//
+// THE OBLIGATIONS ARM CARRIES A LIST BECAUSE A HOST CAN FAIL THIS IN MORE THAN ONE WAY AT ONCE, and a
+// consumer deciding whether to proceed needs all of them rather than the first. An empty obligation list is
+// not representable in that arm: a handoff with nothing missing is the ready arm.
+type SnapshotServingHandoff
+  = SnapshotReadyForNativeServing {
+      ranks: List<ArmNode>
+      page_cache_compatibility: CacheCompatibilityReceipt
+    }
+  | SnapshotMaterializedButNotReady { obligations: List<NonEmptyStr> }
+
+fn handoff_text(h: SnapshotServingHandoff) -> String {
+  match h {
+    SnapshotReadyForNativeServing { ranks: rs, page_cache_compatibility: c } =>
+      join([to_string(count(rs)), " ranks ready for native serving -- ", cache_receipt_text(r: c)], "")
+    SnapshotMaterializedButNotReady { obligations: os } =>
+      join(["materialized but NOT ready for serving: ", join(map(os, o => o as String), "; ")], "")
+  }
+}
+
+// EVERY PLANNED RANK MUST COMPLETE THE OPERATION, and a host that could not is an obligation rather than a
+// warning. A partial handoff is what would put the guard's refusal back on the launch path, one host at a
+// time, which is the failure this type exists to make impossible to reach silently.
+func hand_off_snapshot_for_native_serving(
+  ctx: SparkRemoteExecutionContext, ranks: List<ArmNode>,
+) -> SnapshotServingHandoff
+  uses net: Network
+{
+  if count(ranks) == 0 {
+    SnapshotMaterializedButNotReady {
+      obligations: ["no ranks were named, so there is no population to hand over" as NonEmptyStr],
+    }
+  } else {
+    let outcomes = release_population_page_cache(ctx: ctx, nodes: ranks)
+    let failed = filter(outcomes, o => !memory_remedy_succeeded(o: o))
+    if count(failed) != 0 {
+      SnapshotMaterializedButNotReady {
+        obligations: map(failed, o => join([
+          "the vLLM startup guard compatibility operation did not complete: ", memory_remedy_text(o: o),
+        ], "") as NonEmptyStr),
+      }
+    } else {
+      SnapshotReadyForNativeServing {
+        ranks: ranks,
+        page_cache_compatibility: CacheCompatibilityReceipt {
+          ranks: map(ranks, n => n.host),
+          outcomes: outcomes,
+          operation: vllm_startup_guard_compatibility_operation,
+        },
+      }
+    }
+  }
+}

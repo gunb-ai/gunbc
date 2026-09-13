@@ -103,12 +103,13 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // harness already points at. Group B was promoted once A's launch line was read back
 // (pool 11,767,856 tokens at tp=4, 2026-09-05) and is withdrawn here.
 //
-// GROUP B IS THE CANARY'S, AND THE MODEL IS CATCHING UP TO A FACT RATHER THAN DECIDING ONE. Its head
-// is srv9, which is the host gunbc.spark.glm_canary_converge names. Leaving B here left two
-// authorities claiming the same machines with no relation between them, and they do not merely
-// overlap: the pair route would serve DeepSeek on port 30000 while the canary serves GLM on 30001,
-// from one 121 GiB pool sized by neither. The first pair-serving convergence to run would have acted
-// on a host it believed idle.
+// GROUP B IS THE GLM ARM'S, AND THE MODEL IS CATCHING UP TO A FACT RATHER THAN DECIDING ONE. Its head is
+// srv9, which is the host gunbc.spark.serving_arm_launch names as the four-rank arm's master. Leaving B here
+// left two authorities claiming the same machines with no relation between them, and they do not merely
+// overlap: the pair route would serve DeepSeek from the same 121 GiB pool the GLM arm sizes against, sized
+// by neither. The first pair-serving convergence to run would have acted on a host it believed idle. The
+// EXL3 canary that first occupied this group was retired on 2026-09-11; the exclusive claim on B did not
+// retire with it, because what holds B is the ARM, not the checkpoint it happened to be serving.
 //
 // THE OPERATOR AUTHORISED THE WITHDRAWAL and the measurement says it costs nothing. Asked about
 // stopping group B, the operator answered "you can stop group b or both, it's up to you". What is

@@ -1,6 +1,6 @@
 module std.nat
 
-import std.types { List }
+import std.types { List, String, Int }
 import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
 import std.magnitude { Magnitude }
 
@@ -47,4 +47,91 @@ fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
   } else {
     nat_range_accumulate(lo: lo + 1, hi: hi, acc: concat(acc, [lo]))
   }
+}
+
+// ── READING A NATURAL OUT OF TEXT ──────────────────────────────────────────────────────────────
+//
+// THIS BELONGS TO Nat AND NOT TO ITS FIRST CALLER. An instrument that answers with digits -- a device
+// memory reading, a byte count, a process id -- is not a string-handling problem specific to whoever
+// asked; it is the question "which natural is this text", and until 2026-09-11 the corpus could not ask
+// it at all. Every consumer that needed a number from a command's stdout had therefore compared strings
+// instead, which is why a device-memory admission check could be written that never compared magnitudes.
+//
+// IT IS TOTAL AND IT REFUSES ON EVERYTHING THAT IS NOT EXACTLY A RUN OF DIGITS. No sign, no whitespace
+// tolerance, no partial prefix parse, no empty-string-as-zero. Each of those would be a fabricated
+// plausible output on input that does not denote a natural, and a memory budget resolved from a
+// fabricated zero is worse than one that refuses: zero free memory and unreadable free memory demand
+// opposite actions. Callers that need to tolerate surrounding whitespace must trim first, visibly.
+fn parse_nat(s: String) -> Nat? {
+  let len: Int = string_length(s: s)
+  if len == 0 { none } else { parse_nat_digits(s: s, pos: 0, len: len, acc: nat_zero()) }
+}
+
+// ── THE TWO NUMERIC WORLDS ARE KEPT APART ─────────────────────────────────────────────────────
+//
+// POSITIONS AND LENGTHS ARE Int BECAUSE THE STRING PRIMITIVES SAY SO. `char_at` and `substring` take an Int
+// position -- std.encoding's base64 decoder indexes with `i: Int` and that is the established shape -- while
+// the value being built is a Nat, because that is what this function produces. Every expression below stays
+// in one world: `pos + 1` and `i + 1` are Int arithmetic, `acc * ten() + d` and `v + nat_one()` are Nat.
+//
+// A FIRST VERSION CROSSED THEM TWICE: `acc * 10 + (code_point(c) - 48)`, an Int code point meeting the Nat
+// accumulator, and `pos: Nat` receiving `string_length`'s Int. Those are wrong on the declared types
+// regardless of what they would have done at scale, and the digit-as-index form below needs neither.
+//
+// WHAT IS NOT CLAIMED, BECAUSE IT WAS NOT ESTABLISHED: an earlier revision of this annotation asserted that
+// the crossing unified Int with Nat's Magnitude corpus-wide, broke extdeps.systemd, and stopped the artifact
+// emitter from producing committed stage0 mirrors. That story was built from a build-lane run whose
+// claim_executor binary was four days stale -- the same failure appeared with this file reverted, so the
+// instrument was producing it, not this function. The mechanism may be real and this file has no evidence
+// for it. The reason to write it this way is the declared types, which need no such story.
+fn parse_nat_digits(s: String, pos: Int, len: Int, acc: Nat) -> Nat? {
+  if pos == len {
+    Present { value: acc }
+  } else {
+    match decimal_digit_value(c: char_at(s: s, pos: pos)) {
+      Absent => none
+      Present { value: d } => parse_nat_digits(s: s, pos: pos + 1, len: len, acc: acc * ten() + d)
+    }
+  }
+}
+
+// THE DIGIT'S VALUE IS ITS POSITION IN THE DIGIT STRING, so the value is a Nat by construction and no
+// subtraction on a code point is needed. The scan carries the Int index and the Nat value side by side
+// rather than converting between them, which is what keeps the two worlds from meeting in one expression.
+//
+// AND THE CHARACTER IS A ONE-CHARACTER String RATHER THAN A Char, because that is what `char_at` produces --
+// the same shape std.encoding's base64 decoder compares against. Declaring Char typechecked in isolation and
+// refused at the call, which is the ordinary version of the same lesson: a type that is only asserted is not
+// a type that is used.
+data decimal_digits: String = "0123456789"
+
+fn decimal_digit_value(c: String) -> Nat? {
+  decimal_digit_scan(c: c, i: 0, v: nat_zero())
+}
+
+fn decimal_digit_scan(c: String, i: Int, v: Nat) -> Nat? {
+  if i == 10 {
+    none
+  } else if char_at(s: decimal_digits, pos: i) == c {
+    Present { value: v }
+  } else {
+    decimal_digit_scan(c: c, i: i + 1, v: v + nat_one())
+  }
+}
+
+// THESE ARE NAMED Nat CONSTANTS RATHER THAN BARE LITERALS, for the same reason extdeps.systemd writes
+// `let one: Nat = 1`: a literal in an arithmetic position is exactly where an Int enters.
+fn nat_zero() -> Nat {
+  let n: Nat = 0
+  n
+}
+
+fn nat_one() -> Nat {
+  let n: Nat = 1
+  n
+}
+
+fn ten() -> Nat {
+  let n: Nat = 10
+  n
 }

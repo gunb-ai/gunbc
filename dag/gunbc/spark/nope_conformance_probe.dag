@@ -1,0 +1,390 @@
+module gunbc.spark.nope_conformance_probe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.zhipu.glm_5_3_flash {
+  GlmAttentionGeometry, glm_5_3_flash_attention_geometry, vllm_fp8_ds_mla_required_rope_dim,
+}
+import gunbc.spark.serving_arm {
+  RuntimeArtifactIdentity, runtime_artifact_wire, runtime_artifact_key,
+}
+import gunbc.spark.serving_compatibility {
+  NopeConformanceProbe, glm53_nope_conformance_probes,
+}
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+
+// ── THE ROSTER GETS A RUNNER, BECAUSE A ROSTER NOBODY EXECUTES IS A LIST OF INTENTIONS ─────────
+//
+// gunbc.spark.serving_compatibility DECLARES three probes that must pass before the expensive run, and when
+// it landed the only thing consuming them was a witness asserting that there were three. That is the shape
+// DESIGN section 3c names outright -- a witness that asserts a declaration EXISTS rather than exercising it --
+// and it is the same defect as the readback whose success arm was unreachable: a control that cannot fail.
+//
+// SO EACH PROBE THAT CAN BE EXECUTED CARRIES ITS ARGV HERE, and the argv runs INSIDE the image under test
+// with the entrypoint overridden, exactly as gunbc.spark.device_memory_envelope does for the memory reading:
+// the image's own entrypoint is `vllm serve`, and starting an engine is the thing these probes exist to
+// decide about.
+//
+// AND THE PROBES ARE EXPECTED TO FAIL TODAY. Against the stock official image, probe one must trip the
+// compiled `pe_dim == 64` guard -- that is this module's discriminating RED, and it is authorable for as long
+// as the outage lasts. When the derived runtime lands, the same probe run against the new bytes is expected
+// to pass; per DESIGN section 4b(4) the expecting-red row then flips to a permanent regression control rather
+// than retiring, because what it guards is that the backport is still present in whatever image is serving.
+
+// WHAT A PROBE CAN HONESTLY BE ASKED. The third roster entry is deliberately not given an argv: the widened
+// page-table capacity is reached through the engine's own attention-backend initialisation rather than
+// through a callable this module can invoke, and writing a plausible-looking one-liner for it would be a
+// fabricated instrument -- the failure mode this repository has already paid for by citing a stale binary.
+// Naming it unexecutable is the fail-closed answer, and it is why the expensive run remains obligatory.
+type ProbeInvocation
+  = ProbeArgv { argv: List<String> }
+  | ProbeNotYetExecutable { needs: NonEmptyStr }
+
+// THE WRITER PROBE, WHICH IS THE ONE THAT REPRODUCES THE OUTAGE IN MILLISECONDS. It calls the same
+// `concat_and_cache_mla` the engine calls, with a zero-width rope section, and prints one word. A traceback
+// is the expected output today.
+//
+// THE RESERVED TAIL IS NOW ASSERTED, AND THE FILL IS WHY IT CAN BE. An earlier revision of this probe
+// allocated the cache with `torch.zeros` and reported the nonzero byte count, which cannot distinguish the
+// two outcomes it exists to separate: a writer that correctly ZEROED the reserved region and a writer that
+// never touched those bytes produce identical output against a zero-filled buffer. It was a control that
+// could not fail, sitting in the probe whose whole job is to refuse the wrong bytes cheaply.
+//
+// SO THE BUFFER IS SENTINEL-FILLED WITH 0xA5, which is the shape upstream's own regression test for this
+// fix uses. Three things are then separable and all three are asserted: the reserved tail 528:656 reads
+// ZERO for every written row -- the repair's actual behaviour, since the RoPE warp zeroes it instead of
+// reading a k_pe that does not exist; the latent region is no longer sentinel, so the write happened at
+// all; and rows outside the slot mapping still hold the sentinel, so the writer stayed inside its own
+// slots. The offset is not invented: 656 = 512 latent + 16 scale + 128 reserved, and vllm#55277's message
+// names bytes 528:656 as the reserved padding it zeroes.
+//
+// A PREVIOUS NOTE HERE SAID THIS ASSERTION COULD NOT BE WRITTEN because the layout constant had not been
+// read from the kernel source. That was true when written and stopped being true when the commit was read;
+// the constant is in its message. Inventing an
+// offset would produce a check that passes or fails for reasons unrelated to the property, so the probe
+// prints the row's nonzero byte population and the tail assertion stays a declared gap.
+// NEXT-RUNG TRIGGER: the cache row layout read from vLLM's own source at the pinned revision and carried in
+// extdeps, at which point the tail becomes an equality rather than a printed number.
+data nope_writer_probe_source: String = "import torch; from vllm import _custom_ops as ops; T=4; B=64; SENT=0xA5; TAIL=528; kv_c=torch.ones(T,512,dtype=torch.bfloat16,device='cuda'); k_pe=torch.zeros(T,0,dtype=torch.bfloat16,device='cuda'); cache=torch.full((1,B,656),SENT,dtype=torch.uint8,device='cuda'); slot=torch.arange(T,dtype=torch.long,device='cuda'); scale=torch.ones(1,dtype=torch.float32,device='cuda'); ops.concat_and_cache_mla(kv_c,k_pe,cache,slot,'fp8_ds_mla',scale); written=cache[0,:T,:]; untouched=cache[0,T:,:]; tail_zero=bool((written[:,TAIL:]==0).all().item()); latent_written=bool((written[:,:TAIL]!=SENT).any().item()); sentinel_held=bool((untouched==SENT).all().item()); print('TAIL_ZEROED',tail_zero); print('LATENT_WRITTEN',latent_written); print('SENTINEL_HELD',sentinel_held); assert sentinel_held, 'writer touched rows outside its slot mapping'; assert latent_written, 'writer did not write the latent region'; assert tail_zero, 'reserved tail 528:656 still holds the sentinel: the NoPE path did not zero it'; print('WRITER_ACCEPTED_PE_DIM_ZERO')"
+
+// ── THE READER PROBE, WHICH ASKS THE BACKEND THE GB10 ACTUALLY TAKES ──────────────────────────
+//
+// TWO EARLIER REVISIONS OF THIS PROBE WERE WRONG IN OPPOSITE DIRECTIONS, and both mistakes are worth keeping
+// visible because the second was committed while repairing the first.
+//
+// THE FIRST IMPORTED `flashinfer.sparse` AND PRINTED A TOKEN. An import establishes that a module is
+// importable. It does not execute the NoPE attention path -- and this is not a theoretical objection: run
+// against the fleet's own built image, vLLM's OWN capability predicate `has_flashinfer_sparse_mla_sm120()`
+// returns TRUE on bytes whose writer kernel refuses this geometry outright. A presence check passes the exact
+// image this probe exists to reject. It was a control that could not fail, in the one place whose whole
+// purpose is to refuse the wrong bytes before an expensive load.
+//
+// THE SECOND DECLARED THE PROBE UNEXECUTABLE, on the ground that the call surface had not been read. That was
+// honest when written and became false about twenty minutes later, when the surface WAS read -- off vLLM's own
+// SM120 sparse backend at the pinned revision, which is the caller whose behaviour this probe is asking about.
+// A declared gap whose trigger has fired is a worse lie than the fabricated instrument it replaced, because it
+// reads as diligence.
+//
+// SO THE ARGV BELOW IS THE CALLER'S OWN CALL, not an invention: the kwargs, their spelling and the NoPE
+// geometry are taken from vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py's forward_mqa, and
+// `seq_lens=None` with no `sparse_mla_top_k_lens` is what that backend passes rather than a simplification
+// made here. A guessed call would pass or fail for reasons unrelated to the property; this one fails exactly
+// where the engine fails.
+//
+// IT ASKS ONE QUESTION AND ANSWERS IT BEFORE ANY KERNEL LAUNCHES: does this image's SM120 sparse MLA accept
+// kv_lora_rank 512 with qk_rope_head_dim 0. Both refusals it can produce are argument validation, so the probe
+// costs a container start and no weights.
+//
+// ITS RED IS AUTHORABLE TODAY AND WAS EXECUTED: against gunbc-vllm-dsv41-gb10:07b75534-sm121 it refused with
+// `SM120 sparse MLA v32/GLM expects kv_lora_rank=512, qk_rope_head_dim=64, and query head dim 576`. Per DESIGN
+// section 4b(4) this row does not retire when the repaired runtime lands -- it flips to the permanent
+// regression control that the SM120 NoPE kernel is still present in whatever image is serving.
+// THE SCALE FORMAT IS NOT AN OPTION HERE, IT IS PART OF THE LAYOUT THIS PROBE CLAIMS TO TEST, and
+// omitting it made this probe a FALSE NEGATIVE against the build the layer installs. Measured inside
+// gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4 on srv9, 2026-09-13: without it the call refuses
+// with "SM120 sparse MLA expects either the v32/GLM_NSA 512+64 layout or GLM-5.3 native NoPE 512+0 with
+// arbitrary_fp32 scales; got ... kv_scale_format='auto'", and with it the same call answers
+// SM120_SPARSE_ACCEPTED_NOPE on the same image in the same minute.
+//
+// THE REFUSAL NAMED THE SUPPORTED LAYOUT WHILE REFUSING, which is why this is worth recording rather
+// than quietly fixing: the error text ENUMERATES GLM-5.3 native NoPE as accepted, so a reader who
+// stopped at "the probe failed" would have concluded the image lacks a capability the same message says
+// it has. flashinfer/mla/_core.py builds its `glm53_nope` predicate as a four-way conjunction --
+// kv_lora_rank 512, qk_rope_head_dim 0, query last dim 512, AND the normalised scale format equal to
+// arbitrary_fp32 -- so three quarters of the layout was being asserted and the fourth left at its
+// default, which is a different layout.
+//
+// WHAT THIS PROBE STILL DOES NOT ESTABLISH, stated because the gap is easy to miss: it shows the KERNEL
+// accepts the NoPE layout when asked correctly. Whether vLLM's own GLM-5.3 path asks for it with these
+// scales is a property of the engine's call site, not of this probe, and only a launched engine serving
+// the model answers it.
+data nope_reader_probe_source: String = "import torch; from flashinfer.decode import trtllm_batch_decode_with_kv_cache_mla as f; T=1; H=128; K=2176; q=torch.zeros(T,1,H,512,dtype=torch.bfloat16,device='cuda'); kv=torch.zeros(64,1,64,656,dtype=torch.uint8,device='cuda'); ws=torch.zeros(128*1024*1024,dtype=torch.uint8,device='cuda'); bt=torch.zeros(T,1,K,dtype=torch.int32,device='cuda'); out=torch.zeros(T,1,H,512,dtype=torch.bfloat16,device='cuda'); f(query=q,kv_cache=kv,workspace_buffer=ws,qk_nope_head_dim=512,kv_lora_rank=512,qk_rope_head_dim=0,block_tables=bt,seq_lens=None,max_seq_len=K,out=out,bmm1_scale=1.0,bmm2_scale=1.0,sparse_mla_top_k=K,kv_scale_format='arbitrary_fp32'); print('SM120_SPARSE_ACCEPTED_NOPE')"
+
+
+fn probe_container_argv(image: NonEmptyStr, source: String) -> List<String> {
+  [
+    "docker", "run", "--rm", "--gpus", "all", "--ipc", "host",
+    "--entrypoint", "python3",
+    image as String,
+    "-c", source,
+  ]
+}
+
+fn probe_invocation_for(ordinal: Nat, image: NonEmptyStr) -> ProbeInvocation {
+  if ordinal == 1 { ProbeArgv { argv: probe_container_argv(image: image, source: nope_writer_probe_source) } }
+  else { if ordinal == 2 { ProbeArgv { argv: probe_container_argv(image: image, source: nope_reader_probe_source) } }
+  else {
+    ProbeNotYetExecutable {
+      needs: "the widened page-table capacity is established during the engine's attention-backend initialisation, not through a callable this module can invoke; it is checked by the expensive native run and by nothing cheaper" as NonEmptyStr,
+    }
+  } }
+}
+
+// ── THE OUTCOME, AND WHY AN UNREACHABLE HOST IS NOT A FAILING PROBE ────────────────────────────
+//
+// THREE ARMS AND NOT A BOOL. A probe that REFUSED is evidence about the image; a probe that could not be
+// RUN is evidence about nothing, and collapsing them would let an ssh timeout read as a kernel verdict --
+// which is the distinction std.goal_assessment draws between an established absence and an observation
+// refusal, applied to one container start.
+type ProbeOutcome
+  = ProbePassed { ordinal: Nat, image_key: String, output: String }
+  | ProbeRefused { ordinal: Nat, image_key: String, output: String }
+  | ProbeUnrun { ordinal: Nat, cause: NonEmptyStr }
+
+data nope_writer_pass_token: String = "WRITER_ACCEPTED_PE_DIM_ZERO"
+
+// AN ORDINAL WITH NO DECLARED TOKEN GETS A TOKEN NO OUTPUT CAN CONTAIN, rather than borrowing a neighbour's.
+// Every executable ordinal names its own token; the fallthrough exists because the function is total, and it
+// must fail closed -- an unrecognised probe whose output happened to match some other probe's token would be a
+// pass minted by a dispatch accident. The reader token was deleted with the reader probe's argv: a token no
+// dispatch reaches is a data row no fold reads.
+data probe_token_absent_sentinel: String = "<no-pass-token-declared-for-this-ordinal>"
+data nope_reader_pass_token: String = "SM120_SPARSE_ACCEPTED_NOPE"
+
+fn probe_pass_token(ordinal: Nat) -> String {
+  if ordinal == 1 { nope_writer_pass_token }
+  else { if ordinal == 2 { nope_reader_pass_token } else { probe_token_absent_sentinel } }
+}
+
+// THE VERDICT IS THE TOKEN AND NOT THE EXIT CODE, because a python process that prints a traceback and a
+// python process that prints nothing both exit non-zero, and only the first tells us the guard fired. The
+// token is printed by the probe itself AFTER the call under test returns, so its presence cannot precede the
+// thing it attests.
+func run_nope_probe(
+  ctx: SparkRemoteExecutionContext,
+  host: HostIdentity,
+  artifact: RuntimeArtifactIdentity,
+  probe: NopeConformanceProbe,
+) -> ProbeOutcome
+  uses net: Network
+{
+  match probe_invocation_for(ordinal: probe.ordinal, image: runtime_artifact_wire(a: artifact)) {
+    ProbeNotYetExecutable { needs: n } => ProbeUnrun { ordinal: probe.ordinal, cause: n }
+    ProbeArgv { argv: argv } => {
+      let ran = spark_exec(ctx: ctx, host: host, argv: argv)
+      if !remote_run_succeeded(r: ran) && remote_run_stdout(r: ran) == "" {
+        ProbeRefused {
+          ordinal: probe.ordinal,
+          image_key: runtime_artifact_key(a: artifact),
+          output: remote_run_text(r: ran),
+        }
+      } else {
+        if string_contains(s: remote_run_stdout(r: ran), pattern: probe_pass_token(ordinal: probe.ordinal)) {
+          ProbePassed {
+            ordinal: probe.ordinal,
+            image_key: runtime_artifact_key(a: artifact),
+            output: remote_run_stdout(r: ran),
+          }
+        } else {
+          ProbeRefused {
+            ordinal: probe.ordinal,
+            image_key: runtime_artifact_key(a: artifact),
+            output: remote_run_text(r: ran),
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE GATE THE EXPENSIVE RUN SITS BEHIND ────────────────────────────────────────────────────
+//
+// THE MANDATORY POPULATION IS NAMED, because "at least one passed and nothing refused" was too weak. With the
+// reader and top-k probes both unexecutable, that rule let ONE cheap writer check stand in for kernel-and-backend
+// conformance -- and a caller reading `NopeConformanceHeld` would reasonably have believed more than one property
+// had been established.
+//
+// SO THE POSITIVE ARM CANNOT BE REACHED WITHOUT THE MANDATORY PROBES, and it carries the unrun population rather
+// than hiding it: a reader sees that two of three properties remain for the expensive run. `NopeConformancePartial`
+// is the arm for "the mandatory probes passed and coverage is incomplete", which is the true state of this image
+// today and is NOT clearance to spend a weight load.
+//
+// THE WRITER AND THE READER ARE BOTH MANDATORY, and the reader joined the moment it became executable. They are
+// two independent walls and passing one says nothing about the other: the writer lives in vLLM's compiled cache
+// kernel and the reader in FlashInfer's SM120 sparse kernel, so a runtime can clear the writer guard and still
+// refuse every decode. That is not hypothetical -- it is what the declared repair candidate would have done if
+// built against the FlashInfer the fleet's existing image pins.
+//
+// THE CAPACITY PROPERTY STAYS UNREACHABLE and stays an engine-run obligation rather than being counted as
+// satisfied, which is why the positive arm still reports what it did not ask.
+data nope_mandatory_probe_ordinals: List<Nat> = [1, 2]
+
+data nope_engine_run_obligations: List<NonEmptyStr> = [
+  "the SM12x sparse backend accepting kv_lora_rank 512 with qk_rope_head_dim 0 and not demanding sparse_mla_top_k_lens -- reachable only once the pinned FlashInfer call surface is read, or else during engine initialisation" as NonEmptyStr,
+  "the widened physical top-k page-table capacity at index_topk 2048 over index_kpool 4 -- established during the engine's attention-backend initialisation and by nothing cheaper" as NonEmptyStr,
+  "the reserved tail of the 656-byte cache row reading zero -- needs the cache row layout read from vLLM's own source at the pinned revision" as NonEmptyStr,
+]
+
+type NopeConformanceStanding
+  = NopeConformanceHeld { image_key: String, passed: Nat }
+  | NopeConformancePartial { image_key: String, passed: Nat, unrun: Nat, obligations: List<NonEmptyStr> }
+  | NopeConformanceRefused { image_key: String, first_refusal: String }
+  | NopeConformanceUnestablished { cause: NonEmptyStr }
+
+fn first_probe_refusal(outcomes: List<ProbeOutcome>) -> ProbeOutcome? {
+  filter(outcomes, o => match o {
+    ProbeRefused { ordinal: _, image_key: _, output: _ } => true
+    ProbePassed { ordinal: _, image_key: _, output: _ } => false
+    ProbeUnrun { ordinal: _, cause: _ } => false
+  }).first()
+}
+
+fn count_passed(outcomes: List<ProbeOutcome>) -> Nat {
+  count(filter(outcomes, o => match o {
+    ProbePassed { ordinal: _, image_key: _, output: _ } => true
+    ProbeRefused { ordinal: _, image_key: _, output: _ } => false
+    ProbeUnrun { ordinal: _, cause: _ } => false
+  }))
+}
+
+fn count_unrun(outcomes: List<ProbeOutcome>) -> Nat {
+  count(filter(outcomes, o => match o {
+    ProbeUnrun { ordinal: _, cause: _ } => true
+    ProbePassed { ordinal: _, image_key: _, output: _ } => false
+    ProbeRefused { ordinal: _, image_key: _, output: _ } => false
+  }))
+}
+
+// A MANDATORY PROBE THAT DID NOT PASS MAKES THE WHOLE ASSESSMENT UNESTABLISHED, which is what "named mandatory
+// population" buys over a count: adding a mandatory ordinal tightens every caller at once, and an ordinal that
+// becomes executable moves from the obligation list to the mandatory one in the same edit.
+fn every_mandatory_probe_passed(outcomes: List<ProbeOutcome>) -> Bool {
+  all(nope_mandatory_probe_ordinals, o =>
+    any(outcomes, out => match out {
+      ProbePassed { ordinal: p, image_key: _, output: _ } => p == o
+      ProbeRefused { ordinal: _, image_key: _, output: _ } => false
+      ProbeUnrun { ordinal: _, cause: _ } => false
+    }))
+}
+
+// ── WHAT A PARTIAL STANDING LICENSES, WHICH IS NOT NOTHING ────────────────────────────────────
+//
+// THIS GATE DEADLOCKED ITSELF AND THE DEADLOCK WAS AUTHORED BY TIGHTENING IT. The capacity property is
+// reachable only during the engine's attention-backend initialisation, so it is carried as an
+// engine-run obligation. Then the mandatory population was named and the operator root was made to fail
+// on anything short of Held. Put together: the two cheap probes pass, coverage is incomplete, the
+// standing is Partial, the entry exits failure -- and if a green conformance command is what authorises
+// spending an engine run, the ONLY operation that can discharge the outstanding obligation is the one
+// the gate forbids. The obligation could never retire.
+//
+// SO ELIGIBILITY IS TWO QUESTIONS AND THEY ARE ASKED SEPARATELY. A bounded, authorised EXPERIMENT needs
+// the cheap preflight to have passed -- it is what stops a wasted 300 GiB load on bytes a kernel call
+// would have refused in seconds. NORMAL SERVING needs everything, including what only the engine can
+// establish. Partial licenses the first and refuses the second, which is exactly what a partial result
+// should mean.
+//
+// AND THE OBLIGATIONS TRAVEL WITH THE ELIGIBILITY rather than being dropped at the boundary: the arm
+// carries what remains unestablished, so the run that discharges them knows what it is being asked to
+// observe, and a receipt from that run can be matched against them.
+type NopeRunEligibility
+  = EligibleForBoundedExperiment { passed: Nat, outstanding: List<NonEmptyStr> }
+  | EligibleForNormalServing { image_key: String }
+  | NotEligible { cause: NonEmptyStr }
+
+fn nope_run_eligibility(standing: NopeConformanceStanding) -> NopeRunEligibility {
+  match standing {
+    NopeConformanceHeld { image_key: k, passed: _ } => EligibleForNormalServing { image_key: k }
+    NopeConformancePartial { image_key: _, passed: p, unrun: _, obligations: obs } =>
+      EligibleForBoundedExperiment { passed: p, outstanding: obs }
+    NopeConformanceRefused { image_key: _, first_refusal: r } =>
+      NotEligible { cause: join(["a probe refused on these bytes: ", r], "") as NonEmptyStr }
+    NopeConformanceUnestablished { cause: c } => NotEligible { cause: c }
+  }
+}
+
+// A BOUNDED EXPERIMENT IS LICENSED BY A PARTIAL STANDING AND NORMAL SERVING IS NOT, which is the whole
+// content of the split and the one thing a caller must not blur.
+fn may_run_bounded_experiment(standing: NopeConformanceStanding) -> Bool {
+  match nope_run_eligibility(standing: standing) {
+    EligibleForBoundedExperiment { passed: _, outstanding: _ } => true
+    EligibleForNormalServing { image_key: _ } => true
+    NotEligible { cause: _ } => false
+  }
+}
+
+fn may_serve_normally(standing: NopeConformanceStanding) -> Bool {
+  match nope_run_eligibility(standing: standing) {
+    EligibleForNormalServing { image_key: _ } => true
+    EligibleForBoundedExperiment { passed: _, outstanding: _ } => false
+    NotEligible { cause: _ } => false
+  }
+}
+
+fn assess_nope_conformance(artifact: RuntimeArtifactIdentity, outcomes: List<ProbeOutcome>) -> NopeConformanceStanding {
+  match first_probe_refusal(outcomes: outcomes) {
+    Present { value: refusal } =>
+      match refusal {
+        ProbeRefused { ordinal: o, image_key: k, output: out } =>
+          NopeConformanceRefused {
+            image_key: k,
+            first_refusal: join(["probe ", to_string(o), " refused: ", out], ""),
+          }
+        ProbePassed { ordinal: _, image_key: _, output: _ } =>
+          NopeConformanceUnestablished { cause: "unreachable: the filter admits only refusals" as NonEmptyStr }
+        ProbeUnrun { ordinal: _, cause: _ } =>
+          NopeConformanceUnestablished { cause: "unreachable: the filter admits only refusals" as NonEmptyStr }
+      }
+    Absent =>
+      if !every_mandatory_probe_passed(outcomes: outcomes) {
+        NopeConformanceUnestablished {
+          cause: "a mandatory probe did not execute, so nothing refused and nothing was established; an unreachable host is not a passing image" as NonEmptyStr,
+        }
+      } else {
+        if count_unrun(outcomes: outcomes) == 0 {
+          NopeConformanceHeld {
+            image_key: runtime_artifact_key(a: artifact),
+            passed: count_passed(outcomes: outcomes),
+          }
+        } else {
+          NopeConformancePartial {
+            image_key: runtime_artifact_key(a: artifact),
+            passed: count_passed(outcomes: outcomes),
+            unrun: count_unrun(outcomes: outcomes),
+            obligations: nope_engine_run_obligations,
+          }
+        }
+      }
+  }
+}
+
+// THE WHOLE ROSTER AGAINST ONE IMAGE ON ONE HOST. It is one host deliberately: these probes ask about the
+// IMAGE and the accelerator generation, both of which are uniform across a group, so running four copies
+// would spend four container starts to learn one fact. The expensive run that follows is the thing that must
+// touch every rank.
+func run_nope_conformance(
+  ctx: SparkRemoteExecutionContext,
+  host: HostIdentity,
+  artifact: RuntimeArtifactIdentity,
+) -> NopeConformanceStanding
+  uses net: Network
+{
+  assess_nope_conformance(
+    artifact: artifact,
+    outcomes: map(glm53_nope_conformance_probes, p => run_nope_probe(ctx: ctx, host: host, artifact: artifact, probe: p)),
+  )
+}

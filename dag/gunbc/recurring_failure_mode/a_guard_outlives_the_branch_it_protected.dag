@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_guard_outlives_the_branch_it_protected
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_guard_outlives_the_branch_it_protected: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_guard_outlives_the_branch_it_protected" as NonEmptyStr,
+
+  receipts: [
+    "**a guard outlives the branch it protected** (a capability is removed and its precondition is not. The check still compiles, still reads as prudent, and now refuses states that became CORRECT the moment the branch it guarded was deleted. It is the residue of a design decision that has already been reversed. ",
+
+    "SPECIMEN, CUTOVER ATTEMPT 7 (2026-09-11). The operator retired the EXL3 canary: a failed native launch was to leave the group clean rather than restore anything, and the restoration branch was deleted accordingly. The precondition that existed ONLY to protect that branch survived -- `incumbent_is_retainable`, which required the canary to be running AND answering before the transaction would stop anything, on the reasoning that otherwise there would be nothing to put back. Attempt 7 withheld with \"there is nothing this transaction could restore\" about an engine nobody intended to restore. ",
+
+    "IT WOULD HAVE BLOCKED EVERY SUBSEQUENT ATTEMPT, which is what makes this worse than a stale comment. The state it refused -- canary stopped, not restored -- is precisely the state the PREVIOUS attempt correctly produced under the new policy. The guard therefore converted its own design's success into a permanent refusal, and no amount of re-running would clear it. ",
+
+    "SECOND SPECIMEN, SAME SESSION, SAME SHAPE (2026-09-11). Stage one of the same transaction measured peer device memory BEFORE the page-cache release that the launch performs, because the release had been added to stage two only. The preflight then refused hosts on exactly the condition the corpus had just proven was not a shortage. A step moved and the measurement that depended on its old position did not. ",
+
+    "THE COMMON ROOT IS THAT A GUARD ENCODES AN ASSUMPTION ABOUT A NEIGHBOUR, AND NOTHING TIES THE TWO TOGETHER. `incumbent_is_retainable` was about the restore path; the stage-one reading was about where the release ran. Neither names its dependency, so deleting or moving the neighbour leaves the guard standing with its reason gone -- and a guard with no reason still refuses, which reads as caution rather than as a defect. ",
+
+    "RECOGNITION RULE: WHEN A BRANCH OR STEP IS DELETED OR MOVED, ENUMERATE WHAT ONLY EXISTED TO SERVE IT. The deletion census is not only \"what breaks if this is gone\" -- the compiler answers that -- but \"what still compiles and no longer has a reason\", which it does not. ",
+
+    "AND THE REPLACEMENT MUST ASK THE QUESTION THAT IS NOW LOAD-BEARING rather than a weakened version of the old one. Here the live question stopped being \"can the incumbent be restored\" and became \"is the head clear\": running-and-now-stopped, already-stopped, and never-present are one state for a launch about to bind that host's port and memory, while could-not-stop and could-not-read remain refusals because something may still hold the resources. Softening the original check would have kept its shape and lost that distinction. ",
+
+    "RUNG FOUND AT: mitigatable. Both instances were caught by a withheld transaction rather than by any check, and the first cost a full attempt cycle while the second cost one. Neither is detectable by compilation, because a guard with no remaining reason is still a well-typed guard. ",
+
+    "ATTAINABLE CEILING: mechanically preventable, not structural. A guard's reason is not a modelled relation today, so nothing can decide that a precondition has been orphaned. The reachable mechanism is a deletion-time obligation: a change that removes a branch names the preconditions that existed for it, and a reviewer sees an explicit list rather than reasoning about absence. It does not reach structural guarantee while the dependency between a guard and the branch it serves lives only in prose. ",
+
+    "NEXT TRIGGER: the replacement-migration doctrine's disposition census extended to cover ORPHANED GUARDS alongside broken dependents -- the census currently asks what fails without the removed thing, and must also ask what survives it without purpose.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.native_incumbent", decl_name: "clear_incumbent_from_head", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.native_cutover_wet", decl_name: "stage_one_peer_envelope", field: WholeDeclaration },
+  ],
+}

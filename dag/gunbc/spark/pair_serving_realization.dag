@@ -105,10 +105,11 @@ data spark_pair_ray_gcs_port: Port = first_pair_ray_head.gcs_port
 // the impossible tuple became reachable. Two changes each defensible alone composed into a defect
 // neither carried.
 //
-// SO GLM LIVES BEHIND THE CANARY ROOT, NOT HERE. gunbc.spark.glm_canary_converge owns the exact
-// checkpoint x runtime x topology arm and admits it through `serving_arm_admits`, which is the wall
-// that would have refused this combination. This route returns to DeepSeek, which is what the group
-// is actually running, until a GLM-capable image is modelled and probed for it.
+// SO GLM LIVES BEHIND ITS OWN ROOT, NOT HERE. gunbc.spark.serving_arm_launch owns the exact
+// checkpoint x runtime x topology x profile arm and admits it through `serving_arm_admits_for` and the
+// measured standing in gunbc.spark.serving_compatibility, which are the walls that would have refused this
+// combination. This route returns to DeepSeek, which is what the group is actually running, until a
+// GLM-capable image is modelled and probed for it.
 data spark_pair_served_model_name: NonEmptyStr = deepseek_v4_flash_served_model_name
 data spark_pair_tool_call_parser: NonEmptyStr = deepseek_v4_flash_tool_call_parser
 data spark_pair_serve_port: Port = first_pair_vllm_serve.port

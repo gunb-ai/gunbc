@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_pipeline_status_hides_its_producer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pipeline_status_hides_its_producer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pipeline_status_hides_its_producer" as NonEmptyStr,
+
+  receipts: [
+    "**a pipeline status hides its producer** (a command whose result matters is piped into a formatter, and the pipeline's status is the FORMATTER's. The producer can fail while the pipeline succeeds, so a check written to observe the producer observes something that is almost always true instead. ",
+
+    "THE SHAPE IS ORDINARY AND THAT IS THE PROBLEM. `docker build ... | tail -5` reports tail's status, and tail succeeds on the output of a failed build exactly as it succeeds on a successful one. The same holds for `| head`, `| grep`, `| tee`, and for any `cmd | filter` written to keep a log readable -- which is why it appears in shell that was written to be helpful rather than in shell that was written carelessly. ",
+
+    "THE INSTANCE (2026-09-12). A derived-image build script ended `docker build ... | tail -5` followed by an unconditional success line. A reviewer identified it before it ran against a failing build, so no wrong receipt was produced -- the class is filed on the construct rather than on an incident, because the construct is what recurs. ",
+
+    "AND THE ADJACENT INSTANCES IN THE SAME SESSION ARE THE SAME MISTAKE IN OTHER CLOTHES. Build completion was checked by `pgrep` finding no builder, by an empty `grep -ci error:` over a log, and by a tag appearing in `docker images` -- none of which is the producer's terminal result. A build killed by the kernel leaves no process, writes no line matching `error:`, and leaves yesterday's tag exactly where it was. ",
+
+    "THE GENERAL FORM: AN OBSERVATION OF A SIDE EFFECT IS NOT THE OPERATION'S RESULT. Process absence is not completion. A quiet log is not success. An existing artifact is not a fresh artifact. Each of these is cheap to check and each answers a different question from the one being asked, and a receipt built on them reads as evidence while resting on none. ",
+
+    "RECOGNITION RULE: THE RESULT OF THE OPERATION MUST BE OBSERVED FROM THE OPERATION, NOT FROM ITS OUTPUT, ITS PROCESS TABLE OR ITS ARTIFACTS. In shell that means capturing the producer's status before anything consumes it -- `set -o pipefail`, `PIPESTATUS`, or simply not piping the command whose result is the subject. In a model it means the executing leg returns a typed terminal outcome and the receipt is derived from that outcome, which is the shape gunbc.spark.vllm_runtime_image_build's ImageLegOutcome already has and which is the reason to run builds through it rather than beside it. ",
+
+    "AND THE COMPLETION LAW HAS THREE CONJUNCTS, not one: the process completed successfully, AND the expected output was independently observed, AND the receipt was persisted. Any one of them alone is satisfiable by a build that did nothing. ",
+
+    "RUNG FOUND AT: mitigatable, and only because a reviewer read the pasted script. A hand-written pipeline has no structure that could refuse this. ",
+
+    "ATTAINABLE CEILING: structurally impossible FOR OPERATIONS THAT RUN THROUGH THE MODELLED LEG, and not reachable at all for operations that do not. This is the unusual case where the ceiling is a property of WHERE the work runs rather than of the class itself: a leg that returns ImageLegRan or ImageLegFailed cannot report a formatter's status, because the formatter is not in the type. Shell run beside the model is outside the ladder entirely, which is the argument for the route rather than for a better script. ",
+
+    "NEXT TRIGGER: none for the modelled path -- the typed leg already holds the wall. The residual population is out-of-band shell, and its trigger is gunbc.recurring_failure_mode.an_access_deficit_diagnosed_wider_than_it_is: shell stops being written beside the model when the route is reachable, so that row's trigger retires this one's population.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.vllm_runtime_image_build", decl_name: "ImageLegOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.vllm_runtime_image_build", decl_name: "vllm_image_leg", field: WholeDeclaration },
+  ],
+}

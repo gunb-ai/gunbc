@@ -1,0 +1,65 @@
+module test.claim.spark.runtime_artifact_identity_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.spark.serving_arm {
+  RuntimeArtifactPin, PinnedByDigest, PinnedElsewhere,
+  RuntimeArtifactIdentity, runtime_artifact_identity,
+  runtime_pin_reference, runtime_pin_as_identity,
+  runtime_artifact_wire, runtime_artifact_key,
+  vllm_openai_glm53_flash_row, gunbc_sparkrun_ds4_row, gitcommit90_sm121_exl3_row,
+}
+
+// ── AN UNPINNED TAG IS NOT AN IDENTITY ────────────────────────────────────────────────────────
+//
+// THE DEFECT THIS ROW EXISTS FOR WAS INTRODUCED BY THE FIX FOR THE PREVIOUS ONE. Keying the subject on the
+// runtime's bytes rather than its enum variant was correct, and it was implemented by reading a
+// `NonEmptyStr` off the runtime row -- which for the DeepSeek image was never a digest at all but the
+// sentence "aidendle94/sparkrun-vllm-ds4-gb10 (digest pinned in extdeps.docker.images...)". A subject keyed
+// on that compares a MUTABLE TAG as though it were an artifact: two pulls of it are different bytes and one
+// subject, which is the exact shape of the failure the byte-keying was introduced to remove.
+//
+// SO THE PIN IS ASKED AS A QUESTION AND THE UNPINNED ANSWER IS NOT A REFERENCE. `runtime_pin_as_identity`
+// returns an Optional and `runtime_artifact_key` renders a located `<unpinned:...>` marker, so an unpinned
+// runtime cannot silently share a key with anything -- including another unpinned runtime.
+test fn a_digest_pinned_runtime_yields_its_digest_as_an_identity() -> Bool {
+  match runtime_pin_as_identity(p: vllm_openai_glm53_flash_row.artifact.pin) {
+    Present { value: d } => string_contains(s: d as String, pattern: "@sha256:")
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING NEGATIVE, AND IT IS A LIVE ROW RATHER THAN A FIXTURE: the DeepSeek image really is
+// pinned elsewhere, so this asserts a property of the corpus and not of a contrived value.
+test fn a_runtime_pinned_elsewhere_yields_no_identity() -> Bool {
+  match runtime_pin_as_identity(p: gunbc_sparkrun_ds4_row.artifact.pin) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE KEY SAYS SO RATHER THAN RENDERING THE TAG, because a key that quietly contained the tag would
+// compare equal across two pulls of it while claiming to compare bytes.
+test fn an_unpinned_runtimes_key_is_a_located_marker_not_its_tag() -> Bool {
+  string_contains(s: runtime_artifact_key(a: gunbc_sparkrun_ds4_row.artifact), pattern: "<unpinned:")
+    && !string_contains(s: runtime_artifact_key(a: vllm_openai_glm53_flash_row.artifact), pattern: "<unpinned:")
+}
+
+// THE PATCH SET IS PART OF THE KEY, WHICH IS THE HALF THE REPAIR DEPENDS ON. The same base revision with and
+// without the NoPE writer backport are different artifacts; a key that dropped the patch set would let the
+// refusal measured on STOCK bytes refuse the patched image, and the patched image is the entire repair.
+//
+// ITS RED IS AUTHORABLE WITHOUT BUILDING ANYTHING: this constructs the identity the derived runtime will
+// carry and asserts it does not collide with the stock one it is derived FROM.
+test fn a_backported_build_of_the_same_revision_is_a_different_artifact() -> Bool {
+  let stock = vllm_openai_glm53_flash_row.artifact
+  let derived = runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr },
+    source_revision: stock.source_revision,
+    patch_set: ["0fa2b3308c2292b9e4d07a8f7bca17f0b2e6067d" as NonEmptyStr, "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr],
+    provenance: "a witness fixture standing in for the derived NoPE runtime: SAME digest and SAME source revision as the stock row, differing only in the patch set, which is the one axis a key could drop and still look correct" as NonEmptyStr,
+  )
+  runtime_artifact_key(a: stock) != runtime_artifact_key(a: derived)
+    && count(derived.patch_set) == 2
+    && count(stock.patch_set) == 0
+}

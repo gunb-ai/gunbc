@@ -1,5 +1,6 @@
 module gunbc.fleet_known_hosts_anchor
 
+import extdeps.ssh.scp { scp_fetch_operands, scp_push_operands }
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
 import std.measure { second }
 import std.algebra { trim }
@@ -729,6 +730,67 @@ fn shape_fleet_ssh_exec(
       serialize_ssh_client_options(options: derived),
     ),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+  )
+}
+
+// ── THE SAME INVOCATION, CARRYING A FILE INSTEAD OF A COMMAND ────────────────────────
+//
+// AN ARCHIVE THAT MUST MOVE BETWEEN HOSTS CANNOT TRAVEL THROUGH AN EXEC RESULT. A command leg returns
+// its stdout as a value, which is the right shape for a digest and the wrong one for twenty gigabytes;
+// the bytes have to be streamed by a transport that never materialises them here.
+//
+// SO SCP IS SHAPED FROM THE SAME OPTIONS AS THE EXEC LEG, and that reuse is the point rather than a
+// convenience. scp passes -o through to ssh, so the trust policy, the credential binding, the ambient
+// configuration suppression and the principal are the SAME authorities the command leg already derives
+// -- a second spelling of any of them would be a second trust posture wearing this one's name, which is
+// exactly what extdeps.exec.command scp_command is: an sshpass form with StrictHostKeyChecking=no,
+// correct for a BMC that has no sealed anchor and wrong for a fleet host that does.
+//
+// THE OPTIONS PRECEDE THE OPERANDS for the reason stated above shape_openssh_exec_portable_words_argv:
+// OpenSSH takes the FIRST specified value, so an option placed after a path is silently outranked.
+fn shape_fleet_scp_options(context: FleetSshExecutionContext, target: SshTarget) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let derived = concat(
+    fleet_openssh_trust_options(policy: context.trust),
+    concat(
+      fleet_ssh_credential_options(binding: context.credential),
+      [
+        User { name: target.principal },
+        BatchMode { enabled: true },
+        ConnectTimeout { seconds: second(count: 10) },
+      ],
+    ),
+  )
+  concat(
+    flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+    serialize_ssh_client_options(options: derived),
+  )
+}
+
+// REMOTE TO LOCAL. The remote operand is `endpoint:path`; the principal travels as -o User rather than
+// in the operand, so one spelling of "who" serves both directions and both transports.
+fn shape_fleet_scp_fetch_argv(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  remote_path: NonEmptyStr,
+  local_path: NonEmptyStr,
+) -> List<String> {
+  concat(
+    shape_fleet_scp_options(context: context, target: target),
+    scp_fetch_operands(endpoint: target.endpoint, remote_path: remote_path, local_path: local_path),
+  )
+}
+
+// LOCAL TO REMOTE.
+fn shape_fleet_scp_push_argv(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  local_path: NonEmptyStr,
+  remote_path: NonEmptyStr,
+) -> List<String> {
+  concat(
+    shape_fleet_scp_options(context: context, target: target),
+    scp_push_operands(endpoint: target.endpoint, local_path: local_path, remote_path: remote_path),
   )
 }
 

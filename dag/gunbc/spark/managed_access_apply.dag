@@ -32,7 +32,30 @@ import gunbc.fleet_known_hosts_anchor {
   PortableRemoteWord,
   portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation, fleet_bootstrap_principal_login }
+import std.nat { Nat }
+import extdeps.ssh { SshPublicKey }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.managed_principal_session {
+  FleetCredentialIdentity, fleet_declared_credential_identity,
+  PosixAccountReadback, AuthorizedKeyReadback,
+  ManagedPosixAccountReady, ManagedAuthorizedKeyReady,
+  FleetPrivateKeyBindingAdmission, FleetPrivateKeyBindingAdmitted, FleetPrivateKeyBindingRefused,
+  ManagedPrincipalSessionReady,
+}
+import gunbc.managed_principal_provider {
+  ManagedProviderKind, ManagedProviderOutcome,
+  ProviderRealized, ProviderRefused, ProviderUnattempted,
+  ManagedAccountProvider, ManagedAuthorizedKeyProvider, ManagedPrincipalSessionProvider,
+  managed_provider_kind_label, provider_outcome_realized,
+  AccountProviderTerminal, realize_managed_account,
+  KeyProviderTerminal, realize_managed_authorized_key,
+  SessionProviderTerminal, realize_managed_principal_session,
+  session_terminal_unattempted, session_terminal_refused,
+}
+import gunbc.managed_principal_probe {
+  bind_fleet_private_key, realize_session_by_probing,
+}
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection,
@@ -63,9 +86,20 @@ import gunbc.spark.credential_workflow {
 // rather than the exit code of the command that intended it. A second identical apply must select
 // nothing, and that is the property the convergence claim rests on.
 
+// THREE ARMS, AND THE THIRD IS THE ONE THE ORDERING PROMISED AND NEVER DELIVERED. The apply below is
+// annotated "ordered so that each step's evidence is the next step's precondition", and structurally it
+// evaluated four legs and aggregated them afterwards: nothing stopped the key install from running after the
+// account creation refused, so a single cause produced four independent failures and a reader saw four broken
+// things instead of one cause and three consequences.
+//
+// ApplyUnattempted ASSERTS NOTHING ABOUT ITS OWN EFFECT. That is the whole distinction from ApplyRefused: a
+// refusal is evidence about the host, and an unattempted leg is evidence about the leg before it. Naming the
+// blocking step is what makes a stalled chain readable, and it is the domain spelling of
+// std.realization_dependency's DependentUnattempted.
 type SparkApplyOutcome
   = ApplyConverged { detail: String }
   | ApplyRefused { cause: String }
+  | ApplyUnattempted { blocked_by: String }
 
 // ONE STEP: the effect that was attempted, joined to what happened. The join is the point -- an
 // outcome floating free of the effect it belongs to is exactly what forced the receipt to be read
@@ -81,6 +115,196 @@ type SparkApplyStep {
 type SparkApplyReport
   = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
   | ApplyNotAttempted { cause: String }
+
+// THE PRECONDITION IS A CONVERGED OUTCOME AND NOT MERELY A NON-REFUSAL, so an unattempted leg cannot
+// license the leg after it. Without that, a chain whose first step was skipped would resume at the second.
+fn apply_converged(o: SparkApplyOutcome) -> Bool {
+  match o {
+    ApplyConverged { detail: _ } => true
+    ApplyRefused { cause: _ } => false
+    ApplyUnattempted { blocked_by: _ } => false
+  }
+}
+
+// THE INFERENCE IDENTITY DEPENDS ON THE ACCOUNT AND NOT ON THE KEY, which is why it is gated on `create`
+// rather than on `key`. Gating it on the key would have been the tidier-looking chain and would have made a
+// key-install failure block an unrelated service account -- a dependency the world does not have, encoded
+// because the steps happened to be written in that order.
+data inference_identity_depends_on_the_account_not_the_key: NonEmptyStr = "gunbc-inference is created by the administrator session and needs no fleet key; only the managed principal's own authentication depends on the key install" as NonEmptyStr
+
+// ── THE READBACKS, BUILT FROM WHAT THE SCRIPT PRINTED ─────────────────────────────────────────
+//
+// AN UNPARSEABLE OUTPUT YIELDS A READBACK THAT CANNOT PASS, not one with empty fields quietly compared. The
+// sentinel is a located word rather than an empty string: an empty observed owner would compare unequal to the
+// principal and surface as a refusal ABOUT OWNERSHIP, which sends a reader to the wrong place. `unread` says
+// the read failed.
+data readback_unread_sentinel: NonEmptyStr = "<unread>" as NonEmptyStr
+
+// THE THREE MARKERS A READBACK CAN CARRY, and they are three because they license three different next steps:
+// `<unread>` means this leg produced no parseable output at all; `<no-match>` means the file was read and our
+// line is not in it, which is an install; `<unreadable>` means the file could not be read, which must withhold
+// mutation rather than invite an append over content nobody observed.
+data readback_no_match_marker: NonEmptyStr = "<no-match>" as NonEmptyStr
+data readback_unreadable_marker: NonEmptyStr = "<unreadable>" as NonEmptyStr
+data readback_file_absent_marker: NonEmptyStr = "<file-absent>" as NonEmptyStr
+data readback_search_error_marker: NonEmptyStr = "<search-error>" as NonEmptyStr
+
+// ── THE WIRE MARKERS DECODE INTO A TYPED OUTCOME, AND DOWNSTREAM READS THE TYPE ────────────────
+//
+// THE MARKERS ARE AN ENCODING, NOT A DOMAIN FACT. A consumer that compared strings would be inventing resource
+// state from text; this fold is the one boundary where the text becomes a typed answer, and every arm below is
+// reached by matching that type rather than by another string comparison.
+//
+// FIVE ARMS AND NOT A BOOL, because the question "may this leg install the key" has five different answers and
+// three of them are not about the key at all: whether an observation was obtained, whether the resource exists,
+// whether its content was read, and only then whether our line is among what was read.
+type AuthorizedKeyLineOutcome
+  = KeyLineObserved { line: NonEmptyStr }
+  | KeyLineNoMatchInReadFile
+  | KeyLineFileEstablishedAbsent
+  | KeyLineContentUnreadable
+  | KeyLineOutcomeUnobtained
+
+fn decode_authorized_key_line(line: NonEmptyStr) -> AuthorizedKeyLineOutcome {
+  if (line as String) == (readback_file_absent_marker as String) { KeyLineFileEstablishedAbsent }
+  else { if (line as String) == (readback_unreadable_marker as String) { KeyLineContentUnreadable }
+  else { if (line as String) == (readback_search_error_marker as String) { KeyLineContentUnreadable }
+  else { if (line as String) == (readback_no_match_marker as String) { KeyLineNoMatchInReadFile }
+  else { if (line as String) == (readback_unread_sentinel as String) { KeyLineOutcomeUnobtained }
+  else { KeyLineObserved { line: line } } } } } }
+}
+
+// AN ABSENT FILE IS ELIGIBLE FOR CREATION; AN UNREAD ONE IS NOT. This is the predicate that the `-r` mistake
+// made wrong in the dangerous direction, and it is stated as its own function so the distinction has a name a
+// caller can be wrong about visibly.
+fn key_line_permits_install(o: AuthorizedKeyLineOutcome) -> Bool {
+  match o {
+    KeyLineFileEstablishedAbsent => true
+    KeyLineNoMatchInReadFile => true
+    KeyLineObserved { line: _ } => false
+    KeyLineContentUnreadable => false
+    KeyLineOutcomeUnobtained => false
+  }
+}
+
+fn key_line_outcome_text(o: AuthorizedKeyLineOutcome) -> String {
+  match o {
+    KeyLineObserved { line: l } => join(["the declared line is present: ", l as String], "")
+    KeyLineNoMatchInReadFile => "the file was read and does not contain the declared line, so the key is not installed -- which says nothing about what else the file holds"
+    KeyLineFileEstablishedAbsent => "authorized_keys does not exist, which is the ordinary first-install state and is established absence rather than a failed read"
+    KeyLineContentUnreadable => "the file exists and its content could not be read, or the search itself failed: mutation is WITHHELD because appending over unseen content may duplicate or clobber it"
+    KeyLineOutcomeUnobtained => "this leg produced no parseable readback at all, so nothing is established about the file in either direction"
+  }
+}
+
+fn triple_or_unread(outcome: SparkApplyOutcome) -> List<String> {
+  match outcome {
+    ApplyConverged { detail: d } =>
+      match third_line_triple(stdout: d) {
+        Present { value: t } => t
+        Absent => [readback_unread_sentinel as String, readback_unread_sentinel as String, readback_unread_sentinel as String]
+      }
+    ApplyRefused { cause: _ } => [readback_unread_sentinel as String, readback_unread_sentinel as String, readback_unread_sentinel as String]
+    ApplyUnattempted { blocked_by: _ } => [readback_unread_sentinel as String, readback_unread_sentinel as String, readback_unread_sentinel as String]
+  }
+}
+
+fn triple_at(t: List<String>, i: Nat) -> NonEmptyStr {
+  match t.skip(n: i).first() {
+    Present { value: v } => if trim(s: v) == "" { readback_unread_sentinel } else { trim(s: v) as NonEmptyStr }
+    Absent => readback_unread_sentinel
+  }
+}
+
+fn account_readback_of(outcome: SparkApplyOutcome) -> PosixAccountReadback {
+  let t = triple_or_unread(outcome: outcome)
+  PosixAccountReadback {
+    observed_principal: triple_at(t: t, i: 0),
+    observed_home: triple_at(t: t, i: 1),
+    observed_shell: triple_at(t: t, i: 2),
+    instrument: "getent passwd, read by the creation script after it ran" as NonEmptyStr,
+  }
+}
+
+fn key_readback_of(outcome: SparkApplyOutcome) -> AuthorizedKeyReadback {
+  let t = triple_or_unread(outcome: outcome)
+  AuthorizedKeyReadback {
+    observed_line: triple_at(t: t, i: 0),
+    observed_owner: triple_at(t: t, i: 1),
+    observed_mode: triple_at(t: t, i: 2),
+    instrument: "grep, stat -c %U and stat -c %a, read by the install script after it ran" as NonEmptyStr,
+  }
+}
+
+// THE PROVIDER OUTCOME PROJECTED INTO THE RECEIPT'S VOCABULARY, so the existing report keeps working while the
+// DECISION moves to the provider. This is a projection and not a second authority: the provider outcome is the
+// fact, and SparkApplyOutcome is how this module's receipt spells it.
+//
+// AND UNATTEMPTED SURVIVES THE PROJECTION. Collapsing it into a refusal here would undo the whole repoint at
+// the last step, because the receipt is what a person reads.
+fn provider_outcome_as_apply(o: ManagedProviderOutcome) -> SparkApplyOutcome {
+  match o {
+    ProviderRealized { kind: _, detail: d } => ApplyConverged { detail: d as String }
+    ProviderRefused { kind: _, cause: c } => ApplyRefused { cause: c as String }
+    ProviderUnattempted { kind: _, blocked_by: b } => ApplyUnattempted { blocked_by: managed_provider_kind_label(k: b) as String }
+  }
+}
+
+// ── THE SESSION PROVIDER'S LIVE FORM, WHICH IS WHERE THE CAPABILITY IS ACTUALLY MINTED ────────
+//
+// THE PROOF LEG USED TO BE A BARE `id` OVER THE MANAGED PRINCIPAL whose outcome went into the receipt and
+// nowhere else. It proved the right thing and then threw the proof away: nothing downstream was typed against
+// it, so the fact that a key-only session worked could not make any command require one.
+//
+// NOW THE PROBE PRODUCES AN OBSERVATION AND THE ADMISSION DECIDES. gunbc.managed_principal_probe opens a fresh
+// key-only connection under the exact-credential posture and reads `id` once, so the principal and its groups
+// come from one moment; admit_managed_principal_session then compares the reported principal against the
+// account, the installed credential against the bound one, and the observed groups against what was required.
+// Only that comparison mints ManagedPrincipalSessionReady.
+//
+// AND THE BINDING IS ADMITTED RATHER THAN ASSUMED. A context exists only where its credential was verified
+// against the declared fingerprint, but the JOIN -- that the key we hold is the key that was installed -- is a
+// separate comparison, and a refused binding leaves the session unattempted rather than probing with a key the
+// model does not recognise.
+fn realize_session_from_admission(
+  account_ready: ManagedPosixAccountReady?,
+  key_ready: ManagedAuthorizedKeyReady?,
+  binding_admission: FleetPrivateKeyBindingAdmission,
+  host: String,
+) -> SessionProviderTerminal {
+  match binding_admission {
+    FleetPrivateKeyBindingRefused { expected: e, derived: d } =>
+      session_terminal_refused(
+        cause: join([
+          "the local credential binding was refused, so no probe ran: expected ", e as String,
+          " and derived ", d as String,
+        ], "") as NonEmptyStr)
+    FleetPrivateKeyBindingAdmitted { ready: binding } =>
+      match account_ready {
+        Absent => session_terminal_unattempted(blocked_by: ManagedAccountProvider)
+        Present { value: account } =>
+          match key_ready {
+            Absent => session_terminal_unattempted(blocked_by: ManagedAuthorizedKeyProvider)
+            Present { value: key } =>
+              realize_managed_principal_session(
+                account_ready: account_ready,
+                key_ready: key_ready,
+                binding: binding,
+                admission: realize_session_by_probing(
+                  account: account,
+                  key: key,
+                  binding: binding,
+                  required_groups: [],
+                  target: SshTarget {
+                    endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+                    principal: spark_managed_login as NonEmptyStr,
+                  },
+                ),
+              )
+          }
+      }
+  }
+}
 
 fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
   match report {
@@ -106,6 +330,7 @@ fn spark_apply_converged(report: SparkApplyReport) -> Bool {
         match step.outcome {
           ApplyConverged { detail: _ } => acc
           ApplyRefused { cause: _ } => false
+          ApplyUnattempted { blocked_by: _ } => false
         }
       })
   }
@@ -121,6 +346,7 @@ fn spark_apply_first_refusal(report: SparkApplyReport) -> String? {
           Absent => match step.outcome {
             ApplyConverged { detail: _ } => none
             ApplyRefused { cause: c } => Present { value: join([step.effect_label, ": ", c], "") }
+            ApplyUnattempted { blocked_by: _ } => none
           }
         }
       })
@@ -135,10 +361,15 @@ fn spark_apply_report_text(report: SparkApplyReport) -> String {
   }
 }
 
+// THE UNATTEMPTED LABEL NAMES THE BLOCKER AND NOT ITSELF, because a receipt reader scanning four lines needs
+// to see one cause and its consequences rather than four problems. "unattempted (blocked by
+// create-managed-account)" points at the line above it; "REFUSED" on all four would have read as a host that
+// is broken in four ways.
 fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
   match outcome {
     ApplyConverged { detail: d } => join(["converged ", d], "")
     ApplyRefused { cause: c } => join(["REFUSED ", c], "")
+    ApplyUnattempted { blocked_by: b } => join(["unattempted (blocked by ", b, ")"], "")
   }
 }
 
@@ -263,13 +494,103 @@ data spark_inference_login: String = "gunbc-inference"
 // directory by default and the authorized_keys population needs one. The shell is a real shell
 // because this account executes convergence commands; the INFERENCE identity below is the one that
 // gets nologin, and keeping them distinct is the whole point of modeling two principals.
+// THE SCRIPT EMITS THE READBACK ITS PROVIDER WILL OBSERVE, in a fixed three-line shape: the principal, the
+// home and the shell, read from `getent passwd` AFTER the creation rather than echoed from the arguments. It
+// printed `id -un` alone before, which is the principal and not the home -- and the home is what the key
+// install needs and what a `useradd -M` silently omits.
+//
+// THE ORDER IS FIXED AND THE FIELDS ARE ONE PER LINE so the reader needs no delimiter convention, which is the
+// same discipline gunbc.spark.device_memory_envelope's probe uses for the same reason: a field separator inside
+// a value is how a parse silently succeeds on the wrong thing.
 fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
   let login = admitted.value as String
   join([
     "set -e\n",
     "id -u ", login, " >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ", login, "\n",
-    "id -un ", login, "\n",
+    "getent passwd ", login, " | cut -d: -f1\n",
+    "getent passwd ", login, " | cut -d: -f6\n",
+    "getent passwd ", login, " | cut -d: -f7\n",
   ], "")
+}
+
+// AND THE KEY SCRIPT EMITS LINE, OWNER AND MODE, which is what distinguishes an installed key from one sshd
+// will honour. `grep -c .` counted lines, which cannot say whether OUR line is among them, who owns the file,
+// or whether its mode leaves it ignored.
+//
+// IT MATCHES ON THE KEY MATERIAL, NOT ON THE FIRST LINE THAT LOOKS LIKE A KEY. A first revision read
+// `grep -m1 -F 'ssh-'`, which returns the FIRST key in the file -- so any pre-existing key ahead of the fleet
+// line makes a perfectly successful install read back as the wrong key and refuse. That is not hypothetical on
+// this fleet: ubuntu@srv3 carried node-orch@srv2 and briansrls@srv1 before fleet-automation was added, so the
+// first revision would have refused srv3 every time while the key it installed was present and working.
+//
+// FOUR OUTCOMES, BECAUSE FOUR NEXT ACTIONS -- and getting to four took two wrong answers.
+//
+// THE FIRST WRONG ANSWER printed one `<absent>` marker for every failure, so an unreadable file read as an empty
+// key set: ignorance rendered as an answer, which is the absorbing fallback DESIGN section 5 forbids.
+//
+// THE SECOND WRONG ANSWER split it into readable-versus-not with `[ ! -r "$F" ]`, and `-r` IS TRUE FOR A MISSING
+// FILE. So a fresh account -- whose authorized_keys does not exist yet, which is the ordinary first-install state
+// -- routed into the UNREADABLE arm, and unreadable withholds mutation. First installation would have withheld
+// forever, and the refusal would have read as a permissions problem on a file that was simply not there.
+//
+// SO PRESENCE AND READABILITY ARE ASKED SEPARATELY, and the search's own exit status is decoded rather than
+// inferred from whether stdout was empty: grep exits 1 for "no lines selected" and greater than 1 for an ERROR,
+// and collapsing those would let a genuine read failure license an append. The four markers and what each
+// licenses:
+//
+//   <file-absent>   established absence   -> eligible to plan creation under the applicable policy
+//   <unreadable>    content exists, unread -> WITHHOLD mutation; appending over unseen content may duplicate
+//   <search-error>  the search itself failed -> WITHHOLD; this is not a negative result
+//   <no-match>      a COMPLETED search found nothing -> the key is not installed, which is ordinary work
+//
+// AND `<no-match>` IS A CARDINALITY STATEMENT ABOUT A SELECTION, not about the file. A file holding five
+// unrelated keys and a genuinely empty file both yield no match for ours. That answers "is this key present";
+// it does not reconstruct the file, prove nothing else exists, or authorize replacing anything.
+//
+// AND EVERY MARKER IS PRINTED RATHER THAN LEFT TO AN EXIT CODE, because under `set -e` a non-matching grep
+// aborts the script before the owner and mode lines ever run.
+//
+// THE READBACK IS STILL NOT THE POPULATION, and that is a declared gap rather than a silent one: it answers
+// "is OUR line present, owned and moded correctly", not "what is the whole desired-versus-observed difference".
+// NEXT-RUNG TRIGGER: the key provider consuming gunbc.host_authorized_keys_reconcile's MembershipPlan with a
+// live observed side read through extdeps.ssh.parse_ssh_authorized_keys -- at which point this script reads the
+// file rather than one line, and foreign keys become visible to the ownership wall instead of invisible to it.
+fn install_authorized_key_readback_script(admitted: PortableRemoteWord, key_material: String) -> String {
+  let login = admitted.value as String
+  let quoted_material = shell_quote(arg: key_material)
+  join([
+    "set -e\n",
+    "H=$(getent passwd ", login, " | cut -d: -f6)\n",
+    "F=\"$H/.ssh/authorized_keys\"\n",
+    "if [ ! -e \"$F\" ]; then echo '<file-absent>'; ",
+    "elif [ ! -r \"$F\" ]; then echo '<unreadable>'; ",
+    "else grep -m1 -F ", quoted_material, " \"$F\"; g=$?; ",
+    "if [ \"$g\" -eq 1 ]; then echo '<no-match>'; ",
+    "elif [ \"$g\" -gt 1 ]; then echo '<search-error>'; fi; fi\n",
+    "stat -c %U \"$H/.ssh/authorized_keys\"\n",
+    "stat -c %a \"$H/.ssh/authorized_keys\"\n",
+  ], "")
+}
+
+// THE THREE-LINE READS ARE PARSED BY POSITION AND A SHORT OUTPUT PRODUCES NO READBACK, which keeps a truncated
+// or warning-prefixed stdout from becoming a readback with empty fields -- and an empty observed owner would
+// compare unequal to the principal and read as a refusal about ownership rather than about the read.
+fn third_line_triple(stdout: String) -> List<String>? {
+  let lines = filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != "")
+  if count(lines) < 3 { none } else {
+    match lines.first() {
+      Absent => none
+      Present { value: a } =>
+        match lines.skip(n: 1).first() {
+          Absent => none
+          Present { value: b } =>
+            match lines.skip(n: 2).first() {
+              Absent => none
+              Present { value: c } => Present { value: [trim(s: a), trim(s: b), trim(s: c)] }
+            }
+        }
+    }
+  }
 }
 
 // The no-login inference identity. nologin plus a locked password is what makes it a service
@@ -397,6 +718,28 @@ data spark_apply_receipt_path: String = "target/spark-managed-access-apply-recei
 // authentication proof runs LAST and as the managed principal, so a receipt reporting it converged
 // is a receipt that a fresh connection under the new account succeeded -- not that a privileged
 // session believed the account existed.
+// ── THE PROVIDER CHAIN REPLACED THE HAND-SEQUENCED LEGS ───────────────────────────────────────
+//
+// THE FOUR `let` BINDINGS THAT USED TO BE THE BODY OF THIS FUNCTION WERE THE COUNTEREXAMPLE THE REALIZATION-
+// BEFORE-USE WORK EXISTS TO DELETE. They evaluated account creation, key installation, the inference identity
+// and the authentication proof, then aggregated four outcomes -- so a refused account creation did not prevent
+// the key install or the proof from being evaluated, and one cause produced four findings. The annotation on
+// them claimed each step's evidence was the next step's precondition; that was statement order.
+//
+// NOW EACH PROVIDER'S HANDLE IS THE NEXT PROVIDER'S ARGUMENT. gunbc.managed_principal_provider takes an
+// Optional handle and matches Absent into ProviderUnattempted, so there is no path on which a downstream
+// provider ATTEMPTS anything after its prerequisite failed to realize. The chain is a consequence of the types
+// rather than of the order these lines happen to be written in.
+//
+// AND THE READBACK IS WHAT PRODUCES A HANDLE, never the script's exit status. Each script emits the three
+// fields its provider observes, and a short or unparseable output yields no readback at all rather than one
+// carrying empty fields that would compare unequal and surface as the wrong refusal.
+//
+// THE INFERENCE IDENTITY IS NOT PART OF THE ACCESS CHAIN, and gating it on the key would encode a dependency
+// the world does not have: it is created by the administrator session and needs no fleet key, so it is gated on
+// the account creation alone. Chaining it behind the key would have looked tidier and would have made a
+// key-install failure block an unrelated service account.
+//
 fn spark_managed_access_apply_with_resolved_credentials(
   attempt_raw: String,
   host: String,
@@ -421,30 +764,61 @@ fn spark_managed_access_apply_with_resolved_credentials(
             identity_file_name: spark_admin_credential_file_name(attempt: attempt),
             secret_bytes: admin_credential,
             use: fn(admin_credential_file) {
-          let create = privileged_leg(
+          let create_run = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: create_managed_account_script(admitted: managed_word),
           )
-          let key = privileged_leg(
-            context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
-            script: install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
+          let account = realize_managed_account(
+            occurrence: PosixAccountOccurrence { host: host as HostIdentity, principal: FleetAccountAutomation },
+            expected_local_name: spark_managed_login as NonEmptyStr,
+            bootstrap_realized: true,
+            apply_succeeded: apply_converged(o: create_run),
+            apply_detail: apply_outcome_label(outcome: create_run) as NonEmptyStr,
+            readback: account_readback_of(outcome: create_run),
           )
-          let inference = privileged_leg(
-            context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
-            script: create_inference_identity_script(admitted: inference_word),
+          let key_run = if !provider_outcome_realized(o: account.outcome) {
+            ApplyUnattempted { blocked_by: "managed-posix-account-upsert" }
+          } else {
+            privileged_leg(
+              context: context, host: host, admin_principal: admin_principal,
+              admin_credential: admin_credential, admin_credential_file: admin_credential_file,
+              script: join([
+                install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
+                install_authorized_key_readback_script(admitted: managed_word, key_material: fleet_automation_ssh_key.material as String),
+              ], ""),
+            )
+          }
+          let key = realize_managed_authorized_key(
+            account_ready: account.ready,
+            credential: fleet_declared_credential_identity(),
+            expected_key: fleet_automation_ssh_key,
+            apply_succeeded: apply_converged(o: key_run),
+            apply_detail: apply_outcome_label(outcome: key_run) as NonEmptyStr,
+            readback: key_readback_of(outcome: key_run),
           )
-          let proof = managed_principal_leg(
-            context: context, host: host, managed_principal: spark_managed_login, raw_words: ["id", "-un"],
+          let inference = if !apply_converged(o: create_run) {
+            ApplyUnattempted { blocked_by: "managed-posix-account-upsert" }
+          } else {
+            privileged_leg(
+              context: context, host: host, admin_principal: admin_principal,
+              admin_credential: admin_credential, admin_credential_file: admin_credential_file,
+              script: create_inference_identity_script(admitted: inference_word),
+            )
+          }
+          let binding_admission = bind_fleet_private_key(context: context)
+          let session = realize_session_from_admission(
+            account_ready: account.ready,
+            key_ready: key.ready,
+            binding_admission: binding_admission,
+            host: host,
           )
           ApplyAttempted {
-            first: SparkApplyStep { effect_label: "create-managed-account", outcome: create },
+            first: SparkApplyStep { effect_label: "create-managed-account", outcome: provider_outcome_as_apply(o: account.outcome) },
             more: [
-              SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: key },
+              SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: provider_outcome_as_apply(o: key.outcome) },
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
-              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
+              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: provider_outcome_as_apply(o: session.outcome) },
             ],
           }
             },

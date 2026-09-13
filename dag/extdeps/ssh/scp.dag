@@ -1,0 +1,100 @@
+module extdeps.ssh.scp
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, Int, List, NonEmptyStr, Unit }
+import std.string_type { String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/scp.1"
+  }
+}
+
+// ── A FILE THAT IS TOO LARGE TO BE A VALUE ────────────────────────────────────────────────────
+//
+// THIS MODULE EXISTS BECAUSE AN EXEC RESULT IS THE WRONG CARRIER FOR BYTES. Every remote operation this
+// repository models returns its stdout as a String, which is exactly right for a digest, a hostname or a
+// porcelain status and impossible for a container image archive -- twenty gigabytes cannot travel through
+// a value the process has to hold. scp streams instead, and nothing it moves is ever materialised here.
+//
+// IT IS ITS OWN MODULE RATHER THAN A ROW IN extdeps.ssh.session, because that module's cited authority is
+// RFC 4254, the SSH Connection Protocol, which defines the channel requests it declares and says nothing
+// about file copying. scp(1) is an OpenSSH tool with its own manual page and its own version history, and
+// DESIGN section 3 puts an independently documented upstream in its own module rather than under a
+// neighbour whose citation does not reach it.
+//
+// THE OPERATION TAKES CLIENT_ARGS AND THE TRANSPORT SUPPLIES `scp`, which is the shape extdeps.ssh.session
+// settled on and the reason is recorded there: argv[0] chosen by a bound input means a CALLER decides
+// which program runs. The option words, the trust material and the operand order are a SHAPER's business,
+// not this operation's -- see gunbc.fleet_known_hosts_anchor shape_fleet_scp_fetch_argv, which derives
+// them from the same trust policy and credential binding the command legs use.
+//
+// WHY NOT gunbc.WitnessBin.Run, WHICH THE DASHBOARD PATH USES FOR scp TODAY. That operation declares a
+// stderr capture policy with three channels reporting on it, and the Rust target cannot realize them --
+// measured 2026-09-13, the emitter refuses the whole closure with "shell output channel
+// 'stderr_truncated' is a modeled channel that target rust cannot realize". Routing a fleet transfer
+// through it would make every module that reaches this leg unemittable, to borrow a runner whose name and
+// capture policy are about witness binaries rather than file copies.
+service scp.Scp {
+  operation CopyPortableWords {
+    input { client_args: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["scp", client_args]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "scp portable-words copy failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-scp-portable-words", stderr: "" } "hermetic scp.Scp.CopyPortableWords"
+    }
+  }
+}
+
+type ScpCopyResult {
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn scp_copy_portable_words(client_args: List<String>) -> ScpCopyResult {
+  let r = scp.Scp.CopyPortableWords(client_args: client_args)
+  ScpCopyResult {
+    exit_code: r.exit_code,
+    success: r.success,
+    stdout: r.stdout,
+    stderr: r.stderr,
+  }
+}
+
+// ── THE OPERAND GRAMMAR, WHICH IS SCP'S OWN AND NOT THE FLEET'S ───────────────────────────────
+//
+// WHICH SIDE IS REMOTE IS DECIDED BY POSITION AND BY NOTHING ELSE, so the two directions are two
+// functions rather than one with a flag: `scp a b` copies a to b, and a direction chosen by a boolean
+// would put the decision in a caller's argument instead of in the call it made. Getting it backwards is
+// silent -- scp would cheerfully overwrite the source with the destination -- which is exactly the class
+// of mistake a positional convention invites and a named function forecloses.
+//
+// THE PRINCIPAL IS NOT IN THE OPERAND. `user@host:path` is the other spelling and this module does not
+// use it: the fleet shapers carry the principal as -o User, so there is one place "who" is decided for
+// both the command legs and the copy legs. Two spellings of the principal is two places to change it.
+fn scp_remote_operand(endpoint: NonEmptyStr, path: NonEmptyStr) -> String {
+  join([endpoint as String, ":", path as String], "")
+}
+
+fn scp_fetch_operands(endpoint: NonEmptyStr, remote_path: NonEmptyStr, local_path: NonEmptyStr) -> List<String> {
+  [scp_remote_operand(endpoint: endpoint, path: remote_path), local_path as String]
+}
+
+fn scp_push_operands(endpoint: NonEmptyStr, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> List<String> {
+  [local_path as String, scp_remote_operand(endpoint: endpoint, path: remote_path)]
+}

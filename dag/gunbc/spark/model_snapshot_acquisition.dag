@@ -2,6 +2,7 @@ module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
   hub_repo_cache_directory, hub_snapshot_directory, hub_download_argv, hub_cache_verify_argv,
@@ -185,6 +186,7 @@ data model_snapshot_hub_source_identity: NonEmptyStr = "huggingface-hub-cli" as 
 type ModelSnapshotRole
   = SnapshotSeed
   | SnapshotReplicaOf { peer_rail_address: Ipv4Address }
+  | SnapshotRoleUndecidable { because: NonEmptyStr }
 
 // THE SEED IS ONE MEMBER OF THE WHOLE FLEET, NOT ONE PER GROUP, AND THAT IS A MEASURED CORRECTION.
 //
@@ -203,25 +205,202 @@ type ModelSnapshotRole
 // precisely the cost the rail transport exists to avoid, halved instead of removed. One seed, seven
 // replicas.
 //
-// WHICH MEMBER SEEDS IS AN ATTRIBUTABLE CHOICE, and it is group B's head: measured the same day, it
-// runs NO container (group B is not serving), it holds the most free space of any member at 3340 GB,
-// and group B is the group that must come up first because group A is currently the fleet's only
-// serving capacity. Seeding from an idle member keeps the 330 GB download off the box that is
-// answering requests.
-data model_snapshot_fleet_seed_rail_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17)
+// WHICH MEMBER SEEDS IS A DECISION OVER CURRENT OBSERVATIONS, AND THE PREVIOUS PIN WAS FALSIFIED BY
+// THIS BRANCH'S OWN CANARY.
+//
+// The literal it replaces was `.110.17`, chosen on 2026-09-08 because that member held the most free
+// space and ran no container. Both halves went false within two days, and the first went false BECAUSE
+// OF WORK ON THIS BRANCH: `.110.17` is spark-0c75, the host serving the GLM EXL3 canary. That is the
+// argument for a fold over observation rows rather than a pin -- a timeless literal cannot express a
+// fact that its own branch is about to invalidate.
+//
+// THE NUMBERS ARE NOT REPEATED HERE. An earlier revision of this annotation transcribed the whole
+// measured table above the rows that carry it, so one read of the rail lived in two places and the
+// prose half could rot while the rows stayed right. The rows below ARE the observation; the instrument
+// that re-derives them is named in `model_snapshot_seed_observed_at`.
+//
+// THE ELIGIBILITY SIGNAL IS A LISTENING SERVING PORT, NOT A CONTAINER COUNT. `docker ps` refuses
+// without group membership on at least one member, so a container census reads zero on a box that is
+// serving -- exactly backwards for this purpose. A listening endpoint is readable everywhere and is
+// the fact that matters: seeding a multi-hundred-gigabyte fetch onto a member that is answering
+// requests is the cost this choice exists to avoid.
+//
+// FREE SPACE IS COMPARED AGAINST WHAT IS BEING FETCHED rather than against a remembered threshold, so
+// a larger artifact narrows the eligible set on its own.
+type SeedEligibilityObservation sole_constructor {
+  host: NonEmptyStr
+  rail: Ipv4Address
+  free_bytes: Nat
+  serving_endpoints: Nat
+  observed_at: NonEmptyStr
+}
+
+fn seed_observation(host: NonEmptyStr, rail: Ipv4Address, free_bytes: Nat, serving_endpoints: Nat, observed_at: NonEmptyStr) -> SeedEligibilityObservation {
+  SeedEligibilityObservation { host: host, rail: rail, free_bytes: free_bytes, serving_endpoints: serving_endpoints, observed_at: observed_at }
+}
+
+data model_snapshot_seed_observed_at: NonEmptyStr = "read over ssh on 2026-09-10, all eight members: `ip -4 -o addr show` for the rail address, `df -B1 --output=avail /` for free bytes, and `ss -ltn` counting listeners on 30000 and 30001 for serving" as NonEmptyStr
+
+data model_snapshot_seed_observations: List<SeedEligibilityObservation> = [
+  seed_observation(host: "spark-a3ee" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 11), free_bytes: 3062845353984, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-ac79" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 12), free_bytes: 3301108027392, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-c2b1" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 13), free_bytes: 3272375140352, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-3bd5" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 14), free_bytes: 3076123234304, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-3336" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 15), free_bytes: 3586060328960, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-2196" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 16), free_bytes: 3586588590080, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-0c75" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17), free_bytes: 3478162620416, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-b66c" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 18), free_bytes: 3597229400064, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+]
+
+// THE ROSTER IS COMPLETE AS OF THIS READ, AND SAYING SO IS THIS ROW'S JOB. A previous read reached
+// only five of eight members, and the two that did not answer carried no observation -- an unobserved
+// member is not an idle one, so they could not be selected. On 2026-09-10 all eight answered on their
+// serving-network addresses, including spark-ac79 (.110.12) and spark-b66c (.110.18). This row is
+// still appended to a refusal's causes because completeness is a fact the refusal must state: a reader
+// of SeedUnselectable needs to know whether the eligible set was empty because every member was
+// excluded or because the roster never saw them.
+data model_snapshot_seed_roster_completeness: NonEmptyStr = "all eight fabric members answered ssh on their serving-network addresses when this roster was read, so every member carries an observation and the eligible set is empty only by exclusion" as NonEmptyStr
+
+type SeedSelection
+  = SeedSelected { rail: Ipv4Address, host: NonEmptyStr, free_bytes: Nat, basis: NonEmptyStr }
+  | SeedUnselectable { causes: List<NonEmptyStr> }
+
+fn seed_ineligibility(o: SeedEligibilityObservation, required_bytes: Nat) -> NonEmptyStr? {
+  if o.serving_endpoints > 0 {
+    Present { value: join([o.host as String, " is answering requests on ", to_string(o.serving_endpoints), " serving endpoint(s); seeding onto a serving member is the cost this choice exists to avoid"], "") as NonEmptyStr }
+  } else {
+    if o.free_bytes < required_bytes {
+      Present { value: join([o.host as String, " has ", to_string(o.free_bytes), " bytes free against an artifact of ", to_string(required_bytes)], "") as NonEmptyStr }
+    } else {
+      none
+    }
+  }
+}
+
+fn seed_better(a: SeedEligibilityObservation, b: SeedEligibilityObservation) -> SeedEligibilityObservation {
+  if a.free_bytes >= b.free_bytes { a } else { b }
+}
+
+// REFUSES RATHER THAN FALLING BACK. With no eligible member there is no safe seed, and picking the
+// least-bad one would put a multi-hundred-gigabyte fetch on a box that is serving traffic. The causes
+// name every member and why each was excluded, so the refusal says what to change.
+fn select_snapshot_seed(required_bytes: Nat) -> SeedSelection {
+  let eligible = filter(model_snapshot_seed_observations, o => match seed_ineligibility(o: o, required_bytes: required_bytes) { Absent => true, Present { value: _ } => false })
+  if count(eligible) == 0 {
+    SeedUnselectable {
+      causes: concat(
+        flat_map(model_snapshot_seed_observations, o => match seed_ineligibility(o: o, required_bytes: required_bytes) {
+          Present { value: c } => [c]
+          Absent => []
+        }),
+        [model_snapshot_seed_roster_completeness]),
+    }
+  } else {
+    let best = fold(eligible, init: first_or(list: eligible), f: (acc, o) => seed_better(a: acc, b: o))
+    SeedSelected {
+      rail: best.rail,
+      host: best.host,
+      free_bytes: best.free_bytes,
+      basis: join([
+        "selected as the idle member with the most free space among ", to_string(count(eligible)),
+        " eligible of ", to_string(count(model_snapshot_seed_observations)),
+        " observed; ", best.observed_at as String,
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn first_or(list: List<SeedEligibilityObservation>) -> SeedEligibilityObservation {
+  fold(list, init: seed_observation(
+    host: "unselected" as NonEmptyStr,
+    rail: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0),
+    free_bytes: 0,
+    serving_endpoints: 1,
+    observed_at: "placeholder that loses every comparison and cannot be selected: it is marked as serving, so seed_ineligibility excludes it and the fold's initial value can never survive as the answer" as NonEmptyStr,
+  ), f: (acc, o) => seed_better(a: acc, b: o))
+}
+
+// ── WHAT A DOWNLOAD MUST HOLD IS NOT WHAT THE RANKS MUST HOLD ─────────────────────────────────
+//
+// THIS ROW READ THE WRONG FIELD. It took `safetensors_bytes`, which is the quantity a tensor-parallel
+// replica divides among its ranks -- and a download holds the repository SNAPSHOT: config, tokenizer,
+// generation config and the rest arrive with the shards, because the Hub cache fetches a snapshot
+// rather than a hand-picked file subset. The gap is 28,717,797 bytes here and changes no eligibility
+// decision on a multi-terabyte disk, which is exactly why it was easy to get wrong and worth fixing
+// while it is still harmless: the carrier's contract is to state the acquisition footprint, and on the
+// next artifact the two figures need not be a rounding error apart.
+//
+// THE TRANSIENT OVERHEAD IS ZERO AND THAT IS A MECHANISM, NOT AN OPTIMISM. The Hub cache writes each
+// blob to `<sha>.incomplete` and RENAMES it in place on completion, then points a snapshot-directory
+// symlink at it -- so a partially fetched artifact never exists as a second full copy, and peak
+// occupancy is the snapshot total rather than twice it. If a placement ever stages through a separate
+// directory before moving, that placement carries its own overhead and this row stops being right for
+// it.
+//
+// A FREE-SPACE RESERVE IS OWED AND IS NOT INVENTED HERE. Eligibility should require headroom BEYOND
+// the artifact -- a disk at exactly 100 percent serves nothing -- but no reserve policy has been
+// established for these hosts, and picking a number to make the model look complete is the authored
+// literal this branch has been removing all along. So the requirement is the artifact total today and
+// the reserve is a named obligation rather than a guess.
+type AcquisitionDiskRequirement sole_constructor {
+  artifact_bytes: Nat
+  transient_overhead_bytes: Nat
+  overhead_basis: NonEmptyStr
+  free_space_reserve: FreeSpaceReserveStanding
+}
+
+type FreeSpaceReserveStanding
+  = FreeSpaceReserveDecided { bytes: Nat, decider: NonEmptyStr }
+  | FreeSpaceReserveUnestablished { obligation: NonEmptyStr }
+
+fn acquisition_disk_required_bytes(r: AcquisitionDiskRequirement) -> Nat {
+  match r.free_space_reserve {
+    FreeSpaceReserveDecided { bytes: b, decider: _ } => r.artifact_bytes + r.transient_overhead_bytes + b
+    FreeSpaceReserveUnestablished { obligation: _ } => r.artifact_bytes + r.transient_overhead_bytes
+  }
+}
+
+data model_snapshot_native_glm_requirement: AcquisitionDiskRequirement = AcquisitionDiskRequirement {
+  artifact_bytes: glm_5_3_flash_native_manifest.repository_total_bytes,
+  transient_overhead_bytes: 0,
+  overhead_basis: "the Hub cache renames <sha>.incomplete into place and symlinks the snapshot directory at it, so a partial fetch is never a second full copy and peak occupancy is the snapshot total" as NonEmptyStr,
+  free_space_reserve: FreeSpaceReserveUnestablished {
+    obligation: "no free-space reserve policy has been established for these hosts. Eligibility should require headroom beyond the artifact; until a reserve is derived or decided, the requirement is the artifact total and this row says so rather than carrying an invented margin" as NonEmptyStr,
+  },
+}
+
+data model_snapshot_native_glm_bytes: Nat = acquisition_disk_required_bytes(r: model_snapshot_native_glm_requirement)
+
+data model_snapshot_fleet_seed: SeedSelection = select_snapshot_seed(required_bytes: model_snapshot_native_glm_bytes)
 
 // A MEMBER'S ROLE IS DECIDED BY ITS OWN RAIL ADDRESS AGAINST THE SEED'S, so the seed is named once
 // and no caller re-derives who it is. A member whose rail address is unresolved cannot be compared,
 // and becomes a seed -- falling back to the working upstream path rather than replicating from a
 // peer it cannot address.
-fn model_snapshot_role_for(member_rail: Ipv4Address?) -> ModelSnapshotRole {
-  match member_rail {
-    Absent => SnapshotSeed
-    Present { value: a } =>
-      if ipv4_address_eq(a: a, b: model_snapshot_fleet_seed_rail_address) {
-        SnapshotSeed
-      } else {
-        SnapshotReplicaOf { peer_rail_address: model_snapshot_fleet_seed_rail_address }
+// AN UNRESOLVED MEMBER RAIL ADDRESS IS NO LONGER SILENTLY PROMOTED TO SEED. The previous revision
+// returned SnapshotSeed for it, reasoning that upstream is the working fallback -- which is true for
+// ONE member and wrong for a group rollout: every member whose rail address failed to resolve would
+// independently fetch the whole artifact from upstream, turning one download into several without
+// anything saying so. That is the absorbing-fallback shape, and at 306 GiB per member it is expensive
+// enough to be worth refusing. A member that cannot be addressed on the rail has an UNDECIDABLE role.
+fn model_snapshot_role_for(member_rail: Ipv4Address?, seed: SeedSelection) -> ModelSnapshotRole {
+  match seed {
+    SeedUnselectable { causes: cs } =>
+      SnapshotRoleUndecidable {
+        because: join(["no member is eligible to seed, so no member's role can be decided: ", join(map(cs, c => c as String), " ; ")], "") as NonEmptyStr,
+      }
+    SeedSelected { rail: seed_rail, host: seed_host, free_bytes: _, basis: _ } =>
+      match member_rail {
+        Absent =>
+          SnapshotRoleUndecidable {
+            because: join(["this member's rail address did not resolve, so it can neither be compared to the seed (", seed_host as String, ") nor replicate from it; promoting it to seed would fetch the whole artifact from upstream a second time"], "") as NonEmptyStr,
+          }
+        Present { value: a } =>
+          if ipv4_address_eq(a: a, b: seed_rail) {
+            SnapshotSeed
+          } else {
+            SnapshotReplicaOf { peer_rail_address: seed_rail }
+          }
       }
   }
 }
@@ -275,6 +454,11 @@ fn model_snapshot_rail_replicate_argv(peer: Ipv4Address, path: NonEmptyStr) -> L
 // correct degradation because it is a fallback to a WORKING path rather than a widening of the
 // answer. The fold reports which source answered, so a run that quietly fell back to the hub is
 // visible in the receipt rather than inferred from its duration.
+// AN UNDECIDABLE ROLE OFFERS NO SOURCE, so the acquisition fold exhausts immediately and refuses
+// rather than reaching for upstream. Falling back to the Hub for an undecidable role is precisely what
+// must not happen: it is the arm that would turn one unresolved rail address into another
+// whole-artifact download, and doing that once per unresolved member is how a group rollout quietly
+// multiplies. The reason lives on the role, which a caller inspecting the refusal can read.
 fn model_snapshot_sources_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> List<AcquisitionSource> {
   let hub = match snapshot {
     ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => [] as List<AcquisitionSource>
@@ -291,6 +475,7 @@ fn model_snapshot_sources_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDe
         Absent => hub
         Present { value: rail } => concat([rail], hub)
       }
+    SnapshotRoleUndecidable { because: _ } => [] as List<AcquisitionSource>
   }
 }
 

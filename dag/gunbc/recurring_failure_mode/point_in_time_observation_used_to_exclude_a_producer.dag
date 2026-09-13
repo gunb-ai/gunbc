@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.point_in_time_observation_used_to_exclude_a_producer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data point_in_time_observation_used_to_exclude_a_producer: RecurringFailureMode = RecurringFailureMode {
+  identity: "point_in_time_observation_used_to_exclude_a_producer" as NonEmptyStr,
+
+  receipts: [
+    "**a point-in-time observation used where an exclusion was needed** (a transaction checks that something is absent, and proceeds as though it will stay absent. The check answers \"is there one now\"; the property required is \"can one appear before I finish\". Those differ exactly when another authority can create the thing, which is the only case the check was written for. ",
+
+    "SPECIMEN, NATIVE GLM CUTOVER ATTEMPT 5 (2026-09-11). The transaction carried a ten-member precondition roster including NoStaleNativeContainers, passed it, stopped the incumbent, and entered readiness. A `gunbc-spark-pair` container then appeared on two of the four serving hosts DURING the transaction -- between its own preflight and its own readback. Every precondition had been satisfied and none of them could have caught it. ",
+
+    "THE PRODUCER WAS A SYSTEMD UNIT, WHICH IS WHY REMOVING CONTAINERS NEVER HELD THE GROUP. `gunbc-spark-pair-worker.service`, with its container carrying restart=unless-stopped. A transaction that removes a container has removed an EFFECT and left its CAUSE enabled, so the thing returns on the unit's schedule rather than the transaction's. Five attempts cleaned containers; none disabled a unit. ",
+
+    "AND IT WAS NOT UNIFORM ACROSS THE GROUP, which is the fact that makes a fleet-wide assertion actively misleading rather than merely weak. Measured on all four hosts: ENABLED and ACTIVE on three, NOT-FOUND on the fourth. A check that asked one host, or that folded the group into a single answer, would have been right three times and wrong once with no way to tell which -- and the once is the rank whose container a unit may replace mid-flight. ",
+
+    "WHAT THE PRODUCER RAN WAS INERT, AND THAT IS RECORDED SEPARATELY FROM WHETHER IT MAY RUN. `sleep infinity`, no listeners on any serving or rendezvous port, no device memory. So it did not cause that attempt's rank failures. Both halves matter and conflating them is how this survived five attempts: INERT is why it is not the cause, ENABLED is why it must be excluded before the next launch. A second authority that CAN mutate the subject makes every observation of that subject provisional, whether or not it has yet. ",
+
+    "THE ROSTER WITHDRAWAL DID NOT REACH IT EITHER, which is the subtler half. gunbc.spark.pair_serving_desired had already withdrawn this group from the pair-serving roster -- the desired-state list names only the other group. A roster that stops DESIRING something does not STOP it: convergence had no opinion about these hosts any more, so nothing swept the running authority the withdrawal left behind. Removing a member from a desired-state list and removing its actuator from the world are different operations, and only the first had been done. ",
+
+    "RECOGNITION RULE: IF ANOTHER AUTHORITY CAN CREATE THE THING YOU JUST CHECKED FOR, YOUR CHECK IS A SAMPLE AND NOT AN EXCLUSION. Ask what would have to be true for the absence to persist for the duration of the transaction, and hold THAT. ",
+
+    "THE REPAIR IS A HELD EXCLUSION AND ITS ORDER IS LOAD-BEARING: disable the unit and stop it in one invocation, THEN remove the container, THEN re-read the state. Stopping before disabling leaves a window in which the unit restarts what was just stopped; removing the container first kills the effect while the cause is still armed. The verdict must come from the RE-READ rather than the operation's exit code -- `systemctl disable` exits non-zero on a unit that does not exist, which is a successful exclusion, so the exit code and the outcome disagree on precisely the host that needs no work. ",
+
+    "AND THE VOCABULARY MUST REFUSE WHAT IT DOES NOT RECOGNISE. systemd answers with more words than a two-case check expects: `static` cannot be disabled yet can still be started by another unit's dependency, and a disabled-but-still-ACTIVE unit still holds a container this transaction did not create. Only `not-found` and `disabled`-and-inactive are exclusions; every other spelling, including one this repository has not seen, refuses rather than passing. ",
+
+    "ONE MORE TRAP WORTH THE ROW: THE UNIT'S NAME IS A SINGLE POINT OF SILENT FAILURE. If the fleet renames it, the probe reports not-found on every host -- which an exclusion check reads as EXCLUDED EVERYWHERE. The most dangerous outcome of this check is reached by a typo, so the name is asserted against the exact string observed on the fleet rather than left to a future edit. ",
+
+    "RUNG FOUND AT: mitigatable. The competing producer was observed only because a direct host read happened to run during the rollback of a failed attempt; nothing in the transaction would have reported it. ",
+
+    "ATTAINABLE CEILING: structurally guaranteed. Membership is decidable from facts the fleet can be asked for -- the actuator's enablement state per planned host -- and a transaction that cannot show a held exclusion over every host has no admitted form. It does not reach structural impossibility because enablement is external reality that a person can restore at any moment, which is why the exclusion is HELD across the transaction rather than checked once at its start. ",
+
+    "NEXT TRIGGER: gunbc.spark.serving_group_exclusivity consumed by the cutover root before any destructive step, so a launch cannot begin against a group whose competing actuator is still armed.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.serving_group_exclusivity", decl_name: "exclude_serving_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.spark.serving_group_exclusivity_witness_test", decl_name: "an_enabled_unit_is_not_excluded", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.spark.serving_group_exclusivity_witness_test", decl_name: "a_disabled_but_still_running_unit_is_not_excluded", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.spark.serving_group_exclusivity_witness_test", decl_name: "the_excluded_unit_is_the_one_observed_on_the_fleet", field: WholeDeclaration },
+  ],
+}
