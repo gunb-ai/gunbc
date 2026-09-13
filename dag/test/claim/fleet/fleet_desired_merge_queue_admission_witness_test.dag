@@ -221,7 +221,8 @@ test fn a_run_of_another_workflow_is_not_the_floor() -> Bool {
   }
 }
 
-// THE PUSH ARRIVED BEFORE THE QUEUE'S RUN CONCLUDED. No wait, no retry: a typed refusal naming the runs.
+// MATCHING RUNS SUPPLY NO USABLE VERDICT UNDER THIS POLICY: an in-progress run and a cancelled run on
+// the revision, and nothing else. No wait, no retry: a typed refusal naming the runs.
 test fn merge_group_runs_with_no_verdict_refuse_as_unconcluded() -> Bool {
   match ci_on_r(rs: runs(rs: [
     run(id: 16, event: "merge_group", head_sha: sha_r, status: InProgress, conclusion: none),
@@ -318,18 +319,23 @@ test fn the_emitted_fleet_desired_workflow_routes_push_and_workflow_run_to_their
 }
 
 // THE REFUSAL TEXT RENDERS ONLY WHAT THE PREDICATE ESTABLISHED. Absence of a qualifying run is not a
-// diagnosis of queue bypass, and a missing verdict is not a temporal claim about the push. Restoring
-// either earlier phrasing reds this row.
-test fn the_absent_and_unconcluded_refusals_claim_only_what_they_establish() -> Bool {
+// diagnosis of queue bypass, a missing verdict is not a temporal claim about the push, and a
+// non-merge_group run in the response is not a diagnosis of the request. Restoring any earlier
+// phrasing reds this row.
+test fn the_absent_unconcluded_and_unscoped_refusals_claim_only_what_they_establish() -> Bool {
   match revision_r() {
     Present { value: r } => {
       let absent = required_ci_refusal_message(cause: RequiredCiMergeGroupRunAbsent { revision: r })
       let unconcluded = required_ci_refusal_message(cause: RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: [16] })
+      let unscoped = required_ci_refusal_message(cause: RequiredCiRunsNotEventScoped { run_ids: [21] })
       contains(absent, "in the complete queried result; this producer cannot establish the required CI proposition")
         && !contains(absent, "queue")
         && !contains(absent, "bypass")
         && contains(unconcluded, "supply no usable verdict under this policy; admission remains unproved")
         && !contains(unconcluded, "arrived before")
+        && contains(unscoped, "The returned run list contains non-merge_group runs (IDs 21), contrary to the merge_group-only response required by this producer; admission remains unproved.")
+        && !contains(unscoped, "was not scoped")
+        && !contains(unscoped, "says nothing about")
     }
     none => false
   }
