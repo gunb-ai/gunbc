@@ -490,7 +490,7 @@ fn resolve_timed(
 /// from the recorded one — has an executing consumer rather than only a format string.
 ///
 /// `eval_steps` IS HERE BECAUSE IT IS NOW THE QUANTITY THE REQUIRED FLOOR ENFORCES ON
-/// (`v2.workflow.required_floor` `required_floor_claim_eval_step_budget`, 2026-09-12), and because
+/// (`v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, 2026-09-12), and because
 /// it is the instrument the pinned calibration fixture in `v2.workflow.floor_eval_step_calibration`
 /// is read from: that row's step count and its millisecond reading both come off this line. A
 /// budget stated in steps with no local instrument reporting steps would be a figure nobody could

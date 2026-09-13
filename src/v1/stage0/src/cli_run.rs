@@ -18336,7 +18336,7 @@ pub fn run_claims_in_process(
 /// armed `witness_eval_budget`/`witness_wall_budget`. THE REQUIRED-FLOOR CALLER ARMS
 /// ONLY THE WALL ONE since 2026-09-12, from `required_floor_claim_wall_safety_limit_ms`;
 /// it passes `None` for the CPU budget, because its claim ceiling is the eval-step
-/// comparison against `required_floor_claim_eval_step_budget` and CPU is observed-only
+/// comparison against `claim_eval_step_budget_for_identity` and CPU is observed-only
 /// for every claim. The fast lane still arms both. — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
 /// diagnostic only and is judged above this function, once a claim has already reached a
 /// verdict, and decides nothing about admission.
@@ -24258,7 +24258,7 @@ pub struct DiscoveryCorpusOptions {
     pub discovery_scope_dirs: Vec<String>,
     /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
     /// PR-path posture from the required-floor claim loop; that loop now carries
-    /// `required_floor_claim_eval_step_budget` (the claim ceiling, a comparison rather than a
+    /// `claim_eval_step_budget_for_identity` (the claim ceiling, a comparison rather than a
     /// deadline), `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) and
     /// `required_floor_claim_cost_line_ms` (completed-cost, diagnostic only). This field is
     /// unaffected by any of that and still names one ceiling on the fast lane's own CPU clock.
@@ -41216,7 +41216,7 @@ pub struct RequiredFloorClaim {
     /// a step that got more expensive — and the second of those is the declared §4b(3) drop
     /// `gunbc.rung_drop` `floor_cost_cpu_regression_at_constant_eval_steps`.
     ///
-    /// Its value is `v2.workflow.required_floor` `required_floor_claim_eval_step_budget`, declared
+    /// Its value is `v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, declared
     /// policy grounded through the pinned calibration fixture in
     /// `v2.workflow.floor_eval_step_calibration` — never derived from the live population.
     pub eval_step_budget: u64,

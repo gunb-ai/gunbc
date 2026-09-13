@@ -1309,7 +1309,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; the required-floor claim loop ARMS NO CPU DEADLINE AT ALL since 2026-09-12: its claim ceiling is required_floor_claim_eval_step_budget, compared once against a completed claim's work, and required_floor_claim_wall_safety_limit_ms is the one deadline it arms — so this message is reachable only from the fast lane). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; the required-floor claim loop ARMS NO CPU DEADLINE AT ALL since 2026-09-12: its claim ceiling is claim_eval_step_budget_for_identity, compared once against a completed claim's work, and required_floor_claim_wall_safety_limit_ms is the one deadline it arms — so this message is reachable only from the fast lane). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -4380,7 +4380,7 @@ pub struct InterpContext {
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     // Cooperative per-witness eval deadline (operator ruling 2026-08-17). THE REQUIRED FLOOR NO
     // LONGER SUPPLIES ONE: since 2026-09-12 its claim loop passes `None` here for every claim and
-    // gates on `v2.workflow.required_floor` `required_floor_claim_eval_step_budget` instead, so the
+    // gates on `v2.workflow.required_floor` `claim_eval_step_budget_for_identity` instead, so the
     // only caller that arms this clock is the fast lane, from its own ceiling. The mechanism is
     // unchanged and is deliberately retained rather than deleted — it is the fast lane's wall.
     // It must unwind from INSIDE eval as a typed error: witness evals run on in-process worker

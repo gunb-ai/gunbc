@@ -120,7 +120,7 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 /// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
 /// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
 /// raise the line. That deadline is gone (the claim ceiling gates on
-/// `required_floor_claim_eval_step_budget` since 2026-09-12 and CPU is observed-only), which does
+/// `claim_eval_step_budget_for_identity` since 2026-09-12 and CPU is observed-only), which does
 /// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
 /// same whether or not a clock refuses on it.
 ///
