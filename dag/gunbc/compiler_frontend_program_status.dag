@@ -404,7 +404,8 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // named, observed piece of outstanding work, and reporting it unanswerable hid real known
 // work behind the missing-instrument label. The AVAILABLE arm reads the persist outstanding
 // fold: v2.workflow.legacy_baseline_persisted_observation holds a capture by its own
-// GitObjectId, never a receipts roster, and the live pin is unpinned until ACT-0 names a base.
+// GitObjectId, never a receipts roster. Enrolment pin+held is the XL-1 persist fact, not
+// ACT-0's BaselineCaptureReceipt.
 // THE THREE DELETION MILESTONES, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
 // grain, stated at exactly that strength. gunbc.namespace_cut_subject_roster carries every
 // authority scheduled to disappear as string-identity probes (not authored citations, which
