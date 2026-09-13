@@ -13,7 +13,10 @@ import gunbc.fleet_observation_collector_ownership {
   OwnerRecording,
   FollowerReadOnly,
   ForeignSessionHeld,
-  may_record,
+  RecordingOwnerIdentity,
+  RecordingOwner,
+  NotTheRecordingOwner,
+  recording_owner,
 }
 import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
@@ -177,7 +180,7 @@ type SourceByteFact
 // quiet. Each refusal names what was missing, and none of them widens.
 fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange) -> SourceByteFact {
   let requested_end = range_end(range: requested)
-  match recording_owner_session(ownership: envelope.ownership) {
+  match recording_owner(ownership: envelope.ownership) {
     NotTheRecordingOwner =>
       CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
     RecordingOwner { session: owner_session, generation: owner_generation } =>
@@ -298,21 +301,6 @@ fn is_forwarded(envelope: ObservationEnvelope) -> Bool {
   }
 }
 
-// THE RECORDING OWNER'S OWN IDENTITY, extracted once so the fold reads it rather than re-deriving it
-// per guard. Only OwnerRecording yields one: a follower and a foreign-held endpoint are not the
-// recorder and have no ownership generation to offer.
-type RecordingOwnerIdentity
-  = RecordingOwner { session: CollectorSessionId, generation: Int }
-  | NotTheRecordingOwner
-
-fn recording_owner_session(ownership: EndpointOwnership) -> RecordingOwnerIdentity {
-  match ownership {
-    OwnerRecording { session: session, lease: lease, fencing: _ } =>
-      RecordingOwner { session: session, generation: ownership_generation(lease: lease) }
-    FollowerReadOnly { session: _ } => NotTheRecordingOwner
-    ForeignSessionHeld { observed: _ } => NotTheRecordingOwner
-  }
-}
 
 // EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT. The recording owner's session, the chunk's own
 // occurrence, and the authenticated source-to-machine binding are three independently authored

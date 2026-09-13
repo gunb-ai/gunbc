@@ -164,27 +164,38 @@ fn release_ownership(
   }
 }
 
-// ONLY AN OWNER RECORDS. A follower and a foreign-held endpoint both answer false, and they are
-// distinct arms above rather than one negative, so a caller can say WHY it is not recording.
-fn may_record(ownership: EndpointOwnership) -> Bool {
+// WHO THE RECORDING OWNER IS, AS ONE DISCRIMINATION WITH ONE HOME.
+//
+// THIS REPLACES A PAIR. There used to be a Bool `may_record` here and a separate
+// `recording_owner_session` in the envelope module, and they asked the same question -- is this
+// ownership the recorder -- in two places, in two vocabularies, with the Bool throwing away the
+// answer the caller then needed anyway. That is one concept with two names (DESIGN section 3), and
+// the Bool half was the weaker one: every caller that got `true` had to re-open the carrier to find
+// out WHO was recording and under which generation. This returns that directly, so there is nothing
+// left to re-derive and no second spelling to drift.
+type RecordingOwnerIdentity
+  = RecordingOwner { session: CollectorSessionId, generation: Int }
+  | NotTheRecordingOwner
+
+fn recording_owner(ownership: EndpointOwnership) -> RecordingOwnerIdentity {
   match ownership {
-    OwnerRecording { session: _, lease: _, fencing: _ } => true
-    FollowerReadOnly { session: _ } => false
-    ForeignSessionHeld { observed: _ } => false
+    OwnerRecording { session: session, lease: lease, fencing: _ } =>
+      RecordingOwner { session: session, generation: ownership_generation(lease: lease) }
+    FollowerReadOnly { session: _ } => NotTheRecordingOwner
+    ForeignSessionHeld { observed: _ } => NotTheRecordingOwner
   }
 }
 
-// WHETHER THIS OWNERSHIP MAY CLAIM STRUCTURAL EXCLUSIVITY. An owner behind an endpoint with no
-// remote fencing is still the recorder, but its exclusivity is OBSERVED rather than enforced, and
-// a downstream reader is entitled to know which of the two it has.
-fn exclusivity_is_enforced(ownership: EndpointOwnership) -> Bool {
-  match ownership {
-    OwnerRecording { session: _, lease: _, fencing: fencing } =>
-      match fencing {
-        RemoteFencingEnforced { authority: _ } => true
-        RemoteFencingAbsent { limitation: _ } => false
-      }
-    FollowerReadOnly { session: _ } => false
-    ForeignSessionHeld { observed: _ } => false
-  }
-}
+// EXCLUSIVITY IS READ OFF THE CARRIER, AND THERE IS DELIBERATELY NO PREDICATE FOR IT.
+//
+// A Bool `exclusivity_is_enforced` stood here and is deleted. It was the same erasure this module
+// just removed twice over: it collapsed "the owner records but the endpoint cannot fence a remote
+// writer" and "this is not the recording owner at all" into one `false`, and it threw away the
+// limitation text that says WHY exclusivity is not enforced -- the one thing a reader needs in order
+// to weigh the observation. A reader that got `false` had to re-open EndpointOwnership anyway.
+//
+// The fact it was trying to publish is already STRUCTURAL: EndpointFencing sits on OwnerRecording,
+// so an owner over an unfenced endpoint carries RemoteFencingAbsent with its limitation, and a
+// consumer matches on it. The interpretation lane renders that carrier directly and declined a Bool
+// for exactly this reason. Honest exclusivity is a property you read off the ownership, not a
+// question you ask about it.
