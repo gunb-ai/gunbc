@@ -40,10 +40,81 @@ import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
 // how four captures were lost. The unit of rotation is the chunk below, so the stream survives
 // every attempt boundary and the boundary becomes a range rather than an end.
 
+// A POSITION IN A SOURCE STREAM, WHICH IS A POINT AND NOT A QUANTITY.
+//
+// first_offset WAS A BARE Nat SITTING BESIDE A TYPED ByteSize, which is the flat-scalar defect one
+// field over from its own counter-example: the extent knew it was memory and the position did not.
+// The two are different KINDS, not two spellings of one -- a position minus a position is a quantity,
+// a position plus a quantity is a position, and a position plus a position is meaningless -- so
+// carrying both as raw counts lets all three be written and only arithmetic tells them apart.
+//
+// THE SHAPE IS std.measure ObservationInstant's, DELIBERATELY. That carrier solved the identical
+// problem for time: a point carries the DOMAIN it is measured in, and compare_instants refuses across
+// domains rather than fabricating an order, because two readings from independently started clocks are
+// the same basis and still not comparable. Two byte offsets in two different source streams are
+// exactly that, so positions carry their stream and comparison refuses across streams.
+//
+// WHY THE HOME IS HERE AND NOT std.measure, stated so it can be revisited rather than assumed: std
+// owns the MAGNITUDE (ByteSize) and this adds the stream-relative POINT over it, whose only reachers
+// today are this lane and the interpretation lane that consumes it. ClockBasis's own note in
+// std.measure records that a home is chosen by who must reach it; if a third consumer appears with no
+// SourceStreamId to hand, this hoists to std.measure as a generic point over a stream parameter, and
+// nothing here changes shape when it does.
+type StreamPosition {
+  stream: SourceStreamId
+  since_stream_origin: ByteSize
+}
+
+// THREE-VALUED PLUS A REFUSAL, for the reason compare_instants is: a Bool would have to pick a side
+// for the incomparable case and both sides assert an order that does not exist.
+type PositionOrder
+  = PositionBefore
+  | PositionSame
+  | PositionAfter
+  | PositionIncomparable { left: SourceStreamId, right: SourceStreamId }
+
+fn stream_position(stream: SourceStreamId, since_stream_origin: ByteSize) -> StreamPosition {
+  StreamPosition { stream: stream, since_stream_origin: since_stream_origin }
+}
+
+fn position_count(p: StreamPosition) -> Nat {
+  byte_size_count(b: p.since_stream_origin)
+}
+
+fn compare_positions(a: StreamPosition, b: StreamPosition) -> PositionOrder {
+  if !source_stream_eq(a: a.stream, b: b.stream) {
+    PositionIncomparable { left: a.stream, right: b.stream }
+  } else {
+    let x = position_count(p: a)
+    let y = position_count(p: b)
+    if x < y { PositionBefore } else if x == y { PositionSame } else { PositionAfter }
+  }
+}
+
+// POSITION + QUANTITY = POSITION. There is deliberately no position + position.
+fn position_advanced_by(p: StreamPosition, extent: ByteSize) -> StreamPosition {
+  StreamPosition {
+    stream: p.stream
+    since_stream_origin: byte_size(count: position_count(p: p) + byte_size_count(b: extent))
+  }
+}
+
+// POSITION - POSITION = QUANTITY, and only within one stream. Across streams there is no difference
+// to report, so the answer is absent rather than a fabricated zero.
+fn position_difference(later: StreamPosition, earlier: StreamPosition) -> ByteSize? {
+  match compare_positions(a: earlier, b: later) {
+    PositionIncomparable { left: _, right: _ } => Absent
+    PositionAfter => Absent
+    PositionSame => Present { value: byte_size(count: 0) }
+    PositionBefore =>
+      Present { value: byte_size(count: position_count(p: later) - position_count(p: earlier)) }
+  }
+}
+
 // WHERE IN THE SOURCE'S OWN STREAM these bytes sat. Offsets are the source's, not the file's: a
 // chunk is a window on a stream that outlives it.
 type SourceStreamRange {
-  first_offset: Nat
+  first: StreamPosition
   length: ByteSize
 }
 
@@ -288,6 +359,16 @@ fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> C
 // durably committed, continuity-verified EMPTY range -- rather than a caller's assertion that
 // nothing showed up, which is the shape the sixth instance of
 // gunbc.recurring_failure_mode.empty_capture_read_as_clean_result demands.
+// A GAP IS THE INTERVAL BETWEEN TWO POSITIONS, and its extent is their difference rather than a
+// hand-rolled subtraction. Positions that cannot be differenced yield a zero-length gap at the origin
+// position rather than a fabricated span, because there is no interval to report between two streams.
+fn gap_between(from: StreamPosition, to: StreamPosition) -> SourceStreamRange {
+  match position_difference(later: to, earlier: from) {
+    Present { value: extent } => SourceStreamRange { first: from, length: extent }
+    Absent => SourceStreamRange { first: from, length: byte_size(count: 0) }
+  }
+}
+
 fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
   byte_size_count(b: chunk.range.length)
 }
@@ -376,12 +457,12 @@ type ContinuityDerivation
   = DerivedContinuity { continuity: StreamContinuity }
   | RunCrossesSubjects { expected: SourceStreamId, chunk: SourceStreamId }
   | RunOutOfReceiveOrder { previous: Nat, observed: Nat }
-  | RunRangesOverlapOrReverse { verified_through: Nat, chunk: SourceStreamRange }
+  | RunRangesOverlapOrReverse { verified_through: StreamPosition, chunk: SourceStreamRange }
 
 fn continuity_from_committed_chunks(
   committed: List<CommittedChunk>,
   subject: SourceStreamId,
-  from: Nat,
+  from: StreamPosition,
 ) -> ContinuityDerivation {
   match committed.first() {
     Absent =>
@@ -391,13 +472,10 @@ fn continuity_from_committed_chunks(
     Present { value: head } =>
       if !source_stream_eq(a: head.chunk.source, b: subject) {
         RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
-      } else if head.chunk.range.first_offset > from {
+      } else if !position_at_or_before(a: head.chunk.range.first, b: from) {
         DerivedContinuity {
           continuity: ContinuityGap {
-            gap: SourceStreamRange {
-              first_offset: from
-              length: byte_size(count: head.chunk.range.first_offset - from)
-            }
+            gap: gap_between(from: from, to: head.chunk.range.first)
             cause: GapCauseUnattributed
           }
         }
@@ -428,7 +506,7 @@ fn continuity_from_committed_chunks(
 fn continuity_walk(
   committed: List<CommittedChunk>,
   subject: SourceStreamId,
-  verified_through: Nat,
+  verified_through: StreamPosition,
   previous_session: CollectorSessionId,
   previous_generation: Int,
   previous_sequence: Nat,
@@ -444,7 +522,7 @@ fn continuity_walk(
       } else if (head.chunk.occurrence.session.collector_session as String) != (previous_session.collector_session as String) {
         DerivedContinuity {
           continuity: ContinuityGap {
-            gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
+            gap: SourceStreamRange { first: verified_through, length: byte_size(count: 0) }
             cause: CollectorSessionChanged {
               previous_session: previous_session.collector_session
               current_session: head.chunk.occurrence.session.collector_session
@@ -454,7 +532,7 @@ fn continuity_walk(
       } else if head.chunk.occurrence.ownership_generation != previous_generation {
         DerivedContinuity {
           continuity: ContinuityGap {
-            gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
+            gap: SourceStreamRange { first: verified_through, length: byte_size(count: 0) }
             cause: CollectorLostOwnership {
               from_generation: previous_generation
               to_generation: head.chunk.occurrence.ownership_generation
@@ -466,15 +544,12 @@ fn continuity_walk(
           previous: previous_sequence
           observed: head.chunk.occurrence.receive_sequence
         }
-      } else if head.chunk.range.first_offset < verified_through {
+      } else if !position_at_or_before(a: verified_through, b: head.chunk.range.first) {
         RunRangesOverlapOrReverse { verified_through: verified_through, chunk: head.chunk.range }
-      } else if head.chunk.range.first_offset > verified_through {
+      } else if !position_at_or_before(a: head.chunk.range.first, b: verified_through) {
         DerivedContinuity {
           continuity: ContinuityGap {
-            gap: SourceStreamRange {
-              first_offset: verified_through
-              length: byte_size(count: head.chunk.range.first_offset - verified_through)
-            }
+            gap: gap_between(from: verified_through, to: head.chunk.range.first)
             cause: GapCauseUnattributed
           }
         }
@@ -500,16 +575,16 @@ fn continuity_walk(
 type ContinuityCoverage
   = ContinuityCoversRange
   | ContinuityNotEstablished { continuity: StreamContinuity }
-  | ContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
+  | ContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
 
-fn continuity_covers(continuity: StreamContinuity, through: Nat) -> ContinuityCoverage {
+fn continuity_covers(continuity: StreamContinuity, through: StreamPosition) -> ContinuityCoverage {
   match continuity {
     ContinuityGap { gap: gap, cause: cause } =>
       ContinuityNotEstablished { continuity: ContinuityGap { gap: gap, cause: cause } }
     ContinuityUnknown { detail: detail } =>
       ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
     ContinuityEstablished { reach: reach } =>
-      if reach.verified_through >= through {
+      if position_at_or_before(a: through, b: reach.verified_through) {
         ContinuityCoversRange
       } else {
         ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
@@ -534,7 +609,7 @@ fn continuity_covers(continuity: StreamContinuity, through: Nat) -> ContinuityCo
 // collector-side cause may only be attached by something that actually observed it.
 type ContinuityBreakCause
   = GapCauseUnattributed
-  | SourceRetainedLogRolledOver { lost_through: Nat }
+  | SourceRetainedLogRolledOver { lost_through: StreamPosition }
   | SourceLogCleared
   | SourceRestarted { previous_generation: NonEmptyStr, current_generation: NonEmptyStr }
   | SourceGenerationUncertain { detail: NonEmptyStr }
@@ -549,7 +624,7 @@ type ContinuityBreakCause
 // compiler. Deriving the offset inside this module was necessary and not sufficient while the arm
 // itself stayed writable.
 type ContinuityReach sole_constructor {
-  verified_through: Nat
+  verified_through: StreamPosition
 }
 
 type StreamContinuity
@@ -561,10 +636,22 @@ type StreamContinuity
 // source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
 // lets a machine-lifetime collector license a negative observation at all. A bounded client that
 // must exit before its window closes cannot answer this question; committed bytes can.
-fn range_end(range: SourceStreamRange) -> Nat {
-  range.first_offset + byte_size_count(b: range.length)
+fn range_end(range: SourceStreamRange) -> StreamPosition {
+  position_advanced_by(p: range.first, extent: range.length)
 }
 
+// COVERAGE IS DECIDED THROUGH THE POSITION ORDER, so a comparison across two streams cannot answer
+// true by arithmetic accident -- it cannot answer at all, which is the point of the refusal arm.
 fn range_covers(outer: SourceStreamRange, inner: SourceStreamRange) -> Bool {
-  (outer.first_offset <= inner.first_offset) && (range_end(range: inner) <= range_end(range: outer))
+  position_at_or_before(a: outer.first, b: inner.first)
+  && position_at_or_before(a: range_end(range: inner), b: range_end(range: outer))
+}
+
+fn position_at_or_before(a: StreamPosition, b: StreamPosition) -> Bool {
+  match compare_positions(a: a, b: b) {
+    PositionBefore => true
+    PositionSame => true
+    PositionAfter => false
+    PositionIncomparable { left: _, right: _ } => false
+  }
 }

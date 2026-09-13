@@ -56,6 +56,10 @@ import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
   ChunkOccurrence,
   SourceStreamId,
+  StreamPosition,
+  stream_position,
+  position_at_or_before,
+  compare_positions,
   source_stream_eq,
   SourceStreamRange,
   LocalCommitStanding,
@@ -184,7 +188,7 @@ fn t_reach(through: Nat) -> StreamContinuity {
   match continuity_from_committed_chunks(
     committed: t_one(c: t_committed_chunk(seq: 1, generation: 4, payload: "reach", first: 0, len: through)),
     subject: t_stream,
-    from: 0,
+    from: t_pos(at: 0),
   ) {
     DerivedContinuity { continuity: c } => c
     RunCrossesSubjects { expected: _, chunk: _ } => ContinuityUnknown { detail: "fixture run crossed subjects" }
@@ -197,8 +201,12 @@ fn t_one(c: CommittedChunk?) -> List<CommittedChunk> {
   match c { Present { value: v } => [v], Absent => [] }
 }
 
+fn t_pos(at: Nat) -> StreamPosition {
+  stream_position(stream: t_stream, since_stream_origin: byte_size(count: at))
+}
+
 fn t_range(first: Nat, len: Nat) -> SourceStreamRange {
-  SourceStreamRange { first_offset: first, length: byte_size(count: len) }
+  SourceStreamRange { first: t_pos(at: first), length: byte_size(count: len) }
 }
 
 fn t_lease(generation: Int) -> HeldLease {
@@ -355,8 +363,8 @@ test fn w_continuity_must_reach_the_requested_end() -> Bool {
     downstream: DownstreamNotOffered,
   )
   is_continuity_short(fact: source_byte_fact(envelope: short, requested: requested))
-  && continuity_covers_range(c: continuity_covers(continuity: t_reach(through: 100), through: 100))
-  && continuity_falls_short(c: continuity_covers(continuity: t_reach(through: 99), through: 100))
+  && continuity_covers_range(c: continuity_covers(continuity: t_reach(through: 100), through: t_pos(at: 100)))
+  && continuity_falls_short(c: continuity_covers(continuity: t_reach(through: 99), through: t_pos(at: 100)))
 }
 
 // A COMMIT RECEIPT MUST ATTEST THIS CHUNK'S BYTES. A valid receipt for a DIFFERENT payload used to
@@ -761,12 +769,12 @@ test fn w_continuity_is_derived_from_committed_chunks() -> Bool {
   let far = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
   let overlapping = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 20, len: 60)
   let backwards = t_committed_chunk(seq: 1, generation: 4, payload: "b", first: 40, len: 60)
-  derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: b), subject: t_stream, from: 0), through: 100)
-  && derived_gapped(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: 0))
-  && overlaps(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: overlapping), subject: t_stream, from: 0))
-  && out_of_order(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: backwards), subject: t_stream, from: 0))
-  && derived_unknown(d: continuity_from_committed_chunks(committed: [], subject: t_stream, from: 0))
-  && gap_is_unattributed(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: 0))
+  derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: b), subject: t_stream, from: t_pos(at: 0)), through: 100)
+  && derived_gapped(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: t_pos(at: 0)))
+  && overlaps(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: overlapping), subject: t_stream, from: t_pos(at: 0)))
+  && out_of_order(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: backwards), subject: t_stream, from: t_pos(at: 0)))
+  && derived_unknown(d: continuity_from_committed_chunks(committed: [], subject: t_stream, from: t_pos(at: 0)))
+  && gap_is_unattributed(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: t_pos(at: 0)))
 }
 
 // A WALK OVER OFFSETS MAY NOT DIAGNOSE THE SOURCE. Both gap arms used to hardcode a rolled-over
@@ -805,10 +813,10 @@ fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
 test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
   let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let regained = t_committed_chunk(seq: 2, generation: 5, payload: "b", first: 40, len: 60)
-  lost_ownership(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: regained), subject: t_stream, from: 0))
+  lost_ownership(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: regained), subject: t_stream, from: t_pos(at: 0)))
   && crosses_subjects(d: continuity_from_committed_chunks(
        committed: t_pair(left: a, right: t_committed_chunk_on_stream(stream: t_other_stream, seq: 2, generation: 4, payload: "b", first: 40, len: 60)),
-       subject: t_stream, from: 0))
+       subject: t_stream, from: t_pos(at: 0)))
 }
 
 // THE PARENT'S DISCRIMINATING RED, AND THIS LANE'S OWN FOUNDING CASE. Two committed, BYTE-CONTIGUOUS
@@ -820,9 +828,9 @@ test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
 test fn w_a_session_change_breaks_the_stream_and_is_ours() -> Bool {
   let first = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let relaunched = t_committed_chunk_for_session(session: t_other_session, seq: 1, generation: 4, payload: "b", first: 40, len: 60)
-  session_changed(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0))
-  && !derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0), through: 100)
-  && !crosses_subjects(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0))
+  session_changed(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: t_pos(at: 0)))
+  && !derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: t_pos(at: 0)), through: 100)
+  && !crosses_subjects(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: t_pos(at: 0)))
 }
 
 data t_other_stream: SourceStreamId = SourceStreamId {
@@ -1070,7 +1078,7 @@ fn session_disagrees(a: SubjectAgreement) -> Bool {
 
 fn reaches(c: StreamContinuity, through: Nat) -> Bool {
   match c {
-    ContinuityEstablished { reach: r } => r.verified_through == through
+    ContinuityEstablished { reach: r } => position_at_or_before(a: t_pos(at: through), b: r.verified_through) && position_at_or_before(a: r.verified_through, b: t_pos(at: through))
     ContinuityGap { gap: _, cause: _ } => false
     ContinuityUnknown { detail: _ } => false
   }

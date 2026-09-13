@@ -22,6 +22,8 @@ import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
   SourceStreamId,
   source_stream_eq,
+  StreamPosition,
+  position_at_or_before,
   SourceStreamRange,
   StreamContinuity,
   ContinuityEstablished,
@@ -188,7 +190,7 @@ type SourceByteFact
   | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding }
   | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
   | CoverageGapContinuityBroken { continuity: StreamContinuity }
-  | CoverageGapContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
+  | CoverageGapContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
   | CoverageGapRangeNotCovered { requested: SourceStreamRange, committed: SourceStreamRange }
   | CoverageGapNotTheRecordingOwner { ownership: EndpointOwnership }
   | CoverageGapEvidenceNamesAnotherSubject { disagreement: SubjectAgreement }
@@ -241,7 +243,7 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
               ContinuityShortOfRange { verified_through: verified, requested_end: asked } =>
                 CoverageGapContinuityShortOfRange { verified_through: verified, requested_end: asked }
               ContinuityCoversRange =>
-                if envelope.chunk.range.first_offset > requested.first_offset {
+                if !position_at_or_before(a: envelope.chunk.range.first, b: requested.first) {
                   CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
                 } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
                   if range_covers(outer: envelope.chunk.range, inner: requested) {
