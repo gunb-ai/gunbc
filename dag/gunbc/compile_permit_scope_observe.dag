@@ -28,7 +28,6 @@ import gunbc.compile_permit_scope {
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
 import gunbc.runner_slot_allocation { committed_slot_identities }
 import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
@@ -40,11 +39,7 @@ data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthori
 // running. An observation that labelled itself safe would be the self-certifying carrier that
 // module already refused. Present fifo-auth evidence is BorrowerHeldCooperativeHostFifo; complete
 // absence of that evidence is InvocationLocalCargo. A mixed set — across properties or across
-// slots — is unreadable, not a guess at either arm. Slot 1 alone is not a host (review 65523).
-
-fn compile_permit_scope_probe_unit(host: HostIdentity) -> NonEmptyStr {
-  runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: 1 })
-}
+// slots — is unreadable, not a guess at either arm.
 
 fn realizations_agree(a: CompileParallelismRealization, b: CompileParallelismRealization) -> Bool {
   match a {
@@ -216,6 +211,8 @@ fn realization_from_unit_text(
   }
 }
 
+data permit_scope_unit_text_unreadable_cause: NonEmptyStr = "runner unit Environment/After/Wants did not jointly evidence a fifo pool or an invocation-local cargo bound" as NonEmptyStr
+
 fn host_standing_from_unit_text(
   host: HostIdentity,
   environment: String,
@@ -228,7 +225,7 @@ fn host_standing_from_unit_text(
     Absent =>
       HostCancellationUnreadable {
         host: host,
-        cause: "runner unit Environment/After/Wants did not jointly evidence a fifo pool or an invocation-local cargo bound" as NonEmptyStr,
+        cause: permit_scope_unit_text_unreadable_cause,
       }
   }
 }
@@ -258,7 +255,7 @@ fn observe_slot_realization(
                   SlotRealizationObserved { realization: realization }
                 Absent =>
                   SlotRealizationUnreadable {
-                    cause: "runner unit Environment/After/Wants did not jointly evidence a fifo pool or an invocation-local cargo bound" as NonEmptyStr,
+                    cause: permit_scope_unit_text_unreadable_cause,
                   }
               }
           }

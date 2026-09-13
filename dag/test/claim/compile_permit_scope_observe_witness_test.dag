@@ -17,7 +17,6 @@ import gunbc.compile_permit_scope {
 import gunbc.compile_permit_scope_observe {
   realization_from_unit_text,
   host_standing_from_unit_text,
-  compile_permit_scope_probe_unit,
   join_host_slot_realizations,
   SlotRealizationObserved,
   SlotRealizationUnreadable,
@@ -26,8 +25,6 @@ import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobser
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.host_effect { SshShell }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -206,11 +203,6 @@ test fn w_empty_observation_set_is_not_safe() -> Bool {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => true
     FleetCancellationSafe { hosts: _ } => false
   }
-}
-
-test fn w_probe_unit_is_the_host_slot_one_unit() -> Bool {
-  compile_permit_scope_probe_unit(host: operator_host_srv3)
-    == runner_slot_unit_name(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 1 })
 }
 
 test fn w_fleet_ssh_transport_covers_srv3_and_srv4() -> Bool {
