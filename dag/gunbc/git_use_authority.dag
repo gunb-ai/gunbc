@@ -12,9 +12,12 @@ import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 // gunbc.scm.* are refused here; Git execution there is NOT established absent by this policy.
 // Terminal policy and ledger vocabulary. The required-parse bridge supplies parsed identities
 // and imports; it must not classify imports or carry a second authorization roster in Rust.
-// Consumption frontier: the existing required parse lane invokes git_import_authority_verdict
-// when its separately approved projection/invocation wiring lands. Pure controls exercise this
-// policy before that wiring exists; they are not evidence of a required-lane wall.
+// Consumption frontier: the existing required parse lane must supply its independently
+// discovered source identities and parsed module/import records to git_import_authority_verdict,
+// then carry its total result into the required host gate outcome. The trigger is that connection
+// EXECUTING with missing-population and forbidden-import refusals stopping the lane, and legal
+// controls accepted. Approval or arrival of wiring alone does not consume this frontier.
+// Witnesses are evidence of policy behavior, not production consumers or a required-lane wall.
 
 type NativeAuthorityMode
   = BridgeAuthority
@@ -27,6 +30,12 @@ type NativeAuthorityMode
 // trigger is execution of this identity-bound report for both modes on the enrolled population.
 // The production authority route is separate work in ticket 6, not the Phase 1 CAS consumer.
 // No current production consumption is claimed for this selector or the two disposition fields.
+// The constant dispositions already inhabit data GitUseRow declarations. The selector instead
+// chooses which caller-supplied computation to invoke; bridge/native are parameters, not constant
+// declarations. Keeping deferred branches preserves selection before execution when routes have
+// effects. Replacing them with eagerly supplied result values would change that contract even
+// with a working compiler. The nullary-callable inference defect therefore blocks this shape;
+// adding a dummy argument or replacing its invocation solely to evade that defect is refused.
 // These modes do NOT seal gunbc.native_scm_interaction_contract Landed. A bridge landing mint
 // still needs independently acquired merge read-back bound to the exact projection and imported
 // native baseline. Until that producer and its exclusive mint execute, no construction rung is
