@@ -23,6 +23,8 @@ import product.supplier.cloudflare_r2 {
   cloudflare_r2_route_admission,
   cloudflare_r2_route_facts_population,
   cloudflare_r2_data_paths,
+  cloudflare_r2_facts,
+  CloudflareR2RegionObservation,
   CloudflareR2RegionRead,
   CloudflareR2RouteObserved,
   CloudflareR2RouteRegionUnobserved,
@@ -76,14 +78,12 @@ fn t_agreement() -> DeclarationRef {
   decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_agreement")
 }
 
-// THE DISCRIMINATOR ROUTE IS A WITNESS SUBJECT, NOT AUTOMATIC. Production standing does not mint
-// a ProviderRoute for the durable origin, because Automatic is a choice mechanism. The pair
-// below needs some route identity so admit_provider_use can run; that identity is this fixture
-// and is not a location fact about gunbai-fabric-origin.
-fn t_synthetic_route() -> ProviderRoute {
-  ProviderRoute {
-    provider: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
-    service: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "extdeps_external_authority_anchor"),
+// THE DISCRIMINATOR ROUTE IS MINTED ONLY IN THE READ ARM, SAME CONSTRUCTION AS PRODUCTION.
+// It is not gunbai-fabric-origin: that standing is Unobserved, so no origin route exists to
+// admit. The pair below asks whether admit_provider_use still refuses an unread path and
+// admits once that path is resolved, on a route the coproduct is allowed to mint.
+fn t_read_region() -> CloudflareR2RegionObservation {
+  CloudflareR2RegionRead {
     region: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
   }
 }
@@ -98,8 +98,8 @@ fn t_sanction(route: ProviderRoute) -> RouteScopeSanction {
   }
 }
 
-fn t_roster() -> List<RouteScopeSanction> {
-  [t_sanction(route: t_synthetic_route())]
+fn t_roster(route: ProviderRoute) -> List<RouteScopeSanction> {
+  [t_sanction(route: route)]
 }
 
 fn t_scope() -> ProviderUseScope<NonEmptyStr> {
@@ -125,10 +125,10 @@ fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
   FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "r2-witness-offer-1" as OfferKey }
 }
 
-fn t_decide(facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
+fn t_decide(route: ProviderRoute, facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
   cloudflare_r2_route_admission(
     facts: facts,
-    roster: t_roster(),
+    roster: t_roster(route: route),
     active: t_posture(),
     scope: t_scope(),
     offer: t_offer(),
@@ -248,9 +248,9 @@ fn t_synthetic_downstream() -> DownstreamProviderPopulation {
   }
 }
 
-fn t_facts_with_durable_storage(storage: ProviderPathStanding) -> ProviderRouteFacts {
+fn t_facts_with_durable_storage(route: ProviderRoute, storage: ProviderPathStanding) -> ProviderRouteFacts {
   ProviderRouteFacts {
-    route: t_synthetic_route(),
+    route: route,
     contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_reading"),
     data_paths: t_paths_with_durable_storage(storage: storage),
     downstream: t_synthetic_downstream(),
@@ -259,46 +259,67 @@ fn t_facts_with_durable_storage(storage: ProviderPathStanding) -> ProviderRouteF
   }
 }
 
-test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool {
-  t_denied_with(
-    a: t_decide(facts: t_facts_with_durable_storage(storage: ProviderPathUnread {
-      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
-    })),
-    tag: "facts-incomplete",
-    located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
-  )
-}
-
-test fn the_same_route_admits_once_that_path_is_resolved() -> Bool {
-  match t_decide(facts: t_facts_with_durable_storage(storage: t_resolved())) {
-    ProviderUseDenied { decision, cause } => false,
-    ProviderUseAdmitted { permit } =>
-      declaration_ref_eq(
-        a: permit.route.provider,
-        b: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
-      )
-        && declaration_ref_eq(
-          a: permit.route.region,
-          b: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
-        )
-        && declaration_ref_eq(
-          a: permit.evidence.customer_profile,
-          b: t_customer_profile(),
-        ),
+test fn resolving_every_data_path_does_not_admit_the_durable_origin() -> Bool {
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteObserved { route } => false,
+    CloudflareR2RouteRegionUnobserved { obligation } =>
+      count(cloudflare_r2_route_facts_population()) == 0
+        && count(filter(cloudflare_r2_route_facts_population(), f => match t_decide(route: f.route, facts: f) {
+          ProviderUseAdmitted { permit } => true,
+          ProviderUseDenied { decision, cause } => false,
+        })) == 0,
   }
 }
 
-test fn a_read_region_mints_a_route_and_an_unread_region_does_not() -> Bool {
-  match cloudflare_r2_route(region: CloudflareR2RegionRead {
-    region: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
-  }) {
+test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
     CloudflareR2RouteRegionUnobserved { obligation } => false,
-    CloudflareR2RouteObserved { route } =>
-      declaration_ref_eq(
-        a: route.region,
-        b: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
-      )
-        && count(cloudflare_r2_route_facts_population()) == 0,
+    CloudflareR2RouteObserved { route } => t_denied_with(
+      a: t_decide(
+        route: route,
+        facts: t_facts_with_durable_storage(route: route, storage: ProviderPathUnread {
+          obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+        }),
+      ),
+      tag: "facts-incomplete",
+      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+    ),
+  }
+}
+
+test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
+    CloudflareR2RouteRegionUnobserved { obligation } => false,
+    CloudflareR2RouteObserved { route } => match t_decide(
+      route: route,
+      facts: t_facts_with_durable_storage(route: route, storage: t_resolved()),
+    ) {
+      ProviderUseDenied { decision, cause } => false,
+      ProviderUseAdmitted { permit } =>
+        declaration_ref_eq(
+          a: permit.route.provider,
+          b: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+        )
+          && declaration_ref_eq(
+            a: permit.route.region,
+            b: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
+          )
+          && declaration_ref_eq(
+            a: permit.evidence.customer_profile,
+            b: t_customer_profile(),
+          ),
+    },
+  }
+}
+
+test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
+  match cloudflare_r2_route(region: t_read_region()) {
+    CloudflareR2RouteRegionUnobserved { obligation } => false,
+    CloudflareR2RouteObserved { route } => t_denied_with(
+      a: t_decide(route: route, facts: cloudflare_r2_facts(route: route)),
+      tag: "facts-incomplete",
+      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
+    ),
   }
 }
 
