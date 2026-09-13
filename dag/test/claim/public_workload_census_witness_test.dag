@@ -24,7 +24,7 @@ import gunbc.public_workload_census {
   observed_job_binds_inspected_leg,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
-  candidate_declared_architecture, candidate_baseline,
+  candidate_declared_architecture,
   candidate_declared_provider, candidate_observed_provider,
   candidate_warm_cache_count,
   effect_disposition, CoverageUpload, WorkflowArtifactUpload,
@@ -103,15 +103,15 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
 }
 
 test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
-  let biome = match candidate_baseline(c: candidate_biome_test) {
+  let biome = match baseline_admission(c: candidate_biome_test) {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
     BaselineRefused { cause } => false
   }
-  let pdns = match candidate_baseline(c: candidate_pdns_dnsdist_arm) {
+  let pdns = match baseline_admission(c: candidate_pdns_dnsdist_arm) {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
     BaselineRefused { cause } => false
   }
-  let openobserve = match candidate_baseline(c: candidate_openobserve_arm_build) {
+  let openobserve = match baseline_admission(c: candidate_openobserve_arm_build) {
     BaselineRefused { cause } => true
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
   }
@@ -206,11 +206,11 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
     RunIdentityUnresolved { cause } => false
   }
   pdns_same && biome_blob
-    && match candidate_baseline(c: candidate_pdns_dnsdist_arm) {
+    && match baseline_admission(c: candidate_pdns_dnsdist_arm) {
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
       BaselineRefused { cause } => false
     }
-    && match candidate_baseline(c: candidate_biome_test) {
+    && match baseline_admission(c: candidate_biome_test) {
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
       BaselineRefused { cause } => false
     }
@@ -218,7 +218,7 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
 
 test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
   match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
-    RunIdentityMismatched { cause } => match candidate_baseline(c: candidate_biome_blob_mismatch_control) {
+    RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_blob_mismatch_control) {
       BaselineRefused { cause } => true
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
@@ -243,7 +243,7 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
       )
   same_display_and_observation
     && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
-      RunIdentityMismatched { cause } => match candidate_baseline(c: candidate_biome_matrix_selector_mismatch_control) {
+      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_matrix_selector_mismatch_control) {
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }

@@ -5,7 +5,7 @@ import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.github.workflow_runs_contracts {
   workflow_run_status_wire_contract,
@@ -15,10 +15,10 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
-// WorkflowJobRun.labels and run_attempt are read by gunbc.public_workload_census
-// (observed_job_labels, observed_job_run_attempt). That is production consumption of the
-// GitHub job-resource fields. Who consumes the census population itself is a separate §3c
-// question, recorded on gunbc.public_workload_census public_workload_census_replay_consumer_frontier_rows.
+// WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
+// settle observed architecture and provider. run_attempt is modeled here and copied onto
+// BaselineAdmitted; a production fold that distinguishes attempts is a declared census
+// frontier, not this module's claim.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -134,12 +134,13 @@ type WorkflowRunList {
 // nothing read it, in this change or in the one that consumes the other two. Interesting is not a
 // consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
 // declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
-// `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object has
-// no workflow YAML job key and no matrix object; GitHub renders a matrix combination into
-// `name` (custom `name:` template or the job key, then a parenthetical of the combination
-// values). Binding a census row's job_key and matrix selector to an observed job is therefore
-// rendered-name equivalence, not a stronger payload join. See
-// gunbc.public_workload_census github_jobs_api_matrix_parenthetical.
+// `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
+// (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
+// `name` as a required string and does not publish a workflow YAML job key or a matrix object.
+// GitHub's UI and the Jobs API therefore identify a matrix combination only through that
+// rendered name. The parenthetical of combination VALUES in axis order is the rendering this
+// tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
+// GitHub's Jobs docs state that encoding.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -156,6 +157,32 @@ type WorkflowJobRun {
 type WorkflowJobRunList {
   total_count: Int
   jobs: List<WorkflowJobRun>
+}
+
+data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "docs.github.com/en/rest/actions/workflow-jobs (X-GitHub-Api-Version 2026-03-10) publishes Job.name as a string and does not document a matrix object or that a combination is encoded as a parenthetical of the combination values in axis order; jobs.<job_id>.name in workflow-syntax-for-github-actions likewise does not state that encoding. The parenthetical is the rendering observed on Job.name in this tree, not a deduced REST field",
+}
+
+fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
+  concat(" (", concat(
+    fold(values, init: "", f: fn(acc, v) {
+      if acc == "" {
+        v as String
+      } else {
+        concat(acc, concat(", ", v as String))
+      }
+    }),
+    ")"
+  ))
+}
+
+fn workflow_job_name_encodes_matrix_values(job_name: String, values: List<NonEmptyStr>) -> Bool {
+  match workflow_job_name_matrix_parenthetical_standing {
+    TranscribedUncited { read_obligation } =>
+      ends_with(s: job_name, suffix: workflow_job_name_matrix_value_parenthetical(values: values))
+    CitedToAuthority { authority } =>
+      ends_with(s: job_name, suffix: workflow_job_name_matrix_value_parenthetical(values: values))
+  }
 }
 
 fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {

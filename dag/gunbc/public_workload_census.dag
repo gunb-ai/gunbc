@@ -16,6 +16,7 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
+  workflow_job_name_encodes_matrix_values,
 }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -62,8 +63,16 @@ import gunbc.runner_label_resolution {
 data public_workload_census_replay_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "selected_workloads"),
-    reason: "the examined job population and the two-or-three complementary selection land in this change; incumbent-head-to-head is the named later consumer that replays those jobs. Nothing outside test.claim in this change drives a trial or a comparison from selected_workloads. WorkflowJobRun.labels and run_attempt ARE consumed here by observed_job_labels and observed_job_run_attempt — that is production reading of the GitHub job resource, not a reason to pretend the census itself already has a replay caller",
+    reason: "the examined job population and the two-or-three complementary selection land in this change; incumbent-head-to-head is the named later consumer that replays those jobs. Nothing outside test.claim in this change drives a trial or a comparison from selected_workloads. WorkflowJobRun.labels ARE consumed here by observed_job_labels to settle observed architecture and provider against the declared readings. run_attempt is a separate consumption obligation: see public_workload_census_run_attempt_consumer_frontier_rows",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head (blocked on runner-canary and fabric-m0). TRIGGER: a production func outside test.claim calls selected_workloads (or reads workload_census) to bind a replay or comparison. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing this module"),
+  ),
+]
+
+data public_workload_census_run_attempt_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "observed_job_run_attempt"),
+    reason: "WorkflowJobRun.labels reach observed_arm_standing and observed_provider_standing, which are compared with the declared readings. run_attempt is copied onto BaselineAdmitted.run_attempt; correctness_admitted_workloads matches only the admitted arm, and the other readers are witness binders. Copying is not the capability the retired workflow_job_run_observed_runner_frontier_rows trigger named: an OBSERVED attempt that a production fold can tell apart from attempt 1",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head. TRIGGER: a production func outside test.claim matches BaselineAdmitted.run_attempt or observed_job_run_attempt to select or refuse a run attempt. SUFFICIENT FOR deleting this row. NOT satisfied by copying run_attempt onto BaselineAdmitted, nor by a witness comparing the field to 1"),
   ),
 ]
 
@@ -296,22 +305,8 @@ type JobMatrixIdentity
   = NoMatrix
   | MatrixCombination { axes: List<MatrixAxisAssignment> }
 
-// Jobs REST exposes only the rendered job `name` (no YAML job key, no matrix object). GitHub's
-// matrix rendering is a parenthetical of the combination VALUES in axis order, appended to the
-// evaluated job name (the YAML key when `name:` is unset). A non-matrix job's API name is the
-// job key. Binding is that rendering, not a silent copy of the candidate's matrix into the
-// standing. DESIGN §4d: this is not a deduction that the payload carries key+matrix.
-fn github_jobs_api_matrix_parenthetical(axes: List<MatrixAxisAssignment>) -> String {
-  concat(" (", concat(
-    fold(axes, init: "", f: fn(acc, a) {
-      if acc == "" {
-        a.value as String
-      } else {
-        concat(acc, concat(", ", a.value as String))
-      }
-    }),
-    ")"
-  ))
+fn matrix_combination_values(axes: List<MatrixAxisAssignment>) -> List<NonEmptyStr> {
+  map(axes, a => a.value)
 }
 
 fn observed_job_binds_inspected_leg(
@@ -322,7 +317,10 @@ fn observed_job_binds_inspected_leg(
   match matrix {
     NoMatrix => job_name == (job_key as String)
     MatrixCombination { axes } =>
-      ends_with(s: job_name, suffix: github_jobs_api_matrix_parenthetical(axes: axes))
+      workflow_job_name_encodes_matrix_values(
+        job_name: job_name,
+        values: matrix_combination_values(axes: axes),
+      )
   }
 }
 
@@ -609,10 +607,6 @@ fn baseline_admission(c: WorkloadCandidate) -> BaselineAdmission {
     WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
       baseline_from_observed_correctness(c: c)
   }
-}
-
-fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
-  baseline_admission(c: c)
 }
 
 fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
@@ -1200,7 +1194,7 @@ fn selected_workloads() -> List<WorkloadCandidate> {
 }
 
 fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
-  filter(selected_workloads(), c => match candidate_baseline(c: c) {
+  filter(selected_workloads(), c => match baseline_admission(c: c) {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
     BaselineRefused { cause } => false
   })
