@@ -283,13 +283,6 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
 // tree. Nonempty consulted on a rented ProviderDataPathClosure is the declared frontier on
 // product.fabric.provider_route ProviderPathUnread, discharged by gunbc#11188.
 
-type HetznerPublishedReading {
-  authority: ExternalAuthority
-  read_on: NonEmptyStr
-  statement: NonEmptyStr
-  silences: List<HetznerDocumentSilence>
-}
-
 // WHAT THE PAGE WAS READ FOR AND DID NOT SAY, as a closed coproduct rather than a substring of
 // statement. statement remains the transcription of upstream's own words (DESIGN section 4c:
 // the quote is authored-source data). The silences are the machine claim that those questions
@@ -300,6 +293,12 @@ type HetznerDocumentSilence
   | AdministrativeAccessJurisdictionUnstated
   | FinlandOrHelsinkiUnmentioned
 
+type HetznerPublishedReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  statement: NonEmptyStr
+  silences: List<HetznerDocumentSilence>
+}
 data hetzner_technical_organizational_measures_reading: HetznerPublishedReading = HetznerPublishedReading {
   authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" } },
   read_on: "2026-09-12",
@@ -354,25 +353,6 @@ fn hetzner_document_silence_eq(a: HetznerDocumentSilence, b: HetznerDocumentSile
 
 fn hetzner_reading_records_silence(r: HetznerPublishedReading, silence: HetznerDocumentSilence) -> Bool {
   count(filter(r.silences, s => hetzner_document_silence_eq(a: s, b: silence))) == 1
-}
-
-fn hetzner_tom_records_negative_reading() -> Bool {
-  hetzner_reading_records_silence(
-    r: hetzner_technical_organizational_measures_reading,
-    silence: LogSystemCountryUnstated,
-  )
-    && hetzner_reading_records_silence(
-      r: hetzner_technical_organizational_measures_reading,
-      silence: AdministrativeAccessJurisdictionUnstated,
-    )
-    && hetzner_reading_records_silence(
-      r: hetzner_technical_organizational_measures_reading,
-      silence: FinlandOrHelsinkiUnmentioned,
-    )
-}
-
-fn hetzner_dpo_records_no_silence() -> Bool {
-  count(hetzner_data_protection_overview_reading.silences) == 0
 }
 
 

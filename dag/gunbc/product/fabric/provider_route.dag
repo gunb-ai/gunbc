@@ -200,32 +200,6 @@ fn path_unread_consulted(p: ProviderPathStanding) -> List<DeclarationRef> {
   }
 }
 
-fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
-  fold(
-    first_unread_standing(c: c),
-    init: [],
-    f: fn(acc, p) {
-      match p {
-        ProviderPathLocated { operator, jurisdiction, evidence } => acc,
-        ProviderPathAbsent { evidence } => acc,
-        ProviderPathUnread { obligation, consulted } => [obligation],
-      }
-    },
-  )
-}
-
-fn first_unread_consulted_box(c: ProviderDataPathClosure) -> List<List<DeclarationRef>> {
-  map(first_unread_standing(c: c), p => path_unread_consulted(p: p))
-}
-
-fn first_unread_consulted_citations(c: ProviderDataPathClosure) -> List<DeclarationRef> {
-  fold(
-    first_unread_consulted_box(c: c),
-    init: [],
-    f: fn(acc, inner) { inner },
-  )
-}
-
 // Same discipline for the downstream population: one match, and the unread arm's own obligation
 // comes back rather than a provider row standing in for it.
 fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef> {

@@ -9,14 +9,17 @@ import product.fabric.provider_route {
   ProviderDataPathClosure, ProviderPathStanding,
   ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
-  first_unresolved_obligation, downstream_obligation,
-  first_unread_consulted_citations, first_unread_consulted_box, path_unread_consulted,
+  first_unread_standing, downstream_obligation, path_unread_consulted,
 }
 import extdeps.cloud.hetzner {
   hetzner_published_readings,
   hetzner_published_reading_locators,
-  hetzner_tom_records_negative_reading,
-  hetzner_dpo_records_no_silence,
+  hetzner_technical_organizational_measures_reading,
+  hetzner_data_protection_overview_reading,
+  hetzner_reading_records_silence,
+  LogSystemCountryUnstated,
+  AdministrativeAccessJurisdictionUnstated,
+  FinlandOrHelsinkiUnmentioned,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -167,8 +170,8 @@ fn wrong_reading_ref() -> DeclarationRef {
 // THE SAME CLOSURE WITH TELEMETRY RESEARCHED AND UNANSWERED. consulted cites the two Hetzner
 // published readings that a Located.evidence slot cannot carry -- they are what was read and did
 // not locate the path. The obligation is identical to the never-looked sibling, so admission
-// still refuses as facts-incomplete naming telemetry; only first_unread_consulted_citations
-// tells the two unread states apart.
+// still refuses as facts-incomplete naming telemetry; only the consulted list on that
+// denial tells the two unread states apart.
 fn closure_telemetry_researched_unread(where_it_is: DeclarationRef) -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: located(where_it_is: where_it_is),
@@ -627,28 +630,24 @@ test fn w_wrong_agreement_refuses() -> Bool {
 // would be a second answer to a question the extractor already answers, and would be testing
 // something the wall does not use.
 test fn w_closure_extractors_discriminate() -> Bool {
-  count(first_unresolved_obligation(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
-    && count(first_unresolved_obligation(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1
+  count(first_unread_standing(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
+    && count(first_unread_standing(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1
     && count(downstream_obligation(d: no_downstream())) == 0
     && count(downstream_obligation(d: DownstreamProvidersUnread { obligation: subprocessor_obligation() })) == 1
 }
 
 // RESEARCHED-AND-UNANSWERED IS NOT NEVER-LOOKED. Both unread closures refuse admission on the
 // same telemetry obligation; a witness that only asserted the refusal tag would green identically
-// on both. The consulted extractor is the reader: never-looked boxes an empty inner list
-// (outer count 1, inner count 0), researched identity-joins the two Hetzner published readings,
-// and a resolving reference to the wrong declaration fails that join. Mutate any of those and
-// this row reds -- including stuffing the later-path consulted list while leaving telemetry
-// never-looked, which first_unread_consulted_box must not absorb.
+// on both. first_unread_standing is the production walk; never-looked is one standing whose
+// consulted list is empty, researched identity-joins the two Hetzner published readings on
+// the live denial, and a resolving reference to the wrong declaration fails that join.
 fn w_jurisdiction_one() -> DeclarationRef {
   decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")
 }
 
 test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
   let paths = closure_telemetry_unread(where_it_is: w_jurisdiction_one())
-  count(first_unresolved_obligation(c: paths)) == 1
-    && count(first_unread_consulted_box(c: paths)) == 1
-    && count(first_unread_consulted_citations(c: paths)) == 0
+  count(first_unread_standing(c: paths)) == 1
     && count(path_unread_consulted(p: paths.telemetry)) == 0
 }
 
@@ -667,8 +666,19 @@ test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool 
       hetzner_published_reading_locators(),
       l => l == ("docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" as NonEmptyStr),
     )) == 1
-    && hetzner_tom_records_negative_reading()
-    && hetzner_dpo_records_no_silence()
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: LogSystemCountryUnstated,
+    )
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: AdministrativeAccessJurisdictionUnstated,
+    )
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: FinlandOrHelsinkiUnmentioned,
+    )
+    && count(hetzner_data_protection_overview_reading.silences) == 0
 }
 
 test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {
