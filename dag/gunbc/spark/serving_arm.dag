@@ -1,6 +1,6 @@
 module gunbc.spark.serving_arm
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
@@ -602,7 +602,7 @@ type ServingLaunchProfile sole_constructor {
   decided_gpu_memory_basis_points: Nat
   kv_cache_dtype_wire: NonEmptyStr
   speculation_enabled: Bool
-  serve_port: Nat
+  serve_port: Port
   served_alias: NonEmptyStr
   prefix_caching: VllmPrefixCachingRequest
 }
@@ -632,7 +632,7 @@ fn serving_launch_profile(
   decided_gpu_memory_basis_points: Nat,
   kv_cache_dtype_wire: NonEmptyStr,
   speculation_enabled: Bool,
-  serve_port: Nat,
+  serve_port: Port,
   served_alias: NonEmptyStr,
   prefix_caching: VllmPrefixCachingRequest,
 ) -> ServingLaunchProfile {

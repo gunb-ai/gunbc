@@ -167,7 +167,7 @@ fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
 // and the launch line must name one port and one alias. Two rows agreeing today is a fork that disagrees the
 // first time one of them is edited.
 data glm_native_served_model_alias: NonEmptyStr = glm_native_initial_profile.served_alias
-data glm_native_serve_port: Nat = glm_native_initial_profile.serve_port
+data glm_native_serve_port: Port = glm_native_initial_profile.serve_port
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Nat = 29501
 data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
