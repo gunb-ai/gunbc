@@ -195,3 +195,42 @@ fn refusal_owner_label(owner: QualificationRefusalOwner) -> NonEmptyStr {
     OperatorAction => "operator-action"
   }
 }
+
+// A MACHINE'S OPERATING ENVIRONMENT IS A DECLARED QUALIFICATION-POLICY
+// PROPERTY, not a dashboard instance field and not a host toolchain list.
+// gunbc.roadmap_dashboard_instance distinguishes a lab from a production
+// slot (DispatchStateScope: instance-owned vs host-shared) and holds
+// production to a stricter bar; that SEMANTIC is reused here. The carrier is
+// not: DispatchHostEnvironment is a list of capability realizations (git,
+// cargo, tmux), and HostRole is PrimaryInstrument | CompanionInput. No
+// machine-level DevelopmentAndTest | Production type existed; minting it on
+// the policy FleetAdmissionReceipt already binds is the home, so BMC-secure
+// adjudication and promotion consult the same digest the ledger already
+// carries. Not std: this is a product qualification fact, not a universal
+// framework.
+type MachineOperatingEnvironment
+  = DevelopmentAndTest
+  | Production
+
+type IntakeQualificationPolicy {
+  environment: MachineOperatingEnvironment
+}
+
+fn intake_qualification_policy(environment: MachineOperatingEnvironment) -> IntakeQualificationPolicy {
+  IntakeQualificationPolicy { environment: environment }
+}
+
+fn machine_operating_environment_eq(left: MachineOperatingEnvironment, right: MachineOperatingEnvironment) -> Bool {
+  match left {
+    DevelopmentAndTest =>
+      match right {
+        DevelopmentAndTest => true
+        Production => false
+      }
+    Production =>
+      match right {
+        DevelopmentAndTest => false
+        Production => true
+      }
+  }
+}

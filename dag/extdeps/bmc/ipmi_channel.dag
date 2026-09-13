@@ -1,0 +1,149 @@
+module extdeps.bmc.ipmi_channel
+
+import std.types { Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
+
+// IPMI v2.0 rev 1.1 channel numbering (section 6.3) and channel medium type
+// (Table 6-3). This is the INTERFACE SHAPE the Get Channel Info / Get LAN
+// Configuration Parameters commands return. The ipmitool argv that reads
+// them lives in extdeps.bmc.ipmi; a workflow observation of one controller is
+// a receipt, never a row here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi_channel",
+      decl_name: "IpmiChannelCensusMember",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Section 6.3: channel numbers 0h-Fh. The brand is the range, not a nickname
+// for Int: 16 has no constructor.
+type IpmiChannelNumber = Int where range(min: 0, max: 15)
+
+fn ipmi_channel_number_eq(a: IpmiChannelNumber, b: IpmiChannelNumber) -> Bool {
+  (a as Int) == (b as Int)
+}
+
+// Table 6-3 Channel Medium Type, split so LAN vs non-LAN cannot disagree
+// with the census-member coproduct. A serial medium has no constructor on a
+// LAN member; 802.3 has no constructor on a non-LAN member. Codes this corpus
+// has not yet had to classify stay Other { code } on the non-LAN side.
+type IpmiLanMedium
+  = IpmiMedium8023Lan
+  | IpmiMediumOtherLan
+
+type IpmiNonLanMedium
+  = IpmiMediumIpmb
+  | IpmiMediumIcmbV1
+  | IpmiMediumIcmbV09
+  | IpmiMediumSerialAsync
+  | IpmiMediumPciSmbus
+  | IpmiMediumSmbusV1
+  | IpmiMediumSmbusV2
+  | IpmiMediumSystemInterface
+  | IpmiMediumOther { code: Int }
+
+// Get User Access (IPMI v2.0 rev 1.1 §22.27, Channel Privilege Limits).
+// Fh is NO ACCESS. This is the published account's per-channel limit, not a
+// Redfish role and not a login probe: an 802.3 channel can report 0.0.0.0
+// forever while the limit is already NO ACCESS, and treating that as
+// unaddressed-open is over-prohibition.
+type IpmiChannelPrivilegeLimit
+  = IpmiPrivilegeCallback
+  | IpmiPrivilegeUser
+  | IpmiPrivilegeOperator
+  | IpmiPrivilegeAdministrator
+  | IpmiPrivilegeOem
+  | IpmiPrivilegeNoAccess
+
+fn ipmi_channel_privilege_is_no_access(limit: IpmiChannelPrivilegeLimit) -> Bool {
+  match limit {
+    IpmiPrivilegeNoAccess => true
+    IpmiPrivilegeCallback => false
+    IpmiPrivilegeUser => false
+    IpmiPrivilegeOperator => false
+    IpmiPrivilegeAdministrator => false
+    IpmiPrivilegeOem => false
+  }
+}
+
+// Get LAN Configuration Parameters, IPv4 address. 0.0.0.0 is the
+// unspecified address, not a probe target: it is Unassigned rather than
+// Assigned { 0, 0, 0, 0 }, so a later fold cannot treat it as a rejecting host.
+type IpmiLanIpv4Configuration
+  = IpmiLanIpv4Assigned { address: Ipv4Address }
+  | IpmiLanIpv4Unassigned
+
+fn ipmi_lan_ipv4_configuration(address: Ipv4Address) -> IpmiLanIpv4Configuration {
+  if ipv4_address_eq(a: address, b: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)) {
+    IpmiLanIpv4Unassigned
+  } else {
+    IpmiLanIpv4Assigned { address: address }
+  }
+}
+
+// One row of a channel census. LAN and non-LAN are different members, not a
+// LAN row with a skipped address: a serial channel has no IPv4 configuration
+// to be empty, and an 802.3 channel with 0.0.0.0 is Unassigned.
+// published_user_access is Get User Access for the published factory account
+// on THAT channel.
+type IpmiChannelCensusMember
+  = IpmiLanChannelMember {
+      channel: IpmiChannelNumber
+      medium: IpmiLanMedium
+      ipv4: IpmiLanIpv4Configuration
+      published_user_access: IpmiChannelPrivilegeLimit
+    }
+  | IpmiNonLanChannelMember {
+      channel: IpmiChannelNumber
+      medium: IpmiNonLanMedium
+      published_user_access: IpmiChannelPrivilegeLimit
+    }
+
+fn ipmi_lan_channel_member(
+  channel: IpmiChannelNumber,
+  medium: IpmiLanMedium,
+  address: Ipv4Address,
+  published_user_access: IpmiChannelPrivilegeLimit,
+) -> IpmiChannelCensusMember {
+  IpmiLanChannelMember {
+    channel: channel,
+    medium: medium,
+    ipv4: ipmi_lan_ipv4_configuration(address: address),
+    published_user_access: published_user_access,
+  }
+}
+
+fn ipmi_non_lan_channel_member(
+  channel: IpmiChannelNumber,
+  medium: IpmiNonLanMedium,
+  published_user_access: IpmiChannelPrivilegeLimit,
+) -> IpmiChannelCensusMember {
+  IpmiNonLanChannelMember {
+    channel: channel,
+    medium: medium,
+    published_user_access: published_user_access,
+  }
+}
+
+type IpmiControllerChannelCensus {
+  members: List<IpmiChannelCensusMember>
+}
+
+fn ipmi_controller_channel_census(members: List<IpmiChannelCensusMember>) -> IpmiControllerChannelCensus {
+  IpmiControllerChannelCensus { members: members }
+}
