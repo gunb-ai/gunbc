@@ -1,0 +1,116 @@
+module product.supplier.hetzner_path_reading
+
+import std.types { Bool, List, NonEmptyStr }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cloud.hetzner {
+  hetzner_technical_organizational_measures_page,
+  hetzner_data_protection_overview_page,
+}
+
+// WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
+// REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
+// nine-path questions. DESIGN section 3: observations produced by this repository are
+// receipts in the observing product layer, never Unobserved properties authored inside the
+// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on
+// and the silence coproduct live here. A statement blob would either duplicate the
+// silences or sit unread (DESIGN section 4c).
+//
+// The silences are OUR questions, not Hetzner vocabulary. FinlandOrHelsinkiUnmentioned is
+// a path-closure question, not a vendor concept. Matching a silence is how a later reader
+// tells researched-and-unanswered from never-looked without grepping prose. Consuming these
+// rows as ProviderPathLocated.evidence would invent an answer they explicitly do not give.
+//
+// Later-change consumption of these readings as unread consulted citations is
+// hetzner_path_reading_frontier_rows, not this annotation.
+
+type HetznerPathDocumentSilence
+  = LogSystemCountryUnstated
+  | AdministrativeAccessJurisdictionUnstated
+  | FinlandOrHelsinkiUnmentioned
+
+type HetznerPathDocumentReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  silences: List<HetznerPathDocumentSilence>
+}
+
+data hetzner_technical_organizational_measures_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_technical_organizational_measures_page,
+  read_on: "2026-09-12",
+  silences: [
+    LogSystemCountryUnstated,
+    AdministrativeAccessJurisdictionUnstated,
+    FinlandOrHelsinkiUnmentioned,
+  ],
+}
+
+data hetzner_data_protection_overview_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_data_protection_overview_page,
+  read_on: "2026-09-12",
+  silences: [],
+}
+
+fn hetzner_published_readings() -> List<HetznerPathDocumentReading> {
+  [
+    hetzner_technical_organizational_measures_reading,
+    hetzner_data_protection_overview_reading,
+  ]
+}
+
+fn hetzner_published_reading_locators() -> List<NonEmptyStr> {
+  map(hetzner_published_readings(), r => r.authority.uri.locator)
+}
+
+fn hetzner_path_document_silence_eq(a: HetznerPathDocumentSilence, b: HetznerPathDocumentSilence) -> Bool {
+  match a {
+    LogSystemCountryUnstated =>
+      match b {
+        LogSystemCountryUnstated => true
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    AdministrativeAccessJurisdictionUnstated =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => true
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    FinlandOrHelsinkiUnmentioned =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => true
+      }
+  }
+}
+
+fn hetzner_reading_records_silence(r: HetznerPathDocumentReading, silence: HetznerPathDocumentSilence) -> Bool {
+  count(filter(r.silences, s => hetzner_path_document_silence_eq(a: s, b: silence))) == 1
+}
+
+data hetzner_path_reading_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.provider_route", decl_name: "ProviderPathStanding"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; nonempty consulted is constructible here and has no production inhabitant in this tree",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with decl_refs to hetzner_technical_organizational_measures_reading and hetzner_data_protection_overview_reading, and drops its duplicate copies of those rows. SUFFICIENT FOR: a production rented-route ProviderDataPathClosure inhabits nonempty consulted citing those declarations."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
+    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
+    )
+  ),
+]
