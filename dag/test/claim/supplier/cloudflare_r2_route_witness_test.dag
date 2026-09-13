@@ -10,6 +10,7 @@ import product.fabric.provider_route {
   ProviderPathUnread, DownstreamProviderPopulation, NoDownstreamProviders,
   ProviderRegionObservation, ProviderRegionRead,
   ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -17,6 +18,7 @@ import product.fabric.provider_admission {
   ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
   DispositionCleared,
   admit_provider_use,
 }
@@ -54,6 +56,11 @@ fn t_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_posture_authority"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "r2-witness-posture-r1" as NonEmptyStr)),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_resolved_jurisdiction"),
+      further: [],
+    },
+    jurisdiction_drop_enrollments: [],
   }
 }
 
@@ -132,6 +139,9 @@ fn t_refusal_tag(c: ProviderUseRefusal) -> String {
     ProviderRouteUnclassified { route } => "route-unclassified",
     ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureJurisdictionsUnread { obligation } => "posture-jurisdictions-unread",
+    TransferOrLocationUnresolved { route, jurisdiction } => "transfer-or-location-unresolved",
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => "provider-access-path-unsupported",
     PostureRevisionStale { evaluated, active } => "posture-stale",
     CustomerScopeUnsupported { cause } => "customer-unsupported",
     DataHandlingUnsupported { cause } => "data-handling-unsupported",
@@ -147,6 +157,9 @@ fn t_refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
     ProviderRouteUnclassified { route } => [],
     ProviderRouteFactsIncomplete { route, obligation } => [obligation],
     DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureJurisdictionsUnread { obligation } => [obligation],
+    TransferOrLocationUnresolved { route, jurisdiction } => [jurisdiction],
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [operator, jurisdiction],
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [cause],
     DataHandlingUnsupported { cause } => [cause],
