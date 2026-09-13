@@ -52,7 +52,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 import gunbc.spark.pair_serving_observed {
-  GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_bytes,
+  GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_upper,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.fabric.engram_materialization {
@@ -1160,6 +1160,13 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
 //   (1) The free-memory reading is the observed idle free, not total memory and not total x the
 //       requested utilisation fraction. Of the three it is the largest that is actually available, and
 //       it is a reading rather than a parameter.
+//   (1b) AND IT IS THE UPPER ENDPOINT OF THAT READING, not its printed value (review 65713). The runtime
+//       prints one decimal of GiB, so 116.9 means [116.85, 116.95) and the printed figure is not exact.
+//       A screen comparing against the point value can EXCLUDE a requirement that actually fits, whenever
+//       the shortfall is smaller than the reporter's last digit. DESIGN section 4d: do not over-generalize
+//       a prohibition -- the cost is the thing you never did, and the failure looks like rigour. So an
+//       impossibility screen refuses only what does not fit even the most generous reading, and the
+//       uncertainty is a pair of ByteSize endpoints on the observation rather than a sentence beside it.
 //   (2) Sibling components are subtracted at their reported footprint, which for an upstream-reported
 //       size is a floor on what they really occupy -- so the remainder is a ceiling on what is left.
 //   (3) A sibling whose footprint is UNREAD makes the budget UNESTABLISHED. It used to contribute zero
@@ -1256,7 +1263,7 @@ fn candidate_component_budget(
             obligation: "the per-rank share of this artifact's other components is underivable, so no budget follows" as NonEmptyStr,
           }
           Present { value: siblings_per_rank } =>
-            match measure_sub(a: group_rank_free_memory_bytes(r: free), b: siblings_per_rank) {
+            match measure_sub(a: group_rank_free_memory_upper(r: free), b: siblings_per_rank) {
               MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
                 subject: ctx,
                 rank_count: c.topology.tensor_parallel_degree,
@@ -1280,7 +1287,7 @@ fn candidate_component_budget(
                   to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
                   to_string(c.topology.tensor_parallel_degree), " ranks). ",
                   free.precision_caveat as String,
-                  ". Every sibling of this component has a read footprint, which is what admits this budget at all",
+                  ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
                 ], "") as NonEmptyStr,
               }
             }
