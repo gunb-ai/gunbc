@@ -118,13 +118,8 @@ type CompilerEntryDriver
 // Roster membership is the opt-in; no environment switch and no per-module derived counts.
 // Nanos are inclusive observations inside the existing context/prepare phases, NEVER additional
 // exclusive rows. Nested producer spans overlap and must not be summed as a run-time saving.
-type NativeDriverProducer {
-  producer: String
-  declaration: DeclarationRef
-}
-
 type NativeDriverProducerCount {
-  producer: String
+  declaration: DeclarationRef
   executions: Int
   nanos: Nanosecond
 }
@@ -132,12 +127,12 @@ type NativeDriverProducerCount {
 // Host monotonic counts become std.measure Nanosecond at the snapshot boundary.
 // Negative/overflowing counts and backwards clocks refuse at the realization boundary
 // rather than fabricating a zero or saturating observation.
-data native_driver_producer_roster: List<NativeDriverProducer> = [
-  NativeDriverProducer { producer: "dag_language_model", declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model") },
-  NativeDriverProducer { producer: "validate_module_roots", declaration: decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots") },
-  NativeDriverProducer { producer: "symbol_index_fill_module_roots", declaration: decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots") },
-  NativeDriverProducer { producer: "subject_resolution", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module") },
-  NativeDriverProducer { producer: "inference", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved") }
+data native_driver_producer_roster: List<DeclarationRef> = [
+  decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model"),
+  decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots"),
+  decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots"),
+  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module"),
+  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved")
 ]
 
 type NativeDriverExclusiveRows {

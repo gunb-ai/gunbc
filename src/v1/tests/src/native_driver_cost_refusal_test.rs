@@ -239,24 +239,25 @@ fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
     for missing_guard in [false, true] {
         let mut source = runtime.clone();
         for (i, row) in roster.iter().enumerate() {
-            let guard = emit_native_producer_entry(
-                row.declaration.module_path.clone(),
-                row.declaration.decl_name.clone(),
-            );
+            let guard = emit_native_producer_entry(row.module_path.clone(), row.decl_name.clone());
             assert!(!guard.is_empty(), "roster declaration is not observed");
             let entry = if missing_guard && i == 0 { "" } else { &guard };
             source.push_str(&format!(
                 "fn probe_{i}() -> bool {{\n{entry} return true; }}\n"
             ));
         }
-        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.1 == 0 && r.2 == 0));\n");
-        for (i, _) in roster.iter().enumerate() {
+        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.2 == 0 && r.3 == 0));\n");
+        for (i, row) in roster.iter().enumerate() {
+            source.push_str(&format!(
+                "assert_eq!((__native_producers::snapshot()[{i}].0, __native_producers::snapshot()[{i}].1), ({:?}, {:?}));\n",
+                row.module_path, row.decl_name
+            ));
             source.push_str(&format!(
                 "for _ in 0..{} {{ assert!(probe_{i}()); }}\n",
                 i + 2
             ));
         }
-        source.push_str("for (i, (_, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
+        source.push_str("for (i, (_, _, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
         let path = root.join("observer.rs");
         let binary = root.join("observer");
         std::fs::write(&path, source).expect("write emitted observer");
@@ -291,6 +292,10 @@ fn producer_observations_are_siblings_not_exclusive_rows() {
     assert!(main.contains("\"producer_counts\": producer_counts"));
     assert!(main.contains("Vec<NativeDriverProducerCount>"));
     assert!(main.contains("nanos: nanosecond(nanos)"));
+    assert!(
+        main.contains("::std_decl_ref::decl_ref(module_path.to_string(), decl_name.to_string())")
+    );
+    assert!(!main.contains("producer: producer.to_string()"));
     let exclusive = main
         .split("let exclusive =")
         .nth(1)
