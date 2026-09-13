@@ -63,7 +63,6 @@ data export_cleared: NonEmptyStr = "export-cleared"
 data jurisdiction_one: NonEmptyStr = "jurisdiction-one"
 data jurisdiction_two: NonEmptyStr = "jurisdiction-two"
 data jurisdictions_never_read: NonEmptyStr = "jurisdictions-never-read"
-data posture_basis: NonEmptyStr = "posture-basis"
 data counterparty_jurisdiction_undocumented: NonEmptyStr = "counterparty-jurisdiction-undocumented"
 data enrolled_path_evidence: NonEmptyStr = "enrolled-path-evidence"
 data unenrolled_path_evidence: NonEmptyStr = "unenrolled-path-evidence"
@@ -110,7 +109,6 @@ fn permits(first: DeclarationRef, further: List<DeclarationRef>) -> PermittedJur
   PermittedJurisdictionsEnumerated {
     first: first,
     further: further,
-    basis: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "posture_basis"),
   }
 }
 

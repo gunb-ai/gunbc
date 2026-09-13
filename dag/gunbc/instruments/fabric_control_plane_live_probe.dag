@@ -1734,7 +1734,6 @@ fn cp_probe_posture() -> CompliancePostureRevision {
     permitted_jurisdictions: PermittedJurisdictionsEnumerated {
       first: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
       further: [],
-      basis: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
     },
     jurisdiction_drop_enrollments: [],
   }

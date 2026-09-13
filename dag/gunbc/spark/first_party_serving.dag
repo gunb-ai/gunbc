@@ -240,7 +240,6 @@ data spark_first_party_posture: CompliancePostureRevision = CompliancePostureRev
   permitted_jurisdictions: PermittedJurisdictionsEnumerated {
     first: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"),
     further: [],
-    basis: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
   },
   jurisdiction_drop_enrollments: [
     JurisdictionDropEnrollment {

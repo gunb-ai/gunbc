@@ -480,7 +480,7 @@ fn jurisdiction_refusals(
 ) -> List<ProviderUseRefusal> {
   match active.permitted_jurisdictions {
     PermittedJurisdictionsUnread { obligation } => [PostureJurisdictionsUnread { obligation: obligation }],
-    PermittedJurisdictionsEnumerated { first, further, basis } =>
+    PermittedJurisdictionsEnumerated { first, further } =>
       concat(
         nonpermitted_jurisdiction_refusals(
           paths: data_bearing_paths(c: facts.data_paths),

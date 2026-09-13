@@ -67,7 +67,6 @@ data fixture_data_handling_profile: NonEmptyStr = "fixture-data-handling-profile
 data fixture_agreement_v1: NonEmptyStr = "fixture-agreement-v1"
 data fixture_operator: NonEmptyStr = "fixture-operator"
 data fixture_jurisdiction: NonEmptyStr = "fixture-jurisdiction"
-data fixture_posture_basis: NonEmptyStr = "fixture-posture-basis"
 data fixture_evidence: NonEmptyStr = "fixture-evidence"
 data fixture_no_spill: NonEmptyStr = "fixture-no-spill"
 data fixture_no_downstream: NonEmptyStr = "fixture-no-downstream"
@@ -122,7 +121,6 @@ fn fx_posture() -> CompliancePostureRevision {
     permitted_jurisdictions: PermittedJurisdictionsEnumerated {
       first: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_jurisdiction"),
       further: [],
-      basis: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_posture_basis"),
     },
     jurisdiction_drop_enrollments: [],
   }

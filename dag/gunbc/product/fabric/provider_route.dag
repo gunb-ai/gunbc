@@ -100,7 +100,6 @@ type PermittedJurisdictionPopulation
   = PermittedJurisdictionsEnumerated {
       first: DeclarationRef,
       further: List<DeclarationRef>,
-      basis: DeclarationRef,
     }
   | PermittedJurisdictionsUnread { obligation: DeclarationRef }
 

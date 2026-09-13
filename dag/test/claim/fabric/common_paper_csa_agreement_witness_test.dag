@@ -47,7 +47,6 @@ data no_spill_configured: NonEmptyStr = "no-spill-configured"
 data operator: NonEmptyStr = "operator"
 data ordinary_build_source: NonEmptyStr = "ordinary-build-source"
 data posture_authority: NonEmptyStr = "posture-authority"
-data posture_basis: NonEmptyStr = "posture-basis"
 data prohibited_use_cleared: NonEmptyStr = "prohibited-use-cleared"
 data provider_declares_none: NonEmptyStr = "provider-declares-none"
 data region_one: NonEmptyStr = "region-one"
@@ -73,7 +72,6 @@ fn posture(seed: String) -> CompliancePostureRevision {
     permitted_jurisdictions: PermittedJurisdictionsEnumerated {
       first: here(decl_name: "jurisdiction_one"),
       further: [],
-      basis: here(decl_name: "posture_basis"),
     },
     jurisdiction_drop_enrollments: [],
   }
