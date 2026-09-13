@@ -23,11 +23,9 @@ import product.lot_sales_tax {
   ResidualUseTaxUnread,
   UseTaxResidualStanding,
   admit_lot_tax_population,
-  residual_owed_lot_count,
-  attested_lot_count,
-  unread_or_unrecorded_lot_count,
   lot_tax_is_attested_not_read,
   lot_tax_residual_is_owed,
+  lot_tax_jurisdiction_is_unread,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
   LedgerMissingTax,
@@ -119,9 +117,9 @@ test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
   match admit_lot_tax_population(rows: fixture_population) {
     LotTaxPopulationComplete { rows: admitted } =>
       admitted.length() == 5
-        && residual_owed_lot_count(rows: admitted) == 2
-        && attested_lot_count(rows: admitted) == 1
-        && unread_or_unrecorded_lot_count(rows: admitted) == 2
+        && admitted.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 2
+        && admitted.filter(row => lot_tax_is_attested_not_read(standing: row.standing)).length() == 1
+        && admitted.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)).length() == 2
     LotTaxPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
   }
     && match admit_lot_tax_population(rows: concat(fixture_population, [
@@ -139,8 +137,8 @@ test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
 }
 
 test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
-  residual_owed_lot_count(rows: fixture_population) == 2
-    && residual_owed_lot_count(rows: fixture_population.skip(n: 1)) == 1
+  fixture_population.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 2
+    && fixture_population.skip(n: 1).filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 1
     && match fixture_population.first() {
       Absent => false
       Present { value: row } =>
