@@ -1,0 +1,71 @@
+module v2.workflow.floor_discovery_row
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.optional { Optional, optional_absent, optional_present }
+import v2.workflow.floor_naming_hygiene {
+  floor_test_marked_decl_allowed_in_entry,
+  floor_test_sidecar_suffix,
+  floor_wire_contract_decl_allowed_in_entry,
+  floor_wire_contract_sidecar_suffix
+}
+
+// THE DISCOVERY ROW VOCABULARY AND THE SIDECAR-PLACEMENT VERDICTS: what discovery enrols, and
+// where a `test`-marked or wire-contract declaration is allowed to live.
+//
+// WHY IT IS ITS OWN MODULE. Its sibling half — the discovery REQUEST and its subject binding —
+// identifies the tested tree by git commit and tree object (extdeps.git.object_store), and that
+// import reaches extdeps.git and extdeps.exec.command. The row vocabulary needs none of it, and
+// the per-file authority that consumes these rows is now COMPILED inside the emitted native
+// compiler (the required-v2-native lane's universe derivation), where those three modules emit
+// Rust that does not build. One module, two facts, one of them effectful: the row half is the one
+// the compiled route needs, so it is separable and now separate.
+//
+// These typed verdicts (live-tree eligibility, sidecar suffix rules) are the authority the host's
+// own discovery realization consumes; it must not re-implement them.
+
+type FloorDiscoveryRow {
+  label: String
+  entry: String
+  function: String
+  reads_live_tree: LiveTreeDisposition
+}
+
+type FloorDiscoverySidecarKind
+  = TestMarkedDecl
+  | WireContractDecl
+  | BarrenTestSidecar
+
+type FloorDiscoverySidecarViolation {
+  entry_path: String
+  kind: FloorDiscoverySidecarKind
+  required_suffix: String
+}
+
+fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
+  if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
+    optional_absent()
+  } else {
+    optional_present(
+      value: FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: TestMarkedDecl,
+        required_suffix: floor_test_sidecar_suffix
+      }
+    )
+  }
+}
+
+fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
+  if floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
+    optional_absent()
+  } else {
+    optional_present(
+      value: FloorDiscoverySidecarViolation {
+        entry_path: entry_path,
+        kind: WireContractDecl,
+        required_suffix: floor_wire_contract_sidecar_suffix
+      }
+    )
+  }
+}

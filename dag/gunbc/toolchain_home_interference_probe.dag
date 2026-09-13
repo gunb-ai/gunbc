@@ -13,7 +13,7 @@ import std.realization_reconcile { Converged, NotConverged }
 // RunnerLocalHost identifies the foreign executor running this job. The probe touches only its
 // runner-local fixture and the current job's CARGO_HOME. LocalShell is the local host transport identity, not a shell
 // payload: ProbeToolchainHomeInterference has no String command field.
-func toolchain_home_interference_probe_wet() -> ProcessExit {
+fn toolchain_home_interference_probe_wet() -> ProcessExit {
   match host_effect_apply(
     target: RunnerLocalHost,
     effect: ProbeToolchainHomeInterference {},
