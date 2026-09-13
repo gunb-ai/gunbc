@@ -43,8 +43,7 @@ import v2.std.symbol_index {
   empty_symbol_index
 }
 import v2.std.text { String }
-import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.program_assembly { located_module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector {
   ReferenceSiteCollection,
   UnreadableModuleRoot,
@@ -281,75 +280,27 @@ fn source_refs_from_declared(declared: List<ModuleDeclarationFact>) -> List<Sour
   )
 }
 
-type IngestNodeZipState {
-  remaining_nodes: FreeMonoid<Node>
-  acc: List<LocatedModuleRoot>
-  mismatch: Bool
-}
-
-fn ingest_node_zip_mismatch() -> Outcome<List<LocatedModuleRoot>> {
-  outcome_rejected(
-    d: Diagnostic {
-      reason: ^reference_derived_ingest_node_zip_mismatch,
-      at: Textual { file: ^reference_derived_ingest_node_zip_mismatch, extent: WholeFile },
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  )
-}
-
-fn zip_located_roots(
-  ingest: SourceRootIngest,
-  nodes: FreeMonoid<Node>
-) -> Outcome<List<LocatedModuleRoot>> {
-  match fold_list(
-    xs: ingest,
-    empty: IngestNodeZipState {
-      remaining_nodes: nodes,
-      acc: no_located_roots,
-      mismatch: false
-    },
-    cons: fn(state, read) {
-      if state.mismatch {
-        state
-      } else {
-        match state.remaining_nodes {
-          Empty =>
-            IngestNodeZipState {
-              remaining_nodes: Empty,
-              acc: state.acc,
-              mismatch: true
-            }
-          Cons { head: root, tail: rest } =>
-            IngestNodeZipState {
-              remaining_nodes: rest,
-              acc: list_snoc_item(
-                xs: state.acc,
-                item: LocatedModuleRoot { path: read.artifact.file_path, root: root }
-              ),
-              mismatch: false
-            }
-        }
-      }
-    }
-  ) {
-    IngestNodeZipState { remaining_nodes: leftover, acc: acc, mismatch: mismatched } =>
-      if mismatched || !is_empty(xs: leftover) {
-        ingest_node_zip_mismatch()
-      } else {
-        outcome_accepted(value: acc)
-      }
-  }
-}
-
+// The path-to-tree association is read from the assembly fold that produced it
+// (LocatedNormalizedTree), never recovered by zipping two lists positionally: a mislocated
+// mention is a fabricated plausible answer (DESIGN 5), and a count check cannot tell a
+// reordering from a correct pairing. An unpaired root has no representation here.
 fn located_roots_from_source_root_ingest(
   ingest: SourceRootIngest
 ) -> Outcome<List<LocatedModuleRoot>> {
   bind_outcome(
-    o: module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model()),
-    f: fn(normalized) {
-      zip_located_roots(
-        ingest: ingest,
-        nodes: normalized_tree_roots_to_nodes(roots: normalized)
+    o: located_module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model()),
+    f: fn(located) {
+      outcome_accepted(
+        value: fold_list(
+          xs: located,
+          empty: no_located_roots,
+          cons: fn(acc, item) {
+            list_snoc_item(
+              xs: acc,
+              item: LocatedModuleRoot { path: item.path, root: item.tree.root }
+            )
+          }
+        )
       )
     }
   )
