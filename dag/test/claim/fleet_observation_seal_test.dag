@@ -67,7 +67,7 @@ test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool {
 
 // ── RED 2: the continuity reach ────────────────────────────────────────────────────────────────
 
-data forged_continuity_reach_source: String = "module probe_fleet_obs_forged_reach\nimport gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityReach }\nfn forged() -> StreamContinuity {\n  ContinuityEstablished { reach: ContinuityReach { verified_through: 999999 } }\n}\n"
+data forged_continuity_reach_source: String = "module probe_fleet_obs_forged_reach\nimport gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityReach, SourceStreamId, stream_position }\nimport std.measure { byte_size }\nfn forged() -> StreamContinuity {\n  ContinuityEstablished { reach: ContinuityReach { verified_through: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 999999)) } }\n}\n"
 
 test fn a_forged_continuity_reach_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_continuity_reach_source, subject: "ContinuityReach") == 1
@@ -86,7 +86,7 @@ test fn a_forged_committed_chunk_is_refused_at_compile() -> Bool {
 // "The host produced no bytes" must not be spellable without a token only source_byte_fact mints.
 // This is the 2026-09-12 reading -- a quiet channel published as a successful boot -- as a compile
 // refusal rather than as a review comment.
-data forged_silence_source: String = "module probe_fleet_obs_forged_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceProducedNoBytesInRange, SilenceProof }\nimport std.measure { byte_size }\nfn forged() -> SourceByteFact {\n  SourceProducedNoBytesInRange { proof: SilenceProof { range: SourceStreamRange { first_offset: 0, length: byte_size(count: 100) } } }\n}\n"
+data forged_silence_source: String = "module probe_fleet_obs_forged_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange, SourceStreamId, stream_position }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceProducedNoBytesInRange, SilenceProof }\nimport std.measure { byte_size }\nfn forged() -> SourceByteFact {\n  SourceProducedNoBytesInRange { proof: SilenceProof { range: SourceStreamRange { first: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 0)), length: byte_size(count: 100) } } }\n}\n"
 
 test fn a_forged_silence_proof_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_silence_source, subject: "SilenceProof") == 1
@@ -110,6 +110,25 @@ test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool {
   seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk") == 0
 }
 
+// GREEN CONTROLS FOR THE TWO SUBJECTS THAT LACKED ONE, and their absence is why two stale fixtures
+// went unnoticed: when commit 6d30414 retyped ContinuityReach.verified_through to StreamPosition and
+// SourceStreamRange.first_offset to first, both forged strings kept the OLD field shapes. They still
+// counted one SoleConstructorViolation -- the seal refuses during resolution, alongside the field
+// error -- so the assertions stayed green while the probes had stopped isolating the wall. A control
+// on the sanctioned route is what separates "refused because the wall fired" from "refused because
+// the fixture is stale", which is the distinction this file's own header claims to keep.
+data sanctioned_reach_source: String = "module probe_fleet_obs_sanctioned_reach\nimport gunbc.fleet_observation_capture_chunk { ContinuityDerivation, CommittedChunk, SourceStreamId, StreamPosition, continuity_from_committed_chunks }\nimport std.types { List }\nfn sanctioned(cs: List<CommittedChunk>, subj: SourceStreamId, from: StreamPosition) -> ContinuityDerivation {\n  continuity_from_committed_chunks(committed: cs, subject: subj, from: from)\n}\n"
+
+test fn the_sanctioned_continuity_route_draws_no_violation() -> Bool {
+  seal_violations(source: sanctioned_reach_source, subject: "ContinuityReach") == 0
+}
+
+data sanctioned_silence_source: String = "module probe_fleet_obs_sanctioned_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, ObservationEnvelope, source_byte_fact }\nfn sanctioned(e: ObservationEnvelope, r: SourceStreamRange) -> SourceByteFact {\n  source_byte_fact(envelope: e, requested: r)\n}\n"
+
+test fn the_sanctioned_silence_route_draws_no_violation() -> Bool {
+  seal_violations(source: sanctioned_silence_source, subject: "SilenceProof") == 0
+}
+
 // BOTH ARMS MUST ACTUALLY HAVE COMPILED. keyed_count returns -1 on CensusNotRunnable, so a probe that
 // never ran would otherwise be indistinguishable from one that ran and found nothing.
 test fn every_probe_in_this_file_actually_compiled() -> Bool {
@@ -119,6 +138,8 @@ test fn every_probe_in_this_file_actually_compiled() -> Bool {
   && census_ran(source: forged_silence_source)
   && census_ran(source: sanctioned_commit_source)
   && census_ran(source: sanctioned_chunk_source)
+  && census_ran(source: sanctioned_reach_source)
+  && census_ran(source: sanctioned_silence_source)
 }
 
 fn census_ran(source: String) -> Bool {

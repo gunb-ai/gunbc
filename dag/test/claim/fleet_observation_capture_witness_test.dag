@@ -844,12 +844,20 @@ data t_other_stream: SourceStreamId = SourceStreamId {
   source_identity: "a-different-source-stream"
 }
 
+// THE RANGE MUST BE ANCHORED TO THE CHUNK'S OWN STREAM. This helper set source: stream while building
+// its range through t_range, which anchors positions to t_stream -- so a chunk declaring itself on one
+// stream carried positions in another, which is not a state the production types intend to represent.
+// The defect was invisible until a cross-stream test needed a chunk that was genuinely, consistently
+// foreign: every earlier use tripped the source check first and never reached a position comparison.
 fn t_committed_chunk_on_stream(stream: SourceStreamId, seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk? {
   committed_chunk(
     chunk: CaptureChunk {
       source: stream
       occurrence: ChunkOccurrence { session: t_session, ownership_generation: generation, receive_sequence: seq }
-      range: t_range(first: first, len: len)
+      range: SourceStreamRange {
+        first: stream_position(stream: stream, since_stream_origin: byte_size(count: first))
+        length: byte_size(count: len)
+      }
       payload_digest: content_hash_of_value(value: payload)
       artifact_ref: "synthetic://chunk"
     },

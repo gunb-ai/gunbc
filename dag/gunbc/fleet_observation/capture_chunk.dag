@@ -478,22 +478,34 @@ fn continuity_from_committed_chunks(
     Present { value: head } =>
       if !source_stream_eq(a: head.chunk.source, b: subject) {
         RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
-      } else if !position_at_or_before(a: head.chunk.range.first, b: from) {
-        match gap_between(from: from, to: head.chunk.range.first) {
-          Present { value: gap } =>
-            DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
-          Absent =>
-            RunPositionsIncomparable { left: from.stream, right: head.chunk.range.first.stream }
-        }
       } else {
-        continuity_walk(
-          committed: committed.skip(n: 1),
-          subject: subject,
-          verified_through: range_end(range: head.chunk.range),
-          previous_session: head.chunk.occurrence.session,
-          previous_generation: head.chunk.occurrence.ownership_generation,
-          previous_sequence: head.chunk.occurrence.receive_sequence,
-        )
+        match compare_positions(a: head.chunk.range.first, b: from) {
+          PositionIncomparable { left: left, right: right } =>
+            RunPositionsIncomparable { left: left, right: right }
+          PositionAfter =>
+            match gap_between(from: from, to: head.chunk.range.first) {
+              Present { value: gap } =>
+                DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
+              Absent =>
+                RunPositionsIncomparable { left: from.stream, right: head.chunk.range.first.stream }
+            }
+          PositionBefore => continuity_walk(
+              committed: committed.skip(n: 1),
+              subject: subject,
+              verified_through: range_end(range: head.chunk.range),
+              previous_session: head.chunk.occurrence.session,
+              previous_generation: head.chunk.occurrence.ownership_generation,
+              previous_sequence: head.chunk.occurrence.receive_sequence,
+            )
+          PositionSame => continuity_walk(
+              committed: committed.skip(n: 1),
+              subject: subject,
+              verified_through: range_end(range: head.chunk.range),
+              previous_session: head.chunk.occurrence.session,
+              previous_generation: head.chunk.occurrence.ownership_generation,
+              previous_sequence: head.chunk.occurrence.receive_sequence,
+            )
+        }
       }
   }
 }
@@ -550,24 +562,28 @@ fn continuity_walk(
           previous: previous_sequence
           observed: head.chunk.occurrence.receive_sequence
         }
-      } else if !position_at_or_before(a: verified_through, b: head.chunk.range.first) {
-        RunRangesOverlapOrReverse { verified_through: verified_through, chunk: head.chunk.range }
-      } else if !position_at_or_before(a: head.chunk.range.first, b: verified_through) {
-        match gap_between(from: verified_through, to: head.chunk.range.first) {
-          Present { value: gap } =>
-            DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
-          Absent =>
-            RunPositionsIncomparable { left: verified_through.stream, right: head.chunk.range.first.stream }
-        }
       } else {
-        continuity_walk(
-          committed: committed.skip(n: 1),
-          subject: subject,
-          verified_through: range_end(range: head.chunk.range),
-          previous_session: head.chunk.occurrence.session,
-          previous_generation: head.chunk.occurrence.ownership_generation,
-          previous_sequence: head.chunk.occurrence.receive_sequence,
-        )
+        match compare_positions(a: head.chunk.range.first, b: verified_through) {
+          PositionIncomparable { left: left, right: right } =>
+            RunPositionsIncomparable { left: left, right: right }
+          PositionBefore =>
+            RunRangesOverlapOrReverse { verified_through: verified_through, chunk: head.chunk.range }
+          PositionAfter =>
+            match gap_between(from: verified_through, to: head.chunk.range.first) {
+              Present { value: gap } =>
+                DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
+              Absent =>
+                RunPositionsIncomparable { left: verified_through.stream, right: head.chunk.range.first.stream }
+            }
+          PositionSame => continuity_walk(
+              committed: committed.skip(n: 1),
+              subject: subject,
+              verified_through: range_end(range: head.chunk.range),
+              previous_session: head.chunk.occurrence.session,
+              previous_generation: head.chunk.occurrence.ownership_generation,
+              previous_sequence: head.chunk.occurrence.receive_sequence,
+            )
+        }
       }
   }
 }
