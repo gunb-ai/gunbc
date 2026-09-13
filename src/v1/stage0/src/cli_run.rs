@@ -39752,7 +39752,7 @@ fn floor_source_inventory(index: &ModuleSourceIndex) -> Vec<PreparedSourceView> 
 }
 
 /// The same source ingress that feeds required-floor discovery, before closure selection.
-pub fn floor_discovery_source_inventory(
+pub(crate) fn floor_discovery_source_inventory(
     source_roots: &[String],
 ) -> Result<Vec<PreparedSourceView>, String> {
     if source_roots.is_empty() {

@@ -589,6 +589,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
     join(["ESTABLISHED", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == ESTABLISHED))), "no executing cause-identity falsification receipt join"], "\t"),
     join(["UNCONSUMED", to_string(count(unconsumed))], "\t"),
     "UNCONSUMED boundary: unmarked String data whose spelling has no identifier-token occurrences beyond its data-declaration names; this is a syntactic observation, not a claim about reflective consumption or intended causes",
+    "scope: a census over a declared syntactic subset with explicit unresolved cases",
     "population boundary: assertion standing is reported only for declarations joined from direct production cause/reason arguments; witness-only declarations retain their import-gap observation with an empty standing column",
     "declaration\tdeclaration_file\tproduction_cause_use\tassertion_standing\tmissing_import_files\tmention_or_import_files",
     join(map(all_rows, r => cause_row_report(row: r, standing_admitted: cause_name_is_known(names: standing_keys, spelling: cause_declaration_key(declaration: r.declaration)))), "\n"),
