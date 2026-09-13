@@ -43,6 +43,7 @@ import gunbc.fleet_observation_capture_chunk {
   ContinuityCoversRange,
   ContinuityNotEstablished,
   ContinuityShortOfRange,
+  ContinuityPositionsIncomparable,
   commit_attests_chunk,
   chunk_byte_count,
   CommitBinding,
@@ -191,6 +192,7 @@ type SourceByteFact
   | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
   | CoverageGapContinuityBroken { continuity: StreamContinuity }
   | CoverageGapContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
+  | CoverageGapPositionsIncomparable { left: SourceStreamId, right: SourceStreamId }
   | CoverageGapRangeNotCovered { requested: SourceStreamRange, committed: SourceStreamRange }
   | CoverageGapNotTheRecordingOwner { ownership: EndpointOwnership }
   | CoverageGapEvidenceNamesAnotherSubject { disagreement: SubjectAgreement }
@@ -242,6 +244,8 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
                 CoverageGapContinuityBroken { continuity: continuity }
               ContinuityShortOfRange { verified_through: verified, requested_end: asked } =>
                 CoverageGapContinuityShortOfRange { verified_through: verified, requested_end: asked }
+              ContinuityPositionsIncomparable { left: left, right: right } =>
+                CoverageGapPositionsIncomparable { left: left, right: right }
               ContinuityCoversRange =>
                 if !position_at_or_before(a: envelope.chunk.range.first, b: requested.first) {
                   CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
