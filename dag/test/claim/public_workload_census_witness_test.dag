@@ -22,6 +22,7 @@ import gunbc.public_workload_census {
   ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
   observed_job_labels, observed_job_run_attempt, observed_label_standing,
   ObservedLabel, NoRunObservedForLabel, JobResourceCarriedNoLabels,
+  JobResourceCarriedMultipleLabels,
   baseline_admission, BaselineAdmitted, BaselineRefused,
   candidate_run_identity, ObservedAtInspectedRevision, WorkflowBlobEquivalent,
   RunIdentityMismatched, RunIdentityUnresolved,
@@ -40,6 +41,7 @@ import gunbc.public_workload_census {
   candidate_biome_matrix_selector_mismatch_control,
   candidate_biome_job_key_mismatch_control,
   candidate_biome_job_key_titlecase_uninspected_control,
+  candidate_biome_multi_label_control,
 }
 
 fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
@@ -135,6 +137,7 @@ test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_ar
     ObservedLabel { label } => catalog_is_arm(label: label, observed_at: candidate_pdns_dnsdist_arm.observation_time)
     NoRunObservedForLabel { obligation } => false
     JobResourceCarriedNoLabels { job_id } => false
+    JobResourceCarriedMultipleLabels { labels } => false
   }
   declared_unresolved && observed_arm
 }
@@ -278,7 +281,22 @@ test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool 
     }
 }
 
-test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
+test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
+  match observed_label_standing(o: candidate_biome_multi_label_control.observed) {
+    JobResourceCarriedMultipleLabels { labels } =>
+      count(labels) > 1
+        && match candidate_observed_provider(c: candidate_biome_multi_label_control) {
+          ProviderUnresolved { label, cause } => match baseline_admission(c: candidate_biome_multi_label_control) {
+            BaselineRefused { cause } => true
+            BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+          }
+          ProviderFromCatalog { provider, label, snapshot } => false
+        }
+    ObservedLabel { label } => false
+    NoRunObservedForLabel { obligation } => false
+    JobResourceCarriedNoLabels { job_id } => false
+  }
+}
   let same_display_and_observation =
     (candidate_biome_matrix_selector_mismatch_control.job_display_name as String)
       == (candidate_biome_test.job_display_name as String)
@@ -343,6 +361,7 @@ fn all_claims_hold() -> Bool {
     && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
     && witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
     && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
+    && witness_multiple_labels_are_not_resolved_from_the_first()
     && witness_a_green_job_without_tests_is_not_a_baseline()
     && witness_matrix_name_rendering_stays_an_uncited_bet()
 }

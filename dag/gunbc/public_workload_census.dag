@@ -256,14 +256,32 @@ type ObservedLabelStanding
   = ObservedLabel { label: String }
   | NoRunObservedForLabel { obligation: NonEmptyStr }
   | JobResourceCarriedNoLabels { job_id: Int }
+  | JobResourceCarriedMultipleLabels { labels: List<String> }
+
+fn observed_label_set_rendering(labels: List<String>) -> String {
+  fold(labels, init: "", f: fn(acc, l) {
+    if acc == "" {
+      l
+    } else {
+      concat(acc, concat(", ", l))
+    }
+  })
+}
 
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
   match o {
     NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
-      match observed_job_labels(job: job).first() {
-        Absent => JobResourceCarriedNoLabels { job_id: job.id }
-        Present { value: l } => ObservedLabel { label: l }
+      let labels = observed_job_labels(job: job)
+      if count(labels) == 0 {
+        JobResourceCarriedNoLabels { job_id: job.id }
+      } else if count(labels) == 1 {
+        match labels.first() {
+          Present { value: l } => ObservedLabel { label: l }
+          Absent => JobResourceCarriedNoLabels { job_id: job.id }
+        }
+      } else {
+        JobResourceCarriedMultipleLabels { labels: labels }
       }
   }
 }
@@ -282,6 +300,13 @@ fn observed_provider_standing(
     JobResourceCarriedNoLabels { job_id } => ProviderUnresolved {
       label: "(empty labels)",
       cause: "the job resource carried an empty labels list",
+    }
+    JobResourceCarriedMultipleLabels { labels } => ProviderUnresolved {
+      label: concat("[", concat(observed_label_set_rendering(labels: labels), "]")),
+      cause: concat(
+        "the job resource carried multiple labels; this census resolves a single-label runner only and does not take the first as the observed runner: ",
+        observed_label_set_rendering(labels: labels),
+      ),
     }
   }
 }
@@ -460,6 +485,13 @@ fn observed_arm_standing(o: ObservedExecution, observed_at: Rfc3339Timestamp) ->
     JobResourceCarriedNoLabels { job_id } => ArmUndetermined {
       label: "(empty labels)",
       cause: "the job resource carried an empty labels list",
+    }
+    JobResourceCarriedMultipleLabels { labels } => ArmUndetermined {
+      label: concat("[", concat(observed_label_set_rendering(labels: labels), "]")),
+      cause: concat(
+        "the job resource carried multiple labels; this census resolves a single-label runner only and does not take the first as the observed runner: ",
+        observed_label_set_rendering(labels: labels),
+      ),
     }
   }
 }
@@ -689,6 +721,12 @@ fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission
               }
               JobResourceCarriedNoLabels { job_id } => BaselineRefused {
                 cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
+              }
+              JobResourceCarriedMultipleLabels { labels } => BaselineRefused {
+                cause: concat(
+                  "the job resource carried multiple labels; this census does not admit a baseline from the first of a set: ",
+                  observed_label_set_rendering(labels: labels),
+                ),
               }
             }
             NoTestsExecuted { note } =>
@@ -1394,6 +1432,55 @@ data candidate_biome_job_key_titlecase_uninspected_control: WorkloadCandidate = 
   },
 }
 
+data candidate_biome_multi_label_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: MatrixCombination {
+    axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
+  },
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["self-hosted", "linux", "arm64"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "the job resource carried multiple labels; this census is scoped to single-label runners and does not take the first as the observed runner",
+  },
+}
+
 data workload_census: List<WorkloadCandidate> = [
   candidate_biome_test,
   candidate_pdns_dnsdist_arm,
@@ -1407,6 +1494,7 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_biome_matrix_selector_mismatch_control,
   candidate_biome_job_key_mismatch_control,
   candidate_biome_job_key_titlecase_uninspected_control,
+  candidate_biome_multi_label_control,
 ]
 
 fn selected_workloads() -> List<WorkloadCandidate> {
