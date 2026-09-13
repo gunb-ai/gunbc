@@ -25,12 +25,13 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 // Acquisition carries the parser's existing tokens and import extents. Token classes remain
 // the seed TokenShape identities; no grammar-class renaming or second tokenization occurs here.
 type CauseSourceObservation
-  = CauseSourceObserved { tokens: List<Token>, imports: List<ParsedImportStatement> }
+  = CauseSourceObserved { tokens: List<Token>, imports: List<ParsedImportStatement>, members: List<CauseImportMember> }
   | CauseSourceReadRefused { path: String, detail: String }
   | CauseSourceImportParseRefused { path: String, cause: ImportStatementParseCause }
   | CauseSourceExcluded { path: String, cause: ImportStatementParseCause }
   | CauseSourceIndexRefused { path: String, module_path: String }
   | CauseSourceLexicalRefused { path: String }
+  | CauseSourceImportProjectionUnestablished { path: String, tokens: List<Token> }
 
 fn cause_source_observation(path: String) -> CauseSourceObservation {
   let read = Filesystem.Read(path: path)
@@ -50,8 +51,22 @@ fn cause_source_observation_from_content(path: String, source: String) -> CauseS
         CauseSourceExcluded { path: path, cause: cause }
       } else { CauseSourceImportParseRefused { path: path, cause: cause } }
     ImportStatementsParsed { statements: imports } =>
-      CauseSourceObserved { tokens: observation.tokens, imports: imports }
+      cause_source_projection_observation(path: path, tokens: observation.tokens, imports: imports)
   } }
+}
+
+fn cause_source_projection_observation(path: String, tokens: List<Token>, imports: List<ParsedImportStatement>) -> CauseSourceObservation {
+  let projection = cause_module_import_projection(tokens: tokens, imports: imports)
+  if count(projection.unestablished) == 0 {
+    CauseSourceObserved { tokens: tokens, imports: imports, members: projection.members }
+  } else {
+    CauseSourceImportProjectionUnestablished { path: path, tokens: projection.unestablished }
+  }
+}
+
+fn cause_import_unestablished_report(path: String, tokens: List<Token>) -> String {
+  join(map(tokens, token => join(["IMPORT_PROJECTION_UNESTABLISHED", path,
+    to_string(token.start), to_string(token.end), token.lexeme], "\t")), "\n")
 }
 
 fn cause_source_observation_report(path: String, observation: CauseSourceObservation) -> String {
@@ -61,11 +76,12 @@ fn cause_source_observation_report(path: String, observation: CauseSourceObserva
     CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
     CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
     CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
-    CauseSourceObserved { tokens: ts, imports: imports } =>
+    CauseSourceImportProjectionUnestablished { path: p, tokens: ts } => cause_import_unestablished_report(path: p, tokens: ts)
+    CauseSourceObserved { tokens: ts, imports: imports, members: members } =>
       join([
         join(["OBSERVED", path, to_string(count(ts)), to_string(count(imports))], "\t"),
         join(map(cause_caret_occurrences(tokens: ts), c => join(["CARET", c.spelling, to_string(c.cause_argument)], "\t")), "\n"),
-        join(map(cause_module_import_members(tokens: ts, imports: imports), m => join(["IMPORT", m.module, m.member], "\t")), "\n")
+        join(map(members, m => join(["IMPORT", m.module, m.member], "\t")), "\n")
       ], "\n")
   }
 }
@@ -77,12 +93,13 @@ fn probe(path: String, report: String) -> ProcessExit {
     exit_failure(reason: written.error)
   } else {
     match observation {
-      CauseSourceObserved { tokens: _, imports: _ } => ExitSuccess
+      CauseSourceObserved { tokens: _, imports: _, members: _ } => ExitSuccess
       CauseSourceReadRefused { path: _, detail: _ } => exit_failure(reason: "source read refused; see probe report")
       CauseSourceImportParseRefused { path: _, cause: _ } => exit_failure(reason: "import parse refused; see probe report")
       CauseSourceExcluded { path: _, cause: _ } => exit_failure(reason: "source excluded; see probe report")
       CauseSourceIndexRefused { path: _, module_path: _ } => exit_failure(reason: "source index refused; see probe report")
       CauseSourceLexicalRefused { path: _ } => exit_failure(reason: "source lexing refused; see probe report")
+      CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => exit_failure(reason: "import projection unestablished; see probe report")
     }
   }
 }
@@ -134,12 +151,13 @@ type CauseImportMembersProgress {
   inside: Bool
   dotted: Bool
   pending: String
+  unestablished: List<Token>
   members: List<CauseImportMember>
 }
 
 fn cause_import_member_flush(state: CauseImportMembersProgress, module: String) -> CauseImportMembersProgress {
   CauseImportMembersProgress {
-    inside: state.inside, dotted: false, pending: "",
+    inside: state.inside, dotted: false, pending: "", unestablished: state.unestablished,
     members: if state.pending == "" { state.members } else {
       list_snoc_item(xs: state.members, item: CauseImportMember { module: module, member: state.pending })
     }
@@ -148,36 +166,41 @@ fn cause_import_member_flush(state: CauseImportMembersProgress, module: String) 
 
 // The parser owns statement boundaries and validates member syntax. This projection retains
 // complete dotted member spellings, so importing child.cause cannot count as importing cause.
-// A bare module import contributes no import-by-name receipt.
-fn cause_import_members(tokens: List<Token>, statement: ParsedImportStatement) -> List<CauseImportMember> {
+// A bare module import contributes no import-by-name receipt. ShIdent and parser-admitted
+// ShKeyword member segments are supported; every other non-separator member token is
+// unestablished. Source admission consumes that disposition before any negative conclusion.
+fn cause_import_projection(tokens: List<Token>, statement: ParsedImportStatement) -> CauseImportMembersProgress {
   let result = fold(tokens, init: CauseImportMembersProgress {
-    inside: false, dotted: false, pending: "", members: []
+    inside: false, dotted: false, pending: "", members: [], unestablished: []
   }, f: (state, token) => {
     if token.start < statement.span.start || token.end > statement.span.end {
       state
     } else if token.class == ^ShLBrace {
-      CauseImportMembersProgress { inside: true, dotted: false, pending: "", members: state.members }
+      CauseImportMembersProgress { inside: true, dotted: false, pending: "", members: state.members, unestablished: state.unestablished }
     } else if token.class == ^ShRBrace {
       let flushed = cause_import_member_flush(state: state, module: statement.imported_module)
-      CauseImportMembersProgress { inside: false, dotted: false, pending: "", members: flushed.members }
+      CauseImportMembersProgress { inside: false, dotted: false, pending: "", members: flushed.members, unestablished: flushed.unestablished }
     } else if !state.inside {
       state
     } else if token.class == ^ShDot {
-      CauseImportMembersProgress { inside: true, dotted: true, pending: state.pending, members: state.members }
-    } else if token.class == ^ShIdent {
+      CauseImportMembersProgress { inside: true, dotted: true, pending: state.pending, members: state.members, unestablished: state.unestablished }
+    } else if token.class == ^ShIdent || token.class == ^ShKeyword {
       if state.dotted {
         CauseImportMembersProgress {
-          inside: true, dotted: false, pending: join([state.pending, token.lexeme], "."), members: state.members
+          inside: true, dotted: false, pending: join([state.pending, token.lexeme], "."), members: state.members, unestablished: state.unestablished
         }
       } else {
         let flushed = cause_import_member_flush(state: state, module: statement.imported_module)
-        CauseImportMembersProgress { inside: true, dotted: false, pending: token.lexeme, members: flushed.members }
+        CauseImportMembersProgress { inside: true, dotted: false, pending: token.lexeme, members: flushed.members, unestablished: flushed.unestablished }
       }
     } else if token.class == ^ShComma {
       cause_import_member_flush(state: state, module: statement.imported_module)
-    } else { state }
+    } else if token.class == ^ShNewline || token.class == ^ShEof { state } else {
+      CauseImportMembersProgress { inside: state.inside, dotted: state.dotted, pending: state.pending,
+        members: state.members, unestablished: list_snoc_item(xs: state.unestablished, item: token) }
+    }
   })
-  result.members
+  result
 }
 
 type CauseAssertionStanding
@@ -287,21 +310,23 @@ fn cause_partition_import_tokens(tokens: List<Token>, end: Int, prefix: List<Tok
 
 type CauseModuleImportProjection {
   remaining: List<Token>
+  unestablished: List<Token>
   members: List<CauseImportMember>
 }
 
 // Consume the sorted parser extents and token stream together. Scanning the complete module once
 // per import would make a module with many imports quadratic in its own size.
-fn cause_module_import_members(tokens: List<Token>, imports: List<ParsedImportStatement>) -> List<CauseImportMember> {
-  let projected = fold(imports, init: CauseModuleImportProjection { remaining: tokens, members: [] }, f: (state, statement) => {
+fn cause_module_import_projection(tokens: List<Token>, imports: List<ParsedImportStatement>) -> CauseModuleImportProjection {
+  let projected = fold(imports, init: CauseModuleImportProjection { remaining: tokens, members: [], unestablished: [] }, f: (state, statement) => {
     let partition = cause_partition_import_tokens(tokens: state.remaining, end: statement.span.end, prefix: [])
-    let members = cause_import_members(tokens: partition.prefix, statement: statement)
+    let projection = cause_import_projection(tokens: partition.prefix, statement: statement)
     CauseModuleImportProjection {
       remaining: partition.remaining,
-      members: fold(members, init: state.members, f: (acc, member) => list_snoc_item(xs: acc, item: member))
+      unestablished: fold(projection.unestablished, init: state.unestablished, f: (acc, token) => list_snoc_item(xs: acc, item: token)),
+      members: fold(projection.members, init: state.members, f: (acc, member) => list_snoc_item(xs: acc, item: member))
     }
   })
-  projected.members
+  projected
 }
 
 fn cause_witness_module(path: String) -> Bool {
@@ -340,7 +365,7 @@ fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<Modu
   fold(subjects, init: CauseCorpusAcquisition { sources: [], excluded: [], refusals: [], identifier_counts: empty_map() }, f: (acc, subject) => {
     let observation = cause_source_observation_from_content(path: subject.repo_path, source: subject.content)
     match observation {
-      CauseSourceObserved { tokens: tokens, imports: imports } => {
+      CauseSourceObserved { tokens: tokens, imports: imports, members: members } => {
         if !cause_name_is_known(names: indexed, spelling: join([subject.repo_path, subject.module_path], "\t")) {
           cause_acquisition_refused(acc: acc, observation: CauseSourceIndexRefused { path: subject.repo_path, module_path: subject.module_path })
         } else { CauseCorpusAcquisition {
@@ -349,7 +374,7 @@ fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<Modu
             carets: cause_caret_occurrences(tokens: tokens),
             import_modules: fold(imports, init: empty_map(), f: (index, statement) =>
               map_insert(m: index, key: statement.imported_module, value: true)),
-            import_members: fold(cause_module_import_members(tokens: tokens, imports: imports), init: empty_map(), f: (index, member) =>
+            import_members: fold(members, init: empty_map(), f: (index, member) =>
               map_insert(m: index, key: join([member.module, member.member], "."), value: true))
           }),
           excluded: acc.excluded, refusals: acc.refusals,
@@ -364,6 +389,7 @@ fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<Modu
       CauseSourceImportParseRefused { path: _, cause: _ } => cause_acquisition_refused(acc: acc, observation: observation)
       CauseSourceIndexRefused { path: _, module_path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
       CauseSourceLexicalRefused { path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+      CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => cause_acquisition_refused(acc: acc, observation: observation)
     }
   })
 }
@@ -491,16 +517,22 @@ fn cause_source_refusal_report(refusal: CauseSourceObservation) -> String {
     CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
     CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
     CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
-    CauseSourceObserved { tokens: _, imports: _ } => "OBSERVED"
+    CauseSourceImportProjectionUnestablished { path: p, tokens: ts } => cause_import_unestablished_report(path: p, tokens: ts)
+    CauseSourceObserved { tokens: _, imports: _, members: _ } => "OBSERVED"
   }
 }
 
 fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> String {
   join([
     "source ingress: v2.workflow.floor_discovery_producer.floor_discovery_source_inventory_live, before closure selection and witness policy",
+    "import projection boundary: parser-delimited bare or braced imports; identifier and keyword member segments retain complete dotted names; unhandled member tokens are IMPORT_PROJECTION_UNESTABLISHED and withhold negative conclusions",
     join(["sources_observed", to_string(count(acquisition.sources))], "\t"),
     join(["sources_excluded", to_string(count(acquisition.excluded))], "\t"),
     join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
+    join(["import_projection_unestablished_sources", to_string(count(filter(acquisition.refusals, r => match r {
+      CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => true
+      _ => false
+    })))], "\t"),
     join(map(acquisition.excluded, r => cause_source_refusal_report(refusal: r)), "\n"),
     join(map(acquisition.refusals, r => cause_source_refusal_report(refusal: r)), "\n")
   ], "\n")

@@ -6,7 +6,8 @@ import tools.cause_assertion_census {
   CauseModuleSyntax, CauseDeclarationJoined, CauseDeclarationMissing, CauseDeclarationAmbiguous,
   CauseCaretOccurrence, cause_witness_module,
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
-  cause_caret_occurrences, cause_import_members, cause_declarations_by_name, cause_join_declaration,
+  cause_caret_occurrences, cause_import_projection, cause_source_projection_observation, cause_source_observation_report,
+  CauseSourceImportProjectionUnestablished, cause_declarations_by_name, cause_join_declaration,
   cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
   CauseCorpusAcquisition, cause_complete_report, cause_corpus_acquire, CauseSourceIndexRefused
 }
@@ -43,7 +44,7 @@ test fn cause_census_string_token_cannot_mint_an_assertion() -> Bool {
 }
 
 test fn cause_census_import_projection_preserves_dotted_member_identity() -> Bool {
-  let members = cause_import_members(tokens: [
+  let projection = cause_import_projection(tokens: [
     cause_census_token(class: ^ShLBrace, lexeme: "{", at: 2),
     cause_census_token(class: ^ShIdent, lexeme: "child", at: 3),
     cause_census_token(class: ^ShDot, lexeme: ".", at: 4),
@@ -55,7 +56,8 @@ test fn cause_census_import_projection_preserves_dotted_member_identity() -> Boo
   ], statement: ParsedImportStatement {
     span: SourceSpan { file: "fixture.dag", start: 0, end: 9 }, imported_module: "fixture"
   })
-  count(members) == 2
+  let members = projection.members
+  count(projection.unestablished) == 0 && count(members) == 2
     && any(members, m => m.module == "fixture" && m.member == "child.cause")
     && any(members, m => m.member == "other")
     && !any(members, m => m.member == "cause" || m.member == "outside")
@@ -152,12 +154,12 @@ test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool {
 
 test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bool {
   match cause_source_observation_from_content(path: "cause_projection_fixture.dag", source: "module fixture\n// Ω shifts bytes, not scalar spans\nimport std.types { String }\ndata note: String = \"cause: ^fake\"\nfn value() -> Symbol { ^real_cause }\n") {
-    CauseSourceObserved { tokens: tokens, imports: imports } => {
+    CauseSourceObserved { tokens: tokens, imports: imports, members: members } => {
       let occurrences = cause_caret_occurrences(tokens: tokens)
       count(occurrences) == 1
         && any(occurrences, c => c.spelling == "real_cause")
         && any(tokens, t => t.class == ^ShLitStr && t.lexeme == "\"cause: ^fake\"")
-        && any(cause_import_members(tokens: tokens, statement: imports[0]), m => m.module == "std.types" && m.member == "String")
+        && any(members, m => m.module == "std.types" && m.member == "String")
     }
     _ => false
   }
@@ -203,4 +205,37 @@ test fn cause_census_module_role_uses_floor_authority() -> Bool {
     && !cause_witness_module(path: "src/v2/std/find_witness.dag")
     && !cause_witness_module(path: "src/v2/workflow/floor_changed_witness.dag")
     && !cause_witness_module(path: "dag/test/helpers.dag")
+}
+
+// The parser admits keyword-shaped names; their complete dotted spelling must survive.
+test fn cause_census_keyword_import_members_keep_identity() -> Bool {
+  match cause_source_observation_from_content(path: "keyword_import.dag",
+    source: "module fixture\nimport provider { child.type, fn }\n") {
+    CauseSourceObserved { tokens: _, imports: _, members: members } =>
+      count(members) == 2
+        && any(members, m => m.member == "child.type")
+        && any(members, m => m.member == "fn")
+        && !any(members, m => m.member == "child" || m.member == "type")
+    _ => false
+  }
+}
+
+// An acquired token outside the supported member projection cannot turn into an empty import.
+test fn cause_census_unsupported_import_is_explicitly_unestablished() -> Bool {
+  let observation = cause_source_projection_observation(path: "future_import.dag", tokens: [
+    cause_census_token(class: ^ShLBrace, lexeme: "{", at: 1),
+    cause_census_token(class: ^ShIdent, lexeme: "cause", at: 2),
+    cause_census_token(class: ^ShColon, lexeme: ":", at: 3),
+    cause_census_token(class: ^ShIdent, lexeme: "alias", at: 4),
+    cause_census_token(class: ^ShRBrace, lexeme: "}", at: 5)
+  ], imports: [ParsedImportStatement {
+    span: SourceSpan { file: "future_import.dag", start: 0, end: 6 }, imported_module: "provider"
+  }])
+  match observation {
+    CauseSourceImportProjectionUnestablished { path: path, tokens: tokens } =>
+      path == "future_import.dag" && count(tokens) == 1 && tokens[0].start == 3
+        && string_contains(s: cause_source_observation_report(path: path, observation: observation),
+          pattern: "IMPORT_PROJECTION_UNESTABLISHED\tfuture_import.dag\t3\t4")
+    _ => false
+  }
 }
