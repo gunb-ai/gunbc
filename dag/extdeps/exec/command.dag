@@ -78,6 +78,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_stop_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_exec_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_pull_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_container_inspect_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_spec_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_digest_command"),

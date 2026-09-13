@@ -14,6 +14,9 @@ import gunbc.fleet_posix_accounts {
 }
 import extdeps.systemd.loginctl { loginctl_enable_linger_argv, loginctl_enable_linger_command }
 import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_command }
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli { docker_container_inspect_command }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
@@ -223,6 +226,22 @@ type SparkGrantOutcome
 type SparkManagedGrant
   = EnableLingerForOwnAccount { subject: NonEmptyStr }
   | RebootThisHost
+  | InspectServingContainer { container: NonEmptyStr }
+
+// INSPECT IS THE ACCESS CAPABILITY THE LIVE SERVING READERS ARE MISSING, measured rather than
+// assumed (2026-09-13, srv5 and srv6): gunbc-automation authenticates, `sudo -n` asks for a
+// password, and the docker socket is root:docker 0660 with the account in no docker group, so no
+// principal this fleet runs as can read a running container. The walls that wait on that reading
+// are gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation and
+// gunbc.spark.serving_offer spark_serving_incarnation_unobserved_obligation.
+//
+// The grant is `docker container inspect <name>` with the name PINNED, and it is deliberately not
+// docker group membership: the docker group is root-equivalent (it can run a privileged container),
+// while this Cmnd_Spec authorizes one read verb on one object. `ps`, `exec`, `logs` and a wildcard
+// name have no spelling. WHAT IT DISCLOSES is stated because it is the reason to grant it and the
+// reason to think before granting: inspect prints Config.Env, so the serving container's
+// environment becomes readable by gunbc-automation. That environment is exactly the telemetry
+// configuration the usage-stats wall needs, and it is also everything else the launch put there.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
@@ -243,6 +262,8 @@ fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr 
   match grant {
     EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
     RebootThisHost => systemctl_reboot_command()
+    InspectServingContainer { container: c } =>
+      join(argv_words(command: docker_container_inspect_command(name: c)), " ") as NonEmptyStr
   }
 }
 
@@ -254,6 +275,7 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
     match grant {
       EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_argv(subject: s)
       RebootThisHost => systemctl_reboot_argv()
+      InspectServingContainer { container: c } => argv_words(command: docker_container_inspect_command(name: c))
     },
   )
 }
@@ -262,12 +284,14 @@ fn spark_managed_grant_wire(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => "enable-linger for this account only" as NonEmptyStr
     RebootThisHost => "reboot this host" as NonEmptyStr
+    InspectServingContainer { container: _ } => "inspect the serving container only" as NonEmptyStr
   }
 }
 
 data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
   RebootThisHost,
+  InspectServingContainer { container: spark_pair_container_name },
 ]
 
 fn derive_spark_bootstrap_plan(

@@ -233,6 +233,16 @@ fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "inspect", image as String])
 }
 
+// CONTAINER INSPECT, the container-object sibling of docker_image_inspect_command
+// (docs.docker.com/reference/cli/docker/container/inspect/). It prints a JSON array holding one
+// object whose shape extdeps.docker.container_inspect ContainerInspect models, and exits non-zero
+// naming "No such container" when the reference names nothing. No --format, for the same
+// portable-word reason as the image form. The argv and the sudoers Cmnd_Spec that authorizes it are
+// the same words, so a grantee rendering both reads this one function.
+fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["container", "inspect", name as String])
+}
+
 fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "No such image")
 }
