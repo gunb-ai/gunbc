@@ -2016,11 +2016,18 @@ fn parse_with_table_at(
   }
 }
 
+// THE ENVIRONMENT IS REQUIRED HERE, NOT DEFAULTED, for the same reason `parse_with_table_at`
+// requires it: a default would be the HEAD grammar, so a caller reading another revision's source
+// and forgetting to say so would read it under head rules and answer confidently. That is the one
+// failure this parameter exists to make unwritable
+// (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change). Ordinary head
+// callers pass `dag_parse_environment` explicitly and lose nothing by saying so.
 fn parse_with_table_in_occurrence_scope(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
-  occurrence_allocator: OccurrenceIdAllocator
+  occurrence_allocator: OccurrenceIdAllocator,
+  env: ParseEnvironment
 ) -> ParseWithTableResult {
   parse_with_table_at(
     tokens: tokens,
@@ -2030,7 +2037,7 @@ fn parse_with_table_in_occurrence_scope(
       alloc: occurrence_allocator
     ),
     heads_only: false,
-    env: dag_parse_environment
+    env: env
   )
 }
 
