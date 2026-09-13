@@ -239,18 +239,14 @@ fn desired_ruleset_conditions() -> RulesetConditionsWire {
   ref_name_conditions(include: [default_branch_ref_alias], exclude: [])
 }
 
-// THE MERGE QUEUE IS DECLARED AS A PROPOSAL AND THE SIGN-OFF IS THE TYPE, NOT A COMMENT.
+// THE MERGE QUEUE IS SIGNED DESIRED STATE; THE SIGN-OFF IS THE TYPE, NOT A COMMENT.
 //
-// The row above states that strict is false BECAUSE the merge queue is the construction that
-// establishes the same invariant without re-running the floor for every pull request behind a
-// merge, and that the queue is not configured yet. That sentence names a remedy no declaration
-// carried, so "turn the queue on" was a web-form change nobody in this repository could see --
-// exactly the condition this module exists to end for the required context.
-//
-// The queue is signed desired state (`MergeQueueSignedOff`); `desired_ruleset_rules` projects
-// `merge_queue_rule_from_policy`. `converge` may PUT that projection. The coproduct remains so
-// flipping back to Unsigned drops the rule from the projection rather than leaving a web-form
-// queue as desired-by-omission.
+// Strict is false BECAUSE the merge queue is the construction that establishes the same
+// invariant without re-running the floor for every pull request behind a merge. That used to
+// name a remedy no declaration carried. The queue is now MergeQueueSignedOff;
+// `desired_ruleset_rules` projects `merge_queue_rule_from_policy`. `converge` may PUT that
+// projection. The coproduct remains so flipping back to Unsigned drops the rule from the
+// projection rather than leaving a web-form queue as desired-by-omission.
 // EVERY PARAMETER GITHUB REQUIRES, NOT A BOOLEAN. A `merge_queue_required: Bool` would say "queue
 // on" while seven unmodeled parameters decided what the queue DOES -- provider defaults standing as
 // a second authority beside our own declaration, which is the fork DESIGN section 3 forbids. So the
@@ -665,13 +661,9 @@ fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> 
   }
 }
 
-// A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS REPORTED. A divergence ordinarily means "the
-// world is not what we declared, apply desired". For an unexpected rule that reading is
-// backwards: applying desired DESTROYS it. `converge` still PUTs `desired_ruleset_rules` as a
-// whole document, so an unexpected live rule is a line-stop the operator must see before Apply
-// (DESIGN section 5). `signed_desire_projection_refusal_for` takes the policy as an operand so
-// its RED stays authorable: a fixture can hand a signed policy against a projection that carries
-// no merge_queue rule (DESIGN section 4b).
+// A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS REPORTED, AND `converge` REFUSES APPLY.
+// Applying desired DESTROYS it. `merge_queue_put_plan` is not reached while
+// `RulesetRuleUnexpected` (or an undeclared bypass actor) is in the observation.
 // THE WALL READS THE PROJECTED RULES THEMSELVES, NOT A ROSTER THAT TRACKS THEM.
 //
 // Its first form asked whether `desired_ruleset_rule_types()` contained a merge_queue entry. That
@@ -1193,12 +1185,12 @@ type RulesetReadRequest sole_constructor {
 // TWO CAUSES ARE DELETED RATHER THAN MOVED, which is the point of a replacement migration.
 // RepositoryRulesetActuationRealizationUnbound said "no admitted writer exists" -- that was
 // true of `verify` and is false of `converge`. RepositoryRulesetUnexpectedLiveRule said a live
-// rule this projection cannot express blocks the write; an undeclared live rule is a deviation
-// (`RulesetRuleUnexpected`). `converge` still PUTs the desired rule list as a whole document.
+// rule this projection cannot express blocks the write; that is `RulesetRuleUnexpected`, and
+// `converge` Refuses Apply rather than PUTting a document that would delete it.
 //
 // WHAT IS PRESERVED: every state that made `verify` exit non-zero still does. `converge` adds
 // Apply (whole-ruleset PUT + readback) and Refuse (unobservable roster, below-floor timeout,
-// unreadable readback).
+// undeclared live rule or bypass actor, unreadable readback).
 //
 // #10204: `verify` is inspect-only. `converge` writes when the roster was observed. The
 // remaining capability is a write that can change rules without supplying a replacement
@@ -1531,10 +1523,34 @@ fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRule
                 "",
               )
             }
-          BypassRosterObserved { actors: _ } => merge_queue_put_plan()
+          BypassRosterObserved { actors: _ } => {
+            let destroy = divergences_a_put_would_destroy(
+              ds: observation_divergences(goal: desired_repo_ruleset_goal(), observation: observed),
+            )
+            if length(destroy) > 0 {
+              EnsurePlanUnavailable {
+                reason: concat(
+                  "refusing to PUT: whole-ruleset apply would delete undeclared live state -- ",
+                  render_divergences(ds: destroy),
+                )
+              }
+            } else {
+              merge_queue_put_plan()
+            }
+          }
         }
     }
   }
+}
+
+fn divergences_a_put_would_destroy(ds: List<RulesetDivergence>) -> List<RulesetDivergence> {
+  fold(ds, init: [], f: fn(acc, d) {
+    match d {
+      RulesetRuleUnexpected { rule: _ } => append(acc, items: [d])
+      RulesetBypassActorUnexpected { actor: _ } => append(acc, items: [d])
+      _ => acc
+    }
+  })
 }
 
 fn merge_queue_put_plan() -> EnsurePlan<RepoRulesetApplyPlan> {

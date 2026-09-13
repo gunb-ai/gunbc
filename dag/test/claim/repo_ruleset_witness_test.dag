@@ -68,6 +68,7 @@ import extdeps.github.rulesets {
   DeletionRule,
   NonFastForwardRule,
   RequiredStatusChecksRule,
+  PullRequestRule,
   RequiredStatusChecks,
   NoRequiredStatusChecksRule,
   MultipleRequiredStatusChecksRules,
@@ -677,6 +678,25 @@ fn ensure_fixture(enforcement: RulesetEnforcement, roster: BypassActorRosterObse
     standing: desired_shaped_standing(),
     merge_queue: desired_merge_queue_standing(),
     bypass_roster: roster,
+  }
+}
+
+test fn w_RED_an_undeclared_live_rule_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: append(desired_ruleset_rule_types(), items: [PullRequestRule]),
+    standing: desired_shaped_standing(),
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } => string_contains(s: r, pattern: "undeclared rule present")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 
