@@ -23,9 +23,9 @@ import product.lot_sales_tax {
   ResidualUseTaxUnread,
   UseTaxResidualStanding,
   admit_lot_tax_population,
-  lot_tax_is_attested_not_read,
-  lot_tax_residual_is_owed,
-  lot_tax_jurisdiction_is_unread,
+  attested_lots,
+  residual_owed_lots,
+  unread_or_unrecorded_lots,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
   LedgerMissingTax,
@@ -33,7 +33,7 @@ import product.lot_sales_tax {
   LotTaxJoinRepeatedLot,
 }
 import std.measure { parts_per_million, parts_per_million_count, parts_per_million_scale_million }
-import extdeps.tax.statutory_rate { statutory_rate_value, statutory_rate_version_is_read }
+import extdeps.tax.statutory_rate { statutory_rate_value, EffectiveFrom, EffectiveDateUnread }
 import extdeps.tax.new_jersey_sales_and_use {
   nj_statewide_sales_tax,
   nj_uez_reduced_sales_tax,
@@ -113,9 +113,18 @@ data fixture_population: List<LotTaxEvidence> = [
 // the version. If a later edit quietly supplies an unread date to silence the obligation, or
 // drops the read one, this reds.
 test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
-  statutory_rate_version_is_read(r: nj_statewide_sales_tax)
-    && !statutory_rate_version_is_read(r: nj_uez_reduced_sales_tax)
-    && !statutory_rate_version_is_read(r: nyc_combined_sales_tax)
+  match nj_statewide_sales_tax.effective {
+    EffectiveFrom { date: _, instrument: _ } => true
+    EffectiveDateUnread { obligation: _ } => false
+  }
+    && match nj_uez_reduced_sales_tax.effective {
+      EffectiveFrom { date: _, instrument: _ } => false
+      EffectiveDateUnread { obligation: _ } => true
+    }
+    && match nyc_combined_sales_tax.effective {
+      EffectiveFrom { date: _, instrument: _ } => false
+      EffectiveDateUnread { obligation: _ } => true
+    }
 }
 
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
@@ -131,9 +140,9 @@ test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
   match admit_lot_tax_population(rows: fixture_population) {
     LotTaxPopulationComplete { rows: admitted } =>
       admitted.length() == 5
-        && admitted.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 2
-        && admitted.filter(row => lot_tax_is_attested_not_read(standing: row.standing)).length() == 1
-        && admitted.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)).length() == 2
+        && residual_owed_lots(rows: admitted).length() == 2
+        && attested_lots(rows: admitted).length() == 1
+        && unread_or_unrecorded_lots(rows: admitted).length() == 2
     LotTaxPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
   }
     && match admit_lot_tax_population(rows: concat(fixture_population, [
@@ -151,25 +160,28 @@ test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
 }
 
 test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
-  fixture_population.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 2
-    && fixture_population.skip(n: 1).filter(row => lot_tax_residual_is_owed(standing: row.standing)).length() == 1
+  residual_owed_lots(rows: fixture_population).length() == 2
+    && residual_owed_lots(rows: fixture_population.skip(n: 1)).length() == 1
     && match fixture_population.first() {
       Absent => false
       Present { value: row } =>
-        !lot_tax_is_attested_not_read(standing: row.standing)
-          && lot_tax_residual_is_owed(standing: row.standing)
+        attested_lots(rows: [row]).length() == 0
+          && residual_owed_lots(rows: [row]).length() == 1
     }
 }
 
 test fn w_unread_residual_is_not_a_known_owe() -> Bool {
-  !lot_tax_residual_is_owed(standing: SalesTaxCollected {
-    collection: RateTranscribedFromNamedReceiptLine {
-      jurisdiction: "elsewhere" as NonEmptyStr,
-      rate: parts_per_million(count: 1),
-      receipt_line_label: "tax" as NonEmptyStr,
+  residual_owed_lots(rows: [LotTaxEvidence {
+    lot: lot_mt_collins,
+    standing: SalesTaxCollected {
+      collection: RateTranscribedFromNamedReceiptLine {
+        jurisdiction: "elsewhere" as NonEmptyStr,
+        rate: parts_per_million(count: 1),
+        receipt_line_label: "tax" as NonEmptyStr,
+      },
+      residual: ResidualUseTaxUnread { read_obligation: "destination rate unread" as NonEmptyStr },
     },
-    residual: ResidualUseTaxUnread { read_obligation: "destination rate unread" as NonEmptyStr },
-  })
+  }]).length() == 0
 }
 
 test fn w_equal_length_is_not_tax_coverage() -> Bool {

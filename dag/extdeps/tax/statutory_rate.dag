@@ -1,6 +1,6 @@
 module extdeps.tax.statutory_rate
 
-import std.types { NonEmptyStr, Bool }
+import std.types { NonEmptyStr }
 import std.measure { PartsPerMillion }
 import extdeps.publication { SpecificationDocumentDate }
 
@@ -28,13 +28,6 @@ type StatutoryRateEffectiveVersion
   = EffectiveFrom { date: SpecificationDocumentDate, instrument: NonEmptyStr }
   | EffectiveDateUnread { obligation: NonEmptyStr }
 
-fn effective_date_is_read(v: StatutoryRateEffectiveVersion) -> Bool {
-  match v {
-    EffectiveFrom { date, instrument } => true
-    EffectiveDateUnread { obligation } => false
-  }
-}
-
 // The rate and its version travel together, so a consumer cannot take one without the other.
 // Splitting them into two declarations would let a caller read the figure and never learn which
 // version it is - which is the state this carrier exists to make unwritable.
@@ -45,8 +38,4 @@ type StatutoryRate {
 
 fn statutory_rate_value(r: StatutoryRate) -> PartsPerMillion {
   r.rate
-}
-
-fn statutory_rate_version_is_read(r: StatutoryRate) -> Bool {
-  effective_date_is_read(v: r.effective)
 }

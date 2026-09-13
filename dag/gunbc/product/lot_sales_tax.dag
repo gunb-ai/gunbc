@@ -68,41 +68,6 @@ type LotTaxEvidence {
   standing: LotSalesTaxStanding
 }
 
-fn lot_tax_residual_is_owed(standing: LotSalesTaxStanding) -> Bool {
-  match standing {
-    SalesTaxCollected { collection: _, residual: r } => residual_is_owed(residual: r)
-    SalesTaxAttestedIncluded { jurisdiction: _, residual: r, attestation: _ } => residual_is_owed(residual: r)
-    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => false
-    SalesTaxTreatmentUnrecorded { read_obligation: _ } => false
-  }
-}
-
-fn residual_is_owed(residual: UseTaxResidualStanding) -> Bool {
-  match residual {
-    ResidualUseTaxOwed { destination_jurisdiction: _, destination_combined_rate: _ } => true
-    ResidualUseTaxNone => false
-    ResidualUseTaxUnread { read_obligation: _ } => false
-  }
-}
-
-fn lot_tax_jurisdiction_is_unread(standing: LotSalesTaxStanding) -> Bool {
-  match standing {
-    SalesTaxCollected { collection: _, residual: _ } => false
-    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => false
-    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => true
-    SalesTaxTreatmentUnrecorded { read_obligation: _ } => true
-  }
-}
-
-fn lot_tax_is_attested_not_read(standing: LotSalesTaxStanding) -> Bool {
-  match standing {
-    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => true
-    SalesTaxCollected { collection: _, residual: _ } => false
-    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => false
-    SalesTaxTreatmentUnrecorded { read_obligation: _ } => false
-  }
-}
-
 type LotTaxPopulation
   = LotTaxPopulationComplete { rows: List<LotTaxEvidence> }
   | LotTaxPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
@@ -149,18 +114,6 @@ fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
   inventory_lot_identity_eq(left: a, right: b)
 }
 
-// NO COUNT WRAPPERS LIVE HERE. Three stood in this spot - residual_owed_lot_count,
-// attested_lot_count, unread_or_unrecorded_lot_count - and each was exactly
-// rows.filter(<one predicate>).length(). They differed only in which predicate they named, so
-// they were three NAMES for an expression the language already provides, which is the nickname
-// DESIGN section 3 forbids: one concept, three authorities, and a fourth appears the moment a
-// fourth standing arm does.
-//
-// A generic lot_count_where(rows, predicate) would have been a fourth name for the same thing
-// rather than a fix. The predicates themselves - lot_tax_residual_is_owed,
-// lot_tax_is_attested_not_read, lot_tax_jurisdiction_is_unread - ARE the authority, and callers
-// compose them with filter and length at the point of use.
-
 fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
   list_member(xs: lots, x: lot, eq: lot_eq)
 }
@@ -169,16 +122,40 @@ fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<Invento
   list_cover(held: held, expected: expected, eq: lot_eq)
 }
 
+// Project the requested identities directly; unread residual evidence yields no known debt.
+fn residual_owed_lot(residual: UseTaxResidualStanding, lot: InventoryLotIdentity) -> List<InventoryLotIdentity> {
+  match residual {
+    ResidualUseTaxOwed { destination_jurisdiction: _, destination_combined_rate: _ } => [lot]
+    ResidualUseTaxNone => []
+    ResidualUseTaxUnread { read_obligation: _ } => []
+  }
+}
+
 fn residual_owed_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(rows.filter(row => lot_tax_residual_is_owed(standing: row.standing)), r => r.lot)
+  flat_map(rows, row => match row.standing {
+    SalesTaxCollected { collection: _, residual: r } => residual_owed_lot(residual: r, lot: row.lot)
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: r, attestation: _ } => residual_owed_lot(residual: r, lot: row.lot)
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => []
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => []
+  })
 }
 
 fn attested_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(rows.filter(row => lot_tax_is_attested_not_read(standing: row.standing)), r => r.lot)
+  flat_map(rows, row => match row.standing {
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => [row.lot]
+    SalesTaxCollected { collection: _, residual: _ } => []
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => []
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => []
+  })
 }
 
 fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(rows.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)), r => r.lot)
+  flat_map(rows, row => match row.standing {
+    SalesTaxCollected { collection: _, residual: _ } => []
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => []
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => [row.lot]
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => [row.lot]
+  })
 }
 
 fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
