@@ -2,6 +2,9 @@ module gunbc.ci_workflow_source_read
 
 import std.types { Bool, CommitSha, commit_sha_text_holds, Int, List, NonEmptyStr, String, Secret }
 import std.resources { Network }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
   classify_rest_outcome,
   RestExchangeSucceeded, RestExchangePerformance,
@@ -30,9 +33,19 @@ import extdeps.github.branches { BranchWithProtection }
 // rate-limit refusal from a repository with no matching workflow will fold both into "no
 // candidate here", and the deficit that shrank the population never ranks for fixing.
 
-// THE PAGE WALK THAT CONSUMES THESE READS is gunbc.public_workload_scan perform_workload_scan: it
-// pages perform_code_search_page under a declared WorkloadScanPolicy, records why each query stopped,
-// and resolves every distinct hit through perform_hit_revision_resolution, which calls canonicalize_hit.
+// DECLARED FRONTIER (DESIGN section 3c), AS A FrontierRow. This module owns the reads and the
+// integrity join from a search hint to an exact file; the page walk that consumes them is a bounded
+// scan POLICY - which queries, how many pages, retained how - and that policy is acquisition-specific,
+// so it is authored in the private overlay and not in this tree. The public tree cannot see or name a
+// private consumer, so this row states the public closure honestly: no public production caller walks
+// these reads. A private-overlay caller does not dissolve it.
+data ci_workflow_scan_producer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci_workflow_source_read", decl_name: "perform_code_search_page"),
+    reason: "the reads, their refusal arms and the exact-revision join land here; the scan producer that pages them does not. Nothing in the public tree outside test.claim calls perform_code_search_page in a page walk or resolves its hits through perform_repository_head_resolution and perform_hit_read_at_repository_head. The classifiers ARE consumed by execution - the claims drive the same functions the effectful reads call - so what is declared here is the walk, not the decisions. A consumer in a private overlay composed over this tree exists and is not evidence for this row, because the public closure cannot demonstrate it",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a public-tree scan producer that pages perform_code_search_page under a declared bound and resolves its hits to exact revisions. TRIGGER: a production func in the public tree, outside test.claim, calls perform_code_search_page in a page walk and perform_hit_read_at_repository_head on its results; OR this consumer-layer read module itself leaves the public tree. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, by a caller that reads a single page, or by a consumer that lives only in a private overlay"),
+  )
+]
 
 // -------------------------------------------------------------------------------------
 // A PAGE OF CODE SEARCH IS THREE OUTCOMES, NOT TWO, BECAUSE UPSTREAM SAYS SO. GitHub returns
