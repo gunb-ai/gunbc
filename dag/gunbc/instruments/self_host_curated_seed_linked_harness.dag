@@ -3,7 +3,7 @@ module tools.self_host_curated_seed_linked_harness
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.cargo_build
 import extdeps.git
 import extdeps.git.inspect

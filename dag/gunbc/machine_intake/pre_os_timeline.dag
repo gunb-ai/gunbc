@@ -33,7 +33,7 @@ fn pre_os_utf8_size(text: String) -> ByteSize { byte_size(count: count(bytes_oct
 // Only immutable artifact bytes verified against the envelope's digest and byte
 // count enter replay through this effectful reader. Unsupported hash families
 // refuse explicitly; a structural fingerprint is not an artifact checksum.
-func pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceFormat) -> PreOsReplayObservation {
+fn pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceFormat) -> PreOsReplayObservation {
   let payload = match envelope.chunk.payload_digest {
     Sha256Hash(digest) => match read_verified_memory_capture(path: envelope.chunk.artifact_ref, expected_sha256: digest.hex as NonEmptyStr) {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
@@ -289,7 +289,7 @@ fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
 // artifacts, assesses them, and returns the derived view without actuation.
 type PreOsReplayRequest { envelope: ObservationEnvelope, format: PreOsSourceFormat }
 
-func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+fn replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let observations = map(requests, request => pre_os_read_observation(envelope: request.envelope, format: request.format))
   pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, inventory_question: inventory_question)
 }
@@ -297,7 +297,7 @@ func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayReque
 // The production absence route obtains the byte standing from acquisition and
 // reads the exact artifact named by that envelope before asking the inventory
 // question. Callers cannot provide an unrelated payload or a silence flag here.
-func replay_pre_os_diagnostic_absence(envelope: ObservationEnvelope, question: PreOsInventoryQuestion, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal> {
+fn replay_pre_os_diagnostic_absence(envelope: ObservationEnvelope, question: PreOsInventoryQuestion, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal> {
   let observation = pre_os_read_observation(envelope: envelope, format: PreOsConsoleText)
   match observation.payload {
     ObservationRefused { cause } => GoalAssessmentRefused { cause: pre_os_text_refusal(text: cause) }

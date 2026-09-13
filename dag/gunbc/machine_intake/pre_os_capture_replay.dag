@@ -50,7 +50,7 @@ fn pre_os_quiet_archive_assessment(payload: String) -> PreOsQuietArchiveAssessme
   }
 }
 
-func replay_pre_os_quiet_archive() -> ObservationAttempt<PreOsQuietArchiveAssessment, NonEmptyStr> {
+fn replay_pre_os_quiet_archive() -> ObservationAttempt<PreOsQuietArchiveAssessment, NonEmptyStr> {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt",
     expected_sha256: "81137a1169d3d1bc4fde2ae91910a85e9b70c4195e53d248d7d668adc347eb64") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
@@ -118,7 +118,7 @@ fn pre_os_archive_specs() -> ObservationAttempt<List<PreOsArchiveSpec>, NonEmpty
   }
 }
 
-func replay_pre_os_archives() -> List<ObservationAttempt<PreOsArchiveReading, NonEmptyStr>> {
+fn replay_pre_os_archives() -> List<ObservationAttempt<PreOsArchiveReading, NonEmptyStr>> {
   match pre_os_archive_specs() {
     ObservationRefused { cause } => [ObservationRefused { cause: cause }]
     ObservationEstablished { observed: specs } => map(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
@@ -133,7 +133,7 @@ type PreOsFirmwareSelectionArchiveAssessment {
   milestones: PreOsMilestones
 }
 
-func replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessment, NonEmptyStr> {
+fn replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessment, NonEmptyStr> {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log",
     expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
@@ -141,7 +141,7 @@ func replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessme
   }
 }
 
-func replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelectionArchiveAssessment, NonEmptyStr> {
+fn replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelectionArchiveAssessment, NonEmptyStr> {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-rerun-attached-before-stimulus-2026-09-12.txt",
     expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
@@ -158,7 +158,7 @@ func replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelect
 // footer or elapsed wrapper lifetime cannot discharge that obligation.
 data pre_os_archive_collection_frontier: NonEmptyStr = "Historical archives carry no independent live-client, SEL watermark or flush receipts; continuous collection is unestablished and wrapper lifetime is not evidence."
 
-func replay_pre_os_archive_ledger() -> String {
+fn replay_pre_os_archive_ledger() -> String {
   concat("Historical archive observations; firmware-attempt association is unestablished.\n", pre_os_archive_collection_frontier as String, "\n", to_string(replay_pre_os_archives()),
     "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()),
     "\nHost-produced OS milestone; population scope is carried in the assessment:\n", to_string(replay_pre_os_host_archive()),

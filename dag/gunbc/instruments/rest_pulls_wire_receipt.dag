@@ -17,7 +17,7 @@ import extdeps.transports.rest {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/rest_pulls_wire_receipt.dag \
 //     --function list_open_pulls_wire_receipt
-func list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
+fn list_open_pulls_wire_receipt() -> ProcessExit uses net: Network {
   let result = github.Pulls.List(
     auth_token: "" as Secret,
     owner: gunbc_repository.owner,
