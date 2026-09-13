@@ -78,6 +78,7 @@ data primitive_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "de
 data primitive_decl_facts_at: PrimitiveIdentity = primitive_identity_slug(name: "decl_facts_at")
 data primitive_export_signature_facts: PrimitiveIdentity = primitive_identity_slug(name: "export_signature_facts")
 data primitive_data_decl_type_facts: PrimitiveIdentity = primitive_identity_slug(name: "data_decl_type_facts")
+data primitive_type_declarer_qualified_names: PrimitiveIdentity = primitive_identity_slug(name: "type_declarer_qualified_names")
 data primitive_concept_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts")
 data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts_live")
 data primitive_symbol_lexeme: PrimitiveIdentity = primitive_identity_slug(name: "symbol_lexeme")
@@ -110,6 +111,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_decl_facts_at, module_path: "v2.std.decl_index", decl_name: "decl_facts_at", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_export_signature_facts, module_path: "v2.std.decl_index", decl_name: "export_signature_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_data_decl_type_facts, module_path: "v2.std.decl_index", decl_name: "data_decl_type_facts", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_type_declarer_qualified_names, module_path: "v2.std.decl_index", decl_name: "type_declarer_qualified_names", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts_live, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "v2.std.collection", decl_name: "empty_map_primitive_delegate", fidelity: HostRealizedSeam),

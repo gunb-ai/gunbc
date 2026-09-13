@@ -14,9 +14,6 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.node_reflection { coproduct_arm_keys_checked }
-
-// THE ROOTS THE REFLECTION READS CONSULT, named so the population is re-derivable.
-data coproduct_exhaustiveness_pool_roots: List<String> = ["dag", "src/v2"]
 import v2.std.verification {
   ClaimAnchorKey,
   DiagnosticClaim,
@@ -27,6 +24,9 @@ import v2.std.verification {
   test_claim_anchor,
   test_claim_input
 }
+
+// THE ROOTS THE REFLECTION READS CONSULT, named so the population is re-derivable.
+data coproduct_exhaustiveness_pool_roots: List<String> = ["dag", "src/v2"]
 
 fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
   coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
@@ -132,7 +132,11 @@ fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
 fn witness_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
   let gens = testgen_scheduled_coproduct_exhaustiveness_generators()
   (length(xs: gens) > 0)
-    && roster_covers_all_arms_of_roster(gens: gens, coproduct_type: ^TestClaim)
+    && roster_covers_all_arms_of_roster(
+      pool_roots: coproduct_exhaustiveness_pool_roots,
+      gens: gens,
+      coproduct_type: ^TestClaim
+    )
 }
 
 fn witness_coproduct_exhaustiveness_covers_second_coproduct() -> Bool {

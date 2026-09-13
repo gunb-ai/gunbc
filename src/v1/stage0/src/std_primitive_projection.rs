@@ -137,6 +137,15 @@ pub fn primitive_decl_facts() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_type_declarer_qualified_names() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("type_declarer_qualified_names".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_decl_facts_at() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -243,6 +252,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_decl_facts_at(),
             "v2.std.decl_index".to_string(),
             "decl_facts_at".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_type_declarer_qualified_names(),
+            "v2.std.decl_index".to_string(),
+            "type_declarer_qualified_names".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
