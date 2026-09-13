@@ -651,42 +651,18 @@ type RefusedShareCandidate {
   next_trigger: String
 }
 
-// THE HOMONYM EVIDENCE IS CITED, NOT MEASURED HERE, AND THE GRAIN IS THE WHOLE POINT. Two refused
-// rows below ask the same question of the corpus, so it is answered once, in this one declaration
-// with two readers rather than a paragraph copied into both (DESIGN section 2).
+// ONE DECLARATION, TWO READERS. Both refused rows below ask the same question of the corpus, so it
+// is answered once here rather than in a paragraph copied into each `measurement` string -- which is
+// what an earlier revision did, and the copies could then drift apart on a one-line edit (DESIGN
+// section 2).
 //
-// AN EARLIER REVISION OF THIS LANE MINTED ITS OWN CENSUS AND ASKED THE WRONG QUESTION WITH IT.
-// That instrument counted DECLARATIONS -- which authored type names are declared by two or more
-// modules. The refusal fires on REFERENCES: what can go wrong is a bare spelling RESOLVED through a
-// claim scope that carries two declarers, and a corpus can have many homonymous declarations and no
-// ambiguous reference at all. A declaration count is therefore not a smaller version of the right
-// figure, it is a different one, and citing it would have ranked this class on a population the
-// defect cannot reach. It was deleted rather than kept beside the real instrument, because a second
-// instrument nobody should consult is worse than none (DESIGN section 3: one authority).
-//
-// THE INSTRUMENT IS A DECLARED FRONTIER, owned elsewhere and not yet landed. `witty-otter-157`,
-// under the `swift-bat-902` reflection lane, is building the reference-grain census as its own unit
-// precisely because this row and the reflection repair both need to cite it: the tuple is
-// (referencing module, bare spelling, candidate declaring modules), excluding private homonyms never
-// referenced bare across a scope. NO SYMBOL AND NO ENTRY POINT ARE NAMED HERE YET because none
-// exists yet; naming one before it lands would be a citation that resolves to nothing (DESIGN
-// section 3). This row is updated to the module and entry point when that PR lands.
-//
-// NO FIGURE IS CARRIED, IN EITHER DIRECTION. DESIGN section 6: name the instrument, never transcribe
-// its output -- and that governs a qualitative answer exactly as it governs a number, since both rot
-// out of reach of the producer that owns them. Earlier revisions of this note carried first a count
-// and then an assertion that the population was non-empty; both were the same defect.
-//
-// WHAT THE ANSWER WOULD MEAN, which is what a row may state because it does not age: a NON-EMPTY
-// reference population means the class has live specimens and the upstream repair -- reflection
-// keyed by scope-carrying identity -- ranks against a real population. An EMPTY one means these rows
-// are UNGUARDED rather than harmful, and the repair ranks lower. Run the instrument for which holds.
-//
-// NEITHER ANSWER CHANGES THE REFUSAL, and that separation is load-bearing: the census ranks the
-// repair, it does not decide the enrolment. A key that omits an input the value depends on may not
-// be enrolled whatever the population is (DESIGN section 5: construction, not validation).
+// WHY THE ANNOTATION SAYS NO MORE THAN THAT: the declaration below IS prose, so an annotation
+// restating its claims would be the same fork one level up, in the copy no consumer reads (DESIGN
+// section 4c -- an annotation must not restate what the declaration structurally says). The grain,
+// the frontier and the no-figure rule are stated once, in the string, where the rows actually read
+// them. Found by review 65532.
 fn homonym_census_note() -> String {
-  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is not yet landed; this row names no symbol and no entry point until it is, because a citation that resolves to nothing is worse than an admitted gap. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (DESIGN section 6: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
+  "THE HOMONYM EVIDENCE IS CITED AT REFERENCE GRAIN AND IS A DECLARED FRONTIER. The refusal below fires on a bare spelling RESOLVED through a claim scope that carries two declarers, so the population that ranks this class is (referencing module, bare spelling, candidate declaring modules) -- not a count of homonymous DECLARATIONS, which is a different question a corpus can answer loudly while having no ambiguous reference at all. The reference-grain census is owned by `witty-otter-157` under the `swift-bat-902` reflection lane and is NOT YET AN ENTRY POINT; this row names no census symbol until it is, because a citation that resolves to nothing is worse than an admitted gap. WHAT IT DOES NAME, because a durable corpus location now exists and is a better target than a work item: `gunbc.bare_name_identity_consumer_census` carries a row whose site is `v2.std.node_reflection` `resolve_type_node`, and whose reach field is `ReachabilityUnmeasured` naming the reference-grain instrument as what would settle it (gunbc#11291). So the corpus itself records that this population is unmeasured and what would measure it. NO FIGURE IS CARRIED HERE IN EITHER DIRECTION (DESIGN section 6: name the instrument, never transcribe its output -- which governs a qualitative claim exactly as it governs a number). WHAT THE ANSWER WOULD MEAN, since that is what does not age: a NON-EMPTY reference population means the class has live specimens and the upstream repair ranks against a real one; an EMPTY population means these rows are UNGUARDED rather than harmful. NEITHER ANSWER CHANGES THE REFUSAL -- the census ranks the repair, it does not decide the enrolment, and a key that omits an input the value depends on may not be enrolled whatever the population is (DESIGN section 5: construction, not validation)."
 }
 
 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
@@ -747,7 +723,7 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
       "v2.test.manual.value_null_split_witness",
       "v2.test.manual.coproduct_reflection_conformance"
     ],
-    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), row producer=coproduct_arm_keys arg_shape=keyed claims=2 evals=2 total_ms=2724 cross_claim_ms=1362 decl_site src/v2/std/node_reflection.dag. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports modules=2 over v2.test.claim.generated_conformance_floor and v2.test.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal but a plausible wrong arm set ", homonym_census_note()),
+    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), row producer=coproduct_arm_keys arg_shape=keyed claims=2 evals=2 total_ms=2724 cross_claim_ms=1362 decl_site src/v2/std/node_reflection.dag. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports modules=2 over v2.test.claim.generated_conformance_floor and v2.test.manual.value_null_split_witness. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
     next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (DESIGN section 5), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
   },
   RefusedShareCandidate {
