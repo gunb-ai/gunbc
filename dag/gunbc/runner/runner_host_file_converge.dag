@@ -62,7 +62,9 @@ import gunbc.runner_unit_file {
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
   runner_unit_depriv_dropin_path,
-  gunbc_runner_unit_depriv_dropin_text,
+  gunbc_runner_unit_depriv_dropin_text_from_figure,
+  runner_job_user_xdg_runtime_uid,
+  RunnerJobUserRuntimeUidFigure,
   runner_unit_system_path,
   gunbc_runner_unit_fragment_for_host,
   RunnerUnitText,
@@ -85,11 +87,12 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
 // srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
 //
-// FOUR FILES. Teardown drop-in and needrestart deferral are the two halves of the orphan class.
-// The unit fragment and the depriv drop-in are the modeled runner bytes: installing the fragment
-// without depriv would keep those facts in force only because a drop-in the model has never read
-// happens to override the render. Modeling depriv's facts is the cut that lets the fragment be
-// delivered. The fragment still names deploy.runner_user, not root.
+// FOUR FILES WHEN DEPRIV IS CITED, ELSE A REFUSAL. Teardown drop-in and needrestart deferral are
+// the two halves of the orphan class. The unit fragment and the depriv drop-in are the modeled
+// runner bytes: installing the fragment without depriv would keep those facts in force only because
+// a drop-in the model has never read happens to override the render. Production
+// runner_job_user_xdg_runtime_uid is TranscribedUncited, so depriv refuses and this population
+// refuses with that cause rather than writing DOCKER_HOST from a bet. A refuse writes nothing.
 //
 // WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
@@ -126,6 +129,13 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
 fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
+  runner_host_file_desired_population_from_uid_figure(host: host, figure: runner_job_user_xdg_runtime_uid)
+}
+
+fn runner_host_file_desired_population_from_uid_figure(
+  host: HostIdentity,
+  figure: RunnerJobUserRuntimeUidFigure,
+) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
@@ -138,7 +148,7 @@ fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesi
           match gunbc_runner_unit_fragment_for_host(host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
-              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host) {
+              match gunbc_runner_unit_depriv_dropin_text_from_figure(deploy: d, host: host, figure: figure) {
                 RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
                 RunnerUnitText { text: depriv } =>
                   RunnerHostFilesDesired {

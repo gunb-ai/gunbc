@@ -1,6 +1,6 @@
 module test.claim.runner_unit_file_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
 import extdeps.systemd.unit_file {
@@ -36,11 +36,11 @@ import gunbc.runner_unit {
 import gunbc.runner_host_deploy { srv1_runner_host_deploy, RunnerHostDeploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import product.placement_supply { HostIdentity }
 import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
 }
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
 import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
@@ -67,8 +67,10 @@ import gunbc.runner_unit_file {
   runner_unit_app_environment,
   runner_slot_instance_directory,
   gunbc_runner_unit_depriv_dropin_text,
+  gunbc_runner_unit_depriv_dropin_text_from_figure,
   gunbc_runner_unit_fragment_for_host,
   runner_job_user_xdg_runtime_uid,
+  RunnerJobUserRuntimeUidFigure,
 }
 
 // Every claim here is a function of declared substrate rows -- a render and its serialization -- so
@@ -220,8 +222,26 @@ test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
     && !string_contains(s: text, pattern: "\nUser=root\n")
 }
 
+fn fixture_cited_job_user_uid() -> RunnerJobUserRuntimeUidFigure {
+  RunnerJobUserRuntimeUidFigure {
+    uid: 4242,
+    evidence: CitedToAuthority {
+      authority: ExternalAuthority {
+        uri: Uri {
+          scheme: File,
+          locator: "dag/test/claim/runner/runner_unit_file_witness_test.dag#fixture_cited_job_user_uid",
+        },
+      },
+    },
+  }
+}
+
 test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text(deploy: srv1_runner_host_deploy, host: operator_host_srv3) {
+  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+    deploy: srv1_runner_host_deploy,
+    host: operator_host_srv3,
+    figure: fixture_cited_job_user_uid(),
+  ) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
       string_contains(s: text, pattern: "\nUser=root\n")
@@ -230,7 +250,8 @@ test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_do
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_IDLE_TIMEOUT=0\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log\n")
-        && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid.uid), "\n"))
+        && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: 4242), "\n"))
+        && !string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid.uid), "\n"))
   }
 }
 
@@ -244,11 +265,22 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
     app: srv1_runner_host_deploy.app,
     runner_count: srv1_runner_host_deploy.runner_count,
   }
-  match gunbc_runner_unit_depriv_dropin_text(deploy: poisoned, host: operator_host_srv3) {
+  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+    deploy: poisoned,
+    host: operator_host_srv3,
+    figure: fixture_cited_job_user_uid(),
+  ) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
       string_contains(s: text, pattern: "\nUser=fixture-unit\n")
         && !string_contains(s: text, pattern: "\nUser=root\n")
+  }
+}
+
+test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool {
+  match gunbc_runner_unit_depriv_dropin_text(deploy: srv1_runner_host_deploy, host: operator_host_srv3) {
+    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "TranscribedUncited")
+    RunnerUnitText { text: _ } => false
   }
 }
 
