@@ -55,7 +55,7 @@ import gunbc.fabric.engram_materialization {
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
   ComponentResidentUnderivable, ComponentNotDecomposedHere,
-  RouteSubjectKey, route_subject_key,
+  RouteSubjectKey, route_subject_key, route_subject_key_eq,
   component_resident_share, component_route_causes, component_route_has_defect,
   component_route_standing_component, component_route_standing_context,
   ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
@@ -810,6 +810,7 @@ data v4_1_selection_frontier: List<FrontierRow> = [
     reason: "an excluded candidate's own reason does not reach the spine's exclusion line, which carries identities only",
     dissolution: unbound_dissolution(description: "TRIGGER: std.decision constraint_infeasibility_cause (or the ParetoEntry it reads) carries the candidate's own stated reason for failing a constraint, not only the candidate, constraint and axis identities. Until then a route established INFEASIBLE is excluded with its causes reaching the product root through candidate_resident_footprint's obligation rather than through the exclusion text, and this row says so instead of the module implying the causes are carried. SUFFICIENT FOR: NoFeasibleServingDeployment's causes name WHY each candidate was excluded, so the reply to an empty field is actionable without reading the route authority separately." as NonEmptyStr),
   ),
+  route_context_replica_count_obligation,
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "spark_fleet_snapshot" as NonEmptyStr),
     reason: "host availability is still this module's own scalar rather than the shared subject-relative commitment authority",
@@ -1866,10 +1867,131 @@ type RoutedCandidate sole_constructor {
   route_standings: List<ComponentRouteStanding>
 }
 
+// ── A DECLARED OBLIGATION: THE ROUTE CONTEXT OMITS REPLICA COUNT ──────────────────────────────
+//
+// `execution_profile_of` builds the context from artifact identity, tensor-parallel degree and the
+// parameters digest. `replica_count` is NOT among them, so two candidates differing only in replica
+// count carry EQUAL route contexts and therefore receive the same route standing. That is true at this
+// head with or without the reuse above: `engram_route_standing` is already keyed on this context, so
+// the omission is a property of the key and not of any optimisation. Reusing equal current keys
+// preserves the existing omission exactly; recomputing per candidate would not restore the missing
+// distinction, it would only spend more to reach the same answer. Exposing that is the point -- the
+// alternative is silently reading equal keys as physical invariance.
+//
+// THE DISCRIMINATING QUESTION, stated so it can be answered rather than admired: do a route's retained
+// resident working set, its token-time access cost, its fill demand and its contention behaviour depend
+// on how many replicas of the deployment share a host? A co-tenant host plausibly shares one page cache
+// and one NVMe queue across replicas, in which case the route's per-host behaviour is a function of
+// replica count and this key is under-specified. Nothing in this corpus answers that.
+//
+// WHY IT IS NOT LIVE TODAY, AND WHY THAT IS NOT AN ANSWER. `constraint_no_redundancy` is a hard
+// constraint on `ax_no_redundancy` for this subject, so candidates with replica_count > 1 are excluded
+// before Pareto and their route standings decide nothing under the CURRENT input. That limits
+// eligibility; it does not establish that route cost, contention, fill demand or retained working set
+// is invariant to replica count in general, and it is not evidence about the underlying physics. The
+// obligation is masked by a policy, not discharged by a fact.
+data route_context_replica_count_obligation: FrontierRow = frontier_row_decl(
+  ref: v4_1_selection_frontier_fact(decl_name: "execution_profile_of" as NonEmptyStr),
+  reason: "the route context omits replica_count, so route standings are shared across replica counts without evidence that they should be",
+  dissolution: unbound_dissolution(description: "TRIGGER: a reading that answers whether a route's retained resident working set, token-time access cost, fill demand and contention depend on the number of replicas co-tenant on one host -- which is a question about shared page cache and shared NVMe queueing, not about admission policy. WHAT MAKES IT LIVE: any relaxation of constraint_no_redundancy, or any other change admitting replica_count > 1 candidates to Pareto, because their route standings then decide something. SUFFICIENT FOR: either replica_count joins ServingExecutionProfile and the context distinguishes those candidates, or a cited invariance relation states that route behaviour does not depend on it and this row is retired against that relation rather than against the exclusion policy that currently hides it." as NonEmptyStr),
+)
+
+// ── THE ROUTE DECISION IS PRODUCED ONCE PER DISTINCT DEMAND, NOT ONCE PER CANDIDATE ───────────
+//
+// WHAT THIS IS AND IS NOT. `engram_route_standing` takes exactly two arguments and reads nothing else
+// about the candidate: `component_route_standing_for` passes the component subject and the route
+// context onward, and everything else the decision consults is module-level. So two candidates whose
+// (component, context) pair is equal demand the SAME PURE COMPUTATION, and producing it once is the
+// loop over the right population rather than a hoist out of the wrong one.
+//
+// THAT IS COMPUTATIONAL EQUIVALENCE AND NOT MODEL ADEQUACY, and the distinction is load-bearing. It
+// establishes that reuse preserves this function's current answer. It establishes NOTHING about
+// whether `RouteSubjectKey` carries every distinction the real serving question needs -- see
+// `route_context_replica_count_obligation`, which this reuse makes visible rather than introduces.
+//
+// THE KEY IS AN IDENTITY, NOT A RENDERING. Equality is `declaration_ref_eq` on the component and
+// `route_subject_key_eq` on the WHOLE key, consumer identity included. The context digest is how a key
+// is displayed in a diagnostic; keying reuse on that string would make the reuse depend on a rendering
+// that exists for humans.
+//
+// AND IT IS LOCAL TO THIS EVALUATION. The table is a `let` inside one call, over one field whose
+// component definitions, route field and evidence values are all fixed for its lifetime. Anything that
+// survived those values would have to represent their identities and retention, which is a
+// materialisation-provider question and not this one. DESIGN section 2 is explicit that authored
+// duplication with a shared-state ancestor is rewired rather than cached, and this is the rewire.
+type ResolvedRouteDemand sole_constructor {
+  component: DeclarationRef
+  context: RouteSubjectKey
+  standing: ComponentRouteStanding
+}
+
+fn route_demand_matches(d: ResolvedRouteDemand, component: DeclarationRef, context: RouteSubjectKey) -> Bool {
+  declaration_ref_eq(a: d.component, b: component) && route_subject_key_eq(a: d.context, b: context)
+}
+
+fn resolved_route_demands(field: ServingDeploymentCandidateField) -> List<ResolvedRouteDemand> {
+  fold(field.candidates, init: [], f: (acc, k) =>
+    fold(k.artifact.components, init: acc, f: (inner, cp) =>
+      route_demand_accumulate(acc: inner, cp: cp, c: k)))
+}
+
+fn route_demand_accumulate(
+  acc: List<ResolvedRouteDemand>,
+  cp: ArtifactComponent,
+  c: DeploymentCandidate,
+) -> List<ResolvedRouteDemand> {
+  match cp.placement {
+    ComponentResident => acc
+    ComponentPlacedByRoute { component_subject: subj } => {
+      let ctx = candidate_route_context(c: c, p: c.profile)
+      if any(acc, d => route_demand_matches(d: d, component: subj, context: ctx)) {
+        acc
+      } else {
+        concat(acc, [ResolvedRouteDemand {
+          component: subj,
+          context: ctx,
+          standing: engram_route_standing(component: subj, context: ctx),
+        }])
+      }
+    }
+  }
+}
+
+// EVERY ORIGINAL CANDIDATE GETS ITS OWN ROW BACK. Sharing the PRODUCTION of a child result does not
+// authorise deduplicating the parent field: the map below is over `field.candidates`, so sixty
+// candidates return sixty `RoutedCandidate` rows, each carrying a standings list positionally aligned
+// to its own artifact's component list. The reuse is invisible above this function by construction.
+//
+// THE UNRESOLVED ARM RECOMPUTES RATHER THAN SUBSTITUTING. It is unreachable -- the table is built by
+// enumerating these same pairs -- but if it were ever reached, producing the answer is correct and
+// fabricating one is not, so there is no arm here that invents a standing.
+fn candidate_standings_from_demands(
+  c: DeploymentCandidate,
+  demands: List<ResolvedRouteDemand>,
+) -> List<ComponentRouteStanding> {
+  map(c.artifact.components, cp => match cp.placement {
+    ComponentResident => ComponentRouteNotThisSubject
+    ComponentPlacedByRoute { component_subject: subj } =>
+      resolved_standing_for(demands: demands, component: subj, context: candidate_route_context(c: c, p: c.profile))
+  })
+}
+
+fn resolved_standing_for(
+  demands: List<ResolvedRouteDemand>,
+  component: DeclarationRef,
+  context: RouteSubjectKey,
+) -> ComponentRouteStanding {
+  match (filter(demands, d => route_demand_matches(d: d, component: component, context: context))).first() {
+    Present { value: d } => d.standing
+    Absent => engram_route_standing(component: component, context: context)
+  }
+}
+
 fn routed_candidates(field: ServingDeploymentCandidateField) -> List<RoutedCandidate> {
+  let demands = resolved_route_demands(field: field)
   map(field.candidates, k => RoutedCandidate {
     candidate: k,
-    route_standings: candidate_component_route_standings(c: k, p: k.profile),
+    route_standings: candidate_standings_from_demands(c: k, demands: demands),
   })
 }
 

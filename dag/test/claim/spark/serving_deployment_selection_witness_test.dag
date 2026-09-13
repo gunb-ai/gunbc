@@ -76,6 +76,7 @@ import gunbc.spark.serving_deployment_selection {
   footprint_bytes, component_route_reading,
   route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
   candidate_route_context, CandidateComponentRoutes,
+  routed_candidates, resolved_route_demands, ResolvedRouteDemand,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -938,6 +939,7 @@ data v4_1_expected_frontier_subjects: List<String> = [
   "engram_standing",
   "component_route_gap_over",
   "spark_fleet_snapshot",
+  "execution_profile_of",
 ]
 
 fn v4_1_frontier_subject_key(decl_name: String) -> String {
@@ -1113,6 +1115,31 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
     CandidateStandingIncomplete { candidate: _, cause: _ } => []
     SubjectClosureIncomplete { subject: _, obligation: _ } => []
   })
+}
+
+// ── SHARING THE PRODUCTION DOES NOT DEDUPLICATE THE FIELD ─────────────────────────────────────
+//
+// The route decision is now produced once per distinct (component, context) pair rather than once per
+// candidate. The failure mode that would make that a semantics change rather than a cost change is
+// collapsing the PARENT population along with the child production -- returning one row for candidates
+// that shared a demand, or dropping a candidate's own wrapper. So this asserts the population survives
+// by identity: every candidate comes back, exactly once, with a standings list positionally aligned to
+// its own artifact's component list.
+//
+// It also asserts the reduction actually HAPPENED -- strictly fewer demands than candidates -- so
+// reverting to per-candidate production reds this rather than passing quietly as a slower equivalent.
+// That second half is a cost fact stated as an identity relation, not a timing.
+test fn route_production_is_shared_while_every_candidate_keeps_its_own_row() -> Bool {
+  let field = deepseek_v4_1_candidate_field
+  let routed = routed_candidates(field: field)
+  let demands = resolved_route_demands(field: field)
+  count(routed) == count(field.candidates)
+    && all(field.candidates, k =>
+         count(filter(routed, rc => declaration_ref_eq(a: rc.candidate.identity, b: k.identity))) == 1)
+    && all(routed, rc => count(rc.route_standings) == count(rc.candidate.artifact.components))
+    && count(demands) > 0
+    && count(demands) < count(field.candidates)
+    && all(demands, d => declaration_ref_eq(a: d.component, b: engram_component_identity))
 }
 
 // ── THE PRODUCT ROOT: ONE LIVE CALL, BOTH ROUTE FACTS ─────────────────────────────────────────
