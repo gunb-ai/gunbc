@@ -331,6 +331,19 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
   )
 }
 
+// A CHASSIS IS A COMPONENT OF THE ACQUISITION AND A CONTAINER OF THE HOST, AND THAT IS NOT A
+// CONTRADICTION ONCE BOTH EDGES ARE ADMITTED. srv_assembly_components lists each chassis as a
+// component - correctly, because it was purchased and belongs in the acquisition roster - while
+// the containment graph records ChassisContainsHost, because a chassis physically contains the
+// host board rather than sitting inside it.
+//
+// The row fold below used to demand a HostContainsComponent edge for every non-cooler component,
+// which a chassis can never have. The failure was not a missing row: AUTHORING ONE WOULD HAVE
+// ASSERTED SOMETHING FALSE, that the host contains its own enclosure. So the fold now accepts
+// EITHER direction, and a chassis discharges through the edge it actually has.
+//
+// The cooler arm is different and stays different: a cooler is exempt because no containment edge
+// is modeled for it at all, not because its edge points the other way.
 fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
   containment_has_chassis(containments: containments, chassis: chassis_srv1, host: operator_host_srv1)
     && containment_has_chassis(containments: containments, chassis: chassis_srv2, host: operator_host_srv2)
@@ -340,6 +353,7 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
       acc && (
         is_cooler_asset(id: row.component)
           || containment_has_component(containments: containments, host: row.host, component: row.component)
+          || containment_has_chassis(containments: containments, chassis: row.component, host: row.host)
       )
     })
     && fold(containments, init: true, f: fn(acc, c) {

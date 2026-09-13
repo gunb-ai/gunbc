@@ -11,6 +11,8 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import gunbc.fleet_host_assembly {
+  chassis_srv1,
+  chassis_srv2,
   srv_assembly_components,
   srv_assembly_containments,
   board_srv1,
@@ -23,6 +25,7 @@ import gunbc.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -47,6 +50,36 @@ test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
       Absent => false
       Present { value: c } => first_containment_is_chassis(c: c)
     }
+}
+
+// THE CHASSIS EDGE MUST BE THE RIGHT EDGE, not merely present, and this control has to vary ONE
+// THING to say so. An earlier version replaced the whole containment graph with four chassis
+// edges - which also deleted every board and component edge, so its refusal could have come from
+// those absences rather than from the wrong host. A negative that changes several things at once
+// isolates none of them, and reads as evidence anyway.
+//
+// So the negative graph is DERIVED FROM THE REAL ONE: every containment is kept except srv1's
+// chassis edge, which is re-pointed at srv2's host. One edge differs; everything else is
+// identical; the refusal can only be about that edge.
+fn containment_is_srv1_chassis_edge(c: PhysicalContainment) -> Bool {
+  match c {
+    ChassisContainsHost { chassis: ch, host: h } => physical_asset_identity_eq(a: ch, b: chassis_srv1)
+    SiteContainsRoom { site: s, room: r } => false
+    RoomContainsRack { room: r, rack: k } => false
+    RackContainsPlacement { rack: k, asset: a } => false
+    HostContainsComponent { host: h, component: comp } => false
+  }
+}
+
+data srv_containments_with_srv1_chassis_mishosted: List<PhysicalContainment> = srv_assembly_containments.filter(c => !containment_is_srv1_chassis_edge(c: c)).append(ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 })
+
+test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
+  assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+    && !assembly_containments_join(
+      rows: srv_assembly_components,
+      containments: srv_containments_with_srv1_chassis_mishosted
+    )
+    && srv_containments_with_srv1_chassis_mishosted.length() == srv_assembly_containments.length()
 }
 
 test fn w_omitting_a_rostered_component_refuses_cover() -> Bool {
