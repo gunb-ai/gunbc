@@ -61,6 +61,9 @@ fn provider_route_eq(a: ProviderRoute, b: ProviderRoute) -> Bool {
 // cannot independently edit it. A ProviderRoute is minted ONLY in the read arm: there is no
 // value of ProviderRegionObservation that yields a route with an unobserved region.
 //
+// NOT A MEMBER: gunbc.spark.serving_offer SparkServingRoute. The reason it is not this coproduct
+// is stated at that type's declaration (DESIGN section 3b: diverges with a stated reason).
+//
 // OBLIGATION IS DeclarationRef, NOT NonEmptyStr. That is the grain ProviderPathUnread already
 // uses, so a refusal can locate the named row. Ubicloud's first instance carried the sentence
 // itself; the coincidence is the reason that form is retired rather than kept as a stated
