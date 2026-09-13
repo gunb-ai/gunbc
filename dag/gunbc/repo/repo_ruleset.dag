@@ -1647,7 +1647,7 @@ fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
   read_refusal_of_outcome(outcome: r.outcome)
 }
 
-func converge() -> ProcessExit {
+fn converge() -> ProcessExit {
   let before = passing_ci_ruleset_observation()
   match repo_ruleset_ensure_decision(observed: before) {
     Noop => ExitSuccess
