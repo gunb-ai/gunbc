@@ -1,0 +1,418 @@
+module test.claim.runner.runner_canary_receipt_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.identity { FabricIdentity, WorkKey }
+import product.placement_supply { HostIdentity }
+import std.measure {
+  ObservationInstant, SharedMonotonic, WallClock, CpuClock, ClockBasis,
+  nanosecond, nanosecond_count, hardware_thread_count, measure_count,
+}
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest }
+import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.runner.runner_job_initiator {
+  RunnerEvidenceSource, JobInitiatorProvenance, JobInitiatorObserved, JobInitiatorUnobserved,
+  HumanInitiated,
+}
+import gunbc.runner.runner_usage_receipt {
+  RunnerAttemptSubject, RunnerMeterObservation, RunnerMeterObserved, RunnerMeterUnobserved,
+  produce_runner_usage_receipt, RunnerUsageProduced, RunnerUsageRefused,
+  UsageMeterMissing, UsageSubjectMismatch, UsageInitiatorMissing, UsageInitiatorJobMismatch,
+  UsageVcpuCountZero, UsageClockResolutionZero, UsageClockBasisNotWall,
+  UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_measure,
+}
+import gunbc.runner.runner_teardown_receipt {
+  RunnerResourceClass,
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+  TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
+  RunnerEnvironmentInventory, RunnerResourceReading, RunnerResourcePresent,
+  RunnerResourceAbsent, RunnerResourceUnreadable, RunnerEnvironmentReadback,
+  RunnerEnvironmentObservation, RunnerEnvironmentObserved, RunnerEnvironmentUnobserved,
+  RunnerTeardownRequest, RunnerTeardownResult, RunnerTeardownProduced, RunnerTeardownRefused,
+  TeardownObservationMissing, TeardownSelfObservation, TeardownInventoryMismatch,
+  TeardownPositiveControlMissing, TeardownResourceSurvived, TeardownResourceUnreadable,
+  TeardownSubjectMismatch, TeardownObserverChanged, TeardownBootMismatch,
+  TeardownObservationOrderRefused, produce_runner_teardown_receipt,
+}
+
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq, frontier_rows_well_formed }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
+
+test fn evidence_frontier_is_well_formed() -> Bool {
+  let expected: List<FrontierSubject> = [
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "MeteredVcpuMinutes") },
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "produce_runner_usage_receipt") },
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_teardown_receipt", decl_name: "produce_runner_teardown_receipt") },
+  ]
+  let census = census_closure_frontier_rows()
+  frontier_rows_well_formed(rows: runner_canary_executed_evidence_frontier) &&
+    expected |> all(want =>
+      (runner_canary_executed_evidence_frontier |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1 &&
+      (census |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1) &&
+    runner_canary_executed_evidence_frontier |> all(row =>
+      expected |> any(want => frontier_subject_eq(a: row.subject, b: want)))
+}
+
+// Controlled inputs only. No fixture data below is a host capture, and no live receipt is minted.
+fn fixture_source() -> RunnerEvidenceSource {
+  RunnerEvidenceSource {
+    producer: decl_ref(module_path: "test.claim.runner.runner_canary_receipt_witness_test", decl_name: "fixture_source"),
+    artifact: "controlled fixture, not host evidence",
+    digest: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+  }
+}
+
+fn fixture_subject(principal: NonEmptyStr, attempt: NonEmptyStr) -> RunnerAttemptSubject<NonEmptyStr> {
+  RunnerAttemptSubject {
+    work: FabricIdentity { principal: principal, key: "fixture-work" as WorkKey },
+    host: "fixture-host" as HostIdentity,
+    boot_id: "fixture-boot",
+    attempt: attempt as AttemptIdentity,
+  }
+}
+
+fn fixture_instant(ns: Nat, origin: NonEmptyStr, basis: ClockBasis) -> ObservationInstant {
+  ObservationInstant { domain: SharedMonotonic { origin: origin }, basis: basis, since_origin: nanosecond(count: ns) }
+}
+
+fn fixture_at(ns: Nat) -> ObservationInstant {
+  fixture_instant(ns: ns, origin: "fixture-boot", basis: WallClock)
+}
+
+fn fixture_initiator(subject: RunnerAttemptSubject<NonEmptyStr>) -> JobInitiatorProvenance<NonEmptyStr> {
+  JobInitiatorObserved {
+    work: subject.work, attempt: subject.attempt, class: HumanInitiated,
+    principal: "fixture-requester", evidence: fixture_source(),
+  }
+}
+
+fn fixture_meter(
+  subject: RunnerAttemptSubject<NonEmptyStr>,
+  vcpus: Nat,
+  reaped: ObservationInstant,
+  resolution: Nat,
+) -> RunnerMeterObservation<NonEmptyStr> {
+  RunnerMeterObservation {
+    subject: subject,
+    configured_vcpus: hardware_thread_count(count: vcpus),
+    capacity_acquired: fixture_at(ns: 0),
+    jailer_launched: fixture_at(ns: 10000000000),
+    vmm_reaped: reaped,
+    capacity_retired: fixture_at(ns: 60000000000),
+    clock_resolution: nanosecond(count: resolution),
+    evidence: fixture_source(),
+  }
+}
+
+test fn fractional_minutes_preserve_meter_and_exclude_staging() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4,
+      reaped: fixture_at(ns: 50125000000), resolution: 1000000) },
+    initiator: fixture_initiator(subject: subject)) {
+    RunnerUsageProduced { receipt: r } => {
+      let fraction = measure_count(m: metered_vcpu_minutes_measure(usage: r.vcpu_minutes))
+      fraction.num == 160500000000 && fraction.denom == 60000000000 &&
+      nanosecond_count(n: r.vm_elapsed) == 40125000000 &&
+      nanosecond_count(n: r.capacity_held) == 60000000000 &&
+      nanosecond_count(n: r.meter.clock_resolution) == 1000000
+    }
+    _ => false
+  }
+}
+
+test fn missing_meter_and_initiator_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let meter = fixture_meter(subject: subject, vcpus: 4, reaped: fixture_at(ns: 50000000000), resolution: 1)
+  let missing_meter = match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterUnobserved { cause: "capture absent" }, initiator: fixture_initiator(subject: subject)) {
+    RunnerUsageRefused { cause: UsageMeterMissing { cause: _ } } => true
+    _ => false
+  }
+  let missing_initiator = match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterObserved { observation: meter },
+    initiator: JobInitiatorUnobserved { cause: "no attested initiator" }) {
+    RunnerUsageRefused { cause: UsageInitiatorMissing { cause: _ } } => true
+    _ => false
+  }
+  missing_meter && missing_initiator
+}
+
+test fn different_tenant_or_attempt_cannot_supply_usage_or_initiator() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  [fixture_subject(principal: "tenant-b", attempt: "attempt-a"),
+   fixture_subject(principal: "tenant-a", attempt: "attempt-b")]
+    |> all(other => {
+      let wrong_meter = match produce_runner_usage_receipt(expected: subject,
+        reading: RunnerMeterObserved { observation: fixture_meter(subject: other, vcpus: 4,
+          reaped: fixture_at(ns: 50000000000), resolution: 1) }, initiator: fixture_initiator(subject: subject)) {
+        RunnerUsageRefused { cause: UsageSubjectMismatch } => true
+        _ => false
+      }
+      let wrong_initiator = match produce_runner_usage_receipt(expected: subject,
+        reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4,
+          reaped: fixture_at(ns: 50000000000), resolution: 1) }, initiator: fixture_initiator(subject: other)) {
+        RunnerUsageRefused { cause: UsageInitiatorJobMismatch } => true
+        _ => false
+      }
+      wrong_meter && wrong_initiator
+    })
+}
+
+test fn invalid_interval_and_cross_clock_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  ["reversed_vm", "reversed_retirement", "origin", "basis"]
+    |> all(axis => {
+      let reaped = if axis == "reversed_vm" { fixture_at(ns: 9000000000) }
+        else if axis == "reversed_retirement" { fixture_at(ns: 61000000000) }
+        else { fixture_instant(ns: 50000000000,
+          origin: if axis == "origin" { "other-boot" } else { "fixture-boot" },
+          basis: if axis == "basis" { CpuClock } else { WallClock }) }
+      match produce_runner_usage_receipt(expected: subject,
+      reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4, reaped: reaped, resolution: 1) },
+      initiator: fixture_initiator(subject: subject)) {
+      RunnerUsageRefused { cause: UsageIntervalOrderRefused { diagnostic: RunnerInstantsReversed { pair: p } } } =>
+        (axis == "reversed_vm" && (p.location as String) == "jailer_launched/vmm_reaped") ||
+        (axis == "reversed_retirement" && (p.location as String) == "vmm_reaped/capacity_retired")
+      RunnerUsageRefused { cause: UsageIntervalOrderRefused { diagnostic: RunnerInstantsIncomparable { pair: p } } } =>
+        (axis == "origin" || axis == "basis") && (p.location as String) == "jailer_launched/vmm_reaped"
+      _ => false
+      }
+    })
+}
+
+test fn zero_cpu_or_unrecorded_resolution_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let no_cpu = match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 0, reaped: fixture_at(ns: 50000000000), resolution: 1) },
+    initiator: fixture_initiator(subject: subject)) {
+    RunnerUsageRefused { cause: UsageVcpuCountZero } => true
+    _ => false
+  }
+  let no_resolution = match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4, reaped: fixture_at(ns: 50000000000), resolution: 0) },
+    initiator: fixture_initiator(subject: subject)) {
+    RunnerUsageRefused { cause: UsageClockResolutionZero } => true
+    _ => false
+  }
+  no_cpu && no_resolution
+}
+
+fn fixture_process(pid: Nat) -> ProcessIdentity {
+  ProcessIdentity { boot_id: "fixture-boot", pid: pid, start_time: "100" }
+}
+
+fn fixture_inventory(tap: NonEmptyStr) -> RunnerEnvironmentInventory {
+  RunnerEnvironmentInventory {
+    vmm: fixture_process(pid: 10), cgroup: "/attempt/cgroup", jail: "/attempt/jail",
+    jail_mount: "/attempt/jail", jit_drive: "/attempt/jit", workspace: "/attempt/work",
+    tap: tap, firewall_table: "attempt-table",
+  }
+}
+
+fn fixture_readback(value: RunnerResourceReading) -> RunnerEnvironmentReadback {
+  RunnerEnvironmentReadback {
+    vmm: value, cgroup: value, jail: value, jail_mount: value,
+    jit_drive: value, workspace: value, tap: value, firewall_table: value,
+  }
+}
+
+fn fixture_environment(
+  subject: RunnerAttemptSubject<NonEmptyStr>, observer: ProcessIdentity,
+  inventory: RunnerEnvironmentInventory, at: ObservationInstant,
+  readback: RunnerEnvironmentReadback,
+) -> RunnerEnvironmentObservation<NonEmptyStr> {
+  RunnerEnvironmentObservation {
+    subject: subject, observer: observer, inventory: inventory, at: at,
+    readback: readback, evidence: fixture_source(),
+  }
+}
+
+fn fixture_teardown(after: RunnerEnvironmentReadback, before: RunnerEnvironmentReadback, observer: Nat) -> RunnerTeardownResult<NonEmptyStr> {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let inventory = fixture_inventory(tap: "tap-a")
+  produce_runner_teardown_receipt(
+    request: RunnerTeardownRequest { subject: subject, inventory: inventory, destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) },
+    before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: observer),
+      inventory: inventory, at: fixture_at(ns: 10), readback: before) },
+    after: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: observer),
+      inventory: inventory, at: fixture_at(ns: 30), readback: after) })
+}
+
+test fn independent_present_then_absent_is_accepted() -> Bool {
+  match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
+    RunnerTeardownProduced { receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn destroyer_cannot_attest_its_own_teardown() -> Bool {
+  match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourcePresent), observer: 20) {
+    RunnerTeardownRefused { cause: TeardownSelfObservation } => true
+    _ => false
+  }
+}
+
+test fn vmm_cannot_observe_its_own_teardown() -> Bool {
+  match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent),
+    before: fixture_readback(value: RunnerResourcePresent), observer: 10) {
+    RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment } => true
+    _ => false
+  }
+}
+
+test fn changing_observation_instrument_refuses() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let inventory = fixture_inventory(tap: "tap-a")
+  let source = fixture_source()
+  let after = RunnerEnvironmentObservation {
+    subject: subject, observer: fixture_process(pid: 30), inventory: inventory,
+    at: fixture_at(ns: 30), readback: fixture_readback(value: RunnerResourceAbsent),
+    evidence: RunnerEvidenceSource {
+      producer: decl_ref(module_path: "test.claim.runner.runner_canary_receipt_witness_test", decl_name: "changing_observation_instrument_refuses"),
+      artifact: source.artifact, digest: source.digest,
+    },
+  }
+  match produce_runner_teardown_receipt(
+    request: RunnerTeardownRequest { subject: subject, inventory: inventory,
+      destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) },
+    before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+      observer: fixture_process(pid: 30), inventory: inventory, at: fixture_at(ns: 10),
+      readback: fixture_readback(value: RunnerResourcePresent)) },
+    after: RunnerEnvironmentObserved { observation: after }) {
+    RunnerTeardownRefused { cause: TeardownInstrumentChanged } => true
+    _ => false
+  }
+}
+
+test fn cross_boot_processes_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let original = fixture_inventory(tap: "tap-a")
+  ["vmm", "destroyer", "observer"] |> all(axis => {
+    let inventory = RunnerEnvironmentInventory {
+      vmm: ProcessIdentity { boot_id: if axis == "vmm" { "other-boot" } else { "fixture-boot" }, pid: 10, start_time: "100" },
+      cgroup: original.cgroup, jail: original.jail, jail_mount: original.jail_mount,
+      jit_drive: original.jit_drive, workspace: original.workspace,
+      tap: original.tap, firewall_table: original.firewall_table,
+    }
+    let destroyer = ProcessIdentity {
+      boot_id: if axis == "destroyer" { "other-boot" } else { "fixture-boot" }, pid: 20, start_time: "100",
+    }
+    let observer = ProcessIdentity {
+      boot_id: if axis == "observer" { "other-boot" } else { "fixture-boot" }, pid: 30, start_time: "100",
+    }
+    match produce_runner_teardown_receipt(
+      request: RunnerTeardownRequest { subject: subject, inventory: inventory,
+        destroyer: destroyer, issued_at: fixture_at(ns: 20) },
+      before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+        observer: observer, inventory: inventory, at: fixture_at(ns: 10),
+        readback: fixture_readback(value: RunnerResourcePresent)) },
+      after: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+        observer: observer, inventory: inventory, at: fixture_at(ns: 30),
+        readback: fixture_readback(value: RunnerResourceAbsent)) }) {
+      RunnerTeardownRefused { cause: TeardownBootMismatch } => true
+      _ => false
+    }
+  })
+}
+
+test fn an_always_absent_instrument_refuses() -> Bool {
+  match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourceAbsent), observer: 30) {
+    RunnerTeardownRefused { cause: TeardownPositiveControlMissing { resource: _ } } => true
+    _ => false
+  }
+}
+
+// Each single surviving resource must independently make an otherwise-clean observation red.
+fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceReading) -> RunnerEnvironmentReadback {
+  RunnerEnvironmentReadback {
+    vmm: if resource == RunnerVmm { value } else { RunnerResourceAbsent },
+    cgroup: if resource == RunnerCgroup { value } else { RunnerResourceAbsent },
+    jail: if resource == RunnerJail { value } else { RunnerResourceAbsent },
+    jail_mount: if resource == RunnerJailMount { value } else { RunnerResourceAbsent },
+    jit_drive: if resource == RunnerJitDrive { value } else { RunnerResourceAbsent },
+    workspace: if resource == RunnerWorkspace { value } else { RunnerResourceAbsent },
+    tap: if resource == RunnerTap { value } else { RunnerResourceAbsent },
+    firewall_table: if resource == RunnerFirewallTable { value } else { RunnerResourceAbsent },
+  }
+}
+
+// Independent controlled-fixture population: do not derive this from the production roster.
+// Omitting a production class must leave its fixture here and expose the surviving resource.
+test fn every_residue_and_unreadable_resource_refuses() -> Bool {
+  [RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive,
+   RunnerWorkspace, RunnerTap, RunnerFirewallTable]
+    |> all(resource => {
+      let survived = match fixture_teardown(after: fixture_single_residue(resource: resource, value: RunnerResourcePresent),
+        before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
+        RunnerTeardownRefused { cause: TeardownResourceSurvived { resource: r } } => r == resource
+        _ => false
+      }
+      let unreadable = match fixture_teardown(after: fixture_single_residue(resource: resource, value: RunnerResourceUnreadable { cause: "read denied" }),
+        before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
+        RunnerTeardownRefused { cause: TeardownResourceUnreadable { resource: r, cause: _ } } => r == resource
+        _ => false
+      }
+      survived && unreadable
+    })
+}
+
+test fn missing_observer_receipt_is_detectable() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let inventory = fixture_inventory(tap: "tap-a")
+  let present = RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),
+    inventory: inventory, at: fixture_at(ns: 10), readback: fixture_readback(value: RunnerResourcePresent)) }
+  let missing = RunnerEnvironmentUnobserved { cause: "observer output absent" }
+  let request = RunnerTeardownRequest { subject: subject, inventory: inventory, destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) }
+  let before_missing = match produce_runner_teardown_receipt(request: request, before: missing, after: present) {
+    RunnerTeardownRefused { cause: TeardownObservationMissing { cause: _ } } => true
+    _ => false
+  }
+  let after_missing = match produce_runner_teardown_receipt(request: request, before: present, after: missing) {
+    RunnerTeardownRefused { cause: TeardownObservationMissing { cause: _ } } => true
+    _ => false
+  }
+  before_missing && after_missing
+}
+
+test fn stale_or_wrong_teardown_subjects_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let inventory = fixture_inventory(tap: "tap-a")
+  let before = RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),
+    inventory: inventory, at: fixture_at(ns: 10), readback: fixture_readback(value: RunnerResourcePresent)) }
+  let request = RunnerTeardownRequest { subject: subject, inventory: inventory, destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) }
+  ["subject", "inventory", "observer", "clock", "order"] |> all(axis => {
+    let after = RunnerEnvironmentObserved { observation: fixture_environment(
+      subject: if axis == "subject" { fixture_subject(principal: "tenant-b", attempt: "attempt-a") } else { subject },
+      observer: fixture_process(pid: if axis == "observer" { 31 } else { 30 }),
+      inventory: if axis == "inventory" { fixture_inventory(tap: "tap-b") } else { inventory },
+      at: if axis == "clock" { fixture_instant(ns: 30, origin: "other-boot", basis: WallClock) }
+        else { fixture_at(ns: if axis == "order" { 19 } else { 30 }) },
+      readback: fixture_readback(value: RunnerResourceAbsent)) }
+    match produce_runner_teardown_receipt(request: request, before: before, after: after) {
+      RunnerTeardownRefused { cause: TeardownSubjectMismatch } => axis == "subject"
+      RunnerTeardownRefused { cause: TeardownInventoryMismatch } => axis == "inventory"
+      RunnerTeardownRefused { cause: TeardownObserverChanged } => axis == "observer"
+      RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: RunnerInstantsIncomparable { pair: p } } } =>
+        axis == "clock" && (p.location as String) == "issued_at/after"
+      RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: RunnerInstantsReversed { pair: p } } } =>
+        axis == "order" && (p.location as String) == "issued_at/after"
+      _ => false
+    }
+  })
+}
+
+fn main() -> Bool {
+  vmm_cannot_observe_its_own_teardown() && changing_observation_instrument_refuses() &&
+  cross_boot_processes_refuse() && evidence_frontier_is_well_formed() &&
+  fractional_minutes_preserve_meter_and_exclude_staging() &&
+  missing_meter_and_initiator_refuse() &&
+  different_tenant_or_attempt_cannot_supply_usage_or_initiator() &&
+  invalid_interval_and_cross_clock_refuse() && zero_cpu_or_unrecorded_resolution_refuse() &&
+  independent_present_then_absent_is_accepted() && destroyer_cannot_attest_its_own_teardown() &&
+  an_always_absent_instrument_refuses() && every_residue_and_unreadable_resource_refuses() &&
+  missing_observer_receipt_is_detectable() && stale_or_wrong_teardown_subjects_refuse()
+}

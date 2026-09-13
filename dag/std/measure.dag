@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
+import std.algebra { FieldOfFractions }
 import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
@@ -28,6 +29,7 @@ type Quantity =
   | DataRate
   | Frequency
   | Count
+  | HardwareThreadTime
   | Currency
 
   | Power
@@ -343,6 +345,12 @@ type Hertz = Measure<Frequency, One, Nat>
 type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
 
 type HardwareThreadCount = Measure<Count, One, Nat>
+
+// Allocated hardware-thread count times elapsed time, distinct from unweighted Time and CPU
+// utilization. Like Energy and Area, this is a named derived quantity, not generic product algebra.
+// The runner's launch-to-reap metering policy selects the interval; the measure owns its dimension.
+// Sixty uses the same ISO 8601 seconds-per-minute scale as Minute. Fractional counts remain exact.
+type HardwareThreadMinute = Measure<HardwareThreadTime, Sixty, FieldOfFractions<Nat>>
 
 // A PHYSICAL core is not a hardware thread, and the two must not share a carrier: on an SMT part
 // the same package reports 6 cores and 12 threads, so one alias standing for both would be a
