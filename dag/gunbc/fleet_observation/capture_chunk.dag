@@ -362,10 +362,15 @@ fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> C
 // A GAP IS THE INTERVAL BETWEEN TWO POSITIONS, and its extent is their difference rather than a
 // hand-rolled subtraction. Positions that cannot be differenced yield a zero-length gap at the origin
 // position rather than a fabricated span, because there is no interval to report between two streams.
-fn gap_between(from: StreamPosition, to: StreamPosition) -> SourceStreamRange {
+// A GAP IS THE INTERVAL BETWEEN TWO POSITIONS, AND IT REFUSES RATHER THAN FABRICATING ONE. An earlier
+// version answered a zero-length range when position_difference was Absent, which made three different
+// situations one value: a genuine empty gap, a reversed pair, and two positions in different streams
+// with no interval between them at all. Absent means there is no interval to report, so there is no
+// range to return.
+fn gap_between(from: StreamPosition, to: StreamPosition) -> SourceStreamRange? {
   match position_difference(later: to, earlier: from) {
-    Present { value: extent } => SourceStreamRange { first: from, length: extent }
-    Absent => SourceStreamRange { first: from, length: byte_size(count: 0) }
+    Present { value: extent } => Present { value: SourceStreamRange { first: from, length: extent } }
+    Absent => Absent
   }
 }
 
@@ -458,6 +463,7 @@ type ContinuityDerivation
   | RunCrossesSubjects { expected: SourceStreamId, chunk: SourceStreamId }
   | RunOutOfReceiveOrder { previous: Nat, observed: Nat }
   | RunRangesOverlapOrReverse { verified_through: StreamPosition, chunk: SourceStreamRange }
+  | RunPositionsIncomparable { left: SourceStreamId, right: SourceStreamId }
 
 fn continuity_from_committed_chunks(
   committed: List<CommittedChunk>,
@@ -473,11 +479,11 @@ fn continuity_from_committed_chunks(
       if !source_stream_eq(a: head.chunk.source, b: subject) {
         RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
       } else if !position_at_or_before(a: head.chunk.range.first, b: from) {
-        DerivedContinuity {
-          continuity: ContinuityGap {
-            gap: gap_between(from: from, to: head.chunk.range.first)
-            cause: GapCauseUnattributed
-          }
+        match gap_between(from: from, to: head.chunk.range.first) {
+          Present { value: gap } =>
+            DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
+          Absent =>
+            RunPositionsIncomparable { left: from.stream, right: head.chunk.range.first.stream }
         }
       } else {
         continuity_walk(
@@ -547,11 +553,11 @@ fn continuity_walk(
       } else if !position_at_or_before(a: verified_through, b: head.chunk.range.first) {
         RunRangesOverlapOrReverse { verified_through: verified_through, chunk: head.chunk.range }
       } else if !position_at_or_before(a: head.chunk.range.first, b: verified_through) {
-        DerivedContinuity {
-          continuity: ContinuityGap {
-            gap: gap_between(from: verified_through, to: head.chunk.range.first)
-            cause: GapCauseUnattributed
-          }
+        match gap_between(from: verified_through, to: head.chunk.range.first) {
+          Present { value: gap } =>
+            DerivedContinuity { continuity: ContinuityGap { gap: gap, cause: GapCauseUnattributed } }
+          Absent =>
+            RunPositionsIncomparable { left: verified_through.stream, right: head.chunk.range.first.stream }
         }
       } else {
         continuity_walk(
@@ -572,10 +578,17 @@ fn continuity_walk(
 // value -- three reads that each threw away the standing and one that rebuilt a figure from it. A
 // Bool cannot carry why, so every caller had to re-open the carrier; this returns the answer and its
 // cause together (review 64871).
+// ContinuityPositionsIncomparable EXISTS BECAUSE THE Bool PROJECTION MADE A FALSE ORDER CLAIM. This
+// fold asked position_at_or_before, so PositionIncomparable collapsed into `false` and the answer came
+// back ContinuityShortOfRange -- "continuity is verified only as far as X, short of Y", which asserts
+// an ORDER between two positions that have none. Saying a stream is short of a mark in another stream
+// is worse than saying nothing, because it is a positive, plausible, actionable claim. It is the class
+// this branch filed, in the position code the branch added to fix a different instance of it.
 type ContinuityCoverage
   = ContinuityCoversRange
   | ContinuityNotEstablished { continuity: StreamContinuity }
   | ContinuityShortOfRange { verified_through: StreamPosition, requested_end: StreamPosition }
+  | ContinuityPositionsIncomparable { left: SourceStreamId, right: SourceStreamId }
 
 fn continuity_covers(continuity: StreamContinuity, through: StreamPosition) -> ContinuityCoverage {
   match continuity {
@@ -584,10 +597,13 @@ fn continuity_covers(continuity: StreamContinuity, through: StreamPosition) -> C
     ContinuityUnknown { detail: detail } =>
       ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
     ContinuityEstablished { reach: reach } =>
-      if position_at_or_before(a: through, b: reach.verified_through) {
-        ContinuityCoversRange
-      } else {
-        ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
+      match compare_positions(a: through, b: reach.verified_through) {
+        PositionBefore => ContinuityCoversRange
+        PositionSame => ContinuityCoversRange
+        PositionAfter =>
+          ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
+        PositionIncomparable { left: left, right: right } =>
+          ContinuityPositionsIncomparable { left: left, right: right }
       }
   }
 }

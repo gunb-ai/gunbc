@@ -104,10 +104,12 @@ import gunbc.fleet_observation_capture_chunk {
   RunCrossesSubjects,
   RunOutOfReceiveOrder,
   RunRangesOverlapOrReverse,
+  RunPositionsIncomparable,
   ContinuityCoverage,
   ContinuityCoversRange,
   ContinuityNotEstablished,
   ContinuityShortOfRange,
+  ContinuityPositionsIncomparable,
   chunk_byte_count,
   CommitBinding,
   CommitAttestsThisChunk,
@@ -146,6 +148,7 @@ import gunbc.fleet_observation_observation_envelope {
   CoverageGapContinuityShortOfRange,
   CoverageGapRangeNotCovered,
   CoverageGapNotTheRecordingOwner,
+  CoverageGapPositionsIncomparable,
   CoverageGapEvidenceNamesAnotherSubject,
   SubjectAgreement,
   EvidenceNamesOneSubject,
@@ -194,6 +197,7 @@ fn t_reach(through: Nat) -> StreamContinuity {
     RunCrossesSubjects { expected: _, chunk: _ } => ContinuityUnknown { detail: "fixture run crossed subjects" }
     RunOutOfReceiveOrder { previous: _, observed: _ } => ContinuityUnknown { detail: "fixture run out of order" }
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => ContinuityUnknown { detail: "fixture run overlapped" }
+    RunPositionsIncomparable { left: _, right: _ } => ContinuityUnknown { detail: "fixture run mixed streams" }
   }
 }
 
@@ -495,6 +499,7 @@ fn continuity_covers_range(c: ContinuityCoverage) -> Bool {
     ContinuityCoversRange => true
     ContinuityNotEstablished { continuity: _ } => false
     ContinuityShortOfRange { verified_through: _, requested_end: _ } => false
+    ContinuityPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -503,6 +508,7 @@ fn continuity_falls_short(c: ContinuityCoverage) -> Bool {
     ContinuityShortOfRange { verified_through: _, requested_end: _ } => true
     ContinuityCoversRange => false
     ContinuityNotEstablished { continuity: _ } => false
+    ContinuityPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -803,6 +809,7 @@ fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -900,6 +907,7 @@ fn session_changed(d: ContinuityDerivation) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -925,6 +933,7 @@ fn lost_ownership(d: ContinuityDerivation) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -965,6 +974,7 @@ fn derived_reaches(d: ContinuityDerivation, through: Nat) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -974,6 +984,7 @@ fn derived_gapped(d: ContinuityDerivation) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -983,6 +994,7 @@ fn derived_unknown(d: ContinuityDerivation) -> Bool {
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -992,6 +1004,7 @@ fn overlaps(d: ContinuityDerivation) -> Bool {
     DerivedContinuity { continuity: _ } => false
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1001,6 +1014,7 @@ fn out_of_order(d: ContinuityDerivation) -> Bool {
     DerivedContinuity { continuity: _ } => false
     RunCrossesSubjects { expected: _, chunk: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1010,6 +1024,7 @@ fn crosses_subjects(d: ContinuityDerivation) -> Bool {
     DerivedContinuity { continuity: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+    RunPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1110,9 +1125,11 @@ fn is_silence(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1124,9 +1141,11 @@ fn is_observed(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1138,9 +1157,11 @@ fn is_not_durably_committed(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1152,9 +1173,11 @@ fn is_continuity_broken(fact: SourceByteFact) -> Bool {
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1166,9 +1189,11 @@ fn is_range_not_covered(fact: SourceByteFact) -> Bool {
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1183,6 +1208,7 @@ fn is_not_owner(fact: SourceByteFact) -> Bool {
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1196,7 +1222,9 @@ fn is_continuity_short(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1210,7 +1238,9 @@ fn is_commit_unbound(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
@@ -1225,6 +1255,7 @@ fn is_another_subject(fact: SourceByteFact) -> Bool {
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
+    CoverageGapPositionsIncomparable { left: _, right: _ } => false
   }
 }
 
