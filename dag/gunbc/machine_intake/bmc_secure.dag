@@ -271,7 +271,6 @@ type BmcSecureRefusalCause
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
   | PublishedCredentialRetainedNotAdmittedForProduction
   | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
-  | PromotionRequiresFreshBmcSecure
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
@@ -304,7 +303,6 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
     PublishedCredentialRetainedNotAdmittedForProduction => QualificationPolicy
     PublishedCredentialNotRetained { channel: _ } => OperatorAction
-    PromotionRequiresFreshBmcSecure => QualificationPolicy
   }
 }
 
@@ -331,7 +329,6 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
     PublishedCredentialRetainedNotAdmittedForProduction => "a retained BMC backdoor is not admitted for production; a fresh census pass that retires or disables the published credential is required"
     PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
-    PromotionRequiresFreshBmcSecure => "a BMC-secure standing derived for another operating environment cannot be inherited; promotion requires a fresh pass"
   }
 }
 
@@ -361,17 +358,19 @@ type BmcSecureOutcome
     }
   | BmcSecureRefused { cause: BmcSecureRefusalCause }
 
-// THE STANDING CARRIES THE SUBJECT IT WAS ADJUDICATED FOR, AND THE JOIN IS
-// SEALED. An earlier cut returned the outcome alone and had
-// bmc_secure_phase_receipt take the subject as a separate argument, so a
-// standing legitimately derived for host A could be handed to the receipt
-// function beside host B's subject and the receipt read as B's evidence that B
-// had been rotated. Nothing in the types forbade the pairing, and the ledger
-// spine does not repair it: validate_intake_receipt_ledger checks that the
-// receipts in a ledger AGREE on a subject, and a replayed receipt already bears
-// the replacement subject before validation sees it. That is the escape hatch
-// DESIGN §5 rejects outright — the refusal fold is bypassed not by defeating it
-// but by re-addressing its answer.
+// THE STANDING CARRIES THE SUBJECT AND THE QUALIFICATION POLICY IT WAS
+// ADJUDICATED UNDER, AND BOTH JOINS ARE SEALED. An earlier cut returned the
+// outcome alone and had bmc_secure_phase_receipt take the subject as a
+// separate argument, so a standing legitimately derived for host A could be
+// handed to the receipt function beside host B's subject. The same hatch
+// existed for policy: derive wrote DevelopmentAndTest and the receipt took a
+// second Production policy, restamping the digest. The receipt now reads
+// subject and policy off the standing; there is no parameter left to swap.
+// Promotion is a fresh derive_bmc_secure under Production, which refuses
+// RetainedByPolicy. There is no observed environment on the unit; the policy
+// is the declared qualification (FleetAdmissionReceipt already binds its
+// digest). A caller can still declare DevelopmentAndTest — that is the policy
+// fact, not a second knob beside the receipt.
 //
 // So the subject and the outcome are ONE record and the record is
 // sole_constructor: derive_bmc_secure is its only mint, and the receipt
@@ -400,7 +399,7 @@ type BmcSecureOutcome
 // the construction and not the type's usability.
 type BmcSecureStanding sole_constructor {
   subject: MachineIntakeSubject
-  environment: MachineOperatingEnvironment
+  policy: IntakeQualificationPolicy
   outcome: BmcSecureOutcome
 }
 
@@ -853,14 +852,14 @@ fn adjudicate_bootstrap(
 fn derive_bmc_secure(
   subject: MachineIntakeSubject,
   observation: BmcCredentialRotationObservation,
-  environment: MachineOperatingEnvironment,
+  policy: IntakeQualificationPolicy,
 ) -> BmcSecureStanding {
   let outcome = if same_intake_subject(left: subject, right: observation.subject) == false {
     BmcSecureRefused { cause: RotationObservationForOtherAttempt { expected: subject, found: observation.subject } }
   } else {
-    adjudicate_bootstrap(observation: observation, environment: environment)
+    adjudicate_bootstrap(observation: observation, environment: policy.environment)
   }
-  BmcSecureStanding { subject: subject, environment: environment, outcome: outcome }
+  BmcSecureStanding { subject: subject, policy: policy, outcome: outcome }
 }
 
 fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> ContentHash {
@@ -870,47 +869,26 @@ fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> Cont
   }
 }
 
-fn bmc_secure_promotion_refusal(
-  standing: BmcSecureStanding,
-  environment: MachineOperatingEnvironment,
-) -> BmcSecureRefusalCause? {
-  if machine_operating_environment_eq(left: standing.environment, right: environment) {
-    none
-  } else {
-    Present { value: PromotionRequiresFreshBmcSecure }
-  }
-}
-
 data bmc_secure_phase: IntakePhase = Arrival { phase: BmcSecure }
 
-fn bmc_secure_receipt_result(standing: BmcSecureStanding, policy: IntakeQualificationPolicy) -> IntakeReceiptResult {
-  match bmc_secure_promotion_refusal(standing: standing, environment: policy.environment) {
-    Present { value: c } =>
+fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult {
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => ReceiptSatisfied
+    BmcSecureRefused { cause: c } =>
       ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
-    Absent =>
-      match standing.outcome {
-        BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => ReceiptSatisfied
-        BmcSecureRefused { cause: c } =>
-          ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
-      }
   }
 }
 
-fn bmc_secure_receipt_observations(standing: BmcSecureStanding, policy: IntakeQualificationPolicy) -> List<EvidenceRef> {
-  match bmc_secure_promotion_refusal(standing: standing, environment: policy.environment) {
-    Present { value: _ } => []
-    Absent =>
-      match standing.outcome {
-        BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } => e
-        BmcSecureRefused { cause: _ } => []
-      }
+fn bmc_secure_receipt_observations(standing: BmcSecureStanding) -> List<EvidenceRef> {
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } => e
+    BmcSecureRefused { cause: _ } => []
   }
 }
 
 fn bmc_secure_phase_receipt(
   standing: BmcSecureStanding,
   producer: IntakeProducerIdentity,
-  policy: IntakeQualificationPolicy,
   started_at: EpochMs,
   ended_at: EpochMs,
   previous_receipt: ContentHash?,
@@ -920,11 +898,11 @@ fn bmc_secure_phase_receipt(
     subject: standing.subject,
     phase: bmc_secure_phase,
     producer: producer,
-    policy_digest: intake_qualification_policy_digest(policy: policy),
+    policy_digest: intake_qualification_policy_digest(policy: standing.policy),
     started_at: started_at,
     ended_at: ended_at,
-    observations: bmc_secure_receipt_observations(standing: standing, policy: policy),
-    result: bmc_secure_receipt_result(standing: standing, policy: policy),
+    observations: bmc_secure_receipt_observations(standing: standing),
+    result: bmc_secure_receipt_result(standing: standing),
     previous_receipt: previous_receipt,
   }
 }
@@ -939,5 +917,5 @@ fn bmc_secure_phase_receipt(
 // derive_bmc_secure, via a later change that authors the subject and the
 // observation together.
 data mtcollins1_bmc_secure_standing_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a MachineIntakeSubject for Mt. Collins unit 1 exists on the public path and derive_bmc_secure is called with a channel-census observation whose evidence refs the committed redacted receipt artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, minting BmcSecureStanding together with SecretRef bmc-mtcollins1-gunbc; NOT satisfied by this fold typechecking, by the witness suite, or by a SecretRef row alone" as NonEmptyStr,
+  description: "dissolves when a MachineIntakeSubject for Mt. Collins unit 1 exists on the public path and derive_bmc_secure mints a BmcSecureStanding for that subject from a channel-census observation together with SecretRef bmc-mtcollins1-gunbc; evidence for that observation must be a git-tracked path already under artifacts/bmc/ at mint time (the 2026-09-13 user3-route filename is not in the tree and is not a trigger); NOT satisfied by this fold typechecking, by the witness suite, or by a SecretRef row alone" as NonEmptyStr,
 )

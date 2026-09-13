@@ -29,6 +29,7 @@ import gunbc.machine_intake_subject {
   MachineIntakeSubject,
   QualificationSubject,
   UnitKey,
+  content_hash_equal,
   qualification_subject_of,
 }
 import gunbc.machine_intake_phase {
@@ -53,6 +54,7 @@ import gunbc.machine_intake_receipt {
   IntakeReceiptEnvelope,
   IntakeReceiptResult,
   LedgerRefused,
+  LedgerPolicyDigestChanged,
   LedgerSubjectMismatch,
   LedgerValidated,
   MachineIntakeReceiptV1,
@@ -113,7 +115,6 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialRetainedNotAdmittedForProduction,
   PublishedCredentialNotRetained,
   PublishedCredentialStillAccepted,
-  PromotionRequiresFreshBmcSecure,
   BreakGlassAccount,
   PublishedFactoryCredential,
   FirmwareResetRestoresPublishedAccount,
@@ -304,7 +305,7 @@ fn both_lan_accepting() -> List<PublishedCredentialLanProbe> {
 }
 
 fn derive_dev(observation: BmcCredentialRotationObservation) -> BmcSecureStanding {
-  derive_bmc_secure(subject: intake_subject, observation: observation, environment: DevelopmentAndTest)
+  derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: DevelopmentAndTest))
 }
 
 // One rotation observation. Every test below perturbs exactly one reading.
@@ -666,7 +667,7 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_retired,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
   is_secured(standing: standing)
 }
@@ -685,7 +686,7 @@ test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_retired,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
   is_secured(standing: standing)
 }
@@ -722,7 +723,7 @@ test fn disabled_not_retired_is_a_secured_residual() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_disabled,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
   match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
@@ -745,7 +746,7 @@ test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
       probes: both_lan_rejecting(),
       account: published_account_disabled_reenable,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
   match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
@@ -786,7 +787,7 @@ test fn retained_credential_refuses_under_production() -> Bool {
     account: published_account_break_glass,
   )
   refused_with(
-    standing: derive_bmc_secure(subject: intake_subject, observation: observation, environment: Production),
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: Production)),
     expected: PublishedCredentialRetainedNotAdmittedForProduction,
   )
 }
@@ -823,7 +824,7 @@ test fn published_factory_retention_refuses_under_production() -> Bool {
     account: published_account_factory_retained,
   )
   refused_with(
-    standing: derive_bmc_secure(subject: intake_subject, observation: observation, environment: Production),
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation, policy: intake_qualification_policy(environment: Production)),
     expected: PublishedCredentialRetainedNotAdmittedForProduction,
   )
 }
@@ -1031,7 +1032,6 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialProbeUnmatched { channel: channel_eight },
   PublishedCredentialRetainedNotAdmittedForProduction,
   PublishedCredentialNotRetained { channel: channel_eight },
-  PromotionRequiresFreshBmcSecure,
 ]
 
 // WHAT THIS ROSTER IS, AND WHAT IT IS NOT. `every_refusal_cause` is a
@@ -1072,7 +1072,6 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialProbeUnmatched { channel: _ } => 18
     PublishedCredentialRetainedNotAdmittedForProduction => 19
     PublishedCredentialNotRetained { channel: _ } => 20
-    PromotionRequiresFreshBmcSecure => 21
   }
 }
 
@@ -1173,25 +1172,20 @@ fn chain(receipts: List<IntakeReceiptEnvelope>) -> List<IntakeReceiptEnvelope> {
 
 // Every required phase satisfied, except that the BmcSecure row is whatever
 // bmc_secure_phase_receipt derived from the supplied rotation observation.
-fn ledger_with_bmc_secure_policy(standing: BmcSecureStanding, policy: IntakeQualificationPolicy) -> List<IntakeReceiptEnvelope> {
+fn ledger_with_bmc_secure(standing: BmcSecureStanding) -> List<IntakeReceiptEnvelope> {
   let receipt = bmc_secure_phase_receipt(
     standing: standing,
     producer: producer,
-    policy: policy,
     started_at: 1788000000000,
     ended_at: 1788000001000,
     previous_receipt: none,
   )
-  let digest = intake_qualification_policy_digest(policy: policy)
+  let digest = intake_qualification_policy_digest(policy: standing.policy)
   fold(
     fleet_admission_required_phases,
     init: [],
     f: (acc, p) => if (p == bmc_secure_phase) { concat(acc, [receipt]) } else { concat(acc, [satisfied_receipt_with(phase: p, digest: digest)]) },
   )
-}
-
-fn ledger_with_bmc_secure(standing: BmcSecureStanding) -> List<IntakeReceiptEnvelope> {
-  ledger_with_bmc_secure_policy(standing: standing, policy: policy_devtest)
 }
 
 fn disposition_with_bmc_secure(standing: BmcSecureStanding) -> MachineIntakeDisposition? {
@@ -1260,7 +1254,7 @@ test fn rotated_bmc_admits_the_unit() -> Bool {
 // durable spine can tell which rotation secured the unit without this module.
 test fn phase_receipt_projects_the_standing() -> Bool {
   let secured = derive_dev(observation: nominal_rotation())
-  let good = bmc_secure_phase_receipt(standing: secured, producer: producer, policy: policy_devtest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let good = bmc_secure_phase_receipt(standing: secured, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let refused_standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -1274,9 +1268,9 @@ test fn phase_receipt_projects_the_standing() -> Bool {
     probes: split_lan_probes(),
     account: published_account_retired,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
-  let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, policy: policy_devtest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let good_ok = match good.result {
     ReceiptSatisfied => list_length(items: good.observations) == 7 && good.phase == bmc_secure_phase
     ReceiptRefused { owner: _, cause: _ } => false
@@ -1314,10 +1308,10 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
     probes: both_lan_rejecting(),
     account: published_account_retired,
     ),
-    environment: DevelopmentAndTest,
+    policy: intake_qualification_policy(environment: DevelopmentAndTest),
   )
-  let receipt_one = bmc_secure_phase_receipt(standing: standing_one, producer: producer, policy: policy_devtest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
-  let receipt_two = bmc_secure_phase_receipt(standing: standing_two, producer: producer, policy: policy_devtest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let receipt_one = bmc_secure_phase_receipt(standing: standing_one, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let receipt_two = bmc_secure_phase_receipt(standing: standing_two, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let both_secured = is_secured(standing: standing_one) && is_secured(standing: standing_two)
   let carries_own_attempt =
     (receipt_one.subject.attempt_id as NonEmptyStr) == (attempt_one as NonEmptyStr)
@@ -1332,46 +1326,33 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
   both_secured && carries_own_attempt && mixed
 }
 
-fn disposition_with_bmc_secure_policy(standing: BmcSecureStanding, policy: IntakeQualificationPolicy) -> MachineIntakeDisposition? {
-  match validate_intake_receipt_ledger(receipts: chain(receipts: ledger_with_bmc_secure_policy(standing: standing, policy: policy))) {
-    LedgerValidated { ledger: l } =>
-      Present {
-        value: derive_disposition(
-          admission: derive_fleet_admission(observed_subject: subject, ledger: l, now: 1788000100000),
-          return_window: ReturnWindowOpen { deadline: 1790000000000 },
-          evidence: [],
-        ),
-      }
-    LedgerRefused { cause: _ } => none
-  }
-}
-
 test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool {
   let standing = derive_dev(observation: nominal_rotation())
-  let receipt = bmc_secure_phase_receipt(
+  let bmc_receipt = bmc_secure_phase_receipt(
     standing: standing,
     producer: producer,
-    policy: policy_production,
     started_at: 1788000000000,
     ended_at: 1788000009000,
     previous_receipt: none,
   )
-  let receipt_ok = match receipt.result {
-    ReceiptRefused { owner: o, cause: _ } => o == QualificationPolicy
-    ReceiptSatisfied => false
+  let production_digest = intake_qualification_policy_digest(policy: policy_production)
+  let mixed = fold(
+    fleet_admission_required_phases,
+    init: [],
+    f: (acc, p) => if (p == bmc_secure_phase) { concat(acc, [bmc_receipt]) } else { concat(acc, [satisfied_receipt_with(phase: p, digest: production_digest)]) },
+  )
+  let digest_stays_devtest =
+    content_hash_equal(
+      left: bmc_receipt.policy_digest,
+      right: intake_qualification_policy_digest(policy: standing.policy),
+    )
+      && (content_hash_equal(left: bmc_receipt.policy_digest, right: production_digest) == false)
+  let ledger_refuses_restamp = match validate_intake_receipt_ledger(receipts: chain(receipts: mixed)) {
+    LedgerValidated { ledger: _ } => false
+    LedgerRefused { cause: c } => match c {
+      LedgerPolicyDigestChanged { index: _ } => true
+      _ => false
+    }
   }
-  match disposition_with_bmc_secure_policy(standing: standing, policy: policy_production) {
-    Present { value: d } =>
-      match d {
-        PartsHold { reason: r, next_action: _ } =>
-          match r {
-            QualificationUnestablished { phase: p, owner: o, cause: _ } =>
-              receipt_ok && p == bmc_secure_phase && o == QualificationPolicy && (is_secured(standing: standing) == true)
-            _ => false
-          }
-        Admitted { admission_receipt: _ } => false
-        ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
-      }
-    Absent => false
-  }
+  is_secured(standing: standing) && digest_stays_devtest && ledger_refuses_restamp
 }
