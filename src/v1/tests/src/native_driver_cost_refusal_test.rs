@@ -39,6 +39,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             receipt_admission: nanosecond(0),
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
+            relay_emit: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -67,6 +68,7 @@ fn reconciled_parent_passes() {
             receipt_admission: nanosecond(0),
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
+            relay_emit: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -156,15 +158,13 @@ fn a_child_that_has_not_exited_is_pending_not_unobserved() {
     );
 }
 
-#[test]
-fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
+fn assert_exclusive_span_order(main_rs: &str) {
     // prepare and eval are exclusive rows of ONE partition, so a preparation interval that
     // contained its module's evaluation intervals would count that work twice and inflate the
     // exclusive sum against the parent. The 6 assertions above read markers and exit shapes and
     // cannot see the endpoint move: the emitted text is identical either way except for WHERE the
     // close sits, which is exactly what this asserts. Moving the close back across the evaluation
     // loop -- the regression this file is being extended for -- reds here and nowhere else.
-    let main_rs = driver_main();
     let close = main_rs
         .match_indices("let this_prepare = span_nanos(prepare_started);")
         .map(|(i, _)| i)
@@ -189,6 +189,32 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
          eval and the two exclusive rows double-count: last close at {last_close}, evaluation opens \
          at {eval_start}; emitted:\n{main_rs}"
     );
+    // Extend this same span-order control to the newly named relay gap. The shared output
+    // site is after the refusal/accepted match, so every returning arm reaches the same count.
+    let release_close = main_rs
+        .find("module_release_nanos += span_nanos(release_started);")
+        .unwrap();
+    let relay_open = main_rs.find("let relay_started = Instant::now();").unwrap();
+    let relay_count = main_rs.find("relay_emit_executions += 1;").unwrap();
+    let relay_write = main_rs.find("eprintln!(\"[native-prepare-split]").unwrap();
+    let relay_close = main_rs
+        .find("relay_emit_nanos += span_nanos(relay_started);")
+        .unwrap();
+    let admission_open = main_rs
+        .find("let admission_started = Instant::now();")
+        .unwrap();
+    assert_eq!(
+        main_rs
+            .matches("let relay_started = Instant::now();")
+            .count(),
+        1
+    );
+    assert_eq!(main_rs.matches("relay_emit_executions += 1;").count(), 1);
+    assert!(last_close < release_close && release_close < relay_open);
+    assert!(relay_open < relay_count && relay_count < relay_write && relay_write < relay_close);
+    assert!(relay_close < admission_open);
+    assert!(main_rs.contains("relay_emit: nanosecond(native_cost_i64(relay_emit_nanos))"));
+    assert!(main_rs.contains("\"relay_emit_executions\": relay_emit_executions"));
     // The accepted arm is the only one that evaluates, so its close is the one that can drift:
     // assert it sits between inference returning and the evaluation loop rather than after it.
     let infer_close = main_rs
@@ -208,4 +234,110 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
         "the accepted arm closes preparation at {accepted_close}, after evaluation opens at \
          {eval_start}: the prepared module's evaluation is inside its preparation span"
     );
+}
+
+#[test]
+fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
+    let main_rs = driver_main();
+    assert_exclusive_span_order(&main_rs);
+    // A timer closed before formatting/output observes none of the relay's work. Keep the
+    // close spelled exactly the same and move only its position: the ordering control must red.
+    let close = "        relay_emit_nanos += span_nanos(relay_started);\n";
+    let write = "        eprintln!(\"[native-prepare-split]";
+    let missing_output_span = main_rs
+        .replace(close, "")
+        .replace(write, &format!("{close}{write}"));
+    assert!(
+        std::panic::catch_unwind(|| assert_exclusive_span_order(&missing_output_span)).is_err()
+    );
+}
+
+// Execute the emitted observer itself: constructing a guard records entry, early return drops
+// it, uncalled producers stay zero, and deleting an entry guard must turn the same assertion red.
+#[test]
+fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
+    use std::process::Command;
+    use v1_compiler::std_compiler_entry::native_driver_producer_roster;
+    use v1_compiler::v1_compiler_emit_rust::{
+        emit_native_producer_entry, emit_native_producer_runtime,
+    };
+
+    let root = std::env::temp_dir().join(format!(
+        "native-producer-observer-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("test clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).expect("scratch directory");
+    let roster = native_driver_producer_roster();
+    assert_eq!(roster.len(), 5);
+    assert!(
+        emit_native_producer_entry("unrelated.module".into(), "dag_language_model".into())
+            .is_empty()
+    );
+    let runtime = emit_native_producer_runtime();
+    for missing_guard in [false, true] {
+        let mut source = runtime.clone();
+        for (i, row) in roster.iter().enumerate() {
+            let guard = emit_native_producer_entry(
+                row.declaration.module_path.clone(),
+                row.declaration.decl_name.clone(),
+            );
+            assert!(!guard.is_empty(), "roster declaration is not observed");
+            let entry = if missing_guard && i == 0 { "" } else { &guard };
+            source.push_str(&format!(
+                "fn probe_{i}() -> bool {{\n{entry} return true; }}\n"
+            ));
+        }
+        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.1 == 0 && r.2 == 0));\n");
+        for (i, _) in roster.iter().enumerate() {
+            source.push_str(&format!(
+                "for _ in 0..{} {{ assert!(probe_{i}()); }}\n",
+                i + 2
+            ));
+        }
+        source.push_str("for (i, (_, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
+        let path = root.join("observer.rs");
+        let binary = root.join("observer");
+        std::fs::write(&path, source).expect("write emitted observer");
+        let built = Command::new("rustc")
+            .args(["--edition=2021", "-Dwarnings"])
+            .arg(&path)
+            .arg("-o")
+            .arg(&binary)
+            .output()
+            .expect("compile emitted observer");
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let executed = Command::new(&binary)
+            .output()
+            .expect("execute emitted observer");
+        assert_eq!(
+            executed.status.success(),
+            !missing_guard,
+            "{}",
+            String::from_utf8_lossy(&executed.stderr)
+        );
+    }
+    std::fs::remove_dir_all(root).expect("remove scratch directory");
+}
+
+#[test]
+fn producer_observations_are_siblings_not_exclusive_rows() {
+    let main = driver_main();
+    assert!(main.contains("\"producer_counts\": producer_counts"));
+    assert!(main.contains("Vec<NativeDriverProducerCount>"));
+    let exclusive = main
+        .split("let exclusive =")
+        .nth(1)
+        .expect("exclusive value")
+        .split("let accounting =")
+        .next()
+        .expect("exclusive construction");
+    assert!(!exclusive.contains("producer_counts"));
 }

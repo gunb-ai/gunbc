@@ -1,5 +1,7 @@
 module std.compiler_entry
 
+import std.decl_ref { DeclarationRef, decl_ref }
+
 import std.measure {
   Nanosecond,
   nanosecond,
@@ -110,6 +112,39 @@ type CompilerEntryDriver
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
 
+// REALIZATION OBSERVATIONS, not semantic call predictions. The Rust emitter instruments
+// exactly these declarations at function entry and observes elapsed time on return. The native
+// driver consumes the resulting rows in producer_counts on its existing partition receipt.
+// Roster membership is the opt-in; no environment switch and no per-module derived counts.
+// Nanos are inclusive observations inside the existing context/prepare phases, NEVER additional
+// exclusive rows. Nested producer spans overlap and must not be summed as a run-time saving.
+type NativeDriverProducer {
+  producer: String
+  declaration: DeclarationRef
+}
+
+type NativeDriverProducerCount {
+  producer: String
+  executions: Int
+  nanos: Int
+}
+
+// nanos is the checked integer count of host monotonic nanoseconds, matching the existing
+// native-prepare-split wire unit. Negative/overflowing counts and backwards clocks refuse at
+// the realization boundary rather than fabricating a zero or saturating observation.
+data native_driver_producer_roster: List<NativeDriverProducer> = [
+  NativeDriverProducer { producer: "dag_language_model", declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model") },
+  NativeDriverProducer { producer: "validate_module_roots", declaration: decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots") },
+  NativeDriverProducer { producer: "symbol_index_fill_module_roots", declaration: decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots") },
+  NativeDriverProducer { producer: "subject_resolution", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module") },
+  NativeDriverProducer { producer: "inference", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved") }
+]
+
+// relay_emit observes formatting and writing each native-prepare-split line, after release
+// and outside preparation/evaluation. Its invocation count on the partition receipt is
+// relay_emit_executions, incremented at that output operation, including refused modules.
+// Neither its duration nor its count is inferred from the universe census. It names a candidate
+// gap; whether that gap explains a run's residual is answered only by the measured partition.
 type NativeDriverExclusiveRows {
   load: Nanosecond
   universe_derivation: Nanosecond
@@ -119,6 +154,7 @@ type NativeDriverExclusiveRows {
   receipt_admission: Nanosecond
   row_serialization: Nanosecond
   module_release: Nanosecond
+  relay_emit: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -131,7 +167,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit))
 }
 
 fn native_driver_cost_account(
