@@ -1,6 +1,8 @@
 module extdeps.tax.new_jersey_sales_and_use
 
 import std.measure { PartsPerMillion, parts_per_million }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.tax.statutory_rate { StatutoryRate, EffectiveFrom, EffectiveDateUnread, statutory_rate_value }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -36,10 +38,35 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [nj_uez_rate_authority]
 }
 
-// Division of Taxation publishes 6.625 percent on and after 2018-01-01 (N.J.S.A. 54:32B-3,
+// Division of Taxation publishes 6.625 percent ON AND AFTER 2018-01-01 (N.J.S.A. 54:32B-3,
 // Rates and Boundaries page). Percent is whole points; this is that published rate at Micro
 // scale (66250 parts per million of unity).
-data nj_statewide_sales_tax_rate: PartsPerMillion = parts_per_million(count: 66250)
+//
+// THE EFFECTIVE DATE IS IN THE CARRIER, NOT THE COMMENT. It used to sit only in the prose above,
+// where it reads as current forever: nothing in a bare PartsPerMillion can tell a later reader
+// that the qualifier describes a version rather than the present. New Jersey has changed this
+// rate before - 7 percent preceded it - so the date is the discriminator and not decoration.
+data nj_statewide_sales_tax: StatutoryRate = StatutoryRate {
+  rate: parts_per_million(count: 66250),
+  effective: EffectiveFrom {
+    date: SpecificationDocumentDate { year: 2018, month: 1, day: 1 },
+    instrument: "N.J.S.A. 54:32B-3, as published on the Division of Taxation Rates and Boundaries page" as NonEmptyStr,
+  },
+}
+
+data nj_statewide_sales_tax_rate: PartsPerMillion = statutory_rate_value(r: nj_statewide_sales_tax)
 
 // Half the statewide rate under N.J.S.A. 52:27H-80, published as 3.3125 percent.
-data nj_uez_reduced_sales_tax_rate: PartsPerMillion = parts_per_million(count: 33125)
+//
+// THE EFFECTIVE DATE HERE IS UNREAD, and that is a different state from the statewide row above
+// rather than an oversight. The statute fixes this rate as half the statewide one, so it moves
+// when that moves - but the transcription did not record from which date the current figure
+// applies, and half of a dated rate is not itself dated by inference.
+data nj_uez_reduced_sales_tax: StatutoryRate = StatutoryRate {
+  rate: parts_per_million(count: 33125),
+  effective: EffectiveDateUnread {
+    obligation: "Read the date from which the 3.3125 percent Urban Enterprise Zone rate applies. N.J.S.A. 52:27H-80 fixes it as half the statewide rate, so it presumptively tracks the statewide 2018-01-01 change, but presumptively is not read - the Division's UEZ publication states it." as NonEmptyStr,
+  },
+}
+
+data nj_uez_reduced_sales_tax_rate: PartsPerMillion = statutory_rate_value(r: nj_uez_reduced_sales_tax)

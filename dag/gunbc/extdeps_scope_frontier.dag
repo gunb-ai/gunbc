@@ -505,9 +505,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ebay/marketplace_account_deletion.dag",
   "dag/extdeps/google/workspace.dag",
   "dag/extdeps/google/sheets.dag",
+  "dag/extdeps/moonshot/kimi_code.dag",
   "dag/extdeps/tax/new_jersey_sales_and_use.dag",
-  "dag/extdeps/tax/new_york_city_sales_and_use.dag",
-  "dag/extdeps/moonshot/kimi_code.dag"
+  "dag/extdeps/tax/new_york_city_sales_and_use.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
