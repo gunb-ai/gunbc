@@ -78,6 +78,9 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintContainerAdmission, ContainerAdmitted, ContainerAbsent,
   r2_mint_custody_container_intervention,
   r2_orphan_receipt_content,
+  NothingWasWritten, WriteOutcomeUnknown, VersionLandedUnverified,
+  ObserveCustodyContainer, CustodyContainerNotNeeded,
+  R2MintContainerAdmission, r2_mint_container_not_required_reason,
   r2_mint_receipt_path,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
@@ -507,6 +510,7 @@ test fn the_orphan_receipt_names_the_live_token_id() -> Bool {
       not_before: none,
     },
     cause: "THE TOKEN WAS MINTED BUT ITS VERSION WAS REFUSED: 403" as NonEmptyStr,
+    custody: NothingWasWritten,
   )
   string_contains(s: content, pattern: "token_id=3f43e1c7f8fbcfc97139cb5d9dc4e984")
     && string_contains(s: content, pattern: "stored=no")
@@ -528,6 +532,7 @@ test fn the_orphan_receipt_carries_no_secret_value() -> Bool {
       not_before: none,
     },
     cause: "refused" as NonEmptyStr,
+    custody: NothingWasWritten,
   )
   !string_contains(s: content, pattern: "SUPERSECRETTOKENVALUE")
 }
@@ -546,4 +551,62 @@ test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool {
   string_contains(s: path, pattern: "/tmp/r2-")
     && string_contains(s: path, pattern: "-object-write")
     && string_contains(s: path, pattern: "-mint-receipt.txt")
+}
+
+// ── THE RECEIPT MAY NOT REPORT A CERTAINTY THE RUN DOES NOT HAVE ──────────────────────────────
+// Three store refusals, three different truths about the bytes, and the first revision of this
+// receipt printed stored=no for all of them. An unknown write outcome is NOT a definite negative:
+// AddVersion may have committed with its answer lost, so "the value is lost" would be fabricated
+// plausible output (DESIGN section 5) and the remedy it prescribes -- revoke and forget -- is the
+// one action that could follow a double-write. This is the discriminating red for that distinction.
+fn witness_minted_token() -> CreatedAccountToken {
+  CreatedAccountToken {
+    id: "witnesstokenid" as NonEmptyStr,
+    name: "witness-object-write",
+    status: TokenActive,
+    value: "unused" as Secret,
+    expires_on: none,
+    not_before: none,
+  }
+}
+
+test fn an_unknown_write_outcome_is_not_reported_as_a_lost_value() -> Bool {
+  let content = r2_orphan_receipt_content(
+    token: witness_minted_token(),
+    cause: "THE TOKEN WAS MINTED AND THE VERSION OUTCOME IS UNKNOWN: timeout" as NonEmptyStr,
+    custody: WriteOutcomeUnknown,
+  )
+  string_contains(s: content, pattern: "stored=unknown")
+    && !string_contains(s: content, pattern: "stored=no")
+    && string_contains(s: content, pattern: "DO NOT RE-RUN THE MINT")
+    && !string_contains(s: content, pattern: "is lost")
+}
+
+// A VERSION THAT LANDED IS NAMED, AND THE REMEDY IS DISABLE RATHER THAN REVOKE. Reporting this as
+// stored=no would send an operator to revoke a token whose value IS in custody at a known version.
+test fn a_landed_unverified_version_is_named_and_disabled_not_revoked() -> Bool {
+  let content = r2_orphan_receipt_content(
+    token: witness_minted_token(),
+    cause: "A VERSION LANDED BUT DID NOT VERIFY" as NonEmptyStr,
+    custody: VersionLandedUnverified { version: "projects/p/secrets/s/versions/4" as NonEmptyStr },
+  )
+  string_contains(s: content, pattern: "stored=unverified")
+    && string_contains(s: content, pattern: "versions/4")
+    && string_contains(s: content, pattern: "DISABLE THE VERSION")
+    && !string_contains(s: content, pattern: "stored=no")
+}
+
+// ── RECOVERY MAY NOT DEPEND ON THE THING THAT FAILED ──────────────────────────────────────────
+// list_account_tokens_for_reconcile is the command the orphan receipt tells an operator to run in
+// order to find and revoke a live token. An earlier revision observed the custody container inside
+// the shared bootstrap bracket, so that recovery command inherited a GetSecret requirement on a
+// secret whose absence is exactly what it exists to clean up after -- and on the read profile, one
+// the mint's own grant cells do not cover. The waiver is a claim about the caller's effects, so it
+// is asserted here rather than trusted.
+test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool {
+  match CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason } {
+    CustodyContainerNotNeeded { reason: reason } =>
+      string_contains(s: reason as String, pattern: "writes no Secret Manager version")
+    ObserveCustodyContainer => false
+  }
 }
