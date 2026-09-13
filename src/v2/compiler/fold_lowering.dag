@@ -3,6 +3,9 @@ module v2.compiler.fold_lowering
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  dag_lex_token_symbol,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
 import v2.std.optional {
@@ -35,7 +38,6 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query { find_named_child }
-import v2.extdeps.languages.dag { dag_lex_token_symbol }
 
 data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_iteration_body finds the sole ^dag_surface_fn_literal argument and lifts its ^dag_surface_fn_body into the canonical seam Loop (matching body_producer_loop_body) bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to a terminating Loop. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
 
@@ -57,19 +59,33 @@ fn fold_family_head(sym: Symbol) -> Bool {
   (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
 }
 
-// THE STEP FORM IS A CLOSED SET THE GRAMMAR DECLARES, AND THE READING MUST BE TOTAL OVER IT.
-// v2.extdeps.languages.dag declares TWO function-value productions reachable in argument
-// position -- ^dag_production_fn_literal (emitted ^dag_surface_fn_literal) and
-// ^dag_production_arrow_lambda (emitted ^dag_surface_arrow_lambda) -- and this stage searched
-// for the first only. A step spelled `f: (acc, x) => ...` was therefore read as "no step form
-// present" and shared one state with a step passed BY NAME, which is a different fact: the
-// arrow lambda's binder and body are IN HAND here exactly as the fn literal's are, while a
-// named step's binder is a callee-resolution fact this stage does not have. Collapsing the two
-// is what made the fold site lose its carrier and, with it, its LOWERED shape -- the site the
-// complexity lens enumerates (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens).
+// THE STEP FORM IS A CLOSED SET THE GRAMMAR DECLARES, AND THE READING MUST BE TOTAL OVER IT
+// AND POSITIONED AT THE STEP ARGUMENT. v2.extdeps.languages.dag declares TWO function-value
+// productions reachable in argument position -- ^dag_production_fn_literal (emitted
+// ^dag_surface_fn_literal) and ^dag_production_arrow_lambda (emitted ^dag_surface_arrow_lambda)
+// -- and this stage searched for the first only. A step spelled `f: (acc, x) => ...` was
+// therefore read as "no step form present" and shared one state with a step passed BY NAME,
+// which is a different fact: the arrow lambda's binder and body are IN HAND here exactly as the
+// fn literal's are, while a named step's binder is a callee-resolution fact this stage does not
+// have. Collapsing the two is what made the fold site lose its carrier and, with it, its LOWERED
+// shape -- the site the complexity lens enumerates (gunbc.recurring_failure_mode
+// fold_shape_visible_to_no_lens).
 //
-// StepByName is a REAL arm over the residue, not a fall-through: it is reached only when no
-// declared inline step production is present, and it keeps yielding the same
+// THE SEARCH GRAIN IS THE SECOND HALF OF THE SAME DEFECT, AND IT PRE-DATES THE ARROW ARM
+// (review 65699). parse_subtree_find_production_captured is a whole-subtree PRE-ORDER FIRST
+// MATCH, not a read of the step argument, so `fold(xs, init: 0, f: (acc, x) => fold(x, init:
+// acc, f: fn(a, b) { a }))` classified on the INNER fn literal and built a seam Loop whose body
+// and carrier belong to the inner lambda -- a fabricated, plausible lowering handed to the
+// complexity lens, which then answers about the wrong carrier (DESIGN section 5). The same
+// search reached inside a `fold_node(algebra: NodeFold { ... })` record, whose step is not a
+// lambda at all. So the step form is now read from the STEP ARGUMENT of THIS call, located by
+// the binding name the callee declares, and from that argument the reading descends only the
+// CAPTURED-CHILD CHAIN -- never across siblings -- so no construction nested inside the step's
+// own body can be mistaken for the step.
+//
+// StepByName is a REAL arm over the residue, not a fall-through: it is reached when the step
+// argument is absent, carries no declared inline step production, or carries a shape this stage
+// cannot decide (a named step, an algebra record). It keeps yielding the same
 // FoldCallStepFormUnresolved the seam produced before, so the ^fold_accumulator_unread refusal
 // it feeds stays reachable rather than being papered over by a wider accept.
 type FoldStepForm
@@ -77,16 +93,130 @@ type FoldStepForm
   | StepArrowLambda { lambda: Node }
   | StepByName
 
-fn fold_call_step_form(fold_call: Node) -> FoldStepForm {
-  match parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
-    ParseSubtreeFound { captured: fn_literal } => StepFnLiteral { literal: fn_literal }
-    ParseSubtreeAbsent =>
-      match parse_subtree_find_production_captured(
-        root: fold_call,
-        emitted: ^dag_surface_arrow_lambda
-      ) {
-        ParseSubtreeFound { captured: lambda } => StepArrowLambda { lambda: lambda }
-        ParseSubtreeAbsent => StepByName
+// The step's binding name is a fact each fold-family callee declares, and they differ:
+// v2.std.algebra fold_list(xs:, empty:, cons:) and fold_list_right(xs:, empty:, snoc:),
+// v2.std.node fold_node(n:, algebra:). fold_node's step is a RECORD rather than a lambda, so
+// naming it here is what keeps the reading from descending into that record looking for one.
+fn some_step_argument_name(name: Symbol) -> Optional<Symbol> {
+  Present { value: name }
+}
+
+fn no_step_argument_name() -> Optional<Symbol> {
+  Absent
+}
+
+fn fold_step_argument_name(head: Symbol) -> Optional<Symbol> {
+  if head == ^fold {
+    some_step_argument_name(name: ^f)
+  } else if head == ^fold_list {
+    some_step_argument_name(name: ^cons)
+  } else if head == ^fold_list_right {
+    some_step_argument_name(name: ^snoc)
+  } else if head == ^fold_node {
+    some_step_argument_name(name: ^algebra)
+  } else {
+    no_step_argument_name()
+  }
+}
+
+// dag_grammar_arg_expr is Choice(Seq(binding_name, Seq(colon, expr)), expr): a named argument
+// carries its name in the sequence LEFT and its value two rights in, and a positional one is a
+// bare expr with no name. Same navigation v2.lens.complexity_accumulator_copy.analyze
+// arg_value_node performs on the same production -- one shape, read in two places today, and
+// the consolidation belongs with that reader rather than inside this stage.
+fn fold_arg_capture_name(arg_capture: Node) -> Optional<Symbol> {
+  match fold_seq_child(node: arg_capture, name: ^grammar_sequence_left_node_projection) {
+    Absent => Absent
+    Present { value: name_node } => node_atom_identity_optional(node: name_node)
+  }
+}
+
+fn fold_arg_capture_value(arg_capture: Node) -> Optional<Node> {
+  match fold_seq_child(node: arg_capture, name: ^grammar_sequence_right_node_projection) {
+    Absent => Absent
+    Present { value: after_name } =>
+      match fold_seq_child(node: after_name, name: ^grammar_sequence_left_node_projection) {
+        Absent => Absent
+        Present { value: separator } =>
+          match node_atom_identity_optional(node: separator) {
+            Absent => Absent
+            Present { value: sep } =>
+              if sep == ^dag_token_colon {
+                fold_seq_child(node: after_name, name: ^grammar_sequence_right_node_projection)
+              } else {
+                Absent
+              }
+          }
+      }
+  }
+}
+
+// DIRECT arguments of THIS call: the walk stops at every ^dag_surface_arg it reaches and does
+// not descend into one, so an argument belonging to a nested call inside an argument value is
+// unreachable from here. That stopping rule is the whole point -- a plain recursive search finds
+// a nested `f:` before the outer one whenever an earlier argument carries a nested fold.
+fn fold_call_named_arg_value(node: Node, name: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_arg {
+        match parse_production_captured_child_optional(node: node) {
+          Absent => Absent
+          Present { value: arg_capture } =>
+            match fold_arg_capture_name(arg_capture: arg_capture) {
+              Absent => Absent
+              Present { value: got } =>
+                if got == name {
+                  fold_arg_capture_value(arg_capture: arg_capture)
+                } else {
+                  Absent
+                }
+            }
+        }
+      } else {
+        fold_call_named_arg_value_under_children(node: node, name: name)
+      }
+    Absent => fold_call_named_arg_value_under_children(node: node, name: name)
+  }
+}
+
+fn fold_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional<Node> {
+  fold(node.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => fold_call_named_arg_value(node: e.target, name: name)
+    }
+  })
+}
+
+// Descends the CAPTURED-CHILD CHAIN of the step argument's value and nothing else: an expr
+// wrapper chain has exactly one captured child per link, so this reaches the step's own
+// production or runs out. It never folds over siblings, which is what stops a literal written
+// INSIDE the step's body from being read as the step.
+fn fold_step_form_at(node: Node) -> FoldStepForm {
+  match parse_production_emitted_identity_optional(node: node) {
+    Absent => StepByName
+    Present { value: id } =>
+      match parse_production_captured_child_optional(node: node) {
+        Absent => StepByName
+        Present { value: captured } =>
+          if id == ^dag_surface_fn_literal {
+            StepFnLiteral { literal: captured }
+          } else if id == ^dag_surface_arrow_lambda {
+            StepArrowLambda { lambda: captured }
+          } else {
+            fold_step_form_at(node: captured)
+          }
+      }
+  }
+}
+
+fn fold_call_step_form(fold_call: Node, head: Symbol) -> FoldStepForm {
+  match fold_step_argument_name(head: head) {
+    Absent => StepByName
+    Present { value: step_name } =>
+      match fold_call_named_arg_value(node: fold_call, name: step_name) {
+        Absent => StepByName
+        Present { value: step_value } => fold_step_form_at(node: step_value)
       }
   }
 }
@@ -319,7 +449,7 @@ fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
       FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
     Present { value: head } =>
       if fold_family_head(sym: head) {
-        match fold_call_step_form(fold_call: fold_call) {
+        match fold_call_step_form(fold_call: fold_call, head: head) {
           StepByName =>
             FoldCallStepFormUnresolved {
               diagnostic: fold_lowering_step_form_unresolved_diagnostic(n: fold_call)

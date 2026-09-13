@@ -130,6 +130,28 @@ fn a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean() -> Bool 
   }
 }
 
+// THE STEP FORM MUST BE READ AT THE STEP ARGUMENT, AND THIS IS THE SUBJECT THAT SAYS SO
+// (review 65699). The outer step is an arrow lambda whose accumulator is `acc`; its BODY carries
+// an ordinary fn literal whose accumulator is `a`. `parse_subtree_find_production_captured` is a
+// whole-subtree PRE-ORDER FIRST MATCH, so a reading that searches the fold call for a step
+// production finds the INNER literal and builds a seam Loop whose body and carrier belong to it.
+// The copy planted on the OUTER carrier -- list_append(left: ..., right: acc) -- then goes
+// unseen, because `acc` is not the carrier the lens was handed.
+//
+// That is worse than the invisibility this lane repaired: an invisible site is silent, and this
+// one ANSWERS, confidently, about the wrong accumulator (DESIGN section 5, no fabricated
+// plausible output). Measured 0 on main AND 0 on this lane's first cut, 1 once the step form is
+// read from the `f:` argument and descends only the captured-child chain. It is the discriminator
+// for the search GRAIN, which no fixture differing only in lambda spelling can reach.
+fn a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step() -> Bool {
+  match corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy_nested_arrow.dag"
+  ]) {
+    Cons { head: nested, tail: _ } => row_has_suspect(row: nested)
+    Empty => false
+  }
+}
+
 // THE POPULATION FLOOR'S OWN RED CONTROL. Without it the no-suspect arm is reachable by a walk that
 // resolved nothing at all, and an empty question reads as an affirmative answer.
 //
