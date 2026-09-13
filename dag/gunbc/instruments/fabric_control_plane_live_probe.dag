@@ -4,6 +4,7 @@ import product.fabric.provider_route {
   CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
   ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -1723,10 +1724,19 @@ fn cp_probe_located() -> ProviderPathStanding {
   }
 }
 
+// The probe's own paths are all located at probe_region, so that is what its posture permits -- the
+// same reference, not a second spelling of the same place. No drop is enrolled: this instrument has
+// no path it needs excused, and an empty enrollment list refuses more rather than less.
 fn cp_probe_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-posture-r1")),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+      further: [],
+      basis: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
+    },
+    jurisdiction_drop_enrollments: [],
   }
 }
 

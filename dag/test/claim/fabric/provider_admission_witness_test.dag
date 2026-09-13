@@ -9,6 +9,8 @@ import product.fabric.provider_route {
   ProviderDataPathClosure, ProviderPathStanding,
   ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
+  JurisdictionDropEnrollment,
   first_unresolved_obligation, downstream_obligation,
 }
 import product.fabric.provider_admission {
@@ -17,6 +19,7 @@ import product.fabric.provider_admission {
   ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
   DispositionStanding, DispositionCleared, DispositionNotEngaged, DispositionRefused, DispositionUnresolved,
   admit_provider_use,
 }
@@ -59,6 +62,12 @@ data evidence: NonEmptyStr = "evidence"
 data export_cleared: NonEmptyStr = "export-cleared"
 data jurisdiction_one: NonEmptyStr = "jurisdiction-one"
 data jurisdiction_two: NonEmptyStr = "jurisdiction-two"
+data jurisdictions_never_read: NonEmptyStr = "jurisdictions-never-read"
+data posture_basis: NonEmptyStr = "posture-basis"
+data counterparty_jurisdiction_undocumented: NonEmptyStr = "counterparty-jurisdiction-undocumented"
+data enrolled_path_evidence: NonEmptyStr = "enrolled-path-evidence"
+data unenrolled_path_evidence: NonEmptyStr = "unenrolled-path-evidence"
+data enrolling_drop: NonEmptyStr = "enrolling-drop"
 data no_spill_configured: NonEmptyStr = "no-spill-configured"
 data operator: NonEmptyStr = "operator"
 data ordinary_build_source: NonEmptyStr = "ordinary-build-source"
@@ -80,11 +89,55 @@ fn hash_of(seed: String) -> ContentHash {
   as_content_hash_structural(structural: content_hash_atom(value: seed))
 }
 
-fn posture(seed: String) -> CompliancePostureRevision {
+// THE POSTURE TAKES ITS PERMITTED POPULATION AND ITS ENROLLMENTS AS PARAMETERS, so every red below
+// moves exactly one of them and the pairs discriminate. The three-argument form is what makes the
+// pairs honest: the admitting half of each pair differs from the refusing half in the POPULATION
+// alone, never in the route, the paths or the scope.
+fn posture_with(
+  seed: String,
+  permitted: PermittedJurisdictionPopulation,
+  enrollments: List<JurisdictionDropEnrollment>,
+) -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "posture_authority"),
     revision: hash_of(seed: seed),
+    permitted_jurisdictions: permitted,
+    jurisdiction_drop_enrollments: enrollments,
   }
+}
+
+fn permits(first: DeclarationRef, further: List<DeclarationRef>) -> PermittedJurisdictionPopulation {
+  PermittedJurisdictionsEnumerated {
+    first: first,
+    further: further,
+    basis: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "posture_basis"),
+  }
+}
+
+// The posture every pre-existing red is written against: it permits the one jurisdiction those
+// closures are located in, so those rows still test what they were written to test.
+fn posture(seed: String) -> CompliancePostureRevision {
+  posture_with(
+    seed: seed,
+    permitted: permits(
+      first: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one"),
+      further: [],
+    ),
+    enrollments: [],
+  )
+}
+
+// The same posture widened to permit BOTH jurisdictions. It is the admitting half of both
+// jurisdiction pairs, and it differs from posture() in nothing else.
+fn posture_permitting_both(seed: String) -> CompliancePostureRevision {
+  posture_with(
+    seed: seed,
+    permitted: permits(
+      first: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one"),
+      further: [decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_two")],
+    ),
+    enrollments: [],
+  )
 }
 
 // A route is three cited declarations. The two routes below share a provider and a service and
@@ -103,6 +156,17 @@ fn located(where_it_is: DeclarationRef) -> ProviderPathStanding {
     operator: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "operator"),
     jurisdiction: where_it_is,
     evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "evidence"),
+  }
+}
+
+// The same located arm with a caller-chosen EVIDENCE declaration. Evidence is what identifies which
+// path was examined, so it is the key a drop enrollment is bound to, and the enrollment reds below
+// need two paths that differ in it while citing the same thing.
+fn located_evidenced(where_it_is: DeclarationRef, evidence_ref: DeclarationRef) -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "operator"),
+    jurisdiction: where_it_is,
+    evidence: evidence_ref,
   }
 }
 
@@ -239,6 +303,9 @@ fn refusal_tag(c: ProviderUseRefusal) -> String {
     ProviderRouteUnclassified { route } => "route-unclassified",
     ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureJurisdictionsUnread { obligation } => "posture-jurisdictions-unread",
+    TransferOrLocationUnresolved { route, jurisdiction } => "transfer-or-location-unresolved",
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => "provider-access-path-unsupported",
     PostureRevisionStale { evaluated, active } => "posture-stale",
     CustomerScopeUnsupported { cause } => "customer-unsupported",
     DataHandlingUnsupported { cause } => "data-handling-unsupported",
@@ -256,6 +323,9 @@ fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
     ProviderRouteUnclassified { route } => [],
     ProviderRouteFactsIncomplete { route, obligation } => [obligation],
     DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureJurisdictionsUnread { obligation } => [obligation],
+    TransferOrLocationUnresolved { route, jurisdiction } => [jurisdiction],
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [operator, jurisdiction],
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [cause],
     DataHandlingUnsupported { cause } => [cause],
@@ -564,4 +634,249 @@ test fn w_permit_records_its_clearances() -> Bool {
         && w_cleared_with(d: permit.evidence.sanctions_standing, expected: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "sanctions_cleared"))
         && w_cleared_with(d: permit.evidence.export_standing, expected: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "export_cleared")),
   }
+}
+
+
+// ── THE JURISDICTION ARMS ─────────────────────────────────────────────────────────────────────
+//
+// These are the two refusals product.fabric.provider_admission deleted as uninhabitable, with the
+// posture's permitted-jurisdiction population as their stated restoration trigger. Each lands as a
+// PAIR, and the pair is the whole evidence: a refusing half alone is satisfied by a decision that
+// refuses everything, and an admitting half alone by one that admits everything. Within each pair
+// the route, the paths and the scope are identical and only the PERMITTED POPULATION moves.
+
+// The data-bearing group with durable storage somewhere else. Execution, logs, telemetry and
+// backups stay put, so the route is one whose material PARTLY leaves - which is the shape a real
+// route raises: a snapshot of a Helsinki server placed in Germany is two jurisdictions on one
+// route, and ProviderPathLocated carries one per path.
+fn closure_storage_elsewhere(
+  home: DeclarationRef,
+  elsewhere: DeclarationRef,
+) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: home),
+    durable_storage: located(where_it_is: elsewhere),
+    backups: located(where_it_is: home),
+    logs: located(where_it_is: home),
+    telemetry: located(where_it_is: home),
+    control_plane: located(where_it_is: home),
+    support_access: located(where_it_is: home),
+    administrative_access: located(where_it_is: home),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+// EVERY DATA-BEARING PATH IS HOME AND ONLY THE SUPPORT DESK IS NOT. This is the closure that
+// separates the two arms: the route's material never leaves, and what reaches it from elsewhere is
+// the provider's own people. A decision that reported the same cause for this and for the closure
+// above would be sending the caller to move a workload when the thing to go and get is an access
+// commitment from the operator.
+fn closure_support_elsewhere(
+  home: DeclarationRef,
+  elsewhere: DeclarationRef,
+) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: home),
+    durable_storage: located(where_it_is: home),
+    backups: located(where_it_is: home),
+    logs: located(where_it_is: home),
+    telemetry: located(where_it_is: home),
+    control_plane: located(where_it_is: home),
+    support_access: located(where_it_is: elsewhere),
+    administrative_access: located(where_it_is: home),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+fn j_one() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")
+}
+
+fn j_two() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_two")
+}
+
+fn sanctioned_route() -> ProviderRoute {
+  route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one"))
+}
+
+// PAIR ONE, REFUSING HALF - the route's durable storage sits in a jurisdiction the posture does not
+// permit, and the refusal NAMES THAT JURISDICTION. What the caller goes and does: place the storage
+// somewhere permitted, or get jurisdiction_two permitted by the posture authority.
+test fn w_nonpermitted_storage_jurisdiction_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: sanctioned_route(),
+      paths: closure_storage_elsewhere(home: j_one(), elsewhere: j_two()),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ),
+    tag: "transfer-or-location-unresolved",
+    located: j_two(),
+  )
+}
+
+// PAIR ONE, ADMITTING HALF - the SAME route with the SAME paths under a posture that permits
+// jurisdiction_two admits. Without this the row above is satisfied by a decision that refuses
+// everything; together they establish that the population is what the decision actually read.
+test fn w_permitted_storage_jurisdiction_admits() -> Bool {
+  admitted(a: decide(
+    route: sanctioned_route(),
+    paths: closure_storage_elsewhere(home: j_one(), elsewhere: j_two()),
+    downstream: no_downstream(),
+    active: posture_permitting_both(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  ))
+}
+
+// PAIR TWO, REFUSING HALF - no route material leaves, and the provider's SUPPORT DESK reaches it
+// from a jurisdiction the posture does not permit. The refusal names the OPERATOR as well as the
+// jurisdiction, because the remedy is a commitment from that operator restricting privileged access
+// and not a placement decision on our side. A support desk does not relocate with the workload.
+test fn w_nonpermitted_support_access_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: sanctioned_route(),
+      paths: closure_support_elsewhere(home: j_one(), elsewhere: j_two()),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ),
+    tag: "provider-access-path-unsupported",
+    located: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "operator"),
+  )
+}
+
+test fn w_permitted_support_access_admits() -> Bool {
+  admitted(a: decide(
+    route: sanctioned_route(),
+    paths: closure_support_elsewhere(home: j_one(), elsewhere: j_two()),
+    downstream: no_downstream(),
+    active: posture_permitting_both(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  ))
+}
+
+// THE ROW THAT PROVES THE TWO ARMS ARE NOT ONE ARM WRITTEN TWICE. Same posture, same route, same
+// offending jurisdiction, same scope - and the two closures differ only in WHICH path is elsewhere.
+// A decision that reported one cause for both would send half its callers to do the wrong thing,
+// and each pair alone cannot see it: only asserting the two tags against each other can.
+test fn w_the_two_jurisdiction_arms_are_told_apart() -> Bool {
+  denied_tagged(a: decide(
+    route: sanctioned_route(),
+    paths: closure_storage_elsewhere(home: j_one(), elsewhere: j_two()),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  ), tag: "transfer-or-location-unresolved")
+    && denied_tagged(a: decide(
+      route: sanctioned_route(),
+      paths: closure_support_elsewhere(home: j_one(), elsewhere: j_two()),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ), tag: "provider-access-path-unsupported")
+}
+
+// RED - A POSTURE WHOSE PERMITTED JURISDICTIONS ARE UNREAD REFUSES RATHER THAN ADMITTING
+// EVERYTHING. The route is the positive control's, every path located in the jurisdiction that
+// posture would permit if anyone had written it down. The tempting implementation reads an unread
+// population as an empty permitted list and refuses with a LOCATION cause, which is the right
+// direction and the wrong remedy - it sends the caller to move data when the thing to go and do is
+// read what the posture authority permits. So the arm is its own, and it names its own obligation.
+test fn w_unread_permitted_population_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: sanctioned_route(),
+      paths: closure_all_located(where_it_is: j_one()),
+      downstream: no_downstream(),
+      active: posture_with(
+        seed: "posture-r1",
+        permitted: PermittedJurisdictionsUnread {
+          obligation: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdictions_never_read"),
+        },
+        enrollments: [],
+      ),
+      scope: scope_ordinary(),
+    ),
+    tag: "posture-jurisdictions-unread",
+    located: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdictions_never_read"),
+  )
+}
+
+// ── THE DECLARED-DROP ENROLLMENT, AND THE ROW THAT KEEPS IT BOUNDED ───────────────────────────
+//
+// A posture may carry a declared 4b(3) exception for ONE examined path whose jurisdiction slot
+// holds something a permitted-jurisdiction comparison cannot answer - gunbc.spark.first_party_serving
+// carries exactly one, for a telemetry path citing a field whose value is
+// ServiceJurisdictionUndocumentedUpstream. The danger is not the exception; it is what it is keyed
+// to. Keyed to the CITATION it would exempt every route that cites the same thing, present and
+// future: an unbounded standing permission wearing a drop row's clothes, which is DESIGN section 5's
+// absorbing fallback. Keyed to the PATH'S OWN EVIDENCE DECLARATION it exempts the path that was
+// examined and nothing else.
+//
+// The two rows below are that discrimination, and the second is the one that matters: nothing else
+// in this file can see the difference between the two keyings, because both are green under the
+// first row alone.
+fn undocumented() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "counterparty_jurisdiction_undocumented")
+}
+
+fn closure_telemetry_at(where_it_is: DeclarationRef, evidence_ref: DeclarationRef) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: j_one()),
+    durable_storage: located(where_it_is: j_one()),
+    backups: located(where_it_is: j_one()),
+    logs: located(where_it_is: j_one()),
+    telemetry: located_evidenced(where_it_is: where_it_is, evidence_ref: evidence_ref),
+    control_plane: located(where_it_is: j_one()),
+    support_access: located(where_it_is: j_one()),
+    administrative_access: located(where_it_is: j_one()),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+fn posture_enrolling_one_path() -> CompliancePostureRevision {
+  posture_with(
+    seed: "posture-r1",
+    permitted: permits(first: j_one(), further: []),
+    enrollments: [
+      JurisdictionDropEnrollment {
+        path_evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "enrolled_path_evidence"),
+        jurisdiction: undocumented(),
+        drop: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "enrolling_drop"),
+      },
+    ],
+  )
+}
+
+// The enrolled path admits - the declared exception executes rather than living in prose.
+test fn w_enrolled_path_admits_under_its_drop() -> Bool {
+  admitted(a: decide(
+    route: sanctioned_route(),
+    paths: closure_telemetry_at(where_it_is: undocumented(), evidence_ref: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "enrolled_path_evidence")),
+    downstream: no_downstream(),
+    active: posture_enrolling_one_path(),
+    scope: scope_ordinary(),
+  ))
+}
+
+// RED - THE EXCEPTION IS BOUND TO THE PATH, NOT TO WHAT THE PATH CITES. A SECOND route citing the
+// SAME undocumented jurisdiction from a DIFFERENT path declaration is not enrolled and refuses. The
+// posture, the route, the scope and the citation are identical to the row above; only the evidence
+// declaration moves. Under the cheaper keying - enroll the citation - this row is green and the
+// drop's bounded population is a fiction.
+test fn w_unenrolled_path_citing_the_same_thing_refuses() -> Bool {
+  denied_with(
+    a: decide(
+      route: sanctioned_route(),
+      paths: closure_telemetry_at(where_it_is: undocumented(), evidence_ref: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "unenrolled_path_evidence")),
+      downstream: no_downstream(),
+      active: posture_enrolling_one_path(),
+      scope: scope_ordinary(),
+    ),
+    tag: "transfer-or-location-unresolved",
+    located: undocumented(),
+  )
 }
