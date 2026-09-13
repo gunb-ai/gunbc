@@ -9,16 +9,20 @@ import extdeps.cloud.hetzner {
 
 // WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
 // REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
-// nine-path questions. DESIGN section 3: observations produced by this repository are
-// receipts in the observing product layer, never Unobserved properties authored inside the
-// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on
-// and the silence coproduct live here. A statement blob would either duplicate the
-// silences or sit unread (DESIGN section 4c).
+// nine-path questions and recording TYPED SILENCES. DESIGN section 3: observations produced
+// by this repository are receipts in the observing product layer, never Unobserved
+// properties authored inside the upstream module.
 //
-// The silences are OUR questions, not Hetzner vocabulary. FinlandOrHelsinkiUnmentioned is
-// a path-closure question, not a vendor concept. Matching a silence is how a later reader
-// tells researched-and-unanswered from never-looked without grepping prose. Consuming these
-// rows as ProviderPathLocated.evidence would invent an answer they explicitly do not give.
+// THE TWO CARRIERS ARE NOT TWO NAMES FOR ONE CONCEPT. HetznerPublishedReading in
+// extdeps.cloud.hetzner transcribes a sentence upstream DID publish -- those rows are
+// Located.evidence and contract_terms, vendor facts with a dated statement.
+// HetznerPathDocumentReading records that a page was read against a path question and
+// DID NOT ANSWER it; the silences are OUR questions (FinlandOrHelsinkiUnmentioned is
+// not Hetzner vocabulary). consulted lists may cite both because a document that
+// answered another path can fail to answer this one; that is one DeclarationRef
+// vocabulary, not a merged type. A statement blob on THIS carrier would either
+// duplicate the silences or sit unread (DESIGN section 4c). Consuming these rows as
+// ProviderPathLocated.evidence would invent an answer they explicitly do not give.
 //
 // Production consumption of these readings as unread consulted citations is
 // product.supplier.hetzner nine-path closures, not this annotation.
