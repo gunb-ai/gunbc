@@ -29,11 +29,12 @@ import v2.std.node {
   Symbol,
   TypeNode
 }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
 type DeclaredTypePosition
   = PositionDirectCallArgument
+  | PositionDeclaredReturn
 
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
@@ -96,10 +97,10 @@ fn inhabitance_pair_undecidable_reason(
 ) -> Optional<InhabitanceUndecidableReason> {
   if inhabitance_node_is_cardinality(n: declared)
     || inhabitance_node_is_cardinality(n: produced) {
-    Present { value: UndecidableOptionalCarrier }
+    optional_present(value: UndecidableOptionalCarrier)
   } else if inhabitance_node_is_instantiation(n: declared)
     || inhabitance_node_is_instantiation(n: produced) {
-    Present { value: UndecidableGenericFormal }
+    optional_present(value: UndecidableGenericFormal)
   } else {
     Absent
   }
@@ -201,7 +202,7 @@ fn inhabitance_undecidable_diagnostic(
   }
 }
 
-data inhabitance_undecidable_frontier_note: String = "InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation, arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND find_witness over the singleton {declared} refusing. The RFM row's v2 arm retires when the frontier count over reached applications is zero on both routes; the count is the census."
+data inhabitance_undecidable_frontier_note: String = "InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation, arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND find_witness over the declared singleton refusing. The RFM row's v2 arm retires when the frontier count over reached applications is zero on both routes; the count is the census."
 
 data inhabitance_rung_honesty_note: String = "RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a decidable incompatible argument refuses; unjudgeable applications are counted. That is the claim, not 'every reached application is judged'. Native emission is a declared frontier: it is unclaimed until v2.std.inhabitance is in the native 04_infer closure AND the same RED (Bool at an Int formal) refuses on the emitted binary. The #11277 v2 arm retires when the InhabitanceUndecidable frontier count over reached applications is zero on both routes."
 

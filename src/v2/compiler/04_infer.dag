@@ -1586,7 +1586,8 @@ fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<
               Named { name: nme } =>
                 if nme == binding {
                   match e.target.kind {
-                    TypeNode { connective: Arrow } => Present { value: e.target }
+                    TypeNode { connective: Arrow } =>
+                      optional_present(value: e.target)
                     _ => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
                   }
                 } else {
