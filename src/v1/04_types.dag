@@ -21,7 +21,7 @@ import std.algebra {
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 import v1.std.core {
-  Node, make_param_node, param_node_type_expr,
+  Node, make_param_node, param_node_type_expr, variant_node_fields,
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
@@ -71,6 +71,38 @@ fn type_argument_node(ch: Node) -> Node {
 
 fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
+}
+
+// Semantic type children carry the role that decides their projection. A
+// coproduct variant made by make_variant_node has NoConnective, but its children
+// are named fields. type_resolution_verdict and the structural infer/emit/derive
+// walkers consume this role once instead of reclassifying the variant as an
+// application. Callable params and inferred returns use their existing channels.
+type TypeNodeChild
+  = TypeArgumentChild { node: Node }
+  | RecordFieldChild { node: Node }
+  | VariantFieldChild { node: Node }
+
+// Consumed by type_resolution_verdict and the structural infer/emit/derive walkers.
+fn type_node_children(n: Node) -> List<TypeNodeChild> {
+  match n.connective {
+    NoConnective => n.children |> map(child => TypeArgumentChild { node: child })
+    Conj => n.children |> map(child => RecordFieldChild { node: child })
+    Disj => n.children |> flat_map(variant =>
+      variant_node_fields(n: variant) |> map(field => VariantFieldChild { node: field })
+    )
+    Arrow => []
+  }
+}
+
+// Consumed by the same walkers: arguments retain their own type structure;
+// record and variant fields keep the existing named-field projection.
+fn type_node_child_type(child: TypeNodeChild) -> Node {
+  match child {
+    TypeArgumentChild { node: argument } => type_argument_node(ch: argument)
+    RecordFieldChild { node: field } => child_type_node(ch: field)
+    VariantFieldChild { node: field } => child_type_node(ch: field)
+  }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
