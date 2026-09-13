@@ -72,9 +72,9 @@ type CompilerEntryDriver
 //
 // WHAT THIS ROW DOES NOT EXPLAIN, CORRECTED BY MEASUREMENT. An earlier version of this paragraph
 // said the full corpus's residual WAS this release cost. That was a hypothesis written as history
-// and it is false: measured on the full corpus, module_release is 1.9 ms while the residual stood
-// at 244.8 ms, and a third fold measured 1.86 ms against 238.8 ms. The row is real, measured and
-// non-overlapping, and it accounts for roughly one part in a hundred of what was unattributed. A
+// and it is false: on every full-corpus fold that has reported, module_release comes back two
+// orders of magnitude below the residual it was credited with. The row is real, measured and
+// non-overlapping, and it accounts for a small fraction of what was unattributed. A
 // row placed around the wrong span leaves the residual intact while the class reads as repaired,
 // which is why the correction is recorded here rather than quietly replaced.
 //
@@ -82,27 +82,28 @@ type CompilerEntryDriver
 // [native-prepare-split] line per unique module to stderr, which the host runner drains through a
 // pipe, and that write was paid inside parent_span with no row over it.
 //
-// WHAT THE FOLDS MEASURED, BY FOLD, FROM THE [native-cost-partition] LINE OF EACH RUN. The figure
-// is remainder_nanos divided by unique_modules on that same line; re-derive it by reading the line
-// rather than trusting this list:
-//   SUCC3  45a9105101   238,500,502 ns / 714 = 334.0 us per unique module
-//   SUCC6  4011bf9d     244,833,742 ns / 714 = 342.9 us
-//   #11256 f5e8a568     238,817,913 ns / 714 = 334.5 us
-//   #11202 a3157d6a     276,596,559 ns / 717 = 385.8 us
-// THAT IS A 15.5% SPREAD AND NOT A CONSTANT. An earlier version of this paragraph called it a
-// per-module constant on the first three folds; the fourth refutes that, and calling it constant
-// would repeat in this very annotation the defect the paragraph above it records. The spread is
-// consistent with a pipe write whose cost tracks line length and the reader's drain rate, and
-// consistent-with is not established-by: relay_emit exists to settle it by measurement.
+// WHICH FOLDS MEASURED IT, NAMED SO THEY CAN BE RE-READ. The per-module remainder is
+// remainder_nanos divided by unique_modules on the [native-cost-partition] line of a full-corpus
+// run. Four have reported: SUCC3 at 45a9105101, SUCC6 at 4011bf9d, and the folds taken for #11256
+// at T=f5e8a568 and #11202 at T=a3157d6a. Read those lines for the figures.
 //
-// AND THE MEASUREMENT CAME BACK AGAINST IT. relay_emit is NOT the span that accounts for the
-// residual, and this row is recorded as a FALSIFIED candidate rather than an open one. Measured on
-// this PR's own fold, relay_emit is 20,084,918 ns against a residual of the order of 240 ms: about
-// 8%, which is the same order as module_release's one part in a hundred and NOT the same order as
-// the thing to be explained. Two candidates have now been measured and both were refuted, so the
-// residual is unnamed and stays unnamed here; the next candidate is named by the fold that finds
-// it, not by this annotation. Both rows stay because a measured, non-overlapping row is worth
-// keeping whatever it turned out to cost -- the row is how the refutation was possible.
+// IT IS NOT A PER-MODULE CONSTANT, and that is the fact worth carrying rather than the numbers. An
+// earlier version of this paragraph called it constant on the strength of the first three folds and
+// TRANSCRIBED THEIR QUOTIENTS HERE; the fourth fold refutes constancy, and the transcription was
+// itself the defect the paragraph above records -- a figure copied into prose, unreachable from the
+// producer that owns it, inherited later as settled. The figures are therefore deleted rather than
+// corrected: a variable quantity stated as four copied numbers rots four ways. A spread of that
+// shape is consistent with a pipe write whose cost tracks line length and the reader's drain rate,
+// and consistent-with is not established-by.
+//
+// AND THE MEASUREMENT CAME BACK AGAINST relay_emit. It is NOT the span that accounts for the
+// residual, and it is recorded as a FALSIFIED candidate rather than an open one: on this PR's own
+// fold its span is an order of magnitude below the residual it was proposed to explain -- the same
+// order as module_release, not the order of the thing to be explained. Two candidates have now been
+// measured and both were refuted, so the residual is unnamed and stays unnamed here; the next
+// candidate is named by the fold that finds it, not by this annotation. Both rows stay because a
+// measured, non-overlapping row is worth keeping whatever it turned out to cost -- the row is how
+// the refutation was possible.
 //
 // BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
 // as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
