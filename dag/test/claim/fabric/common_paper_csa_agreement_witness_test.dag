@@ -8,6 +8,7 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -46,6 +47,7 @@ data no_spill_configured: NonEmptyStr = "no-spill-configured"
 data operator: NonEmptyStr = "operator"
 data ordinary_build_source: NonEmptyStr = "ordinary-build-source"
 data posture_authority: NonEmptyStr = "posture-authority"
+data posture_basis: NonEmptyStr = "posture-basis"
 data prohibited_use_cleared: NonEmptyStr = "prohibited-use-cleared"
 data provider_declares_none: NonEmptyStr = "provider-declares-none"
 data region_one: NonEmptyStr = "region-one"
@@ -65,7 +67,16 @@ fn hash_of(seed: String) -> ContentHash {
 }
 
 fn posture(seed: String) -> CompliancePostureRevision {
-  CompliancePostureRevision { authority: here(decl_name: "posture_authority"), revision: hash_of(seed: seed) }
+  CompliancePostureRevision {
+    authority: here(decl_name: "posture_authority"),
+    revision: hash_of(seed: seed),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: here(decl_name: "jurisdiction_one"),
+      further: [],
+      basis: here(decl_name: "posture_basis"),
+    },
+    jurisdiction_drop_enrollments: [],
+  }
 }
 
 fn route() -> ProviderRoute {
