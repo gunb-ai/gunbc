@@ -3146,7 +3146,8 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
 /// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
 /// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
-/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
+/// of the same `ambiguous_reads` vector -- which the wall refuses on and which no census
+/// prints, because this climb deleted the read census that used to. A second computation here, even
 /// an identical one, would be the second authority the census exists to avoid and would be free
 /// to drift.
 ///
@@ -3172,7 +3173,7 @@ pub enum ClaimScopeFixtureOutcome {
     /// the scope builder raises applied.
     ///
     /// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. On gunbc#11143 this arm was
-    /// deliberately SILENT about ambiguity: the scope builder collected `ambiguous_bare_reads`
+    /// deliberately SILENT about ambiguity: the scope builder collected the ambiguous reads (in a field this climb has since deleted)
     /// and returned them on the accepted scope without refusing, so acceptance was compatible
     /// with any number of ambiguous bare reads and a control asserting it established nothing
     /// about that class. This change adds the refusal, so acceptance now DOES exclude them --
@@ -40473,13 +40474,9 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: Vec<AmbiguousBareName>,
-    /// THE READS, which is the population a refusal is affordable against — see
-    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
-    /// the two whose members are defects rather than declarations.
-    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
     /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
-    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
-    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// with the module that answered it. A pair that no longer refuses proves only that
+    /// the wall stopped firing on it; this says what the reference resolves TO, which is the whole content of a
     /// qualification. `(name, referring module, resolved module)`.
     pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
@@ -41376,7 +41373,6 @@ fn claim_scope_for_with_memos(
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_reads: ambiguous_reads,
         qualified_bare_reads: qualified_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()

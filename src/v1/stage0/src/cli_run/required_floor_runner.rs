@@ -7492,7 +7492,7 @@ pub fn run_required_floor(
         // THE PER-SITE READ CENSUS IS DELETED BY THE CLIMB IT MEASURED FOR, and its absence is the
         // point rather than an omission. It printed `[floor-bare-name-ambiguity-read]` per site and
         // a `[floor-bare-name-ambiguity-reads]` summary, populated from
-        // `built.ambiguous_bare_reads`. `claim_scope_for` now REFUSES whenever that vector is
+        // the scope's ambiguous-read field, which this climb also deletes (it had no reader left). `claim_scope_for` now REFUSES whenever that vector is
         // non-empty, and this runner reaches `built` only through `claim_scope_for(..)?` -- so a
         // non-empty population propagates the Err and never arrives here. Those lines could
         // therefore only ever print zero, which DESIGN §4b calls a decoration: "permanently green
@@ -8766,10 +8766,6 @@ mod scope_fragment_memo_equivalence {
             assert_eq!(
                 memoized.ambiguous_bare_names, control.ambiguous_bare_names,
                 "{entry}: ambiguity population diverged"
-            );
-            assert_eq!(
-                memoized.ambiguous_bare_reads, control.ambiguous_bare_reads,
-                "{entry}: ambiguous READ sites diverged"
             );
             assert_eq!(
                 memoized.resolution_fingerprint(),
