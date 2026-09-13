@@ -395,11 +395,26 @@ fn variant_pattern_coverage_key(name: String) -> String {
 // THIS IS DELIBERATELY NOT find_child_named. That helper also resolves FIELDS, at
 // lookup_field_in_variant; keying it would make field matching leaf-keyed, which widens what a
 // field name may match rather than repairing an identity, so it is left exactly as it is.
+//
+// AMBIGUITY REFUSES; IT DOES NOT PICK. Keying by leaf makes it possible for TWO declared children
+// to key equal -- `a.b.Alpha | c.d.Alpha` -- which exact-name matching could not produce, so this
+// function creates the collision and owes it an arm. Taking the first match would answer with a
+// variant the source did not name, inside the very function whose annotation declares that
+// collision unresolved: fail-open at the exact point the frontier is admitted. More than one match
+// therefore resolves to NO match, which the three call sites already carry into
+// variant_not_found_result -- a typed, located refusal in the existing vocabulary. No ambiguity
+// diagnostic is minted here: the frontier is the missing scope-carrying identity, and inventing a
+// spelling for it would be modeling the gap instead of refusing over it.
 fn find_variant_child_keyed(n: Node, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   let key = variant_pattern_coverage_key(name: variant_name)
-  match n.children |> filter(c => variant_pattern_coverage_key(name: authored_name_at(source_indices: source_indices, node: c)) == key) |> first {
-    Present { value: ch } => Present { value: ch }
-    Absent => none
+  let matches = n.children |> filter(c => variant_pattern_coverage_key(name: authored_name_at(source_indices: source_indices, node: c)) == key)
+  if matches |> count > 1 {
+    none
+  } else {
+    match matches |> first {
+      Present { value: ch } => Present { value: ch }
+      Absent => none
+    }
   }
 }
 

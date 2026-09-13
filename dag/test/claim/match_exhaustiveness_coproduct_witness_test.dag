@@ -375,3 +375,33 @@ test fn w_dotted_arm_in_later_position_refuses_at_parse() -> Bool {
     o: single_source_run(path: "dotted/later.dag", source: dotted_later_arm_source)
   ) > 0
 }
+
+// -- A LEAF KEY THAT TWO DECLARED ARMS SHARE REFUSES, IT DOES NOT PICK ONE --
+//
+// Keying by leaf makes `a.b.Alpha | Alpha` possible, which exact-name matching could not produce:
+// one bare `Alpha` arm now keys equal to BOTH declared children. Measured against the first-match
+// revision of find_variant_child_keyed, this source compiles CLEAN -- the bare arm binds the first
+// child and the match is called exhaustive while the second declared variant is unhandled. That is
+// the failure arm widening instead of refusing, inside the very function whose annotation declares
+// the collision unresolved. find_variant_child_keyed therefore treats more-than-one as no-match,
+// which the call sites carry into the existing variant_not_found_result rather than a minted
+// ambiguity spelling.
+//
+// THE SHAPE IS CONSTRAINED BY WHAT PARSES, and the first draft of this witness got it wrong in the
+// direction that hides: `a.b.Alpha | c.d.Alpha` is green under BOTH revisions, because
+// parse_more_variants_acc takes every arm after the first through expect_ident, so the second
+// dotted arm refuses at parse and the collision is never reached. A witness over that source is
+// permanently green and would stand as coverage for an arm it never exercises. The dotted name
+// must therefore be FIRST and the colliding one bare.
+//
+// THIS IS THE DECLARED FRONTIER'S ARM, NOT ITS CLOSURE. Distinguishing the two variants needs the
+// scope-carrying identity the namespace program is converging on; until that lands the honest
+// answer is a refusal, and this witness is what keeps it a refusal.
+
+data colliding_leaf_declaration_source: String = "module colliding_leaf_decl\ntype T = a.b.Alpha | Alpha\nfn f(t: T) -> Bool {\n  match t {\n    Alpha => true\n  }\n}\n"
+
+test fn w_two_declared_arms_sharing_a_leaf_key_refuse_rather_than_bind_the_first() -> Bool {
+  fixture_all_blocking_count(
+    o: single_source_run(path: "dotted/collide.dag", source: colliding_leaf_declaration_source)
+  ) > 0
+}
