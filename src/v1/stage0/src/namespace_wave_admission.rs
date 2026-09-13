@@ -1769,30 +1769,9 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
-/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
-/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
-/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
-/// narrowing, which an admission row would have recorded as an intent -- and these two are the
-/// real transitions.
-///
-/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
-/// drags the whole module into the candidate set for every name it declares, so
-/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
-/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
-/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
-/// authored region, so the removed candidate could not have won either way. What narrowed is the
-/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
-///
-/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
-/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
-/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
-/// declaring module under no spelling at all, so the name reached its declaration only through
-/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
-/// already asserted.
-///
-/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
-/// stop being producible, and CONSUMED comes due on the roster's next touch.
+/// RETIRED (2026-09-13): #11156 merged at d7b7ab96c1f. Required floor run
+/// 34736611299 measured both of its admissions as CONSUMED at the base. This
+/// roster touch deletes those permissions; their source changes and witnesses remain.
 // gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
 // to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
 // these two TargetChanged bindings. Remove these permissions once consumed at the base;
@@ -1821,32 +1800,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             expected_candidates: &["gunbc.build_cache_instance"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &[
-                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-                "extdeps.shell",
-                "extdeps.tools.grep",
-                "extdeps.tools.sed",
-                "extdeps.tools.xorriso",
-            ],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "Filesystem",
-            expected_candidates: &["extdeps.filesystem.filesystem_io"],
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
     },
 ];
 
