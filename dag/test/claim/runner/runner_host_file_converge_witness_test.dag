@@ -134,7 +134,7 @@ test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
 data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\\-runner\\@)\} = 0;\n"
 
 fn desired_content(subject: String) -> String {
-  match runner_host_file_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
@@ -142,7 +142,7 @@ fn desired_content(subject: String) -> String {
 }
 
 fn desired_path(subject: String) -> String {
-  match runner_host_file_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
@@ -155,11 +155,13 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
 }
 
 test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
-  match runner_host_file_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs } =>
-      length(fs) == 2
+      length(fs) == 4
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
+        && desired_path(subject: "runner-unit-fragment") == "/etc/systemd/system/actions-runner@.service"
+        && desired_path(subject: "runner-depriv-dropin") == "/etc/systemd/system/actions-runner@.service.d/depriv.conf"
   }
 }
 
@@ -199,7 +201,7 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 // Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
 // would refuse at the seal rather than reaching a sudo leg.
 test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
-  match runner_host_file_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
@@ -228,6 +230,13 @@ test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
   match runner_host_file_subject(host: "srv9" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => true
     RunnerHostFileSubjectAdmitted { subject: _ } => false
+  }
+}
+
+test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
+  match runner_host_file_desired_population(host: "srv9" as HostIdentity) {
+    RunnerHostFilesDesiredRefused { cause: _ } => true
+    RunnerHostFilesDesired { files: _ } => false
   }
 }
 
@@ -444,7 +453,7 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
 
 fn teardown_desired() -> RunnerHostFileDesired? {
-  match runner_host_file_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
@@ -513,7 +522,7 @@ test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
       match fleet_ssh_execution_context_hermetic_witness_fixture() {
         Absent => false
         Present { value: context } =>
-          match runner_host_file_desired_population() {
+          match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
             RunnerHostFilesDesiredRefused { cause: _ } => false
             RunnerHostFilesDesired { files: fs } => {
               let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
@@ -531,7 +540,7 @@ test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
                 SlotPopulationObserved { units: us } =>
                   length(us) == length(s.desired_units) && all(us, r => standing_wire_of(st: r.standing) == "unread")
               }
-              privileged && length(run.results) == 2 && refused_before_write && not_reloaded && every_desired_unread
+              privileged && length(run.results) == 4 && refused_before_write && not_reloaded && every_desired_unread
                 && !runner_host_file_run_succeeded(run: run)
             }
           }

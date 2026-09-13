@@ -58,7 +58,16 @@ import gunbc.runner_unit {
   runner_unit_suffix,
   runner_unit_name_of_registration,
 }
-import gunbc.runner_unit_file { runner_unit_teardown_dropin_path, gunbc_runner_unit_teardown_dropin_text }
+import gunbc.runner_unit_file {
+  runner_unit_teardown_dropin_path,
+  gunbc_runner_unit_teardown_dropin_text,
+  runner_unit_depriv_dropin_path,
+  gunbc_runner_unit_depriv_dropin_text,
+  runner_unit_system_path,
+  gunbc_runner_unit_fragment_for_host,
+  RunnerUnitText,
+  RunnerUnitTextRefused,
+}
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
@@ -76,14 +85,10 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
 // srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
 //
-// TWO FILES, TWO HALVES OF ONE CLASS, NEITHER SUFFICIENT ALONE.
-//   - the teardown drop-in makes ANY stop of a slot reach its whole cgroup, whoever issues it;
-//   - the needrestart deferral stops the daily upgrade from issuing that stop at all. An ephemeral
-//     runner already begins a fresh process after every job, so the upgraded library is picked up at
-//     the next job boundary without anyone restarting a slot mid-job.
-// Without the first, any other restart (an operator, a converge, the liveness reconciler) still
-// orphans. Without the second, the daily upgrade would still stop every busy slot -- loudly and
-// cleanly after the first lands, but as a wave of cancelled jobs rather than a silent corruption.
+// FOUR FILES. Teardown drop-in and needrestart deferral are the two halves of the orphan class.
+// The unit fragment and the depriv drop-in are the modeled runner bytes: without depriv, delivering
+// the fragment would be correct only while a hand-placed override still won. A missing depriv
+// drop-in must not run job code as root, so the fragment still names deploy.runner_user.
 //
 // WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
@@ -119,27 +124,50 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
-fn runner_host_file_desired_population() -> RunnerHostFileDesiredPopulation {
+fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
-      RunnerHostFilesDesired {
-        files: [
-          RunnerHostFileDesired {
-            subject: "runner-teardown-dropin" as NonEmptyStr,
-            path: runner_unit_teardown_dropin_path() as FilePath,
-            content: gunbc_runner_unit_teardown_dropin_text(),
-            mode: RemoteFileModeOwnerReadWriteWorldRead,
-          },
-          RunnerHostFileDesired {
-            subject: "needrestart-runner-deferral" as NonEmptyStr,
-            path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-            content: needrestart_conf_d_text(overrides: [
-              NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
-            ]),
-            mode: RemoteFileModeOwnerReadWriteWorldRead,
-          },
-        ],
+      match runner_host_deploy_for(host: host) {
+        RunnerHostDeployUnmodeled { host: h } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
+          }
+        RunnerHostDeployFound { deploy: d } =>
+          match gunbc_runner_unit_fragment_for_host(host: host) {
+            RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
+            RunnerUnitText { text: fragment } =>
+              RunnerHostFilesDesired {
+                files: [
+                  RunnerHostFileDesired {
+                    subject: "runner-unit-fragment" as NonEmptyStr,
+                    path: runner_unit_system_path as FilePath,
+                    content: fragment,
+                    mode: RemoteFileModeOwnerReadWriteWorldRead,
+                  },
+                  RunnerHostFileDesired {
+                    subject: "runner-depriv-dropin" as NonEmptyStr,
+                    path: runner_unit_depriv_dropin_path() as FilePath,
+                    content: gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host),
+                    mode: RemoteFileModeOwnerReadWriteWorldRead,
+                  },
+                  RunnerHostFileDesired {
+                    subject: "runner-teardown-dropin" as NonEmptyStr,
+                    path: runner_unit_teardown_dropin_path() as FilePath,
+                    content: gunbc_runner_unit_teardown_dropin_text(),
+                    mode: RemoteFileModeOwnerReadWriteWorldRead,
+                  },
+                  RunnerHostFileDesired {
+                    subject: "needrestart-runner-deferral" as NonEmptyStr,
+                    path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+                    content: needrestart_conf_d_text(overrides: [
+                      NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
+                    ]),
+                    mode: RemoteFileModeOwnerReadWriteWorldRead,
+                  },
+                ],
+              }
+          }
       }
   }
 }
@@ -948,7 +976,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
       match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
         RunnerHostFileSubjectAdmitted { subject: subject } =>
-          match runner_host_file_desired_population() {
+          match runner_host_file_desired_population(host: raw_host as HostIdentity) {
             RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
             RunnerHostFilesDesired { files: files } =>
               match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {

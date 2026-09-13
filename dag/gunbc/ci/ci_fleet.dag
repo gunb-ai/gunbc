@@ -115,6 +115,18 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 
 data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
 
+fn fleet_compute_offer_for(host: HostIdentity) -> ComputeOffer? {
+  if host == srv1_host.identity {
+    Present { value: srv1_offer }
+  } else { if host == srv2_host.identity {
+    Present { value: srv2_offer }
+  } else { if host == srv3_host.identity {
+    Present { value: srv3_offer }
+  } else { if host == srv4_host.identity {
+    Present { value: srv4_offer }
+  } else { none } } } }
+}
+
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
 data gunbc_ci_cpu: CpuFacts = CpuFacts {
