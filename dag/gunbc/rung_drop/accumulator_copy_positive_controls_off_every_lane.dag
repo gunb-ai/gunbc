@@ -1,0 +1,74 @@
+module gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the accumulator-copy lens's POSITIVE controls over fold shapes
+// (DESIGN 4b(3)), landed because review 65787 on gunbc#11315 found the row calling them
+// "enrolled" while no lane plans them, and the honest remedy is a drop rather than a sentence.
+// ============================================================================================
+//
+// WHAT IS DROPPED. `gunbc.recurring_failure_mode` `fold_shape_visible_to_no_lens` has two kinds of
+// executing evidence. Its discriminating REDS are `test fn`s rostered known-red at
+// `gunbc.explicit_witness_admission` and are HELD by the required floor's changed-witness arm --
+// those are enrolled and are not this row's subject. Its POSITIVE controls -- the green side of
+// each A/B, which is what keeps a red control from being satisfiable by refusing every fold --
+// are plain `fn`s executed under claim_batch as local diligence and planned by no lane. A repair
+// that silently narrowed the lens's fold domain would not turn any required run red.
+//
+// WHY EVERY ROUTE REFUSES, by execution or by the authority that closes it, so that a later
+// reader does not re-derive it. (1) As `test fn` on ordinary discovery: each control reaches the
+// interpreted ingest, whose per-frame front end (tokenize, parse, normalize) is a FIXED charge of
+// ~1-2s CPU against a 500ms line; the long-home changed-witness arm ran
+// `nested_fold_inside_a_sole_body_fold_is_visible` for its verdict on run 34786156711 and it PASSED
+// under cost-observed-only, and the enrolment-margin gate (`v2.workflow.floor_enrolment_margin`,
+// operator ruling 2026-09-11) then refused the same identity as newly enrolled over the 302ms p90
+// envelope. That gate's own text rules out relocating the file. (2) As an `ExpectWitnessHolds`
+// admission on `FalsifierSubstrateLongLane`: that cadence is `DeclaredCadenceUnrealized`
+// (`std.witness_admission`) since falsifier.yml was deleted at gunbc#8283, so a row there reads
+// as coverage while executing nowhere. (3) `LocalRepoWetLane` rosters host-effect witnesses whose
+// hermetic route has a gap (`v2.workflow.local_repo_wet_terminal`); a hermetic ingest witness is
+// not its subject. (4) The ingest-gate overlay (`source_root_ingest_gate_admitted_witness`) is a
+// hand-listed closure gate in `v2.workflow.compiler_closure_ingest_transport`, not a lane.
+//
+// THE REASON IS LOST-AS-PASSENGER, NOT A NEW CUT: these controls would have joined the substrate
+// long lane, whose executor left with falsifier.yml. Nothing in gunbc#11314 or gunbc#11315 deleted
+// a lane; they authored evidence into a home whose lane was already gone, and this row is the
+// declaration that the floor cut of 2026-08-15 reserved for exactly that case.
+//
+// THE TRIGGER NAMES A CAPABILITY, and it is one of two, either of which restores the rung: an
+// executing lane with a declared ceiling for an ingest-reaching hermetic witness. The sibling
+// row `long_module_changed_witness_cpu_observed_only` names the first form -- the front end paid
+// once per run so a claim's measured CPU is its own work, at which point these controls enroll
+// as `test fn`s on ordinary discovery inside the margin. The second form is the scheduled
+// substrate-long executor whose re-add gunbc#8283 reserved for a separate operator agreement.
+// Retirement is observed and not asserted: the six identities below become `test fn`s planned
+// by a live cadence and reach PASS on a required or scheduled run, and this row retires in that
+// change. A run in which they pass under claim_batch does not discharge it: that is the state
+// this row declares.
+data accumulator_copy_positive_controls_off_every_lane: RungDrop = RungDrop {
+  identity: "accumulator_copy_positive_controls_off_every_lane" as NonEmptyStr,
+
+  subject: "the green positive controls of the accumulator-copy lens's fold-shape evidence (v2.lens.complexity_accumulator_copy.analyze over fold_shape_visible_to_no_lens): ingest-reaching witnesses that no lane plans",
+
+  declared: "2026-09-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml and its FalsifierSubstrateLongLane executor, deleted at 611fd02770 (gunbc#8283)" },
+    population: [
+      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_planted_copied_accumulator_spelled_with_an_arrow_lambda_is_caught",
+      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean",
+      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step",
+      "v2.test.long.accumulator_copy_fold_analysis nested_fold_inside_a_sole_body_fold_is_visible",
+      "v2.test.long.accumulator_copy_fold_analysis a_lambda_in_a_non_step_argument_mints_no_carrier",
+      "v2.test.long.accumulator_copy_fold_analysis an_inline_step_beside_a_decoy_lambda_is_still_caught",
+    ],
+    restoration_trigger: "an executing lane with a declared ceiling plans an ingest-reaching hermetic witness: either the per-frame front end is paid once per run so these enroll as test fns on ordinary discovery inside the enrolment margin (the restoration trigger of long_module_changed_witness_cpu_observed_only), or a scheduled substrate-long executor is re-added under the operator agreement gunbc#8283 reserved. Observed at retirement, not asserted: the six population identities are test fns planned by a live cadence and reach PASS on a required or scheduled run, and this row retires in the same change. Passing under claim_batch is the declared state, not the trigger."
+  }
+}
