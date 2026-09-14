@@ -1,0 +1,11 @@
+◐ started compile.frontend
+✓ compile.frontend done in 1ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 3ms
+✓ compile.analyses done in 0ms
+
+thread 'main' (63072) panicked at /tmp/crisp-seed-recovery/b_recursive_control.rs:2175:5:
+assertion `left == right` failed
+  left: CardOptional
+ right: Required
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
