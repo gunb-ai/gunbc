@@ -1261,16 +1261,13 @@ fn changed_and_enrolled_witness_identities_with_index(
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
-    // THE SAME PREDICATE THE ASSEMBLY APPLIES (`p.contains(sub) || module_path.contains(sub)`),
-    // asked here over the seeded (path, module) pairs so the receipt names the row before the
-    // assembly silently honours it.
+    // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
+    // seeded (path, module) pairs so the receipt names the row the assembly will honour -- one
+    // function, not a same-shaped copy that could drift from it (review 66411).
     let exclusions = floor_prepared_subject_exclusions();
     let mut touched_excluded_from_preparation: Vec<(String, String, String)> = Vec::new();
     for (path, module) in &seeded_pairs {
-        if let Some(row) = exclusions
-            .iter()
-            .find(|sub| path.contains(sub.as_str()) || module.contains(sub.as_str()))
-        {
+        if let Some(row) = prepared_subject_exclusion_row_for(path, module, &exclusions) {
             touched_excluded_from_preparation.push((row.clone(), path.clone(), module.clone()));
         }
     }
@@ -10320,13 +10317,12 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
             seeds,
             vec!["armset.probe".to_string(), "armset.w".to_string()]
         );
+        let exclusions = floor_prepared_subject_exclusions();
         let excluded: Vec<(String, String, String)> = pairs
             .iter()
             .filter_map(|(path, module)| {
-                floor_prepared_subject_exclusions()
-                    .into_iter()
-                    .find(|sub| path.contains(sub.as_str()) || module.contains(sub.as_str()))
-                    .map(|row| (row, path.clone(), module.clone()))
+                prepared_subject_exclusion_row_for(path, module, &exclusions)
+                    .map(|row| (row.clone(), path.clone(), module.clone()))
             })
             .collect();
         assert_eq!(

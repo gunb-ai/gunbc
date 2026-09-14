@@ -39861,11 +39861,7 @@ pub fn run_floor_prepared_toll_receipt() {
     let index = build_module_index(&source_roots);
     let mut inventory = Vec::with_capacity(index.len());
     for (module_path, sf) in index.iter() {
-        let p = sf.path.replace('\\', "/");
-        if exclusions
-            .iter()
-            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
-        {
+        if prepared_subject_exclusion_row_for(&sf.path, module_path, &exclusions).is_some() {
             continue;
         }
         inventory.push(PreparedSourceView {
@@ -40172,10 +40168,8 @@ pub fn assemble_prepared_subject_closure(
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
-        let p = sf.path.replace('\\', "/");
-        if let Some(matched) = exclude_substrings
-            .iter()
-            .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        if let Some(matched) =
+            prepared_subject_exclusion_row_for(&sf.path, module_path, exclude_substrings)
         {
             discovery_exclusions.insert(module_path.clone(), matched.clone());
             continue;
@@ -40265,6 +40259,22 @@ pub fn assemble_prepared_subject_closure(
         modules_resolved,
         modules_excluded,
     })
+}
+
+/// THE ONE EXCLUSION PREDICATE: which row of a prepared-subject exclusion list drops a module,
+/// asked over the module's path and its authored name. Every consumer of an exclusion list --
+/// the closure assembly, the whole-tree strict resolve, the floor's inventory walk, and the
+/// planning receipt that names the row a seed will be dropped under -- reads this and nothing
+/// else, so a receipt cannot name a row the assembly did not honour (review 66411).
+pub(crate) fn prepared_subject_exclusion_row_for<'a>(
+    path: &str,
+    module_path: &str,
+    exclusions: &'a [String],
+) -> Option<&'a String> {
+    let p = path.replace('\\', "/");
+    exclusions
+        .iter()
+        .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
 }
 
 /// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
