@@ -1,0 +1,147 @@
+module test.claim.spark.spark_pair_head_unit_digest_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash {
+  ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex,
+  compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_unit_with, SeqCapacityMeasured, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  spark_pair_serving_engine_args,
+}
+import gunbc.spark.pair_serving_realization {
+  SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  spark_pair_digest_unit_render, spark_pair_head_unit_file, spark_pair_container_spec,
+  spark_pair_container_env, spark_pair_head_unit_name,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
+}
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.spark.vllm_serving_launch {
+  vllm_serving_launch, launch_unit_provenance,
+  LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
+  identity: "fixture-model" as NonEmptyStr,
+  repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
+  revision: "fixture0000000000000000000000000000000000" as NonEmptyStr,
+  revision_provenance: "controlled fixture: this witness hashes renderer bytes, never a resolved revision" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+}
+
+fn w_head_render() -> DeclaredUnitDigestStanding {
+  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
+    max_num_seqs: 32,
+    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
+  }) {
+    SparkPairServingUnitRefused { group: _, cause: c } =>
+      DeclaredUnitDigestUnavailable { obligation: c }
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
+      spark_pair_digest_unit_render(render: spark_pair_head_unit_file(
+        args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
+        snapshot: w_fixture_snapshot,
+        head: h.lane,
+        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+      ))
+  }
+}
+
+fn w_head_text() -> String? {
+  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
+    max_num_seqs: 32,
+    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
+  }) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => none
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
+      match spark_pair_head_unit_file(
+        args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
+        snapshot: w_fixture_snapshot,
+        head: h.lane,
+        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+      ) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
+        SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+      }
+  }
+}
+
+fn w_sha256(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
+test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
+  match w_head_render() {
+    DeclaredUnitDigestUnavailable { obligation: _ } => false
+    DeclaredUnitDigested { unit_name: n1, digest: d1 } =>
+      match w_head_render() {
+        DeclaredUnitDigestUnavailable { obligation: _ } => false
+        DeclaredUnitDigested { unit_name: n2, digest: d2 } =>
+          (n1 as String) == (spark_pair_head_unit_name as String)
+            && (n2 as String) == (spark_pair_head_unit_name as String)
+            && match compare_content_hash(left: d1, right: d2) {
+              ContentHashEqual => true
+              ContentHashDifferent => false
+              ContentHashCrossFamilyIncomparable => false
+            }
+      }
+  }
+}
+
+// RED: one extra byte in the unit text is a different digest.
+test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
+  match w_head_text() {
+    Absent => false
+    Present { value: t } =>
+      match spark_pair_digest_unit_render(render: SparkPairUnitRendered { unit_name: spark_pair_head_unit_name, text: t }) {
+        DeclaredUnitDigestUnavailable { obligation: _ } => false
+        DeclaredUnitDigested { unit_name: _, digest: d } =>
+          match spark_pair_digest_unit_render(render: SparkPairUnitRendered {
+            unit_name: spark_pair_head_unit_name,
+            text: join([t, " "], ""),
+          }) {
+            DeclaredUnitDigestUnavailable { obligation: _ } => false
+            DeclaredUnitDigested { unit_name: _, digest: d2 } =>
+              match compare_content_hash(left: d, right: d2) {
+                ContentHashDifferent => true
+                ContentHashEqual => false
+                ContentHashCrossFamilyIncomparable => false
+              }
+          }
+      }
+  }
+}
+
+// RED: an observed unit digest that is not the SHA-256 of the rendered declaration is not
+// LaunchedFromDeclaredUnit. The standing consumes this provenance; it must not bind as declared.
+test fn a_declared_observed_mismatch_does_not_bind_as_declared() -> Bool {
+  match w_head_render() {
+    DeclaredUnitDigestUnavailable { obligation: _ } => false
+    DeclaredUnitDigested { unit_name: _, digest: declared } =>
+      match launch_unit_provenance(
+        launch: vllm_serving_launch(
+          group: FabricGroupA,
+          head: operator_host_srv5,
+          systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
+          container_id: "fixture-container-1" as NonEmptyStr,
+          executable_digest: w_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
+          unit_digest: w_sha256(hex: "6666666666666666666666666666666666666666666666666666666666666666"),
+          started_at: 1788907506,
+        ),
+        declared: declared,
+      ) {
+        LaunchedFromDifferentUnit { observed: _, declared: _ } => true
+        LaunchedFromDeclaredUnit { declared: _ } => false
+        LaunchUnitDigestsIncomparable => false
+      }
+  }
+}
