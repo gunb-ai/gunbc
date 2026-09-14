@@ -6600,7 +6600,7 @@ pub fn borrowed_callable_call_type(
             source_indices.clone(),
         );
         if ((tp_names.clone().len() as i64) == 0) {
-            base
+            base.clone()
         } else {
             {
                 let value_params = Rc::new({
@@ -6669,7 +6669,7 @@ pub fn borrowed_callable_call_type(
                         }
                     },
                 );
-                substitute_generics(base, subst.clone(), source_indices.clone())
+                substitute_generics(base.clone(), subst.clone(), source_indices.clone())
             }
         }
     }
@@ -13321,9 +13321,9 @@ pub fn alias_chain_target_after_args(
 
 pub fn alias_chain_carrier(n: Rc<Node>) -> Rc<Node> {
     if ((n.connective.clone() == Connective::NoConnective) && (n.name.clone() != "".to_string())) {
-        n
+        n.clone()
     } else {
-        structural_from_expanded_type(n)
+        structural_from_expanded_type(n.clone())
     }
 }
 
@@ -14831,10 +14831,10 @@ pub fn maybe_insert_composed_field_relation(
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match composed.clone() {
         Some(rel) => match (*rel.clone()).clone() {
-            SubValueRelation::SubValueUnknown => acc,
-            _ => v1_rt::rc_map_insert(acc, fname.clone(), rel.clone()),
+            SubValueRelation::SubValueUnknown => acc.clone(),
+            _ => v1_rt::rc_map_insert(acc.clone(), fname.clone(), rel.clone()),
         },
-        std::option::Option::None => acc,
+        std::option::Option::None => acc.clone(),
     }
 }
 
@@ -20357,9 +20357,9 @@ pub fn substitute_generics(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if v1_rt::map_is_empty(&subst) {
-        n
+        n.clone()
     } else {
-        substitute_generics_apply(n, subst.clone(), source_indices.clone())
+        substitute_generics_apply(n.clone(), subst.clone(), source_indices.clone())
     }
 }
 

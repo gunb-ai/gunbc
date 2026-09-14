@@ -2124,10 +2124,10 @@ pub fn node_type_shape_argument_list(
                         .collect::<Vec<_>>(),
                 );
                 if ((rest.clone().len() as i64) == 0) {
-                    head
+                    head.clone()
                 } else {
                     v1_rt::concat(
-                        head,
+                        head.clone(),
                         v1_rt::concat(
                             ",".to_string(),
                             node_type_shape_argument_list(rest.clone(), source_indices.clone()),
@@ -3031,17 +3031,17 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
+            crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
             if ((n.name.clone() == "Optional".to_string())
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    std::option::Option::None => n,
+                    std::option::Option::None => n.clone(),
                 }
             } else {
-                n
+                n.clone()
             }
         }
     }
