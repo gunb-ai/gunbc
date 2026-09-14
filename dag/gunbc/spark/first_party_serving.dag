@@ -9,7 +9,7 @@ import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
-  ProviderPathUnread,
+  ProviderPathUnread, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
   PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
 }
@@ -26,13 +26,19 @@ import gunbc.spark.pair_serving_realization {
 }
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
-  UsageStatsLaunchUnread, VllmUsageStatsContentClass,
+  UsageStatsLaunchUnread, UsageStatsEnvMalformed, VllmUsageStatsContentClass,
   ConfigurationAndHardwareMetadataOnly, CarriesRequestMaterial,
   vllm_usage_stats_reporting,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding }
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+}
+import gunbc.spark.serving_usage_stats_observe {
+  ServingContainerInspectStdout, InspectStdoutRead, InspectStdoutUnread,
+  spark_serving_usage_stats_from_inspect, spark_usage_stats_marker_unread,
+}
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
@@ -659,11 +665,24 @@ fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmp
   }
 }
 
-fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
-  UsageStatsLaunchUnread {
-    obligation: spark_telemetry_unread_obligation(
-      cause: spark_serving_usage_stats_unread_cause(realization: realization),
-    ),
+fn spark_serving_usage_stats_standing(
+  realization: SparkServingRealization,
+  inspect: ServingContainerInspectStdout,
+) -> VllmUsageStatsLaunchStanding {
+  match inspect {
+    InspectStdoutUnread { obligation: o } =>
+      UsageStatsLaunchUnread { obligation: o }
+    InspectStdoutRead { stdout: stdout } =>
+      match realization.incarnation {
+        EndpointIncarnationUnobserved { obligation: o } =>
+          UsageStatsLaunchUnread { obligation: o }
+        EndpointIncarnationObserved { observation: obs } =>
+          spark_serving_usage_stats_from_inspect(
+            launch: obs.launch,
+            inspect_stdout: stdout,
+            marker: spark_usage_stats_marker_unread(),
+          )
+      }
   }
 }
 
@@ -682,19 +701,26 @@ fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> V
 // gunbc.rung_drop.provider_path_jurisdiction_unread_admits, as EMPTY PENDING that evidence rather
 // than as a deleted subject -- the distinction matters, because a drop recorded as deleted would make
 // the ruling silently unreachable while its own record went on claiming otherwise.
-fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> ProviderPathStanding {
-  match spark_serving_usage_stats_standing(realization: realization) {
+fn spark_usage_stats_telemetry_path(
+  realization: SparkServingRealization,
+  inspect: ServingContainerInspectStdout,
+) -> ProviderPathStanding {
+  match spark_serving_usage_stats_standing(realization: realization, inspect: inspect) {
     UsageStatsLaunchUnread { obligation: _ } =>
       ProviderPathUnread {
         obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
         consulted: [],
       }
-    UsageStatsDisabledByLaunch { mechanism: _ } =>
+    UsageStatsEnvMalformed { cause: _ } =>
       ProviderPathUnread {
-        obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_declared_environment_obligation"),
+        obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
         consulted: [],
       }
-    UsageStatsEnabledByDefault { basis: _ } =>
+    UsageStatsDisabledByLaunch { mechanism: _ } =>
+      ProviderPathAbsent {
+        evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+      }
+    UsageStatsEnabledByDefault { basis: _, destination: _ } =>
       match vllm_usage_stats_reporting.content_class {
         CarriesRequestMaterial =>
           ProviderPathUnread {
@@ -716,7 +742,10 @@ fn spark_usage_stats_telemetry_path(realization: SparkServingRealization) -> Pro
 // read as a moment anybody measured; the midnight is the date-grain convention already used by
 // gunbc.instruments.fabric_control_plane_live_probe, not a reading. The field is named for an
 // observation because most routes are observed; this one says in every other line that it is not.
-fn spark_first_party_route_facts(realization: SparkServingRealization) -> ProviderRouteFacts {
+fn spark_first_party_route_facts(
+  realization: SparkServingRealization,
+  inspect: ServingContainerInspectStdout,
+) -> ProviderRouteFacts {
   ProviderRouteFacts {
     route: spark_first_party_route(),
     contract_terms: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
@@ -725,7 +754,7 @@ fn spark_first_party_route_facts(realization: SparkServingRealization) -> Provid
       durable_storage: spark_first_party_path(),
       backups: spark_first_party_path(),
       logs: spark_first_party_path(),
-      telemetry: spark_usage_stats_telemetry_path(realization: realization),
+      telemetry: spark_usage_stats_telemetry_path(realization: realization, inspect: inspect),
       control_plane: spark_first_party_path(),
       support_access: spark_first_party_path(),
       administrative_access: spark_first_party_path(),
@@ -774,12 +803,13 @@ fn spark_first_party_use_scope<P>(
 // by test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
+  inspect: ServingContainerInspectStdout,
   scope: ProviderUseScope<P>,
   offer: FabricIdentity<P, OfferKey>,
 ) -> ProviderUseAdmission<P> {
   admit_provider_use(
     roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(realization: realization),
+    facts: spark_first_party_route_facts(realization: realization, inspect: inspect),
     active: spark_first_party_posture,
     scope: scope,
     offer: offer,

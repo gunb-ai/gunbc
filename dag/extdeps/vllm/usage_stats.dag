@@ -1,6 +1,7 @@
 module extdeps.vllm.usage_stats
 
-import std.types { NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.types { NonEmptyStr, List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -97,22 +98,9 @@ type VllmUsageStatsDisableTerm {
 // no truthiness, no case folding and no "anything non-empty": each of those is a consumer's guess
 // about a reading this module can state.
 //
-// THIS PREDICATE HAS NO CALL SITE TODAY, AND THAT IS A DECLARED FRONTIER RATHER THAN AN OVERSIGHT
-// (DESIGN 3c). Its only consumer was gunbc.spark.first_party_serving spark_lane_disables_usage_stats,
-// which folded it over the environment a container is DECLARED to be created with. That fold was
-// deleted rather than narrowed, because a deciding standing that still consults a declared
-// environment is only postponing the attribution it must not make: agreeing with a declaration does
-// not establish what the process that answered actually does.
-//
-// THE NAMED CONSUMER AND THE TRIGGER. This predicate is what an EFFECTIVE-CONFIGURATION READING
-// feeds -- once a producer can read the environment of the running container and bind it to the
-// offered launch, the assignments it returns are tested here, by upstream's own reading, and the
-// telemetry path resolves. The trigger is that reading, named at gunbc.spark.first_party_serving
-// spark_serving_usage_stats_declared_environment_obligation. It is kept rather than deleted because
-// what it holds is a CITED UPSTREAM READING -- the exact-equality semantics of envs.py, which
-// review 64043 established after a first spelling got the direction wrong in the admitting sense --
-// and re-deriving that from the source a second time is the redundant work DESIGN 2 prices. It is
-// not kept because deleting it would be inconvenient: if the reading never lands, this goes with it.
+// THE NAMED CONSUMER. gunbc.spark.serving_usage_stats_observe spark_serving_usage_stats_from_inspect
+// feeds this predicate the three projected names from a running-container inspect. The exact-equality
+// semantics of envs.py stay here (review 64043).
 fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: NonEmptyStr, value: String) -> Bool {
   (name as String) == (term.variable as String) && value == (term.disabling_value as String)
 }
@@ -168,7 +156,101 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
 // the shape of the question a consumer must ask about a particular launch. The arms are what a
 // launch's configuration can establish, and the unread arm exists because reading a running host's
 // environment is an observation this module cannot make.
+type VllmDoNotTrackMarkerStanding
+  = DoNotTrackMarkerPresent
+  | DoNotTrackMarkerAbsent
+  | DoNotTrackMarkerUnread { obligation: NonEmptyStr }
+
+type VllmUsageStatsEnvAssignment {
+  name: NonEmptyStr
+  value: String
+}
+
 type VllmUsageStatsLaunchStanding
   = UsageStatsDisabledByLaunch { mechanism: NonEmptyStr }
-  | UsageStatsEnabledByDefault { basis: NonEmptyStr }
+  | UsageStatsEnabledByDefault { basis: NonEmptyStr, destination: NonEmptyStr }
   | UsageStatsLaunchUnread { obligation: NonEmptyStr }
+  | UsageStatsEnvMalformed { cause: NonEmptyStr }
+
+fn vllm_usage_stats_inspect_env_names() -> List<NonEmptyStr> {
+  append(
+    map(vllm_usage_stats_reporting.disable_terms, t => t.variable),
+    items: [vllm_usage_stats_reporting.server_override_env],
+  )
+}
+
+fn vllm_usage_stats_named_value(assignments: List<VllmUsageStatsEnvAssignment>, name: NonEmptyStr) -> String? {
+  fold(assignments, init: none, f: (acc, a) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if (a.name as String) == (name as String) {
+          Present { value: a.value }
+        } else {
+          none
+        }
+    })
+}
+
+fn vllm_usage_stats_term_disables_from_assignments(
+  terms: List<VllmUsageStatsDisableTerm>,
+  assignments: List<VllmUsageStatsEnvAssignment>,
+) -> NonEmptyStr? {
+  fold(terms, init: none, f: (acc, term) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match vllm_usage_stats_named_value(assignments: assignments, name: term.variable) {
+          Absent => none
+          Present { value: v } =>
+            if vllm_usage_stats_assignment_disables(term: term, name: term.variable, value: v) {
+              Present { value: term.variable }
+            } else {
+              none
+            }
+        }
+    })
+}
+
+fn vllm_usage_stats_destination(assignments: List<VllmUsageStatsEnvAssignment>) -> NonEmptyStr {
+  match vllm_usage_stats_named_value(
+    assignments: assignments,
+    name: vllm_usage_stats_reporting.server_override_env,
+  ) {
+    Absent => vllm_usage_stats_reporting.default_server
+    Present { value: v } =>
+      if v.length() == 0 {
+        vllm_usage_stats_reporting.default_server
+      } else {
+        v as NonEmptyStr
+      }
+  }
+}
+
+fn vllm_usage_stats_standing_from_effective_config(
+  assignments: List<VllmUsageStatsEnvAssignment>,
+  marker: VllmDoNotTrackMarkerStanding,
+) -> VllmUsageStatsLaunchStanding {
+  match vllm_usage_stats_term_disables_from_assignments(
+    terms: vllm_usage_stats_reporting.disable_terms,
+    assignments: assignments,
+  ) {
+    Present { value: mechanism } =>
+      UsageStatsDisabledByLaunch { mechanism: mechanism }
+    Absent =>
+      match marker {
+        DoNotTrackMarkerPresent =>
+          UsageStatsDisabledByLaunch { mechanism: vllm_usage_stats_reporting.disable_marker_path }
+        DoNotTrackMarkerAbsent =>
+          UsageStatsEnabledByDefault {
+            basis: "no disable term equals 1 and the do-not-track marker is absent" as NonEmptyStr,
+            destination: vllm_usage_stats_destination(assignments: assignments),
+          }
+        DoNotTrackMarkerUnread { obligation: _ } =>
+          UsageStatsEnabledByDefault {
+            basis: "no disable term equals 1; the do-not-track marker was not read, so disable-by-marker is not claimed" as NonEmptyStr,
+            destination: vllm_usage_stats_destination(assignments: assignments),
+          }
+      }
+  }
+}

@@ -1,0 +1,319 @@
+module test.claim.spark.spark_serving_usage_stats_observe_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.emit {
+  json_array, json_object, json_kv, json_string, serialize_json,
+}
+import extdeps.docker.cli {
+  DockerContainerInspectNamedEnv, DockerContainerInspectNamedEnvUnreadable,
+  docker_container_inspect_named_env_from_stdout,
+}
+import extdeps.vllm.usage_stats {
+  UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault, UsageStatsLaunchUnread,
+  UsageStatsEnvMalformed, vllm_usage_stats_inspect_env_names, vllm_usage_stats_reporting,
+  vllm_usage_stats_assignment_disables, DoNotTrackMarkerPresent,
+  VllmUsageStatsDisableTerm,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.vllm_serving_launch {
+  vllm_serving_launch, VllmServingLaunch, EndpointIncarnationObserved,
+  endpoint_incarnation_observation,
+}
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied }
+import gunbc.spark.serving_usage_stats_observe {
+  spark_serving_usage_stats_from_inspect, spark_usage_stats_inspect_unread,
+  spark_usage_stats_marker_unread, spark_usage_stats_container_id_mismatch_obligation,
+  InspectStdoutRead,
+}
+import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
+import gunbc.spark.pair_serving_realization {
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+}
+import std.measure { token_count }
+import gunbc.spark.first_party_serving {
+  SparkServingRealization, spark_first_party_use_scope, spark_first_party_admission,
+  spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
+}
+import product.fabric.provider_route { ProviderPathAbsent, ProviderPathUnread, ProviderPathLocated }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn t_sha256(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data t_container_id: String = "fixture-container-1"
+
+fn t_launch() -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv6,
+    systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
+    container_id: t_container_id as NonEmptyStr,
+    executable_digest: t_sha256(hex: "7777777777777777777777777777777777777777777777777777777777777777"),
+    unit_digest: t_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555"),
+    started_at: 1788907506,
+  )
+}
+
+fn t_inspect(env: List<String>, id: String) -> String {
+  serialize_json(v: json_array(elements: [
+    json_object(members: [
+      json_kv(key: "Id", value: json_string(s: id)),
+      json_kv(key: "Config", value: json_object(members: [
+        json_kv(key: "Env", value: json_array(elements: map(env, e => json_string(s: e)))),
+      ])),
+    ]),
+  ]))
+}
+
+fn t_no_usage_term() -> VllmUsageStatsDisableTerm {
+  match vllm_usage_stats_reporting.disable_terms |> get(0) {
+    Present { value: t } => t
+    Absent => VllmUsageStatsDisableTerm {
+      variable: "VLLM_NO_USAGE_STATS" as NonEmptyStr,
+      disabling_value: "1" as NonEmptyStr,
+    }
+  }
+}
+
+test fn upstream_disables_only_on_exact_one() -> Bool {
+  let term = t_no_usage_term()
+  vllm_usage_stats_assignment_disables(term: term, name: term.variable, value: "1")
+    && !vllm_usage_stats_assignment_disables(term: term, name: term.variable, value: "true")
+    && !vllm_usage_stats_assignment_disables(term: term, name: term.variable, value: "yes")
+}
+
+test fn true_does_not_disable_the_launch() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=true", "SECRET=must-not-surface"], id: t_container_id),
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsEnabledByDefault { basis: _, destination: d } =>
+      (d as String) == (vllm_usage_stats_reporting.default_server as String)
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn exact_one_disables_by_vllm_no_usage_stats() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1", "SECRET=must-not-surface"], id: t_container_id),
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsDisabledByLaunch { mechanism: m } => (m as String) == "VLLM_NO_USAGE_STATS"
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn exact_one_disables_by_do_not_track() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: ["DO_NOT_TRACK=1"], id: t_container_id),
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsDisabledByLaunch { mechanism: m } => (m as String) == "DO_NOT_TRACK"
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn server_override_is_the_enabled_destination() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: ["VLLM_USAGE_STATS_SERVER=https://stats.example.test"], id: t_container_id),
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsEnabledByDefault { basis: _, destination: d } =>
+      (d as String) == "https://stats.example.test"
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn marker_present_disables_when_env_does_not() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: [], id: t_container_id),
+    marker: DoNotTrackMarkerPresent,
+  ) {
+    UsageStatsDisabledByLaunch { mechanism: m } =>
+      (m as String) == (vllm_usage_stats_reporting.disable_marker_path as String)
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn inspect_unread_refuses() -> Bool {
+  match spark_serving_usage_stats_standing(
+    realization: t_realization_observed(),
+    inspect: spark_usage_stats_inspect_unread(),
+  ) {
+    UsageStatsLaunchUnread { obligation: _ } => true
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn unreadable_inspect_is_malformed() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: "not-json",
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsEnvMalformed { cause: _ } => true
+    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+  }
+}
+
+test fn container_id_mismatch_is_unread() -> Bool {
+  match spark_serving_usage_stats_from_inspect(
+    launch: t_launch(),
+    inspect_stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: "other-container"),
+    marker: spark_usage_stats_marker_unread(),
+  ) {
+    UsageStatsLaunchUnread { obligation: o } =>
+      (o as String) == (spark_usage_stats_container_id_mismatch_obligation as String)
+    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    UsageStatsEnabledByDefault { basis: _, destination: _ } => false
+    UsageStatsEnvMalformed { cause: _ } => false
+  }
+}
+
+test fn named_projection_drops_unrequested_env() -> Bool {
+  match docker_container_inspect_named_env_from_stdout(
+    stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1", "SECRET=must-not-surface", "DO_NOT_TRACK=0"], id: t_container_id),
+    names: vllm_usage_stats_inspect_env_names(),
+  ) {
+    DockerContainerInspectNamedEnvUnreadable { cause: _ } => false
+    DockerContainerInspectNamedEnv { id: _, assignments: asg } =>
+      !any(asg, a => (a.name as String) == "SECRET")
+        && any(asg, a => (a.name as String) == "VLLM_NO_USAGE_STATS" && a.value == "1")
+        && any(asg, a => (a.name as String) == "DO_NOT_TRACK" && a.value == "0")
+  }
+}
+
+test fn duplicate_requested_name_is_unreadable() -> Bool {
+  match docker_container_inspect_named_env_from_stdout(
+    stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1", "VLLM_NO_USAGE_STATS=0"], id: t_container_id),
+    names: vllm_usage_stats_inspect_env_names(),
+  ) {
+    DockerContainerInspectNamedEnvUnreadable { cause: _ } => true
+    DockerContainerInspectNamedEnv { id: _, assignments: _ } => false
+  }
+}
+
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+fn t_realization_observed() -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+        configured_model_path: t_declared_path() as NonEmptyStr,
+        max_model_len: token_count(count: 1048576),
+      ),
+    },
+    endpoint: vllm_endpoint_process_launch(
+      group: FabricGroupA,
+      endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+      process_start_field: "1" as NonEmptyStr,
+    ),
+    incarnation: EndpointIncarnationObserved {
+      observation: endpoint_incarnation_observation(
+        endpoint: vllm_endpoint_process_launch(
+          group: FabricGroupA,
+          endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+          process_start_field: "1" as NonEmptyStr,
+        ),
+        launch: t_launch(),
+        receipt: "test.claim.spark.spark_serving_usage_stats_observe_witness_test" as ObservationReceiptRef,
+      ),
+    },
+  }
+}
+
+test fn disabled_launch_is_an_absent_telemetry_path() -> Bool {
+  match spark_usage_stats_telemetry_path(
+    realization: t_realization_observed(),
+    inspect: InspectStdoutRead {
+      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+    },
+  ) {
+    ProviderPathAbsent { evidence: _ } => true
+    ProviderPathUnread { obligation: _, consulted: _ } => false
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+  }
+}
+
+fn t_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-demand-1" as DemandKey }
+}
+
+fn t_work() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "harness-turn-work-1" as WorkKey }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "group-a@http://192.168.1.225:30000@1" as OfferKey }
+}
+
+test fn first_party_admission_evaluates_telemetry_when_usage_stats_are_disabled() -> Bool {
+  match spark_first_party_admission(
+    realization: t_realization_observed(),
+    inspect: InspectStdoutRead {
+      stdout: t_inspect(env: ["VLLM_NO_USAGE_STATS=1"], id: t_container_id),
+    },
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => true
+    ProviderUseDenied { decision: _, cause: _ } => false
+  }
+}
+
+fn observe_witness_main() -> ProcessExit {
+  let all_pass = upstream_disables_only_on_exact_one()
+    && true_does_not_disable_the_launch()
+    && exact_one_disables_by_vllm_no_usage_stats()
+    && exact_one_disables_by_do_not_track()
+    && server_override_is_the_enabled_destination()
+    && marker_present_disables_when_env_does_not()
+    && inspect_unread_refuses()
+    && unreadable_inspect_is_malformed()
+    && container_id_mismatch_is_unread()
+    && named_projection_drops_unrequested_env()
+    && duplicate_requested_name_is_unreadable()
+    && disabled_launch_is_an_absent_telemetry_path()
+    && first_party_admission_evaluates_telemetry_when_usage_stats_are_disabled()
+  if all_pass {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "spark serving usage-stats observe witness failed" }
+  }
+}

@@ -1,0 +1,73 @@
+module gunbc.spark.serving_usage_stats_observe
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.docker.cli {
+  DockerEnvAssignment,
+  DockerContainerInspectNamedEnv,
+  DockerContainerInspectNamedEnvUnreadable,
+  docker_container_inspect_named_env_from_stdout,
+}
+import extdeps.vllm.usage_stats {
+  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
+  UsageStatsLaunchUnread, UsageStatsEnvMalformed,
+  VllmUsageStatsEnvAssignment, VllmDoNotTrackMarkerStanding, DoNotTrackMarkerUnread,
+  vllm_usage_stats_inspect_env_names, vllm_usage_stats_standing_from_effective_config,
+}
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
+
+// ACCESS. This read is authorized by gunbc.spark.managed_access_bootstrap InspectServingContainer
+// (`docker container inspect <pinned name>`). That grant already returns Config.Env. A second grant
+// is not required. WHAT THIS MODULE MUST NOT DO: return, log or persist the rest of Config.Env;
+// infer the running environment from a declared unit; widen an identity-only inspect decoder.
+
+data spark_usage_stats_inspect_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the answering container's inspect stdout was not supplied, so the effective usage-stats configuration is unread. THE GRANT THAT AUTHORIZES THE READ is gunbc.spark.managed_access_bootstrap InspectServingContainer, installed through gunbc.spark.managed_grant_install. The decoder is docker_container_inspect_named_env_from_stdout over VLLM_NO_USAGE_STATS, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER only." as NonEmptyStr
+
+data spark_usage_stats_marker_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the upstream do-not-track marker file was not observed inside the answering container. InspectServingContainer does not authorize a filesystem read of disable_marker_path. Disable-by-marker is therefore not claimed." as NonEmptyStr
+
+data spark_usage_stats_container_id_mismatch_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: inspect Id does not equal the offered launch container_id, so the env projection is not a reading of the answering incarnation." as NonEmptyStr
+
+type ServingContainerInspectStdout
+  = InspectStdoutRead { stdout: String }
+  | InspectStdoutUnread { obligation: NonEmptyStr }
+
+fn spark_usage_stats_marker_unread() -> VllmDoNotTrackMarkerStanding {
+  DoNotTrackMarkerUnread { obligation: spark_usage_stats_marker_unread_obligation }
+}
+
+fn spark_usage_stats_inspect_unread() -> ServingContainerInspectStdout {
+  InspectStdoutUnread { obligation: spark_usage_stats_inspect_unread_obligation }
+}
+
+fn docker_assignments_as_vllm(assignments: List<DockerEnvAssignment>) -> List<VllmUsageStatsEnvAssignment> {
+  map(assignments, a => VllmUsageStatsEnvAssignment { name: a.name, value: a.value })
+}
+
+fn spark_usage_stats_projection_holds_only_requested_names(assignments: List<DockerEnvAssignment>) -> Bool {
+  let allowed = vllm_usage_stats_inspect_env_names()
+  !any(assignments, a => !any(allowed, n => (n as String) == (a.name as String)))
+}
+
+fn spark_serving_usage_stats_from_inspect(
+  launch: VllmServingLaunch,
+  inspect_stdout: String,
+  marker: VllmDoNotTrackMarkerStanding,
+) -> VllmUsageStatsLaunchStanding {
+  match docker_container_inspect_named_env_from_stdout(
+    stdout: inspect_stdout,
+    names: vllm_usage_stats_inspect_env_names(),
+  ) {
+    DockerContainerInspectNamedEnvUnreadable { cause: c } =>
+      UsageStatsEnvMalformed { cause: c }
+    DockerContainerInspectNamedEnv { id: id, assignments: asg } =>
+      if (id as String) != (launch.container_id as String) {
+        UsageStatsLaunchUnread { obligation: spark_usage_stats_container_id_mismatch_obligation }
+      } else if !spark_usage_stats_projection_holds_only_requested_names(assignments: asg) {
+        UsageStatsEnvMalformed { cause: "named-env projection returned a name this decoder does not request" as NonEmptyStr }
+      } else {
+        vllm_usage_stats_standing_from_effective_config(
+          assignments: docker_assignments_as_vllm(assignments: asg),
+          marker: marker,
+        )
+      }
+  }
+}

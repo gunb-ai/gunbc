@@ -1,5 +1,6 @@
 module extdeps.docker.cli
 
+import v2.std.optional { Present, Absent }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
 import std.algebra { trim }
@@ -292,6 +293,179 @@ fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRe
               }
             }
           }
+      }
+  }
+}
+
+// NARROW ENV PROJECTION FROM CONTAINER INSPECT STDOUT. `docker container inspect` prints the whole
+// object, including Config.Env values that can carry secrets. This decoder keeps Id (identity) and
+// only the requested names from Config.Env. It never returns the rest of the Env list. Duplicate
+// requested names refuse rather than last-wins. The transport is docker_container_inspect_command;
+// this is a decoder bound to that shape, not a second inspect verb.
+type DockerContainerInspectNamedEnvRead
+  = DockerContainerInspectNamedEnv {
+      id: NonEmptyStr,
+      assignments: List<DockerEnvAssignment>,
+    }
+  | DockerContainerInspectNamedEnvUnreadable { cause: NonEmptyStr }
+
+fn docker_json_string_list(v: JsonValue) -> List<String>? {
+  match v {
+    JsonArray { elements: es } => docker_json_string_list_from(es: es, index: 0, acc: [])
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn docker_json_string_list_from(es: List<JsonValue>, index: Int, acc: List<String>) -> List<String>? {
+  if index >= count(es) {
+    Present { value: acc }
+  } else {
+    match es |> get(index) {
+      Absent => none
+      Present { value: el } =>
+        match el {
+          JsonString { value: s } =>
+            docker_json_string_list_from(es: es, index: index + 1, acc: append(acc, items: [s]))
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonNumber { lexeme: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
+        }
+    }
+  }
+}
+
+fn docker_env_assignment_from_wire(entry: String) -> DockerEnvAssignment? {
+  let parts = split(s: entry, delimiter: "=")
+  match parts |> get(0) {
+    Absent => none
+    Present { value: name } =>
+      if name.length() == 0 {
+        none
+      } else {
+        Present {
+          value: DockerEnvAssignment {
+            name: name as NonEmptyStr,
+            value: join(parts.skip(n: 1), "="),
+          },
+        }
+      }
+  }
+}
+
+fn docker_named_env_name_requested(name: NonEmptyStr, names: List<NonEmptyStr>) -> Bool {
+  any(names, n => (n as String) == (name as String))
+}
+
+type DockerNamedEnvAccumulate
+  = DockerNamedEnvAcc { assignments: List<DockerEnvAssignment> }
+  | DockerNamedEnvAccUnreadable { cause: NonEmptyStr }
+
+fn docker_project_named_env(env: List<String>, names: List<NonEmptyStr>) -> DockerNamedEnvAccumulate {
+  fold(
+    env,
+    init: DockerNamedEnvAcc { assignments: [] },
+    f: (acc, entry) =>
+      match acc {
+        DockerNamedEnvAccUnreadable { cause: c } =>
+          DockerNamedEnvAccUnreadable { cause: c }
+        DockerNamedEnvAcc { assignments: accs } =>
+          match docker_env_assignment_from_wire(entry: entry) {
+            Absent =>
+              DockerNamedEnvAccUnreadable {
+                cause: "container inspect Config.Env entry is not a KEY or KEY=VALUE assignment" as NonEmptyStr,
+              }
+            Present { value: a } =>
+              if !docker_named_env_name_requested(name: a.name, names: names) {
+                acc
+              } else if any(accs, x => (x.name as String) == (a.name as String)) {
+                DockerNamedEnvAccUnreadable {
+                  cause: join(["container inspect Config.Env names ", a.name as String, " more than once"], "") as NonEmptyStr,
+                }
+              } else {
+                DockerNamedEnvAcc { assignments: append(accs, items: [a]) }
+              }
+          }
+      },
+  )
+}
+
+fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<NonEmptyStr>) -> DockerContainerInspectNamedEnvRead {
+  match json_object_unique_member(v: obj, key: "Id") {
+    JsonMemberAbsent =>
+      DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect JSON names no Id" as NonEmptyStr }
+    JsonMemberNotAnObject =>
+      DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect JSON element is not an object" as NonEmptyStr }
+    JsonMemberDuplicated { count: n } =>
+      DockerContainerInspectNamedEnvUnreadable {
+        cause: join(["docker container inspect JSON names Id ", to_string(n), " times"], "") as NonEmptyStr,
+      }
+    JsonMemberFound { value: idv } => {
+      let id = json_string_value_or_empty(v: idv)
+      if id == "" {
+        DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect JSON Id is not a nonempty string" as NonEmptyStr }
+      } else {
+        match json_object_unique_member(v: obj, key: "Config") {
+          JsonMemberAbsent =>
+            DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: [] }
+          JsonMemberNotAnObject =>
+            DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect JSON element is not an object" as NonEmptyStr }
+          JsonMemberDuplicated { count: n } =>
+            DockerContainerInspectNamedEnvUnreadable {
+              cause: join(["docker container inspect JSON names Config ", to_string(n), " times"], "") as NonEmptyStr,
+            }
+          JsonMemberFound { value: cfg } =>
+            match json_object_unique_member(v: cfg, key: "Env") {
+              JsonMemberAbsent =>
+                DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: [] }
+              JsonMemberNotAnObject =>
+                DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect Config is not an object" as NonEmptyStr }
+              JsonMemberDuplicated { count: n } =>
+                DockerContainerInspectNamedEnvUnreadable {
+                  cause: join(["docker container inspect Config names Env ", to_string(n), " times"], "") as NonEmptyStr,
+                }
+              JsonMemberFound { value: envv } =>
+                match docker_json_string_list(v: envv) {
+                  Absent =>
+                    DockerContainerInspectNamedEnvUnreadable {
+                      cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
+                    }
+                  Present { value: env } =>
+                    match docker_project_named_env(env: env, names: names) {
+                      DockerNamedEnvAccUnreadable { cause: c } =>
+                        DockerContainerInspectNamedEnvUnreadable { cause: c }
+                      DockerNamedEnvAcc { assignments: asg } =>
+                        DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: asg }
+                    }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn docker_container_inspect_named_env_from_stdout(stdout: String, names: List<NonEmptyStr>) -> DockerContainerInspectNamedEnvRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => {
+      let t = json_document_gap_text(gap: g)
+      DockerContainerInspectNamedEnvUnreadable {
+        cause: if t.length() == 0 { "docker container inspect JSON is unreadable" as NonEmptyStr } else { t as NonEmptyStr },
+      }
+    }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent =>
+          DockerContainerInspectNamedEnvUnreadable {
+            cause: "docker container inspect JSON is not a one-element array" as NonEmptyStr,
+          }
+        Present { value: obj } =>
+          docker_container_inspect_named_env_from_object(obj: obj, names: names)
       }
   }
 }
