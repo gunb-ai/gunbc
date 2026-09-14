@@ -52,7 +52,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  byte_limb_hash_peano_digest,
   combine_hash,
   content_hash,
   node_synthetic,
@@ -102,6 +101,8 @@ import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, conta
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
+import std.content_hash { content_hash_atom }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -590,19 +591,22 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
-// Route through chars(s:): the emitted realization needs the boundary conversion — emitted
-// fold_list<T, _> cannot infer T from a host-carrier lexeme (E0282) without it — and the
-// interpreted chars builtin grounds every string realization (native compact string and
-// Empty/Cons chain alike, via free_monoid_to_string) to the same Int codepoints fold_list
-// itself would read, so the digest is realization-stable on both routes.
+// ONE ATOM PER INTEGER AND PER LEXEME, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The previous body
+// hashed every lexeme codepoint, and every token offset, through the unary byte-limb digest: one
+// combine_hash (a hex-string format and an allocation) per unit of the value, so a codepoint near
+// 100 cost ~100 steps. On the native route that token-stream digest was 28% of the process (perf,
+// bounded K=16 root, 2026-09-14) -- about half of context -- and parse_table_subject is its only
+// reader. The unary digest also maps EVERY value above 255 to one out-of-range tag, so token
+// offsets and memo positions (almost always above 255) collided and the subject law's "full stream
+// content-address" was not one. The decimal atom is injective over Int and the text atom over
+// strings (the constant prefix keeps the empty lexeme non-empty); both hash bytes the host
+// already holds, so they are realization-stable.
+fn parse_int_digest(value: Int) -> Hash {
+  content_hash_atom(value: concat("parse_int_digest_decimal:", integer_int_to_decimal_string(value: value)) as NonEmptyStr)
+}
+
 fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
-  fold_list(
-    xs: chars(s: lexeme),
-    empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
-    cons: fn(acc, ch) {
-      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
-    }
-  )
+  content_hash_atom(value: concat("parse_lexeme_digest_text:", lexeme) as NonEmptyStr)
 }
 
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
@@ -619,8 +623,8 @@ fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
           ),
           b: combine_hash(
             a: combine_hash(
-              a: byte_limb_hash_peano_digest(limb: tok.start),
-              b: byte_limb_hash_peano_digest(limb: tok.end)
+              a: parse_int_digest(value: tok.start),
+              b: parse_int_digest(value: tok.end)
             ),
             b: parse_lexeme_digest(lexeme: tok.lexeme)
           )
@@ -685,7 +689,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
     b: combine_hash(
-      a: byte_limb_hash_peano_digest(limb: key.position),
+      a: parse_int_digest(value: key.position),
       b: symbol_identity_digest(sym: key.production)
     )
   )

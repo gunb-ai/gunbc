@@ -64,3 +64,14 @@ test fn witness_subject_token_stream_scope_sensitive() -> Bool {
   a != b
 }
 
+// Positions above one byte limb must stay distinct. The unary byte-limb digest this subject used
+// mapped every value above 255 to one out-of-range tag, so these two keys hashed equal and this
+// witness returned false; real token offsets are almost always above 255.
+fn key_p300_a() -> ParsePositionKey { ParsePositionKey { position: 300, production: ^ctk_prod_a } }
+fn key_p301_a() -> ParsePositionKey { ParsePositionKey { position: 301, production: ^ctk_prod_a } }
+
+test fn witness_subject_position_sensitive_above_one_limb() -> Bool {
+  let a = parse_table_subject(table: table_g1_t1(), key: key_p300_a())
+  let b = parse_table_subject(table: table_g1_t1(), key: key_p301_a())
+  a != b
+}
