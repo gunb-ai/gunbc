@@ -13,7 +13,6 @@ use v1_compiler::std_compiler_entry::{
     native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
     native_driver_cost_row_standing, native_driver_exclusive_rows, NativeDriverChildStanding,
     NativeDriverCostAccounting, NativeDriverCostRowStanding, NativeDriverExclusiveRowKey,
-    NativeDriverExclusiveRows,
 };
 use v1_compiler::std_measure::nanosecond;
 use v1_compiler::v1_compiler_emit_rust::emit_source_root_eval_driver_main_rs;
