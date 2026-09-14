@@ -6,7 +6,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGro
 import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
-  CeilingByDeclaredPolicy, CeilingFromRouteLaunch,
+  CeilingByDeclaredPolicy, CeilingFromRouteLaunch, ServingRouteEndpoint,
 }
 import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
@@ -161,7 +161,7 @@ test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -
 // route advertising nothing admitted -- must be unobserved, because an offer is bound only on an
 // observed readiness.
 fn w_ready(standing: HarnessBackendStanding) -> Bool {
-  match harness_serving_readiness(standing: standing, now: 1757200000) {
+  match harness_serving_readiness(endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }, standing: standing, now: 1757200000) {
     ServingObserved { ready_at: _, receipt: _ } => true
     ServingUnobserved { obligation: _ } => false
   }

@@ -1,0 +1,107 @@
+module gunbc.serving.serving_availability
+
+import std.types { String, NonEmptyStr, Timestamp }
+import std.measure { Second, second_count }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch_is, vllm_endpoint_process_launch_key,
+}
+
+// ── WHETHER A SERVING ROUTE CAN TAKE NEW WORK, AS ONE READING ────────────────────────────────
+//
+// This is the authority every consumer projects from: offer readiness
+// (gunbc.spark.serving_offer spark_serving_readiness_of) and the seat fence
+// (gunbc.harness.harness_seat harness_fence_grant) both answer from it, so there is one statement
+// of whether a route can serve rather than one per consumer.
+//
+// THREE ARMS, BECAUSE THE REMEDIES ARE THREE. Available is a reading that succeeded. Unavailable is a
+// reading that succeeded and said no, with the typed reason. Unread is a reading that could not be
+// taken at all -- the answer is not "no", it is "not established" -- and it must never be folded
+// into either of the others, which would be the ⊤/⊥-as-ignorance conflation DESIGN §5 forbids.
+//
+// EVERY ARM CARRIES WHEN AND FROM WHERE. A bare Available with no time can outlive the observation
+// that produced it indefinitely; the timestamp is what lets a consumer refuse a stale one.
+//
+// THE GRAIN IS THE ENDPOINT PROCESS, NOT THE ENGINE. The launch identity here is the process that
+// exports /metrics (gunbc.rung_drop serving_offer_identity_is_the_exporter_process). An unchanged
+// exporter does not establish the same engine core, rank population or loaded model, and a live
+// exporter over a stalled engine core reads Available. Detecting that is not this cut's to claim.
+type ServingAvailability
+  = ServingAvailable {
+      endpoint: ServingRouteEndpoint
+      observed_at: Timestamp
+      receipt: ObservationReceiptRef
+    }
+  | ServingUnavailable {
+      endpoint: ServingRouteEndpoint
+      observed_at: Timestamp
+      cause: ServingUnavailableCause
+      receipt: ObservationReceiptRef
+    }
+  | ServingAvailabilityUnread {
+      endpoint: ServingRouteEndpoint
+      attempted_at: Timestamp
+      cause: NonEmptyStr
+    }
+
+// WHAT THE TRANSPORT ESTABLISHES, AND NOTHING STRONGER. A bounded GET reports one Bool, which cannot
+// tell a silent socket from a refused connection or an HTTP 500, so the front-door arm says exactly
+// what was seen -- no successful answer inside the bound -- and does not claim the engine is hung.
+type ServingUnavailableCause
+  = FrontDoorDidNotAnswerSuccessfullyWithinBound { url: NonEmptyStr, bound: Second }
+  | RouteAdvertisesNoAdmittedModel { advertised: String }
+  | EndpointProcessReplaced { expected: VllmEndpointProcessLaunch, observed: VllmEndpointProcessLaunch }
+
+fn serving_unavailable_cause_text(cause: ServingUnavailableCause) -> String {
+  match cause {
+    FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b } =>
+      join(["the route at ", u as String, " did not answer successfully within ", to_string(second_count(s: b)), "s"], "")
+    RouteAdvertisesNoAdmittedModel { advertised: a } =>
+      join(["the route advertises no model this harness is admitted to ask; it advertises: ", a], "")
+    EndpointProcessReplaced { expected: e, observed: o } =>
+      join([
+        "the endpoint process was replaced: bound to ", vllm_endpoint_process_launch_key(launch: e) as String,
+        ", now serving ", vllm_endpoint_process_launch_key(launch: o) as String,
+      ], "")
+  }
+}
+
+fn serving_availability_text(a: ServingAvailability) -> String {
+  match a {
+    ServingAvailable { endpoint: e, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " available at ", t], "")
+    ServingUnavailable { endpoint: e, observed_at: t, cause: c, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " unavailable at ", t, ": ", serving_unavailable_cause_text(cause: c)], "")
+    ServingAvailabilityUnread { endpoint: e, attempted_at: t, cause: c } =>
+      join([serving_route_endpoint_wire(e: e) as String, " availability unread at ", t, ": ", c as String], "")
+  }
+}
+
+// THE LAUNCH READING AGAINST THE LAUNCH A SEAT OR OFFER WAS BOUND TO. Same process: available. A
+// different process: unavailable, naming both, because work bound to the first must not land on the
+// second. No reading: unread, never available -- an exporter that could not be identified is not
+// evidence that the bound one is still there.
+fn serving_availability_after_launch_read(
+  endpoint: ServingRouteEndpoint,
+  expected: VllmEndpointProcessLaunch,
+  observation: VllmEndpointProcessLaunchObservation,
+  now: Timestamp,
+) -> ServingAvailability {
+  match observation {
+    LaunchUnobserved { group: _, obligation: o } =>
+      ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+    LaunchObserved { launch: current, receipt: r } =>
+      if vllm_endpoint_process_launch_is(launch: current, other: expected) {
+        ServingAvailable { endpoint: endpoint, observed_at: now, receipt: r }
+      } else {
+        ServingUnavailable {
+          endpoint: endpoint,
+          observed_at: now,
+          cause: EndpointProcessReplaced { expected: expected, observed: current },
+          receipt: r,
+        }
+      }
+  }
+}

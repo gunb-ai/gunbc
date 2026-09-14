@@ -33,6 +33,9 @@ import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
 import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
+}
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
 //
@@ -113,6 +116,20 @@ data spark_serving_billing_quantum: Second = second(count: 1)
 type SparkServingReadiness
   = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
   | ServingUnobserved { obligation: NonEmptyStr }
+
+// READINESS IS A PROJECTION OF AVAILABILITY, NEVER A SECOND READING. gunbc.serving.serving_availability
+// is the one statement of whether a route can take new work; an offer is ready exactly when that
+// reading is available, and every other arm -- unavailable with its cause, or unread -- carries its
+// text into the obligation, so the offer refuses naming why.
+fn spark_serving_readiness_of(availability: ServingAvailability) -> SparkServingReadiness {
+  match availability {
+    ServingAvailable { endpoint: _, observed_at: t, receipt: r } => ServingObserved { ready_at: t, receipt: r }
+    ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+  }
+}
 
 // ── THE ROUTE IS OBSERVED OR THE OFFER DOES NOT EXIST, WHICH IS READINESS'S ARGUMENT AGAIN ────
 //

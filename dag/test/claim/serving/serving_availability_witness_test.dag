@@ -1,0 +1,160 @@
+module test.claim.serving.serving_availability_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { second_count }
+import v2.std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch, LaunchObserved, LaunchUnobserved, vllm_endpoint_process_launch_key,
+}
+import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable, HarnessBackendUnreadable,
+  harness_models_availability, harness_observe_replica, harness_observe_engine, harness_front_door_probe_bound,
+}
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
+  FrontDoorDidNotAnswerSuccessfullyWithinBound, RouteAdvertisesNoAdmittedModel, EndpointProcessReplaced,
+  serving_availability_after_launch_read,
+}
+import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of }
+
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+
+// An address from TEST-NET-1 (RFC 5737): reserved for documentation and never routed, so a live run
+// cannot reach a real engine, and the bounded probe must give up inside its bound rather than hang.
+data w_unroutable_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.0.2.1" as NonEmptyStr, port: 30000 }
+
+data w_now: String = "1789400000"
+
+fn w_serving_standing() -> HarnessBackendStanding {
+  HarnessBackendServing {
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    unit: DeepseekV4FlashOnVllm,
+    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+  }
+}
+
+fn w_launch(field: String) -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+}
+
+fn w_is_available(a: ServingAvailability) -> Bool {
+  match a {
+    ServingAvailable { endpoint: _, observed_at: _, receipt: _ } => true
+    ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } => false
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  }
+}
+
+fn w_is_unread(a: ServingAvailability) -> Bool {
+  match a {
+    ServingAvailable { endpoint: _, observed_at: _, receipt: _ } => false
+    ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } => false
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => true
+  }
+}
+
+fn w_ready(a: ServingAvailability) -> Bool {
+  match spark_serving_readiness_of(availability: a) {
+    ServingObserved { ready_at: _, receipt: _ } => true
+    ServingUnobserved { obligation: _ } => false
+  }
+}
+
+fn w_obligation(a: ServingAvailability) -> String {
+  match spark_serving_readiness_of(availability: a) {
+    ServingObserved { ready_at: _, receipt: _ } => ""
+    ServingUnobserved { obligation: o } => o as String
+  }
+}
+
+// THE POSITIVE CONTROL. A serving front door is available, and the offer readiness projected from it is
+// ready at the observation's own time -- not at a time the projection invented.
+test fn a_serving_front_door_is_available_and_its_offer_is_ready_at_the_observed_time() -> Bool {
+  let a = harness_models_availability(endpoint: w_endpoint, standing: w_serving_standing(), now: w_now)
+  w_is_available(a: a)
+    && (match spark_serving_readiness_of(availability: a) {
+      ServingObserved { ready_at: t, receipt: _ } => t == w_now
+      ServingUnobserved { obligation: _ } => false
+    })
+}
+
+// A FRONT DOOR THAT DID NOT ANSWER IS UNAVAILABLE WITH THE BOUND IT MISSED, and the offer refuses naming
+// it. The cause says "did not answer successfully within the bound" and nothing stronger: the transport
+// reports one Bool and cannot tell a silent socket from a refusal.
+test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not_ready() -> Bool {
+  let a = harness_models_availability(endpoint: w_endpoint, standing: HarnessBackendUnreachable { url: "http://192.168.1.225:30000/v1/models" }, now: w_now)
+  (match a {
+    ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: b }, receipt: _ } =>
+      second_count(s: b) == second_count(s: harness_front_door_probe_bound)
+    ServingUnavailable { endpoint: _, observed_at: _, cause: RouteAdvertisesNoAdmittedModel { advertised: _ }, receipt: _ } => false
+    ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } => false
+    ServingAvailable { endpoint: _, observed_at: _, receipt: _ } => false
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  })
+    && !w_ready(a: a)
+    && w_obligation(a: a).contains("did not answer successfully within 10s")
+}
+
+// A ROUTE SERVING NO ADMITTED MODEL IS UNAVAILABLE FOR THAT REASON, and an unreadable model list is
+// UNREAD -- neither available nor unavailable -- because an answer nobody could read is not evidence.
+test fn an_unadmitted_route_is_unavailable_and_an_unreadable_one_is_unread() -> Bool {
+  let not_admitted = harness_models_availability(endpoint: w_endpoint, standing: HarnessBackendModelNotAdmitted { advertised: "tinyllama-1.1b" }, now: w_now)
+  let unreadable = harness_models_availability(endpoint: w_endpoint, standing: HarnessBackendUnreadable { cause: "unexpected token" }, now: w_now)
+  (match not_admitted {
+    ServingUnavailable { endpoint: _, observed_at: _, cause: RouteAdvertisesNoAdmittedModel { advertised: adv }, receipt: _ } => adv == "tinyllama-1.1b"
+    ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: _ }, receipt: _ } => false
+    ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } => false
+    ServingAvailable { endpoint: _, observed_at: _, receipt: _ } => false
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => false
+  })
+    && w_is_unread(a: unreadable)
+    && !w_ready(a: not_admitted)
+    && !w_ready(a: unreadable)
+}
+
+// THE SAME ENDPOINT PROCESS IS AVAILABLE; A DIFFERENT ONE IS UNAVAILABLE NAMING BOTH; NO READING IS
+// UNREAD. The three readings differ only in the observation, so a fold that ignored the launch would
+// pass the first and fail the second, and one that defaulted an unread exporter to "still there"
+// would fail the third.
+test fn a_replaced_endpoint_process_is_unavailable_and_an_unidentified_one_is_unread() -> Bool {
+  let bound = w_launch(field: "1789300000.12")
+  let same = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: LaunchObserved { launch: w_launch(field: "1789300000.12"), receipt: "w" as ObservationReceiptRef }, now: w_now)
+  let replaced = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: LaunchObserved { launch: w_launch(field: "1789399999.50"), receipt: "w" as ObservationReceiptRef }, now: w_now)
+  let unread = serving_availability_after_launch_read(endpoint: w_endpoint, expected: bound, observation: LaunchUnobserved { group: FabricGroupA, obligation: "metrics did not answer" as NonEmptyStr }, now: w_now)
+  w_is_available(a: same)
+    && (match replaced {
+      ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: e, observed: o }, receipt: _ } =>
+        (vllm_endpoint_process_launch_key(launch: e) as String).contains("1789300000.12")
+          && (vllm_endpoint_process_launch_key(launch: o) as String).contains("1789399999.50")
+      ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: _ }, receipt: _ } => false
+      ServingUnavailable { endpoint: _, observed_at: _, cause: RouteAdvertisesNoAdmittedModel { advertised: _ }, receipt: _ } => false
+      ServingAvailable { endpoint: _, observed_at: _, receipt: _ } => false
+      ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => false
+    })
+    && w_is_unread(a: unread)
+    && !w_ready(a: replaced)
+    && !w_ready(a: unread)
+}
+
+// THE PRODUCT ROOTS CALL THE BOUNDED OPERATION. Both observers are pointed at an address that is never
+// routed. Under the hermetic envelope the bounded GET answers from its declared mock and the observers
+// refuse; the unbounded GET they used to call has no mock, so the same witness there refuses the run
+// instead of passing. Run live, the bounded GET gives up inside its bound. Either way the route is not
+// serving and its launch is not identified.
+test fn both_harness_probes_refuse_a_front_door_that_never_answers() -> Bool {
+  (match harness_observe_replica(endpoint: w_unroutable_endpoint) {
+    HarnessBackendUnreachable { url: u } => u.contains("192.0.2.1:30000/v1/models")
+    HarnessBackendServing { model: _, unit: _, readback: _ } => false
+    HarnessBackendModelNotAdmitted { advertised: _ } => false
+    HarnessBackendUnreadable { cause: _ } => false
+  })
+    && (match harness_observe_engine(endpoint: w_unroutable_endpoint).launch {
+      LaunchUnobserved { group: _, obligation: _ } => true
+      LaunchObserved { launch: _, receipt: _ } => false
+    })
+}
