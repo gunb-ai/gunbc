@@ -1,7 +1,12 @@
 module gunbc.fleet_show_effective_read
 
 import std.algebra { trim }
-import gunbc.host_identity_adopt { srv1_host_identity_ssh_transport, srv2_host_identity_ssh_transport }
+import gunbc.host_identity_adopt {
+  srv1_host_identity_ssh_transport,
+  srv2_host_identity_ssh_transport,
+  srv3_host_identity_ssh_transport,
+  srv4_host_identity_ssh_transport,
+}
 
 
 type RunnerSliceCapLiveReadRow {
@@ -65,14 +70,6 @@ data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.dispos
   reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. systemctl show reads dissolve through extdeps.systemd.systemctl.ShowProperty typed argv (gunbc.systemctl_show_read) — no per-command HostEffect nicknames, no concat shell strings. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.systemd.oomd."
 }
 
-data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
 
 fn fleet_runner_unit_memory_live_read(
   host: HostIdentity,
@@ -228,19 +225,19 @@ data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = Runner
 }
 
 data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
-  reason: "no live systemctl show -p MemoryMax on system-actions-runner.slice has run on the fleet yet; typed parse + transport live in gunbc.fleet_show_effective_read — bind ReadObserved at the apply increment"
+  reason: "committed ShowEffectiveRead stays ReadAbsent under hermetic emit; the producer is fleet_runner_slice_cap_memory_max_raw over fleet_host_ssh_transport, which must not be evaluated into this row from a mock"
 }
 
 data gunbc_fleet_runner_units_show_effective_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead> = ReadAbsent {
-  reason: "no live per-instance systemctl show loop has run on the fleet runner units yet; typed rows + transport live in gunbc.fleet_show_effective_read"
+  reason: "committed ShowEffectiveRead stays ReadAbsent under hermetic emit; the producer is fleet_runner_unit_memory_live_read over fleet_host_ssh_transport"
 }
 
 data gunbc_fleet_runner_width_show_effective_read: ShowEffectiveRead<RunnerWidthLiveRead> = ReadAbsent {
-  reason: "no live systemctl list-units active-count read has run on the fleet runner glob yet; typed parse + transport live in gunbc.fleet_show_effective_read"
+  reason: "committed ShowEffectiveRead stays ReadAbsent under hermetic emit; width live-read still has no producer bound into this row"
 }
 
 data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<FleetHostEffectiveReadReceipt> = ReadAbsent {
-  reason: "no full-host effective read receipt has been collected on srv1/srv2 yet; compose the three v0-blocking knob reads here"
+  reason: "committed ShowEffectiveRead stays ReadAbsent under hermetic emit; compose the three live knob reads only from a wet host_operation_exec"
 }
 
 fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
@@ -248,7 +245,11 @@ fn fleet_host_control_plane(host: HostIdentity) -> NodeControlPlane? {
     Present { value: HostOs { node: srv1_host } }
   } else { if host == operator_host_srv2 {
     Present { value: HostOs { node: srv2_host } }
-  } else { none } }
+  } else { if host == operator_host_srv3 {
+    Present { value: HostOs { node: srv3_host } }
+  } else { if host == operator_host_srv4 {
+    Present { value: HostOs { node: srv4_host } }
+  } else { none } } } }
 }
 
 fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
@@ -256,7 +257,11 @@ fn fleet_host_ssh_transport(host: HostIdentity) -> HostEffectTransport? {
     Present { value: srv1_host_identity_ssh_transport() }
   } else { if host == operator_host_srv2 {
     Present { value: srv2_host_identity_ssh_transport() }
-  } else { none } }
+  } else { if host == operator_host_srv3 {
+    Present { value: srv3_host_identity_ssh_transport() }
+  } else { if host == operator_host_srv4 {
+    Present { value: srv4_host_identity_ssh_transport() }
+  } else { none } } } }
 }
 
 fn runner_slice_cap_live_read_typed(row: RunnerSliceCapLiveReadRow) -> RunnerSliceCapLiveRead {

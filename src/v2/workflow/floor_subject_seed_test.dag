@@ -1,0 +1,95 @@
+module v2.workflow.floor_subject_seed_test
+
+import v2.std.logic { Bool }
+import v2.workflow.floor_subject_seed {
+  PreparedSubjectSeedGround,
+  SeedRequiredGatePrefix,
+  SeedTouchedEntryModule,
+  SeedArmSetChangedMatchConsumer,
+  ArmSetMatchConsumerBinding,
+  BoundToDeclaringModule,
+  BoundThroughFlatBareChannel,
+  ArmSetMatchReadDisposition,
+  ArmReadPlanned,
+  ArmReadBoundToAnotherDeclarer,
+  arm_set_match_read_disposition,
+  arm_set_match_consumer_binding,
+  ModuleArmSetBinding,
+  ModulePlanned,
+  ModuleNotPlanned,
+  module_is_planned,
+  module_is_resolved_consumer,
+  arm_read_is_planned,
+  arm_read_is_bound_to_declarer,
+  seed_ground_wire_name,
+  seed_ground_is_textual_prefix,
+}
+
+// THE THREE DISPOSITIONS OF ONE READ, separated by the candidate set alone. The Rust selector
+// (`arm_set_changed_match_consumers`) is a projection of this rule; its executed red is the
+// #11194 fixture in `required_floor_runner` (`arm_growth_selects_the_untouched_match_consumer_
+// and_strict_preparation_refuses_it`). These rows hold the RULE still while the host realizes it.
+test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bool {
+  arm_read_is_bound_to_declarer(
+    read: arm_set_match_read_disposition(
+      declaring_candidates: ["armset.x"],
+      changed_module_path: "armset.x",
+    )
+  )
+}
+
+test fn a_read_with_no_candidate_is_planned_through_the_flat_channel_and_counted_apart() -> Bool {
+  let read = arm_set_match_read_disposition(declaring_candidates: [], changed_module_path: "armset.x")
+  arm_read_is_planned(read: read) && !arm_read_is_bound_to_declarer(read: read)
+}
+
+// THE ARM THAT STOPS THE SELECTOR FROM WIDENING: a same-spelled arm of ANOTHER coproduct is
+// not this coproduct's consumer. Same spelling, different declarer, not planned.
+test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool {
+  !arm_read_is_planned(
+    read: arm_set_match_read_disposition(
+      declaring_candidates: ["armset.z"],
+      changed_module_path: "armset.x",
+    )
+  )
+}
+
+// ONE RESOLVED READ MAKES THE MODULE A RESOLVED CONSUMER, whatever the other reads did; a
+// module whose only reads are flat is counted flat; a module with no planned read is not planned.
+test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
+  let flat = ArmReadPlanned { binding: BoundThroughFlatBareChannel }
+  let resolved = ArmReadPlanned { binding: BoundToDeclaringModule }
+  let other = ArmReadBoundToAnotherDeclarer
+  module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, resolved, other]))
+    && module_is_planned(binding: arm_set_match_consumer_binding(reads: [flat, other]))
+    && !module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, other]))
+    && !module_is_planned(binding: arm_set_match_consumer_binding(reads: [other]))
+}
+
+// THE TWO MATCHING RULES ARE A FACT OF THE GROUND, not of the list the host happened to put a
+// seed in: only the gate prefix is textual.
+test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
+  seed_ground_is_textual_prefix(ground: SeedRequiredGatePrefix { prefix: "v2.test." })
+    && !seed_ground_is_textual_prefix(
+      ground: SeedTouchedEntryModule { path: "src/v2/workflow/x.dag", module_path: "v2.workflow.x" }
+    )
+    && !seed_ground_is_textual_prefix(
+      ground: SeedArmSetChangedMatchConsumer {
+        changed_module_path: "armset.x",
+        changed_declaration: "Signal",
+        consumer_module_path: "armset.y",
+        binding: BoundToDeclaringModule,
+      }
+    )
+}
+
+test fn the_consumer_ground_prints_under_its_own_name() -> Bool {
+  seed_ground_wire_name(
+    ground: SeedArmSetChangedMatchConsumer {
+      changed_module_path: "armset.x",
+      changed_declaration: "Signal",
+      consumer_module_path: "armset.y",
+      binding: BoundThroughFlatBareChannel,
+    }
+  ) == "SeedArmSetChangedMatchConsumer"
+}

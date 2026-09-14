@@ -3133,29 +3133,21 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
-/// DECLARED FRONTIER (DESIGN §3c), named rather than gestured at. Every consumer of this type in
-/// THIS change is a row that witnesses the instrument itself; the consumer it was built for -- the
-/// bare-name-ambiguity refusal in `claim_scope_for` -- is not in this diff. §3c admits that state
-/// in exactly one form, "a named consumer that lands in a named later change, admissible only
-/// with the trigger stated beside it", so both are stated here:
-///
-///   CONSUMER: the `AmbiguousBareNameRead` refusal and its controls, on branch
-///   `session/witty-moth-510-wall2` (gunbc#11166), which uses `claim_scope_fixture` and
-///   `claim_scope_refusal_names` to author the refusal's discriminating RED.
-///
-///   TRIGGER: that refusal cannot land until the census population it governs reaches zero, which
-///   needs the qualification batches merged AND the variant-arm resolution tier that stops the
-///   census over-counting five correctly-written sites. Until then this type's only consumers are
-///   its own witness rows, and that is the state this frontier declares.
-///
-/// If that refusal is abandoned, this instrument has no remaining consumer and should be deleted
-/// rather than retained -- a declaration nothing consumes is §2's redundant work, and saying so
-/// here is what keeps the frontier from becoming a permanent resting state.
+/// THE §3c FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
+/// declared it is replaced rather than left standing. gunbc#11143 admitted this type with its
+/// only consumers being its own witness rows, naming the consumer that would arrive (the
+/// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
+/// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
+/// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
+/// describing a state that no longer holds.
 ///
 /// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
 /// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
 /// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
-/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
+/// of the same `ambiguous_reads` vector -- which the wall refuses on and which no census
+/// prints, because this climb deleted the read census that used to. A second computation here, even
 /// an identical one, would be the second authority the census exists to avoid and would be free
 /// to drift.
 ///
@@ -3178,15 +3170,21 @@ pub enum ClaimScopeFixtureOutcome {
     /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
     ScopeRefused { cause: String },
     /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
-    /// the scope builder currently raises applied.
+    /// the scope builder raises applied.
     ///
-    /// ACCEPTANCE IS SILENT ABOUT AMBIGUITY, and that is not a temporary wording choice. The
-    /// scope builder COLLECTS `ambiguous_bare_reads` and returns them on the accepted scope; it
-    /// does not refuse on them. So this arm is compatible with any number of ambiguous bare
-    /// reads, and a control asserting it establishes nothing about that class. The refusal that
-    /// would make acceptance mean something stronger lands separately, with its own controls; a
-    /// reader who needs "no ambiguous read" must consult `ambiguous_bare_reads` rather than
-    /// infer it from this arm.
+    /// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. On gunbc#11143 this arm was
+    /// deliberately SILENT about ambiguity: the scope builder collected the ambiguous reads (in a field this climb has since deleted)
+    /// and returned them on the accepted scope without refusing, so acceptance was compatible
+    /// with any number of ambiguous bare reads and a control asserting it established nothing
+    /// about that class. This change adds the refusal, so acceptance now DOES exclude them --
+    /// which is the whole point of the wall and is what lets the negative controls in
+    /// `bare_name_ambiguity_wall_witness_test` assert through this arm.
+    ///
+    /// The scope of that is worth stating exactly, because "no ambiguous read" is a narrower
+    /// claim than it sounds: it means no VALUE-POSITION read of a name two transitively-reached
+    /// modules declare, over the population the census measures. Type-position collisions are
+    /// explicitly outside it -- see the wall's own annotation, which names that as the adjacent
+    /// class it does not cover.
     ScopeAccepted { module_count: i64 },
 }
 
@@ -10560,11 +10558,14 @@ impl SafetyInterruptTrigger {
 /// says `cost=UNMEASURED`, correctly — the row's cost is a lower bound with no upper bound. Read
 /// as the system's silence rather than as one surface's, it says the fact does not exist. It
 /// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
-/// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
+/// claim ends, and threads in the one limit `WitnessSafetyPolicy` still arms — the wall.
 ///
-/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A reading at or above its own limit PROVES
-/// real in-process computation: a thread-cpu observation cannot reach `cpu_safety_limit_ms` on a
-/// claim that burned no CPU. That direction is sound and it is the one a reader may use.
+/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A wall reading at or above its limit PROVES
+/// the claim was stopped rather than finished. The CPU figure is printed beside it and is
+/// compared against no ceiling: since 2026-09-12 the required floor arms no CPU deadline, so
+/// there is no CPU limit a reading could reach. An earlier revision of this paragraph said a
+/// thread-cpu observation "cannot reach `cpu_safety_limit_ms`" — a field this same change
+/// deletes.
 ///
 /// THE CONVERSE IS NOT SOUND, and the reason is not that these are bounds. Both readings are
 /// genuine observations at interrupt time — `run_claim_measured` samples both clocks around the
@@ -10608,7 +10609,6 @@ pub struct SafetyInterruptReading {
     pub raised_by: SafetyInterruptTrigger,
     pub elapsed_cpu_at_least_ms: u64,
     pub elapsed_wall_at_least_ms: u64,
-    pub cpu_safety_limit_ms: u64,
     pub wall_safety_limit_ms: u64,
 }
 
@@ -10622,13 +10622,11 @@ pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<Safety
             raised_by,
             elapsed_cpu_at_least_ms,
             elapsed_wall_at_least_ms,
-            cpu_safety_limit_ms,
             wall_safety_limit_ms,
         } => Some(SafetyInterruptReading {
             raised_by: *raised_by,
             elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
             elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
-            cpu_safety_limit_ms: *cpu_safety_limit_ms,
             wall_safety_limit_ms: *wall_safety_limit_ms,
         }),
         ClaimTerminality::VerdictReached { .. } | ClaimTerminality::Unwound { .. } => None,
@@ -10705,13 +10703,11 @@ impl ClaimCostReading {
                 raised_by,
                 elapsed_cpu_at_least_ms,
                 elapsed_wall_at_least_ms,
-                cpu_safety_limit_ms,
                 wall_safety_limit_ms,
             } => ClaimCostReading::RightCensored(SafetyInterruptReading {
                 raised_by: *raised_by,
                 elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
                 elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
-                cpu_safety_limit_ms: *cpu_safety_limit_ms,
                 wall_safety_limit_ms: *wall_safety_limit_ms,
             }),
         }
@@ -10825,7 +10821,6 @@ mod interrupted_before_verdict_tests {
             raised_by,
             elapsed_cpu_at_least_ms: 0,
             elapsed_wall_at_least_ms: 0,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         }
     }
@@ -10855,14 +10850,12 @@ mod interrupted_before_verdict_tests {
             raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
             elapsed_cpu_at_least_ms: 501,
             elapsed_wall_at_least_ms: 520,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         };
         let blocked = SafetyInterruptReading {
             raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
             elapsed_cpu_at_least_ms: 3,
             elapsed_wall_at_least_ms: 5_001,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         };
         assert_eq!(
@@ -10870,8 +10863,15 @@ mod interrupted_before_verdict_tests {
             "the trigger alone cannot tell these apart — that is the point"
         );
         assert_ne!(computed, blocked);
-        assert!(computed.elapsed_cpu_at_least_ms >= computed.cpu_safety_limit_ms);
-        assert!(blocked.elapsed_cpu_at_least_ms < blocked.cpu_safety_limit_ms);
+        // THE SEPARATING FACT IS THE WALL LIMIT, NOT A CPU ONE. This pair used to compare each
+        // row's CPU figure against a `cpu_safety_limit_ms` the reading carried; that field is
+        // deleted, because the required floor arms no CPU deadline and a carried CPU ceiling was a
+        // second representation of a limit nothing set. The discrimination the fixture exists for
+        // is unchanged and is now stated against the one armed limit: the blocked row sits at its
+        // wall ceiling having burned almost no CPU, the computed row is nowhere near it.
+        assert!(blocked.elapsed_wall_at_least_ms >= blocked.wall_safety_limit_ms);
+        assert!(computed.elapsed_wall_at_least_ms < computed.wall_safety_limit_ms);
+        assert!(computed.elapsed_cpu_at_least_ms > blocked.elapsed_cpu_at_least_ms);
     }
 
     /// A TERMINALITY THAT IS NOT AN INTERRUPT HAS NO READING, so a caller cannot obtain one for
@@ -10883,7 +10883,6 @@ mod interrupted_before_verdict_tests {
                 raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
                 elapsed_cpu_at_least_ms: 501,
                 elapsed_wall_at_least_ms: 520,
-                cpu_safety_limit_ms: 500,
                 wall_safety_limit_ms: 5_000,
             })
             .is_some()
@@ -10993,7 +10992,6 @@ pub enum ClaimTerminality {
         raised_by: SafetyInterruptTrigger,
         elapsed_cpu_at_least_ms: u64,
         elapsed_wall_at_least_ms: u64,
-        cpu_safety_limit_ms: u64,
         wall_safety_limit_ms: u64,
     },
     /// THE HOST UNWOUND, so there is no verdict and no interruption — the two arms above are the
@@ -11012,35 +11010,42 @@ pub enum ClaimTerminality {
     },
 }
 
-/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
-/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
-/// protects against a blocked or descheduled process — different jobs, so the wall limit must
-/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
-/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
-/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
-/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
-/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
-/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+/// ONE ARMED SAFETY LIMIT, THE WALL, protecting against a blocked or descheduled process. It is
+/// not a cost allowance: crossing it is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `wall_safety_limit_ms` field for the live-wired instantiation of this policy
+/// (`v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms` is its declared
+/// value).
 ///
-/// PREEMPTION-1 (operator-directed, 2026-08-19): "crossing either blocks" holds only when
+/// IT USED TO BE A PAIR, AND THE CPU HALF IS DELETED RATHER THAN LOOSENED. This doc described
+/// "two independently derived safety limits" with the wall derived LOOSER than a CPU limit, and
+/// cited a `cpu_safety_limit_ms` field that this same change removes. What replaced the CPU half
+/// is not another clock: the claim ceiling now gates on EVAL STEPS, a property of the tree rather
+/// than of the runner, and CPU is observed and published for every claim without deciding
+/// anything (`v2.workflow.required_floor` `claim_cost_basis_standing`). So there is no longer a
+/// CPU envelope for the wall to be derived looser than, and the independence argument that
+/// sentence made has no second limit to be independent of.
+///
+/// PREEMPTION-1 (operator-directed, 2026-08-19), RESTATED FOR ONE LIMIT: "crossing it blocks" holds only when
 /// `eval_expr`'s cooperative stride-poll actually observes the crossing (see that function's own
 /// comment on the residue this leaves, and `std.evaluation_budget`
 /// `evaluation_budget_opaque_host_call_note` for the modeled fact). A claim whose cost accrues
 /// entirely inside one opaque host call — a native `free_call.*` arm such as
 /// `compile_dag_rust_emit_check`, which runs synchronously and never calls back into `eval_expr`
-/// — crosses neither limit as far as the poll can tell, however long it runs, and completes as
+/// — does not cross the limit as far as the poll can tell, however long it runs, and completes as
 /// `ClaimTerminality::VerdictReached` rather than `SafetyInterrupted`. Measured, not suspected:
 /// floor run 32301212975 recorded `root_d_checkpoint_scalar_declared_arity_witness_holds`
 /// (dominated by a `compile_dag_rust_emit_check` call) reaching a verdict at 60317ms CPU against
 /// a 5000ms `cpu_ms` limit, twelve times over and uninterrupted, reported through
 /// `RequiredFloorOutcome`'s `completed_over_cost_requirement` population rather than through a
-/// safety interrupt. These two limits are real protection for cost that accrues across many
-/// `eval_expr` calls and no protection — not weaker, none — for cost that accrues inside a
-/// single opaque host call; nothing downstream may be built on the assumption that arming them
-/// makes a host call interruptible.
+/// safety interrupt. That measurement is kept because it is the evidence for the residue, and it
+/// is reported against the CPU limit standing at the time; the residue itself is unchanged by
+/// that limit's deletion, because it was never the CPU clock that made a host call
+/// uninterruptible — it is the absent stride-poll. The wall limit is real protection for cost
+/// that accrues across many `eval_expr` calls and no protection — not weaker, none — for cost
+/// that accrues inside a single opaque host call; nothing downstream may be built on the
+/// assumption that arming it makes a host call interruptible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WitnessSafetyPolicy {
-    pub cpu_ms: u64,
     pub wall_ms: u64,
 }
 
@@ -11071,7 +11076,6 @@ pub fn claim_terminality(
             raised_by: SafetyInterruptTrigger::from(*kind),
             elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
-            cpu_safety_limit_ms: policy.cpu_ms,
             wall_safety_limit_ms: policy.wall_ms,
         },
         // THE WILDCARD IS DELETED. It stood here as `_ => VerdictReached`, which is correct for
@@ -18406,11 +18410,11 @@ pub fn run_claims_in_process(
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
 /// operator eval-budget ruling (2026-08-17). The budget compared here is the caller's
-/// armed `witness_eval_budget`/`witness_wall_budget`; the required-floor caller arms
-/// them independently from `required_floor_claim_cpu_safety_limit_ms` and
-/// `required_floor_claim_wall_safety_limit_ms` (BUDGET POLICY CUT, 2026-08-19,
-/// superseding correction — two safety deadlines, never one scalar copied into both
-/// clocks) — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
+/// armed `witness_eval_budget`/`witness_wall_budget`. THE REQUIRED-FLOOR CALLER ARMS
+/// ONLY THE WALL ONE since 2026-09-12, from `required_floor_claim_wall_safety_limit_ms`;
+/// it passes `None` for the CPU budget, because its claim ceiling is the eval-step
+/// comparison against `claim_eval_step_budget_for_identity` and CPU is observed-only
+/// for every claim. The fast lane still arms both. — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
 /// diagnostic only and is judged above this function, once a claim has already reached a
 /// verdict, and decides nothing about admission.
 /// A Fail/RuntimeError stays itself: those are already loud, and
@@ -24330,12 +24334,11 @@ pub struct DiscoveryCorpusOptions {
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
     /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
-    /// PR-path posture from the required-floor claim loop; that loop's own constant split
-    /// into `required_floor_claim_cpu_safety_limit_ms` / `required_floor_claim_wall_safety_limit_ms`
-    /// (interrupt, now two independent deadlines) and `required_floor_claim_cost_line_ms`
-    /// (completed-cost, diagnostic only) under the BUDGET POLICY CUT (2026-08-19,
-    /// superseding correction) — this field is unaffected by that split and still names one
-    /// ceiling.
+    /// PR-path posture from the required-floor claim loop; that loop now carries
+    /// `claim_eval_step_budget_for_identity` (the claim ceiling, a comparison rather than a
+    /// deadline), `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) and
+    /// `required_floor_claim_cost_line_ms` (completed-cost, diagnostic only). This field is
+    /// unaffected by any of that and still names one ceiling on the fast lane's own CPU clock.
     /// When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
@@ -24763,7 +24766,10 @@ pub(crate) struct FloorDiffEdits {
     /// A wholly added file and a brand-new `test fn` in an existing file are new; a
     /// modified sibling whose name was already at the lookup path is not.
     enrolled_test_fns: HashSet<(String, String)>,
-    /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
+    /// `.dag` files with a non-data, non-test-fn declaration touched. Required-floor Strict
+    /// preparation seeds each file's authored module (`module_seeds_from_touched_entry_files`)
+    /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
+    /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
 }
 
@@ -39991,10 +39997,19 @@ pub fn assemble_prepared_subject(
 /// The seed roster is the same `v2.workflow.required_floor.required_gate_prefixes` the site
 /// disposition reads: one authority decides both what is planned and what is prepared, which is
 /// what keeps a witness admitted by one and unresolvable by the other from being writable.
+///
+/// TWO SEED KINDS, BECAUSE THEY ARE MATCHED BY TWO RULES. `closure.1` is the PREFIX roster:
+/// textual, exactly as `first_module_prefix_match` reads it for site disposition (`v2.test.`
+/// and `test.claim.namespace_` are both rows there, and the second is not a segment). `closure.2`
+/// is a list of AUTHORED MODULE NAMES -- the touched-entry and arm-set-consumer seeds the
+/// required floor derives from the diff -- and a module name matches itself or a module it
+/// contains (`a.b` seeds `a.b` and `a.b.c`), never `a.bc`. Matching those by `starts_with`
+/// widened the subject by one character today and is the shape that narrows silently when
+/// someone later "fixes" it (review on gunbc#11256), so the rule is stated once, here.
 pub fn assemble_prepared_subject_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
     let full_inventory: Vec<PreparedSourceView> = full_index
@@ -40007,7 +40022,7 @@ pub fn assemble_prepared_subject_closure(
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,
-        Some((entry_index, prefixes)) => {
+        Some((entry_index, prefixes, module_seeds)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
             // this corpus may carry no `import` line at all and still depend on another
@@ -40018,7 +40033,12 @@ pub fn assemble_prepared_subject_closure(
             // closure, to a fixpoint -- and it is reused here rather than re-derived.
             let seed_paths: Vec<String> = full_index
                 .iter()
-                .filter(|(m, _)| prefixes.iter().any(|p| m.starts_with(p.as_str())))
+                .filter(|(m, _)| {
+                    prefixes.iter().any(|p| m.starts_with(p.as_str()))
+                        || module_seeds
+                            .iter()
+                            .any(|seed| module_name_is_or_is_contained_by(m, seed))
+                })
                 .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
             let seeds = seed_paths.len();
@@ -40125,9 +40145,10 @@ pub fn assemble_prepared_subject_closure(
             if seeds == 0 {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=GateClosureEmpty — no module under the source \
-                     roots carries any of the {} required-gate prefixes, so the prepared subject \
-                     would be empty",
-                    prefixes.len()
+                     roots carries any of the {} required-gate prefixes or is named by any of \
+                     the {} module seeds, so the prepared subject would be empty",
+                    prefixes.len(),
+                    module_seeds.len()
                 ));
             }
             eprintln!(
@@ -40246,6 +40267,15 @@ pub fn assemble_prepared_subject_closure(
     })
 }
 
+/// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
+/// contains by name (`seed.` is a proper prefix). `a.b` contains `a.b.c` and not `a.bc`.
+fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
+    module == seed
+        || (module.len() > seed.len()
+            && module.starts_with(seed)
+            && module.as_bytes()[seed.len()] == b'.')
+}
+
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
 /// typecheck gate, and returns everything a later consumer could want to know about the
 /// subject so that none of them reaches for the repository again.
@@ -40261,7 +40291,7 @@ pub fn prepare_repository_once(
 pub fn prepare_repository_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure: Option<(&MultiEntryIndex, &[String])>,
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
     let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
@@ -40471,13 +40501,9 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: Vec<AmbiguousBareName>,
-    /// THE READS, which is the population a refusal is affordable against — see
-    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
-    /// the two whose members are defects rather than declarations.
-    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
     /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
-    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
-    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// with the module that answered it. A pair that no longer refuses proves only that
+    /// the wall stopped firing on it; this says what the reference resolves TO, which is the whole content of a
     /// qualification. `(name, referring module, resolved module)`.
     pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
@@ -41268,11 +41294,112 @@ fn claim_scope_for_with_memos(
         qualified_reads.sort();
         qualified_reads.dedup();
     }
+    // THE WALL. Every row left in `ambiguous_reads` is a bare value reference reaching the shared
+    // name slot with two transitively-reached declarations spelling it and nothing the author
+    // wrote ranking them. Until now the slot settled it silently by scope precedence -- a
+    // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
+    // rather than in an output. The line stops here instead, typed and located.
+    //
+    // KEYED ON THE SAME VALUE THE READ CENSUS USED TO PUBLISH, and that census is DELETED by this
+    // climb rather than left beside it. `ambiguous_reads` is the single binding. An earlier draft
+    // of this comment said "the census lines in `required_floor_runner` read this same vector, so
+    // the refusal and the count cannot drift apart" -- which this diff falsifies: the refusal
+    // returns Err before a scope exists, the runner reaches `built` only through
+    // `claim_scope_for(..)?`, so the read census could not agree with the refusal either. It could
+    // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
+    // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
+    // read lines are gone and the fixture rows in
+    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    //
+    // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
+    // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
+    // so they keep carrying information. Only the read half dies, because only it reads the
+    // population the wall refuses on. A wall keyed on the RAW free-reference set
+    // would over-approximate -- that set unions type annotations, record-literal type names,
+    // field labels and variant constructors -- and would refuse `Foo { observation: o }` the day
+    // a second `observation` is declared. The value-position projection plus the three resolution
+    // tiers behind `falls_through_to_shared_slot` are what make this population precise enough to
+    // refuse on.
+    //
+    // THE REFUSAL CARRIES ITS REMEDY, AND THE REMEDY NAMES DECLARING MODULES. This wall lands into
+    // a corpus that is still moving: a site authored next week reds someone who never heard of
+    // this campaign, in a module they may not own, over a name they did not know was contested. A
+    // message that only says "this read is ambiguous" hands that person a dead remedy, and the
+    // cheapest way out is to copy whatever import an adjacent file has -- which is how a
+    // re-exporting module gets named instead of a declaring one, and how `import std.types
+    // { String }` came to appear in ~1951 modules while binding nothing. So each row prints its
+    // claimants WITH the module that declares each, and an import line to paste.
+    //
+    // THE MECHANISM ANYONE NARROWING AN IMPORT NEEDS, recorded here because a PR body is not
+    // readable from the code: A BARE `import some.module` RE-EXPORTS THAT MODULE'S OWN IMPORTED
+    // BINDINGS, not merely its declarations. `extdeps.clock` imports `v2.std.optional { Present }`
+    // and `extdeps.filesystem.filesystem_io` imports `std.types { ... List ... }`, so files that
+    // bare-imported those were receiving `Present` and `List` through them. Narrowing a bare
+    // import to a name list therefore STRANDS names belonging to modules the file never mentions,
+    // and a check that joins the file against the NARROWED module's declarations cannot find them
+    // -- the lost names are declared elsewhere. Measured on gunbc#11156: six such names across
+    // four modules, surfaced by this phase's own `NewUnresolvedness` deltas after a hand sweep
+    // missed them.
+    //
+    // WHAT THIS WALL DOES NOT COVER, stated so that zero rows is never later cited as "no
+    // ambiguity in the corpus":
+    //
+    //   - TYPE-POSITION name collisions. `String`, `Int`, `List`, `Bool` and `WireContract` are
+    //     each declared by both `std.*` and its `v2.std.*` self-host copy. That double is a real
+    //     ambiguity in a different channel, owned by the v2 self-host replacement migration, and
+    //     it ends by ending the double -- not by a rename this wall could ask for. The census line
+    //     `channel=value_position_only not_covered=type_position_name_collisions
+    //     owner=v2_self_host_replacement_migration` is what says so.
+    //   - A VARIANT ARM reachable only through an ALIAS right-hand side naming a coproduct in
+    //     another module. The arm tier is node-local (`fragment_coproduct_disj_node`) and does not
+    //     follow such an alias, so a read of that arm stays in this population and refuses. That
+    //     is the conservative direction -- a false REFUSAL, never a false pass -- and the
+    //     next-rung trigger is a scope-wide arm index built after resolution.
+    //   - PATHS OTHER THAN CLAIM-SCOPE CONSTRUCTION. This refuses where the census measures, so
+    //     the two cannot disagree. Per §4b(1) a class's rung is the MINIMUM across its in-scope
+    //     paths: the honest report is mechanically-preventable on the claim-scope path, with
+    //     extension to the general interpreter entry as the named next-rung trigger.
+    if !ambiguous_reads.is_empty() {
+        let sites = ambiguous_reads
+            .iter()
+            .map(|row| {
+                let claimants = row
+                    .claimants
+                    .iter()
+                    .map(|(module, kind)| format!("{module} (declares it as {kind})"))
+                    .collect::<Vec<String>>()
+                    .join(" and ");
+                let remedy = row
+                    .claimants
+                    .iter()
+                    .map(|(module, _)| format!("import {module} {{ {} }}", row.name))
+                    .collect::<Vec<String>>()
+                    .join("   OR   ");
+                format!(
+                    "  `{}` is read bare by {}, and is declared by {}.\n                          Add ONE of these to {}, choosing the authority that module means:\n       {}",
+                    row.name, row.referring_module, claimants, row.referring_module, remedy
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=AmbiguousBareNameRead scope={entry_module_path} \
+             sites={}\n{}\n\
+             Each names a value two transitively-reached modules both declare, where the \
+             referring module neither declares it nor names a source for it -- so the shared name \
+             slot would pick one by scope precedence, which is a resolution nothing in the source \
+             authorizes.\n\
+             THE IMPORT MUST NAME THE MODULE THAT DECLARES THE NAME. An import naming a module \
+             that merely re-exports or mentions it binds nothing and leaves this refusal standing \
+             -- copying an adjacent file's import line is the common way to get that wrong.",
+            ambiguous_reads.len(),
+            sites
+        ));
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_reads: ambiguous_reads,
         qualified_bare_reads: qualified_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()
@@ -41314,17 +41441,27 @@ pub struct RequiredFloorClaim {
     pub function: String,
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
-    /// The CPU SAFETY DEADLINE: arms the CPU interrupt clock. Never `budget_ms` — operator
-    /// ruling 2026-08-19 (BUDGET POLICY CUT) — because it does not express what a claim is
-    /// allowed to cost, only the point past which it is presumed runaway on the CPU clock and
-    /// interrupted before reaching a verdict. Independently derived from `wall_safety_limit_ms`
-    /// and TIGHTER than it (superseding correction, same date): CPU and wall protect against
-    /// different failures — runaway evaluation vs. a blocked/descheduled process — so a
-    /// mechanical copy of one figure into both is forbidden.
-    pub cpu_safety_limit_ms: u64,
-    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock, independently derived and
-    /// LOOSER than `cpu_safety_limit_ms` so ordinary host scheduling delay cannot itself trip an
-    /// interrupt on a computation still inside its CPU envelope.
+    /// THE EVAL-STEP BUDGET: how much WORK this claim may perform, in interpreter evaluation
+    /// steps. It REPLACED `cpu_safety_limit_ms` on 2026-09-12 (operator ruling via
+    /// fierce-lark-661), and the replacement is not a rename: eval steps are a property of the
+    /// claim and of the tree, while the CPU figure it displaced moved ~10% across three heads of
+    /// gunbc#11173 that changed no executable source, so a 500ms CPU line was adjudicating which
+    /// runner dequeued the job.
+    ///
+    /// IT IS NOT A DEADLINE AND ARMS NOTHING. Nothing interrupts a claim on steps; the budget is
+    /// compared once against the completed claim's step count, so it cannot miss an interrupt.
+    /// What it cannot see is cost that accrues WITHOUT performing steps — an opaque host call, or
+    /// a step that got more expensive — and the second of those is the declared §4b(3) drop
+    /// `gunbc.rung_drop` `floor_cost_cpu_regression_at_constant_eval_steps`.
+    ///
+    /// Its value is `v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, declared
+    /// policy grounded through the pinned calibration fixture in
+    /// `v2.workflow.floor_eval_step_calibration` — never derived from the live population.
+    pub eval_step_budget: u64,
+    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock. It is now the ONLY armed
+    /// per-claim deadline, and it is unchanged by the eval-step cut because its job is
+    /// unchanged: catching a claim that is blocked or descheduled, which no amount of
+    /// work-counting can see.
     pub wall_safety_limit_ms: u64,
     /// The COMPLETED-COST LINE. DIAGNOSTIC ONLY — never a merge-admission, quarantine, or
     /// cost-debt-population decision (operator ruling 2026-08-19, superseding correction: 1552ms
@@ -41338,9 +41475,12 @@ pub struct RequiredFloorClaim {
     /// `v2.workflow.required_floor` `ChangedWitnessCostPolicy`, derived by
     /// `changed_witness_cost_policy` from the intersection of changed-witness selection and
     /// `v2.workflow.floor_cost_debt` enrollment (FLOOR-CHANGED-COST-0, operator ruling
-    /// 2026-08-30). It selects WHICH CLOCK IS ARMED, never what the claim is allowed to cost:
-    /// `cpu_safety_limit_ms` above carries the same 500ms figure under both policies, and under
-    /// the override that figure is measured against and published rather than enforced.
+    /// 2026-08-30). It no longer selects which clock is armed: since the claim ceiling moved onto
+    /// eval steps, `claim_cost_basis_standing` makes CPU `BasisObservedOnly` for EVERY claim, so
+    /// no CPU figure refuses under either arm and `cpu_safety_limit_ms` no longer exists. What it
+    /// selects is whether the claim's cost observation is PUBLISHED as a cost-debt receipt --
+    /// which the override does and the ordinary arm does not. The prior wording survived the
+    /// deletion of the field it cited (review 65674).
     pub cost_policy: ChangedWitnessCostPolicy,
 }
 
@@ -41385,9 +41525,11 @@ pub struct ChangedWitnessCostObservation {
     /// The wall-clock reading, for the deadline that remains armed. Modeled as the `WallClock`
     /// member of the same list.
     pub wall_clock_nanos: u128,
-    /// The policy line the observation is reported against
-    /// (`required_floor_claim_cpu_safety_limit_ms`), on the CPU clock — the model carries that
-    /// basis beside it as `observed_against_basis` rather than in this field's name.
+    /// The policy line the observation is reported against, on the CPU clock — the model carries
+    /// that basis beside it as `observed_against_basis` rather than in this field's name. SINCE
+    /// 2026-09-12 IT IS THE DIAGNOSTIC `required_floor_claim_cost_line_ms` and not a ceiling: no
+    /// CPU line decides anything for any claim, so the figure an observation is reported against
+    /// is the one the floor already declares as explicitly deciding nothing.
     pub cpu_line_ms: u64,
 }
 
@@ -41433,8 +41575,9 @@ pub enum RequiredFloorDisposition {
     /// still enters the seen set and the roster's staleness check keeps its meaning.
     DeclinedOutsideRequiredGate,
     /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
-    /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
-    /// withheld from execution until made cheap. Carries no payload — the roster is the
+    /// it PASSES and, when the roster was built, cost more CPU than the 500ms line then standing
+    /// (now `required_floor_claim_work_envelope_ms`, the policy the eval-step budget is grounded
+    /// against) allowed, so it is withheld from execution until made cheap. Carries no payload — the roster is the
     /// authority for which identities these are, and duplicating the measured cost here would be
     /// a second representation of a number that is only ever read from the fold.
     ///
@@ -41906,9 +42049,9 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
-    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
-    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
-    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
+    // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
+    // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
@@ -42631,44 +42774,61 @@ fn write_required_floor_claim_cost_tsv(
         file,
         "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
          observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
-         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\t\
+         censoring_raised_by\teval_steps\teval_steps_at_least\tcost_line_ms\t\
          preemption_reachability"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         // THE MATCH IS THE POINT. Rendering these columns requires naming which reading this row
         // carries, so no future edit can fill a cost column from a bound without deleting an arm.
-        let (
-            observed_wall,
-            observed_cpu,
-            wall_at_least,
-            cpu_at_least,
-            wall_limit,
-            cpu_limit,
-            raised,
-        ) = match &row.reading {
-            ClaimCostReading::Observed {
-                observed_cpu_ms,
-                observed_wall_ms,
-            } => (
-                observed_wall_ms.to_string(),
-                observed_cpu_ms.to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-            ),
-            ClaimCostReading::RightCensored(reading) => (
-                String::new(),
-                String::new(),
-                reading.elapsed_wall_at_least_ms.to_string(),
-                reading.elapsed_cpu_at_least_ms.to_string(),
-                reading.wall_safety_limit_ms.to_string(),
-                reading.cpu_safety_limit_ms.to_string(),
-                reading.raised_by.label().to_string(),
-            ),
+        // EVAL STEPS ARE SPLIT BY READING EXACTLY AS THE CLOCKS ARE, and for the same reason.
+        //
+        // A COMPLETED CLAIM PERFORMED ITS STEPS. An INTERRUPTED ONE DID NOT: its count is whatever
+        // the deadline poll happened to have reached, so it is a lower bound quantised by the stop
+        // and not a property of the work. `gunbc.floor_cost_distribution` says exactly this in a
+        // comment -- "an interrupted row's `eval_steps` is itself quantised by the deadline poll"
+        // -- while pairing rows on that same column for its equal-work cohort, and
+        // `gunbc.guarantee_stall` `eval_steps_outside_the_reading_coproduct_stall` has the class on
+        // file: the knowledge lives in prose where nothing can execute it.
+        //
+        // THIS PR IS WHY THAT STOPPED BEING TOLERABLE. eval_steps is now the quantity the claim
+        // ceiling GATES on, so printing a censored row's quantised count in the same column as a
+        // performed one offers a ceiling-comparable number for a claim that never finished — the
+        // fabricated-plausible-output shape DESIGN §5 forbids, in the one column a reader is now
+        // most likely to compare against a budget. Observed in run 34743785983, which printed a
+        // censored `eval_steps=100` as a real count.
+        //
+        // THE COLUMN PAIR IS THE SCHEMA'S OWN IDIOM (`observed_cpu_ms` / `cpu_at_least_ms`), so a
+        // reader that wants performed steps reads `eval_steps` and gets nothing for a censored row,
+        // rather than getting a number that means something else. The FULL repair — moving the
+        // count inside the reading arms so no fold can compare the two without matching which it
+        // holds — is that stall row's own migration and is deliberately not ridden in here.
+        let (eval_steps_performed, eval_steps_at_least) = match &row.reading {
+            ClaimCostReading::Observed { .. } => (row.eval_steps.to_string(), String::new()),
+            ClaimCostReading::RightCensored(_) => (String::new(), row.eval_steps.to_string()),
         };
+        let (observed_wall, observed_cpu, wall_at_least, cpu_at_least, wall_limit, raised) =
+            match &row.reading {
+                ClaimCostReading::Observed {
+                    observed_cpu_ms,
+                    observed_wall_ms,
+                } => (
+                    observed_wall_ms.to_string(),
+                    observed_cpu_ms.to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ),
+                ClaimCostReading::RightCensored(reading) => (
+                    String::new(),
+                    String::new(),
+                    reading.elapsed_wall_at_least_ms.to_string(),
+                    reading.elapsed_cpu_at_least_ms.to_string(),
+                    reading.wall_safety_limit_ms.to_string(),
+                    reading.raised_by.label().to_string(),
+                ),
+            };
         writeln!(
             file,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -42682,9 +42842,9 @@ fn write_required_floor_claim_cost_tsv(
             wall_at_least,
             cpu_at_least,
             wall_limit,
-            cpu_limit,
             raised,
-            row.eval_steps,
+            eval_steps_performed,
+            eval_steps_at_least,
             row.cost_line_ms,
             row.preemption_reachability.replace(['\t', '\n'], " ")
         )

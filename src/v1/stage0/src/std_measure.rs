@@ -17,7 +17,7 @@ use self::Scale::*;
 pub use crate::extdeps_currency_currency::CurrencyCode;
 use crate::extdeps_currency_currency::CurrencyCode::*;
 pub use crate::extdeps_units_dimensionless::{
-    parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
+    parts_per_million_unity_count, parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
 };
 pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
 pub use crate::extdeps_units_iso8601::{
@@ -27,6 +27,7 @@ pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     degrees_per_turn, square_millimetres_per_square_metre,
 };
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -437,6 +438,8 @@ pub type AttentionLayerCount = Rc<Measure<Count, One, i64>>;
 pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
+pub type EvalStepCount = Rc<Measure<Count, One, i64>>;
 
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
@@ -1040,6 +1043,42 @@ pub fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
     money_rate_micros(q.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AccountCredit {
+    pub issuer: Rc<DeclarationRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CreditRate<P> {
+    pub count: i64,
+    pub credit: Rc<AccountCredit>,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type CreditsPerMinute = Rc<CreditRate<PerMinute>>;
+
+pub fn account_credit(issuer: Rc<DeclarationRef>) -> Rc<AccountCredit> {
+    Rc::new(AccountCredit {
+        issuer: issuer.clone(),
+    })
+}
+
+pub fn credits_per_minute(count: Nat, credit: Rc<AccountCredit>) -> CreditsPerMinute {
+    Rc::new(CreditRate {
+        count: count.clone(),
+        credit: credit.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+    r.count.clone()
+}
+
+pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> Rc<DeclarationRef> {
+    r.credit.clone().issuer.clone()
+}
+
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
     Rc::new(MoneyRate {
         amount: money_amount_micro((money_per_minute_micros(q.clone()) * minutes_per_hour())),
@@ -1163,6 +1202,17 @@ pub fn parameter_count_value(p: ParameterCount) -> Nat {
     measure_count(p.clone())
 }
 
+pub fn eval_step_count(count: Nat) -> EvalStepCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_step_count_value(s: EvalStepCount) -> Nat {
+    measure_count(s.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1262,6 +1312,19 @@ pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
 }
 
 pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type EvalStepsPerMillisecond = Rc<Measure<Frequency, Kilo, i64>>;
+
+pub fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
     measure_count(r.clone())
 }
 
@@ -1500,6 +1563,23 @@ pub fn basis_point_count(bp: BasisPoint) -> Nat {
 
 pub fn basis_point_unity_count() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
+}
+
+pub type PartsPerMillion = Rc<Measure<Dimensionless, Micro, i64>>;
+
+pub fn parts_per_million(count: Nat) -> PartsPerMillion {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parts_per_million_count(m: PartsPerMillion) -> Nat {
+    measure_count(m.clone())
+}
+
+pub fn parts_per_million_scale_million() -> Nat {
+    crate::extdeps_units_dimensionless::parts_per_million_unity_count()
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, i64>>;
