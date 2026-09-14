@@ -526,7 +526,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // projection once and passing it to both sides removes a second derivation of the same value --
 // the authored duplication DESIGN 2 names, since both folds sat inside one claim body. It does NOT
 // make the two populations one value: active_node_ids_for_plan and roadmap_schedule_forecast_over
-// both match RoadmapAuthorityProjected { doc: _, accepted }, DISCARD the doc, and select from
+// both match RoadmapAuthorityProjected { doc: _, accepted, withheld }, DISCARD the doc, and select from
 // declared_roadmap_nodes() -- the PUBLIC authority -- using that accepted set. Two projected plans
 // with identical accepted ids and different docs are indistinguishable to both. So the scope of
 // this witness is the public declared population selected by the captured accepted set, which is
@@ -592,8 +592,8 @@ fn node_id_sets_agree(reported: List<RoadmapNodeId>, expected: List<RoadmapNodeI
 fn active_node_ids_for_plan(plan: RoadmapAuthorityProjection) -> List<RoadmapNodeId> {
   match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => []
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
+    RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: withheld } =>
+      active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld) |> map(n => n.node)
   }
 }
 

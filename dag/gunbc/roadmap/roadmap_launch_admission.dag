@@ -478,7 +478,7 @@ fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
 fn launch_graph_of_projection(proj: RoadmapAuthorityProjection) -> LaunchGraphStanding {
   match proj {
     RoadmapAuthorityProjectionRefused { detail } => LaunchGraphUnobserved { detail: detail }
-    RoadmapAuthorityProjected { doc, accepted: _ } => launch_graph_of_document(doc: doc)
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } => launch_graph_of_document(doc: doc)
   }
 }
 

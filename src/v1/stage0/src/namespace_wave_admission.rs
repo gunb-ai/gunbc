@@ -1800,6 +1800,46 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
+/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
+/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
+/// not because the array was being emptied. #11156 is at base; the inventory evidence
+/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
+/// identity - so these seven still admit a real delta and deleting them would refuse a live
+/// transition rather than discharge a dead one.
+/// ONE ROW, gunbc#11193: the `extdeps_external_authority_anchor` leaf in
+/// `extdeps.realization.artifact_store_fs` narrows from two candidates to that module's own.
+///
+/// WHAT PRODUCED THE DELTA. The `AmbiguousBareNameRead` wall refused `Filesystem` read bare by that
+/// module, and prescribed naming the authority: `import extdeps.filesystem.filesystem_io
+/// { Filesystem }`. The import had been BRACE-LESS, which binds nothing for the refused name and
+/// widens every leaf in the module's candidate sets -- so naming it also removed `filesystem_io`'s
+/// own `extdeps_external_authority_anchor` from that leaf's candidates. The anchor motion is a
+/// consequence of the prescribed repair, not a second change riding along with it.
+///
+/// WHY THIS DOES NOT CHANGE WHICH DECLARATION THE SPELLING DENOTES, which is the claim the comment
+/// above makes of every row here and the reason this one belongs under it. The spelling occurs
+/// EXACTLY ONCE in that module -- line 22, its own `data` declaration -- and nothing reads it:
+/// neither of the module's two importers (`test.claim.artifact_store_fs_witness`,
+/// `v2.test.claim.manual.emit_source_store_test`) imports the anchor, and the only other corpus
+/// references to that leaf are a `decl_name` STRING in `std.citation` and a different module's
+/// anchor imported by `test.claim.ilm4926_designation_witness` from
+/// `extdeps.cpu_attachment.ilm4926`. So the base two-candidate set sat at a DECLARATION SITE WITH
+/// NO REFERENCE anywhere in the closure: there was no denotation to move, only a candidate count
+/// that a brace-less import had inflated.
+///
+/// I DID NOT ESTABLISH WHICH CANDIDATE THE BASE RESOLUTION PICKED, and this row does not need it.
+/// The two declarations differ materially -- this module's anchor cites the repository's own
+/// `dag/extdeps/realization` tree, `filesystem_io`'s cites the POSIX `write` specification -- so had
+/// anything referenced the leaf the question would have mattered and would have needed the resolver
+/// run rather than reasoned about. Nothing references it, so the question does not arise.
+/// ANCHOR NARROWING DISSOLVED on the merge of main a745dac28d5 (2026-09-14).
+/// The #11193-labelled row landed in #11347. At this base artifact_store_fs already
+/// imports only Filesystem from filesystem_io and declares its own anchor, so the
+/// anchor's candidate set is exactly {extdeps.realization.artifact_store_fs} at both
+/// base and head. Its transition is consumed; this roster touch deletes the row.
+/// The seventeen #10994 references were rechecked against this base and still move
+/// from roadmap_model to roadmap_sizing or roadmap_spawner to roadmap_status.
+///
 /// INVENTORY RELOCATION DISSOLUTION, rechecked against origin/main e3f60ebbf527 (2026-09-14).
 /// A consumed row goes because its transition is PRESENT AT THE BASE, not because the array
 /// is being emptied. The earlier retention claim for #11182 became false: product.inventory
