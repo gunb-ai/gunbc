@@ -24,8 +24,16 @@ import gunbc.roadmap_model {
   RemainsSupersededRevocationsJoined,
   RemainsSupersededRevocationOnNonSupersededNode,
   RemainsSupersededRevocationOnUndeclaredNode,
+  RemainsSupersededRevocationOnAmbiguousDeclaredNode,
+  live_receipts_join_declared_nodes,
+  LiveReceiptsJoinDeclared,
+  LiveReceiptJoinsSupersededLine,
+  LiveReceiptDoesNotMatchDeclaredNode,
+  LiveReceiptJoinsUndeclaredNode,
+  LiveReceiptJoinsAmbiguousDeclaredNode,
   node_accepted,
   project_live_acceptance_receipts,
+  replay_acceptance_history,
   acceptance_history_integrity_holds,
   AcceptanceHistoryIntegrityVerdict,
   AcceptanceHistoryIntegrityHolds,
@@ -3223,25 +3231,62 @@ fn withheld_node_ids_from_events(events: List<RoadmapAcceptanceEvent>) -> Withhe
       WithheldNodeIdsProjectionRefused {
         detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
       }
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
+      WithheldNodeIdsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
+      }
   }
 }
 
 // One load of the carrier produces both frontier halves. Callers that need accepted AND withheld
-// consume this, never a pair of independent live projections.
+// consume this, never a pair of independent live projections. FrontierSetsProjected is admitted
+// only after replay succeeds and every live receipt joins the current declaration authority.
 type FrontierSetsProjection
   = FrontierSetsProjected { accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId> }
   | FrontierSetsProjectionRefused { detail: String }
 
 fn frontier_sets_from_events(events: List<RoadmapAcceptanceEvent>) -> FrontierSetsProjection {
-  match withheld_node_ids_from_events(events: events) {
-    WithheldNodeIdsProjectionRefused { detail: detail } =>
-      FrontierSetsProjectionRefused { detail: detail }
-    WithheldNodeIdsProjected { ids: withheld } =>
-      FrontierSetsProjected {
-        accepted: accepted_node_ids_from_receipts(
-          receipts: project_live_acceptance_receipts(history: events),
-        ),
-        withheld: withheld,
+  match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
+    RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+      FrontierSetsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+      }
+    RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
+      FrontierSetsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
+      }
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
+      FrontierSetsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
+      }
+    RemainsSupersededRevocationsJoined =>
+      match replay_acceptance_history(events: events) {
+        Absent =>
+          FrontierSetsProjectionRefused { detail: "acceptance-history-unreplayable" }
+        Present { value: state } =>
+          match live_receipts_join_declared_nodes(receipts: state.live, nodes: declared_roadmap_nodes()) {
+            LiveReceiptJoinsSupersededLine { node: node } =>
+              FrontierSetsProjectionRefused {
+                detail: join(["live-receipt-on-superseded-line:", node as String], ""),
+              }
+            LiveReceiptDoesNotMatchDeclaredNode { node: node } =>
+              FrontierSetsProjectionRefused {
+                detail: join(["live-receipt-does-not-match-declared-node:", node as String], ""),
+              }
+            LiveReceiptJoinsUndeclaredNode { node: node } =>
+              FrontierSetsProjectionRefused {
+                detail: join(["live-receipt-on-undeclared-node:", node as String], ""),
+              }
+            LiveReceiptJoinsAmbiguousDeclaredNode { node: node } =>
+              FrontierSetsProjectionRefused {
+                detail: join(["live-receipt-on-ambiguous-declared-node:", node as String], ""),
+              }
+            LiveReceiptsJoinDeclared =>
+              FrontierSetsProjected {
+                accepted: accepted_node_ids_from_receipts(receipts: state.live),
+                withheld: node_ids_held_off_active_frontier(history: events),
+              }
+          }
       }
   }
 }

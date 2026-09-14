@@ -37,6 +37,9 @@ import gunbc.roadmap_authority {
   ProjectedRoadmapDependencyEdgesProjected,
   ProjectedRoadmapDependencyEdgesProjectionRefused,
   startable_nodes_missing_closing_contract_for_accepted,
+  frontier_sets_from_events,
+  FrontierSetsProjected,
+  FrontierSetsProjectionRefused,
 }
 import gunbc.roadmap_spawner {
   roadmap_rendered_ghost_count,
@@ -78,9 +81,11 @@ import gunbc.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeRemainsSuperseded,
   remains_superseded_revocations_join,
+  join_remains_superseded_to_declared_line,
   RemainsSupersededRevocationsJoined,
   RemainsSupersededRevocationOnNonSupersededNode,
   RemainsSupersededRevocationOnUndeclaredNode,
+  RemainsSupersededRevocationOnAmbiguousDeclaredNode,
   receipt_node_match_verdict,
   ReceiptMatchesNode,
   LiveReceiptOnSupersededLine,
@@ -97,6 +102,7 @@ import gunbc.roadmap_model {
   roadmap_parent_ids,
   is_top_level,
   Pointer,
+  RoadmapNodeIdentity,
   IntricacyLow,
   IntricacyMedium,
   IntricacyHigh,
@@ -454,6 +460,7 @@ test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> B
       )
     RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
     RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
   }
 }
 
@@ -490,6 +497,7 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
         node == tnid(s: "namespace-occurrence-transport")
       RemainsSupersededRevocationsJoined => false
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+      RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
     }
 }
 
@@ -513,6 +521,68 @@ test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bo
       node == tnid(s: "not-a-declared-roadmap-node-for-join-red")
     RemainsSupersededRevocationsJoined => false
     RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Bool {
+  match join_remains_superseded_to_declared_line(
+    node: tnid(s: "red-fixture"),
+    nodes: [
+      red_fixture(line: red_ticket(done: false), signoff: Unsigned),
+      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }, signoff: Unsigned),
+    ],
+  ) {
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node } =>
+      node == tnid(s: "red-fixture")
+    RemainsSupersededRevocationsJoined => false
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
+  match frontier_sets_from_events(events: [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt_fixture(
+        node: "namespace-occurrence-transport",
+        digest: tchash(s: "0123456789abcdef"),
+      ),
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture orphan reopen revocation must refuse the frontier projection" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-09-13" as NonEmptyStr,
+    },
+  ]) {
+    FrontierSetsProjectionRefused { detail } =>
+      detail == "acceptance-history-unreplayable"
+    FrontierSetsProjected { accepted: _, withheld: _ } => false
+  }
+}
+
+test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool {
+  let prior = live_acceptance_event_history()
+  let recorded = first(
+    prior |> filter(e =>
+      match e {
+        AcceptanceRecorded { receipt: r } =>
+          r.node == tnid(s: "entry-graph-union-construction")
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+          false
+      }
+    ),
+  )
+  match recorded {
+    AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      false
+    AcceptanceRecorded { receipt } =>
+      match frontier_sets_from_events(events: concat(prior, [
+        AcceptanceRecorded { receipt: receipt },
+      ])) {
+        FrontierSetsProjectionRefused { detail } =>
+          detail == join(["live-receipt-on-superseded-line:", "entry-graph-union-construction"], "")
+        FrontierSetsProjected { accepted: _, withheld: _ } => false
+      }
   }
 }
 

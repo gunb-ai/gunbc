@@ -641,6 +641,59 @@ fn ever_recorded_receipt_accounted_for(
     || receipt_present_exact(receipts: revoked, receipt: receipt)
 }
 
+type LiveReceiptDeclarationJoin
+  = LiveReceiptsJoinDeclared
+  | LiveReceiptJoinsSupersededLine { node: RoadmapNodeId }
+  | LiveReceiptDoesNotMatchDeclaredNode { node: RoadmapNodeId }
+  | LiveReceiptJoinsUndeclaredNode { node: RoadmapNodeId }
+  | LiveReceiptJoinsAmbiguousDeclaredNode { node: RoadmapNodeId }
+
+fn live_receipt_join_declared_node(
+  r: RoadmapAcceptanceReceipt,
+  nodes: List<RoadmapNode>,
+) -> LiveReceiptDeclarationJoin {
+  let found = nodes |> filter(n => n.node == r.node)
+  if count(found) == 0 {
+    LiveReceiptJoinsUndeclaredNode { node: r.node }
+  } else {
+    if count(found) > 1 {
+      LiveReceiptJoinsAmbiguousDeclaredNode { node: r.node }
+    } else {
+      match receipt_node_match_verdict(r: r, rn: first(found)) {
+        ReceiptMatchesNode => LiveReceiptsJoinDeclared
+        LiveReceiptOnSupersededLine { node: node } =>
+          LiveReceiptJoinsSupersededLine { node: node }
+        ReceiptDoesNotMatchNode =>
+          LiveReceiptDoesNotMatchDeclaredNode { node: r.node }
+      }
+    }
+  }
+}
+
+fn live_receipts_join_declared_nodes(
+  receipts: List<RoadmapAcceptanceReceipt>,
+  nodes: List<RoadmapNode>,
+) -> LiveReceiptDeclarationJoin {
+  fold(
+    receipts,
+    init: LiveReceiptsJoinDeclared,
+    f: fn(acc, r) {
+      match acc {
+        LiveReceiptJoinsSupersededLine { node: n } =>
+          LiveReceiptJoinsSupersededLine { node: n }
+        LiveReceiptDoesNotMatchDeclaredNode { node: n } =>
+          LiveReceiptDoesNotMatchDeclaredNode { node: n }
+        LiveReceiptJoinsUndeclaredNode { node: n } =>
+          LiveReceiptJoinsUndeclaredNode { node: n }
+        LiveReceiptJoinsAmbiguousDeclaredNode { node: n } =>
+          LiveReceiptJoinsAmbiguousDeclaredNode { node: n }
+        LiveReceiptsJoinDeclared =>
+          live_receipt_join_declared_node(r: r, nodes: nodes)
+      }
+    },
+  )
+}
+
 fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
   match replay_acceptance_history(events: history) {
     Present { value: state } => state.live
@@ -652,6 +705,7 @@ type RemainsSupersededRevocationJoin
   = RemainsSupersededRevocationsJoined
   | RemainsSupersededRevocationOnNonSupersededNode { node: RoadmapNodeId }
   | RemainsSupersededRevocationOnUndeclaredNode { node: RoadmapNodeId }
+  | RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: RoadmapNodeId }
 
 fn join_remains_superseded_to_declared_line(
   node: RoadmapNodeId,
@@ -661,10 +715,14 @@ fn join_remains_superseded_to_declared_line(
   if count(found) == 0 {
     RemainsSupersededRevocationOnUndeclaredNode { node: node }
   } else {
-    if node_line_is_superseded(rn: first(found)) {
-      RemainsSupersededRevocationsJoined
+    if count(found) > 1 {
+      RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node }
     } else {
-      RemainsSupersededRevocationOnNonSupersededNode { node: node }
+      if node_line_is_superseded(rn: first(found)) {
+        RemainsSupersededRevocationsJoined
+      } else {
+        RemainsSupersededRevocationOnNonSupersededNode { node: node }
+      }
     }
   }
 }
@@ -697,6 +755,8 @@ fn remains_superseded_revocations_join(
           RemainsSupersededRevocationOnNonSupersededNode { node: n }
         RemainsSupersededRevocationOnUndeclaredNode { node: n } =>
           RemainsSupersededRevocationOnUndeclaredNode { node: n }
+        RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n } =>
+          RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: n }
         RemainsSupersededRevocationsJoined =>
           remains_superseded_revocation_event_join(event: event, nodes: nodes)
       }
