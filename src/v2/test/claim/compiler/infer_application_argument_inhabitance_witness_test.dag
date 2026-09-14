@@ -214,7 +214,7 @@ test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds(
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
         d: Some { diagnostics: nds },
-        reason: ^cardinality_descent_not_proven
+        reason: ^infer_descent_not_derived
       )
   }
 }
