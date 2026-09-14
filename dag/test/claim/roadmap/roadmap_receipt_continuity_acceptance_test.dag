@@ -1,5 +1,7 @@
 module test.claim.roadmap_receipt_continuity_acceptance
 
+// These projections call active_roadmap_*_for_accepted (map-backed accepted/withheld membership).
+
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_authority {
@@ -351,7 +353,7 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
 }
 
 test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
-  true && match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
+  match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) == 0
@@ -370,7 +372,7 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
     text: receipt_continuity_acceptance_carrier_fixture_text,
   )
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
-  true && string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
+  string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
     && string_contains(s: refused_dispatch, pattern: "\"refused\": true")
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
     && match projected {

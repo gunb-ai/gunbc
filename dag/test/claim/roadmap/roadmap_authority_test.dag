@@ -1117,8 +1117,9 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
     && string_length(s: filesystem_read(path: "dag/gunbc/host/host_converge.dag").content) > 0
 }
 
+// Consumes active_roadmap_edges_for_accepted (map-backed accepted/withheld membership).
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  true && match frontier_sets_from_live_history() {
+  match frontier_sets_from_live_history() {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       match projected_roadmap_dependency_edges_projection() {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
