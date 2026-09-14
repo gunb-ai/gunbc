@@ -1771,8 +1771,7 @@ pub struct TransitionAdmission {
 /// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
 /// header paragraph went with them rather than being left describing an empty subject, which is the
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
-/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
-/// relocation set alone.
+/// exists is worse than no prose, because it reads as coverage.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
