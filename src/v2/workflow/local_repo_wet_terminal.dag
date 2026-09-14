@@ -303,6 +303,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "hashing_the_same_rendered_bytes_is_stable" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "hashing_the_same_rendered_bytes_is_stable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "unit_text_differing_by_one_byte_gives_a_different_digest" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "unit_text_differing_by_one_byte_gives_a_different_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "a_declared_observed_mismatch_does_not_bind_as_declared" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "a_declared_observed_mismatch_does_not_bind_as_declared",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",

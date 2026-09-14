@@ -7,8 +7,10 @@ import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_bak
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  DeclaredUnitDigested, DeclaredUnitDigestUnavailable, spark_pair_digest_unit_render,
   spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
   spark_pair_realization, spark_pair_head_unit_file, spark_pair_container_spec, spark_pair_container_env,
+  spark_pair_head_unit_name,
 }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_with, SeqCapacityMeasured,
@@ -260,6 +262,18 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
       && all(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_ROCE_VERSION_NUM" && e.value == "2"))
       && !any(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_GID_INDEX" && e.value == "3"))
   })
+}
+
+// A RENDER REFUSAL IS NOT A DIGEST. Hashing is only reached on SparkPairUnitRendered; this row
+// stays hermetic because it never calls sha256sum.
+test fn a_render_refusal_is_not_a_declared_digest() -> Bool {
+  match spark_pair_digest_unit_render(render: SparkPairUnitRenderRefused {
+    unit_name: spark_pair_head_unit_name,
+    cause: "fixture render refusal" as NonEmptyStr,
+  }) {
+    DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == "fixture render refusal"
+    DeclaredUnitDigested { unit_name: _, digest: _ } => false
+  }
 }
 
 // THE RDMA ROSTER CAN GO RED: an env covering every interface name but no GID index is refused.

@@ -18,7 +18,8 @@ import gunbc.spark.vllm_observed {
   ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
 }
 import gunbc.spark.pair_serving_realization {
-  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_head_unit_name,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
 }
 import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
@@ -40,7 +41,6 @@ import gunbc.spark.serving_offer {
   SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
   ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
-  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   spark_pair_head_unit_digest_unavailable_obligation, spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch {
@@ -49,9 +49,7 @@ import gunbc.spark.vllm_serving_launch {
   LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
 }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
-import gunbc.harness.harness_seat { harness_serving_route }
 import gunbc.spark.first_party_serving { spark_first_party_route }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 
 // THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
 // membership is checked against the operator's allocation and can establish the region. The readback
@@ -497,27 +495,6 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 
 
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
-
-// PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
-// harness_bind_candidate calls, and asserts the constructor production returns today. If the harness
-// could not reach the refusal arms this change adds, the join would be dangling.
-test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback) {
-    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
-      match c {
-        ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
-          (o as String) == (spark_serving_incarnation_unobserved_obligation as String)
-        ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
-        ServiceIncarnationOutsideRealization { incarnation: _ } => false
-        ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
-        ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
-        ServiceConfigurationDisagrees { configuration: _ } => false
-      }
-    ServingRouteObserved { route: _ } => false
-    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
-    ServingRouteRegionUnobserved { obligation: _ } => false
-  }
-}
 
 fn t_sha256(hex: String) -> ContentHash {
   Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })

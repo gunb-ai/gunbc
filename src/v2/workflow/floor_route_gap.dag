@@ -985,7 +985,25 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
       identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content",
       operation: "DigestStdin", ground: NoMockResponse {}
     },
-    tail: Empty {}
+    tail: Cons {
+      head: FloorRouteGapExpectation {
+        identity: "test.claim.spark.spark_pair_head_unit_digest_witness.hashing_the_same_rendered_bytes_is_stable",
+        operation: "DigestStdin", ground: NoMockResponse {}
+      },
+      tail: Cons {
+        head: FloorRouteGapExpectation {
+          identity: "test.claim.spark.spark_pair_head_unit_digest_witness.unit_text_differing_by_one_byte_gives_a_different_digest",
+          operation: "DigestStdin", ground: NoMockResponse {}
+        },
+        tail: Cons {
+          head: FloorRouteGapExpectation {
+            identity: "test.claim.spark.spark_pair_head_unit_digest_witness.a_declared_observed_mismatch_does_not_bind_as_declared",
+            operation: "DigestStdin", ground: NoMockResponse {}
+          },
+          tail: Empty {}
+        }
+      }
+    }
   }
 }
 
