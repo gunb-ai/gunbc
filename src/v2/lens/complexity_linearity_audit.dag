@@ -3,6 +3,7 @@ module v2.lens.complexity_linearity_audit
 import std.roster_frontier { FrontierRow, frontier_row_path, frontier_units }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.text { string_eq }
 data complexity_linearity_debt_row_reason: String = "closed-coproduct wildcard arm classified migration-debt (not kernel-permanent): the match is over a closed coproduct and the wildcard hides arms a total match would surface"
 
 data complexity_linearity_debt_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match; row deletes (roster-wide, the construction justification dissolves to SubstrateMandatoryTag)")
@@ -46,10 +47,6 @@ type ComplexityLinearityWildcardFact {
   fn_name: String
   closed_coproduct_wildcard: Bool
   rostered: Bool
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 fn complexity_linearity_wildcard_facts_live() -> List<ComplexityLinearityWildcardFact> {
