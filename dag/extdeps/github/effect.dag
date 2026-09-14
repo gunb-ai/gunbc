@@ -39,6 +39,13 @@ data workflow_dispatch_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data repository_dispatch_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event"
+  }
+}
+
 data organization_runner_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -80,6 +87,10 @@ type GitHubEffect
       repository: Repository
       workflow: GitHubWorkflowRef
       subject: CommitSha
+    }
+  | DispatchRepository {
+      repository: Repository
+      event_type: NonEmptyStr
     }
   | RegisterOrganizationRunner {
       organization: GitHubOrganizationRef
@@ -154,6 +165,8 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
       advance_branch_required_permissions(paths: changed_paths)
     DispatchWorkflow { repository: _, workflow: _, subject: _ } =>
       [actions_write]
+    DispatchRepository { repository: _, event_type: _ } =>
+      [contents_write]
     RegisterOrganizationRunner { organization: _ } =>
       [organization_self_hosted_runners_write]
     GenerateOrganizationJitConfig { organization: _ } =>
@@ -178,6 +191,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [
     extdeps.github.effect.contents_write_citation,
     extdeps.github.effect.workflow_dispatch_citation,
+    extdeps.github.effect.repository_dispatch_citation,
     extdeps.github.effect.organization_runner_citation
   ]
 }

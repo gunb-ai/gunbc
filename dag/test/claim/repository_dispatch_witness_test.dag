@@ -1,0 +1,160 @@
+module test.claim.repository_dispatch_witness
+
+import std.types { Bool, String }
+import extdeps.github.actions {
+  RepositoryDispatch, MergeGroup, Step, RunStep, UsesStep,
+  workflow_trigger_is_merge_group
+}
+import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
+}
+import gunbc.witness_floor_workflow { required_lanes_aggregate_job, build_lane_job }
+import gunbc.private_witness_dispatch {
+  private_witness_dispatch_script,
+  private_witness_dispatch_step_name,
+  private_witness_dispatch_uses_contents_write,
+  private_witness_dispatch_if,
+  github_actions_secret_expression,
+  public_main_dispatch_event_type,
+  private_witness_dispatch_token
+}
+import extdeps.github.repository_dispatch {
+  client_payload_sha_key,
+  client_payload_pr_number_key
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn yaml_key(v: YamlValue, key: String) -> YamlValue? {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: none, f: fn(acc, entry) {
+        if entry.key == key { Present { value: entry.value } } else { acc }
+      })
+    YamlNull => none
+    YamlBool { value: _ } => none
+    YamlInt { lexeme: _ } => none
+    YamlFloat { lexeme: _ } => none
+    YamlString { value: _ } => none
+    YamlSequence { elements: _ } => none
+  }
+}
+
+test fn repository_dispatch_is_not_a_merge_group() -> Bool {
+  !workflow_trigger_is_merge_group(trigger: RepositoryDispatch {
+    types: [public_main_dispatch_event_type as String]
+  }) && workflow_trigger_is_merge_group(trigger: MergeGroup)
+}
+
+test fn repository_dispatch_types_are_serialized() -> Bool {
+  let entry = workflow_trigger_entry(trigger: RepositoryDispatch {
+    types: [public_main_dispatch_event_type as String]
+  })
+  entry.key == "repository_dispatch"
+    && match yaml_key(v: entry.value, key: "types") {
+      Present { value: YamlSequence { elements } } =>
+        fold(elements, init: false, f: fn(acc, el) {
+          acc || match el {
+            YamlString { value } => value == (public_main_dispatch_event_type as String)
+            YamlNull => false
+            YamlBool { value: _ } => false
+            YamlInt { lexeme: _ } => false
+            YamlFloat { lexeme: _ } => false
+            YamlSequence { elements: _ } => false
+            YamlMapping { entries: _ } => false
+          }
+        }) && length(elements) == 1
+      Present { value: _ } => false
+      Absent => false
+    }
+}
+
+test fn empty_repository_dispatch_types_emit_null() -> Bool {
+  match workflow_trigger_entry(trigger: RepositoryDispatch { types: [] }).value {
+    YamlNull => true
+    YamlBool { value: _ } => false
+    YamlInt { lexeme: _ } => false
+    YamlFloat { lexeme: _ } => false
+    YamlString { value: _ } => false
+    YamlSequence { elements: _ } => false
+    YamlMapping { entries: _ } => false
+  }
+}
+
+test fn dispatch_effect_requires_contents_write() -> Bool {
+  private_witness_dispatch_uses_contents_write()
+}
+
+fn step_name_or_empty(s: Step) -> String {
+  match s {
+    RunStep {
+      name, id: _, run: _, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match name { Present { value } => value  Absent => "" }
+    UsesStep {
+      name, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match name { Present { value } => value  Absent => "" }
+  }
+}
+
+fn step_if_or_empty(s: Step) -> String {
+  match s {
+    RunStep {
+      name: _, id: _, run: _, shell: _, env: _, working_directory: _,
+      if_condition, continue_on_error: _, timeout_minutes: _
+    } =>
+      match if_condition { Present { value } => value  Absent => "" }
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition, continue_on_error: _, timeout_minutes: _
+    } =>
+      match if_condition { Present { value } => value  Absent => "" }
+  }
+}
+
+fn step_continue_on_error(s: Step) -> Bool {
+  match s {
+    RunStep {
+      name: _, id: _, run: _, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error, timeout_minutes: _
+    } =>
+      match continue_on_error { Present { value } => value  Absent => false }
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error, timeout_minutes: _
+    } =>
+      match continue_on_error { Present { value } => value  Absent => false }
+  }
+}
+
+test fn build_lane_hosts_push_only_private_dispatch_that_cannot_red_the_floor() -> Bool {
+  let hosted = fold(build_lane_job().steps, init: false, f: fn(acc, s) {
+    acc || (
+      step_name_or_empty(s: s) == private_witness_dispatch_step_name
+        && step_if_or_empty(s: s) == private_witness_dispatch_if()
+        && step_continue_on_error(s: s)
+    )
+  })
+  let absent_from_aggregate = !fold(required_lanes_aggregate_job().steps, init: false, f: fn(acc, s) {
+    acc || step_name_or_empty(s: s) == private_witness_dispatch_step_name
+  })
+  hosted && absent_from_aggregate
+    && string_contains(s: private_witness_dispatch_if(), pattern: "github.event_name == 'push'")
+    && string_contains(
+      s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret),
+      pattern: concat("secrets.", private_witness_dispatch_token.secret as String)
+    )
+}
+
+test fn dispatch_script_carries_only_sha_and_pr_payload_keys() -> Bool {
+  let s = private_witness_dispatch_script()
+  string_contains(s: s, pattern: concat("\\\"", concat(client_payload_sha_key, "\\\"")))
+    && string_contains(s: s, pattern: concat("\\\"", concat(client_payload_pr_number_key, "\\\"")))
+    && string_contains(s: s, pattern: public_main_dispatch_event_type as String)
+    && string_contains(s: s, pattern: "no associated pull request")
+}
