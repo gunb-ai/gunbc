@@ -2329,8 +2329,8 @@ mod cross_claim_demand_census_tests {
 
     use super::{
         absorb_claim_recompute_demand, clear_cross_claim_demand_census, cross_claim_demand_rows,
-        eval_recompute_key, eval_recompute_record, trace_totals, ExecutionMode, InterpContext,
-        Value,
+        eval_recompute_key, eval_recompute_partial_key, eval_recompute_record,
+        eval_recompute_record_unkeyed, trace_totals, Env, ExecutionMode, InterpContext, Value,
     };
 
     fn fresh_ctx() -> InterpContext {
@@ -2375,6 +2375,90 @@ mod cross_claim_demand_census_tests {
         absorb_claim_recompute_demand(&ctx, claim, module);
         let totals = trace_totals(&ctx.eval_recompute_trace.borrow());
         totals
+    }
+
+    /// One claim's demand through the PARTIAL path: an argument list carrying a closure, which has
+    /// no sound identity, beside an `Int` that does.
+    fn one_partial_claim(
+        producer: &str,
+        fn_node: &Rc<crate::v1_std_core::Node>,
+        keyable_arg: i64,
+        ns: u128,
+        claim: &str,
+        module: &str,
+    ) -> super::EvalRecomputeTotals {
+        let ctx = fresh_ctx();
+        let closure = Value::Closure {
+            params: vec![],
+            body: node_at("lambda.dag", 1),
+            env: Env::empty(),
+        };
+        let args = [(None, Value::Int(keyable_arg)), (None, closure)];
+        let key = eval_recompute_partial_key(&ctx, fn_node, &args);
+        eval_recompute_record_unkeyed(&ctx, fn_node, producer, key, ns);
+        absorb_claim_recompute_demand(&ctx, claim, module);
+        let totals = trace_totals(&ctx.eval_recompute_trace.borrow());
+        totals
+    }
+
+    /// THE RED FOR THE PARTIAL KEY, which is the whole subject of gunbc#11275. Two claims call ONE
+    /// declaration with DIFFERENT keyable arguments and an unkeyable position in both. They must
+    /// produce TWO rows.
+    ///
+    /// IT GOES RED IF PARTIAL KEYING COLLAPSES BACK, which is the failure this guards: keying on
+    /// the function name alone, or dropping the keyable positions and sending an empty `args`,
+    /// merges these two into ONE row — and that merged row is precisely the artifact this change
+    /// exists to refute. In the measured run it was one `bind_outcome` row standing for 3,792
+    /// distinct argument shapes, 2,040 of which were single-claim and never cross-claim demand.
+    ///
+    /// THE CONTROL IS THE SECOND HALF AND IT IS NOT DECORATION. Two claims agreeing on the keyable
+    /// argument must land in the SAME row, because that is what makes the first assertion mean
+    /// "split by argument identity" rather than "split by anything at all" — a key that separated
+    /// every call would also pass the first assertion while measuring nothing.
+    #[test]
+    fn two_claims_differing_in_a_keyable_arg_beside_an_unkeyable_one_are_two_partial_rows() {
+        super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        if !super::eval_recompute_trace_enabled() {
+            std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+            super::refresh_eval_recompute_trace_enabled_cache_for_tests();
+        }
+        clear_cross_claim_demand_census();
+        let producer_node = node_at("producer.dag", 400);
+        one_partial_claim("bind_outcome", &producer_node, 1, 250_000_000, "m1.a", "m1");
+        one_partial_claim("bind_outcome", &producer_node, 2, 250_000_000, "m2.b", "m2");
+
+        let rows = cross_claim_demand_rows();
+        let partial: Vec<_> = rows
+            .iter()
+            .filter(|r| r.producer == "bind_outcome" && r.arg_shape == "partial")
+            .collect();
+        assert_eq!(
+            partial.len(),
+            2,
+            "different keyable arguments must not merge: a name-only or empty-args key would              report ONE row here, which is the collapse this test exists to catch"
+        );
+        assert!(
+            partial.iter().all(|r| r.claims == 1),
+            "each row is one claim's demand; a row claiming 2 would mean the two calls merged"
+        );
+
+        clear_cross_claim_demand_census();
+        one_partial_claim("bind_outcome", &producer_node, 7, 250_000_000, "m1.a", "m1");
+        one_partial_claim("bind_outcome", &producer_node, 7, 250_000_000, "m2.b", "m2");
+        let same = cross_claim_demand_rows();
+        let same_partial: Vec<_> = same
+            .iter()
+            .filter(|r| r.producer == "bind_outcome" && r.arg_shape == "partial")
+            .collect();
+        assert_eq!(
+            same_partial.len(),
+            1,
+            "the SAME keyable argument must share one row — otherwise the split above is not              keyed on argument identity and the first assertion proves nothing"
+        );
+        assert_eq!(
+            same_partial[0].claims, 2,
+            "and that shared row carries both claims, which is what cross-claim demand means"
+        );
     }
 
     /// THE RED THIS INSTRUMENT EXISTS FOR. One producer, evaluated ONCE in each of two claims —
@@ -3580,11 +3664,27 @@ struct ParseTableMemo {
 #[derive(Default)]
 struct EvalRecomputeTrace {
     map: std::collections::HashMap<EvalRecomputeKey, EvalRecomputeEntry>,
-    // (calls, inclusive nanos, declaration site) per composite-argument producer. The nanos
-    // half is here for the CROSS-CLAIM census below: a producer whose arguments have no cheap
-    // sound identity is exactly as capable of costing a claim 300ms once as a nullary one, and
-    // a bucket that counted calls without duration could name it and never rank it.
-    unkeyed_by_fn: std::collections::HashMap<String, (u64, u128, String)>,
+    // (calls, inclusive nanos, name, declaration site) per PARTIAL KEY. The nanos half is here
+    // for the CROSS-CLAIM census below: a producer whose arguments have no cheap sound identity is
+    // exactly as capable of costing a claim 300ms once as a nullary one, and a bucket that counted
+    // calls without duration could name it and never rank it.
+    //
+    // KEYED BY THE PARTIAL KEY, NOT BY `func_name`, AND THAT IS TWO REPAIRS IN ONE MAP.
+    //
+    // FIRST, THE ARGUMENTS. This bucket used to be keyed by function name alone, so every call of a
+    // declaration merged however different its arguments were. For a generic combinator that is the
+    // whole population: `v2.std.diagnostic` `bind_outcome<T,U>(o, f)` takes a FUNCTION argument, so
+    // every one of its calls has an unkeyable position and every one landed here -- 67,674 calls
+    // across 162 modules reported as ONE producer row. The partial key splits them by the arguments
+    // that DO have identity.
+    //
+    // SECOND, THE HOMONYM. The site used to live in the VALUE, filled by `or_insert_with`, so the
+    // first writer won and every later declaration of the same bare name inherited a site that is
+    // not its own. The keyed census deliberately keys on the declaration site because "two modules
+    // may declare the same bare name, and merging them would report one producer that does not
+    // exist" -- this bucket did not get that protection. `fn_ptr` is in the partial key and the site
+    // travels beside the name, so two declarations sharing a spelling are now two rows.
+    unkeyed_by_fn: std::collections::HashMap<EvalRecomputePartialKey, (u64, u128, Rc<str>, String)>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
     keepalive_fns: Vec<Rc<Node>>,
@@ -3624,6 +3724,18 @@ enum EvalRecomputeArgKey {
     // memoized per allocation with Weak-liveness validation so a reused address never serves a
     // stale hash. Closures remain unkeyed (captured-env identity is not computed).
     ContentHash(u64),
+    /// ONE ARGUMENT POSITION THAT HAS NO SOUND IDENTITY, carried so the OTHER positions can still
+    /// key. It is deliberately NOT a hash and deliberately NOT distinguishing: two calls whose
+    /// keyable arguments agree and whose unkeyable arguments differ produce the SAME partial key.
+    ///
+    /// THAT IS WHY A ROW CONTAINING THIS MARKER IS AN UPPER BOUND AND NEVER A CARRY. The ledger's
+    /// standing discipline is sound-only -- it never merges distinct work -- and a marker that
+    /// merges is a violation of it unless the merge is declared at the point of reading. So the
+    /// census labels such a row `partial` rather than `keyed`, its cross-claim time is reported as
+    /// an upper bound on recoverable duplication, and `v2.workflow.floor_pure_producer_share` may
+    /// not carry a producer on it. What the marker buys is the SPLIT: before it, every call with
+    /// any unkeyable argument collapsed into one row per declaration.
+    Unkeyable,
 }
 
 enum CompositeWeak {
@@ -7903,8 +8015,15 @@ fn eval_pure_named_call(
             // census, which ranks by duration. Recording after the call is what makes the two
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
+            let partial = eval_recompute_partial_key(ctx, fn_node, args);
             let result = call_function(ctx, fn_node, args, env);
-            eval_recompute_record_unkeyed(ctx, fn_node, func_name, started.elapsed().as_nanos());
+            eval_recompute_record_unkeyed(
+                ctx,
+                fn_node,
+                func_name,
+                partial,
+                started.elapsed().as_nanos(),
+            );
             return result;
         }
     };
@@ -8528,6 +8647,48 @@ fn eval_recompute_key(
     })
 }
 
+/// THE SAME KEY, BUT TOLERATING UNKEYABLE POSITIONS. Where `eval_recompute_key` answers `None` if
+/// ANY argument lacks a sound identity, this keys every argument that has one and marks the rest.
+///
+/// IT IS A STRICT REFINEMENT OF THE OLD BUCKETING, WHICH IS THE ONLY WAY IT CAN BE SOUND. The
+/// previous absorb path keyed the whole unkeyable class as `args: Vec::new()`, so every call of a
+/// declaration collapsed to one row however different its arguments were; the partial key can only
+/// SPLIT that row further, never merge two rows that were previously apart. The ledger's
+/// never-merge-distinct-work rule is therefore preserved in the direction that matters, and the
+/// residual merge -- calls differing only in an unkeyable position -- is disclosed at the reading
+/// site rather than hidden in the key.
+fn eval_recompute_partial_key(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> EvalRecomputePartialKey {
+    let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
+    let interner = ctx.symbols.borrow();
+    let mut keys = Vec::with_capacity(args.len());
+    let mut unkeyable = 0usize;
+    for (_, v) in args {
+        match eval_recompute_arg_key(&mut memo, &interner, v) {
+            Some(k) => keys.push(k),
+            None => {
+                keys.push(EvalRecomputeArgKey::Unkeyable);
+                unkeyable += 1;
+            }
+        }
+    }
+    EvalRecomputePartialKey {
+        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        args: keys,
+        unkeyable_positions: unkeyable,
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct EvalRecomputePartialKey {
+    fn_ptr: usize,
+    args: Vec<EvalRecomputeArgKey>,
+    unkeyable_positions: usize,
+}
+
 fn eval_recompute_record(
     ctx: &InterpContext,
     call_node: &Rc<Node>,
@@ -8575,14 +8736,57 @@ fn eval_recompute_record_unkeyed(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     func_name: &str,
+    key: EvalRecomputePartialKey,
     elapsed_ns: u128,
 ) {
     let mut t = ctx.eval_recompute_trace.borrow_mut();
     t.unkeyed_calls += 1;
+    // THE SAME KEY CAP THE KEYED LEDGER HONOURS. The partial key splits a bucket that used to hold
+    // one row per declaration into one row per distinct argument prefix, which is exactly the point
+    // and is also exactly how a diagnostic run could grow without a ceiling. Overflow is counted and
+    // disclosed, never silently dropped; existing rows keep counting.
+    let is_new_key = !t.unkeyed_by_fn.contains_key(&key);
+    if t.unkeyed_by_fn.len() >= EVAL_RECOMPUTE_KEY_CAP && is_new_key {
+        t.overflow_calls += 1;
+        return;
+    }
+    // KEEP THE FN NODE ALIVE, because `fn_ptr` is part of the partial key and a reused address
+    // would otherwise let a freed declaration's key collide with a live one. Same discipline the
+    // keyed ledger applies for the same reason.
+    //
+    // ON A NEW KEY ONLY, WHICH IS THE GRAIN THE KEYED TWIN USES AND THE ONE ITS CONSUMER ASSUMES.
+    // An earlier revision of this function pushed on EVERY call (review 65464). One `Rc` clone per
+    // evaluation rather than per distinct key made the vector grow with call VOLUME, on exactly the
+    // population this change exists to split -- 82,918 partial evaluations over 6,528 distinct
+    // rows in the run this PR measures, so the vector would have been ~13x longer than it needs to
+    // be. `absorb_claim_recompute_demand` then walks it once per frame and its own comment states
+    // the invariant "the map holds one entry per (fn, argument row) and the vector one per fn",
+    // which the per-call push silently falsified. A cost-shape defect inside an instrument whose
+    // subject is cost is fixed regardless of realized n (DESIGN section 6).
+    if is_new_key {
+        t.keepalive_fns.push(fn_node.clone());
+    }
+    let fn_ptr = Rc::as_ptr(fn_node) as usize;
+    let name = t
+        .fn_names
+        .entry(fn_ptr)
+        .or_insert_with(|| Rc::from(func_name))
+        .clone();
+    // THE SITE IS BUILT LAZILY, ON INSERT ONLY, because it is a `format!` and therefore a heap
+    // allocation. An earlier revision of this function hoisted it out of the closure -- only
+    // because `key` is moved into `entry` -- and so paid one allocation per EVALUATION rather than
+    // per distinct key: 82,918 of them over 6,528 rows in the run this change measures, while the
+    // keyed twin `eval_recompute_record` does no per-call site allocation at all.
+    //
+    // IT IS THE SAME DEFECT AS THE `keepalive_fns` GRAIN FIXED FOUR LINES ABOVE, which is the part
+    // worth recording: the neighbour was repaired and this one was walked past in the same commit
+    // (review 65488). The closure captures `fn_node` and `name` instead, which costs nothing and
+    // restores the grain the keyed path uses. A proven cost-shape defect is fixed regardless of
+    // realized n (DESIGN section 6), and doubly so inside an instrument whose subject is cost.
     let row = t
         .unkeyed_by_fn
-        .entry(func_name.to_string())
-        .or_insert_with(|| (0, 0, eval_recompute_decl_site(fn_node)));
+        .entry(key)
+        .or_insert_with(|| (0, 0, name, eval_recompute_decl_site(fn_node)));
     row.0 += 1;
     row.1 += elapsed_ns;
 }
@@ -8650,14 +8854,17 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             site_labels.join(" @")
         );
     }
-    let mut unkeyed: Vec<(&String, &(u64, u128, String))> = t.unkeyed_by_fn.iter().collect();
+    let mut unkeyed: Vec<(&EvalRecomputePartialKey, &(u64, u128, Rc<str>, String))> =
+        t.unkeyed_by_fn.iter().collect();
     unkeyed.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
-    for (name, (count, ns, site)) in unkeyed.iter().take(10) {
+    for (key, (count, ns, name, site)) in unkeyed.iter().take(10) {
         eprintln!(
-            "[recompute-trace] unkeyed fn={} calls={} total_ms={} @{} (composite args — identity not tracked in slice 1)",
+            "[recompute-trace] partial fn={} calls={} total_ms={} unkeyable_positions={}/{} @{} (upper bound: rows agreeing on every KEYED position may still be distinct work)",
             name,
             count,
             ns / 1_000_000,
+            key.unkeyable_positions,
+            key.args.len(),
             site
         );
     }
@@ -8804,9 +9011,21 @@ pub struct CrossClaimDemandRow {
     /// `file:offset` of the DECLARATION. Frame-independent, and the disambiguator that keeps two
     /// same-named producers in different modules from merging into one row that does not exist.
     pub decl_site: String,
-    /// `keyed` — one row per (declaration, argument row) with sound argument identity — or
-    /// `unkeyed`, the composite-argument bucket, where one row covers ALL argument rows of that
-    /// declaration and the claim count is therefore an upper bound on any single identity's.
+    /// `keyed` — one row per (declaration, argument row), every argument position carrying a sound
+    /// identity — or `partial`, one row per (declaration, argument PREFIX) where at least one
+    /// position has no sound identity.
+    ///
+    /// A `partial` ROW IS AN UPPER BOUND AND MAY NOT BE SERVED ON. `Unkeyable` is deliberately not
+    /// a hash and deliberately not distinguishing, so two calls agreeing on every keyable position
+    /// and differing in an unkeyable one land in the SAME row. Its claim and cost columns therefore
+    /// bound recoverable duplication from above rather than measuring it, and
+    /// `v2.workflow.floor_pure_producer_share` may not carry a producer on the figure.
+    ///
+    /// IT REPLACED `unkeyed`, WHICH WAS A STRICTLY COARSER SUBJECT: that bucket keyed on the
+    /// function NAME alone, so one row covered every argument row of a declaration AND merged two
+    /// modules declaring the same bare name. The split is the point — in the run gunbc#11275
+    /// measures, one `unkeyed` row for `bind_outcome` became 3,792 `partial` rows, of which 2,040
+    /// turned out to be single-claim and so were never cross-claim demand at all.
     pub arg_shape: &'static str,
     /// Distinct claims in which this identity was evaluated at least once.
     pub claims: u64,
@@ -8844,9 +9063,10 @@ struct CrossClaimDemandKey {
     /// are here to bound, and it makes the collision unrepresentable rather than unlikely.
     /// Found by review 58673.
     args: Vec<EvalRecomputeArgKey>,
-    /// `keyed` and `unkeyed` are DIFFERENT SUBJECTS and must not share a key: a nullary keyed
-    /// call and the composite-argument bucket of the same declaration both carry an empty
-    /// argument vector, and merging them would sum one identity's cost with all of another's.
+    /// `keyed` and `partial` are DIFFERENT SUBJECTS and must not share a key: a nullary keyed call
+    /// and a partial row whose every position is unkeyable can both present an argument vector that
+    /// compares equal, and merging them would sum a sound identity's cost with an upper bound.
+    /// The discriminant stays in the key so the two cannot collide even when their `args` agree.
     arg_shape: &'static str,
 }
 
@@ -9009,14 +9229,21 @@ pub fn absorb_claim_recompute_demand(ctx: &InterpContext, claim: &str, module_pa
                 module_path,
             );
         }
-        for (name, (calls, ns, site)) in t.unkeyed_by_fn.iter() {
+        for (key, (calls, ns, name, site)) in t.unkeyed_by_fn.iter() {
             cross_claim_demand_absorb_one(
                 &mut census,
                 CrossClaimDemandKey {
-                    producer: name.clone(),
+                    producer: name.to_string(),
                     decl_site: site.clone(),
-                    args: Vec::new(),
-                    arg_shape: "unkeyed",
+                    args: key.args.clone(),
+                    // `partial` AND `unkeyed` ARE DIFFERENT CLAIMS ABOUT A ROW, so the shape is
+                    // renamed rather than reused. `unkeyed` said "the arguments were not looked at";
+                    // `partial` says "these arguments are identified and these positions are not",
+                    // which is the distinction a reader needs before treating the row's cross-claim
+                    // time as recoverable. A fully-unkeyable call (every position a marker) still
+                    // lands here and still reads `partial` -- its argument row is all markers, which
+                    // is a true statement about it rather than a separate shape.
+                    arg_shape: "partial",
                 },
                 *calls,
                 *ns,
