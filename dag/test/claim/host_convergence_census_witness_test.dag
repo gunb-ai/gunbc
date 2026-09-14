@@ -1,0 +1,240 @@
+module test.claim.host_convergence_census_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.algebra { length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_convergence_census {
+  HostConvergenceCensusRow,
+  HostConvergenceCensus,
+  CensusWellFormed,
+  CensusMalformed,
+  DuplicateDeclaration,
+  RetainCarriesDeletion,
+  NonRetainLacksDeletion,
+  RetainCurrentIntendedMismatch,
+  PersistentMutationPhaseMismatch,
+  SelfSuccessor,
+  IdentityMissingFromCensus,
+  HostConvergenceDisposition,
+  DeletionStanding,
+  RetainAuthority,
+  BindToAuthority,
+  ReplaceAndDelete,
+  ReachesPersistentHostMutation,
+  DoesNotMutateHost,
+  DesiredRealizationSelection,
+  NoDeletionOwed,
+  DeleteWhenCapability,
+  census_row,
+  protocol_phases,
+  none_phases,
+  cite,
+  admit_host_convergence_census,
+  census_is_well_formed,
+  census_identity_join,
+  identity_join_covered,
+  host_convergence_census_rows,
+  host_convergence_census_standing,
+  host_convergence_census_is_admitted,
+  std_decision,
+  fleet_plan,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_row(
+  name: String,
+  mutates: Bool,
+  disposition: HostConvergenceDisposition,
+  deletion: DeletionStanding,
+  current: String,
+  intended: String,
+) -> HostConvergenceCensusRow {
+  census_row(
+    identity: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: name),
+    subject: DesiredRealizationSelection,
+    phases: protocol_phases(false, false, false, false, false, mutates, false, false),
+    current_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: current),
+    intended_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: intended),
+    persistent_host_effect: if mutates { ReachesPersistentHostMutation } else { DoesNotMutateHost },
+    disposition: disposition,
+    first_consumer: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: name),
+    deletion: deletion,
+  )
+}
+
+fn well_formed_pair() -> List<HostConvergenceCensusRow> {
+  [
+    fixture_row(
+      name: "alpha",
+      mutates: false,
+      disposition: RetainAuthority,
+      deletion: NoDeletionOwed,
+      current: "alpha",
+      intended: "alpha",
+    ),
+    fixture_row(
+      name: "beta",
+      mutates: true,
+      disposition: BindToAuthority { target: fleet_plan() },
+      deletion: DeleteWhenCapability { capability: "bind beta to fleet plan" as NonEmptyStr },
+      current: "beta",
+      intended: "fleet",
+    ),
+  ]
+}
+
+test fn w_production_census_is_admitted() -> Bool {
+  host_convergence_census_is_admitted()
+}
+
+test fn w_production_standing_is_the_admit_fold() -> Bool {
+  match host_convergence_census_standing {
+    CensusWellFormed { rows: rows } => length(xs: rows) == length(xs: host_convergence_census_rows)
+    CensusMalformed { cause: _ } => false
+  }
+}
+
+test fn w_fixture_well_formed_pair_is_admitted() -> Bool {
+  census_is_well_formed(census: admit_host_convergence_census(rows: well_formed_pair()))
+}
+
+test fn w_duplicate_identity_refuses() -> Bool {
+  let a = fixture_row(
+    name: "dup",
+    mutates: false,
+    disposition: RetainAuthority,
+    deletion: NoDeletionOwed,
+    current: "dup",
+    intended: "dup",
+  )
+  match admit_host_convergence_census(rows: [a, a]) {
+    CensusMalformed { cause: DuplicateDeclaration { identity: id } } =>
+      id.decl_name as String == "dup"
+    _ => false
+  }
+}
+
+test fn w_retain_with_deletion_trigger_refuses() -> Bool {
+  let row = fixture_row(
+    name: "retain_delete",
+    mutates: false,
+    disposition: RetainAuthority,
+    deletion: DeleteWhenCapability { capability: "should not exist" as NonEmptyStr },
+    current: "retain_delete",
+    intended: "retain_delete",
+  )
+  match admit_host_convergence_census(rows: [row]) {
+    CensusMalformed { cause: RetainCarriesDeletion { identity: id } } =>
+      id.decl_name as String == "retain_delete"
+    _ => false
+  }
+}
+
+test fn w_bind_without_deletion_trigger_refuses() -> Bool {
+  let row = fixture_row(
+    name: "bind_no_delete",
+    mutates: false,
+    disposition: BindToAuthority { target: fleet_plan() },
+    deletion: NoDeletionOwed,
+    current: "bind_no_delete",
+    intended: "fleet",
+  )
+  match admit_host_convergence_census(rows: [row]) {
+    CensusMalformed { cause: NonRetainLacksDeletion { identity: id } } =>
+      id.decl_name as String == "bind_no_delete"
+    _ => false
+  }
+}
+
+test fn w_retain_current_intended_mismatch_refuses() -> Bool {
+  let row = fixture_row(
+    name: "mismatch",
+    mutates: false,
+    disposition: RetainAuthority,
+    deletion: NoDeletionOwed,
+    current: "mismatch",
+    intended: "other",
+  )
+  match admit_host_convergence_census(rows: [row]) {
+    CensusMalformed { cause: RetainCurrentIntendedMismatch { identity: id } } =>
+      id.decl_name as String == "mismatch"
+    _ => false
+  }
+}
+
+test fn w_mutation_flag_without_mutates_phase_refuses() -> Bool {
+  let row = census_row(
+    identity: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
+    subject: DesiredRealizationSelection,
+    phases: none_phases(),
+    current_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
+    intended_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: RetainAuthority,
+    first_consumer: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
+    deletion: NoDeletionOwed,
+  )
+  match admit_host_convergence_census(rows: [row]) {
+    CensusMalformed { cause: PersistentMutationPhaseMismatch { identity: id } } =>
+      id.decl_name as String == "phase_mismatch"
+    _ => false
+  }
+}
+
+test fn w_self_successor_refuses() -> Bool {
+  let id = cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "self")
+  let row = census_row(
+    identity: id,
+    subject: DesiredRealizationSelection,
+    phases: none_phases(),
+    current_authority: id,
+    intended_authority: id,
+    persistent_host_effect: DoesNotMutateHost,
+    disposition: ReplaceAndDelete { successor: id },
+    first_consumer: id,
+    deletion: DeleteWhenCapability { capability: "cannot replace with self" as NonEmptyStr },
+  )
+  match admit_host_convergence_census(rows: [row]) {
+    CensusMalformed { cause: SelfSuccessor { identity: got } } =>
+      got.decl_name as String == "self"
+    _ => false
+  }
+}
+
+test fn w_identity_join_covers_required_fixture_identities() -> Bool {
+  let rows = well_formed_pair()
+  let required = [
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "beta"),
+  ]
+  identity_join_covered(j: census_identity_join(required: required, rows: rows))
+}
+
+test fn w_identity_join_missing_required_identity_is_red() -> Bool {
+  let rows = well_formed_pair()
+  let required = [
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "missing"),
+  ]
+  match census_identity_join(required: required, rows: rows) {
+    IdentityMissingFromCensus { identity: id } => id.decl_name as String == "missing"
+    _ => false
+  }
+}
+
+test fn w_identity_join_is_not_count_equality() -> Bool {
+  let rows = well_formed_pair()
+  let required_wrong_name_same_count = [
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
+    cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "ghost"),
+  ]
+  !identity_join_covered(j: census_identity_join(required: required_wrong_name_same_count, rows: rows))
+    && length(xs: required_wrong_name_same_count) == length(xs: rows)
+}
+
+test fn w_select_realization_is_in_the_production_join() -> Bool {
+  identity_join_covered(
+    j: census_identity_join(required: [std_decision()], rows: host_convergence_census_rows),
+  )
+}
