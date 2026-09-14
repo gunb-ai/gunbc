@@ -136,17 +136,8 @@ fn inhabitance_pair_undecidable_reason(
 // That rule is realized in find_witness's roster, but it preserves a value-set algebra
 // (refinement_widening_predicate_algebra_for_value_sets), not a pair of application type nodes.
 // Calling it with algebra: produced would never hold, so it would not admit a widening-legal argument.
-// This landing therefore decides exact structural equality of derived types, not inhabitance-by-widening.
-// Trigger: a producer supplies integer value-set evidence on produced and declared; then
-// declared_type_inhabitance consumes preservation_rule_refinement_widening on that algebra.
-// InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as
-// v2.compiler.infer infer_grounding_not_derived. Rejected is both-sides-derived exact-structural
-// find_witness refuse and decidable positional arity mismatch. The v2 arm of the #11277 class (an
-// argument/type obligation can be absent while the route still advances) retires when the frontier
-// count over reached applications is zero on both routes. RUNG: source→interpretation is a
-// structurally unequal derived pair refuses (Bool at Int); that is not inhabitance-by-widening.
-// Unjudgeable applications are counted. Native emission is unclaimed until v2.std.inhabitance is
-// in the native 04_infer closure AND the Bool-at-Int RED refuses on the emitted binary.
+// Rung, ceiling, and next-rung triggers live in
+// gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,

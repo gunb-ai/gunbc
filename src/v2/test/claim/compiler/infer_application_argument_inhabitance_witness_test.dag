@@ -12,15 +12,15 @@ import v2.extdeps.languages.dag {
   dag_int_literal_fixture_two,
   dag_type_atom_node
 }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostic,
   Diagnostics,
   None,
   Rejected,
-  Some
+  Some,
+  diagnostics_has_reason
 }
+import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node {
   ComputationNode,
@@ -35,21 +35,6 @@ import v2.std.node {
   TypeNode,
   Value,
   node_synthetic
-}
-
-fn inhabitance_diagnostics_list_has_reason(xs: List<Diagnostic>, reason: Symbol) -> Bool {
-  fold(xs, init: false, f: fn(acc, d) {
-    acc || (d.reason == reason)
-  })
-}
-
-fn inhabitance_diagnostics_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
-  match d {
-    None => false
-    Some { diagnostics: nds } =>
-      (nds.head.reason == reason)
-        || inhabitance_diagnostics_list_has_reason(xs: nds.tail, reason: reason)
-  }
 }
 
 fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
@@ -170,7 +155,7 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: Some { diagnostics: nds },
         reason: ^application_argument_does_not_inhabit
       )
@@ -192,7 +177,7 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: d,
         reason: ^inhabitance_undecidable_argument_type_not_derived
       )
@@ -203,7 +188,7 @@ test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
   match infer(tree: inhabitance_generic_formal_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: d,
         reason: ^inhabitance_undecidable_generic_formal
       )
@@ -227,7 +212,7 @@ test fn infer_optional_carrier_is_counted_frontier_holds() -> Bool {
   match infer(tree: inhabitance_optional_formal_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: d,
         reason: ^inhabitance_undecidable_optional_carrier
       )
@@ -238,7 +223,7 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
   match infer(tree: inhabitance_arity_unmodeled_tree()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: Some { diagnostics: nds },
         reason: ^application_positional_surplus
       )
@@ -249,7 +234,7 @@ test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
   match infer(tree: inhabitance_formal_unresolved_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      inhabitance_diagnostics_has_reason(
+      diagnostics_has_reason(
         d: d,
         reason: ^inhabitance_undecidable_formal_unresolved
       )

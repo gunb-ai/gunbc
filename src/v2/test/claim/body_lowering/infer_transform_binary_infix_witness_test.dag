@@ -5,29 +5,13 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_witness_for_node
 }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Rejected, Some }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers {
   infer_transform_subtract_fixture
 }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { Symbol }
-
-fn inhabitance_list_has_reason(xs: List<Diagnostic>, reason: Symbol) -> Bool {
-  fold(xs, init: false, f: fn(acc, d) {
-    acc || (d.reason == reason)
-  })
-}
-
-fn inhabitance_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
-  match d {
-    None => false
-    Some { diagnostics: nds } =>
-      (nds.head.reason == reason)
-        || inhabitance_list_has_reason(xs: nds.tail, reason: reason)
-  }
-}
 
 test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
   let body = infer_transform_subtract_fixture()
@@ -36,7 +20,7 @@ test fn infer_transform_non_add_remains_frontier_holds() -> Bool {
       match inferred_facts_witness_for_node(tree: tree, node: body) {
         Holds { value: facts } =>
           !inferred_facts_grounding_derived(facts: facts)
-            && inhabitance_has_reason(
+            && diagnostics_has_reason(
               d: d,
               reason: ^inhabitance_undecidable_formal_unresolved
             )
