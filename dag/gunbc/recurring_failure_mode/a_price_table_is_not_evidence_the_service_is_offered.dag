@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_price_table_is_not_evidence_the_service_is_offered
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_price_table_is_not_evidence_the_service_is_offered: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_price_table_is_not_evidence_the_service_is_offered" as NonEmptyStr,
+
+  receipts: [
+    "**a seller's pricing page can outlive the service** (INVALID STATE: a census or catalog row treats a still-reachable price table, instance-size grid, or resource-class page as evidence that the product is currently offered.",
+
+    "HARM: outreach, capacity planning, and wholesale-supply joins treat a dead seller as live metal or live ARM inventory. The operator spends time, and the model asserts an offer that cannot be bought.",
+
+    "A price table is evidence that a price was once published. It is never evidence that signup is open. The status or announcement surface, or a dated ability to sign up, is a different citation.",
+
+    "SPECIMEN, 2026-09-13, gunbc#11232. `extdeps.ci_runner.cirrus_runners` enrolled Linux Arm sm/md/lg shapes and $150/month from cirrus-runners.app/pricing as a live own-metal Apple Silicon offer. cirruslabs.org, read the same day, states Cirrus Labs joined OpenAI, Cirrus Runners is no longer accepting new customers, and Cirrus CI shut down 2026-06-01. The pricing page had outlived the service. BuildJet was already modelled from its shutdown announcement; Cirrus was not checked the same way.",
+
+    "DISTINGUISHING FACTS. Not `stable_citation_mutable_referent`: the pricing URL still names a price table and the table is still that shape. The defect is promoting that table to Offer. Not an unread silicon arm: silicon can be cited on a stale page too.",
+
+    "RUNG FOUND AT: mitigatable. The typed `SellerOfferStanding` wall is the mitigation: CurrentlyAcceptingCustomers only from a status/signup surface; price-page-only is OfferStandingUnread; shutdown is SellerNotAcceptingCustomers.",
+
+    "CEILING: mechanically preventable once every offer row carries standing and a witness identity-joins the not-accepting set to shutdown citations.",
+
+    "NEXT TRIGGER: ingestion of a seller catalog refuses CurrentlyAcceptingCustomers unless the cited authority is a status, announcement, or signup surface rather than a price table.)"
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.ci_runner.cirrus_runners", decl_name: "cirrus_runners_offer_standing"),
+    decl_ref(module_path: "extdeps.ci_runner.buildjet", decl_name: "buildjet_offer_standing"),
+    decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "cirrus_runners_arm_linux_offer"),
+    decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "buildjet_arm_linux_offer"),
+    decl_ref(module_path: "extdeps.ci_runner.types", decl_name: "SellerOfferStanding"),
+  ],
+}

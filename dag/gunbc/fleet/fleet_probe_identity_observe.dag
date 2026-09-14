@@ -57,7 +57,7 @@ fn observe_authorized_keys_line(home: String) -> String {
 // open. An unreadable home yields "" here and the guarded call below skips the probe entirely
 // rather than reading /.ssh/authorized_keys off a fabricated root.
 
-func fleet_probe_identity_observe_wet() -> ProcessExit
+fn fleet_probe_identity_observe_wet() -> ProcessExit
   uses net: Network
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)

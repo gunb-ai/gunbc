@@ -1,0 +1,57 @@
+module test.probe.personal_identity_to_log_channel_probe
+
+// THIS MODULE MUST NOT RESOLVE -- AND TODAY IT DOES, WHICH IS THE POINT OF ENROLLING IT. The most
+// tempting mishandling of personal identity is logging it: a Classified<PersonalIdentity, _>
+// handed to a Sink<JobLog> through the one admission fold. The marker C on the two arguments
+// disagrees, and on the emitted-Rust path that is a rustc type error (the markers render
+// distinctly). On the INTERPRETATION path the checker does not judge marker identity at generic
+// argument positions -- gunbc.recurring_failure_mode
+// direct_generic_application_admits_a_distinct_phantom_argument -- so this program compiles there,
+// and the fold refuses it at run time as CategoryDisagreesWithSink instead.
+//
+// ENROLLED AS AN EXPECTING-RED HOLE (test.claim.data_class_refusal_probe_witness): the witness
+// asserts the census carries NO blocking diagnostic, which documents the hole; when the checker's
+// wall lands this program refuses, that assertion goes red, and the row flips to a permanent
+// regression control expecting the refusal. It does not retire (DESIGN 4b, meta-obligation 4).
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import product.data_category { PersonalIdentity, JobLog }
+import product.data_class {
+  Classified, Sink, DataEffectAdmission, DataEffectAdmitted, DataEffectRefused, Transmit,
+  admit_data_effect, log_channel_sink, public_fabric_map, public_fabric_posture, DataCategoryWitness,
+}
+import gunbc.principal_projection { oidc_projection }
+
+fn claims() -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://issuer.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "external-subject" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
+    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: none, name: none },
+  }
+}
+
+fn pii() -> Classified<PersonalIdentity, OidcStandardClaims> {
+  oidc_projection(claims: claims()).standard
+}
+
+// A JobLog sink. There is no job_log_category witness in product.data_class today (no JobLog
+// boundary exists), so the tempting author reaches for the one sink mint that is generic over C
+// with the only category witness a log could plausibly want -- and the mint's C is bound by the
+// witness, which is what this probe hands the PII to.
+fn log_sink(category: DataCategoryWitness<JobLog>) -> Sink<JobLog> {
+  log_channel_sink(category: category, purpose: decl_ref(module_path: "test.probe.personal_identity_to_log_channel_probe", decl_name: "log_sink"), recipient: decl_ref(module_path: "test.probe.personal_identity_to_log_channel_probe", decl_name: "log_sink"))
+}
+
+fn tempt(category: DataCategoryWitness<JobLog>) -> Bool {
+  match admit_data_effect(classified: pii(), sink: log_sink(category: category), operation: Transmit, handling_map: public_fabric_map(), posture: public_fabric_posture()) {
+    DataEffectAdmitted { permit: _ } => true
+    DataEffectRefused { cause: _ } => false
+  }
+}

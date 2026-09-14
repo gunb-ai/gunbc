@@ -17,7 +17,15 @@ import tools.floor_cost_distribution_instrument {
   FloorAttemptPair,
   attempt_label,
   attempt_cost_path,
-  attempt_pair_lines
+  attempt_pair_lines,
+  CalibrationSpecimenGrounding,
+  SpecimenJoined,
+  SpecimenAbsentFromRun,
+  SpecimenStepsNotDeterministic,
+  SpecimenStepsRightCensored,
+  SpecimenRunUnavailable,
+  specimen_row_grounding,
+  calibration_specimen_grounding_holds
 }
 import gunbc.floor_cost_distribution {
   ClaimCostColumns,
@@ -169,8 +177,9 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
   cost_reading: 4,
   observed_cpu_ms: 6,
   cpu_at_least_ms: 8,
-  censoring_cpu_limit_ms: 10,
+  censoring_cpu_limit_ms: Present { value: 10 },
   eval_steps: 12,
+  eval_steps_at_least: none,
   preemption_reachability: none
 }
 
@@ -1579,4 +1588,58 @@ test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool {
   )
   count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the left attempt"))) == 1
     && count(lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING -- the right attempt"))) == 0
+}
+
+// ── A CENSORED SPECIMEN ROW MAY NOT ANSWER AN EQUALITY QUESTION ────────────────────────────
+//
+// `FloorCostRow.eval_steps` is a POINT for an observed row and a LOWER BOUND for a censored one --
+// the parse fills it from `eval_steps_at_least` on the censored arm. So a censored row whose bound
+// happens to EQUAL the pinned specimen count would, without the case split, report
+// `SpecimenStepsMatchThePin` and succeed -- asserting an equality the run never established, which
+// is DESIGN section 5's fabricated plausible output. Found by review 65748.
+//
+// THE FIXTURES ARE THE SAME NUMBER ON BOTH ARMS, WHICH IS THE WHOLE POINT. Both carry the pinned
+// 55,011; they differ only in the reading. If the split is removed both go green, so the pair
+// discriminates on the reading and on nothing else.
+data specimen_identity_fixture: String = "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work"
+
+data specimen_row_observed: FloorCostRow = FloorCostRow {
+  identity: specimen_identity_fixture,
+  module: "test.claim.floor_eval_step_calibration_specimen_test",
+  verdict_reached: true,
+  cost: ObservedCpuReading { cpu_ms: millisecond(count: 57) },
+  eval_steps: 55011,
+  reachability: none
+}
+
+data specimen_row_censored: FloorCostRow = FloorCostRow {
+  identity: specimen_identity_fixture,
+  module: "test.claim.floor_eval_step_calibration_specimen_test",
+  verdict_reached: false,
+  cost: RightCensoredCpuReading {
+    cpu_lower_bound_ms: millisecond(count: 8000),
+    censoring_ceiling_ms: millisecond(count: 8000)
+  },
+  eval_steps: 55011,
+  reachability: none
+}
+
+// THE CONTROL: an observed row carrying the pin joins and holds.
+test fn an_observed_specimen_row_joins_the_pin() -> Bool {
+  calibration_specimen_grounding_holds(
+    g: specimen_row_grounding(rows: [specimen_row_observed], run: "runFixture" as NonEmptyStr)
+  )
+}
+
+// THE RED: the SAME step figure on a censored reading refuses, and names why rather than reporting
+// a mismatch it did not measure.
+test fn a_censored_specimen_row_refuses_rather_than_matching_the_pin() -> Bool {
+  match specimen_row_grounding(rows: [specimen_row_censored], run: "runFixture" as NonEmptyStr) {
+    SpecimenStepsRightCensored { identity: i, lower_bound: b } =>
+      i == specimen_identity_fixture && b == 55011
+    SpecimenJoined { grounding: _ } => false
+    SpecimenAbsentFromRun { identity: _, run: _ } => false
+    SpecimenStepsNotDeterministic { identity: _, low: _, high: _ } => false
+    SpecimenRunUnavailable { load: _ } => false
+  }
 }

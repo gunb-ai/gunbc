@@ -14,7 +14,7 @@ import tools.extdeps_external_authority_transport { extdeps_external_authority_c
 // tools.extdeps_external_authority_transport.extdeps_external_authority_claims; execution authority
 // is the pool.
 
-func run_extdeps_external_authority_gate_body() -> ProcessExit {
+fn run_extdeps_external_authority_gate_body() -> ProcessExit {
   return if claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims()) {
     ExitSuccess
   } else {
@@ -24,10 +24,10 @@ func run_extdeps_external_authority_gate_body() -> ProcessExit {
   }
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   run_extdeps_external_authority_gate_body()
 }
 
-func run_extdeps_external_authority_ci_gate() -> ProcessExit {
+fn run_extdeps_external_authority_ci_gate() -> ProcessExit {
   run_extdeps_external_authority_gate_body()
 }

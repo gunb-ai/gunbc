@@ -30,6 +30,7 @@ import gunbc.fabric_event_log {
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable,
   HarnessBackendUnreadable, harness_observe_replica, harness_observe_engine, harness_standing_detail,
+  harness_route_availability, HarnessEngineReading,
 }
 import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
@@ -42,13 +43,17 @@ import product.fabric.selection {
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
-  LaunchObserved, LaunchUnobserved,
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
 }
+import gunbc.spark.first_party_serving { SparkServingRealization }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import gunbc.spark.serving_offer {
-  SparkOfferBound, SparkOfferBindingRefused, SparkServingReadiness, ServingObserved, ServingUnobserved,
+  SparkOfferBound, SparkOfferBindingRefused,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
+  SparkServingRoute, DeclaredUnitDigestUnavailable, spark_pair_head_unit_digest_unavailable_obligation,
+  spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread,
@@ -59,6 +64,12 @@ import gunbc.serving.turn_admission {
   spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
+import gunbc.serving.serving_availability {
+  ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
+  FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
+  EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
+  serving_availability_after_launch_read, serving_availability_text,
+}
 
 // THE HARNESS TAKES A SEAT BEFORE IT TAKES A TURN. A serving group's seats are a pool on the
 // fabric event log, one partition per group, whose root is the group's admitted engine tuple; the
@@ -235,18 +246,6 @@ fn seat_bind_detail(group: FabricGroup, text: String) -> String {
 // what it can see about each group, gunbc.serving.turn_admission decides which groups may be offered
 // at all, product.fabric.selection ranks the survivors, and fabric_seat_acquire settles the race.
 // Nothing in this module decides which group wins.
-fn harness_serving_readiness(standing: HarnessBackendStanding, now: EpochSecs) -> SparkServingReadiness {
-  match standing {
-    HarnessBackendServing { model: _, unit: _, readback: _ } =>
-      ServingObserved { ready_at: to_string(now), receipt: "gunbc.harness.models-probe" as ObservationReceiptRef }
-    HarnessBackendModelNotAdmitted { advertised: a } =>
-      ServingUnobserved { obligation: join(["the route advertises no model this harness is admitted to ask; it advertises: ", a], "") as NonEmptyStr }
-    HarnessBackendUnreachable { url: u } =>
-      ServingUnobserved { obligation: join(["the route at ", u, " did not answer"], "") as NonEmptyStr }
-    HarnessBackendUnreadable { cause: c } =>
-      ServingUnobserved { obligation: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
-  }
-}
 
 // THE SEAT STANDING IS A READING, NOT A RETRY OUTCOME, AND IT IS AN OCCUPANCY READING RATHER THAN A
 // CAPACITY ONE. Until fabric_seat_observe existed this path could only learn whether a pool had room
@@ -434,18 +433,31 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
   HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
 }
 
-// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER YET, AND THE MISSING PIECE HAS MOVED ONE WALL BACK.
-// Two of the three obstacles are now gone: spark_serving_route_standing carries the operator's
-// dated site allocation rather than refusing, and gunbc.spark.first_party_serving
-// spark_first_party_admission is the provider-use admission producer this note used to say did not
-// exist. What remains is the offer's OTHER seal.
+// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER, AND THE WALL HAS MOVED BACK RATHER THAN FALLEN.
+// An earlier spelling of this note said two of the three obstacles were gone and that
+// spark_serving_route_standing "carries the operator's dated site allocation RATHER THAN REFUSING".
+// That is no longer true and the change that made it untrue is the one that rewired this function:
+// the standing refuses on every input, because host coverage establishes the REGION and nothing
+// available establishes WHICH DEPLOYMENT ANSWERED. It does carry the allocation -- on the refusing
+// arm, which is the point of that arm -- so the region assertion survives a refusal about the
+// service. gunbc.spark.first_party_serving spark_first_party_admission does exist, which is the one
+// half of that old sentence still standing.
+//
+// SO THE SparkOfferBound ARM BELOW IS CURRENTLY UNREACHABLE, and it is named here for the same
+// reason the two retained SparkServingRoute arms are named in gunbc.spark.serving_offer: an arm
+// that quietly cannot occur is the decoration DESIGN 4b warns will later be cited as coverage.
+// Nothing reaches it while the service is unestablished, so its note -- the one that says the
+// serving offer bound and provider-use admission has not run -- cannot currently be emitted. It is
+// retained because it is the right handling once an offer can bind, and it becomes reachable again
+// when evidence identifies the deployment that answered as the offered launch.
 //
 // A CandidateOffer is sole_constructor through product.fabric.selection bind_candidate, which takes
 // a DEMAND IDENTITY and a WORK IDENTITY and compares the permit against both. A WorkKey comes from
 // exactly one place -- product.fabric.work derive_work_key, through work_for -- which needs a
 // WorkContract, which needs a SourceManifestRef; and gunbc.serving.turn_demand refuses to produce
-// one, because nothing in this repository observes the exact weights, tokenizer and runtime closure
-// a launch loaded (serving_turn_source_obligation). Minting a key beside derive_work_key would
+// one until its weights, tokenizer and runtime components are each observed. Nothing observes the
+// first two (serving_turn_weights_obligation, serving_turn_tokenizer_obligation), and the runtime is
+// read only through an incarnation observation this path does not have. Minting a key beside derive_work_key would
 // fabricate the identity the fabric's deduplication and receipts are keyed on, so this arm reports
 // what is missing and seats nobody rather than inventing it.
 //
@@ -463,11 +475,35 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // of this arm, so the wording carries it: admission cannot yet be evaluated, and the producer exists
 // and has not run (operator-routed review of #11083).
 //
-// Restoration trigger: a launch receipt that reads the weights, tokenizer and runtime closure off a
-// running engine, SUFFICIENT FOR gunbc.serving.turn_demand serving_turn_work to return TurnWorkBound
+// Restoration trigger: observers of the loaded weight and tokenizer bytes and of the answering
+// incarnation, SUFFICIENT FOR gunbc.serving.turn_demand serving_turn_work to return TurnWorkBound
 // for a harness turn -- at which point the demand and work identities exist, the admission producer
 // is called with them, and bind_candidate has everything it compares.
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, standing: HarnessBackendStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+//
+// THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
+// through exactly what production passes. It states two absences, and both are real on this path:
+// no incarnation observation binds the answering endpoint to an engine launch, and no SHA-256 of the
+// rendered head unit exists to compare a launch's unit digest with. So in production the route
+// standing returns ServingRouteServiceUnidentified with ServiceIncarnationUnobserved, and
+// test.claim.spark.spark_serving_offer_route_witness_test drives harness_serving_route and asserts
+// that constructor.
+fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: fabric_group_hosts(g: group),
+    readback: readback,
+    endpoint: launch,
+    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+  }
+}
+
+fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRoute {
+  spark_serving_route_standing(
+    realization: harness_serving_realization(group: group, launch: launch, readback: readback),
+    declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation },
+  )
+}
+
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -476,8 +512,8 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     trust_domain: spark_serving_trust_domain,
     isolation: serving_isolation_profile(),
     seats: seats as Int,
-    readiness: harness_serving_readiness(standing: standing, now: now),
-    route: spark_serving_route_standing(hosts: fabric_group_hosts(g: group)),
+    availability: availability,
+    route: harness_serving_route(group: group, launch: launch, readback: readback),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
@@ -486,7 +522,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
         acc: acc,
         note: seat_bind_detail(
           group: group,
-          text: "The serving offer bound. Provider-use admission cannot yet be evaluated for this turn because its exact Work identity is unestablished: nothing observes the weights, tokenizer and runtime closure a launch loaded, so gunbc.serving.turn_demand cannot bind a source manifest, and product.fabric.selection bind_candidate has no work to compare a permit against. gunbc.spark.first_party_serving spark_first_party_admission EXISTS and has NOT RUN for this turn",
+          text: "The serving offer bound. Provider-use admission cannot yet be evaluated for this turn because its exact Work identity is unestablished: nothing observes the weight or tokenizer bytes a launch loaded, so gunbc.serving.turn_demand cannot bind a source manifest, and product.fabric.selection bind_candidate has no work to compare a permit against. gunbc.spark.first_party_serving spark_first_party_admission EXISTS and has NOT RUN for this turn",
         ),
         retryable: false,
       )
@@ -515,29 +551,42 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
     ServingRouteResolved { endpoint: endpoint, ceiling: route_ceiling } => {
       let group = endpoint.group
+      let before = harness_observe_engine(endpoint: endpoint).launch
       let standing = harness_observe_replica(endpoint: endpoint)
-      match standing {
-        HarnessBackendServing { model: observed_model, unit: observed_unit, readback: _ } =>
-          if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
-            harness_no_candidate(
-              acc: acc,
-              note: seat_bind_detail(group: group, text: join(["the route serves ", observed_model as String, ", which is not the model this turn requires"], "")),
-              retryable: false,
-            )
-          } else {
-            harness_add_serving_candidate(
-              acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement,
-              standing: standing, model: observed_model, unit: observed_unit,
-              seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-              layout: layout, now: now,
-            )
+      let engine = harness_observe_engine(endpoint: endpoint)
+      let availability = harness_route_availability(endpoint: endpoint, before: before, standing: standing, after: engine.launch, now: to_string(now))
+      match availability.reading {
+        ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: false)
+        ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: _ }, receipt: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: false)
+        ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: serving_availability_text(a: availability.reading)), retryable: true)
+        ServingAvailable { endpoint: _, launch: launch, observed_at: _, receipt: _ } =>
+          match standing {
+            HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
+              if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
+                harness_no_candidate(
+                  acc: acc,
+                  note: seat_bind_detail(group: group, text: join(["the route serves ", observed_model as String, ", which is not the model this turn requires"], "")),
+                  retryable: false,
+                )
+              } else {
+                harness_add_serving_candidate(
+                  acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement,
+                  availability: availability, launch: launch, engine: engine,
+                  model: observed_model, unit: observed_unit, readback: observed_readback,
+                  seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
+                  layout: layout, now: now,
+                )
+              }
+            HarnessBackendModelNotAdmitted { advertised: _ } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)), retryable: false)
+            HarnessBackendUnreachable { url: _ } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)), retryable: false)
+            HarnessBackendUnreadable { cause: _ } =>
+              harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)), retryable: false)
           }
-        _ =>
-          harness_no_candidate(
-            acc: acc,
-            note: seat_bind_detail(group: group, text: harness_standing_detail(standing: standing)),
-            retryable: false,
-          )
       }
     }
   }
@@ -549,7 +598,10 @@ fn harness_add_serving_candidate(
   route: ServingRoute,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
-  standing: HarnessBackendStanding,
+  availability: ServingFrontDoorAvailabilityVerdict,
+  launch: VllmEndpointProcessLaunch,
+  engine: HarnessEngineReading,
+  readback: VllmModelsRouteReadbackStanding,
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   seats: Nat,
@@ -557,36 +609,29 @@ fn harness_add_serving_candidate(
   now: EpochSecs,
 ) -> HarnessCandidates {
   let group = endpoint.group
-  let engine = harness_observe_engine(endpoint: endpoint)
-  match engine.launch {
-    LaunchUnobserved { group: _, obligation: o } =>
-      harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: o as String), retryable: false)
-    LaunchObserved { launch: launch, receipt: _ } => {
-      let admission = serving_group_admission(
-        incoming: class,
-        tenancy: serving_co_tenancy(reading: engine.queue),
-        pressure: serving_capacity_pressure(reading: engine.queue),
-        seats: harness_seat_standing(route: route, layout: layout, now: now),
-        ceiling: seats,
-        receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
-      )
-      match admission {
-        AdmissibleForClass { class: _, receipt: _ } =>
-          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, requirement: requirement, seats: seats, now: now)
-        InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
-        InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
-        InadmissibleRouteHoldingForCapacity { held: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
-        InadmissibleClassCeilingReached { held: _, ceiling: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
-        InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
-        AdmissibilityUnread { obligation: _ } =>
-          harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: false)
-      }
-    }
+  let admission = serving_group_admission(
+    incoming: class,
+    tenancy: serving_co_tenancy(reading: engine.queue),
+    pressure: serving_capacity_pressure(reading: engine.queue),
+    seats: harness_seat_standing(route: route, layout: layout, now: now),
+    ceiling: seats,
+    receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
+  )
+  match admission {
+    AdmissibleForClass { class: _, receipt: _ } =>
+      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now)
+    InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+    InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+    InadmissibleRouteHoldingForCapacity { held: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+    InadmissibleClassCeilingReached { held: _, ceiling: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+    InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
+    AdmissibilityUnread { obligation: _ } =>
+      harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: false)
   }
 }
 
@@ -692,13 +737,22 @@ type HarnessAcquisition
 // (review 62155). A refused release is therefore a refusal of the whole placement, and the seat it
 // could not give back is named in the reason.
 fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
-  match harness_observe_engine(endpoint: candidate.endpoint).launch {
-    LaunchUnobserved { group: _, obligation: o } => {
+  match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine(endpoint: candidate.endpoint).launch, now: to_string(now)).reading {
+    EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
       let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
     }
-    LaunchObserved { launch: current, receipt: _ } =>
-      if vllm_endpoint_process_launch_is(launch: current, other: candidate.launch) {
+    EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
+        match release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
+          HarnessSeatReleased { partition: _ } =>
+            AcquisitionLost {
+              key: candidate.key,
+              detail: seat_bind_detail(group: candidate.group, text: "the engine was replaced between selection and acquisition, and the seat was released"),
+            }
+          HarnessSeatReleaseRefused { detail: why } =>
+            AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the engine was replaced between selection and acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why], "")) }
+        }
+    EndpointProcessUnchanged { endpoint: _, launch: _, observed_at: _, receipt: _ } =>
         AcquisitionGranted {
           binding: HarnessSeatBound {
             url: harness_backend_url_for_endpoint(shape: shape, endpoint: candidate.endpoint),
@@ -713,19 +767,9 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
             class: class,
           },
         }
-      } else {
-        match release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
-          HarnessSeatReleased { partition: _ } =>
-            AcquisitionLost {
-              key: candidate.key,
-              detail: seat_bind_detail(group: candidate.group, text: "the engine was replaced between selection and acquisition, and the seat was released"),
-            }
-          HarnessSeatReleaseRefused { detail: why } =>
-            AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the engine was replaced between selection and acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why], "")) }
-        }
-      }
   }
 }
+
 
 fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group, class: class) {

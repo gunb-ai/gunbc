@@ -56,7 +56,7 @@ fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
   }
 }
 
-func mtcollins1_fetch_boot_image() -> ProcessExit
+fn mtcollins1_fetch_boot_image() -> ProcessExit
   uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
@@ -78,7 +78,7 @@ data mtcollins1_wrong_pin: NonEmptyStr = "00000000000000000000000000000000000000
 
 data mtcollins1_wrong_pin_export_dir: NonEmptyStr = "/var/tmp"
 
-func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
+fn mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
   uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
@@ -102,7 +102,7 @@ func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
 // unnecessary. The move would succeed there. Only the admission stops it.
 data mtcollins1_unowned_export_dir: NonEmptyStr = "/var/tmp"
 
-func mtcollins1_fetch_boot_image_unowned_export_control() -> ProcessExit
+fn mtcollins1_fetch_boot_image_unowned_export_control() -> ProcessExit
   uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
