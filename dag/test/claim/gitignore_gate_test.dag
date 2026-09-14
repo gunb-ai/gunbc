@@ -15,10 +15,19 @@ test fn witness_has_editor_and_os_patterns() -> Bool {
     && string_contains(s: eg, pattern: "node_modules/")
 }
 
+// THE HEADER MUST NAME EVERY ARM THE FILE ACTUALLY HAS. A header naming fewer producers than the
+// projection carries is prose that reads as coverage, and it goes stale silently -- nothing else
+// in the file disagrees with it. Asserting each home by name means adding an arm without
+// announcing it turns this witness red.
 test fn witness_has_header() -> Bool {
   let eg = expected_gitignore()
-  string_contains(s: eg, pattern: "generated from gunbc.repo_workspace via gunbc.gitignore_emit")
+  string_contains(s: eg, pattern: "generated via gunbc.gitignore_emit")
     && string_contains(s: eg, pattern: "do not hand-edit")
+    && string_contains(s: eg, pattern: "gunbc.repo_workspace")
+    && string_contains(s: eg, pattern: "gunbc.workspace_repository_materialisation")
+    && string_contains(s: eg, pattern: "gunbc.repo_identity")
+    && string_contains(s: eg, pattern: "gunbc.generated_artifact")
+    && string_contains(s: eg, pattern: "THREE ARMS")
 }
 
 test fn witness_clean_does_not_drift() -> Bool {
