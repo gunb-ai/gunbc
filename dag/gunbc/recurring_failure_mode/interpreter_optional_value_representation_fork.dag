@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.interpreter_optional_value_representation_fork
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: gunbc.design_ledgers renders this recurring class through directory-derived membership.
+data interpreter_optional_value_representation_fork: RecurringFailureMode = RecurringFailureMode {
+  identity: "interpreter_optional_value_representation_fork" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: the v1 interpreter carries two runtime representations of one Optional value: builtins and none yield erased Null/payload values while authored Present yields a variant record.",
+    "HARM: eval_field_access handles FieldAccessStyle.OptionalUnwrap by returning a non-Null base unchanged. An explicit Present wrapper therefore reaches a consumer that is owed its payload, silently until a later consumer refuses.",
+    "EXECUTING INSTRUMENT: claim_batch runs test.claim.optional_application_comparison_witness_test; its Optional controls encounter PatternMatchFailure in is_compiler_error after the wrapper survives OptionalUnwrap. The Map controls produce verdicts. Native emitted execution is the proof route for the separate inferred-type Optional replacement migration; interpreter enrollment is not passing evidence.",
+    "FOUND RUNG: mitigatable by the typed refusal the downstream consumer happens to raise; the unwrap itself does not prevent the invalid value. v2.workflow.floor_expected_red and floor_non_verdict_roster enroll the same exact controls through floor_expected_red_chunk_interpreter_optional_unwrap.",
+    "REMOVAL CAPABILITY: one Optional value representation in the v1 interpreter such that OptionalUnwrap eliminates explicit Present. When it lands, remove the expected-red and non-verdict membership and retain the controls permanently. An interim interpreter repair is outside the inferred-type migration.",
+    "CEILING: structurally impossible once the v1 interpreter is retired from the floor. The operator direction is to leave the v1 interpreter; deletion of this route, rather than repair of its representation, reaches that ceiling.",
+  ],
+  evidence: [],
+}

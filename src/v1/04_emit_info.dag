@@ -9,9 +9,7 @@ import v1.std.core {
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_required_cardinality,
   Connective, Conj, NoConnective, Arrow,
-  CardOptional,
   param_node_name_at,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -19,6 +17,7 @@ import v1.std.core {
 }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
+  node_is_optional_type,
   normalize_access_type_node, resolved_type,
   child_type_node, emit_map_has, node_type_equals
 }
@@ -370,7 +369,7 @@ fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: S
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
-  let is_optional = normed.return_cardinality == CardOptional
+  let is_optional = node_is_optional_type(n: normed)
   if is_optional { OptionalValue }
   else { PlainValue }
 }

@@ -1,0 +1,35 @@
+module test.claim.optional_representation_witness_test
+
+import std.types { String, Bool }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Consumers: the Optional replacement's inference join and instantiated-pattern
+// boundaries. Keep the two join programs from #11277 as regression controls;
+// infer_semantics_witness's authored-field control discriminates main's old shape.
+fn optional_source_compiles(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data optional_method_none_join_source: String = "module probe_optional_method_none\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { none } }\n"
+
+test fn optional_method_none_join() -> Bool {
+  optional_source_compiles(source: optional_method_none_join_source)
+}
+
+data optional_method_present_join_source: String = "module probe_optional_method_present\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { Present { value: 1 } } }\n"
+
+test fn optional_method_present_join() -> Bool {
+  optional_source_compiles(source: optional_method_present_join_source)
+}
+
+data inferred_optional_pattern_preserves_argument_source: String = "module probe_optional_pattern\nimport std.types { Int, List }\nimport v2.std.optional { Present, Absent }\ntype Item { children: List<Int> }\nfn asks(src: Item?) -> Int {\n let candidate = match src { Present { value: v } => Present { value: v } Absent => none }\n let chosen = match src { Present { value: v } => match candidate { Present { value: w } => w Absent => v } Absent => Item { children: [] } }\n count(chosen.children)\n}\n"
+
+test fn inferred_optional_pattern_preserves_argument() -> Bool {
+  optional_source_compiles(source: inferred_optional_pattern_preserves_argument_source)
+}
