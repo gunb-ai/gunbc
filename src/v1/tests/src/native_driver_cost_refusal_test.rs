@@ -11,8 +11,9 @@
 
 use v1_compiler::std_compiler_entry::{
     native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
-    native_driver_cost_row_standing, NativeDriverChildStanding, NativeDriverCostAccounting,
-    NativeDriverCostRowStanding, NativeDriverExclusiveRows,
+    native_driver_cost_row_standing, native_driver_exclusive_rows, NativeDriverChildStanding,
+    NativeDriverCostAccounting, NativeDriverCostRowStanding, NativeDriverExclusiveRowKey,
+    NativeDriverExclusiveRows,
 };
 use v1_compiler::std_measure::nanosecond;
 use v1_compiler::v1_compiler_emit_rust::emit_source_root_eval_driver_main_rs;
@@ -30,15 +31,16 @@ fn driver_main() -> String {
 fn planted_over_attribution_is_over_attributed_not_clamped() {
     let account = native_driver_cost_account(
         nanosecond(100),
-        std::rc::Rc::new(NativeDriverExclusiveRows {
-            load: nanosecond(40),
-            context: nanosecond(40),
-            prepare: nanosecond(40),
-            eval: nanosecond(0),
-            universe_derivation: nanosecond(0),
-            receipt_admission: nanosecond(0),
-            row_serialization: nanosecond(0),
-            module_release: nanosecond(0),
+        native_driver_exclusive_rows(|k| match k {
+            NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(40),
+            NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(40),
+            NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(40),
+            NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -58,15 +60,16 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
 fn reconciled_parent_passes() {
     let account = native_driver_cost_account(
         nanosecond(3439809790856),
-        std::rc::Rc::new(NativeDriverExclusiveRows {
-            load: nanosecond(432921485),
-            context: nanosecond(3380085706753),
-            prepare: nanosecond(59277814291),
-            eval: nanosecond(3531894),
-            universe_derivation: nanosecond(0),
-            receipt_admission: nanosecond(0),
-            row_serialization: nanosecond(0),
-            module_release: nanosecond(0),
+        native_driver_exclusive_rows(|k| match k {
+            NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(432921485),
+            NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(3380085706753),
+            NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(59277814291),
+            NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(3531894),
+            NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
