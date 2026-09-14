@@ -1024,7 +1024,7 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
 // that is genuinely broken still meets normalize's recursive well_formed gate,
 // which #6520 established as the sole structural wall and which is untouched.
 // FoldCallStepShapeInvalid stays a refusal: there the fn literal is in hand.
-fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_try_fold_loop_at(node: Node) -> Outcome<Optional<Node>> {
   match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
       if fold_family_head(sym: head) {
@@ -1043,6 +1043,32 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
         body_lower_try_fold_loop_search(node: node)
       }
     Absent => body_lower_try_fold_loop_search(node: node)
+  }
+}
+
+fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_peel_call_surface(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: left_id } =>
+          if body_lower_surface_punct_token(id: left_id) {
+            body_lower_try_fold_loop(node: pair.right)
+          } else {
+            body_lower_try_fold_loop_at(node: stripped)
+          }
+        Absent =>
+          match body_lower_try_fold_loop(node: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: found, diagnostics: d } =>
+              match found {
+                Present { value: _ } =>
+                  outcome_with_diagnostics(value: found, diagnostics: d)
+                Absent => body_lower_try_fold_loop(node: pair.right)
+              }
+          }
+      }
+    Absent => body_lower_try_fold_loop_at(node: stripped)
   }
 }
 
@@ -2508,7 +2534,7 @@ fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
 }
 
 fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: body_lower_peel_call_surface(node: root))
+  let stripped = body_lower_deep_unwrap_optional(node: body_lower_unwrap_surface_shell(node: root))
   match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
     Present { value: _ } => optional_present(value: stripped)
     Absent =>
@@ -2516,11 +2542,7 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
         Present { value: pair } =>
           match body_lower_postfix_call_suffix_args(call_suffix: pair.left) {
             Present { value: _ } => optional_present(value: pair.left)
-            Absent =>
-              match body_lower_primary_call_suffix_optional(root: pair.left) {
-                Present { value: found } => optional_present(value: found)
-                Absent => body_lower_primary_call_suffix_optional(root: pair.right)
-              }
+            Absent => body_lower_primary_call_suffix_optional(root: pair.left)
           }
         Absent =>
           match parse_production_captured_child_optional(node: stripped) {
@@ -2592,10 +2614,15 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
             )
           }
         Absent =>
-          body_lower_try_primary_ident_call_from_pair(
-            callee_left: pair.left,
-            suffix_root: pair.right
-          )
+          match body_lower_try_primary_ident_call(node: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: found, diagnostics: d } =>
+              match found {
+                Present { value: _ } =>
+                  outcome_with_diagnostics(value: found, diagnostics: d)
+                Absent => body_lower_try_primary_ident_call(node: pair.right)
+              }
+          }
       }
   }
 }
@@ -4788,7 +4815,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
     Present { value: inner } => inner
     Absent => shell
   }
-  match body_lower_literal_int_atom_optional(node: captured) {
+  match body_lower_int_literal_with_magnitude_optional(node: captured) {
     Present { value: lit } => outcome_accepted(value: lit)
     Absent =>
       match body_lower_try_loop_keyword_from_captured(captured: captured) {

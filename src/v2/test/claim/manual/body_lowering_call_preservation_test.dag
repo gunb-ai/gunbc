@@ -38,6 +38,8 @@ data fold_arrow_form_snippet: String = "module arrowfold\n\nfn f(xs: List<Int>) 
 
 data fold_named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
 
+data fold_nested_call_inline_step_snippet: String = "module decoyfold\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => a), init: 0, f: (acc, x) => list_append(left: x, right: acc))\n}\n"
+
 data call_preservation_undeclared_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
 
 data imported_callee_call_source: String = "module callcount\n\nimport v2.std.algebra { length }\n\nfn caller(xs: List<Int>) -> Int { length(xs: xs) }\n"
@@ -321,6 +323,18 @@ test fn fold_named_step_after_call_preservation_keeps_fold_as_transform_callee()
   match normalize_unprepared(src: fold_named_step_snippet, file: ^fold_named_call) {
     Absent => false
     Present { value: root } => call_arity_named(root: root, callee: ^fold) >= 1
+  }
+}
+
+test fn call_preservation_sole_body_fold_with_nested_call_arg_is_not_init_literal() -> Bool {
+  match normalize_unprepared(src: fold_nested_call_inline_step_snippet, file: ^fold_decoy_nested) {
+    Absent => false
+    Present { value: root } =>
+      match fold_ingest_has_loop(src: fold_nested_call_inline_step_snippet, file: ^fold_decoy_loop) {
+        Absent => false
+        Present { value: loop } =>
+          loop || (call_arity_named(root: root, callee: ^fold) >= 1)
+      }
   }
 }
 
