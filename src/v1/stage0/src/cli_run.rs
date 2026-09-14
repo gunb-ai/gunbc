@@ -19046,19 +19046,38 @@ mod exit_failure_outcome_tests {
         ));
     }
 
-    /// THE NOT-BOOL FALSEHOOD THIS ARM REFUSES. The generated roster-join vocabulary has no arm
-    /// for a typed refusal, and the one thing it must never do is borrow `BoolFalse` — that
-    /// publishes the specific claim that the function returned a Bool. `None` (not_observed) is
-    /// the honest coarse answer, the same tradeoff `Panicked` already made.
+    /// THE NOT-BOOL FALSEHOOD THIS ARM REFUSES. The roster-join vocabulary now spells the typed
+    /// refusal as its own arm (regenerated from src/v1/expected_red_roster_join.dag with this
+    /// change), so the assertion is positive: the verdict arrives as `ExitFailure`, and the join
+    /// classifies it StillRed — the same verdict `expected_red_arm` already holds it under. It
+    /// must never arrive as `BoolFalse` (that publishes the specific claim that the function
+    /// returned a Bool) and never as `None` (that lets finalize_not_observed rewrite the row
+    /// into a fabricated "not_in_executed_manifest" for a claim that executed).
     #[test]
     fn an_exit_failure_is_never_reported_as_a_bool_false_in_the_roster_join() {
+        let verdict = witness_eval_verdict_from_claim_outcome(&ClaimOutcome::ExitFailure {
+            code: 1,
+            reason: Some("go=FAIL".to_string()),
+        });
         assert_eq!(
-            witness_eval_verdict_from_claim_outcome(&ClaimOutcome::ExitFailure {
-                code: 1,
-                reason: Some("go=FAIL".to_string()),
-            }),
-            None
+            verdict,
+            Some(
+                crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::ExitFailure {
+                    code: 1,
+                    reason: "go=FAIL".to_string(),
+                }
+            )
         );
+        let classification = crate::v1_compiler_expected_red_roster_join::classify_verdict(
+            std::rc::Rc::new(verdict.unwrap()),
+        );
+        assert_eq!(
+            classification.disposition,
+            std::rc::Rc::new(
+                crate::v1_compiler_expected_red_roster_join::ExpectedRedJoinDisposition::StillRed
+            )
+        );
+        assert_eq!(classification.detail, "exit 1: go=FAIL");
     }
 }
 
@@ -43689,11 +43708,14 @@ mod required_floor_disposition_and_storage_agreement_law {
     }
 }
 
-/// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot yet spell.
+/// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot spell.
 ///
 /// The option is not a convenience and it is not a default: `WitnessEvalVerdict` is emitted from
 /// `src/v1/expected_red_roster_join.dag`, so a new arm there is a regeneration rather than an edit
-/// here, and the two outcomes below have no honest existing arm to borrow. Returning `None` says
+/// here. `ExitFailure` has its own arm as of the regeneration this change carries — it IS a
+/// verdict: the claim reached its subject and the subject's process refused — and the join
+/// classifies it StillRed, the same verdict `expected_red_arm` already holds it under. The two
+/// outcomes below have no honest existing arm to borrow. Returning `None` says
 /// "this seed cannot state this verdict in that vocabulary", which the caller records by NOT
 /// recording — leaving the roster join's own `NotEvaluated { reason: "not_observed" }`, whose
 /// disposition is exactly right and whose reason is generic. Borrowing `RuntimeError` to carry a
@@ -43755,13 +43777,23 @@ fn witness_eval_verdict_from_claim_outcome(
             kind: kind.label().to_string(),
             completion: crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget,
         },
-        // NO ARM EXISTS FOR THESE IN THE GENERATED VOCABULARY — see this function's own comment.
-        // `ExitFailure` joins them on the same grounds: it IS a verdict, but the generated
-        // vocabulary has no arm for a typed refusal, and borrowing `BoolFalse` would publish the
-        // specific falsehood that the function returned a Bool — the exact borrowing this
-        // function exists to refuse. The roster join records it as not_observed, coarse and
-        // honest, until a regeneration adds the arm.
-        ClaimOutcome::ExitFailure { .. } => return None,
+        // ITS OWN ARM, NOT A BORROWING. `ExitFailure` IS a verdict — the claim reached its
+        // subject and the subject's process refused — and the generated vocabulary now spells it
+        // (src/v1/expected_red_roster_join.dag, regenerated with this change), where the join
+        // classifies it StillRed with the reason in the detail. Returning `None` here instead
+        // would let finalize_not_observed rewrite the row into
+        // `NotEvaluated { reason: "not_in_executed_manifest" }` — a fabricated claim, since the
+        // claim executed and reached a verdict. The absent-reason spelling at this site is the
+        // same prose claim_batch prints: a statement about what the failing site authored, not
+        // an invented observation.
+        ClaimOutcome::ExitFailure { code, reason } => {
+            crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::ExitFailure {
+                code: *code as i64,
+                reason: reason
+                    .clone()
+                    .unwrap_or_else(|| "no reason given".to_string()),
+            }
+        }
         ClaimOutcome::Panicked { .. } | ClaimOutcome::NotAttempted { .. } => return None,
     })
 }
