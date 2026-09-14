@@ -112,8 +112,6 @@ test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> B
 
 data candidate_dies_at_resolve_undeclared_callee_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
 
-data unbound_symbol_reason_note: String = "The floor property, pinned in the direction it should hold. An undeclared name in VALUE position must refuse at resolve, and it must refuse with the reason that names what went wrong rather than with any refusal at all. The sibling class — an undeclared CALLEE — is the same reason on the same stage once body lowering preserves the call (gunbc.recurring_failure_mode.call_expression_erased_at_v2_body_lowering). A silent pass at resolve for undefined_callee_zzz is a FAILING must-refuse assertion, not a dated measurement."
-
 fn first_refusal_reason(source: String) -> Symbol {
   fold(run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
     match step {
@@ -127,6 +125,7 @@ test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Boo
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
 }
 
+// Silent resolve-accept of undefined_callee_zzz is a failing must-refuse, not a dated measurement.
 test fn staged_front_end_undeclared_callee_refuses_at_resolve_with_unbound_reason() -> Bool {
   rejected_at_index(source: candidate_dies_at_resolve_undeclared_callee_source, index: 4)
     && (first_refusal_reason(source: candidate_dies_at_resolve_undeclared_callee_source) == ^resolve_reason_unbound_symbol)
