@@ -34,13 +34,13 @@ import gunbc.frontend_eval.task {
 // layer-to-directory table is minted (review 65965). Those facts cost minutes to build because the
 // host prepares the whole corpus once, so control_run builds them ONCE and every task folds its
 // closure from the same rows.
-type ModuleGraphFacts {
+type ControlModuleGraphFacts {
   edges: List<ImportResolutionFact>
   nodes: List<ModuleDeclarationFact>
 }
 
-fn module_graph_facts() -> ModuleGraphFacts {
-  ModuleGraphFacts {
+fn control_module_graph_facts() -> ControlModuleGraphFacts {
+  ControlModuleGraphFacts {
     edges: import_resolution_facts_live(pool_roots: witness_layer_roots, importer_roots: witness_layer_roots, exclude_substrings: []),
     nodes: module_declaration_facts_live(pool_roots: witness_layer_roots),
   }
@@ -70,7 +70,7 @@ fn copy_one(workspace: String, rel: String) -> String {
 
 // COPY THE ENTRY'S IMPORT CLOSURE INTO `workspace`. An empty closure is a refusal, not an empty
 // workspace: the entry itself is always a member, so emptiness means the facts do not know it.
-fn copy_closure(workspace: String, entry_path: String, facts: ModuleGraphFacts) -> ClosureCopy {
+fn copy_closure(workspace: String, entry_path: String, facts: ControlModuleGraphFacts) -> ClosureCopy {
   let paths = closure_paths(m: import_closure(entry_path: entry_path, edges: facts.edges, nodes: facts.nodes))
   if count(paths) == 0 {
     ClosureRefused { detail: join(["module graph carries no closure for ", entry_path], "") }
@@ -159,7 +159,7 @@ fn all_tests_pass(gunbc_program: String, workspace: String, entry: String, fns: 
   count(fns |> filter(f => run_entry(gunbc_program: gunbc_program, workspace: workspace, entry: entry, function: f).accepted == false))
 }
 
-fn control_task(gunbc_program: String, workspace_root: String, facts: ModuleGraphFacts, task: EvalTask) -> TaskControl {
+fn control_task(gunbc_program: String, workspace_root: String, facts: ControlModuleGraphFacts, task: EvalTask) -> TaskControl {
   let workspace = join([workspace_root, "/", task.id as String], "")
   match copy_closure(workspace: workspace, entry_path: task.entry_path, facts: facts) {
     ClosureRefused { detail } => ControlRefused { task: task.id, detail: detail }
@@ -236,7 +236,7 @@ fn control_refused(c: TaskControl) -> Bool {
 //   --function control_run --arg gunbc_program=target/release/gunbc --arg workspace_root=target/frontend-eval/control
 //   --arg receipt_path=target/frontend-eval/control_receipt.txt`
 fn control_run(gunbc_program: String, workspace_root: String, receipt_path: String) -> ProcessExit {
-  let facts = module_graph_facts()
+  let facts = control_module_graph_facts()
   let controls = frontend_eval_tasks |> map(t => control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: facts, task: t))
   let receipt = join(controls |> map(c => control_line(c: c)), "\n")
   let w = Filesystem.Write(path: receipt_path, content: concat(receipt, "\n"))
@@ -268,7 +268,7 @@ data dropped_import_specimen: EvalTask = EvalTask {
 }
 
 fn dropped_import_probe(gunbc_program: String, workspace_root: String) -> ProcessExit {
-  match control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: module_graph_facts(), task: dropped_import_specimen) {
+  match control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: control_module_graph_facts(), task: dropped_import_specimen) {
     ControlRefused { task: _, detail } =>
       if contains(detail, "ACCEPTED") {
         ExitSuccess
