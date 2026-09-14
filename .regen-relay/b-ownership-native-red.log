@@ -1,0 +1,11 @@
+◐ started compile.frontend
+✓ compile.frontend done in 1ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 4ms
+✓ compile.analyses done in 0ms
+◐ started compile.emit
+✓ compile.emit done in 7ms
+
+thread 'main' (70216) panicked at /tmp/crisp-seed-recovery/b_ownership_native_red.rs:2189:9:
+branch Read disappeared for child: Present { value: item }, text: item.text
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

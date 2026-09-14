@@ -1,0 +1,1 @@
+PARSE dag/test/claim/ownership_branch_read_witness_test.dag graph_present=true
