@@ -2501,9 +2501,12 @@ fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
   } else {
     match sugar_sequence_pair_optional(node: stripped) {
       Present { value: pair } =>
-        let left_ops = body_lower_call_arg_operand_from_repeat_elem(repeat_elem: pair.left)
+        let left_ops = body_lower_extract_comma_list_operand(node: pair.left)
         if count(left_ops) > 0 {
-          left_ops
+          list_append(
+            left: left_ops,
+            right: body_lower_extract_comma_list_operand(node: pair.right)
+          )
         } else {
           body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
         }
