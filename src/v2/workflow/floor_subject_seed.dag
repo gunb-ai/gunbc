@@ -1,0 +1,182 @@
+module v2.workflow.floor_subject_seed
+
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+// WHY A MODULE IS IN THE REQUIRED FLOOR'S PREPARED SUBJECT, one ground per seed.
+//
+// THE CLASS THIS EXISTS FOR (gunbc#11194, found by a person reading arms): `check_match` refuses
+// a non-exhaustive match under `gunbc compile`, but the required floor prepares only the gate
+// closure plus what the diff names, so a match that was exhaustive when it landed goes stale when
+// its coproduct grows an arm in ANOTHER module -- the match site has an empty diff, no diff-keyed
+// selector can see it, and the module is never Strict-prepared. The class has two halves and
+// neither closes it alone: the DEPENDENCY direction (a touched file's own module is seeded, so an
+// edit beside a stale match reaches the checker) and the DEPENDENTS direction (the untouched
+// consumers of a coproduct whose arm set changed are seeded, so the arm growth reaches them).
+// Both are grounds below, and both are consumed by ONE preparation path: a planned module that
+// nobody prepares is a planning change with no executed check behind it, the inert-lens tell.
+//
+// THE HOST'S `closure_prefix_seeds` / `closure_module_seeds` ARE THE WIRE RENDERING OF THIS COPRODUCT (`run_required_floor`,
+// `CompileSubjectSeeds`), and the receipt line each seed prints names its ground here. Two of
+// the grounds are matched by different rules and the difference is stated where the seed is
+// declared rather than where it is matched: a gate PREFIX is textual, exactly as site
+// disposition reads it (`test.claim.namespace_` is a row there and is not a segment); every
+// other ground is an AUTHORED MODULE NAME and matches itself or a module it contains by name
+// (`a.b` seeds `a.b` and `a.b.c`, never `a.bc`).
+type PreparedSubjectSeedGround
+  = SeedRequiredGatePrefix { prefix: String }
+  | SeedFloorRuntimeAuthority { module_path: String }
+  | SeedChangedWitnessModule { module_path: String }
+  | SeedLocalRepoWetSchedule { module_path: String }
+  | SeedTouchedEntryModule { path: String, module_path: String }
+  | SeedArmSetChangedMatchConsumer {
+      changed_module_path: String
+      changed_declaration: String
+      consumer_module_path: String
+      binding: ArmSetMatchConsumerBinding
+    }
+
+// HOW A CONSUMER'S MATCH ARM WAS BOUND TO THE CHANGED COPRODUCT, decided from the arm's
+// declaring-candidate set (the consumption relation `namespace_wave_admission` already computes
+// from `ModuleDeclarationRecord`; no second relation is minted). Kept apart because the two are
+// planned alike and COUNTED apart: a bare read whose candidate set is empty at this grain is the
+// flat last-writer-wins channel the namespace cut is retiring, and absorbing it into the
+// resolved population would hide the deficit that ranks it for fixing (DESIGN 5).
+type ArmSetMatchConsumerBinding
+  = BoundToDeclaringModule
+  | BoundThroughFlatBareChannel
+
+// THE DISPOSITION OF ONE MATCH-ARM READ AGAINST ONE CHANGED COPRODUCT. The third arm is the
+// one that keeps the selector from planning every module that spells the arm: a same-spelled
+// arm of ANOTHER coproduct (its candidate set names a different declarer) is a consumer of that
+// one and not of this one. It is not stale and it is not planned.
+type ArmSetMatchReadDisposition
+  = ArmReadPlanned { binding: ArmSetMatchConsumerBinding }
+  | ArmReadBoundToAnotherDeclarer
+
+fn arm_set_match_read_disposition(
+  declaring_candidates: List<String>,
+  changed_module_path: String,
+) -> ArmSetMatchReadDisposition {
+  if any(xs: declaring_candidates, predicate: fn(candidate) { candidate == changed_module_path }) {
+    ArmReadPlanned { binding: BoundToDeclaringModule }
+  } else {
+    if length(xs: declaring_candidates) == 0 {
+      ArmReadPlanned { binding: BoundThroughFlatBareChannel }
+    } else {
+      ArmReadBoundToAnotherDeclarer
+    }
+  }
+}
+
+// A MODULE IS PLANNED IF ANY of its reads of the coproduct's arms is planned, and it is a
+// RESOLVED consumer if any read resolves to the declarer -- the flat count is for modules that
+// reach the coproduct by no other route. Stated as a fold over the reads so the host's join
+// is a projection of this rule rather than a second one. THE MODULE-GRAIN ANSWER HAS ITS OWN
+// TYPE: reusing the one-read disposition here would make `ArmReadBoundToAnotherDeclarer` mean
+// "this module is not planned" -- one name, two contracts, the meaning fork DESIGN 3 refuses --
+// and the host already keeps the grains apart (`ArmSetMatchConsumer.binding` vs an absent
+// consumer), so the model must not be the one place they share a name (review 65426).
+type ModuleArmSetBinding
+  = ModulePlanned { binding: ArmSetMatchConsumerBinding }
+  | ModuleNotPlanned
+
+fn arm_set_match_consumer_binding(
+  reads: List<ArmSetMatchReadDisposition>,
+) -> ModuleArmSetBinding {
+  if any(xs: reads, predicate: fn(read) { arm_read_is_bound_to_declarer(read: read) }) {
+    ModulePlanned { binding: BoundToDeclaringModule }
+  } else {
+    if any(xs: reads, predicate: fn(read) { arm_read_is_planned(read: read) }) {
+      ModulePlanned { binding: BoundThroughFlatBareChannel }
+    } else {
+      ModuleNotPlanned
+    }
+  }
+}
+
+fn module_is_planned(binding: ModuleArmSetBinding) -> Bool {
+  match binding {
+    ModulePlanned { binding: _ } => true
+    ModuleNotPlanned => false
+  }
+}
+
+fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
+  match binding {
+    ModulePlanned { binding: b } =>
+      match b {
+        BoundToDeclaringModule => true
+        BoundThroughFlatBareChannel => false
+      }
+    ModuleNotPlanned => false
+  }
+}
+
+fn arm_read_is_planned(read: ArmSetMatchReadDisposition) -> Bool {
+  match read {
+    ArmReadPlanned { binding: _ } => true
+    ArmReadBoundToAnotherDeclarer => false
+  }
+}
+
+fn arm_read_is_bound_to_declarer(read: ArmSetMatchReadDisposition) -> Bool {
+  match read {
+    ArmReadPlanned { binding: b } =>
+      match b {
+        BoundToDeclaringModule => true
+        BoundThroughFlatBareChannel => false
+      }
+    ArmReadBoundToAnotherDeclarer => false
+  }
+}
+
+// A TOUCHED FILE THAT SEEDS NOTHING IS A TYPED ROW, NEVER A COUNT. The floor's source roots
+// are `dag` and `src/v2`; the parse sweep also covers the `src/v1` `.dag` mirrors, so a diff can
+// name a module the prepared subject cannot contain. The reader must see WHICH file and the
+// module it named, because a count is what DESIGN 5 forbids as the whole of a check. The same
+// row shape carries a planned consumer outside the roots: planned, not prepared, and said so.
+type TouchedEntrySeedDisposition
+  = TouchedEntrySeeded { path: String, module_path: String }
+  | TouchedEntryOutsideFloorRoots { path: String, module_path: String }
+  | ArmSetConsumerOutsideFloorRoots { path: String, module_path: String }
+
+// THE WIRE NAME each receipt line carries, total over the coproduct so a new ground cannot be
+// added without naming how it prints.
+fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
+  match ground {
+    SeedRequiredGatePrefix { prefix: _ } => "SeedRequiredGatePrefix"
+    SeedFloorRuntimeAuthority { module_path: _ } => "SeedFloorRuntimeAuthority"
+    SeedChangedWitnessModule { module_path: _ } => "SeedChangedWitnessModule"
+    SeedLocalRepoWetSchedule { module_path: _ } => "SeedLocalRepoWetSchedule"
+    SeedTouchedEntryModule { path: _, module_path: _ } => "SeedTouchedEntryModule"
+    SeedArmSetChangedMatchConsumer {
+      changed_module_path: _,
+      changed_declaration: _,
+      consumer_module_path: _,
+      binding: _,
+    } => "SeedArmSetChangedMatchConsumer"
+  }
+}
+
+// WHETHER A GROUND IS MATCHED AS A TEXTUAL PREFIX OR AS A MODULE NAME -- the rule the host's
+// two seed lists realize (`closure_prefix_seeds` / `closure_module_seeds`).
+// TOTAL, like `seed_ground_wire_name`, and for the same reason: a seventh ground added later
+// must name its matching rule here rather than inherit one from a wildcard nobody wrote it for --
+// which is this module's own failure class reproduced inside the model (review 65415).
+fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
+  match ground {
+    SeedRequiredGatePrefix { prefix: _ } => true
+    SeedFloorRuntimeAuthority { module_path: _ } => false
+    SeedChangedWitnessModule { module_path: _ } => false
+    SeedLocalRepoWetSchedule { module_path: _ } => false
+    SeedTouchedEntryModule { path: _, module_path: _ } => false
+    SeedArmSetChangedMatchConsumer {
+      changed_module_path: _,
+      changed_declaration: _,
+      consumer_module_path: _,
+      binding: _,
+    } => false
+  }
+}
