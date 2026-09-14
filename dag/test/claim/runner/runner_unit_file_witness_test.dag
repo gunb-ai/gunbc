@@ -70,6 +70,7 @@ import gunbc.runner_unit_file {
   gunbc_runner_unit_depriv_dropin_text,
   gunbc_runner_unit_depriv_dropin_text_from_figure,
   gunbc_runner_unit_fragment_for_host,
+  gunbc_runner_unit_fragment_from_deploy,
   runner_job_user_xdg_runtime_uid,
   RunnerJobUserRuntimeUidFigure,
 }
@@ -303,6 +304,24 @@ test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv()
         && string_contains(s: t, pattern: "\nUser=briansrls\n")
         && !string_contains(s: t, pattern: "\nUser=root\n")
         && string_contains(s: t, pattern: "MAKEFLAGS")
+  }
+}
+
+test fn the_fragment_from_deploy_uses_the_passed_row_not_a_second_lookup() -> Bool {
+  let poisoned = RunnerHostDeploy {
+    host_label: srv1_runner_host_deploy.host_label,
+    ssh_target: srv1_runner_host_deploy.ssh_target,
+    runner_user: "fixture-runner" as NonEmptyStr,
+    unit_user: srv1_runner_host_deploy.unit_user,
+    job_user: srv1_runner_host_deploy.job_user,
+    app: srv1_runner_host_deploy.app,
+    runner_count: srv1_runner_host_deploy.runner_count,
+  }
+  match gunbc_runner_unit_fragment_from_deploy(deploy: poisoned, host: operator_host_srv3) {
+    RunnerUnitTextRefused { reason: _ } => false
+    RunnerUnitText { text: t } =>
+      string_contains(s: t, pattern: "\nUser=fixture-runner\n")
+        && !string_contains(s: t, pattern: "\nUser=briansrls\n")
   }
 }
 

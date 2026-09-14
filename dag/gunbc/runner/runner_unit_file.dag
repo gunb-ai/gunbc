@@ -482,27 +482,30 @@ fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIden
   )
 }
 
+fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
+  match fleet_compute_offer_for(host: host) {
+    Absent =>
+      RunnerUnitTextRefused {
+        reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
+      }
+    Present { value: offer } =>
+      runner_unit_text(
+        rendering: gunbc_runner_unit_file(
+          deploy: deploy,
+          spec: host_pinned_runner_spec(offer: offer, host: host),
+          permit_scope: gunbc_fleet_runner_permit_scope(),
+        ),
+      )
+  }
+}
+
 fn gunbc_runner_unit_fragment_for_host(host: HostIdentity) -> RunnerUnitTextRendering {
   match runner_host_deploy_for(host: host) {
     RunnerHostDeployUnmodeled { host: _ } =>
       RunnerUnitTextRefused {
         reason: "runner_unit_file: host has no runner deploy row, so there is no fragment to install" as NonEmptyStr,
       }
-    RunnerHostDeployFound { deploy: d } =>
-      match fleet_compute_offer_for(host: host) {
-        Absent =>
-          RunnerUnitTextRefused {
-            reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
-          }
-        Present { value: offer } =>
-          runner_unit_text(
-            rendering: gunbc_runner_unit_file(
-              deploy: d,
-              spec: host_pinned_runner_spec(offer: offer, host: host),
-              permit_scope: gunbc_fleet_runner_permit_scope(),
-            ),
-          )
-      }
+    RunnerHostDeployFound { deploy: d } => gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host)
   }
 }
 

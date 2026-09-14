@@ -67,7 +67,7 @@ import gunbc.runner_unit_file {
   runner_job_user_xdg_runtime_uid,
   RunnerJobUserRuntimeUidFigure,
   runner_unit_system_path,
-  gunbc_runner_unit_fragment_for_host,
+  gunbc_runner_unit_fragment_from_deploy,
   RunnerUnitText,
   RunnerUnitTextRefused,
 }
@@ -205,7 +205,7 @@ fn runner_host_file_desired_population_from_uid_figure(
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
         RunnerHostDeployFound { deploy: d } =>
-          match gunbc_runner_unit_fragment_for_host(host: host) {
+          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
               match gunbc_runner_unit_depriv_dropin_text_from_figure(deploy: d, host: host, figure: figure) {
