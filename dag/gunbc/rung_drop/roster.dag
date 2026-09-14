@@ -64,9 +64,11 @@ import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
+import gunbc.rung_drop.long_home_enrolment_margin_observed_only { long_home_enrolment_margin_observed_only }
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
 import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_healed_head_executed_verdict_without_human }
+import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
 import gunbc.rung_drop.compile_clean_live_tree_seam_off_required_floor { compile_clean_live_tree_seam_off_required_floor }
 
 data rung_drop_roster: List<RungDrop> = [
@@ -115,9 +117,11 @@ data rung_drop_roster: List<RungDrop> = [
   main_per_commit_floor_verdict,
   v1_consumer_census_live_population_off_the_merge_path(),
   long_module_changed_witness_cpu_observed_only,
+  long_home_enrolment_margin_observed_only,
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
   heal_healed_head_executed_verdict_without_human,
+  floor_cost_cpu_regression_at_constant_eval_steps,
   compile_clean_live_tree_seam_off_required_floor,
 ]
 

@@ -5,6 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 import extdeps.units.iso_80000_3 {
@@ -17,6 +18,7 @@ import extdeps.units.iso_80000_3 {
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
+  parts_per_million_unity_count,
 }
 
 type Quantity =
@@ -369,6 +371,21 @@ type CpuCoreCount = Measure<Count, One, Nat>
 // "count of things at unit scale", and an extdeps module minting its own alias for it would fork
 // that axis once per upstream that happens to count something.
 type MergeQueueEntryCount = Measure<Count, One, Nat>
+
+// A count of INTERPRETER EVALUATION STEPS -- the machine-independent quantity of work the required
+// floor's claim ceiling gates on. Same Count axis as its siblings, different thing counted: a step
+// is not a token and not a queue entry, and the floor compares step counts only against other step
+// counts.
+//
+// IT IS A COUNT AND NOT A DURATION, which is the whole reason the floor moved onto it. An eval step
+// is a property of the tree: the same claim returns an identical step count across architectures
+// and under any load, while its CPU milliseconds move with the runner. A carrier that put it on a
+// Time axis would re-admit exactly the confusion `measure_clock_basis_note` exists to forbid.
+//
+// THE RATE IS ITS OWN CARRIER AND IS NOT ON THIS AXIS: `EvalStepsPerMillisecond` below, on the
+// Frequency family. A count answers "how many" and a rate answers "how fast", and assigning one to
+// the other is the class this whole family exists to make unwritable.
+type EvalStepCount = Measure<Count, One, Nat>
 
 // A count of included power cords or other basic physical accessories. On the Count axis alongside
 // its siblings (HardwareThreadCount, CpuCoreCount, MergeQueueEntryCount), typed here so a product
@@ -986,6 +1003,38 @@ fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
   money_rate_micros(q: q)
 }
 
+// Vendor account credits are scrip, not CurrencyCode. AccountCredit names the issuer the
+// same way MoneyRate carries currency: CreditRate<P> stays period-parameterized, and two
+// sellers' credits are not the same quantity because their AccountCredit issuer
+// DeclarationRefs differ. A module-path string is a second name for the seller already
+// cited as DeclarationRef (DESIGN §3).
+type AccountCredit {
+  issuer: DeclarationRef
+}
+
+type CreditRate<P> {
+  count: Nat
+  credit: AccountCredit
+}
+
+type CreditsPerMinute = CreditRate<PerMinute>
+
+fn account_credit(issuer: DeclarationRef) -> AccountCredit {
+  AccountCredit { issuer: issuer }
+}
+
+fn credits_per_minute(count: Nat, credit: AccountCredit) -> CreditsPerMinute {
+  CreditRate { count: count, credit: credit }
+}
+
+fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+  r.count
+}
+
+fn credits_per_minute_issuer(r: CreditsPerMinute) -> DeclarationRef {
+  r.credit.issuer
+}
+
 fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   MoneyPerHour {
     amount: money_amount_micro(count: money_per_minute_micros(q: q) * minutes_per_hour()),
@@ -1120,6 +1169,14 @@ fn parameter_count_value(p: ParameterCount) -> Nat {
   measure_count(p)
 }
 
+fn eval_step_count(count: Nat) -> EvalStepCount {
+  Measure { count: count }
+}
+
+fn eval_step_count_value(s: EvalStepCount) -> Nat {
+  measure_count(s)
+}
+
 fn token_count(count: Nat) -> TokenCount {
   Measure { count: count }
 }
@@ -1206,6 +1263,38 @@ fn tokens_per_second(count: Nat) -> TokensPerSecond {
 }
 
 fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
+// EVAL STEPS PER MILLISECOND -- the conversion the required floor's claim ceiling is denominated
+// through. Frequency family, period marker in the type, exactly as `EventsPerMinute` and
+// `MegatransfersPerSecond` are.
+//
+// THE SCALE CARRIES THE PERIOD AND THAT IS WHY THERE IS NO QUOTIENT FORMER HERE. The Frequency axis
+// is per-second; `Kilo` is decimal 10^3; so a count of N at Kilo is N*1000 steps per second, which
+// IS N steps per millisecond, exactly and with no rounding. `EventsPerMinute` uses the same move in
+// the other direction with the non-decimal `Sixty`. The millisecond is the period every operator
+// ruling over this ceiling is written in, so it belongs in the name for the reason that file gives:
+// a per-second and a per-millisecond figure can never be compared or assigned across without a
+// modeled conversion.
+//
+// IT WAS DECLARED BLOCKED AND WAS NOT (review 65512). `v2.workflow.floor_eval_step_calibration`
+// carried a tracked gap arguing that steps-per-millisecond could not be spelled because `Quantity`
+// has no quotient former, and cited `MegatransfersPerSecond` as the proof. That citation refutes
+// the claim it was cited for: it is a count of a domain-specific discrete thing per time, spelled
+// on Frequency with a scale and no quotient anywhere -- the template for doing exactly what the row
+// said was impossible. The gap row is deleted rather than narrowed, because its subject no longer
+// exists.
+//
+// First consumer: `v2.workflow.floor_eval_step_calibration` `EvalStepCalibration.steps_per_ms`,
+// whose pinned reading converts a declared policy in milliseconds of work into an eval-step budget.
+type EvalStepsPerMillisecond = Measure<Frequency, Kilo, Nat>
+
+fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+  Measure { count: count }
+}
+
+fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
   measure_count(r)
 }
 
@@ -1417,6 +1506,23 @@ fn basis_point_count(bp: BasisPoint) -> Nat {
 
 fn basis_point_unity_count() -> Nat {
   parts_per_ten_thousand_unity_count()
+}
+
+// Dimensionless ratio at Micro scale: count 66250 is 6.625 percent of unity. Percent and
+// BasisPoint occupy Dimensionless at One with whole-point / permyriad counts and cannot carry
+// this remainder. This is the third scale of the same authority, not a product-module unit.
+type PartsPerMillion = Measure<Dimensionless, Micro, Nat>
+
+fn parts_per_million(count: Nat) -> PartsPerMillion {
+  Measure { count: count }
+}
+
+fn parts_per_million_count(m: PartsPerMillion) -> Nat {
+  measure_count(m)
+}
+
+fn parts_per_million_scale_million() -> Nat {
+  parts_per_million_unity_count()
 }
 
 // One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same
