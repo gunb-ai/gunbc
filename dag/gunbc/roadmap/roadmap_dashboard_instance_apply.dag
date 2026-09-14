@@ -25,6 +25,7 @@ import extdeps.git {
 }
 import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.tmux {
+  tmux_has_session_stderr_is_absent,
   shape_tmux_has_session_argv_for,
   shape_tmux_kill_session_argv_for,
   shape_tmux_new_session_argv_for,
@@ -1264,7 +1265,11 @@ fn dashboard_instance_observe(
     [
       dashboard_exec_refusal_reason(label: "provider runtime", r: provider_runtime),
       dashboard_exec_refusal_reason(label: "provider auth", r: provider),
-      dashboard_exec_refusal_reason(label: "service session", r: service),
+      if service.success || tmux_has_session_stderr_is_absent(stderr: service.stderr) {
+        []
+      } else {
+        dashboard_exec_refusal_reason(label: "service session", r: service)
+      },
     ],
     init: [],
     f: fn(acc, rs) { concat(acc, rs) },
