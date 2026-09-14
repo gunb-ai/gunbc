@@ -432,14 +432,38 @@ type HarnessCandidate {
   offer: CandidateOffer<NonEmptyStr>
 }
 
+// ONE ENGINE LAUNCH IS OBSERVED ONCE PER BIND, NOT PER CANDIDATE PER ROUND. The incarnation read is
+// a heavy live host observation (systemctl show x2, sha256sum, /proc/stat, getconf, pgrep, per-pid
+// /proc reads, docker inspect -- all SSH round-trips), and harness_collect_candidates folds every
+// enrolled route and the placement fold retries up to harness_placement_rounds times. Observing the
+// same launch on every pass is DESIGN 2 authored duplication whose least common visible ancestor is
+// harness_bind_seat -- the same hoist point access already uses. So the standing is memoized by the
+// launch's exact identity (its process-start key): a launch is observed the first time a candidate on
+// it is admitted, and every later candidate on that same launch -- next round, or a co-located group
+// on the same engine -- reuses the reading. A restart mints a new launch key, so the memo re-observes
+// exactly when the engine actually changed, never otherwise.
+type IncarnationMemoEntry {
+  launch_key: NonEmptyStr
+  standing: EndpointIncarnationStanding
+}
+
+fn incarnation_memo_lookup(memo: List<IncarnationMemoEntry>, key: NonEmptyStr) -> EndpointIncarnationStanding? {
+  fold(memo, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if (e.launch_key as String) == (key as String) { Present { value: e.standing } } else { none }
+    })
+}
+
 type HarnessCandidates {
   candidates: List<HarnessCandidate>
   notes: List<String>
   retryable: Bool
+  incarnations: List<IncarnationMemoEntry>
 }
 
 fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -> HarnessCandidates {
-  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
+  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, incarnations: acc.incarnations }
 }
 
 // NO CANDIDATE IS PRODUCED FROM A BOUND OFFER, AND THE WALL HAS MOVED BACK RATHER THAN FALLEN.
@@ -639,8 +663,19 @@ fn harness_add_serving_candidate(
         receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
       )
       match admission {
-        AdmissibleForClass { class: _, receipt: _ } =>
-          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now, incarnation: harness_incarnation_standing(access: access, group: group, launch: launch))
+        AdmissibleForClass { class: _, receipt: _ } => {
+          let launch_key = vllm_endpoint_process_launch_key(launch: launch)
+          match incarnation_memo_lookup(memo: acc.incarnations, key: launch_key) {
+            Present { value: cached } =>
+              harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now, incarnation: cached)
+            Absent => {
+              let observed = harness_incarnation_standing(access: access, group: group, launch: launch)
+              harness_bind_candidate(
+                acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }) },
+                group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now, incarnation: observed)
+            }
+          }
+        }
         InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
           harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
         InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
@@ -672,13 +707,14 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
-fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation) -> HarnessCandidates {
-  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false }, f: (acc, r) =>
+fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>) -> HarnessCandidates {
+  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations }, f: (acc, r) =>
     harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now, access: access))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
     retryable: collected.retryable,
+    incarnations: collected.incarnations,
   }
 }
 
@@ -837,6 +873,7 @@ type PlacementRound {
   excluded: List<String>
   notes: List<String>
   retryable: Bool
+  incarnations: List<IncarnationMemoEntry>
 }
 
 fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBinding {
@@ -851,7 +888,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
   match acc.done {
     Present { value: _ } => acc
     Absent => {
-      let collected = harness_collect_candidates(class: class, requirement: requirement, layout: layout, now: now, excluded: acc.excluded, access: access)
+      let collected = harness_collect_candidates(class: class, requirement: requirement, layout: layout, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
       match select_supply(
@@ -870,6 +907,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,
+            incarnations: collected.incarnations,
           }
         EqualCostTieUnresolved { digest: d, cause: c, considered: _ } =>
           PlacementRound {
@@ -877,6 +915,7 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,
+            incarnations: collected.incarnations,
           }
         OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
           match harness_candidate_for_key(candidates: collected.candidates, key: o.offer.id.key) {
@@ -886,15 +925,16 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
                 excluded: acc.excluded,
                 notes: notes,
                 retryable: retryable,
+                incarnations: collected.incarnations,
               }
             Present { value: c } =>
               match harness_acquire_on(candidate: c, class: class, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
                 AcquisitionGranted { binding: b } =>
-                  PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable }
+                  PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable, incarnations: collected.incarnations }
                 AcquisitionRefused { detail: d } =>
-                  PlacementRound { done: Present { value: HarnessSeatRefused { detail: d } }, excluded: acc.excluded, notes: notes, retryable: retryable }
+                  PlacementRound { done: Present { value: HarnessSeatRefused { detail: d } }, excluded: acc.excluded, notes: notes, retryable: retryable, incarnations: collected.incarnations }
                 AcquisitionLost { key: k, detail: d } =>
-                  PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true }
+                  PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true, incarnations: collected.incarnations }
               }
           }
       }
@@ -915,7 +955,7 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let access = prepare_fleet_ssh_agent_context(attempt_raw: attempt as String)
-          let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false }, f: (acc, round) =>
+          let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, incarnations: [] }, f: (acc, round) =>
             harness_placement_round(acc: acc, class: class, requirement: requirement, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access))
           match placed.done {
             Present { value: b } => b
