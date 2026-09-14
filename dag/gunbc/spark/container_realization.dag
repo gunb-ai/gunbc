@@ -1,0 +1,236 @@
+module gunbc.spark.container_realization
+
+import std.types { String, Bool, NonEmptyStr, List, FilePath }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, DockerLabel,
+  DockerNamespaceMode, NamespaceHost, NamespacePrivate, docker_namespace_mode_wire,
+  DockerUlimitObservation, docker_ulimits_memlock_unlimited,
+}
+
+// ── WHAT THE DAEMON KEPT, AS A SUBJECT THE PLAN CAN BE COMPARED AGAINST ───────────────────────
+//
+// A RUNTIME SELECTION AND A CREATION STATE ANSWER DIFFERENT QUESTIONS. The engine log says which
+// network NCCL chose; the daemon says what the container was given to choose from. A deployment whose
+// log happens to say IB while its creation state cannot be reproduced from the plan is healthy and
+// unowned -- and a deployment whose creation state looks right while NCCL selected sockets is
+// diverged. Acceptance needs both, so the creation state is its own observation with its own
+// comparison rather than a paragraph in a receipt.
+//
+// THE OBSERVATION IS WHOLE OR IT IS NOT AN OBSERVATION. Every field is a separate read and a failed
+// read refuses the rank: a realization missing one coordinate cannot be compared against a plan, and
+// reporting it beside the others would put an unread field where a measured one is expected.
+type ObservedContainerRealization sole_constructor {
+  host: HostIdentity
+  node_rank: Nat
+  container_id: NonEmptyStr
+  image_id: NonEmptyStr
+  created_at: NonEmptyStr
+  started_at: NonEmptyStr
+  network: DockerNamespaceMode
+  ipc: DockerNamespaceMode
+  devices: List<DockerDeviceMapping>
+  device_cgroup_rules: List<String>
+  device_requests: List<String>
+  memlock_unlimited: Bool
+  ulimits: List<DockerUlimitObservation>
+  capabilities: List<String>
+  environment: List<DockerEnvAssignment>
+  mounts: List<DockerMount>
+  labels: List<DockerLabel>
+  infiniband_device_nodes: List<String>
+  verbs_sysfs_devices: List<String>
+  nccl_version: NonEmptyStr
+  transport_lines: List<String>
+  host_units_naming_the_container: List<String>
+}
+
+// A READ THAT COULD NOT COMPLETE IS NOT A SMALLER READING. The rank is named in the refusal so a fold
+// over four of them says which one, and the cause says which field stopped it.
+type ContainerRealizationRead
+  = ContainerRealizationObserved { realization: ObservedContainerRealization }
+  | ContainerRealizationUnread { host: HostIdentity, node_rank: Nat, cause: NonEmptyStr }
+
+// THE CONSTRUCTOR IS EXPORTED BECAUSE A FIXTURE MUST BE ABLE TO DESCRIBE A CONTAINER. A sealed type
+// whose only builder is the remote reader would make every property of this comparison unfalsifiable
+// from outside: a witness that cannot author a realization cannot supply a divergent one to refuse.
+fn observed_container_realization(
+  host: HostIdentity,
+  node_rank: Nat,
+  container_id: NonEmptyStr,
+  image_id: NonEmptyStr,
+  created_at: NonEmptyStr,
+  started_at: NonEmptyStr,
+  network: DockerNamespaceMode,
+  ipc: DockerNamespaceMode,
+  devices: List<DockerDeviceMapping>,
+  device_cgroup_rules: List<String>,
+  device_requests: List<String>,
+  memlock_unlimited: Bool,
+  ulimits: List<DockerUlimitObservation>,
+  capabilities: List<String>,
+  environment: List<DockerEnvAssignment>,
+  mounts: List<DockerMount>,
+  labels: List<DockerLabel>,
+  infiniband_device_nodes: List<String>,
+  verbs_sysfs_devices: List<String>,
+  nccl_version: NonEmptyStr,
+  transport_lines: List<String>,
+  host_units_naming_the_container: List<String>,
+) -> ObservedContainerRealization {
+  ObservedContainerRealization {
+    host: host, node_rank: node_rank, container_id: container_id, image_id: image_id,
+    created_at: created_at, started_at: started_at, network: network, ipc: ipc,
+    devices: devices, device_cgroup_rules: device_cgroup_rules, device_requests: device_requests,
+    memlock_unlimited: memlock_unlimited, ulimits: ulimits, capabilities: capabilities,
+    environment: environment, mounts: mounts, labels: labels,
+    infiniband_device_nodes: infiniband_device_nodes, verbs_sysfs_devices: verbs_sysfs_devices,
+    nccl_version: nccl_version, transport_lines: transport_lines,
+    host_units_naming_the_container: host_units_naming_the_container,
+  }
+}
+
+// ── THE COMPARISON ────────────────────────────────────────────────────────────────────────────
+//
+// EACH DEVIATION NAMES ONE FIELD AND CARRIES BOTH SIDES, because "the container differs from the plan"
+// sends a reader to twenty fields. The env comparison is a SUBSET check in one direction only: the
+// image bakes assignments the plan never names, and requiring the observed set to equal the planned
+// one would refuse every container for carrying its own CUDA_VERSION. What may not happen is a
+// planned assignment being absent or carrying another value -- which is exactly how a transport
+// selection gets lost.
+type RealizationDeviation
+  = RealizationImageDiffers { node_rank: Nat, planned: NonEmptyStr, observed: NonEmptyStr }
+  | RealizationNamespaceDiffers { node_rank: Nat, field: NonEmptyStr, planned: NonEmptyStr, observed: NonEmptyStr }
+  | RealizationDeviceMissing { node_rank: Nat, device: NonEmptyStr }
+  | RealizationDeviceUnplanned { node_rank: Nat, device: NonEmptyStr }
+  | RealizationMemlockDiffers { node_rank: Nat, planned: Bool, observed: Bool }
+  | RealizationCapabilityMissing { node_rank: Nat, capability: NonEmptyStr }
+  | RealizationEnvironmentMissing { node_rank: Nat, name: NonEmptyStr, planned: String }
+  | RealizationEnvironmentDiffers { node_rank: Nat, name: NonEmptyStr, planned: String, observed: String }
+  | RealizationMountMissing { node_rank: Nat, mount: NonEmptyStr }
+
+fn device_wire(d: DockerDeviceMapping) -> NonEmptyStr {
+  join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "") as NonEmptyStr
+}
+
+fn device_eq(left: DockerDeviceMapping, right: DockerDeviceMapping) -> Bool {
+  (device_wire(d: left) as String) == (device_wire(d: right) as String)
+}
+
+fn mount_wire(m: DockerMount) -> NonEmptyStr {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      join(["bind ", h as String, ":", c as String, if ro { ":ro" } else { ":rw" }], "") as NonEmptyStr
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      join(["volume ", v as String, ":", c as String, if ro { ":ro" } else { ":rw" }], "") as NonEmptyStr
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      join(["tmpfs ", c as String, ":", to_string(n)], "") as NonEmptyStr
+  }
+}
+
+fn environment_value(env: List<DockerEnvAssignment>, name: NonEmptyStr) -> String? {
+  match filter(env, e => (e.name as String) == (name as String)).first() {
+    Absent => none
+    Present { value: e } => Present { value: e.value }
+  }
+}
+
+fn environment_deviation(rank: Nat, observed: List<DockerEnvAssignment>, planned: DockerEnvAssignment) -> List<RealizationDeviation> {
+  match environment_value(env: observed, name: planned.name) {
+    Absent => [RealizationEnvironmentMissing { node_rank: rank, name: planned.name, planned: planned.value }]
+    Present { value: v } =>
+      if v == planned.value { [] } else {
+        [RealizationEnvironmentDiffers { node_rank: rank, name: planned.name, planned: planned.value, observed: v }]
+      }
+  }
+}
+
+// THE DEVICE POPULATION IS COMPARED IN BOTH DIRECTIONS. A missing mapping is the defect this whole cut
+// exists over; an UNPLANNED one is the other half of the same question -- a container carrying a device
+// the plan never asked for was not created from the plan, whatever else agrees.
+fn realization_device_deviations(rank: Nat, planned: DockerCreateSpec, observed: ObservedContainerRealization) -> List<RealizationDeviation> {
+  concat(
+    flat_map(planned.devices, d =>
+      if any(observed.devices, o => device_eq(left: o, right: d)) { [] }
+      else { [RealizationDeviceMissing { node_rank: rank, device: device_wire(d: d) }] }),
+    flat_map(observed.devices, o =>
+      if any(planned.devices, d => device_eq(left: o, right: d)) { [] }
+      else { [RealizationDeviceUnplanned { node_rank: rank, device: device_wire(d: o) }] }))
+}
+
+fn realization_deviations(planned: DockerCreateSpec, observed: ObservedContainerRealization) -> List<RealizationDeviation> {
+  let rank = observed.node_rank
+  concat(
+    concat(
+      concat(
+        if (planned.image as String) == (observed.image_id as String) { [] } else {
+          [RealizationImageDiffers { node_rank: rank, planned: planned.image, observed: observed.image_id }]
+        },
+        concat(
+          if (docker_namespace_mode_wire(m: planned.network) as String) == (docker_namespace_mode_wire(m: observed.network) as String) { [] } else {
+            [RealizationNamespaceDiffers { node_rank: rank, field: "network" as NonEmptyStr, planned: docker_namespace_mode_wire(m: planned.network), observed: docker_namespace_mode_wire(m: observed.network) }]
+          },
+          if (docker_namespace_mode_wire(m: planned.ipc) as String) == (docker_namespace_mode_wire(m: observed.ipc) as String) { [] } else {
+            [RealizationNamespaceDiffers { node_rank: rank, field: "ipc" as NonEmptyStr, planned: docker_namespace_mode_wire(m: planned.ipc), observed: docker_namespace_mode_wire(m: observed.ipc) }]
+          }),
+      ),
+      concat(
+        realization_device_deviations(rank: rank, planned: planned, observed: observed),
+        concat(
+          if planned.memlock_unlimited == observed.memlock_unlimited { [] } else {
+            [RealizationMemlockDiffers { node_rank: rank, planned: planned.memlock_unlimited, observed: observed.memlock_unlimited }]
+          },
+          flat_map(planned.cap_add, c =>
+            if any(observed.capabilities, o => o == (c as String)) { [] }
+            else { [RealizationCapabilityMissing { node_rank: rank, capability: c }] })),
+      ),
+    ),
+    concat(
+      flat_map(planned.env, e => environment_deviation(rank: rank, observed: observed.environment, planned: e)),
+      flat_map(planned.mounts, m =>
+        if any(observed.mounts, o => (mount_wire(m: o) as String) == (mount_wire(m: m) as String)) { [] }
+        else { [RealizationMountMissing { node_rank: rank, mount: mount_wire(m: m) }] })),
+  )
+}
+
+fn realization_deviation_text(d: RealizationDeviation) -> String {
+  match d {
+    RealizationImageDiffers { node_rank: r, planned: p, observed: o } =>
+      join(["rank ", to_string(r), " runs image ", o as String, " and the plan renders ", p as String], "")
+    RealizationNamespaceDiffers { node_rank: r, field: f, planned: p, observed: o } =>
+      join(["rank ", to_string(r), " ", f as String, " namespace is ", o as String, " and the plan renders ", p as String], "")
+    RealizationDeviceMissing { node_rank: r, device: d } =>
+      join(["rank ", to_string(r), " was created without the planned device ", d as String], "")
+    RealizationDeviceUnplanned { node_rank: r, device: d } =>
+      join(["rank ", to_string(r), " carries device ", d as String, ", which the plan does not render"], "")
+    RealizationMemlockDiffers { node_rank: r, planned: p, observed: o } =>
+      join([
+        "rank ", to_string(r), " memlock unlimited is ", if o { "true" } else { "false" },
+        " and the plan renders ", if p { "true" } else { "false" },
+      ], "")
+    RealizationCapabilityMissing { node_rank: r, capability: c } =>
+      join(["rank ", to_string(r), " was created without the planned capability ", c as String], "")
+    RealizationEnvironmentMissing { node_rank: r, name: n, planned: p } =>
+      join(["rank ", to_string(r), " carries no ", n as String, ", which the plan sets to ", p], "")
+    RealizationEnvironmentDiffers { node_rank: r, name: n, planned: p, observed: o } =>
+      join(["rank ", to_string(r), " has ", n as String, "=", o, " and the plan renders ", p], "")
+    RealizationMountMissing { node_rank: r, mount: m } =>
+      join(["rank ", to_string(r), " was created without the planned mount ", m as String], "")
+  }
+}
+
+fn realization_deviations_text(ds: List<RealizationDeviation>) -> String {
+  join(map(ds, d => realization_deviation_text(d: d)), "; ")
+}
+
+// ── WHAT THE CONTAINER CAN SEE, WHICH IS NOT WHAT IT WAS PROMISED ─────────────────────────────
+//
+// SYSFS IS NOT A DEVICE. These containers list all four RoCE devices under /sys/class/infiniband and
+// carry no /dev/infiniband node at all -- which is precisely the state in which verbs cannot be opened
+// and NCCL falls to sockets. A plan that renders the device mapping must therefore be checked against
+// the NODES the container actually has, not against the topology it can describe.
+fn realization_lacks_verbs_nodes(observed: ObservedContainerRealization) -> Bool {
+  count(observed.infiniband_device_nodes) == 0
+}

@@ -7,6 +7,10 @@ import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, ope
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
 }
+import extdeps.docker.cli { DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, NamespaceHost, RestartNo }
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, observed_container_realization,
+}
 
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
@@ -87,6 +91,72 @@ fn join_argv(items: List<List<String>>) -> List<String> {
   fold(items, init: [] as List<String>, f: (acc, x) => concat(acc, x))
 }
 
+
+// ── THE CONTAINER A FAITHFUL RANK WAS CREATED IN ──────────────────────────────────────────────
+//
+// A RANK OBSERVATION NOW CARRIES ITS CREATION STATE, and the faithful one is rendered from the plan's own
+// spec. That is the POSITIVE CONTROL and not a tautology: it fixes the state in which acceptance is
+// reachable, so each perturbation below varies exactly the dimension its name claims. The fields the plan
+// does not render -- identity, instants, what the container observed at runtime -- are authored here,
+// because a readback that compared them would be comparing the plan with itself.
+fn empty_spec() -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: "no-such-line" as NonEmptyStr, image: "no-such-line" as NonEmptyStr,
+    network: NamespaceHost, ipc: NamespaceHost, shm_size_bytes: 0,
+    memlock_unlimited: false, gpus_all: false, devices: [], cap_add: [],
+    restart: RestartNo, mounts: [], env: [], command: [],
+  }
+}
+
+fn spec_for(rank: Nat) -> DockerCreateSpec {
+  match plan() {
+    ArmLaunchRefused { cause: _ } => empty_spec()
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => empty_spec()
+        Present { value: l } => l.spec
+      }
+  }
+}
+
+data t_container_id: NonEmptyStr = "c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ff" as NonEmptyStr
+data t_created_at: NonEmptyStr = "2026-09-14T00:00:00.000000000Z" as NonEmptyStr
+data t_started_at: NonEmptyStr = "2026-09-14T00:00:12.000000000Z" as NonEmptyStr
+data t_nccl_version: NonEmptyStr = "NCCL version 2.28.3+cuda13.0" as NonEmptyStr
+data t_infiniband_nodes: List<String> = ["rdma_cm", "uverbs0", "uverbs1", "uverbs2", "uverbs3"]
+data t_verbs_sysfs: List<String> = ["rocep1s0f1", "roceP2p1s0f0", "roceP3p1s0f0", "roceP4p1s0f0"]
+data t_transport_lines: List<String> = [
+  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>",
+  "spark-0c75:346:346 [0] NCCL INFO Using network IB",
+]
+
+fn realization_from(
+  host: HostIdentity, rank: Nat, spec: DockerCreateSpec,
+  devices: List<DockerDeviceMapping>, memlock_unlimited: Bool,
+  capabilities: List<String>, environment: List<DockerEnvAssignment>,
+  infiniband_device_nodes: List<String>,
+) -> ObservedContainerRealization {
+  observed_container_realization(
+    host: host, node_rank: rank, container_id: t_container_id, image_id: spec.image,
+    created_at: t_created_at, started_at: t_started_at, network: spec.network, ipc: spec.ipc,
+    devices: devices, device_cgroup_rules: [], device_requests: [],
+    memlock_unlimited: memlock_unlimited, ulimits: [], capabilities: capabilities,
+    environment: environment, mounts: spec.mounts, labels: [],
+    infiniband_device_nodes: infiniband_device_nodes, verbs_sysfs_devices: t_verbs_sysfs,
+    nccl_version: t_nccl_version, transport_lines: t_transport_lines,
+    host_units_naming_the_container: [],
+  )
+}
+
+fn faithful_realization(host: HostIdentity, rank: Nat) -> ObservedContainerRealization {
+  let spec = spec_for(rank: rank)
+  realization_from(
+    host: host, rank: rank, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)
+}
+
 // A FAITHFUL READING OF ONE RANK: the words the plan rendered for that rank, the pinned digest, the
 // pinned revision path, the host the plan named, and the interface the engine reported selecting.
 fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
@@ -97,6 +167,7 @@ fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: rank),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: host, rank: rank),
   )
 }
 
@@ -130,6 +201,82 @@ test fn four_faithful_ranks_are_accepted() -> Bool {
   }
 }
 
+
+// ── THE CREATION STATE IS PART OF ACCEPTANCE ──────────────────────────────────────────────────
+//
+// THESE FOUR ROWS EXIST BECAUSE THE FLEET WAS ACCEPTED IN EXACTLY THIS STATE. On 2026-09-14 the four
+// ranks were running containers with no /dev/infiniband mapping, no memlock policy and no IPC_LOCK,
+// and the readback said DeploymentAccepted -- because it compared a transport reading and nothing the
+// daemon kept. Every rank below reports the VERBS transport the faithful one does, so the transport
+// comparison stays green and only the creation state moves: a row that went red on both would not
+// establish that the creation state is what refused it.
+fn rank_with_realization(host: HostIdentity, rank: Nat, realization: ObservedContainerRealization) -> RankObservation {
+  rank_observation(
+    host: host, node_rank: rank,
+    image_digest: planned_image_for(rank: rank), model_path: pinned_model_path,
+    argv: planned_argv_for(rank: rank),
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: realization,
+  )
+}
+
+fn population_with(rank: Nat, realization: ObservedContainerRealization) -> List<RankObservation> {
+  map(all_four_faithful, r =>
+    if r.node_rank == rank { rank_with_realization(host: r.host, rank: rank, realization: realization) } else { r })
+}
+
+fn rejected(ranks: List<RankObservation>) -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) > 0
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// THE EXACT LIVE STATE: the plan renders the verbs device mappings and the container carries none.
+test fn a_container_created_without_the_verbs_devices_is_rejected() -> Bool {
+  let spec = spec_for(rank: 0)
+  rejected(ranks: population_with(rank: 0, realization: realization_from(
+    host: operator_host_srv9, rank: 0, spec: spec,
+    devices: [], memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: [])))
+}
+
+// MEMLOCK IS NOT A PREFERENCE. Registering memory regions for the adapter needs an unlimited locked-memory
+// ceiling; a container created without it can open the device and still fail to use it.
+test fn a_container_created_without_unlimited_memlock_is_rejected() -> Bool {
+  let spec = spec_for(rank: 1)
+  rejected(ranks: population_with(rank: 1, realization: realization_from(
+    host: operator_host_srv10, rank: 1, spec: spec,
+    devices: spec.devices, memlock_unlimited: false,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
+// THE CAPABILITY THE PLAN ADDS IS THE ONE THE LIVE CONTAINERS LACKED.
+test fn a_container_created_without_the_planned_capability_is_rejected() -> Bool {
+  let spec = spec_for(rank: 2)
+  rejected(ranks: population_with(rank: 2, realization: realization_from(
+    host: operator_host_srv12, rank: 2, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: [], environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
+// AN ASSIGNMENT THE PLAN RENDERS AND THE CONTAINER DOES NOT CARRY IS A DEVIATION, which is how a transport
+// selection gets lost without anything else changing. The environment comparison is a SUBSET check in one
+// direction, so dropping every planned assignment is the discriminating input rather than adding one.
+test fn a_container_missing_the_planned_environment_is_rejected() -> Bool {
+  let spec = spec_for(rank: 3)
+  rejected(ranks: population_with(rank: 3, realization: realization_from(
+    host: operator_host_srv11, rank: 3, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: [],
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
 // ── THE ROW THIS MODULE EXISTS FOR ────────────────────────────────────────────────────────────
 //
 // ONE RANK ON A DIFFERENT IMAGE IS REJECTED, AND THE COARSE ARM IDENTITY CANNOT SEE IT. That identity
@@ -146,6 +293,7 @@ data one_rank_wrong_digest: List<RankObservation> = [
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 2),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv12, rank: 2),
   ),
   faithful_rank(host: operator_host_srv11, rank: 3),
 ]
@@ -169,6 +317,7 @@ data one_rank_wrong_revision: List<RankObservation> = [
     model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
     argv: planned_argv_for(rank: 1),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv10, rank: 1),
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -209,6 +358,7 @@ data interface_unread: List<RankObservation> = [
     host: operator_host_srv9, node_rank: 0,
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0), selected_transport: NcclTransportUnread { cause: "the engine log printed no transport line" as NonEmptyStr },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -231,6 +381,7 @@ data interface_wrong: List<RankObservation> = [
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
     selected_transport: NcclSocketTransport { netdev: "wlan0" as NonEmptyStr },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -295,6 +446,7 @@ data one_word_changed_ranks: List<RankObservation> = [
     host: operator_host_srv9, node_rank: 0, image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: argv_with_one_word_changed(rank: 0),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -324,6 +476,7 @@ data reordered_ranks: List<RankObservation> = [
     host: operator_host_srv10, node_rank: 1, image_digest: planned_image_for(rank: 1), model_path: pinned_model_path,
     argv: argv_reversed(rank: 1),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv10, rank: 1),
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -367,6 +520,7 @@ data rank_zero_twice: List<RankObservation> = [
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -401,6 +555,7 @@ data an_unexpected_fifth_rank: List<RankObservation> = [
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
     selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 4),
   ),
 ]
 
@@ -426,7 +581,8 @@ fn one_rank_transport(transport: NcclTransportObservation) -> List<RankObservati
       host: operator_host_srv9, node_rank: 0,
       image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
       argv: planned_argv_for(rank: 0), selected_transport: transport,
-    ),
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
+  ),
     faithful_rank(host: operator_host_srv10, rank: 1),
     faithful_rank(host: operator_host_srv12, rank: 2),
     faithful_rank(host: operator_host_srv11, rank: 3),

@@ -15,6 +15,10 @@ import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused,
   ArmNodeLaunch, ArmNode,
 }
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, RealizationDeviation, realization_deviations, realization_deviation_text,
+}
+import extdeps.docker.cli { DockerCreateSpec }
 import gunbc.spark.collective_transport {
   CollectiveTransportPlan, transport_requires_verbs, transport_expected_device,
   transport_expected_out_of_band, collective_transport_requirement_wire,
@@ -52,6 +56,10 @@ import gunbc.spark.collective_transport {
 // the engine at start-up, and a reader that did not capture it has NOT established it -- inferring the
 // interface from the environment the launch requested would make the check agree with itself, since the
 // launch is what set the variable. An unread interface is an unknown, not a pass.
+// THE CREATION STATE IS PART OF THE OBSERVATION, NOT A SEPARATE ERRAND. A rank reading that carried the
+// selected transport and not the container it was selected in could establish that NCCL chose verbs and
+// say nothing about whether this repository could produce that container again -- which is the state the
+// fleet was found in on 2026-09-14, accepted and unreproducible.
 type RankObservation sole_constructor {
   host: HostIdentity
   node_rank: Nat
@@ -59,6 +67,7 @@ type RankObservation sole_constructor {
   model_path: NonEmptyStr
   argv: List<String>
   selected_transport: NcclTransportObservation
+  realization: ObservedContainerRealization
 }
 
 fn rank_observation(
@@ -68,6 +77,7 @@ fn rank_observation(
   model_path: NonEmptyStr,
   argv: List<String>,
   selected_transport: NcclTransportObservation,
+  realization: ObservedContainerRealization,
 ) -> RankObservation {
   RankObservation {
     host: host,
@@ -76,6 +86,7 @@ fn rank_observation(
     model_path: model_path,
     argv: argv,
     selected_transport: selected_transport,
+    realization: realization,
   }
 }
 
@@ -94,6 +105,7 @@ type DeploymentDeviation
   | EndpointAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
   | DuplicateObservedRank { node_rank: Nat, observations: Nat }
   | UnexpectedObservedRank { node_rank: Nat }
+  | RankRealizationDiffers { deviation: RealizationDeviation }
 
 type DeploymentUnknown
   = FabricInterfaceUnread { node_rank: Nat }
@@ -366,7 +378,10 @@ fn population_deviations(observed: List<RankObservation>, ls: List<ArmNodeLaunch
 fn line_deviations(observed: List<RankObservation>, l: ArmNodeLaunch) -> List<DeploymentDeviation> {
   match observation_for_rank(observed: observed, rank: l.node.node_rank) {
     Absent => [RankAbsent { expected_rank: l.node.node_rank, expected_host: l.node.host as NonEmptyStr }]
-    Present { value: o } => concat(rank_deviations(desired: l, observed: o), rank_interface_deviations(desired: l, observed: o))
+    Present { value: o } =>
+      concat(
+        concat(rank_deviations(desired: l, observed: o), rank_interface_deviations(desired: l, observed: o)),
+        map(realization_deviations(planned: l.spec, observed: o.realization), d => RankRealizationDiffers { deviation: d }))
   }
 }
 
@@ -518,6 +533,7 @@ fn deployment_deviation_text(d: DeploymentDeviation) -> String {
       join(["rank ", to_string(r), " was observed ", to_string(n), " times and a rank is one process"], "")
     UnexpectedObservedRank { node_rank: r } =>
       join(["rank ", to_string(r), " is running and the plan names no such rank"], "")
+    RankRealizationDiffers { deviation: d } => realization_deviation_text(d: d)
   }
 }
 

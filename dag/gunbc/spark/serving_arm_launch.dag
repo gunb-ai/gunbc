@@ -578,12 +578,16 @@ type ArmLaunchPlan
 // wrong for this arm: it pins a BARE content id with no "@", so the filter selected nothing and joined an
 // EMPTY string, which then printed as `is not the planned ` with the planned value simply missing. A
 // planner that already holds the image reference and the engine argument list should state them.
+// THE SPEC TRAVELS BESIDE THE ARGV IT RENDERS, so a readback compares FIELDS rather than re-parsing a
+// command line the daemon has already consumed. The argv is what is executed; the spec is what it means,
+// and only one of them can be compared against `docker inspect` without inventing a parser.
 type ArmNodeLaunch sole_constructor {
   node: ArmNode
   argv: List<String>
   engine_argv: List<String>
   image_reference: NonEmptyStr
   transport: CollectiveTransportPlan
+  spec: DockerCreateSpec
 }
 
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
@@ -686,10 +690,11 @@ fn arm_planned_lines(nodes: List<ArmNode>, master: Ipv4Address, crow: ServingChe
           Absent => []
           Present { value: transport } => [ArmNodeLaunch {
             node: n,
-            argv: arm_container_argv(node: n, master: master, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points, transport: transport),
+            argv: docker_run_detached_arguments(spec: arm_container_spec(node: n, master: master, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points, transport: transport)),
             engine_argv: arm_engine_argv(node: n, master: master, crow: crow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
             image_reference: runtime_artifact_wire(a: rrow.artifact),
             transport: transport,
+            spec: arm_container_spec(node: n, master: master, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points, transport: transport),
           }]
         }),
       master: master,

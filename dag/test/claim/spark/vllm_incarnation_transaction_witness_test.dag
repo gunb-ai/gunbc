@@ -25,6 +25,7 @@ import gunbc.spark.vllm_incarnation_provenance {
   semantic_runtime_coordinate_of,
 }
 import test.claim.spark.native_incarnation_fixture {
+  fixture_rank_realization,
   IncarnationWorld, InstalledSnapshot, world_of, faithful_world, world_port,
   fixture_launch, fixture_start, fixture_ranks, fixture_installed_everywhere, fixture_revision, fixture_repo,
   fixture_snapshot_names, fixture_snapshot_directory, fixture_runtime_image, fixture_image_reference,
@@ -151,6 +152,7 @@ test fn a_diverged_deployment_binds_nothing() -> Bool {
     image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
     model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
     selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: operator_host_srv12, rank: 2),
   )
   let ranks = map(fixture_ranks(), r => if r.node_rank == 2 { wrong_image_rank } else { r })
   refused_naming(
@@ -173,6 +175,7 @@ test fn a_diverged_deployment_is_not_asked_about_its_source() -> Bool {
     image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
     model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
     selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: operator_host_srv12, rank: 2),
   )
   let o = observe(w: world_of(
     launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),

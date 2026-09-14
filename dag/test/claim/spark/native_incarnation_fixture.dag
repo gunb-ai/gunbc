@@ -6,6 +6,10 @@ import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused }
+import extdeps.docker.cli { DockerCreateSpec, NamespaceHost, RestartNo }
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, observed_container_realization,
+}
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan, glm_native_device_memory_policy,
 }
@@ -117,6 +121,97 @@ fn fixture_image_reference() -> NonEmptyStr {
   }
 }
 
+// ── A CONTAINER THE PLAN COULD HAVE CREATED ───────────────────────────────────────────────────
+//
+// THE FAITHFUL REALIZATION IS BUILT FROM THE PLAN'S OWN SPEC, and that is deliberate rather than
+// circular. This is the POSITIVE CONTROL: it establishes that a container created exactly as the plan
+// renders it is accepted, which is the premise every perturbation in
+// test.claim.spark.native_deployment_readback_witness_test depends on -- a fixture that diverged here
+// would make every red row pass for the wrong reason. The fields the plan does NOT render -- the
+// container's identity, when it started, what it observed at runtime -- are authored, because the plan
+// has nothing to say about them and a readback that compared them would be comparing itself.
+fn fixture_spec(rank: Nat) -> DockerCreateSpec? {
+  match fixture_plan() {
+    ArmLaunchRefused { cause: _ } => none
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => none
+        Present { value: l } => Present { value: l.spec }
+      }
+  }
+}
+
+data fixture_container_id: NonEmptyStr = "c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ff" as NonEmptyStr
+data fixture_created_at: NonEmptyStr = "2026-09-14T00:00:00.000000000Z" as NonEmptyStr
+data fixture_started_at: NonEmptyStr = "2026-09-14T00:00:12.000000000Z" as NonEmptyStr
+data fixture_nccl_version: NonEmptyStr = "NCCL version 2.28.3+cuda13.0" as NonEmptyStr
+
+// THE VERBS NODES THE CONTAINER CAN SEE, which is the field the live fleet was found EMPTY on while its
+// sysfs listing named all four devices. A fixture that populated only sysfs would describe the broken
+// deployment; this one describes the container a verbs plan asks for.
+data fixture_infiniband_nodes: List<String> = ["rdma_cm", "uverbs0", "uverbs1", "uverbs2", "uverbs3"]
+data fixture_verbs_sysfs: List<String> = ["rocep1s0f1", "roceP2p1s0f0", "roceP3p1s0f0", "roceP4p1s0f0"]
+
+data fixture_transport_lines: List<String> = [
+  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>",
+  "spark-0c75:346:346 [0] NCCL INFO Using network IB",
+]
+
+fn fixture_realization(host: HostIdentity, rank: Nat, spec: DockerCreateSpec) -> ObservedContainerRealization {
+  observed_container_realization(
+    host: host,
+    node_rank: rank,
+    container_id: fixture_container_id,
+    image_id: spec.image,
+    created_at: fixture_created_at,
+    started_at: fixture_started_at,
+    network: spec.network,
+    ipc: spec.ipc,
+    devices: spec.devices,
+    device_cgroup_rules: [],
+    device_requests: [],
+    memlock_unlimited: spec.memlock_unlimited,
+    ulimits: [],
+    capabilities: map(spec.cap_add, c => c as String),
+    environment: spec.env,
+    mounts: spec.mounts,
+    labels: [],
+    infiniband_device_nodes: fixture_infiniband_nodes,
+    verbs_sysfs_devices: fixture_verbs_sysfs,
+    nccl_version: fixture_nccl_version,
+    transport_lines: fixture_transport_lines,
+    host_units_naming_the_container: [],
+  )
+}
+
+// A RANK WHOSE PLAN LINE DOES NOT EXIST HAS NO REALIZATION TO DESCRIBE, so the fixture renders the
+// container as created from an EMPTY spec rather than inventing one -- which makes the resulting
+// observation diverge loudly instead of agreeing by default.
+fn fixture_absent_spec() -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: "no-such-line" as NonEmptyStr,
+    image: "no-such-line" as NonEmptyStr,
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: 0,
+    memlock_unlimited: false,
+    gpus_all: false,
+    devices: [],
+    cap_add: [],
+    restart: RestartNo,
+    mounts: [],
+    env: [],
+    command: [],
+  }
+}
+
+fn fixture_rank_realization(host: HostIdentity, rank: Nat) -> ObservedContainerRealization {
+  fixture_realization(host: host, rank: rank, spec: match fixture_spec(rank: rank) {
+    Absent => fixture_absent_spec()
+    Present { value: s } => s
+  })
+}
+
 fn fixture_rank(host: HostIdentity, rank: Nat) -> RankObservation {
   rank_observation(
     host: host,
@@ -125,6 +220,7 @@ fn fixture_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     model_path: fixture_model_path,
     argv: fixture_engine_argv(rank: rank),
     selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: host, rank: rank),
   )
 }
 
