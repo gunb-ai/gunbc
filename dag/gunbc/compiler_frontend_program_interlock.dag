@@ -34,6 +34,7 @@ type ProgramMilestone
   | SelfHostBehavioralEquivalenceReestablished
   | SelfHostEmitterProducesEveryRetainedArtifact
   | SelfHostSuccessorPromotionAdmitted
+  | SelfHostNativeRouteRequiredLane
   | SelfHostSeedRetirement
 
 // NamespaceFirstSemanticWave WAS "Step 1, deletion of the import-name universe", AND THAT LABEL
@@ -64,6 +65,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
     SelfHostSuccessorPromotionAdmitted => "self-host: a v2-built compiler has been admitted as a valid SUCCESSOR -- admit_promotion returns promoted for a real candidate, not merely that the procedure exists" as NonEmptyStr
+    SelfHostNativeRouteRequiredLane => "self-host: the native route is a required lane, promoted through the C6 discriminating matrix, retiring gunbc.rung_drop v2_native_route_off_the_merge_path" as NonEmptyStr
     SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
   }
 }
@@ -256,6 +258,20 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // variant means a newly declared milestone FAILS TO COMPILE until its
 // prerequisites are stated. That is DESIGN section 5's construction-over-
 // validation: the unstated-prerequisite state is unwritable rather than checked.
+// THE NATIVE FLOOR MILESTONE, AND THE EDGE IT REVERSES (2026-09-12, fierce-lark-661 ruling on
+// the operator's strategic ruling of the same day: the program ends in deleting v1, with the
+// native route as the required floor). SelfHostSeedRetirement used to require
+// NamespaceGrammarRetired, while the adopted order runs the namespace cutover (XL-6) and grammar
+// deletion (XL-7) AFTER v1 is deleted, so that nobody teaches a seed being deleted import-free
+// source, and the cutover is validated once, natively. Carried together, those two orders are a
+// cycle. The edge now runs the other way: the fix-forward cutover depends on seed retirement
+// (which itself requires the native floor), grammar retirement follows the cutover, and seed
+// retirement no longer waits on the grammar. Direct edges only; the native floor reaches the
+// cutover through seed retirement, so it is not restated there. The native-route milestone
+// is NOT a re-pointed SelfHostRatchetGateEnrolled. That gate is the compile-phase regression gate
+// against the persisted frontier (gunbc.self_host_compile_phase_live_gate, merged in #9857, with its
+// enrolment parked by the operator), and native admission answers a different question. Re-pointing
+// it would be a meaning fork, so both milestones stand.
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
@@ -265,13 +281,14 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
-    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
+    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []
     SelfHostSuccessorPromotionAdmitted => [SelfHostCorpusEmitsCleanly, SelfHostEmitterProducesEveryRetainedArtifact]
-    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
+    SelfHostNativeRouteRequiredLane => []
+    SelfHostSeedRetirement => [SelfHostNativeRouteRequiredLane, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
   }
 }
 

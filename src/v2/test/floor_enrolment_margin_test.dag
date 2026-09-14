@@ -3,10 +3,16 @@ module v2.test.floor_enrolment_margin
 import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_envelope_permille,
   floor_enrolment_margin_budget_ms,
-  EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
+    EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
   EnrolmentMarginStanding,
-  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
-  EnrolmentOutsideThisRunsExecution,
+  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored,
+  EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
+  EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
+  EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
+  EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome,
+  enrolment_expensiveness_declaration,
+  EnrolmentPairingHole, EnrolmentPairingHoleNone, EnrolmentPairingHoleDeclared,
+  EnrolmentPairingHoleOutsideExecution, enrolment_unpaired_pairing_hole,
   enrolment_margin_standing_name,
   enrolment_margin_standing,
   enrolment_margin_standing_blocks,
@@ -14,9 +20,13 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentMarginBlocker, EnrolmentMarginRow,
   enrolment_margin_blockers,
 }
-import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
+import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
+import v2.workflow.floor_cost_debt_admission {
+  floor_cost_debt_row, floor_cost_debt_row_is_admitted,
+  FloorCostDebtReachedAVerdict,
+}
 import gunbc.floor_cost_distribution {
-  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
 }
 import v2.std.collection { List }
@@ -53,8 +63,35 @@ fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> EnrolmentCostReading {
   }
 }
 
+fn bound_without_ceiling(lower_bound_ms: Int) -> EnrolmentCostReading {
+  EnrolmentCostMeasured {
+    reading: CpuLowerBoundWithoutCeiling {
+      cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
+    }
+  }
+}
+
 fn standing_of(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
-  enrolment_margin_standing(reading: reading, budget_ms: floor_enrolment_margin_budget_ms())
+  enrolment_margin_standing(
+    reading: reading,
+    budget_ms: floor_enrolment_margin_budget_ms(),
+    declaration: EnrolmentExpensivenessNotDeclared,
+  )
+}
+
+fn standing_declared(
+  reading: EnrolmentCostReading,
+  identity: String,
+  ground: EnrolmentExpensivenessGround,
+) -> EnrolmentMarginStanding {
+  enrolment_margin_standing(
+    reading: reading,
+    budget_ms: floor_enrolment_margin_budget_ms(),
+    declaration: EnrolmentExpensivenessIsDeclared {
+      witness_identity: identity,
+      ground: ground,
+    },
+  )
 }
 
 fn standing_kind(s: EnrolmentMarginStanding) -> String {
@@ -62,8 +99,10 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "within-margin"
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "over-margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "ceiling-censored"
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => "bound-without-ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
+    EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness-declared"
   }
 }
 
@@ -76,7 +115,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
 // coverage. This witness is the guard: the budget must be STRICTLY BELOW the ceiling.
 test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
-    < required_floor_claim_cpu_safety_limit_ms()
+    < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
 }
 
 // THE BUDGET IS THE DERIVATION'S ANSWER AND NOT A LITERAL ANYONE WROTE. 302 appears in no
@@ -88,7 +127,7 @@ test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
   millisecond_count(m: floor_enrolment_margin_budget_ms()) == 302
     && millisecond_count(
          m: implied_clean_run_budget(
-              ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+              ceiling_ms: required_floor_per_subject_cpu_line_ms(),
               inflation_permille: floor_enrolment_margin_envelope_permille(),
             )
        ) == 302
@@ -104,7 +143,7 @@ test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
 // comparison is written the wrong way round. No other witness in this module discriminates that.
 test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() -> Bool {
   let reading = observed(cpu_ms: 450)
-  millisecond_count(m: millisecond(count: 450)) < required_floor_claim_cpu_safety_limit_ms()
+  millisecond_count(m: millisecond(count: 450)) < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
     && standing_kind(s: standing_of(reading: reading)) == "over-margin"
     && enrolment_margin_standing_blocks(standing: standing_of(reading: reading))
 }
@@ -164,6 +203,26 @@ test fn a_censored_row_blocks_under_its_own_cause() -> Bool {
     && enrolment_margin_standing_blocks(standing: s)
     && enrolment_margin_blocking_cause(standing: s) == "enrolment_censored_at_ceiling"
     && enrolment_margin_blocking_cause(standing: s) != enrolment_margin_blocking_cause(standing: standing_of(reading: observed(cpu_ms: 450)))
+}
+
+// A BOUND WITH NO CEILING BLOCKS UNDER ITS OWN CAUSE, AND IS NEITHER OF THE TWO ARMS IT IS
+// TEMPTING TO COLLAPSE IT INTO. This is the arm review 65264 found had no producer on the
+// acceptance path, so it is asserted here by EXECUTION and not by the rendering match alone:
+// a `CpuLowerBoundWithoutCeiling` reading is driven through the real classification and must
+// come out refusing, with a cause distinct from BOTH `enrolment_not_measured` (there IS a
+// reading, so "produce a measurement" is the wrong remedy) and `enrolment_censored_at_ceiling`
+// (no CPU ceiling is armed, so there is nothing to report beside the bound).
+test fn a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours() -> Bool {
+  let s = standing_of(reading: bound_without_ceiling(lower_bound_ms: 514))
+  let cens = enrolment_margin_blocking_cause(standing: standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500)))
+  let miss = enrolment_margin_blocking_cause(
+    standing: standing_of(reading: EnrolmentCostAbsent { witness_identity: "fixture.unmeasured", cause: "no_claim_cost_row" })
+  )
+  standing_kind(s: s) == "bound-without-ceiling"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_bound_without_ceiling"
+    && enrolment_margin_blocking_cause(standing: s) != cens
+    && enrolment_margin_blocking_cause(standing: s) != miss
 }
 
 // THE THREE BLOCKING CAUSES ARE THREE DISTINCT STRINGS. A shared cause would offer the rerun that
@@ -259,4 +318,161 @@ test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool {
   fold(blockers, init: "", f: fn(acc, b) {
     concat(acc, concat(b.identity, concat("=", concat(b.cause, ";"))))
   }) == "fixture.over=enrolment_measured_over_margin;"
+}
+
+// HALF ONE: DECLARED EXPENSIVENESS IS CONSUMED FROM
+// `enrolment_expensiveness_declaration`, NOT FROM THE STRING ROSTER. Long home at 325ms
+// does not block here. IT IS NOT AN EXEMPTION.
+test fn a_declared_identity_measured_over_the_margin_does_not_block_here() -> Bool {
+  let s = standing_declared(
+    reading: observed(cpu_ms: 325),
+    identity: "fixture.declared_over_margin",
+    ground: EnrolmentExpensivenessLongHome,
+  )
+  standing_kind(s: s) == "expensiveness-declared"
+    && !enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_standing_name(standing: s) == "expensiveness_declared"
+}
+
+// POSITIVE CONTROL: the same 325ms reading with NO declaration still refuses over the margin.
+// This is what keeps the arm from being an exemption wearing a typed name: undeclared new
+// witnesses at the specimen cost remain refused.
+test fn an_undeclared_identity_at_325ms_still_refuses_over_the_margin() -> Bool {
+  let s = standing_of(reading: observed(cpu_ms: 325))
+  standing_kind(s: s) == "over-margin"
+    && enrolment_margin_standing_blocks(standing: s)
+}
+
+// EXECUTION JOIN STILL COMES FIRST. A withheld identity with a declaration is still this
+// gate's deferral, never a declared-expensiveness standing — consulting the declaration
+// before the join would rebuild review 64022 one gate over.
+test fn a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution() -> Bool {
+  let s = standing_declared(
+    reading: EnrolmentNotPlanned {
+      witness_identity: "outside.roots.declared_holds",
+      disposition: "declined_changed_witness_outside_discovery",
+    },
+    identity: "outside.roots.declared_holds",
+    ground: EnrolmentExpensivenessLongHome,
+  )
+  standing_kind(s: s) == "outside-this-run"
+    && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// A DECLARED ROW THAT REACHES NO VERDICT IS NON-BLOCKING HERE AND STILL COUNTED ELSEWHERE.
+// This gate mirrors ChangedCostDebtVerdictOnly: the CPU figure is reported and decides
+// nothing. Wall deadline and semantic red are unaffected because they are not this match.
+test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() -> Bool {
+  let s = standing_declared(
+    reading: EnrolmentCostAbsent {
+      witness_identity: "fixture.declared_unmeasured",
+      cause: "lane_cancelled_before_measurement",
+    },
+    identity: "fixture.declared_unmeasured",
+    ground: EnrolmentExpensivenessLongHome,
+  )
+  standing_kind(s: s) == "expensiveness-declared"
+    && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// THE CENSORED READING UNDER A DECLARATION, SAME POLARITY. Composition with changed-witness
+// is the host control `a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run`.
+test fn a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment() -> Bool {
+  let s = standing_declared(
+    reading: censored(lower_bound_ms: 500, ceiling_ms: 500),
+    identity: "fixture.declared_cpu_censored",
+    ground: EnrolmentExpensivenessLongHome,
+  )
+  standing_kind(s: s) == "expensiveness-declared"
+    && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// STRING-ROSTER MEMBERSHIP DOES NOT DECLARE AT ENROLMENT. The ungated identity-string
+// chunks cannot mint EnrolmentExpensivenessIsDeclared (review 65637 / review 65665).
+test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.tripwire_325",
+    typed_admission_holds: false,
+    long_home_holds: false,
+  ) {
+    EnrolmentExpensivenessNotDeclared => true
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: _ } => false
+  }
+}
+
+test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.long_home_and_string",
+    typed_admission_holds: false,
+    long_home_holds: true,
+  ) {
+    EnrolmentExpensivenessNotDeclared => false
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
+      match g {
+        EnrolmentExpensivenessLongHome => true
+        EnrolmentExpensivenessRoster => false
+      }
+  }
+}
+
+test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
+  match enrolment_expensiveness_declaration(
+    witness_identity: "fixture.typed_501",
+    typed_admission_holds: true,
+    long_home_holds: false,
+  ) {
+    EnrolmentExpensivenessNotDeclared => false
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
+      match g {
+        EnrolmentExpensivenessRoster => true
+        EnrolmentExpensivenessLongHome => false
+      }
+  }
+}
+
+test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool {
+  match enrolment_unpaired_pairing_hole(
+    standing: standing_of(reading: observed(cpu_ms: 1))
+  ) {
+    EnrolmentPairingHoleNone =>
+      match enrolment_unpaired_pairing_hole(
+        standing: standing_declared(
+          reading: observed(cpu_ms: 325),
+          identity: "fixture.declared",
+          ground: EnrolmentExpensivenessLongHome,
+        )
+      ) {
+        EnrolmentPairingHoleDeclared =>
+          match enrolment_unpaired_pairing_hole(
+            standing: standing_of(
+              reading: EnrolmentNotPlanned {
+                witness_identity: "outside.roots.withheld",
+                disposition: "declined_changed_witness_outside_discovery",
+              }
+            )
+          ) {
+            EnrolmentPairingHoleOutsideExecution => true
+            EnrolmentPairingHoleNone => false
+            EnrolmentPairingHoleDeclared => false
+          }
+        EnrolmentPairingHoleNone => false
+        EnrolmentPairingHoleOutsideExecution => false
+      }
+    EnrolmentPairingHoleDeclared => false
+    EnrolmentPairingHoleOutsideExecution => false
+  }
+}
+
+// HALF TWO RED JOINED TO THE CEILING AUTHORITY: 325ms observed against
+// `required_floor_per_subject_cpu_line_ms` cannot mint a cost-debt row. gunbc#10994 is not
+// waiting on a cost-debt line; this is the constructor that would have refused that classification.
+test fn an_observed_row_at_325ms_is_refused_against_the_required_floor_ceiling() -> Bool {
+  !floor_cost_debt_row_is_admitted(
+    standing: floor_cost_debt_row(
+      identity: "fixture.tripwire_325",
+      reading: ObservedCpuReading { cpu_ms: millisecond(count: 325) },
+      ceiling_ms: required_floor_per_subject_cpu_line_ms(),
+      verdict: FloorCostDebtReachedAVerdict,
+    )
+  )
 }

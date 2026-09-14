@@ -9,6 +9,8 @@ import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
 import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
 import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
+import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
+import extdeps.bonterms.cloud_terms { bonterms_cloud_terms_v1_0_ref }
 
 // OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
 // section 3). Each receipt names the upstream declaration it is about and records what gunbc did on
@@ -260,3 +262,66 @@ data mt_collins_2u_citation_read_comparison: SpecificationCitationReadByteCompar
   publisher: mt_collins_2u_publisher_citation_read_receipt,
   mirror: mt_collins_2u_mirror_citation_read_receipt,
 )
+
+// THE PINNED CONTRACT STANDARD'S READS, one typed receipt per locator the extdeps module cites,
+// recorded here and not on the extdeps record because how this repository read a locator is an
+// observation of ours (DESIGN section 3, external upstream decomposition) while what the document
+// says is the upstream's. The anchor receipt's subject is the pinned declaration, imported from
+// the module that declares it; the index and version-history receipts are subject-referenced to
+// the authority declarations they read, so each locator's read is a row a fold can join, not a
+// sentence inside another row's detail (DESIGN section 4c).
+data common_paper_csa_v2_1_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: common_paper_csa_v2_1_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 119746),
+    content_digest: "sha256 56c6c40adb9fc2f7f7016c973d333e6962858ce4600848a533d28d1c59b81fd7",
+    detail: "Fetched without credentials from the publisher locator on 2026-09-12 as HTML; the tag-stripped visible text (35474 characters) carries the heading 'Version 2.1 Released November 5, 2024', the statement that these Version 2.1 Standard Terms remain hosted on this page and any future change is issued under a new version number on a different page, and Standard Terms sections 1 (Service) through 13 (Definitions) with the Section 5.6 survival list naming all thirteen. This page's self-declared release date is what the extdeps record's released field carries.",
+  },
+}
+
+data common_paper_csa_index_authority_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.common_paper.cloud_service_agreement",
+  decl_name: "common_paper_csa_index_authority",
+  field: WholeDeclaration,
+}
+
+// Grounds the CC BY 4.0 publication status and the current-version claim on the extdeps record.
+data common_paper_csa_index_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: common_paper_csa_index_authority_subject_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 218225),
+    content_digest: "sha256 770cecf7f971b9077e93cb8ee2f140fd46a23316389960ee7738b88e72c3d225",
+    detail: "Fetched without credentials on 2026-09-12 as HTML. The visible text states the agreement is released under CC BY 4.0, that the CSA consists of a Cover Page plus Standard Terms hosted online and incorporated by reference, that the latest version is 2.1 and will remain unchanged at its locator with future changes posted as new versions that do not affect agreements incorporating prior versions, and that the Cover Page carries an optional Pilot Period.",
+  },
+}
+
+data common_paper_csa_version_history_authority_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.common_paper.cloud_service_agreement",
+  decl_name: "common_paper_csa_version_history_authority",
+  field: WholeDeclaration,
+}
+
+data common_paper_csa_version_history_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: common_paper_csa_version_history_authority_subject_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 83834),
+    content_digest: "sha256 06badac53d58758a0477307b1045810257525bdf569d79fd1fe35e7585ae5f20",
+    detail: "Fetched without credentials on 2026-09-12 as HTML. Lists four posted versions - 2.1, 2.0 (Apr 11, 2024), 1.1 (Dec 12, 2023), 1.0 (Feb 4, 2022) - confirming 2.1 is the newest. It dates 2.1 'Released: Nov 4, 2024', one day earlier than the 'November 5, 2024' the v2.1 page declares for itself; the two publisher pages disagree by a day and this repository has not resolved which is right, so the extdeps record carries the document's own self-declaration and this row carries the discrepancy.",
+  },
+}
+
+// THE COMPARED ALTERNATIVE'S READ, at the same evidence level as the pin's: the comparison in
+// extdeps.common_paper.cloud_service_agreement is between two texts this repository read, not
+// between one text and a fetch that failed.
+data bonterms_cloud_terms_v1_0_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: bonterms_cloud_terms_v1_0_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 439596),
+    content_digest: "sha256 a523d49b2e6e8f671ee650dd5f15ccbd591b7fa3070f3cf30385a0851a0c46c5",
+    detail: "Fetched without credentials on 2026-09-12 as HTML; the tag-stripped visible text (40865 characters) carries the complete Bonterms Cloud Terms (Version 1.0), sections 1 through 22 (General Terms) plus Definitions, including Section 21 (Trials and Betas), and the footer '(c) 2022 Bonterms. Free to use under CC BY 4.0.' The page states no release date and no statement about whether the posted text stays fixed at its locator. An earlier attempt by this session at bonterms.com/forms/cloud-terms/ answered 404: that was a constructed path, and it is evidence about the path, not about the publisher.",
+  },
+}

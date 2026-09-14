@@ -1,7 +1,7 @@
 module gunbc.heal_revalidation
 
 import std.content_hash { ContentHash }
-import std.types { CommitSha, NonEmptyStr }
+import std.types { CommitSha }
 import gunbc.merge_admission {
   CheckCoverage,
   check_coverage_admits
@@ -30,17 +30,6 @@ type HealOutcome
       changed_artifacts: List<String>
     }
 
-type HealDispatchOutcome
-  = HealDispatchPending { healed_head: CommitSha }
-  | HealDispatchAccepted {
-      healed_head: CommitSha,
-      run: NonEmptyStr
-    }
-  | HealDispatchRefused {
-      healed_head: CommitSha,
-      cause: NonEmptyStr
-    }
-
 type PriorRunDisposition
   = PriorRunStillCurrent { head: CommitSha }
   | SupersededByHealedHead {
@@ -57,8 +46,7 @@ type HealRevalidationState
   | HealRevalidationRequired {
       prior_head: CommitSha,
       healed_head: CommitSha,
-      changed_artifacts: List<String>,
-      dispatch: HealDispatchOutcome
+      changed_artifacts: List<String>
     }
   | HealRevalidationCoverageObserved {
       prior_head: CommitSha,
@@ -70,7 +58,7 @@ type HealRevalidationState
 type HealRevalidationAdmissionVerdict
   = HealRevalidationAdmittedNoChange { head: CommitSha }
   | HealRevalidationAdmittedExactCoverage { healed_head: CommitSha }
-  | HealRevalidationDeniedRequired { healed_head: CommitSha, dispatch: HealDispatchOutcome }
+  | HealRevalidationDeniedRequired { healed_head: CommitSha }
   | HealRevalidationDeniedCoverage {
       healed_head: CommitSha,
       coverage: CheckCoverage
@@ -93,7 +81,14 @@ type WorkflowDispatchPreflight
       run_subject_head: CommitSha
     }
 
-// This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here.
+// A produced heal publishes H1 and requires a verdict on H1. That verdict is a human APPROVE of
+// the gated pull_request run GitHub creates on the bot push (POST /actions/runs/<id>/approve), not
+// a workflow_dispatch this job issues. Auto-dispatch was deleted because it landed same-named
+// check-runs a name-keyed PR rollup cannot tell apart from the held run
+// (gunbc.rung_drop.floor_cut_heal; gunbc.rung_drop.heal_healed_head_executed_verdict_without_human).
+// The external dashboard readout that historically treated an absent run as ok, and its separate
+// aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository
+// and are not fixed or claimed fixed here.
 fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
   match outcome {
     HealNoChange { head } => HealRevalidationNotRequired { head: head }
@@ -107,8 +102,7 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
       HealRevalidationRequired {
         prior_head: prior_head,
         healed_head: healed_head,
-        changed_artifacts: changed_artifacts,
-        dispatch: HealDispatchPending { healed_head: healed_head }
+        changed_artifacts: changed_artifacts
       }
   }
 }
@@ -181,9 +175,9 @@ fn classify_heal_revalidation_admission(
     HealRevalidationNotRequired { head } =>
       HealRevalidationAdmittedNoChange { head: head }
     HealRevalidationRequired {
-      prior_head: _, healed_head, changed_artifacts: _, dispatch
+      prior_head: _, healed_head, changed_artifacts: _
     } =>
-      HealRevalidationDeniedRequired { healed_head: healed_head, dispatch: dispatch }
+      HealRevalidationDeniedRequired { healed_head: healed_head }
     HealRevalidationCoverageObserved {
       prior_head: _, healed_head, changed_artifacts: _, coverage
     } =>
@@ -215,7 +209,7 @@ fn heal_revalidation_admits(
   ) {
     HealRevalidationAdmittedNoChange { head: _ } => true
     HealRevalidationAdmittedExactCoverage { healed_head: _ } => true
-    HealRevalidationDeniedRequired { healed_head: _, dispatch: _ } => false
+    HealRevalidationDeniedRequired { healed_head: _ } => false
     HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
   }
 }
@@ -293,6 +287,12 @@ data superseded_by_healed_head_token: String = prior_run_disposition_token(dispo
     prior_head: heal_token_arm_probe,
     healed_head: heal_token_arm_probe
   })
+
+// Printed after the token when heal publishes H1 and does NOT dispatch. Removal of auto-dispatch
+// trades a commit-level SUCCESS that the PR rollup could not see for NO executed verdict until a
+// human approves the gated pull_request run. The run id is not known at this step: GitHub creates
+// that run after the push returns, and this job's actions grant is none (it must not approve itself).
+data superseded_by_healed_head_approve_remedy: String = "has no executed verdict until a human approves the gated pull_request run (POST /actions/runs/<id>/approve). The run id is not known at this step because GitHub creates that run after the push returns; list it with GET /repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEALED_HEAD&event=pull_request. Do not push again to force a verdict; another bot head creates another gated run."
 
 data superseded_by_author_head_token: String = prior_run_disposition_token(disposition: SupersededByAuthorHead {
     prior_head: heal_token_arm_probe,

@@ -201,7 +201,7 @@ fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: 
   ]
 }
 
-func executor_home_wet() -> String? {
+fn executor_home_wet() -> String? {
   match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
     Absent => none
     Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
@@ -214,7 +214,7 @@ func executor_home_wet() -> String? {
 // let "we could not ask" and "the host cannot measure" render identically to whoever reads the
 // receipt and decides what can measure the reserve.
 
-func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
+fn observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
   uses net: Network
 {
   let rel = firecracker_release_aarch64
@@ -265,7 +265,7 @@ func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStand
   }
 }
 
-func runner_microvm_host_observe_wet() -> ProcessExit
+fn runner_microvm_host_observe_wet() -> ProcessExit
   uses net: Network
 {
   match executor_home_wet() {
@@ -288,7 +288,7 @@ func runner_microvm_host_observe_wet() -> ProcessExit
 
 // Converge = observe, install only the binary if absent, observe again. The KVM half is never
 // actuated here: a device this executor cannot open is reported, and the report names the grant.
-func runner_microvm_host_converge_wet() -> ProcessExit
+fn runner_microvm_host_converge_wet() -> ProcessExit
   uses net: Network
 {
   match executor_home_wet() {

@@ -155,7 +155,7 @@ fn access_token_upsert_required_reason(plan: AccessEnsurePlan) -> String {
   }
 }
 
-func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
+fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
   uses net: Network
 {
   match source {

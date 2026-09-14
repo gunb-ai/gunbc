@@ -220,7 +220,7 @@ pub fn complexity_linearity_audit_corpus_over_decl_facts(
     summary.files_parsed = walk.files_parsed;
 
     for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+        if !matches!(fact.kind, ItemKind::FnItem) {
             continue;
         }
         summary.fns_scanned += 1;

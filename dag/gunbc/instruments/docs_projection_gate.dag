@@ -3,12 +3,282 @@ module tools.docs_projection_gate
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
+import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
 import gunbc.generated_artifact {
+  GeneratedArtifact,
   artifact_path,
+  artifact_location,
+  generated_artifact_registry,
+  artifact_is_committed,
+  DesignArtifact,
   DesignFailureModesArtifact,
-  DesignRungDropsArtifact
+  DesignRungDropsArtifact,
+  ContributorOnboardingArtifact,
+  WitnessFloorYamlArtifact,
+  FleetConvergeYamlArtifact,
+  FleetDesiredAdmissionYamlArtifact,
+  GitignoreArtifact,
+  GitattributesArtifact,
+  RoadmapArtifact,
+  GithooksPrePushArtifact,
+  GithooksPreCommitArtifact,
+  GeneratedArtifactMergeDriverArtifact,
+  RunnerDeployArtifact,
+  Stage0CrateLayoutGeneratedDagArtifact,
+  Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact,
+  Stage0ExecutableAssemblyGeneratedDagArtifact,
+  SeedRetentionFrontierGeneratedRsArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact,
+  Fci1BoundedExecutionContextArtifact,
+  AutoinstallUserDataArtifact,
+  RunnerHostSudoersArtifact,
+  PlanArtifact,
+  CouponCadQueryProgramArtifact
 }
+import v2.std.optional { Optional, Absent, Present }
 import tools.docs_projection_agreement { docs_projection_bytes_agree }
+
+data docs_projection_directory: String = "docs"
+
+// THE PRODUCER ROSTER, TOTAL OVER THE REGISTRY VARIANT AND THEREFORE THE MEMBERSHIP DERIVATION
+// THIS GATE PREVIOUSLY LACKED.
+//
+// `gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator` named
+// exactly one thing still missing after its own climb landed: membership was TWO HAND-WRITTEN
+// ARMS. `main` and `regen` each named the two ledger artifacts literally, and the registry
+// happened to carry exactly those two under `docs`, so the enumeration was COINCIDENTALLY
+// complete. Its recognition-rule question (2) -- is that path in the compared population --
+// answered NO for any third `docs/` projection, and the row says so in as many words: such an
+// artifact would compile, ship, and be compared by nothing. This module is the third such
+// projection's arrival, so the coincidence had to end here rather than be extended by one more
+// literal.
+//
+// WHY THIS IS THE COMPILE REFUSAL THE TRIGGER ASKS FOR AND NOT A THIRD ARM. The match below is
+// total over `GeneratedArtifact` with NO wildcard, so adding a registry variant does not compile
+// until it is classified here; and the two folds beneath it enumerate nothing, deriving their
+// population from `generated_artifact_registry` and the commit policy, filtered on
+// the location authority's own `directory`. A new `docs/` artifact therefore cannot be added
+// without either its producer or a refusal. The remaining honesty: the CLASSIFICATION is still
+// authored, so a `docs/`-located artifact answered `Absent` here is a reachable mistake -- and
+// that state is refused loudly by `docs_projection_coverage_of` rather than skipped, which
+// is the difference between this and the silence the row described.
+//
+// The wildcard is deliberately absent even though it would shorten this file by twenty lines.
+// A `_ => Absent` arm restores precisely the defect: the next author adds a `docs/` artifact,
+// the file compiles, and the projection is compared by nothing.
+fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
+  match a {
+    DesignFailureModesArtifact => Present { value: expected_design_failure_modes_md() }
+    DesignRungDropsArtifact => Present { value: expected_design_rung_drops_md() }
+    ContributorOnboardingArtifact => Present { value: expected_contributor_onboarding_md() }
+    DesignArtifact => Absent
+    RoadmapArtifact => Absent
+    WitnessFloorYamlArtifact => Absent
+    FleetConvergeYamlArtifact => Absent
+    FleetDesiredAdmissionYamlArtifact => Absent
+    GitignoreArtifact => Absent
+    GitattributesArtifact => Absent
+    GithooksPrePushArtifact => Absent
+    GithooksPreCommitArtifact => Absent
+    GeneratedArtifactMergeDriverArtifact => Absent
+    RunnerDeployArtifact => Absent
+    Stage0CrateLayoutGeneratedDagArtifact => Absent
+    Stage0CrateLayoutGeneratedRsArtifact => Absent
+    Stage0CratePartitionGeneratedDagArtifact => Absent
+    Stage0ExecutableAssemblyGeneratedDagArtifact => Absent
+    SeedRetentionFrontierGeneratedRsArtifact => Absent
+    V1InterpreterDispatchGeneratedRsArtifact => Absent
+    EvaluationBudgetConsequenceGeneratedRsArtifact => Absent
+    FileTransportRealizationGeneratedRsArtifact => Absent
+    Fci1BoundedExecutionContextArtifact => Absent
+    CouponCadQueryProgramArtifact => Absent
+    AutoinstallUserDataArtifact { spec: _ } => Absent
+    RunnerHostSudoersArtifact { host: _ } => Absent
+    PlanArtifact { plan: _ } => Absent
+  }
+}
+
+fn artifact_is_docs_located(a: GeneratedArtifact) -> Bool {
+  artifact_location(a: a).directory == docs_projection_directory
+}
+
+fn docs_located_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_docs_located(a: a))
+}
+
+// THE COMMITTED POPULATION IS A FILTER OF THE DOCS POPULATION, NOT A SECOND WALK OF THE REGISTRY.
+//
+// It used to filter committed_generated_artifacts(), which itself filters the whole registry -- so
+// anything wanting both populations resolved the registry twice. Committed is a SUBSET of the
+// registry and the two predicates commute, so filtering the docs-located list by the commit policy
+// yields the identical set for one walk instead of two.
+//
+// This is the same DESIGN section 2 repair review 65295 named one level down, found by following
+// its own reasoning outward: the floor reported this module's regen_writes_more_than_main_agrees
+// over the diagnostic cost line at 39962 eval steps while passing, and a witness that passes today
+// on a fast host is the one that refuses tomorrow on a slow one -- which is how the enrolment
+// margin already refused an arm of this module once.
+fn committed_docs_located_artifacts() -> List<GeneratedArtifact> {
+  filter(docs_located_artifacts(), a => artifact_is_committed(a: a))
+}
+
+// RESOLVE ONCE AND CARRY THE BYTES (review 65295).
+//
+// The predecessor asked whether a producer EXISTED by matching on the producer and discarding the
+// value -- and the producer's value IS the rendered document, so the question cost a full render
+// that was then thrown away, after which main and regen rendered the same document a second time
+// to use it. Two renders per projection per run, the first of them pure loss.
+//
+// DESIGN section 2 names this case: several demands sharing a least common ancestor are authored
+// duplication, and the repair is to carry the first value rather than to make the repeat cheap.
+// The ancestor is the fold, so the resolution happens once and the SAME list feeds the coverage
+// check and the write-or-agree. The coverage question survives as a property OF a resolution
+// rather than as a second call.
+fn resolution_is_missing(r: DocsProjectionResolution) -> Bool {
+  match r {
+    DocsProjectionResolved { path: _, expected: _ } => false
+    DocsProjectionProducerMissing { path: _ } => true
+  }
+}
+
+fn resolution_path(r: DocsProjectionResolution) -> String {
+  match r {
+    DocsProjectionResolved { path, expected: _ } => path
+    DocsProjectionProducerMissing { path } => path
+  }
+}
+
+fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
+  !resolution_is_missing(r: docs_projection_resolution(a: a))
+}
+
+// A `docs/`-LOCATED ARTIFACT WITH NO PRODUCER IS A CONTRADICTION, AND IT REFUSES.
+//
+// This is the arm that keeps the authored classification above honest. The location authority
+// says the bytes live under `docs`; this module says nothing produces them. One of the two is
+// wrong, and neither answer is "skip it" -- skipping is the silence the failure-mode row is
+// about. So the population is named in the diagnostic and the line stops.
+// THE POPULATION IS A PARAMETER, AND THAT IS WHAT MAKES THE REFUSAL AUTHORABLE.
+//
+// Production passes the derived population; a fixture passes one it authored. Before this split
+// the fold read `docs_located_artifacts()` directly, and the consequence was the shape DESIGN
+// section 4b warns about from the other end: the refusing state was unreachable from any fixture,
+// because every docs-located variant in the registry HAS a producer, so no hermetic input could
+// make this arm red. A caller-supplied population fixes that -- pass an artifact with no producer
+// and the refusal fires -- and it costs nothing, because the filter no longer resolves the whole
+// registry to answer a question about three rows.
+//
+// The docs-located filter deliberately does NOT live in here. Production filters on location
+// before calling; this fold asks only whether everything it was handed can be produced. That is
+// what lets a fixture hand it a non-docs artifact and get a refusal, which is the discriminating
+// input, and it keeps one responsibility per function.
+// THE SAME CONTRADICTION READ BACKWARDS, AND UNTIL NOW ONLY ONE DIRECTION REFUSED (review 65734).
+//
+// The arm above refuses a `docs/`-located artifact that nothing produces. Its converse is equally
+// reachable and was silent: an artifact this module CAN produce whose location authority puts it
+// somewhere other than `docs` is in neither population -- not written by regen, not agreed by main,
+// compared by nothing, with no diagnostic. That is the exact shape the failure-mode row this change
+// cites as its motive already named: a projection that compiles, ships, and is compared by nothing.
+// Deriving membership from the registry closed the direction that was easy to see and left the one
+// that reads backwards, which is why it survived the derivation.
+//
+// TWO EDITS REACH IT, NEITHER OF THEM EXOTIC. Adding a producer arm for an artifact located
+// elsewhere, and moving an existing docs projection's directory in `gunbc.generated_artifact`
+// `artifact_location`. Both are ordinary changes to adjacent authorities by someone who has never
+// read this module, which is precisely the reader a silent gap is worst for.
+//
+// THE POPULATION IS A PROJECTION AND NOT A LIST OF REGISTRY VARIANTS, WHICH IS WHAT MAKES THE RED
+// AUTHORABLE AT ALL. Both halves of the contradiction -- where the bytes live, and whether this
+// module produces them -- are total functions OF THE VARIANT, so no live variant can be handed in
+// carrying the forbidden combination, and a fold taking `List<GeneratedArtifact>` would have been
+// permanently green no matter what population a fixture supplied. Carrying the two facts as data
+// is the difference between a wall and a decoration (DESIGN section 4b). The host side projects
+// once; the verdict below is pure and witnessable from authored rows.
+type DocsArtifactPlacement {
+  path: String
+  directory: String
+  has_producer: Bool
+}
+
+fn docs_artifact_placement(a: GeneratedArtifact) -> DocsArtifactPlacement {
+  DocsArtifactPlacement {
+    path: artifact_path(a: a),
+    directory: artifact_location(a: a).directory,
+    has_producer: artifact_has_docs_producer(a: a)
+  }
+}
+
+fn docs_artifact_placements(artifacts: List<GeneratedArtifact>) -> List<DocsArtifactPlacement> {
+  map(artifacts, a => docs_artifact_placement(a: a))
+}
+
+fn placement_is_outside_docs(p: DocsArtifactPlacement) -> Bool {
+  p.has_producer && !(p.directory == docs_projection_directory)
+}
+
+fn docs_placement_verdict_over(placements: List<DocsArtifactPlacement>) -> ProcessExit {
+  let misplaced = filter(placements, p => placement_is_outside_docs(p: p))
+  if count(misplaced) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: fold(
+      misplaced,
+      init: "this module produces these artifacts but their location authority does not put them under docs, so nothing compares them:",
+      f: fn(acc, p) { concat(acc, concat(" ", concat(p.path, concat(" -> ", p.directory)))) }
+    ))
+  }
+}
+
+// THE POPULATION IS THE NON-DOCS SIDE ONLY, AND THAT IS A COST REPAIR RATHER THAN A NARROWING
+// (review 65901). `placement_is_outside_docs` can be true ONLY for an artifact that is not
+// docs-located, so restricting the input to that side removes no reachable refusal -- the verdict
+// over the registry is identical, element for element.
+//
+// WHAT IT REMOVES IS A FULL RENDER PER DOCS PROJECTION, EVERY RUN. `has_producer` resolves through
+// `docs_projection_producer`, whose `Present` arm IS the rendered document, so asking the Bool
+// question about a docs-located artifact rendered the whole projection -- the failure-mode ledger
+// among them -- and threw the bytes away, after which `docs_projection_resolutions` rendered it
+// again. Restricted to the non-docs side every artifact answers `Absent`, so nothing renders at
+// all and the question costs a location comparison.
+//
+// THIS IS THE SAME DEFECT THE `RESOLVE ONCE AND CARRY THE BYTES` NOTE ABOVE RECORDS, REINTRODUCED
+// BY THE CHANGE THAT ADDED THIS ARM. It is worth saying plainly rather than quietly fixing: the
+// repair was already written down in this module, in a comment naming the exact shape, and the
+// next edit walked into it anyway. DESIGN section 6 rules that a proven cost-shape defect is
+// always fixed regardless of the realized n, and this module is the one whose arm the floor's
+// enrolment margin has already refused once on cost.
+fn docs_placement_verdict() -> ProcessExit {
+  docs_placement_verdict_over(
+    placements: docs_artifact_placements(
+      artifacts: filter(generated_artifact_registry, a => !artifact_is_docs_located(a: a))
+    )
+  )
+}
+
+
+fn docs_projection_resolutions(artifacts: List<GeneratedArtifact>) -> List<DocsProjectionResolution> {
+  map(artifacts, a => docs_projection_resolution(a: a))
+}
+
+fn docs_projection_coverage_of(resolutions: List<DocsProjectionResolution>) -> ProcessExit {
+  let uncovered = filter(resolutions, r => resolution_is_missing(r: r))
+  if count(uncovered) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: fold(
+      uncovered,
+      init: "docs projection has no producer, so it would be compared by nothing:",
+      f: fn(acc, r) { concat(acc, concat(" ", resolution_path(r: r))) }
+    ))
+  }
+}
+
+fn docs_projection_producer_coverage_over(artifacts: List<GeneratedArtifact>) -> ProcessExit {
+  docs_projection_coverage_of(resolutions: docs_projection_resolutions(artifacts: artifacts))
+}
 
 fn write_docs_projection(path: String, content: String) -> ProcessExit {
   let w = Filesystem.Write(path: path, content: content)
@@ -19,26 +289,67 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
   }
 }
 
-// THE CLEANLY-EXITING ACTUATOR FOR docs/*.md LEDGER PROJECTIONS.
+// THE FIRST FAILURE IS CARRIED, NOT THE LAST, AND NOTHING IS DISCARDED.
+//
+// A fold over ProcessExit has two wrong shapes and this is neither: taking the last outcome would
+// let a later success erase an earlier refusal, and short-circuiting would report one drifted path
+// when three had drifted. This keeps the earliest refusal so the diagnostic is stable across runs,
+// and every path is still visited.
+fn first_failure(acc: ProcessExit, next: ProcessExit) -> ProcessExit {
+  match acc {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => next
+  }
+}
+
+// THE BYTES AND THEIR PATH, OR THE NAMED ABSENCE OF A PRODUCER. Both callers below need the same
+// resolution and must refuse identically when it fails, so the resolution is one function and the
+// two consumers differ only in what they do with bytes they have. A coproduct rather than an
+// Optional because the refusing arm has to carry the path: a diagnostic that cannot say WHICH
+// projection has no producer sends its reader to look at all of them.
+type DocsProjectionResolution
+  = DocsProjectionResolved { path: String, expected: String }
+  | DocsProjectionProducerMissing { path: String }
+
+fn docs_projection_resolution(a: GeneratedArtifact) -> DocsProjectionResolution {
+  match docs_projection_producer(a: a) {
+    Present { value } => DocsProjectionResolved { path: artifact_path(a: a), expected: value }
+    Absent => DocsProjectionProducerMissing { path: artifact_path(a: a) }
+  }
+}
+
+fn write_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
+  match r {
+    DocsProjectionResolved { path, expected } => write_docs_projection(path: path, content: expected)
+    DocsProjectionProducerMissing { path } =>
+      exit_failure(reason: concat("no docs projection producer for ", path))
+  }
+}
+
+// THE CLEANLY-EXITING ACTUATOR FOR docs/*.md PROJECTIONS.
 //
 // gunbc.generated_artifact_gate main_wet folds the WHOLE committed registry, and resolving
 // gunbc.generated_artifact_emit pulls every generator (plans, workflows, CAD, stage0 mirrors).
-// This entry still imports gunbc.generated_artifact for artifact_path only — the location
-// authority — not generated_artifact_emit. claim_executor --required-regen never owns these
-// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive.
-// regen writes both ledger paths locally. main agrees only the committed rung-drop ledger:
-// agreeing DesignFailureModesArtifact would be permanently green (NotCommitted).
-func regen() -> ProcessExit {
-  let first = write_docs_projection(
-    path: artifact_path(a: DesignFailureModesArtifact),
-    content: expected_design_failure_modes_md()
-  )
-  match first {
-    ExitSuccess => write_docs_projection(
-      path: artifact_path(a: DesignRungDropsArtifact),
-      content: expected_design_rung_drops_md()
-    )
+// This entry reaches gunbc.generated_artifact for the location authority and the registry, never
+// generated_artifact_emit. claim_executor --required-regen never owns these files:
+// is_compared_generated_basename is ends_with .rs. That ownership gap is the motive.
+//
+// REGEN WRITES EVERY `docs/`-LOCATED PROJECTION, COMMITTED OR NOT. The population is the registry
+// filtered on location, so a NotCommitted projection is still written locally -- which is the
+// existing behaviour for the failure-mode ledger and the reason regen's population is wider than
+// main's.
+fn regen() -> ProcessExit {
+  let resolutions = docs_projection_resolutions(artifacts: docs_located_artifacts())
+  match first_failure(
+    acc: docs_placement_verdict(),
+    next: docs_projection_coverage_of(resolutions: resolutions)
+  ) {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => fold(
+      resolutions,
+      init: ExitSuccess,
+      f: fn(acc, r) { first_failure(acc: acc, next: write_one_resolution(r: r)) }
+    )
   }
 }
 
@@ -53,13 +364,33 @@ fn agree_one(path: String, expected: String) -> ProcessExit {
   }
 }
 
-// A NotCommitted ledger has no committed bytes to agree. This gate does not call agree for
-// DesignFailureModesArtifact: that would be permanently green. Regen still writes a local copy.
-// Requiring a checkout of docs/design-failure-modes.md would restore the 1.19MB merge surface.
+fn agree_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
+  match r {
+    DocsProjectionResolved { path, expected } => agree_one(path: path, expected: expected)
+    DocsProjectionProducerMissing { path } =>
+      exit_failure(reason: concat("no docs projection producer for ", path))
+  }
+}
 
-func main() -> ProcessExit {
-  agree_one(
-    path: artifact_path(a: DesignRungDropsArtifact),
-    expected: expected_design_rung_drops_md()
-  )
+// MAIN AGREES EVERY COMMITTED `docs/`-LOCATED PROJECTION.
+//
+// The population is the docs-located list filtered by the commit policy, so a
+// NotCommitted projection is excluded by construction rather than by a hand-written exception.
+// That is what the previous revision achieved with a comment: it did not call agree for the
+// failure-mode ledger because there are no committed bytes to agree, and agreeing them would have
+// been permanently green. The commit policy now answers that, and adding a committed `docs/`
+// projection enrolls it here with no edit to this function.
+fn main() -> ProcessExit {
+  let resolutions = docs_projection_resolutions(artifacts: committed_docs_located_artifacts())
+  match first_failure(
+    acc: docs_placement_verdict(),
+    next: docs_projection_coverage_of(resolutions: resolutions)
+  ) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => fold(
+      resolutions,
+      init: ExitSuccess,
+      f: fn(acc, r) { first_failure(acc: acc, next: agree_one_resolution(r: r)) }
+    )
+  }
 }

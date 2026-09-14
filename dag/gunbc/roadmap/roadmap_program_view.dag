@@ -4,7 +4,13 @@ import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
   receipt_matches_node,
 }
-import gunbc.roadmap_execution_contract { contract_has_closing_validation }
+import gunbc.roadmap_execution_contract {
+  contract_closure,
+  ContractCloses,
+  ContractClosesNothing,
+  ContractDeclaresNoValidation,
+  ContractNotAgentWork,
+}
 import gunbc.roadmap_focus { roadmap_dependency_graph }
 import gunbc.roadmap_status { line_ticket }
 import gunbc.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
@@ -125,12 +131,13 @@ type ObligationState
   = ObligationAccepted
   | ObligationDependencyHeld { unmet: List<RoadmapNodeId> }
   | ObligationContractHeld
+  | ObligationNotAgentWork
   | ObligationStartable
 
 // One node's position in the program's dependency algebra, decided in a fixed order: an acceptance
 // receipt wins outright; otherwise unmet prerequisites hold it; otherwise a missing closing
-// validation holds it (the same single authority the closing-contract task projection reads —
-// gunbc.roadmap_execution_contract contract_has_closing_validation — so this module and the daily
+// validation holds it (the same contract_closure the closing-contract task projection reads —
+// unspecified and empty await authoring, NotAgentWork does not — so this module and the daily
 // frontier can never disagree about boundness); otherwise it is workable now. In-flight is
 // deliberately NOT an arm: work observed on a node is an overlay fact orthogonal to its dependency
 // position — an attempt can run on a held node — and fusing them would be the state-space
@@ -287,10 +294,11 @@ fn program_node_standing(
     if count(unmet) > 0 {
       ObligationDependencyHeld { unmet: unmet }
     } else {
-      if contract_has_closing_validation(contract: n.execution) {
-        ObligationStartable
-      } else {
-        ObligationContractHeld
+      match contract_closure(contract: n.execution) {
+        ContractCloses { validations: _ } => ObligationStartable
+        ContractDeclaresNoValidation => ObligationContractHeld
+        ContractClosesNothing => ObligationContractHeld
+        ContractNotAgentWork { mode: _ } => ObligationNotAgentWork
       }
     }
   }
@@ -312,6 +320,7 @@ type RemainingShape {
   in_flight: Int
   dependency_held: Int
   contract_held: Int
+  not_agent_work: Int
   unsized: Int
 }
 
@@ -341,30 +350,42 @@ fn program_shape_counts(
       ObligationAccepted => false
       ObligationDependencyHeld { unmet: _ } => false
       ObligationContractHeld => false
+      ObligationNotAgentWork => false
     })),
     in_flight: count(standings |> filter(s => s.in_flight && match s.state {
       ObligationAccepted => false
       ObligationStartable => true
       ObligationDependencyHeld { unmet: _ } => true
       ObligationContractHeld => true
+      ObligationNotAgentWork => true
     })),
     dependency_held: count(standings |> filter(s => match s.state {
       ObligationDependencyHeld { unmet: _ } => true
       ObligationAccepted => false
       ObligationStartable => false
       ObligationContractHeld => false
+      ObligationNotAgentWork => false
     })),
     contract_held: count(standings |> filter(s => match s.state {
       ObligationContractHeld => true
       ObligationAccepted => false
       ObligationStartable => false
       ObligationDependencyHeld { unmet: _ } => false
+      ObligationNotAgentWork => false
+    })),
+    not_agent_work: count(standings |> filter(s => match s.state {
+      ObligationNotAgentWork => true
+      ObligationAccepted => false
+      ObligationStartable => false
+      ObligationDependencyHeld { unmet: _ } => false
+      ObligationContractHeld => false
     })),
     unsized: count(standings |> filter(s => s.unsized && match s.state {
       ObligationAccepted => false
       ObligationStartable => true
       ObligationDependencyHeld { unmet: _ } => true
       ObligationContractHeld => true
+      ObligationNotAgentWork => true
     })),
   }
 }
@@ -545,6 +566,7 @@ fn program_ancestors_or_self(
 type ConstraintKind
   = ImplementationConstraint
   | ContractConstraint
+  | NonAgentWorkConstraint
 
 // WHAT SORT OF DIFFICULTY THE PRIMARY CONSTRAINT IS. Only the kinds this module can DERIVE exist as
 // arms — an enum arm nothing can produce is specification without execution.
@@ -596,6 +618,7 @@ fn program_constraint_of(
     subject: s.node,
     kind: match s.state {
       ObligationContractHeld => ContractConstraint
+      ObligationNotAgentWork => NonAgentWorkConstraint
       ObligationStartable => ImplementationConstraint
       ObligationAccepted => ImplementationConstraint
       ObligationDependencyHeld { unmet: _ } => ImplementationConstraint
@@ -635,6 +658,7 @@ fn program_primary_constraint(
       ObligationContractHeld => true
       ObligationAccepted => false
       ObligationDependencyHeld { unmet: _ } => false
+      ObligationNotAgentWork => false
     })
   fold(candidates, init: none, f: (acc, s) =>
     program_constraint_step(acc: acc, s: s, depth_map: depth_map, headlines: headlines))
