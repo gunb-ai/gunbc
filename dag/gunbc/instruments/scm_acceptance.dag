@@ -935,27 +935,65 @@ fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
 //
 // The missing fact was POPULATION-GRAINED. `ScmAcceptanceReceipt` proves one scenario passed; it was
 // being read as though it proved three did. So there is now a distinct sole-constructed
-// `ScmPopulationReceipt` minted at exactly ONE site -- the three-success branch below -- and a
+// `ScmPopulationReceipt` minted at exactly ONE site -- the roster-joined branch below -- and a
 // scenario receipt can no longer be promoted into it because they are different types.
-type ScmPopulationReceipt sole_constructor { scenarios: Int }
+//
+// THE RECEIPT CARRIES THE SCENARIOS THAT EXECUTED, NOT A COUNT OF THEM. It used to be
+// `{ scenarios: 3 }` over a hand-nested run of three arms, so a fourth `ScmScenario` arm would force
+// edits to `scm_scenario_name` and `scm_scenario_steps`, compile silently here, never run, and
+// still mint `scenarios: 3` -- the scenario-for-population bypass above, reintroduced at the roster.
+// Completeness is an identity join, not a count equality (DESIGN section 5). So the run is a fold
+// over ONE roster, and the receipt holds the identities the fold actually executed, minted only
+// when that list is the roster itself.
+//
+// WHAT THIS DOES NOT CLOSE, stated at its real strength: `.dag` has no enumeration of a coproduct's
+// arms, so nothing forces a new arm into `scm_scenario_roster`. That omission remains authorable, and
+// is now the ONE place it can hide rather than being spread through a nested match. Next-rung
+// trigger, a capability: arm enumeration for a closed coproduct, sufficient to derive the roster
+// from `ScmScenario` and refuse a roster that omits an arm.
+type ScmPopulationReceipt sole_constructor { scenarios: List<ScmScenario> }
 
 type ScmPopulationOutcome
   = ScmPopulationPassed { receipt: ScmPopulationReceipt }
   | ScmPopulationScenarioFailed { outcome: ScmAcceptanceOutcome }
+  | ScmPopulationRosterUnjoined { executed: List<ScmScenario> }
+
+fn scm_scenario_roster() -> List<ScmScenario> {
+  [PublicationScenario, MergeScenario, ConflictScenario]
+}
+
+type ScmPopulationProgress
+  = ScmPopulationRunning { passed: List<ScmScenario> }
+  | ScmPopulationStopped { outcome: ScmAcceptanceOutcome }
+
+fn scm_population_step(
+  progress: ScmPopulationProgress,
+  scenario: ScmScenario,
+  binary: ScmAcceptanceBinary
+) -> ScmPopulationProgress {
+  match progress {
+    ScmPopulationStopped { outcome: o } => ScmPopulationStopped { outcome: o }
+    ScmPopulationRunning { passed: passed } =>
+      match scm_scenario_in_fresh_workspace(scenario: scenario, binary: binary) {
+        ScmAcceptancePassed { receipt: _ } =>
+          ScmPopulationRunning { passed: passed |> list_push(scenario) }
+        other => ScmPopulationStopped { outcome: other }
+      }
+  }
+}
 
 fn run_scm_population(binary: ScmAcceptanceBinary) -> ScmPopulationOutcome {
-  match scm_scenario_in_fresh_workspace(scenario: PublicationScenario, binary: binary) {
-    ScmAcceptancePassed { receipt: _ } =>
-      match scm_scenario_in_fresh_workspace(scenario: MergeScenario, binary: binary) {
-        ScmAcceptancePassed { receipt: _ } =>
-          match scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary) {
-            ScmAcceptancePassed { receipt: _ } =>
-              ScmPopulationPassed { receipt: ScmPopulationReceipt { scenarios: 3 } }
-            other => ScmPopulationScenarioFailed { outcome: other }
-          }
-        other => ScmPopulationScenarioFailed { outcome: other }
+  let roster = scm_scenario_roster()
+  let progress = fold(roster, init: ScmPopulationRunning { passed: [] }, f: (acc, scenario) =>
+    scm_population_step(progress: acc, scenario: scenario, binary: binary))
+  match progress {
+    ScmPopulationStopped { outcome: o } => ScmPopulationScenarioFailed { outcome: o }
+    ScmPopulationRunning { passed: passed } =>
+      if passed == roster {
+        ScmPopulationPassed { receipt: ScmPopulationReceipt { scenarios: passed } }
+      } else {
+        ScmPopulationRosterUnjoined { executed: passed }
       }
-    other => ScmPopulationScenarioFailed { outcome: other }
   }
 }
 
@@ -979,6 +1017,8 @@ fn finalize_scm_population(execution: ScmPopulationExecution) -> ProcessExit {
   let released = release_scm_acceptance_binary(binary: execution.binary)
   match execution.result {
     ScmPopulationScenarioFailed { outcome: outcome } => scm_acceptance_exit(outcome: outcome)
+    ScmPopulationRosterUnjoined { executed: _ } =>
+      exit_failure(reason: "the acceptance population did not execute exactly its roster")
     ScmPopulationPassed { receipt: _ } =>
       if released {
         ExitSuccess
