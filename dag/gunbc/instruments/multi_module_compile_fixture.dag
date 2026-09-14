@@ -264,7 +264,7 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // text it carries.
 type ClaimScopeFixtureOutcome
   = ClaimScopeInstrumentRefused { cause: NonEmptyStr }
-  | ClaimScopeCompileRefused { blocking_count: Int }
+  | ClaimScopeCompileRefused { blocking_count: Int, diagnostics: List<CompileDiagnosticCensusRow> }
   | ClaimScopeRefused { cause: NonEmptyStr }
   | ClaimScopeAccepted { module_count: Int }
 
@@ -298,20 +298,46 @@ fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) 
   match o {
     ClaimScopeRefused { cause: c } => string_contains(s: c as String, pattern: cause_marker)
     ClaimScopeAccepted { module_count: n } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
     ClaimScopeInstrumentRefused { cause: c } => false
   }
 }
 
-// ACCEPTANCE IS SILENT ABOUT AMBIGUITY. The scope builder COLLECTS ambiguous bare-name reads onto
-// the accepted scope; it does not refuse on them. So this reader answers "the entry resolved and
-// the scope built", and NOT "the scope is unambiguous" -- a row asserting it establishes nothing
-// about that class, and must not be cited as coverage for a refusal that is not in this change.
+// WHY A FIXTURE FAILED TO COMPILE, readable from `.dag` rather than only from a hand-run compile.
+// `ClaimScopeCompileRefused` carries the diagnostic rows, so a control that expects a scope verdict
+// and gets a compile refusal can name the class instead of reporting a bare non-acceptance. This
+// exists because its absence cost a wrong diagnosis: a manifest was refused with `undefined
+// variable`, the instrument could report only that it was not accepted, and the cause was supplied
+// by inference from prose rather than read -- the same arm-for-cause conflation this outcome type
+// was split to prevent.
+fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => fixture_has_class(rows: d, wanted: wanted)
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. An earlier version of this block said
+// "ACCEPTANCE IS SILENT ABOUT AMBIGUITY... a row asserting it establishes nothing about that class,
+// and must not be cited as coverage for a refusal that is not in this change." All three clauses
+// are false once the wall lands: the scope builder REFUSES on an ambiguous bare value read rather
+// than collecting it, the field it collected into is deleted, and the negative control rows in
+// `test.claim.bare_name_ambiguity_wall_witness` assert through this reader precisely as coverage
+// for that refusal. Its Rust twin `ClaimScopeFixtureOutcome::ScopeAccepted` was rewritten to say so
+// and this one was not, which left one fact carrying two annotations with opposite obligations --
+// §3's meaning fork, between a `.dag` reader and the host value it projects.
+//
+// So: acceptance now DOES exclude the census population, which is what makes a
+// `claim_scope_was_accepted` row a usable negative control. The scope is narrower than "no
+// ambiguity": it means no VALUE-POSITION read of a name two transitively-reached modules declare.
+// Type-position collisions are outside it, as the wall's own annotation states.
 fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
   match o {
     ClaimScopeAccepted { module_count: n } => true
     ClaimScopeRefused { cause: c } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
     ClaimScopeInstrumentRefused { cause: c } => false
   }
 }
