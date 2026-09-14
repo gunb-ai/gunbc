@@ -1,0 +1,32 @@
+◐ started compile.frontend
+✓ compile.frontend done in 1ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 3ms
+✓ compile.analyses done in 0ms
+
+thread 'main' (57557) panicked at /tmp/crisp-seed-recovery/b_shape_controls.rs:2163:5:
+assertion `left == right` failed: authored T? must not escape as resolved CardOptional
+  left: CardOptional
+ right: Required
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+CONTROL authored pass=false
+◐ started compile.frontend
+✓ compile.frontend done in 0ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 0ms
+✓ compile.analyses done in 0ms
+
+thread 'main' (57557) panicked at /tmp/crisp-seed-recovery/b_shape_controls.rs:2238:5:
+assertion `left == right` failed
+  left: CardOptional
+ right: Required
+CONTROL flatten pass=false
+◐ started compile.frontend
+✓ compile.frontend done in 0ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 0ms
+✓ compile.analyses done in 0ms
+
+thread 'main' (57557) panicked at /tmp/crisp-seed-recovery/b_shape_controls.rs:2252:5:
+Optional must refuse two arguments at its single-parameter owner: []
+CONTROL arity pass=false

@@ -106,7 +106,7 @@ index 0e2e98c61ce..81e66f758cb 100644
    else { PlainValue }
  }
 diff --git a/src/v1/04_infer.dag b/src/v1/04_infer.dag
-index 6bd0bcbc811..45ca8d0b69d 100644
+index 6bd0bcbc811..b8fc72521bd 100644
 --- a/src/v1/04_infer.dag
 +++ b/src/v1/04_infer.dag
 @@ -82,7 +82,6 @@ import v1.std.core {
@@ -127,7 +127,15 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
    node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
    kernel_profile_lookup,
-@@ -461,6 +463,10 @@ type FieldRecursionResult {
+@@ -202,6 +204,7 @@ import v1.compiler.infer_service {
+   service_op_entry
+ }
+ import v1.compiler.infer_patterns {
++  expand_scrut_type_for_variant_lookup,
+   NodeLookupResult, PatternSubject,
+   lookup_variant_in_type, lookup_field_in_variant,
+   pattern_subject_from_inferred, pattern_subject_from_node,
+@@ -461,6 +464,10 @@ type FieldRecursionResult {
    element_type: String
  }
  
@@ -138,7 +146,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
    let type_expr = match field_node.inferred {
      Present { value: Resolved { node: rt } } => rt
-@@ -674,20 +680,11 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
+@@ -674,20 +681,11 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
  // ConvergeVerdict alike). Re-targeting would leave the returned parent_enum naming one
  // coproduct while the inferred type named another.
  //
@@ -164,7 +172,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      Present { value: exp } =>
        if exp.return_cardinality == Required
          && owner_name != "" {
-@@ -703,6 +700,10 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
+@@ -703,6 +701,10 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
        } else { fallback }
      Absent => fallback
    }
@@ -175,7 +183,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  }
  
  fn variant_owner_node(scope: InferScope, name: String) -> Node? {
-@@ -784,7 +785,7 @@ fn declared_field_is_required(sf: Node) -> Bool {
+@@ -784,7 +786,7 @@ fn declared_field_is_required(sf: Node) -> Bool {
      Present { value: Resolved { node: rt } } => rt
      _ => field_node_type_expr(n: sf)
    }
@@ -184,7 +192,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  }
  
  // A BARE VARIANT NAME IN EXPRESSION POSITION IS A CONSTRUCTION SUPPLYING ZERO FIELDS. When
-@@ -1179,7 +1180,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
+@@ -1179,7 +1181,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
  data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
  
  fn declared_return_type_node(item: Node) -> Node {
@@ -193,7 +201,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  }
  
  fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-@@ -1237,12 +1238,12 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
+@@ -1237,12 +1239,12 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
  // mismatch, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
  // forbids a fabricated success.
  fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
@@ -209,7 +217,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      }
      kernel_value_declared_type_mismatch(
        formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
-@@ -1331,14 +1332,14 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
+@@ -1331,14 +1333,14 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
    }
  }
  
@@ -228,7 +236,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
    expected_is_optional_coproduct && got_is_string
  }
-@@ -1363,22 +1364,22 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
+@@ -1363,22 +1365,22 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
  // which is the check s precision frontier and not a failure arm.
  
  fn field_declared_type_is_identified(ft: Node, scope: InferScope) -> Bool {
@@ -256,7 +264,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  }
  
  fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
-@@ -1417,11 +1418,11 @@ fn bare_none_field_construction_diags(
+@@ -1417,11 +1419,11 @@ fn bare_none_field_construction_diags(
  }
  
  fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
@@ -271,7 +279,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
  }
  
  fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
-@@ -1548,7 +1549,7 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
+@@ -1548,7 +1550,7 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
    let te = field_node_type_expr(n: sf)
    if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
      match sf.inferred {
@@ -280,7 +288,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
        _ => te
      }
    } else { te }
-@@ -2539,8 +2540,8 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
+@@ -2539,8 +2541,8 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
    let arm_name = authored_name_at(source_indices: source_indices, node: arm_type)
    if coproduct_name_is_kernel_or_optional_carrier(name: unified_name)
      || coproduct_name_is_kernel_or_optional_carrier(name: arm_name)
@@ -291,7 +299,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      || type_name_compatible(a: unified_name, b: arm_name) {
      false
    } else {
-@@ -2808,7 +2809,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
+@@ -2808,7 +2810,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
      equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false)
    } else {
      let peeled = normalize_access_type_node(n: n)
@@ -300,7 +308,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
        equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
      } else {
        let name = authored_name_at(source_indices: source_indices, node: peeled)
-@@ -3054,11 +3055,11 @@ fn structured_application_lit_is_declared_optional_variant(
+@@ -3054,11 +3056,11 @@ fn structured_application_lit_is_declared_optional_variant(
    scope: InferScope
  ) -> Bool {
    let source_indices = scope.type_env.source_indices
@@ -315,7 +323,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      true
    } else {
      has_child_named(n: formal_resolved, name: lit_name, source_indices: source_indices)
-@@ -3627,7 +3628,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
+@@ -3627,7 +3629,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
    let source_indices = scope.type_env.source_indices
    let declared_name = authored_name_at(source_indices: source_indices, node: declared)
    let produced_name = authored_name_at(source_indices: source_indices, node: produced)
@@ -324,7 +332,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
      Present { value: TypeVariable { id: _ } } => true
      _ => false
-@@ -3853,7 +3854,7 @@ fn nominal_product_inhabitance_refusal(
+@@ -3853,7 +3855,7 @@ fn nominal_product_inhabitance_refusal(
  fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
    let source_indices = scope.type_env.source_indices
    let name = authored_name_at(source_indices: source_indices, node: n)
@@ -333,7 +341,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      || is_kernel_type(name: name)
      || qualified_last_segment(name: name) == "Optional"
      || node_is_element_collection(n: n, source_indices: source_indices)
-@@ -3994,7 +3995,7 @@ fn applied_type_argument_conflicts(
+@@ -3994,7 +3996,7 @@ fn applied_type_argument_conflicts(
    scope: InferScope
  ) -> Bool {
    let source_indices = scope.type_env.source_indices
@@ -342,7 +350,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      || applied_type_argument_is_nested_application(n: declared_arg, scope: scope)
      || applied_type_argument_is_nested_application(n: produced_arg, scope: scope)
      || type_node_is_callable(n: declared_arg) || type_node_is_callable(n: produced_arg) {
-@@ -4118,7 +4119,7 @@ fn coproduct_payload_where_parent_required(
+@@ -4118,7 +4120,7 @@ fn coproduct_payload_where_parent_required(
    scope: InferScope
  ) -> Bool {
    let source_indices = scope.type_env.source_indices
@@ -351,7 +359,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    if either_optional || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
      false
    } else {
-@@ -4746,7 +4747,7 @@ fn direct_call_arg_type_mismatch(
+@@ -4746,7 +4748,7 @@ fn direct_call_arg_type_mismatch(
    module_name: String,
    source_indices: Map<String, NewlineIndex>
  ) -> Bool {
@@ -360,7 +368,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
    if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
    else {
-@@ -5108,7 +5109,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
+@@ -5108,7 +5110,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
              Present { value: Resolved { node: receiver_type } } =>
                match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
                  Present { value: value_type } =>
@@ -369,7 +377,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
                  Absent => resolve_builtin_call_type(name: func_name)
                }
              _ => resolve_builtin_call_type(name: func_name)
-@@ -5529,9 +5530,9 @@ fn optional_cast_diags(
+@@ -5529,9 +5531,9 @@ fn optional_cast_diags(
    match source_inferred {
      Present { value: Resolved { node: src_node } } =>
        let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -381,7 +389,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
        if source_is_optional && !target_is_optional {
          [make_error_node(
            diagnostic: OptionalCastNotEliminated {
-@@ -5566,7 +5567,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
+@@ -5566,7 +5568,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
  fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
    match scrutinee_subject {
      PatternResolved { node: scrutinee_type } =>
@@ -390,16 +398,28 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      PatternDynamic { span: dynamic_span } =>
        PatternDynamic { span: dynamic_span }
      PatternLookupBlocked =>
-@@ -5581,7 +5582,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
+@@ -5580,16 +5582,13 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
+       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
        let inferred_parent = match resolved_scrut {
          PatternResolved { node: resolved_scrut_node } =>
-           let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
+-          let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
 -          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
-+          let optional_cardinality_subject = node_is_optional_type(n: resolved_scrut_node) && scrutinee_name != "Optional"
-           let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
+-          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
++          let owner = expand_scrut_type_for_variant_lookup(scrut_node: resolved_scrut_node, env: scope.type_env)
++          let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: owner)
            let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
-           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
-@@ -6168,7 +6169,7 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
+-          if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
+-            Present { value: "Optional" }
+-          } else if witness_container_subject {
++          if witness_container_subject {
+             Present { value: "Witness" }
+           } else {
+-            let is_coproduct = resolved_scrut_node.connective == Disj
++            let is_coproduct = owner.connective == Disj
+             if is_coproduct {
+               Present { value: scrutinee_name }
+             } else { none }
+@@ -6168,7 +6167,7 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
    match expected {
      Absent => LiteralBoundaryPlain
      Present { value: exp } =>
@@ -408,7 +428,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
          LiteralBoundaryPlain
        } else {
          match type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-@@ -6392,17 +6393,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
+@@ -6392,17 +6391,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
            let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
            match scope_parent {
              Present { value: scope_enum } =>
@@ -429,7 +449,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
                }
              Absent =>
                let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-@@ -6446,32 +6448,34 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
+@@ -6446,32 +6446,34 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                    let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
                    match scope_parent {
                      Present { value: scope_enum } =>
@@ -468,7 +488,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
                            }
                          Absent =>
                            let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-@@ -6492,17 +6496,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
+@@ -6492,17 +6494,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                    let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
                    match expected_variant_enum {
                      Present { value: exp_enum } =>
@@ -489,7 +509,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
                        }
                      Absent =>
                        let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
-@@ -8277,11 +8282,11 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
+@@ -8277,11 +8280,11 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
    } else {
      let next_name = carrier_name
  
@@ -504,7 +524,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
          diagnostics: concat(own_diags, expanded_inner.diagnostics)
        }
      } else {
-@@ -8632,7 +8637,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8632,7 +8635,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
      let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
        Present { value: sf } =>
          let ft = match sf.inferred {
@@ -513,7 +533,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
            _ => field_node_type_expr(n: sf)
          }
          Present { value: ft }
-@@ -8650,7 +8655,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8650,7 +8653,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
      }
      let field_expected = match field_declared_type {
        Present { value: ft } =>
@@ -522,7 +542,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
            Present { value: ft }
          } else { none }
        Absent => none
-@@ -8675,7 +8680,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8675,7 +8678,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
            source_indices: scope.type_env.source_indices,
            env: scope.type_env
          ) {
@@ -531,7 +551,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
              Present { value: resolved } => resolved
              Absent => expected_node
            }
-@@ -8686,9 +8691,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8686,9 +8689,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
              module_name: scope.module_name
            )]
          } else {
@@ -543,7 +563,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
            }
            let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
            let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
-@@ -8707,7 +8712,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8707,7 +8710,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
                span: ar_typed.span,
                module_name: scope.module_name
              )]
@@ -552,7 +572,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
              && coproduct_payload_where_parent_required(
                formal: formal_peeled, actual: actual_peeled, scope: scope) {
              [type_mismatch_error(
-@@ -8840,13 +8845,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8840,13 +8843,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
      }
      let expected_optional_parent = Present { value: "Optional" }
      let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
@@ -574,7 +594,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      let type_diags = match effective_lookup {
        Present { value: _ } => []
        Absent => [make_error_node(
-@@ -8868,7 +8877,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
+@@ -8868,7 +8875,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
      let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
      InferResult {
        typed: texpr,
@@ -583,7 +603,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
      }
    }
  }
-@@ -12898,10 +12907,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
+@@ -12898,10 +12905,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
      provenance: SubValueUnknown
    })
@@ -595,7 +615,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
    let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
  
-@@ -13069,10 +13075,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
+@@ -13069,10 +13073,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
      init: empty_map(),
      f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }, provenance: SubValueUnknown })
    )
@@ -607,7 +627,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
    let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
    let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
-@@ -13660,9 +13663,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
+@@ -13660,9 +13661,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
            ResolvedFormal {
              parameter_identity: param_node_name_at(n: p, source_indices: env.source_indices),
              declared_type: declared_type,
@@ -618,7 +638,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
              substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
            }
          }) },
-@@ -14579,10 +14580,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
+@@ -14579,10 +14578,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
      provenance: SubValueUnknown
    })
@@ -631,7 +651,7 @@ index 6bd0bcbc811..45ca8d0b69d 100644
    let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
    let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
 diff --git a/src/v1/04_lookup.dag b/src/v1/04_lookup.dag
-index 27b5a4f6a43..d3dfcd2198c 100644
+index 27b5a4f6a43..98dffe5b4e9 100644
 --- a/src/v1/04_lookup.dag
 +++ b/src/v1/04_lookup.dag
 @@ -23,11 +23,10 @@ import v1.std.core {
@@ -699,8 +719,11 @@ index 27b5a4f6a43..d3dfcd2198c 100644
              } else {
                Present { value: child_type_node(ch: field_child) }
              }
-@@ -873,7 +876,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
+@@ -871,9 +874,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
+   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+   if n_is_type_var { return n }
    let normed = normalize_access_type_node(n: n)
++  if node_is_optional_type(n: normed) { return normed }
    if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
      match normed.inferred {
 -      Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
@@ -708,7 +731,7 @@ index 27b5a4f6a43..d3dfcd2198c 100644
        _ => normed
      }
    } else if normed.connective == NoConnective && normed.children |> count == 0 {
-@@ -885,7 +888,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
+@@ -885,7 +889,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
            if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
              normed
            } else {
@@ -717,7 +740,7 @@ index 27b5a4f6a43..d3dfcd2198c 100644
            }
          _ => normed
        }
-@@ -898,7 +901,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
+@@ -898,7 +902,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
            if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
              normed
            } else {
@@ -726,7 +749,7 @@ index 27b5a4f6a43..d3dfcd2198c 100644
            }
          Absent => normed
        }
-@@ -951,7 +954,7 @@ fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
+@@ -951,7 +955,7 @@ fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
  fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
    let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
    let normed = normalize_access_type_node(n: resolved)
@@ -735,7 +758,7 @@ index 27b5a4f6a43..d3dfcd2198c 100644
    if field == "value" && normed_opt {
      Present { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
    } else if normed_opt {
-@@ -1007,14 +1010,17 @@ fn product_field_result_type(field: Node) -> Node? {
+@@ -1007,14 +1011,17 @@ fn product_field_result_type(field: Node) -> Node? {
    }
  }
  
@@ -1204,7 +1227,7 @@ index 899c26f46b8..8376c7d00dd 100644
    let ret_resolved = ret_result.resolved
    let ret_diags = ret_result.diagnostics
 diff --git a/src/v1/04_types.dag b/src/v1/04_types.dag
-index 3ade0cc52ac..58c1f5b13da 100644
+index 3ade0cc52ac..6826c50b99d 100644
 --- a/src/v1/04_types.dag
 +++ b/src/v1/04_types.dag
 @@ -24,7 +24,7 @@ import v1.std.core {
@@ -1293,7 +1316,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
  fn is_type_variable(inferred: InferredNode) -> Bool {
    match inferred {
      TypeVariable { id: _ } => true
-@@ -336,6 +393,78 @@ type KernelTypeBuild {
+@@ -336,6 +393,80 @@ type KernelTypeBuild {
    diagnostics: List<ErrorNode>
  }
  
@@ -1338,7 +1361,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
 +  optional_application_node(owner: kernel_optional_type_node(), element: element, source_indices: empty_map())
 +}
 +
-+// resolve_node_bounded and infer_record_lit_structural consume the checked owner
++// variant_reference_inferred_node and infer_record_lit_structural consume the checked owner
 +// route: an authored malformed declaration is a refusal, never a partial binding.
 +fn apply_optional_owner(owner: Node, element: Node, source_indices: Map<String, NewlineIndex>, module_name: String, span: SourceSpan) -> KernelTypeBuild {
 +  if count(owner.params) != 1 {
@@ -1352,8 +1375,8 @@ index 3ade0cc52ac..58c1f5b13da 100644
 +  }
 +}
 +
-+// Resolved consumers read the application and its instantiated owner, not an
-+// authored cardinality marker. No marker/application equivalence is admitted.
++// node_is_optional_type and extract_optional_inner_node read the application and
++// its instantiated owner, never authored cardinality. No equivalence is admitted.
 +fn optional_type_application(n: Node) -> Node? {
 +  match n.inferred {
 +    Present { value: Resolved { node: owner } } =>
@@ -1365,6 +1388,8 @@ index 3ade0cc52ac..58c1f5b13da 100644
 +  }
 +}
 +
++// lookup_field_type_node, optional_cast_diags and emit_none_keyword_for_resolved_type
++// consume this canonical owner test.
 +fn node_is_optional_type(n: Node) -> Bool {
 +  optional_type_application(n: n) != none
 +}
@@ -1372,7 +1397,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
  // A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about
  // its result, so every field access on that result falls through lookup_field_type_node's Absent
  // arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own
-@@ -486,7 +615,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
+@@ -486,7 +617,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
        KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_b.diagnostics, built.diagnostics) }
      OptionalOf { inner: inner } =>
        let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
@@ -1381,7 +1406,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
      WitnessOf { inner: inner } =>
        let ib = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
        let built = make_container_type(kind_name: "Witness", element: ib.ty)
-@@ -705,7 +834,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
+@@ -705,7 +836,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
        KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_applied.diagnostics, built.diagnostics) }
      OptionalOf { inner: inner } =>
        let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
@@ -1390,7 +1415,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
      WitnessOf { inner: inner } =>
        let ib = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
        let built = make_container_type(kind_name: "Witness", element: ib.ty)
-@@ -860,7 +989,6 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
+@@ -860,7 +991,6 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
        if n.ident_span == none { "Coproduct(<anon>)" } else { concat("Coproduct(", n_name, ")") }
      } else {
        let __is_container = node_is_element_collection(n: n, source_indices: source_indices)
@@ -1398,7 +1423,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
        let is_map = node_is_keyed_collection(n: n, source_indices: source_indices)
        if __is_container {
          let elem_shape = match n.children |> first {
-@@ -868,9 +996,6 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
+@@ -868,9 +998,6 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
            Absent => "?"
          }
          concat("Container(", n_name, ",", elem_shape, ")")
@@ -1408,7 +1433,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
        } else if is_map {
          "Map(...)"
        } else if (n.children |> count) > 0 {
-@@ -887,14 +1012,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
+@@ -887,14 +1014,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
    let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
    let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
    let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
@@ -1423,7 +1448,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
    else {
      let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
      let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
-@@ -936,15 +1055,6 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
+@@ -936,15 +1057,6 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
          Absent => true
        }
      }
@@ -1439,7 +1464,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
      else {
        type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
      }
-@@ -953,7 +1063,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
+@@ -953,7 +1065,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
  
  fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Node {
    let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
@@ -1448,7 +1473,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
    let left_first_child = left.children |> first
    let left_norm_name = authored_name_at(source_indices: source_indices, node: left)
    let left_is_unit_inner = if left_is_container {
-@@ -965,11 +1075,11 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
+@@ -965,11 +1077,11 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
        Absent => false
      }
    } else if left_is_optional {
@@ -1463,7 +1488,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
    let same_kind = if left_is_container && right_is_container {
      left_norm_name == authored_name_at(source_indices: source_indices, node: right)
    } else if left_is_optional && right_is_optional {
-@@ -988,18 +1098,9 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
+@@ -988,18 +1100,9 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
    let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
    let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
    let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
@@ -1482,7 +1507,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
    else {
      node_type_equals_core(left: left, right: right, source_indices: source_indices)
    }
-@@ -1171,7 +1272,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
+@@ -1171,7 +1274,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
      LitInt { value: _ } => int_type
      LitFloat { value: _ } => float_type
      LitBool { value: _ } => bool_type
@@ -1491,7 +1516,7 @@ index 3ade0cc52ac..58c1f5b13da 100644
  
      LitSymbol { value: _ } => string_type
    }
-@@ -1199,16 +1300,13 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
+@@ -1199,16 +1302,13 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
  }
  
  fn extract_optional_inner_node(n: Node) -> Node {

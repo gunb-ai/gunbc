@@ -27,7 +27,7 @@ Base: ed853cf430e. Discovery: lexical reads of return_cardinality/CardOptional i
 | `v1.compiler.infer.coproduct_payload_where_parent_required` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
 | `v1.compiler.infer.direct_call_arg_type_mismatch` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
 | `v1.compiler.infer.optional_cast_diags` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
-| `v1.compiler.infer.annotate_pattern_parent_enums` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
+| `v1.compiler.infer.annotate_pattern_parent_enums` | Deleted marker-derived parent synthesis; expand_scrut_type_for_variant_lookup supplies the instantiated owner identity. |
 | `v1.compiler.infer.literal_boundary_elaboration` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
 | `v1.compiler.infer.infer_expr_body` | Retained identity/syntax transport or non-Optional Required check; no CardOptional construction or semantic marker test. |
 | `v1.compiler.infer.expand_alias_chain_for_field_access` | Rewired recognition/elimination to applied Optional owner and ordered argument; remaining metadata copies preserve identity/non-Optional cardinality. |
