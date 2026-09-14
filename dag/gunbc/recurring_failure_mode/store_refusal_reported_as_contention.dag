@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.store_refusal_reported_as_contention
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailureMode {
@@ -9,16 +10,32 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
   receipts: [
     "INVALID STATE: a conditional-write realization reports every unsuccessful write as a lost precondition, without observing that a competing publication actually defeated the expectation. HARM: permission, capacity, or IO refusal becomes ordinary contention; the caller re-evaluates and retries against a phantom winner while the operational deficit disappears from its own refusal channel. This is the DESIGN section 5 refusal-as-contention widen, not a missing shared outcome.",
 
-    "SPECIMEN: gunbc.durable_cas_file_store cas_commit_at maps every unsuccessful extdeps.filesystem.filesystem_io Filesystem.WriteOwnerOnly to std.durable_compare_and_set CasPreconditionFailed. Its re-observation may still satisfy the original expectation. The shared CasStoreRefused arm already exists, so an SCM-local outcome sum would duplicate an authority instead of repairing this realization. gunbc.fabric_control_plane consumes file_compare_and_set today; the defect is live for compute control-plane operations. No SCM caller reaches it yet because no SCM conditional-publication caller exists, not because the realization is safe for that consumer.",
+    "SPECIMEN, REPAIRED (silent-stag-307): cas_commit_at previously mapped every unsuccessful WriteOwnerOnly to CasPreconditionFailed via cas_probe_as_readable, including ProbedBeyondBound-as-absent. Publication now folds Filesystem.WriteCreateNew through filesystem_create_new. CasPreconditionFailed is emitted only for FilesystemCreateTargetOccupied together with a readable winner. Permission, other, unrecognized kinds, and occupied-with-no-readable-winner are CasStoreRefused. No error string is parsed. Observe uses cas_probe_as_observation, which preserves unreadability.",
 
-    "DISTINGUISHING FACT: cas_probe_as_readable deliberately documents its ProbedBeyondBound-to-CasReadableAbsent projection for reporting a lost race. The defect is cas_commit_at consuming that projection to construct a decision payload without first establishing a race; the vehicle is the bound collapse, the class is refusal-as-contention. observe_cas_slot_state already preserves the bound as CasUnreadableMalformed. Separately cas_probe_from treats unsuccessful reads as chain end even though Filesystem.Read now carries error_kind and filesystem_exact_read can distinguish absence from unreadability. Neither lost observation establishes an empty slot.",
+    "EXECUTED, hermetic classification fold (floor run 34797864081): test.claim.durable_cas_file_store_witness a_permission_refused_create_is_store_refused_not_contention, occupied_create_with_no_readable_winner_is_store_refused_not_contention, and occupied_create_with_a_readable_winner_is_precondition_failed. Those three mock the filesystem; they are not the composed path. A fourth row on the same run compared the production fold against a deliberately widening fold shipped as an importable production declaration in the same module; the program-author ruling on gunbc#11335 struck that fold (DESIGN 4b(4) keeps the RED against the real fold enrolled, never a second, intentionally false decision authority beside it), and a branch-local mutation of cas_outcome_from_create is how discrimination is demonstrated.",
+    "SIBLING ARM, same class, found by the same ruling: cas_probe_from_exact reclassified FilesystemExactPathKindUnrecognized as ProbedUnreadable { kind: FilesystemOtherFailure }, reporting a vocabulary mismatch between realization and interface as an ordinary recognized host failure -- the catch-all the filesystem authority says an unrecognized kind name must never map to. It now carries ProbedReadKindUnrecognized { generation, observed } and projects to CasStoreRefused / CasObservedUnreadable with CasUnreadableMalformed; the hermetic control is test.claim.durable_cas_file_store_witness an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other.",
 
-    "RUNG FOUND AT: the affected refusal class is silent wrongness, outside the ladder; discovery by source inspection is not executed prevention. These are SOURCE-VERIFIED readings of a contract mismatch, not executed reproductions. No new wet evidence is claimed by this row. CEILING: mechanically preventable at the external store boundary, because filesystem success, availability, and durable visibility must be observed rather than made true by a native constructor. The internal readable-versus-unreadable partition can climb by construction, but cannot establish the external observation itself.",
+    "EXECUTED, filesystem publication layer (BuildBuddy amd64): cargo test --release -p v1-compiler --lib write_file_create_new (11 tests), including a_write_failure_after_creation_leaves_no_target_behind (post-staging RLIMIT_FSIZE) and direct_final_path_open_then_write_leaves_a_target_when_the_write_fails. Publication, not classification.",
 
-    "NEXT TRIGGER: the existing file-store realization consumes typed host read/write failure classification, preserves unreadable and bound refusals through CasStoreRefused, and emits CasPreconditionFailed only from an observed violated expectation, with executing required-path evidence distinguishing real contention from operational failure and an accepted successful publication control. A new type, a ticket merge, or a read-back validator alone is insufficient. This repair follows contractual exclusive, complete, durable publication in the Phase 1 SCM consumer cut recorded in docs/plans/native-scm-cas-fit-and-consumer-cut.md; Phase 0 records it and does not implement it.",
+    "EXECUTED, COMPOSED PATH (floor run 34800475614, local-repo wet lane, standing hermetic-route-gap-held-and-wet-passed): test.claim.durable_cas_file_store_wet_witness commit_then_independent_read_back_agrees_by_real_execution, a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution, an_advance_after_commit_lands_generation_two_by_real_execution, a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution. These are the only cells that run file_compare_and_set against a real filesystem. The same four already ran in 34797864081 D0-MEASURE ([local-repo-wet] scheduled=61 admitted=61 refusals=0); that run later failed D0-ADJUDICATE on unenrolled hermetic DirWithTemplate gaps, which does not retract the wet terminals.",
 
-    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration; gunbc.design_ledgers consumes the roster for the on-demand ledger projection, and the required parse-phase rostered-row join checks enrollment. This row is a discovery record, not a CAS witness and not a claim that the defect has been repaired.",
+    "NUANCE, not a retraction: v2.workflow.floor_route_gap floor_route_gap_expectation_chunk_12 makes the HERMETIC floor silent about those four by construction, so a green hermetic floor is not what establishes them -- the [local-repo-wet] receipt lines are. Session claim_batch OOM at about 7GiB explains why THIS SESSION has no local receipt; it is not an absence of one.",
+
+    "RUNG FOUND AT BY EXECUTION: mechanically preventable at the hermetic classification fold, at the filesystem publication layer, and at the composed path, at the grain of the three EXECUTED receipts above and no higher.",
+
+    "CEILING: mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_outcome_from_create. Crash-durable directory metadata is a different class.",
+
+    "FABRIC CONSUMER: gunbc.fabric_control_plane reserve_selected_cell maps CasPreconditionFailed to ReservationLost and CasStoreRefused to StoreUnavailable. Before this repair an unwritable store reported ReservationLost. After it, operational faults are StoreUnavailable. A genuine occupied slot is still ReservationLost. That is the observable change, and it is the defect closing rather than a silent shift of a correct race.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
   ],
 
-  evidence: [],
+  evidence: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_probe_from_exact"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "a_permission_refused_create_is_store_refused_not_contention"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution"),
+  ],
 }

@@ -14689,6 +14689,56 @@ mod write_file_create_new_tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    // MUTATION CONTROL FOR DIRECT FINAL-PATH OPEN-THEN-WRITE. Production uses
+    // stage-then-hard_link. This helper IS the retired construction, kept so the
+    // partial-publication control above has a RED specimen: if production is
+    // reverted to this helper, a_write_failure_after_creation_leaves_no_target_behind
+    // turns red. This test itself must keep finding a leftover target, or the
+    // discriminating input has gone inert.
+    fn write_file_create_new_direct_final_path(path: &str, content: &[u8]) -> std::io::Result<()> {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+
+    #[test]
+    fn direct_final_path_open_then_write_leaves_a_target_when_the_write_fails() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-create-new-direct-efbig-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("repo.json");
+        let target_s = target.to_str().unwrap().to_string();
+        let content = vec![b'x'; 4096];
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe {
+                libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                let lim = libc::rlimit {
+                    rlim_cur: 64,
+                    rlim_max: 64,
+                };
+                libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
+            }
+            let _ = write_file_create_new_direct_final_path(&target_s, &content);
+            unsafe { libc::_exit(0) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        assert!(
+            target.exists(),
+            "the retired open-then-write construction must leave a visible target after a failed write, \
+             or the production control that requires ABSENCE cannot go red on a revert"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn create_new_writes_when_nothing_is_there() {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
