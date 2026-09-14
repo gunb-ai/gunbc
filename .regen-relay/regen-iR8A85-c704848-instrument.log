@@ -1,0 +1,194 @@
+Running as unit: run-r0693b2c81a5540fcb7d1d063d1002fc8.scope; invocation ID: 3cb3f8322c21453b99c6e406a0d4b28b
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v1.3.0
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling libc v0.2.186
+   Compiling serde_core v1.0.228
+   Compiling typenum v1.20.1
+   Compiling cfg-if v1.0.4
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling serde v1.0.228
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde_derive v1.0.228
+   Compiling yoke v0.8.2
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.149
+   Compiling ar_archive_writer v0.5.1
+   Compiling tinystr v0.8.3
+   Compiling bitmaps v2.1.0
+   Compiling psm v0.1.31
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling itoa v1.0.18
+   Compiling rand_core v0.6.4
+   Compiling rand_xoshiro v0.6.0
+   Compiling icu_locale_core v2.2.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling utf8_iter v1.0.4
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling unicode-properties v0.1.4
+   Compiling zeroize v1.8.2
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_runtime)
+   Compiling subtle v2.6.1
+   Compiling smallvec v1.15.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling utf8parse v0.2.2
+   Compiling untrusted v0.9.0
+   Compiling crc32fast v1.5.0
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling colorchoice v1.0.5
+   Compiling simd-adler32 v0.3.9
+   Compiling anstyle v1.0.14
+   Compiling rustls v0.23.40
+   Compiling hashbrown v0.17.1
+   Compiling adler2 v2.0.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling equivalent v1.0.2
+   Compiling percent-encoding v2.3.2
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling form_urlencoded v1.2.2
+   Compiling indexmap v2.14.0
+   Compiling miniz_oxide v0.8.9
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_extdeps_languages)
+   Compiling rustls-webpki v0.103.13
+   Compiling webpki-roots v1.0.7
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling strsim v0.11.1
+   Compiling winnow v0.7.15
+   Compiling log v0.4.29
+   Compiling clap_lex v1.1.0
+   Compiling once_cell v1.21.4
+   Compiling heck v0.5.0
+   Compiling toml_write v0.1.2
+   Compiling toml_edit v0.22.27
+   Compiling clap_derive v4.6.1
+   Compiling clap_builder v4.6.0
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0)
+   Compiling base64 v0.22.1
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/stage0_v1_infer)
+   Compiling clap v4.6.1
+   Compiling toml v0.8.23
+   Compiling hmac v0.12.1
+   Compiling lazy_static v1.5.0
+   Compiling hex v0.4.3
+    Finished `release` profile [optimized] target(s) in 7m 50s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 4 minutes
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 18 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 28 seconds
+✓ compile.normalize done in 645ms
+✓ compile.reconcile done in 47 seconds
+✓ compile.analyses done in 659ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 26 seconds
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 10ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 113ms
+◐ started regen.digest
+✓ regen.digest done in 25 seconds
+required-regen: elapsed_ms=434413 first_generation_equal=false planned=155 executed=155 adjudicated=155 declared_divergent=1 [main.rs]
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 4 minutes
+✓ round.install done in 4 minutes
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 4 minutes
+✓ round.install done in 5 minutes
+regen-round-cost: producer=claim_executor --regen-round-cost host=srv2 tree=c704848dabb96163f2bcfebf9d059bf16f5adeec tree_dirty=false seed_build_compiled_crates=1 rebuild_compiled_crates=2 rustfmt_spawns=622
+regen-round-cost: phase=seed_build wall_ms=293136 cpu_ms=510930
+regen-round-cost: phase=corpus_load wall_ms=18020 cpu_ms=17970
+regen-round-cost: phase=compile.frontend wall_ms=28260 cpu_ms=28170
+regen-round-cost: phase=compile.normalize wall_ms=645 cpu_ms=640
+regen-round-cost: phase=compile.reconcile wall_ms=47303 cpu_ms=47160
+regen-round-cost: phase=compile.analyses wall_ms=659 cpu_ms=660
+regen-round-cost: phase=compile.emit wall_ms=261711 cpu_ms=260800
+regen-round-cost: phase=mirror_write wall_ms=26853 cpu_ms=27420
+regen-round-cost: phase=candidate_verify wall_ms=0 cpu_ms=0
+regen-round-cost: phase=adjudicate wall_ms=10 cpu_ms=10
+regen-round-cost: phase=hand_verify wall_ms=113 cpu_ms=110
+regen-round-cost: phase=digest wall_ms=25826 cpu_ms=26580
+regen-round-cost: phase=rebuild_from_installed wall_ms=267403 cpu_ms=467460
+regen-round-cost: phase=install wall_ms=289474 cpu_ms=489450
+regen-round-cost: phase=rebuild_from_installed wall_ms=282591 cpu_ms=493170
+regen-round-cost: phase=install wall_ms=301250 cpu_ms=511740
+regen-round-cost: total wall_ms=1843254 cpu_ms=2882270
+regen-round-cost: changed_paths=2 [src/v1/stage0/src/std_compiler_entry.rs, src/v1/stage0/src/v1_compiler_emit_rust.rs]
+regen-round-cost: convergence_stages=2 [stage-1, stage-2]
+partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[std_compiler_entry.rs, v1_compiler_emit_rust.rs] owning_packages=[v1-compiler] package_closure=[v1-compiler] executable_assembly=assembled package=v1-compiler bin=claim_executor
+regen-round-cost: execution-identity rebuild_packages=1 [v1-compiler] executable_digest=fnv1a64:b45e9ecf8c683cf2 second_generation_candidate=fnv1a64:7bedb41c171bd802
+regen-round-cost: receipt=/home/briansrls/eager-raven-113/regen.iR8A85/repo/target/stage0-regen-round-cost.txt
+memory-cgroup-bind: not requested
+◐ started compile.frontend
+✓ compile.frontend done in 26 seconds
+✓ compile.normalize done in 571ms
+✓ compile.reconcile done in 41 seconds
+✓ compile.analyses done in 629ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+required-regen-fixed-point: fixed_point_equal=true referenced_first_generation_equal=true referenced_at=c704848dabb96163f2bcfebf9d059bf16f5adeec
+   Compiling v1-compiler-tests v0.1.0 (/home/briansrls/eager-raven-113/regen.iR8A85/repo/src/v1/tests)
+error[E0063]: missing fields `bisect_arm_exit`, `bisect_driver_tail`, `bisect_loop_setup` and 1 other field in initializer of `NativeDriverExclusiveRows`
+  --> src/v1/tests/src/native_driver_cost_refusal_test.rs:33:26
+   |
+33 |         std::rc::Rc::new(NativeDriverExclusiveRows {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^ missing `bisect_arm_exit`, `bisect_driver_tail`, `bisect_loop_setup` and 1 other field
+
+error[E0063]: missing fields `bisect_arm_exit`, `bisect_driver_tail`, `bisect_loop_setup` and 1 other field in initializer of `NativeDriverExclusiveRows`
+  --> src/v1/tests/src/native_driver_cost_refusal_test.rs:62:26
+   |
+62 |         std::rc::Rc::new(NativeDriverExclusiveRows {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^ missing `bisect_arm_exit`, `bisect_driver_tail`, `bisect_loop_setup` and 1 other field
+
+For more information about this error, try `rustc --explain E0063`.
+error: could not compile `v1-compiler-tests` (lib test) due to 2 previous errors
