@@ -528,14 +528,10 @@ type RunIdentityStanding
       job_key: NonEmptyStr
       matrix_selector: JobMatrixIdentity
     }
-  | WorkflowBlobEquivalent {
-      repository: NonEmptyStr
-      inspected_commit: CommitSha
-      observed_head: CommitSha
-      workflow_path: NonEmptyStr
-      workflow_blob_sha: NonEmptyStr
-      job_key: NonEmptyStr
-      matrix_selector: JobMatrixIdentity
+  | WorkflowEquivalentOnly {
+      inspected: CommitSha
+      observed: CommitSha
+      blob: NonEmptyStr
     }
   | RunIdentityMismatched { cause: NonEmptyStr }
   | RunIdentityUnresolved { cause: NonEmptyStr }
@@ -742,14 +738,10 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
                 matrix_selector: c.matrix_selector,
               }
             } else if (c.workflow_blob_sha as String) == (workflow_blob_sha_at_head as String) {
-              WorkflowBlobEquivalent {
-                repository: c.repository,
-                inspected_commit: c.inspected_commit,
-                observed_head: head_sha,
-                workflow_path: c.workflow_path,
-                workflow_blob_sha: c.workflow_blob_sha,
-                job_key: c.job_key,
-                matrix_selector: c.matrix_selector,
+              WorkflowEquivalentOnly {
+                inspected: c.inspected_commit,
+                observed: head_sha,
+                blob: c.workflow_blob_sha,
               }
             } else {
               RunIdentityMismatched {
@@ -838,10 +830,34 @@ fn baseline_admission(c: WorkloadCandidate) -> BaselineAdmission {
       BaselineRefused { cause: concat("observed run is not the inspected workload: ", cause) }
     ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
       baseline_from_observed_correctness(c: c)
-    WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
+    WorkflowEquivalentOnly { inspected, observed, blob } =>
       BaselineRefused {
         cause: "workflow blob equivalence is not a versioned correctness baseline: tests, dependencies and invoked scripts can change while the workflow YAML bytes stay the same",
       }
+  }
+}
+
+type ArchitectureJoinStanding
+  = ArchitectureJoinOnInspectedRevision
+  | ArchitectureJoinOnWorkflowEquivalentOnly {
+      inspected: CommitSha
+      observed: CommitSha
+      blob: NonEmptyStr
+    }
+  | ArchitectureJoinRefused { cause: NonEmptyStr }
+
+fn architecture_join_standing(c: WorkloadCandidate) -> ArchitectureJoinStanding {
+  match candidate_run_identity(c: c) {
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+      ArchitectureJoinOnInspectedRevision
+    WorkflowEquivalentOnly { inspected, observed, blob } =>
+      ArchitectureJoinOnWorkflowEquivalentOnly {
+        inspected: inspected,
+        observed: observed,
+        blob: blob,
+      }
+    RunIdentityMismatched { cause } => ArchitectureJoinRefused { cause: cause }
+    RunIdentityUnresolved { cause } => ArchitectureJoinRefused { cause: cause }
   }
 }
 
@@ -1316,7 +1332,7 @@ data workload_census: List<WorkloadCandidate> = [
 fn observed_run_is_the_inspected_workload(c: WorkloadCandidate) -> Bool {
   match candidate_run_identity(c: c) {
     ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => true
-    WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } => true
+    WorkflowEquivalentOnly { inspected, observed, blob } => true
     RunIdentityMismatched { cause } => false
     RunIdentityUnresolved { cause } => false
   }
