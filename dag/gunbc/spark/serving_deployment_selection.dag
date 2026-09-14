@@ -1248,11 +1248,12 @@ fn candidate_component_budget(
           obligation: "this candidate declares zero tensor-parallel ranks, so there is no per-rank budget to derive" as NonEmptyStr,
         }
       } else {
-      if sibling_footprints_unread(cp: cp, c: c) > 0 {
+      let unread = sibling_footprints_unread(cp: cp, c: c)
+      if unread > 0 {
         ComponentBudgetUnestablished {
           subject: ctx,
           obligation: join([
-            to_string(sibling_footprints_unread(cp: cp, c: c)),
+            to_string(unread),
             " of this artifact's other components have no read footprint, so the bytes they occupy on a rank are unknown and the remainder available to this component cannot be derived. Treating them as zero would make the budget larger and the memory screen weaker, which can only cause a MISSED exclusion -- and a missed exclusion is the harm this screen exists to prevent. The obligation is a footprint reading for those components under this candidate's own topology",
           ], "") as NonEmptyStr,
         }
