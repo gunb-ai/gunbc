@@ -16,11 +16,13 @@ import gunbc.container.registry_image_config {
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 
-// WHAT THIS CLASSIFIES: Env entries decoded from a ContainerImageConfig. WHAT IT DOES NOT: whether
-// a live container runs that image.
+// WHAT THIS CLASSIFIES: Env entries decoded from a ContainerImageConfig against a modeled
+// syntactic class (name markers and PEM headers). EnvSecretShapeUnmatched is that class
+// unmatched, not a claim that the Env contains no secrets. WHAT IT DOES NOT: whether a live
+// container runs that image.
 
 type EnvSecretStanding
-  = EnvContainsNoSecretShapedEntry { names: List<NonEmptyStr> }
+  = EnvSecretShapeUnmatched { names: List<NonEmptyStr> }
   | EnvContainsSecretShapedEntry { secret_shaped_names: List<NonEmptyStr> }
 
 type PinnedBaseImageEnvClassification {
@@ -45,11 +47,23 @@ fn env_entry_value(entry: String) -> String {
   }
 }
 
+fn env_name_ends_with(name: String, suffix: String) -> Bool {
+  if name.length() < suffix.length() {
+    false
+  } else {
+    substring(s: name, start: name.length() - suffix.length(), end: name.length()) == suffix
+  }
+}
+
 fn env_name_is_secret_shaped(name: String) -> Bool {
   string_contains(s: name, pattern: "PASSWORD")
+    || string_contains(s: name, pattern: "PASSWD")
     || string_contains(s: name, pattern: "SECRET")
     || string_contains(s: name, pattern: "TOKEN")
+    || string_contains(s: name, pattern: "CREDENTIAL")
     || string_contains(s: name, pattern: "API_KEY")
+    || string_contains(s: name, pattern: "ACCESS_KEY")
+    || env_name_ends_with(name: name, suffix: "_KEY")
 }
 
 fn env_value_is_secret_shaped(value: String) -> Bool {
@@ -96,7 +110,7 @@ fn classify_container_image_config_env(config: ContainerImageConfig) -> EnvSecre
   let env = container_image_config_env(cfg: config)
   let secrets = secret_shaped_names(env: env)
   if count(secrets) == 0 {
-    EnvContainsNoSecretShapedEntry { names: env_names(env: env) }
+    EnvSecretShapeUnmatched { names: env_names(env: env) }
   } else {
     EnvContainsSecretShapedEntry { secret_shaped_names: secrets }
   }
@@ -112,14 +126,14 @@ fn classify_pinned_base_image_env(config: ContainerImageConfig, pin: NonEmptyStr
 
 fn env_secret_standing_is_secret_bearing(standing: EnvSecretStanding) -> Bool {
   match standing {
-    EnvContainsNoSecretShapedEntry { names: _ } => false
+    EnvSecretShapeUnmatched { names: _ } => false
     EnvContainsSecretShapedEntry { secret_shaped_names: _ } => true
   }
 }
 
 fn env_secret_standing_carried_strings(standing: EnvSecretStanding) -> List<String> {
   match standing {
-    EnvContainsNoSecretShapedEntry { names: ns } => map(ns, n => n as String)
+    EnvSecretShapeUnmatched { names: ns } => map(ns, n => n as String)
     EnvContainsSecretShapedEntry { secret_shaped_names: ns } => map(ns, n => n as String)
   }
 }
@@ -163,7 +177,7 @@ fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
       exit_failure(reason: join(["sparkrun_pinned_base_env_classification: ", c], ""))
     PinnedBaseEnvReadClassified { classification: row } =>
       match row.standing {
-        EnvContainsNoSecretShapedEntry { names: _ } => ExitSuccess
+        EnvSecretShapeUnmatched { names: _ } => ExitSuccess
         EnvContainsSecretShapedEntry { secret_shaped_names: ns } =>
           if count(ns) == 0 {
             exit_failure(reason: "sparkrun_pinned_base_env_classification: secret-bearing standing carried no names")

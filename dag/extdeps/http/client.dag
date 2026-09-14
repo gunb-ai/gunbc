@@ -2,7 +2,7 @@ module extdeps.http.client
 
 import std.types { NonEmptyStr, Bool, List, Unit }
 import std.string_type { String }
-import std.measure { second_count }
+import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools.curl {
@@ -25,6 +25,10 @@ fn http_client_localhost_connect_timeout_flag() -> String {
 
 fn http_client_localhost_max_time_flag() -> String {
   to_string(second_count(s: curl_localhost_max_time))
+}
+
+fn http_client_max_time_flag(max_time: Second) -> NonEmptyStr {
+  to_string(second_count(s: max_time)) as NonEmptyStr
 }
 
 fn http_client_get_argv(url: NonEmptyStr) -> List<String> {

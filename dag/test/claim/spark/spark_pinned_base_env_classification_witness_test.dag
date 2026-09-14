@@ -28,7 +28,7 @@ import gunbc.spark.managed_access_bootstrap {
   spark_pinned_base_env_disclosure_standing,
 }
 import gunbc.spark.pinned_base_env_classification {
-  EnvContainsNoSecretShapedEntry,
+  EnvSecretShapeUnmatched,
   EnvContainsSecretShapedEntry,
   PinnedBaseEnvReadClassified,
   PinnedBaseEnvReadRefused,
@@ -52,9 +52,37 @@ test fn a_credential_shaped_env_entry_classifies_as_secret_bearing() -> Bool {
   )
 }
 
+test fn access_key_passwd_credentials_and_key_suffix_classify_as_secret_bearing() -> Bool {
+  env_secret_standing_is_secret_bearing(
+    standing: classify_container_image_config_env(
+      config: container_image_config_from_env(env: ["AWS_ACCESS_KEY_ID=fixture-not-a-live-secret"]),
+    ),
+  )
+    && env_secret_standing_is_secret_bearing(
+         standing: classify_container_image_config_env(
+           config: container_image_config_from_env(env: ["ROOT_PASSWD=fixture-not-a-live-secret"]),
+         ),
+       )
+    && env_secret_standing_is_secret_bearing(
+         standing: classify_container_image_config_env(
+           config: container_image_config_from_env(env: ["DB_CREDENTIALS=fixture-not-a-live-secret"]),
+         ),
+       )
+    && env_secret_standing_is_secret_bearing(
+         standing: classify_container_image_config_env(
+           config: container_image_config_from_env(env: ["HF_TOKEN_FILE=fixture-not-a-live-secret"]),
+         ),
+       )
+    && env_secret_standing_is_secret_bearing(
+         standing: classify_container_image_config_env(
+           config: container_image_config_from_env(env: ["SERVICE_ACCOUNT_KEY=fixture-not-a-live-secret"]),
+         ),
+       )
+}
+
 test fn interface_style_env_names_are_not_secret_bearing() -> Bool {
   match classify_container_image_config_env(config: fixture_non_secret_config()) {
-    EnvContainsNoSecretShapedEntry { names: ns } => count(ns) == 3
+    EnvSecretShapeUnmatched { names: ns } => count(ns) == 3
     EnvContainsSecretShapedEntry { secret_shaped_names: _ } => false
   }
 }

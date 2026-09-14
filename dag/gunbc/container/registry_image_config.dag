@@ -2,6 +2,7 @@ module gunbc.container.registry_image_config
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import std.measure { Second, second }
 import extdeps.container.oci.digest {
   OciOtherDigest,
   OciSha256Digest,
@@ -21,6 +22,7 @@ import extdeps.docker.hub {
   docker_hub_manifest_url,
 }
 import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
 import extdeps.languages.json.parse {
   JsonDocumentParsed,
@@ -241,15 +243,17 @@ fn registry_http_get_bounded(url: NonEmptyStr) -> RegistryHttpBody {
   }
 }
 
+data registry_image_config_fetch_deadline: Second = second(count: 60)
+
 fn registry_http_get_with_bearer(
   url: NonEmptyStr,
   accept: NonEmptyStr,
   header_file: NonEmptyStr,
-  max_seconds: NonEmptyStr,
+  max_time: Second,
 ) -> RegistryHttpBody {
   let got = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
     url: url,
-    max_seconds: max_seconds,
+    max_seconds: http_client_max_time_flag(max_time: max_time),
     accept: accept,
     header_file: header_file,
   )
@@ -329,7 +333,7 @@ fn read_docker_hub_image_config_at_digest(
             url: manifest_url,
             accept: registry_manifest_accept_header(),
             header_file: header_path,
-            max_seconds: "60" as NonEmptyStr,
+            max_time: registry_image_config_fetch_deadline,
           ) {
             RegistryHttpFetchRefused { url: u, cause: c } => {
               let cleaned = shell.Remove.RecursiveForce(path: dir.path)
@@ -396,7 +400,7 @@ fn read_docker_hub_image_config_at_digest(
                                 url: docker_hub_blob_url(repository: repository, digest_wire: config_digest),
                                 accept: registry_config_blob_accept_header(),
                                 header_file: header_path,
-                                max_seconds: "60" as NonEmptyStr,
+                                max_time: registry_image_config_fetch_deadline,
                               ) {
                                 RegistryHttpFetchRefused { url: u, cause: c } => {
                                   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
