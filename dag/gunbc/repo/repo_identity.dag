@@ -2,9 +2,6 @@ module gunbc.repo_identity
 
 import std.types { String, GitRef }
 import extdeps.git { GitRemoteRefParts, git_remote_ref, default_remote }
-import extdeps.github.repository {
-  RepositoryVisibilityStanding, RepositoryVisibility, PublicRepository, PrivateRepository
-}
 
 // The single authority for this repo's default-branch and default-remote facts (DESIGN §3). Before
 // this carrier the merge-target ref origin/main was a String literal forked across four workflow
@@ -45,26 +42,3 @@ data gunbc_merge_target: GitRemoteRefParts = GitRemoteRefParts {
 }
 
 data gunbc_merge_target_ref: GitRef = git_remote_ref(parts: gunbc_merge_target)
-
-// THE VISIBILITY STANDING OF THE TWO REPOSITORIES THIS WORKSPACE COMPOSES. Visibility is a fact
-// ABOUT A REPOSITORY, so it lives beside this repository's other identity facts and is read by
-// every consumer that needs to know whether material is world-readable — it is never restated at
-// the point of use. gunbc.workspace_repository_materialisation joins these standings to the
-// prefixes each repository is materialised under, and gunbc.gitignore_emit derives an ignore row
-// from the join rather than from an authored per-row reason.
-//
-// The visibilities are cited by observation of the GitHub repository objects: gunb-ai/gunbc is the
-// public repository this checkout pushes to, and gunb-ai/gunbc-private is private. If either is
-// ever flipped at the forge, THIS is the row to change, and the .gitignore projection follows.
-
-data gunbc_public_repository: RepositoryVisibilityStanding = RepositoryVisibilityStanding {
-  owner: "gunb-ai",
-  name: "gunbc",
-  visibility: PublicRepository,
-}
-
-data gunbc_private_repository: RepositoryVisibilityStanding = RepositoryVisibilityStanding {
-  owner: "gunb-ai",
-  name: "gunbc-private",
-  visibility: PrivateRepository,
-}

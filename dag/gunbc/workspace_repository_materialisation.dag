@@ -1,11 +1,11 @@
 module gunbc.workspace_repository_materialisation
 
 import std.types { String, List, Bool }
+import extdeps.github.github { Repository }
 import extdeps.github.repository {
-  RepositoryVisibilityStanding, repository_standing_slug, standing_is_world_readable,
-  repository_visibility_label
+  repository_visibility, repository_is_world_readable, repository_visibility_label
 }
-import gunbc.repo_identity { gunbc_private_repository }
+import gunbc.repository { gunbc_private_repository }
 
 // THE COMPOSE CONTRACT OF THIS WORKSPACE: which repository is materialised under which prefix of
 // the public checkout, and by what method. It is the PUBLIC half of a contract whose private half
@@ -17,7 +17,7 @@ import gunbc.repo_identity { gunbc_private_repository }
 //
 // WHY THIS IS A FACT OF THE REALIZATION AND NOT AN IGNORE ROW (DESIGN §3). "This directory must
 // not be tracked" is not a primitive: it is a CONSEQUENCE of two facts that live elsewhere — the
-// source repository's visibility (gunbc.repo_identity, from extdeps.github.repository) and the
+// source repository's visibility (gunbc.repository, read through extdeps.github.repository) and the
 // fact that the compose step lands that repository at a prefix inside a public working tree. Both
 // halves exist independently of git, so authoring the consequence as a hand-declared ignore reason
 // would be a second representation of a privacy fact the corpus already models, free to disagree
@@ -81,7 +81,7 @@ fn staged_shape_label(shape: StagedShape) -> String {
 // the model and silently decide a coverage question (trailing slash = directories only) that
 // belongs to the emitter.
 type WorkspaceMaterialisation {
-  source: RepositoryVisibilityStanding
+  source: Repository
   prefix: String
   method: MaterialisationMethod
   meaning: String
@@ -132,7 +132,7 @@ fn workspace_materialisations() -> List<WorkspaceMaterialisation> {
 // repository yields nothing here, which is what makes the derivation discriminating rather than a
 // filter that always passes.
 fn materialisation_must_not_be_tracked(m: WorkspaceMaterialisation) -> Bool {
-  !standing_is_world_readable(standing: m.source)
+  !repository_is_world_readable(repository: m.source)
 }
 
 fn untracked_materialisations(all: List<WorkspaceMaterialisation>) -> List<WorkspaceMaterialisation> {
@@ -144,8 +144,8 @@ fn untracked_materialisations(all: List<WorkspaceMaterialisation>) -> List<Works
 fn materialisation_ignore_reason(m: WorkspaceMaterialisation) -> String {
   concat(
     concat(
-      concat(repository_standing_slug(standing: m.source), " is "),
-      concat(repository_visibility_label(visibility: m.source.visibility), " — never tracked by this repository; ")
+      concat(m.source.full_name, " is "),
+      concat(repository_visibility_label(visibility: repository_visibility(repository: m.source)), " — never tracked by this repository; ")
     ),
     concat(
       concat("materialised here by ", staged_shape_label(shape: materialisation_staged_shape(method: m.method))),

@@ -1,6 +1,7 @@
 module extdeps.github.repository
 
 import std.types { String, Bool }
+import extdeps.github.github { Repository }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -51,25 +52,23 @@ fn repository_visibility_label(visibility: RepositoryVisibility) -> String {
   }
 }
 
-// A REPOSITORY'S VISIBILITY STANDING — the (owner, name, visibility) triple, which is the whole
-// fact "this repository is / is not world-readable" and nothing else.
+// THE BRIDGE BETWEEN THE UPSTREAM'S TWO SPELLINGS OF ONE FACT, which is where the consolidation
+// named above actually begins rather than being promised. GitHub's repository object carries BOTH
+// `visibility` and the older boolean `private`, and extdeps.github.github Repository models the
+// boolean because that is what the API returns. A consumer that wants the typed answer asks here
+// instead of matching on a Bool at its own site, so the mapping exists ONCE.
 //
-// It is deliberately NOT extdeps.github.github Repository, and the reason is the one repo_identity
-// already records for GitRemoteRefParts: that type is the full API read-model and carries
-// full_name, default_branch and the `private` boolean, so a consumer that only needs to know
-// whether a repository is world-readable would have to fabricate three fields no one reads
-// (DESIGN §2 anemic inflation), one of which is a second spelling of the very fact being asked.
-// Consolidating the read-model onto this type is the follow-up named above.
-type RepositoryVisibilityStanding {
-  owner: String
-  name: String
-  visibility: RepositoryVisibility
+// This is deliberately a function over the EXISTING Repository rather than a second instance type.
+// An earlier draft of this module minted a RepositoryVisibilityStanding carrying owner, name and
+// visibility, and gunbc.repo_identity authored a row of it for gunb-ai/gunbc -- which was a SIXTH
+// spelling of an instance fact gunbc.repository gunbc_repository already owns, in a change whose
+// whole thesis is de-forking. gunbc.repository's own note anticipates the move in as many words:
+// the answer to five nicknames is not a sixth carrying a promise to consolidate later, it is one
+// authority the others CONSUME. The type is deleted and its consumers read Repository.
+fn repository_visibility(repository: Repository) -> RepositoryVisibility {
+  if repository.private { PrivateRepository } else { PublicRepository }
 }
 
-fn repository_standing_slug(standing: RepositoryVisibilityStanding) -> String {
-  concat(standing.owner, concat("/", standing.name))
-}
-
-fn standing_is_world_readable(standing: RepositoryVisibilityStanding) -> Bool {
-  visibility_is_world_readable(visibility: standing.visibility)
+fn repository_is_world_readable(repository: Repository) -> Bool {
+  visibility_is_world_readable(visibility: repository_visibility(repository: repository))
 }

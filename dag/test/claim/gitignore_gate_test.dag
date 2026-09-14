@@ -25,7 +25,7 @@ test fn witness_has_header() -> Bool {
     && string_contains(s: eg, pattern: "do not hand-edit")
     && string_contains(s: eg, pattern: "gunbc.repo_workspace")
     && string_contains(s: eg, pattern: "gunbc.workspace_repository_materialisation")
-    && string_contains(s: eg, pattern: "gunbc.repo_identity")
+    && string_contains(s: eg, pattern: "gunbc.repository")
     && string_contains(s: eg, pattern: "gunbc.generated_artifact")
     && string_contains(s: eg, pattern: "THREE ARMS")
 }
@@ -55,7 +55,7 @@ test fn witness_private_material_rows_are_derived() -> Bool {
 }
 
 data public_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
-  source: gunbc_public_repository,
+  source: gunbc_repository,
   prefix: "public_overlay_probe",
   method: FileCopy,
   meaning: "a materialisation of the PUBLIC repository, which must derive no ignore row",

@@ -2,7 +2,7 @@
 #
 # THREE ARMS, each with its own producer and its own reason for being untracked.
 # 1. Workspace footprints, from gunbc.repo_workspace: an extdeps product's own declaration or a repo tool's, each artifact carrying its meaning and a typed std.workspace_artifact IgnoreReason.
-# 2. Material from a repository that is not world-readable, from gunbc.workspace_repository_materialisation joined with each source repository's visibility in gunbc.repo_identity: the pattern is the row's root-anchored prefix and the reason text is DERIVED from that visibility, never authored per row.
+# 2. Material from a repository that is not world-readable, from gunbc.workspace_repository_materialisation joined with each source repository's visibility in gunbc.repository: the pattern is the row's root-anchored prefix and the reason text is DERIVED from that visibility, never authored per row.
 # 3. Generated artifacts, derived from gunbc.generated_artifact commit policy.
 
 # --- Cargo build artifacts [cited: doc.rust-lang.org/cargo/] ---
