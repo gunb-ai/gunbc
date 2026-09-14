@@ -79,7 +79,7 @@ import v2.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
-  span_index_merge,
+  span_index_adopt,
   span_index_record
 }
 import v2.std.collection {
@@ -142,9 +142,22 @@ import v2.std.grammar {
   grammar_to_node
 }
 
+// THE MEMO FRAME. `frame` names every occurrence id recorded since the innermost memoized
+// production started: a mint is one FrameMinted, and a memo hit or miss inside the frame is one
+// FrameNested sharing the inner frame's list (a snoc, never a copy). A memo hit replays exactly
+// its stored frame into the current index instead of merging the stored index whole. That is
+// exact for every consumer: a node the hit returns carries only ids minted or replayed inside
+// the memoized frame, so every id it can look up is in the replayed frame; entries the stored
+// index held from before the frame belong to a different parse path, no node on this path
+// references them, and the span index is read only by lookup(id).
+type ParseProvFrameItem
+  = FrameMinted { id: OccurrenceId }
+  | FrameNested { frame: List<ParseProvFrameItem> }
+
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
+  frame: List<ParseProvFrameItem>
 }
 
 type ParseArtifact {
@@ -712,10 +725,30 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: occurrence_id_allocator_initial(),
-    index: span_index_empty()
+    index: span_index_empty(),
+    frame: Empty
   }
 }
 
+fn parse_prov_replay_frame(
+  base: v2.std.provenance.SpanIndex,
+  incoming: v2.std.provenance.SpanIndex,
+  frame: List<ParseProvFrameItem>
+) -> v2.std.provenance.SpanIndex {
+  fold_list(
+    xs: frame,
+    empty: base,
+    cons: fn(acc, item) {
+      match item {
+        FrameMinted { id: id } => span_index_adopt(base: acc, incoming: incoming, id: id)
+        FrameNested { frame: inner } => parse_prov_replay_frame(base: acc, incoming: incoming, frame: inner)
+      }
+    }
+  )
+}
+
+// A memo hit: `incoming` is the stored result of the memoized frame, whose `frame` is that
+// frame's own record (the miss started it empty).
 fn parse_prov_merge(
   base: ParseProvenanceState,
   incoming: ParseProvenanceState
@@ -727,7 +760,22 @@ fn parse_prov_merge(
         alloc: incoming.alloc
       )
     ),
-    index: span_index_merge(base: base.index, incoming: incoming.index)
+    index: parse_prov_replay_frame(base: base.index, incoming: incoming.index, frame: incoming.frame),
+    frame: list_snoc_item(xs: base.frame, item: FrameNested { frame: incoming.frame })
+  }
+}
+
+// A memo miss: the production parses in a fresh frame so its memo entry records only its own ids.
+fn parse_prov_enter_frame(prov: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState { alloc: prov.alloc, index: prov.index, frame: Empty }
+}
+
+// Returning from a miss: the caller's frame gains the inner frame as one nested item.
+fn parse_prov_leave_frame(outer: ParseProvenanceState, inner: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: inner.alloc,
+    index: inner.index,
+    frame: list_snoc_item(xs: outer.frame, item: FrameNested { frame: inner.frame })
   }
 }
 
@@ -746,7 +794,11 @@ fn parse_mint_from_source(
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseMintSourceResult {
     id: minted.id,
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -845,7 +897,11 @@ fn parse_stamp_derived_conj(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -862,7 +918,11 @@ fn parse_stamp_derived_repeat(
       acc_nodes: acc_nodes,
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -884,7 +944,11 @@ fn parse_wrap_production_captured(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -1178,7 +1242,7 @@ fn parse_nonterminal_memoized_core(
             all_tokens: all_tokens,
             root: root,
             table: table_miss,
-            prov: prov
+            prov: parse_prov_enter_frame(prov: prov)
           )
           let table_after_memo = parse_table_insert(
             table: parse_expr_result_table(result: inner),
@@ -1192,7 +1256,7 @@ fn parse_nonterminal_memoized_core(
               let stamped = parse_wrap_production_captured(
                 production: production,
                 captured: captured,
-                prov: inner_prov
+                prov: parse_prov_leave_frame(outer: prov, inner: inner_prov)
               )
               ParseExprAccepted {
                 remaining: remaining,

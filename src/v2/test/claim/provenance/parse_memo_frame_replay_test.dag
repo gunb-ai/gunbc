@@ -1,0 +1,147 @@
+module v2.test.provenance.parse_memo_frame_replay
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A MEMO HIT MUST RESOLVE EVERY NODE IT RETURNS EXACTLY AS A PARSE WITH NO MEMO DOES. A memo hit
+// replays the stored frame -- the ids minted or replayed inside the memoized production -- into
+// the current span index, instead of merging the stored index whole. The oracle is independent of
+// that mechanism: the same tokens under the same prepared grammar, once with the table's
+// materialization Memoize (hits happen) and once with Recompute (the door refuses every store, so
+// no hit can happen), must give every minted node in the tree a span-index entry, and the
+// pre-order list of their textual-locus resolutions must be identical. A replay that drops an id the returned subtree
+// references reds on the entry check; one that adopts the wrong event reds on the comparison.
+//
+// The specimen is real .dag under the real .dag grammar so the parser backtracks through choices,
+// optionals and repeats with memo entries surviving the rollback -- the shape a hand grammar with
+// one production cannot reach.
+data parse_memo_frame_replay_source: String = "module c2.specimen\n\nfn f(a: Int, b: Int) -> Int {\n  if a < b {\n    g(x: a, y: [a, b])\n  } else {\n    match b {\n      0 => a\n      _ => h(z: b)\n    }\n  }\n}\n\nfn g(x: Int, y: List<Int>) -> Int { x }\nfn h(z: Int) -> Int { z }\n"
+
+type ParseMemoFrameReplayRun {
+  tree: Node
+  index: SpanIndex
+  hits: Int
+}
+
+fn parse_memo_frame_replay_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let lm = dag_language_model()
+  match tokenize(text: parse_memo_frame_replay_source, file: ^parse_memo_frame_replay_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: stream, diagnostics: _ } =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: prepared, diagnostics: _ } =>
+          match prepared {
+            PreparedVoidGrammar => optional_absent()
+            PreparedModeled { modeled: modeled } =>
+              parse_memo_frame_replay_run_modeled(
+                tokens: token_stream_remaining(stream: stream),
+                modeled: modeled,
+                materialization: materialization
+              )
+          }
+      }
+  }
+}
+
+fn parse_memo_frame_replay_run_modeled(
+  tokens: List<Token>,
+  modeled: PreparedModeledGrammar,
+  materialization: Materialization
+) -> Optional<ParseMemoFrameReplayRun> {
+  let root = modeled.validated.root
+  let base = parse_table_for_production_analyzed(
+    validated: modeled.validated,
+    analysis: modeled.analysis,
+    all_tokens: tokens
+  )
+  let table = ParseTableRealization {
+    artifact_kind: base.artifact_kind,
+    provider_id: base.provider_id,
+    materialization: materialization,
+    grammar_digest: base.grammar_digest,
+    token_stream_digest: base.token_stream_digest,
+    entries: base.entries,
+    memo_hits: base.memo_hits,
+    memo_misses: base.memo_misses,
+    memo_lookup_calls: base.memo_lookup_calls,
+    nullable_set: base.nullable_set,
+    first_rows: base.first_rows,
+    productions_by_name: base.productions_by_name,
+    prepared_exprs: base.prepared_exprs
+  }
+  match grammar_lookup_production(root: root, name: root.start) {
+    Violates { diagnostic: _ } => optional_absent()
+    Holds { value: production } =>
+      match parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: root,
+        table: table,
+        prov: parse_prov_initial()
+      ) {
+        ParseExprRejected { diagnostics: _, table: _ } => optional_absent()
+        ParseExprAccepted { remaining: _, captured: captured, diagnostics: _, prov: prov, table: final_table } =>
+          optional_present(value: ParseMemoFrameReplayRun {
+            tree: captured,
+            index: prov.index,
+            hits: final_table.memo_hits
+          })
+      }
+  }
+}
+
+// Absent when any minted node has no span-index entry -- the fact a dropped replay breaks.
+// Otherwise each minted node's textual-locus resolution in pre-order. Resolution itself is not
+// total (a DerivedBy over children with no minted id exhausts its chain), so an unresolved node is
+// recorded as Absent and compared, never treated as failure.
+fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<Optional<Locus>>> {
+  fold_list(
+    xs: node_subtree_nodes(root: run.tree),
+    empty: optional_present(value: std.algebra.Empty),
+    cons: fn(acc, n) {
+      match acc {
+        Absent => acc
+        Present { value: loci } =>
+          match n.occurrence_id {
+            OccurrenceMinted { id: id } =>
+              match span_index_lookup(index: run.index, id: id) {
+                Violates { diagnostic: _ } => optional_absent()
+                Holds { value: _ } =>
+                  match span_index_resolve_textual_locus(index: run.index, id: id) {
+                    Holds { value: locus } =>
+                      optional_present(value: list_snoc_item(xs: loci, item: optional_present(value: locus)))
+                    Violates { diagnostic: _ } =>
+                      optional_present(value: list_snoc_item(xs: loci, item: optional_absent()))
+                  }
+              }
+            OccurrenceSynthetic => acc
+            OccurrenceProjected { id: _, caused_by: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+test fn parse_memo_hit_resolves_every_node_like_a_memo_free_parse() -> Bool {
+  match parse_memo_frame_replay_run(materialization: Memoize) {
+    Absent => false
+    Present { value: warm } =>
+      match parse_memo_frame_replay_run(materialization: Recompute) {
+        Absent => false
+        Present { value: cold } =>
+          match parse_memo_frame_replay_loci(run: warm) {
+            Absent => false
+            Present { value: warm_loci } =>
+              match parse_memo_frame_replay_loci(run: cold) {
+                Absent => false
+                Present { value: cold_loci } =>
+                  (warm.hits > 0)
+                    && (cold.hits == 0)
+                    && (length(xs: warm_loci) > 0)
+                    && (warm_loci == cold_loci)
+              }
+          }
+      }
+  }
+}
