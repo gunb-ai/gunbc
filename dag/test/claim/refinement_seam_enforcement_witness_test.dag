@@ -139,6 +139,27 @@ test fn an_alias_defeats_the_literal_wall_that_the_direct_spelling_holds() -> Bo
   ) == 0
 }
 
+// EXPECTING-RED HOLE, measured first by the parallel census lane fierce-moth-238 and re-run by this
+// lane before enrolling. The alias edge drops the predicate with no cast, no brand and no data
+// binding: a blank returned through `type Seg = NonEmptyStr` is silent where the direct return
+// (asserted at delta 1 above) refuses. Two more #124-shaped cells with no parameter-literal
+// involved: a List<String> let returned as List<NonEmptyStr>, and the same let fed to a
+// List<PathSegment> parameter.
+test fn the_alias_edge_and_let_bound_lists_admit_a_blank_without_any_cast() -> Bool {
+  blocking_delta(
+    hostile: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"\" }\n",
+    safe: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"ok\" }\n"
+  ) == 0
+  && blocking_delta(
+    hostile: seam_hdr + "fn f() -> List<NonEmptyStr> {\nlet raw: List<String> = [\"\"]\nraw\n}\n",
+    safe: seam_hdr + "fn f() -> List<NonEmptyStr> {\nlet raw: List<String> = [\"ok\"]\nraw\n}\n"
+  ) == 0
+  && blocking_delta(
+    hostile: seam_hdr + "fn take(xs: List<PathSegment>) -> Int { 0 }\nfn g() -> Int {\nlet raw: List<String> = [\"\"]\ntake(xs: raw)\n}\n",
+    safe: seam_hdr + "fn take(xs: List<PathSegment>) -> Int { 0 }\nfn g() -> Int {\nlet raw: List<String> = [\"ok\"]\ntake(xs: raw)\n}\n"
+  ) == 0
+}
+
 // EXPECTING-RED HOLE. Every character std.types path_segment_safety_note names as the law --
 // `..`, `/`, `\`, LF, NUL -- is admitted as a BARE LITERAL at the position the brand declares,
 // which is the one place every other predicate in this corpus refuses. `brand` is on the deferred
