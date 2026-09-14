@@ -6,7 +6,7 @@ import gunbc.frontend_eval.task {
   ExpressionNesting, LabeledPositionShape, CoproductIdentity, MatchArmCoverage, ImportTopologySentinel,
   RefusedAtParse, RefusedAtResolve,
   frontend_eval_tasks, frontend_eval_task_count, mutation_class_scored_separately, mutation_class_key,
-  frontend_eval_tasks_json,
+  frontend_eval_tasks_json, frontend_stage_key,
 }
 import gunbc.frontend_eval.attempt {
   EvalAttempt, EvalUsage, EvalArm, EvalOutcome, ArmSummary,
@@ -15,6 +15,8 @@ import gunbc.frontend_eval.attempt {
   eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted,
 }
 import gunbc.frontend_eval.card { frontend_language_card }
+import gunbc.frontend_eval.control { refusal_stage, mutation_site_occurrences, import_targets, module_file_path, test_fns }
+import std.measure { millisecond, token_count }
 
 fn tasks_in_class(class: FrontendMutationClass) -> Int {
   count(frontend_eval_tasks |> filter(t => t.class == class))
@@ -71,9 +73,9 @@ fn fixture_attempt(id: String, class: FrontendMutationClass, arm: EvalArm, outco
   EvalAttempt {
     task_id: id as NonEmptyStr, class: class, arm: arm,
     model_id: "m", model_snapshot: "s", compiler_program_sha256: "c", card_sha256: "k", tool_schema_sha256: "t",
-    temperature_milli: 0, max_tokens: 1,
-    usage: EvalUsage { prompt_tokens: 0, completion_tokens: reasoning * 2, reasoning_tokens: reasoning },
-    cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall_ms: 0,
+    temperature: 0.0, max_tokens: token_count(count: 1),
+    usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: reasoning * 2), reasoning_tokens: token_count(count: reasoning) },
+    cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall: millisecond(count: 0),
   }
 }
 
@@ -119,4 +121,28 @@ test fn card_projects_operators_and_item_forms_and_no_task_text() -> Bool {
     && contains(card, " match ")
     && contains(card, "- `fn` <TypeParams> (params) -> ReturnType (return required) body: expression")
     && fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && (t.mutation.new == "" || contains(card, t.mutation.new) == false))
+}
+
+// THE CONTROL INSTRUMENT'S PURE FOLDS, exercised hermetically: stage classification from the
+// refusal's own vocabulary, the occurrence count that gates a mutation, import-line parsing, the
+// layer convention for module paths, and test-fn discovery. The effectful run is control_run.
+test fn control_stage_is_read_from_the_refusal_vocabulary() -> Bool {
+  frontend_stage_key(stage: refusal_stage(text: "x.dag:67:20: error: expected FatArrow, found Newline")) == "parse"
+    && frontend_stage_key(stage: refusal_stage(text: "x.dag:1-1: heads-only parse: unterminated function body")) == "parse"
+    && frontend_stage_key(stage: refusal_stage(text: "x.dag:49:22: error: non-exhaustive match: missing variant(s) Equal")) == "resolve"
+    && frontend_stage_key(stage: refusal_stage(text: "error: undefined function 'interval_lower'")) == "resolve"
+}
+
+test fn control_occurrences_counts_disjoint_matches() -> Bool {
+  mutation_site_occurrences(haystack: "a => b\n  Equal => Equal\n  c", needle: "Equal => Equal") == 1
+    && mutation_site_occurrences(haystack: "saw_worse: x, saw_worse: y", needle: "saw_worse") == 2
+    && mutation_site_occurrences(haystack: "nothing here", needle: "Equal") == 0
+}
+
+test fn control_parses_import_lines_and_module_paths() -> Bool {
+  import_targets(source: "module m\n\nimport std.types { Bool }\nimport extdeps.process.posix_exit {\n  X,\n}\nfn f() -> Bool { true }\n") == ["std.types", "extdeps.process.posix_exit"]
+    && module_file_path(module_path: "std.pareto") == Present { value: "dag/std/pareto.dag" }
+    && module_file_path(module_path: "v2.compiler.parse") == Present { value: "src/v2/compiler/parse.dag" }
+    && module_file_path(module_path: "nowhere.x") == none
+    && test_fns(source: "test fn a_b() -> Bool { true }\nfn c() -> Bool { true }\ntest fn d() -> Bool { true }\n") == ["a_b", "d"]
 }

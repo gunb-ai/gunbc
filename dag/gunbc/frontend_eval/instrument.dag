@@ -5,6 +5,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.frontend_eval.task { frontend_eval_tasks_json }
 import gunbc.frontend_eval.card { frontend_language_card }
+import gunbc.frontend_eval.attempt { frontend_eval_report }
+import gunbc.frontend_eval.attempt_rows { attempt_rows }
 
 // THE ENTRY POINTS A DRIVER CALLS. Each writes one projection of an in-repo authority to a path the
 // driver names, so the driver never re-types a task row or a card line: it consumes bytes this
@@ -12,6 +14,15 @@ import gunbc.frontend_eval.card { frontend_language_card }
 // other way -- the driver emits them as a `.dag` data module and a generated entry folds them
 // through gunbc.frontend_eval.attempt.frontend_eval_report, so the table is computed in the
 // interpreter from typed rows rather than in the driver.
+//
+// CONSUMPTION, CLASSIFIED (DESIGN section 3c). Today's consumer of write_tasks and write_card is the
+// Demo 0 driver, which is local tooling outside the substrate by the repo_workspace rule that no
+// Python is committed; it is therefore a DECLARED FRONTIER, not an executing in-tree consumer. The
+// named terminal consumer is the harness worker (gunbc.harness.harness_cli harness_worker_cli)
+// running on a fleet host over an isolated-closure workspace built the way
+// gunbc.frontend_eval.control builds one; the trigger is that worker being able to run off a
+// fleet host at all (harness_bind_seat is host-bound today) -- the same trigger that dissolves the
+// local driver. The roster itself is consumed in-tree and by execution by control_run.
 fn write_projection(path: String, content: String) -> ProcessExit {
   let w = Filesystem.Write(path: path, content: content)
   if w.success {
@@ -27,4 +38,10 @@ fn write_tasks(path: String) -> ProcessExit {
 
 fn write_card(path: String) -> ProcessExit {
   write_projection(path: path, content: frontend_language_card())
+}
+
+// THE REPORT IS COMPUTED HERE, IN THE INTERPRETER, FROM THE COMMITTED TYPED ROWS -- the instrument a
+// reader names to re-derive the table (DESIGN section 6), never a table pasted into prose.
+fn write_report(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_report(attempts: attempt_rows))
 }

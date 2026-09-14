@@ -1,6 +1,7 @@
 module gunbc.frontend_eval.attempt
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, Float, List, NonEmptyStr }
+import std.measure { Millisecond, TokenCount, token_count_value }
 import gunbc.frontend_eval.task { FrontendMutationClass, mutation_class_scored_separately, mutation_class_key }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
@@ -59,11 +60,11 @@ fn eval_outcome_accepted(outcome: EvalOutcome) -> Bool {
 }
 
 // USAGE IS WIRE-OBSERVED, NOT MODEL-REPORTED: the counts come from the serving engine's usage
-// block on each response, summed over the attempt's cycles.
+// block on each response, summed over the attempt's cycles, carried as std.measure token counts.
 type EvalUsage {
-  prompt_tokens: Int
-  completion_tokens: Int
-  reasoning_tokens: Int
+  prompt_tokens: TokenCount
+  completion_tokens: TokenCount
+  reasoning_tokens: TokenCount
 }
 
 type EvalAttempt {
@@ -75,14 +76,14 @@ type EvalAttempt {
   compiler_program_sha256: String
   card_sha256: String
   tool_schema_sha256: String
-  temperature_milli: Int
-  max_tokens: Int
+  temperature: Float
+  max_tokens: TokenCount
   usage: EvalUsage
   cycles: Int
   tool_calls: Int
   edits: Int
   outcome: EvalOutcome
-  wall_ms: Int
+  wall: Millisecond
 }
 
 // THE PER-ARM FOLD. Accepted counts are split into the four language classes and the sentinel,
@@ -110,6 +111,10 @@ fn empty_summary(arm: EvalArm) -> ArmSummary {
   }
 }
 
+fn tokens_int(t: TokenCount) -> Int {
+  token_count_value(t: t)
+}
+
 fn bit(b: Bool) -> Int {
   if b { 1 } else { 0 }
 }
@@ -124,8 +129,8 @@ fn add_attempt(acc: ArmSummary, a: EvalAttempt) -> ArmSummary {
     language_accepted: acc.language_accepted + bit(b: sentinel == false && accepted),
     sentinel_attempts: acc.sentinel_attempts + bit(b: sentinel),
     sentinel_accepted: acc.sentinel_accepted + bit(b: sentinel && accepted),
-    reasoning_tokens_over_accepted: acc.reasoning_tokens_over_accepted + (if accepted { a.usage.reasoning_tokens } else { 0 }),
-    completion_tokens_over_accepted: acc.completion_tokens_over_accepted + (if accepted { a.usage.completion_tokens } else { 0 }),
+    reasoning_tokens_over_accepted: acc.reasoning_tokens_over_accepted + (if accepted { tokens_int(t: a.usage.reasoning_tokens) } else { 0 }),
+    completion_tokens_over_accepted: acc.completion_tokens_over_accepted + (if accepted { tokens_int(t: a.usage.completion_tokens) } else { 0 }),
     cycles_over_accepted: acc.cycles_over_accepted + (if accepted { a.cycles } else { 0 }),
     tool_calls_over_accepted: acc.tool_calls_over_accepted + (if accepted { a.tool_calls } else { 0 }),
   }
