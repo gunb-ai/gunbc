@@ -415,18 +415,6 @@ data inspected_yaml_job_names: List<InspectedYamlJobName> = [
     job_key: "build_pr_image_summary",
     name: NameUnset,
   },
-  InspectedYamlJobName {
-    repository: "biomejs/biome",
-    workflow_path: ".github/workflows/main.yml",
-    job_key: "yaml-dup",
-    name: AuthoredName { prefix: "DupA" },
-  },
-  InspectedYamlJobName {
-    repository: "biomejs/biome",
-    workflow_path: ".github/workflows/main.yml",
-    job_key: "yaml-dup",
-    name: AuthoredName { prefix: "DupB" },
-  },
 ]
 
 type YamlJobNameJoin
@@ -436,11 +424,12 @@ type YamlJobNameJoin
 // 0/1/many on repository+workflow_path+job_key. first() is only the unique-row read after
 // count==1; two matching rows are Uninspected naming the plurality, not a silent pick.
 fn inspected_yaml_job_name_join(
+  rows: List<InspectedYamlJobName>,
   repository: NonEmptyStr,
   workflow_path: NonEmptyStr,
   job_key: NonEmptyStr,
 ) -> YamlJobNameJoin {
-  let matches = filter(inspected_yaml_job_names, r =>
+  let matches = filter(rows, r =>
     (r.repository as String) == (repository as String)
       && (r.workflow_path as String) == (workflow_path as String)
       && (r.job_key as String) == (job_key as String)
@@ -506,6 +495,7 @@ fn inspected_leg_binding(
   workflow_path: NonEmptyStr,
 ) -> InspectedLegBinding {
   match inspected_yaml_job_name_join(
+    rows: inspected_yaml_job_names,
     repository: repository,
     workflow_path: workflow_path,
     job_key: job_key,

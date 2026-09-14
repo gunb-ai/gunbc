@@ -1,6 +1,6 @@
 module test.claim.public_workload_census_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -30,6 +30,8 @@ import gunbc.public_workload_census {
   architecture_join_standing, ArchitectureJoinOnInspectedRevision,
   ArchitectureJoinOnWorkflowEquivalentOnly, ArchitectureJoinRefused,
   RunIdentityMismatched, RunIdentityUnresolved,
+  inspected_yaml_job_name_join, inspected_yaml_job_names, InspectedYamlJobName, AuthoredName,
+  YamlJobNameBound, YamlJobNameUninspected,
   inspected_leg_binding, InspectedLegBound, InspectedLegUninspected, InspectedLegNameMismatch,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   WorkloadCandidate, MatrixCombination, MatrixAxisAssignment, DeclaredLabel,
@@ -485,51 +487,20 @@ data candidate_empty_matrix_axes_control: WorkloadCandidate = WorkloadCandidate 
   },
 }
 
-data candidate_yaml_dup_control: WorkloadCandidate = WorkloadCandidate {
-  repository: "biomejs/biome",
-  license_spdx: "Apache-2.0",
-  inspected_commit: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
-  workflow_path: ".github/workflows/main.yml",
-  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
-  job_key: "yaml-dup",
-  matrix_selector: NoMatrix,
-  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
-  observed: JobRunObserved {
-    job: WorkflowJobRun {
-      id: 101088906536,
-      run_id: 33892992396,
-      run_attempt: 1,
-      name: "DupA",
-      status: Completed,
-      conclusion: Present { value: Success },
-      labels: ["depot-ubuntu-24.04-arm-16"],
-      created_at: Absent,
-      started_at: Present { value: "2026-09-04T16:03:32Z" },
-      completed_at: Present { value: "2026-09-04T16:08:13Z" },
-    },
+data yaml_dup_name_fixture: List<InspectedYamlJobName> = [
+  InspectedYamlJobName {
     repository: "biomejs/biome",
     workflow_path: ".github/workflows/main.yml",
-    workflow_blob_sha_at_head: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
-    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
-    correctness: TestsExecuted {
-      step: "Run tests on depot-ubuntu-24.04-arm-16",
-    },
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupA" },
   },
-  observation_time: "2026-09-04T16:03:32Z",
-  workload_commands: ["cargo test --workspace --features=js_plugin"],
-  resource_requirements: ResourceRequirementsObserved {
-    hardware_threads: hardware_thread_count(count: 16),
-    uses_container: false,
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupB" },
   },
-  caches: [],
-  external_effects: [],
-  replay: ReplayAdmitted { note: replay_derivation_note },
-  spend: SpendUnobserved { obligation: spend_unobserved_note },
-  trial: trial_authorization_from_census(),
-  selection: CandidateRejected {
-    reason: "multiple inspected YAML job-name rows for this job_key",
-  },
-}
+]
 
 data candidate_no_run_control: WorkloadCandidate = WorkloadCandidate {
   repository: "biomejs/biome",
@@ -936,15 +907,27 @@ test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
 }
 
 test fn witness_plural_yaml_job_name_rows_are_uninspected() -> Bool {
-  match candidate_run_identity(c: candidate_yaml_dup_control) {
-    RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_yaml_dup_control) {
-      BaselineRefused { cause } => true
-      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
-    }
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-    WorkflowEquivalentOnly { inspected, observed, blob } => false
-    RunIdentityMismatched { cause } => false
+  let fixture_plural = match inspected_yaml_job_name_join(
+    rows: yaml_dup_name_fixture,
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+  ) {
+    YamlJobNameUninspected { cause } =>
+      (cause as String) == "multiple inspected YAML job-name rows for this repository, workflow path, and job_key"
+    YamlJobNameBound { prefix } => false
   }
+  let production_has_no_phantom = match inspected_yaml_job_name_join(
+    rows: inspected_yaml_job_names,
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+  ) {
+    YamlJobNameUninspected { cause } =>
+      (cause as String) == "no inspected YAML job-name row for this repository, workflow path, and job_key"
+    YamlJobNameBound { prefix } => false
+  }
+  fixture_plural && production_has_no_phantom
 }
 
 test fn witness_unread_job_run_is_unresolved_identity() -> Bool {
