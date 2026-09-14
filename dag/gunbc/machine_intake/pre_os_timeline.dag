@@ -4,6 +4,7 @@ import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import gunbc.machine_intake_pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
 import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.guarantee_rung { GuaranteeRung }
 import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.measure { ByteSize, byte_size }
@@ -277,13 +278,21 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
 }
 
 // The published view is derived, never a second handwritten ledger authority.
-// Expose the carrier boundary beside retention so a supplied commit standing
-// cannot be published as structural proof of durable storage.
+// Supplied commit and continuity carriers do not measure durable storage.
+// This replay boundary receives no executed guarantee measurement at a declared
+// persistence subject grain, so it cannot report a rung, including mitigatable.
+// A future consumer must supply that measurement before establishing a rung.
+data pre_os_replay_persistence_rung: ObservationAttempt<GuaranteeRung, NonEmptyStr> = ObservationRefused {
+  cause: "replay supplies no executed persistence guarantee measurement",
+}
+
+// Render the typed assessment beside retention; do not infer a rung from a
+// supplied commit standing or publish structural proof of durable storage.
 fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
   join(map(rows, row => concat(to_string(row.observation.envelope), "\nassociation=", to_string(row.association),
     "\nconsole_composition=", to_string(row.console_composition),
     "\nretention=", to_string(row.retention),
-    "\npersistence_evidence=mitigatable; supplied commit and continuity do not structurally prove stored bytes",
+    "\npersistence_evidence=", to_string(pre_os_replay_persistence_rung),
     "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),
     "\nconfiguration=", to_string(row.configuration), "\npresent_admission=", to_string(row.present_admission))), "\n\n")
 }

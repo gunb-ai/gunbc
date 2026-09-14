@@ -6,6 +6,7 @@ import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
+import gunbc.machine_intake_sol_collector_observation { SolCollectorObservation }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused }
 import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
@@ -161,10 +162,12 @@ fn replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelectio
 // independently observed live-client, source-cursor and persistence receipts
 // supplied to pre_os_machine_timeline by machine-scoped collection. A script
 // footer or elapsed wrapper lifetime cannot discharge that obligation.
-data pre_os_archive_collection_frontier: NonEmptyStr = "Historical archives carry no independent live-client, SEL watermark or flush receipts; continuous collection is unestablished and wrapper lifetime is not evidence."
+data pre_os_archive_collection: ObservationAttempt<SolCollectorObservation, NonEmptyStr> = ObservationRefused {
+  cause: "historical archives supply no independent live-client, SEL watermark or flush receipts",
+}
 
 fn replay_pre_os_archive_ledger() -> String {
-  concat("Historical archive observations; firmware-attempt association is unestablished.\n", pre_os_archive_collection_frontier as String, "\n", to_string(replay_pre_os_archives()),
+  concat("Historical archive observations; collection=", to_string(pre_os_archive_collection), "\n", to_string(replay_pre_os_archives()),
     "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()),
     "\nHost-produced OS milestone; population scope is carried in the assessment:\n", to_string(replay_pre_os_host_archive()),
     "\nFirmware selection rerun; not an OS milestone:\n", to_string(replay_pre_os_selection_archive()))
