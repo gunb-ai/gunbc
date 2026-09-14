@@ -1805,7 +1805,340 @@ pub struct TransitionAdmission {
 /// is the roster's own next touch. The distinction the paragraph above draws still holds and is
 /// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
 /// the array was being emptied.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "r8169_claims_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "realtek_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8125_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8126_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8127_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_first_boot_receipt",
+            in_declaration: "mtcollins1_igb_binding",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciClassPopulationObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_pci_mass_storage_population",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
