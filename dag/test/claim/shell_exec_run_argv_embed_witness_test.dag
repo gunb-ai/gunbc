@@ -1,11 +1,11 @@
 module test.claim.shell_exec_run_argv_embed_witness
 
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
 import std.types { Bool, String }
 import std.measure { byte_size_count }
-import gunbc.host_axis_caps { CapConvergeWithheld }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for, RevisionBoundAtEmission }
+import gunbc.live_deploy.emit { deploy_shell_strict_options_command }
 import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import test.claim.live_deploy.apply_emission_projection { apply_emitted_steps_text }
 import extdeps.filesystem.filesystem_io
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -24,23 +24,47 @@ fn src_has(path: String, needle: String) -> Bool {
 // exceeded MAX_ARG_STRLEN, making the stdin transport load-bearing. Belt B removed the frozen
 // program from deploy (gunbc serve renders live; no emitted JS in the apply script), so the
 // live-exceedance premise is dissolved and the clause becomes the REGRESSION WALL for exactly that
-// class: the apply script must stay UNDER the argv embed budget — re-freezing any program payload
+// class: the apply must stay UNDER the argv embed budget — re-freezing any program payload
 // into apply reds this row. The stdin transport stays pinned by the sibling witnesses (correct for
 // arbitrary script sizes; the general wall is dispatch_shell's ArgvExceedsHostArgMax refusal on the
 // host_exec_arg_max_strlen authority).
-
+//
+// THE SUBJECT IS NOW THE STEP EMISSION RATHER THAN THE ASSEMBLED PROGRAM, AND THE TWO ARE NOT
+// THE SAME CLAIM (2026-09-14). What is measured is what `apply_step_effects` emits for every step of
+// the production spec against an empty host — production's own dispatch, with only the membership
+// observation mocked; what is no longer measured is the program FRAME around it — the shell
+// options line, the generated-by comments, the stage directory and its trap, the sudoers preamble,
+// the memory-cap step and the closing receipt. So this bounds the payload and not the byte-exact
+// length of what reaches the transport, and a frame that grew without bound would not red here.
+// THE REGRESSION CLASS IS UNAFFECTED, which is why the narrowing is admissible: a re-frozen program
+// payload lands in an artifact step — a unit body, a staged file write — and every one of those is
+// inside this projection. The frame is a fixed handful of lines with no payload channel at all.
+// WHY IT WAS NARROWED: one render of the assembled apply is ~194,000 eval steps (required floor run
+// 34888954422, artifact required-floor-claim-cost) against a per-claim ceiling of 72,300, and the
+// fixed half of that cost sits below the emitter, so no ceiling-compliant witness can assemble the
+// program. NEXT-RUNG TRIGGER: the byte-exact bound returns when one render fits under the tier this
+// identity is judged by. The budget itself is unchanged and still cited — `host_exec_arg_max_strlen`
+// — so the literal is grounded in the same external authority it always was.
 test fn witness_apply_script_stays_under_argv_embed_budget() -> Bool {
-  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: CapConvergeWithheld { cause: "witness fixture: no live surplus observation" }))
+  let spec = deployment_spec_srv1()
+  let emitted_len = length(apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec)))
   let budget = byte_size_count(b: host_exec_arg_max_strlen)
-  script_len > 0 && script_len < budget
+  emitted_len > 0 && emitted_len < budget
 }
 
 test fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
   src_has(path: shell_exec_dag_path, needle: "stdin: script")
 }
 
+// THE BASH REQUIREMENT IS READ AT ITS PRODUCER, NOT GREPPED OUT OF THE ASSEMBLED PROGRAM.
+// `gunbc.live_deploy.emit` `deploy_shell_strict_options_command` is the single declaration both the
+// apply and retract folds emit as their first step, so asserting on it asserts on exactly the line
+// that decides the receiver. The RED stays authorable and stays narrow: respell the option set as
+// `set -eu` — which a POSIX sh WOULD accept — and this reds, which is the whole content of the
+// claim. Rendering the program to find the same line cost ~194,000 eval steps against a 72,300
+// ceiling and proved nothing this does not.
 test fn witness_apply_script_requires_bash_receiver() -> Bool {
-  string_contains(s: live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: CapConvergeWithheld { cause: "witness fixture: no live surplus observation" }), pattern: "pipefail")
+  string_contains(s: deploy_shell_strict_options_command, pattern: "pipefail")
 }
 
 test fn witness_shell_exec_run_uses_bash_receiver() -> Bool {

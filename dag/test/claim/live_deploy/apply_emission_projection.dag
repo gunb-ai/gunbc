@@ -1,0 +1,63 @@
+module test.claim.live_deploy.apply_emission_projection
+
+import std.types { String, List }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.live_deploy.emit { apply_step_effects }
+import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
+import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
+
+// THE APPLY'S OWN STEP EMISSION, WITH THE HOST OBSERVATION MOCKED AND NOTHING ELSE CHANGED.
+//
+// WHY THIS MODULE EXISTS AT ALL, stated first because a projection module beside a fixture module
+// is the shape a reviewer should be suspicious of. Two witness modules assert on what the deploy
+// apply emits -- test.claim.live_deploy.emit and test.claim.shell_exec_run_argv_embed_witness --
+// and both did it by rendering `live_deploy_apply_script_for` and grepping the result. Measured on
+// the required floor (run 34888954422, artifact required-floor-claim-cost) one render is ~194,000
+// eval steps against a per-claim ceiling of 72,300, and the fixed half of that cost is BELOW the
+// emitter: the same fold over a plan that publishes nothing still reads 148,139, because
+// `apply_intent_from_effects` reconciles membership against `deployment_apply_plan` regardless of
+// the plan it is handed. So no witness can afford the assembled program even once, and the
+// alternative to one shared projection is the same fold copied into two files.
+//
+// WHAT IS MOCKED IS EXACTLY ONE INPUT: the membership effects, which in production come from
+// observing the host. Everything downstream is the production path unchanged -- this calls
+// `apply_step_effects`, the same function `apply_intent_from_effects` flat-maps over `spec.steps`,
+// so the DISPATCH is production's. That distinction is the whole reason this module is shaped the
+// way it is, and the first version of it got the shape wrong: it folded `emit_artifact_upsert` over
+// every step, which is the producer for the artifacts `identity_member_of_step` answers `none` for
+// -- the belt units, the tailscale mapping, the converge timer. For GunbcSourceTree, ServeBinary
+// and SystemdUnit the apply goes through `emit_release_member_effects` instead, so three of the
+// claims below would have been asserting on a producer their subject does not use, and they would
+// have PASSED, because the two arms emit similar text. Green over the wrong producer is worse than
+// red, and it is the exact substitution this repository's failure-mode list names.
+//
+// WHAT THE MOCK ASSERTS, so that it is a stated fixture rather than a convenient value: an EMPTY
+// HOST. Every step is an addition, which is what the reconcile derives against a machine that holds
+// none of them, and is the condition the emit witnesses have always described themselves as
+// pinning ("the complete installation of an empty host"). Steps whose member is an identity member
+// never consult this list at all -- `apply_step_effects` routes those to the plan instead -- so the
+// rows for them are inert rather than wrong; the rows that are READ are the ones for the
+// directory roots and for every artifact the reconcile actually owns.
+//
+// WHAT IS NOT CARRIED is the program FRAME: the shell options line, the generated-by comments, the
+// stage directory and its trap, the sudoers preamble, the memory-cap step and the closing receipt.
+// Those are separate subjects and no consumer of this projection asserts anything about them.
+fn apply_empty_host_effects(spec: DeploymentSpec) -> List<MemberEffect<DeploymentStep>> {
+  map(spec.steps, st => EffectAdd { to: st })
+}
+
+fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
+  fold(steps, init: "", f: (acc, st) => match st {
+    Do { run: r } => concat(acc, r.command)
+    _ => acc
+  })
+}
+
+fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
+  let effects = apply_empty_host_effects(spec: spec)
+  pipeline_steps_text(steps: flat_map(
+    spec.steps,
+    st => apply_step_effects(step: st, effects: effects, spec: spec, plan: plan),
+  ))
+}

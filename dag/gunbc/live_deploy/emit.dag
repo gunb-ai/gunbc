@@ -207,6 +207,16 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 // effect_plan_bash_materialize's UnsupportedEffectPlanStep arms currently refuse; class 3 has no
 // dissolution -- a marker that must not parse as shell is correctly a String; class 4 is owned by
 // the module that authors the body.
+// THE OPTION SET THAT MAKES BOTH FOLDS REQUIRE A BASH RECEIVER, DECLARED ONCE.
+//
+// `pipefail` is not POSIX sh -- it is the option that decides the emitted program cannot be handed
+// to `sh -s`, which is exactly what `extdeps.shell.exec` pins on the transport side. The literal was
+// spelled twice here, once at the head of each fold, and nothing named it: a witness that wanted to
+// read the fact had to render the entire program and grep it, at a cost the required floor's
+// per-claim ceiling refuses. Naming it makes the apply's own shell contract readable at its
+// producer, and keeps the two folds from drifting apart on the option set they set.
+data deploy_shell_strict_options_command: String = "set -euo pipefail"
+
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -1813,7 +1823,7 @@ fn apply_intent_from_effects(
   Pipeline {
     steps: concat(
       [
-        deploy_raw(command: "set -euo pipefail"),
+        deploy_raw(command: deploy_shell_strict_options_command),
         Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
         Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
         Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
@@ -1880,7 +1890,7 @@ fn retract_intent_from_effects(
   Pipeline {
     steps: concat(
       [
-        deploy_raw(command: "set -euo pipefail"),
+        deploy_raw(command: deploy_shell_strict_options_command),
         Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
         Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
         Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
