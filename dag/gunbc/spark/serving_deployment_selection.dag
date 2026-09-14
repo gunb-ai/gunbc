@@ -185,13 +185,6 @@ fn footprint_bytes(f: ArtifactFootprint) -> ByteSize? {
   }
 }
 
-fn footprint_obligation(f: ArtifactFootprint) -> NonEmptyStr? {
-  match f {
-    FootprintUnread { obligation: o } => Present { value: o }
-    FootprintObservedOnFleet { bytes: _, how: _ } => none
-    FootprintReportedExternally { bytes: _, source: _ } => none
-  }
-}
 
 // THE WEAKEST STANDING WINS, because a sum is only as well established as its worst term. Reading
 // three components on the fleet and citing the fourth gives a cited total, not a measured one.
