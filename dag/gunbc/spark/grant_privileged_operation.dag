@@ -392,7 +392,7 @@ fn classify_credential_read(
 // itself, so after the transport repair there were two resolutions of one fact and they could
 // disagree on what an untrimmed or empty value means -- the sudo credential and the sshpass file would
 // then come from different places in the same leg. One resolver, two consumers.
-func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
+fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
   match read_fleet_bootstrap_credential_path() {
     FleetBootstrapCredentialPathAbsent { cause: why } =>
       BootstrapCredentialNotMaterialized { cause: why }
@@ -423,7 +423,7 @@ func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 // condition CredentialNotMaterialized already names -- so it lands there with the
 // session's own located cause rather than minting an exit code for an ssh that never
 // ran.
-func run_privileged_step(
+fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   lease: AuthorizationRequest<SparkBootstrapSubject>,

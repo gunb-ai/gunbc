@@ -261,8 +261,9 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    EmissionConstructUnprojectable, InternalError, ParameterDefaultFormNotAdmitted,
-    ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
+    EffectfulSelfRecursionUnrealized, EmissionConstructUnprojectable, InternalError,
+    ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
+    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -6421,6 +6422,7 @@ pub struct EmitRustContext {
     pub workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     pub workflow_default_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub effectful_recursion_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub svc_module_map: Rc<HashMap<String, String>>,
     pub test_projections: Rc<Vec<Rc<TestProjection>>>,
     pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -6528,6 +6530,17 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             }
             __result
         });
+        let effectful_recursion_diags = Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*effectful_self_recursion_diagnostics(tm.clone(), registry.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -6574,6 +6587,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             workflow_funcs: workflow_funcs.clone(),
             workflow_default_diags: workflow_default_diags.clone(),
             anonymous_record_diags: anonymous_record_diags.clone(),
+            effectful_recursion_diags: effectful_recursion_diags.clone(),
             svc_module_map: svc_module_map.clone(),
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
@@ -6646,6 +6660,13 @@ pub fn emit_rust_selected(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: anonymous_record_diags.clone(),
+            });
+        }
+        let effectful_recursion_diags = ctx.effectful_recursion_diags.clone();
+        if ((effectful_recursion_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: effectful_recursion_diags.clone(),
             });
         }
         let filename_collisions =
@@ -30444,6 +30465,43 @@ pub fn struct_candidates_by_field_names(
     }
 }
 
+pub fn effectful_self_recursion_diagnostics(
+    tm: Rc<TypedModule>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let si = tm.type_env.clone().source_indices.clone();
+        let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in tm.items.clone().iter().cloned() {
+                __result.extend((*match item.body.clone() {
+    Some(body) => if ((item.uses.clone().len() as i64) > 0) {
+            {
+                let name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+if crate::v1_compiler_emit::is_self_recursive(Rc::new(DeclaredCallableIdentity {
+    owner_module_path: module_name.clone(),
+    decl_name: name.clone(),
+}), body.clone(), registry.clone(), si.clone()) {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectfulSelfRecursionUnrealized {
+    name: name.clone(),
+    span: item.span.clone(),
+}), module_name.clone())])
+                } else {
+                    Rc::new(vec![])
+                }
+}
+        } else {
+            Rc::new(vec![])
+        },
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
+            }
+            __result
+        })
+    }
+}
+
 pub fn anonymous_record_struct_candidates(
     field_names: Rc<Vec<String>>,
     field_type_hints: Rc<HashMap<String, String>>,
@@ -38677,7 +38735,7 @@ pub fn emit_candidate_cli_host_method(sub: Rc<CliSubcommandRow>, method: String)
 }
 
 pub fn emit_candidate_compile_host_method(params: String) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
 }
 
 pub fn emit_candidate_cli_host(crate_name: String) -> String {

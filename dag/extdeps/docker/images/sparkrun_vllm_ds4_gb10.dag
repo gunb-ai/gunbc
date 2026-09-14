@@ -61,3 +61,16 @@ data sparkrun_vllm_ds4_gb10_baked_interface_env_names: List<NonEmptyStr> = [
   "OMPI_MCA_btl_tcp_if_include" as NonEmptyStr,
   "NODE_IP" as NonEmptyStr,
 ]
+
+// THE IMAGE ALSO BAKES WHICH RDMA ENDPOINT NCCL AND UCX USE. Its Config.Env, read from the registry
+// manifest for the pinned digest on 2026-09-13, sets NCCL_IB_HCA=rocep1s0f0,roceP2p1s0f0,
+// UCX_NET_DEVICES=rocep1s0f0:1,roceP2p1s0f0:1 and NCCL_IB_GID_INDEX=3 -- the first-function ports and
+// a fixed GID table slot, both the build host's. The leg on every Spark is the second function, and
+// after the 2026-09-12 fabric flap slot 3 on that port is empty on all four group A hosts (the IPv4
+// RoCE v2 GID sits at slot 4), so an engine inheriting the baked index fails ncclCommInitRank with
+// `unhandled system error`. Same override obligation as the interface names above.
+data sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names: List<NonEmptyStr> = [
+  "NCCL_IB_HCA" as NonEmptyStr,
+  "UCX_NET_DEVICES" as NonEmptyStr,
+  "NCCL_IB_GID_INDEX" as NonEmptyStr,
+]

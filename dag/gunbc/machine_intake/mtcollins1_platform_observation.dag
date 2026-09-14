@@ -125,7 +125,7 @@ data mtcollins1_psu2_if_corded: PowerSupplyStanding = PowerSupplyStanding {
   fan_rpm: 4800,
 }
 
-func mtcollins1_power_redundancy_probe() -> ProcessExit {
+fn mtcollins1_power_redundancy_probe() -> ProcessExit {
   if power_supplies_redundant(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
     return exit_failure(reason: "power redundancy: the measured rows were reported REDUNDANT, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM")
   }

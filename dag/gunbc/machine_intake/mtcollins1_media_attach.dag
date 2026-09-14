@@ -109,7 +109,7 @@ fn mtcollins1_render_release(standing: SessionRelease) -> String {
 // so a green positive and a red control together establish that the confirmation reads the name
 // rather than reporting whatever the controller happens to be presenting. Running it costs one
 // session and performs no write: the absent name is refused after the two reads, before start.
-func mtcollins1_attach_absent_image_control(password_raw: String, attempt: String) -> ProcessExit
+fn mtcollins1_attach_absent_image_control(password_raw: String, attempt: String) -> ProcessExit
   uses net: std.resources.Network
 {
   if password_raw == "" {
@@ -126,7 +126,7 @@ func mtcollins1_attach_absent_image_control(password_raw: String, attempt: Strin
   )
 }
 
-func mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> ProcessExit
+fn mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> ProcessExit
   uses net: std.resources.Network
 {
   if password_raw == "" {

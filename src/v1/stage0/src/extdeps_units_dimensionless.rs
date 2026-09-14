@@ -33,3 +33,7 @@ pub fn parts_per_ten_thousand_unity_count() -> Nat {
 pub fn percent_unity_hundred_count() -> Nat {
     100
 }
+
+pub fn parts_per_million_unity_count() -> Nat {
+    1000000
+}

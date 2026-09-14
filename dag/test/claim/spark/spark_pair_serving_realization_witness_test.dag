@@ -3,7 +3,7 @@ module test.claim.spark.spark_pair_serving_realization_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.cli { DockerEnvAssignment }
-import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
@@ -178,7 +178,9 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
 
 // PLACEMENT RELEASED BEFORE LAUNCH IS AN ORDERING FACT OF THE UNIT: start the container, stop the
 // Ray session, start the head at the pair's rail-0 endpoint, then the engine; stdout appended to
-// the host log the pool line is read from; on-failure restart is what waits for the worker.
+// the host log the pool line is read from; the always-restart is what waits for the worker, and it
+// is also what brings the engine back after it exits 0 on losing ranks (the 2026-09-12 outage), so
+// on-failure is asserted absent rather than merely always present.
 test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_stdout() -> Bool {
   w_realized(f: fn(h, _ws) {
     let t = w_unit_text(u: h.unit)
@@ -189,7 +191,8 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
         "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve",
       ], ""))
       && string_contains(s: t, pattern: "StandardOutput=append:/var/log/gunbc/spark-pair-head.log")
-      && string_contains(s: t, pattern: "Restart=on-failure")
+      && string_contains(s: t, pattern: "\nRestart=always\n")
+      && !string_contains(s: t, pattern: "Restart=on-failure")
       && string_contains(s: t, pattern: "Requires=docker.service")
   })
 }
@@ -242,4 +245,31 @@ test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_co
 test fn the_image_names_the_interface_variables_it_bakes() -> Bool {
   length(sparkrun_vllm_ds4_gb10_baked_interface_env_names) == 6
     && !spark_pair_container_env_covers_every_baked_name(env: [DockerEnvAssignment { name: "TP_SOCKET_IFNAME" as NonEmptyStr, value: "x" }])
+}
+
+// THE GID IS SELECTED BY ADDRESS FAMILY AND RoCE VERSION, NOT BY THE IMAGE'S BAKED SLOT. The image
+// sets NCCL_IB_GID_INDEX=3; after the 2026-09-12 flap slot 3 on the leg port is empty on every group A
+// host and ncclCommInitRank fails. Every host's container overrides the index to NCCL's scanning
+// value with the IPv4 RoCE v2 attributes, and no host carries a fixed slot.
+test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> Bool {
+  w_realized(f: fn(h, ws) {
+    let hosts = concat([h], ws)
+    length(hosts) == 4
+      && all(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_GID_INDEX" && e.value == "-1"))
+      && all(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_ADDR_FAMILY" && e.value == "AF_INET"))
+      && all(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_ROCE_VERSION_NUM" && e.value == "2"))
+      && !any(hosts, x => any(x.container.env, e => (e.name as String) == "NCCL_IB_GID_INDEX" && e.value == "3"))
+  })
+}
+
+// THE RDMA ROSTER CAN GO RED: an env covering every interface name but no GID index is refused.
+test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool {
+  length(sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names) == 3
+    && !spark_pair_container_env_covers_every_baked_name(env: concat(
+      map(sparkrun_vllm_ds4_gb10_baked_interface_env_names, n => DockerEnvAssignment { name: n, value: "x" }),
+      [
+        DockerEnvAssignment { name: "NCCL_IB_HCA" as NonEmptyStr, value: "x" },
+        DockerEnvAssignment { name: "UCX_NET_DEVICES" as NonEmptyStr, value: "x" },
+      ],
+    ))
 }

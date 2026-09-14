@@ -2,10 +2,23 @@ module tools.floor_cost_distribution_instrument
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, eval_step_count_value }
 import std.types { Bool, Int, String, NonEmptyStr }
+import v2.workflow.floor_eval_step_calibration {
+  SpecimenStepsGrounding,
+  SpecimenStepsMatchThePin,
+  SpecimenStepsDiffer,
+  floor_eval_step_calibration,
+  calibration_specimen_identity,
+  calibration_specimen_eval_steps,
+  specimen_steps_grounding,
+  specimen_steps_grounding_holds
+}
 import gunbc.floor_cost_distribution {
   FloorCostRow,
+  ObservedCpuReading,
+  RightCensoredCpuReading,
+  CpuLowerBoundWithoutCeiling,
   IdentityEnvelope,
   RunCost,
   RunExtremeCount,
@@ -80,7 +93,7 @@ import gunbc.floor_cost_distribution {
 // and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
 // the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
 
-// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`
+// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_work_envelope_ms`
 // is the authority for the value; this row is the analysis-side reading of it, and it is a
 // Millisecond rather than a bare Int so it cannot be compared against a figure read from another
 // clock -- the exact confusion `std.measure` exists to make unwritable.
@@ -1070,5 +1083,136 @@ fn floor_cost_attempt_pair_check() -> ProcessExit {
     exit_failure(reason: join(concat(refusals, heads), "\n"))
   } else {
     ExitSuccess
+  }
+}
+
+// THE EXECUTING CONSUMER OF `v2.workflow.floor_eval_step_calibration`'s SPECIMEN PIN.
+//
+//   gh run download <run-id> -n required-floor-claim-cost -D <dir>/<run-id>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function calibration_specimen_grounding --arg root=<dir> --arg run=<run-id>
+//
+// WHY IT LIVES HERE RATHER THAN IN A WITNESS. The calibration row declares how many eval steps its
+// pinned specimen performs, and that literal gates every required claim through the two tier
+// budgets. DESIGN section 5 requires such a literal to have an independent referent, and the referent
+// exists: the floor executes the specimen as a required claim and publishes its `eval_steps` by
+// identity. What does not exist is a way for a claim to read its own step count, or for any witness
+// to read an artifact that is written only after the run completes -- so the join's executing home is
+// an instrument over a published run, which this module already is.
+//
+// IT REFUSES ON AN ABSENT IDENTITY RATHER THAN REPORTING A MATCH. A run that does not carry the
+// specimen proves nothing about the pin, and a check whose silent arm is "nothing to compare" reads
+// clean exactly when it could not read at all -- the failure this module's own header names.
+//
+// A SPECIMEN APPEARING TWICE WITH DIFFERENT STEP COUNTS IS ITS OWN REFUSAL, not a row to pick from.
+// The specimen's whole claim on the reader is that its step count is deterministic; two readings
+// that disagree refute that directly, and choosing either one would report a verdict on a premise
+// the same data just falsified.
+//
+// A CENSORED ROW CANNOT ANSWER THIS QUESTION AND MUST NOT BE READ AS IF IT COULD. `FloorCostRow`'s
+// `eval_steps` is a POINT for an observed row and a LOWER BOUND for a censored one -- the parse
+// fills it from `eval_steps_at_least` on the censored arm -- so comparing it to the pin without
+// the case split lets a bound that happens to equal the pin produce a MATCH, reporting equality
+// the run never established (review 65748; DESIGN section 5, no fabricated plausible output).
+// `gunbc.floor_cost_distribution` already forces this split for the cost figure through
+// `observed_cpu_ms`, whose `Absent` arm exists precisely so a bound cannot reach a point question;
+// this is the same discipline applied to the step figure.
+type CalibrationSpecimenGrounding
+  = SpecimenJoined { grounding: SpecimenStepsGrounding }
+  | SpecimenAbsentFromRun { identity: String, run: NonEmptyStr }
+  | SpecimenStepsNotDeterministic { identity: String, low: Int, high: Int }
+  | SpecimenStepsRightCensored { identity: String, lower_bound: Int }
+  | SpecimenRunUnavailable { load: RunLoad }
+
+fn calibration_specimen_grounding_for(root: String, run: NonEmptyStr) -> CalibrationSpecimenGrounding {
+  match load_run_cost(root: root, run: run) {
+    RunLoaded { run: r } => specimen_row_grounding(rows: r.rows, run: run)
+    RunUnreadable { run: l, path: p } => SpecimenRunUnavailable { load: RunUnreadable { run: l, path: p } }
+    RunEmpty { run: l, path: p } => SpecimenRunUnavailable { load: RunEmpty { run: l, path: p } }
+    RunRefused { run: l, path: p, cause: c } => SpecimenRunUnavailable { load: RunRefused { run: l, path: p, cause: c } }
+  }
+}
+
+fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> CalibrationSpecimenGrounding {
+  let wanted = calibration_specimen_identity(calibration: floor_eval_step_calibration) as String
+  let all_matched = rows |> filter(r => r.identity == wanted)
+  let matched = all_matched |> filter(r => row_step_count_is_complete(row: r))
+  if count(all_matched) == 0 {
+    SpecimenAbsentFromRun { identity: wanted, run: run }
+  } else if count(matched) == 0 {
+    SpecimenStepsRightCensored {
+      identity: wanted,
+      lower_bound: fold(all_matched |> map(r => r.eval_steps), init: 0, f: (m, n) => if n > m { n } else { m }),
+    }
+  } else {
+    let steps = matched |> map(r => r.eval_steps)
+    let low = fold(steps, init: max_of(xs: steps), f: (m, n) => if n < m { n } else { m })
+    let high = fold(steps, init: 0, f: (m, n) => if n > m { n } else { m })
+    if low != high {
+      SpecimenStepsNotDeterministic { identity: wanted, low: low, high: high }
+    } else {
+      SpecimenJoined {
+        grounding: specimen_steps_grounding(
+          calibration: floor_eval_step_calibration,
+          observed_eval_steps: high,
+        )
+      }
+    }
+  }
+}
+
+// The seed for the minimum fold. `fold` needs an init that is already a member, and 0 is not one --
+// it would make every population's minimum 0 and hide exactly the disagreement above.
+fn max_of(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (m, n) => if n > m { n } else { m })
+}
+
+fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> String {
+  match g {
+    SpecimenJoined { grounding: gr } => match gr {
+      SpecimenStepsMatchThePin =>
+        concat("[calibration-specimen] PINNED steps=", to_string(eval_step_count_value(s: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration))))
+      SpecimenStepsDiffer { declared_steps: d, observed_steps: o } =>
+        concat("[calibration-specimen] REFUSED declared=", concat(to_string(d), concat(" observed=", to_string(o))))
+    }
+    SpecimenAbsentFromRun { identity: i, run: r } =>
+      concat("[calibration-specimen] REFUSED identity absent from run ", concat(r as String, concat(": ", i)))
+    SpecimenStepsRightCensored { identity: i, lower_bound: lb } =>
+      concat("[calibration-specimen] REFUSED right-censored, steps are a LOWER BOUND not a count for ", concat(i, concat(": >=", to_string(lb))))
+    SpecimenStepsNotDeterministic { identity: i, low: lo, high: hi } =>
+      concat("[calibration-specimen] REFUSED non-deterministic steps for ", concat(i, concat(": ", concat(to_string(lo), concat("..", to_string(hi))))))
+    SpecimenRunUnavailable { load: l } =>
+      concat("[calibration-specimen] REFUSED run unavailable: ", join(refused_load_lines(loads: [l]), " "))
+  }
+}
+
+// A ROW WHOSE STEP COUNT IS A COMPLETED OBSERVATION RATHER THAN A BOUND. The reading arm is the
+// discriminator the artifact already carries: an interrupted claim's figures are lower bounds on
+// BOTH clocks and on the step counter, so the same arm that censors the cost censors the steps.
+fn row_step_count_is_complete(row: FloorCostRow) -> Bool {
+  match row.cost {
+    ObservedCpuReading { cpu_ms: _ } => true
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => false
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: _ } => false
+  }
+}
+
+fn calibration_specimen_grounding_holds(g: CalibrationSpecimenGrounding) -> Bool {
+  match g {
+    SpecimenJoined { grounding: gr } => specimen_steps_grounding_holds(grounding: gr)
+    SpecimenAbsentFromRun { identity: _, run: _ } => false
+    SpecimenStepsNotDeterministic { identity: _, low: _, high: _ } => false
+    SpecimenStepsRightCensored { identity: _, lower_bound: _ } => false
+    SpecimenRunUnavailable { load: _ } => false
+  }
+}
+
+fn calibration_specimen_grounding(root: String, run: String) -> ProcessExit {
+  let g = calibration_specimen_grounding_for(root: root, run: run as NonEmptyStr)
+  if calibration_specimen_grounding_holds(g: g) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: calibration_specimen_grounding_line(g: g))
   }
 }

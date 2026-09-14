@@ -1,0 +1,22 @@
+module gunbc.mtcollins_memory_placement
+
+import std.types { Bool }
+import std.decl_ref { decl_ref }
+import extdeps.ampere.mt_collins_product_brief.memory_population { MtCollinsChannelPopulationRole }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  dimm_figure_connector_label_prefix, one_dpc_diagram_legend, additional_two_dpc_diagram_legend,
+}
+import product.installed_bom_reconcile { DimmSlotLocator }
+import gunbc.memory_configuration { MemoryPosition }
+
+// Only a resolved population role can construct a position. Callers must retain
+// the population-role authority's refusal before they reach this projection.
+fn mtcollins_memory_position(role: MtCollinsChannelPopulationRole, additional: Bool) -> MemoryPosition {
+  let connector = if additional { role.additional_connector_at_two_dpc } else { role.connector_used_at_one_dpc }
+  let legend = if additional { additional_two_dpc_diagram_legend } else { one_dpc_diagram_legend }
+  MemoryPosition {
+    connector: concat(dimm_figure_connector_label_prefix, to_string(connector)) as DimmSlotLocator,
+    socket: role.processor_socket, controller: role.memory_controller, slot: legend.slot_number,
+    mapping: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.memory_population", decl_name: "mt_collins_channel_population_roles"),
+  }
+}

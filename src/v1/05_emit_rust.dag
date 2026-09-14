@@ -40,7 +40,7 @@ import v1.std.core {
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic, EmissionConstructUnprojectable, FilterInBranchCondition,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -3339,6 +3339,7 @@ type EmitRustContext {
   workflow_funcs: List<WorkflowFunc>
   workflow_default_diags: List<ErrorNode>
   anonymous_record_diags: List<ErrorNode>
+  effectful_recursion_diags: List<ErrorNode>
   svc_module_map: Map<String, String>
   test_projections: List<TestProjection>
   export_sets: Map<String, Map<String, Bool>>
@@ -3394,6 +3395,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
+  let effectful_recursion_diags = typed.modules |> flat_map(tm => effectful_self_recursion_diagnostics(tm: tm, registry: registry))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -3411,6 +3413,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     workflow_funcs: workflow_funcs,
     workflow_default_diags: workflow_default_diags,
     anonymous_record_diags: anonymous_record_diags,
+    effectful_recursion_diags: effectful_recursion_diags,
     svc_module_map: svc_module_map,
     test_projections: test_projections,
     export_sets: export_sets,
@@ -3495,6 +3498,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: anonymous_record_diags }
+  }
+  let effectful_recursion_diags = ctx.effectful_recursion_diags
+  if effectful_recursion_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: effectful_recursion_diags }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
@@ -13465,6 +13472,33 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
+// THE EFFECTFUL PATH HAS NO RECURSION REALIZATION, SO IT REFUSES ONE RATHER THAN RENDERING IT.
+// emit_func_def renders every effectful declaration as `async fn` and never consults
+// is_tco_eligible or is_self_recursive -- the loop transform and the stacker guard belong to the
+// pure path only -- so a self-call inside an effectful body would be emitted verbatim, and rustc
+// refuses recursion in an async fn without boxing (E0733). Emitting it would be a green compile
+// whose output cannot build (DESIGN section 5, fabricated plausible output). The fact is read from
+// the SAME registry row the pure path's TCO decision reads, through the same reader, so this is
+// the first consumer of is_self_recursive on an effectful declaration: until the FuncItem collapse
+// the registry hardcoded that field false for every effectful item, and this refusal could not
+// have fired. Rust-specific by construction: Python's `async def` and Go recurse without boxing.
+fn effectful_self_recursion_diagnostics(tm: TypedModule, registry: Map<String, ItemInfo>) -> List<ErrorNode> {
+  let si = tm.type_env.source_indices
+  let module_name = authored_name_at(source_indices: si, node: tm.module)
+  tm.items |> flat_map(item =>
+    match item.body {
+      Present { value: body } =>
+        if item.uses |> count > 0 {
+          let name = authored_name_at(source_indices: si, node: item)
+          if is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }, body: body, registry: registry, source_indices: si) {
+            [make_error_node(diagnostic: EffectfulSelfRecursionUnrealized { name: name, span: item.span }, module_name: module_name)]
+          } else { [] }
+        } else { [] }
+      Absent => []
+    }
+  )
+}
+
 // gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored
 // nominal identity, so the Rust emitter may name a struct only when the literal's field shape
 // (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The
@@ -13484,6 +13518,7 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
 //
 // RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the
 // source language; the target compiler is never counted as part of this guarantee.
+
 
 fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
