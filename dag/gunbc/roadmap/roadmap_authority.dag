@@ -979,6 +979,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
+    active_sized(
+      identity: "rn_ZYH1W8YWXYMSGA8SMYYWHWHMP2",
+      id: "2-scm-native-write-spine-acceptance",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Run the native add/commit/merge spine for real, and design merge",
+        boundary: "gunbc#10729 carries the native SCM write spine (staging, add, commit, squash merge over a conditional-publication store) and a committed wet acceptance driver, tools.scm_acceptance, that launches every step as a separate process. The driver resolves clean but has never executed to green: it builds the binary it spends, so build and run must share an architecture, and the authoring sessions dispatched builds to amd64 from arm64. This node closes that execution gap and the work the spine deliberately left open.",
+        displaced_cost: "Until the driver executes, the spine's end-to-end claim is specification without execution: CI lanes compile and witness it but never run add, commit and merge as separate processes against a real store, so a regression across a process boundary lands silently.",
+        first_slice: "On a host whose cargo builds natively (CI's self-hosted ARM64 runner qualifies), run gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance on the landed head and record SHA, host, architecture, cargo identity and exit code. Exit 0 accepts the publication, merge and conflict scenarios; a nonzero exit is a located refusal and becomes the next work.",
+        red_control: "The corrupt-generation refusal and probe-bound exhaustion scenarios, observed so far only through session-local scripts, execute from the committed driver and refuse with their typed causes; a scenario that shares an in-memory repository across a step boundary is refused rather than counted.",
+        out_of_scope: "No Mercurial or Pijul write realization, hosted service, or change to the P0 landing-spine or P1 proof-kernel contracts.",
+        handback: "The exact-head acceptance receipt, the two migrated scenarios executing from the driver (fixture writes in one process, generation paths derived through the durable-CAS owner), and a merge design covering what the squash-merge slice leaves out."
+      )
+    ),
     with_execution(active_sized(
       identity: "rn_D33CBEADA91C3E8C10D8515CC4",
       id: "2-scm-p1-proof-kernel",
