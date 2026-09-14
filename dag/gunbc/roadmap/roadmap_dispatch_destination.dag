@@ -10,10 +10,22 @@ import extdeps.languages.json.emit {
   json_string,
   json_bool,
   json_object,
+  json_array,
   serialize_json,
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import extdeps.git.object_store { GitObjectId }
+import gunbc.merge_admission_subject { render_git_object_id_wire, parse_git_object_id_wire }
+import gunbc.roadmap_execution_contract {
+  ClaimSourceRootLayout, claim_source_root_args, WorkItemExecutionContract,
+  ExecutionContract, ExecutionContractUnspecified, NotAgentWork,
+}
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
 // It is read from the node's WorkItemDispatch: destination_from_dispatch matches Dispatchable,
@@ -267,3 +279,226 @@ fn dispatch_spawn_origin_json(origin: DispatchSpawnOrigin) -> String {
 }
 
 data dispatch_spawn_origin_basename: String = "spawn-destination.json"
+
+// Relocated unchanged from strategy.public_gunbc_dependency at gunbc-private 32d7a145e96f8442aa818c971bf552ba640a75cd,
+// together with public_revision_standing_text. The private owner replaces its definition with
+// imports when #60 recuts onto this public revision (bright-boar-435 authorization 2026-09-14).
+// The neighbouring private CommitSha carrier is deliberately not relocated: GitObjectId owns
+// revision validity. The seal and its identity use this authority's total projection, following
+// strategy.plan_item_dispatch's finding-2 repair, rather than matching standing arms themselves.
+type PublicRevisionStanding
+  = AdmittedGreen { witnesses_run: NonEmptyStr, observed_on: NonEmptyStr }
+  | AdmittedDespiteRed { witnesses_run: NonEmptyStr, observed_on: NonEmptyStr, red_cause: NonEmptyStr, why_unreachable: NonEmptyStr, revisit_when: NonEmptyStr }
+
+fn public_revision_standing_text(s: PublicRevisionStanding) -> String {
+  match s {
+    AdmittedGreen { witnesses_run: r, observed_on: o } => join(["green: ", r as String, ", observed ", o as String], "")
+    AdmittedDespiteRed { witnesses_run: r, observed_on: o, red_cause: c, why_unreachable: w, revisit_when: v } =>
+      join(["admitted despite red: ", r as String, ", observed ", o as String, "; cause: ", c as String, "; why it cannot reach this composition: ", w as String, "; revisit when: ", v as String], "")
+  }
+}
+
+// The actor and date record an admission act, as RoadmapAcceptanceReceipt records acceptance.
+// They are nonempty attribution text, not an authentication or calendar-validity claim.
+// Revision inputs must come through the Git authority's validating constructors; absent or
+// unreadable inputs stay absent at admit_attempt_subject and refuse with the node and field.
+type AdmittedBaseRevision {
+  revision: GitObjectId
+  admitted_by: NonEmptyStr
+  admitted_on: NonEmptyStr
+}
+
+type AdmittedPublicRevision {
+  revision: GitObjectId
+  standing: PublicRevisionStanding
+}
+
+// This is what an attempt was admitted AGAINST, not whether a node is dispatchable (#10994's
+// WorkItemDispatch). The destination owns publication and its default branch; the admitted base
+// owns the starting revision in that destination; public_revision pins the public dependency
+// of the validation composition. These can be different repositories and different revisions.
+// WorkItemExecutionContract remains the only authored source-root composition. Admission reads
+// its source_roots directly: there is no independent roots parameter. sealed_source_roots is a
+// HISTORICAL snapshot, exactly as the revision standing is, not a second current execution
+// contract. Reading the current owner's roots on both sides would erase a composition move.
+// This snapshot adds the temporal fact the live owner cannot supply after it changes. It must
+// never answer what the CURRENT roots are; the join compares sealed history against new
+// admission from the current WorkItemExecutionContract, never current against itself.
+type AttemptAdmissionSubject {
+  node: RoadmapNodeIdentity
+  destination: DestinationIdentity
+  base: AdmittedBaseRevision
+  public_revision: AdmittedPublicRevision
+  sealed_source_roots: ClaimSourceRootLayout
+}
+
+type AttemptSubjectRefusal
+  = AttemptSubjectInputMissing { field: NonEmptyStr }
+  | AttemptSubjectRevisionInvalid { field: NonEmptyStr }
+  | AttemptSubjectDestinationUnobserved { reason: NonEmptyStr }
+  | AttemptSubjectSealStale { field: NonEmptyStr, sealed: String, current: String }
+
+type AttemptSubjectAdmission
+  = AttemptSubjectAdmitted { subject: AttemptAdmissionSubject }
+  | AttemptSubjectRefused { node: RoadmapNodeIdentity, cause: AttemptSubjectRefusal }
+
+// Public executing route: test.claim.attempt_admission_subject_witness_test calls admission,
+// identity and join through the same functions the consumers will import. This establishes
+// runtime refusal only, not private production consumption or an unforgeable record constructor.
+// The frontier covers the types above and the mint/field/identity/join functions below.
+// census_closure_frontier_row_groups enrolls these rows for dissolution_census to fold.
+data attempt_admission_subject_frontier_rows: List<FrontierRow> = [frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.roadmap_dispatch_destination", decl_name: "AttemptAdmissionSubject"),
+  reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads it; gunbc-private#60 consumes it only after its coordinated recut, not in this closure",
+  dissolution: unbound_dissolution(
+    description: "strategy.plan_item_dispatch on the private recut stores AttemptAdmissionSubject as its durable admitted subject, imports PublicRevisionStanding and public_revision_standing_text instead of defining them, derives contract identity from attempt_admission_subject_fields, and joins through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
+  ),
+)]
+
+fn admit_attempt_subject(
+  node: RoadmapNodeIdentity,
+  destination: DispatchDestination,
+  base: AdmittedBaseRevision?,
+  public_revision: GitObjectId?,
+  public_standing: PublicRevisionStanding?,
+  execution: WorkItemExecutionContract,
+) -> AttemptSubjectAdmission {
+  match destination {
+    DispatchDestinationMissing { reason } =>
+      AttemptSubjectRefused { node: node, cause: AttemptSubjectDestinationUnobserved { reason: reason } }
+    DispatchDestinationResolved { identity } =>
+      match base {
+        Absent => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "base_revision" } }
+        Present { value: admitted_base } =>
+          match public_revision {
+            Absent => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "public_revision" } }
+            Present { value: revision } =>
+              match public_standing {
+                Absent => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "public_revision_standing" } }
+                Present { value: standing } =>
+                  match execution {
+                    ExecutionContractUnspecified => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "execution_contract" } }
+                    NotAgentWork { mode: _ } => AttemptSubjectRefused { node: node, cause: AttemptSubjectInputMissing { field: "agent_execution_contract" } }
+                    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots } =>
+                      validate_attempt_subject(subject: AttemptAdmissionSubject {
+                        node: node,
+                        destination: identity,
+                        base: admitted_base,
+                        public_revision: AdmittedPublicRevision { revision: revision, standing: standing },
+                        sealed_source_roots: source_roots,
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A nominal GitObjectId is not validation evidence: dynamic casts can still construct raw
+// digests. Re-enter the existing family-tagged Git decoder, which calls git_sha1_object_id or
+// git_sha256_object_id, at BOTH mint and join. Do not normalize or trust the incoming family.
+fn validate_attempt_subject(subject: AttemptAdmissionSubject) -> AttemptSubjectAdmission {
+  match destination_github_repository(identity: subject.destination) {
+    DestinationGithubRepositoryUnobserved { reason } =>
+      AttemptSubjectRefused { node: subject.node, cause: AttemptSubjectDestinationUnobserved { reason: reason } }
+    DestinationGithubRepositoryObserved { repository } =>
+      if trim(repository.owner) == "" || trim(repository.name) == ""
+        || trim(repository.full_name) == "" || trim(repository.default_branch) == "" {
+        AttemptSubjectRefused {
+          node: subject.node,
+          cause: AttemptSubjectDestinationUnobserved { reason: "the destination carries empty repository or default-branch text" },
+        }
+      } else { match parse_git_object_id_wire(raw: render_git_object_id_wire(oid: subject.base.revision)) {
+        Absent => AttemptSubjectRefused { node: subject.node, cause: AttemptSubjectRevisionInvalid { field: "base_revision" } }
+        Present { value: base } =>
+          match parse_git_object_id_wire(raw: render_git_object_id_wire(oid: subject.public_revision.revision)) {
+            Absent => AttemptSubjectRefused { node: subject.node, cause: AttemptSubjectRevisionInvalid { field: "public_revision" } }
+            Present { value: revision } =>
+              AttemptSubjectAdmitted { subject: AttemptAdmissionSubject {
+                node: subject.node,
+                destination: subject.destination,
+                base: AdmittedBaseRevision { revision: base, admitted_by: subject.base.admitted_by, admitted_on: subject.base.admitted_on },
+                public_revision: AdmittedPublicRevision { revision: revision, standing: subject.public_revision.standing },
+                sealed_source_roots: subject.sealed_source_roots,
+              } }
+          }
+      } }
+  }
+}
+
+// The single field projection feeds both identity and stale-seal comparison. JSON encodes field
+// and array boundaries; joining argv with spaces would conflate distinct root arguments. Git's
+// existing family-tagged wire projection retains SHA-1 versus SHA-256 in both paths. The key is
+// a structural fingerprint, not cryptographic evidence; admission compares the fields themselves.
+fn attempt_admission_subject_fields(subject: AttemptAdmissionSubject) -> List<JsonKeyValue> {
+  [
+    json_kv(key: "node", value: json_string(s: subject.node as String)),
+    json_kv(key: "destination", value: json_object(members: concat(
+      [
+        json_kv(key: "owner", value: json_string(s: subject.destination.owner)),
+        json_kv(key: "name", value: json_string(s: subject.destination.name)),
+        json_kv(key: "full_name", value: json_string(s: subject.destination.full_name)),
+      ],
+      concat(
+        destination_privacy_json_members(privacy: subject.destination.privacy),
+        destination_default_branch_json_members(standing: subject.destination.default_branch),
+      ),
+    ))),
+    json_kv(key: "base_revision", value: json_string(s: render_git_object_id_wire(oid: subject.base.revision))),
+    json_kv(key: "admitted_by", value: json_string(s: subject.base.admitted_by as String)),
+    json_kv(key: "admitted_on", value: json_string(s: subject.base.admitted_on as String)),
+    json_kv(key: "public_revision", value: json_string(s: render_git_object_id_wire(oid: subject.public_revision.revision))),
+    json_kv(key: "public_revision_standing", value: json_string(s: public_revision_standing_text(s: subject.public_revision.standing))),
+    json_kv(key: "source_roots", value: json_array(elements: claim_source_root_args(layout: subject.sealed_source_roots) |> map(arg => json_string(s: arg)))),
+  ]
+}
+
+fn attempt_admission_subject_identity(subject: AttemptAdmissionSubject) -> Fnv1a64Structural {
+  content_hash_atom(value: serialize_json(v: json_object(members: attempt_admission_subject_fields(subject: subject))) as NonEmptyStr)
+}
+
+// current is the admission result of newly read inputs, never a second read of globals standing
+// in for the stored seal. Missing/unreadable current inputs refuse before the join. Both field
+// lists come from the same total projection; a changed field retains its location and both values.
+fn compare_attempt_subject_fields(
+  sealed: AttemptAdmissionSubject,
+  current: AttemptSubjectAdmission,
+) -> AttemptSubjectAdmission {
+  match current {
+    AttemptSubjectRefused { node, cause } => AttemptSubjectRefused { node: node, cause: cause }
+    AttemptSubjectAdmitted { subject } =>
+      let sealed_fields = attempt_admission_subject_fields(subject: sealed)
+      let current_fields = attempt_admission_subject_fields(subject: subject)
+      let differences = current_fields |> filter(field => !any(sealed_fields, prior =>
+        prior.key == field.key && serialize_json(v: prior.value) == serialize_json(v: field.value)))
+      match differences.first() {
+        Absent => AttemptSubjectAdmitted { subject: sealed }
+        Present { value: field } =>
+          AttemptSubjectRefused {
+            node: sealed.node,
+            cause: AttemptSubjectSealStale {
+              field: field.key as NonEmptyStr,
+              sealed: serialize_json(v: json_object(members: sealed_fields |> filter(prior => prior.key == field.key))),
+              current: serialize_json(v: json_object(members: [field])),
+            },
+          }
+      }
+  }
+}
+
+// Revalidate both records at acceptance as well as at mint: public record constructors cannot
+// be treated as a proof that these values came through admit_attempt_subject.
+fn join_attempt_subject(
+  sealed: AttemptAdmissionSubject,
+  current: AttemptSubjectAdmission,
+) -> AttemptSubjectAdmission {
+  match validate_attempt_subject(subject: sealed) {
+    AttemptSubjectRefused { node, cause } => AttemptSubjectRefused { node: node, cause: cause }
+    AttemptSubjectAdmitted { subject: validated_seal } =>
+      match current {
+        AttemptSubjectRefused { node, cause } => AttemptSubjectRefused { node: node, cause: cause }
+        AttemptSubjectAdmitted { subject } =>
+          compare_attempt_subject_fields(sealed: validated_seal, current: validate_attempt_subject(subject: subject))
+      }
+  }
+}

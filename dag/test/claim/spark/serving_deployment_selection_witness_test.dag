@@ -21,6 +21,16 @@ import gunbc.spark.v41_published_image_observation {
 import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network {
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import gunbc.spark.serving_subject {
+  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_canary_serving_subject,
+}
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
@@ -34,8 +44,12 @@ import gunbc.spark.serving_deployment_selection {
   RuntimeFeasibility, RuntimeFeasibilityUnestablished,
   WorkloadDemandStanding, WorkloadDemandEstablished, WorkloadDemandUnestablished, ContextReservePolicy, context_reserve_policy,
   WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
-  per_rank_bytes_ceiling, fleet_fits,
-  spark_fleet_snapshot, serving_parameters_current, spark_runtime,
+  per_rank_bytes_ceiling,
+  FleetFit, FleetFitWithinAdmissible, FleetFitExceedsAdmissible, FleetFitDegenerate, fleet_fit_of, fleet_fit_admits,
+  FleetSnapshot, spark_unified_memory_per_host, spark_unified_memory_how, covering_topologies_over,
+  ax_host_fit, ServedArtifactTransition, group_a_served_artifact_transition,
+  pair_unit_a_fleet_snapshot, glm_canary_fleet_snapshot, pair_unit_a_evidence_current, glm_canary_evidence_current,
+  serving_parameters_current, spark_runtime,
   artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
   fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
@@ -54,7 +68,7 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_profile_standings_from, v4_1_candidate_field_from_sm12, v4_1_decision_input_from_sm12,
   v4_1_declared_profile_standings, ServingProfileReady, ServingProfileSm12JoinFailed,
   v4_1_profile_from_standing, serving_deployment_domain_over_standings, derived_candidates_for,
-  serving_evidence_current, id_v4_1_constraint_authority,
+  id_v4_1_constraint_authority,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
@@ -132,7 +146,7 @@ fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDepl
   let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
   let domain = serving_deployment_domain_over_standings(
     artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    topologies: fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot),
     standings: standings,
   )
   serving_decision_input(
@@ -141,7 +155,7 @@ fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDepl
       domain: domain,
       candidates: derived_candidates_for(stem: stem, domain: domain),
     ),
-    evidence: serving_evidence_current,
+    evidence: pair_unit_a_evidence_current,
     quality_requirement: deepseek_v4_1_quality_requirement,
     selection_policy: deepseek_v4_1_selection_policy,
     constraints: v4_1_selection_constraints,
@@ -189,6 +203,33 @@ test fn matching_the_authorized_v4_1_digest_does_not_establish_source() -> Bool 
 
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
 data suite_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref")
+
+// AN EIGHT-HOST FIXTURE FLEET, FOR THE CLAIMS THAT ARE NOT ABOUT ADMISSIBILITY. The covering-partition
+// and identity-join claims below exercise a field over eight hosts, which no production subject is
+// admitted any more; a fixture subject over the eight named units keeps those claims about what they
+// were about. The identities are named, not counted, and the fixture subject is a fixture arm so it
+// can never be mistaken for a production subject's set.
+data fixture_subject: ServingSubject = PlacedServingArm { arm: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_subject") }
+
+fn fixture_fleet_over(hosts: List<HostIdentity>) -> FleetSnapshot {
+  FleetSnapshot {
+    subject: fixture_subject,
+    admissible_hosts: hosts,
+    bytes_per_host: spark_unified_memory_per_host,
+    how: spark_unified_memory_how,
+  }
+}
+
+data fixture_eight_host_fleet: FleetSnapshot = fixture_fleet_over(hosts: [
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+])
+
+data fixture_fleet_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_eight_host_fleet")
+
+fn contains_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
+  any(hosts, h => host_identity_eq(a: h, b: host))
+}
 
 data deepseek_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.spark.serving_deployment_selection",
@@ -290,8 +331,8 @@ fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDeman
     quality: profiles,
     runtime_feasibility: [],
     workload: w,
-    fleet: spark_fleet_snapshot,
-    fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
+    fleet: fixture_eight_host_fleet,
+    fleet_receipt: fixture_fleet_ref,
   )
 }
 
@@ -648,10 +689,10 @@ test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
 
 // ── THE LOWER BOUND DISPROVES; IT DOES NOT ESTABLISH ──────────────────────────────────────────
 test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
-  match weight_fit_of(c: native_tp1_x8, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  match weight_fit_of(c: native_tp1_x8, fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
     _ => false
-  } && match weight_fit_of(c: native_tp4_x2, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  } && match weight_fit_of(c: native_tp4_x2, fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
     _ => false
   }
@@ -661,10 +702,10 @@ test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
 // came from someone else's deployment write-up; the previous version typed it identically to a byte
 // count read on a Spark, so it looked exact.
 test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
-  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
     _ => false
-  } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
     _ => false
   }
@@ -686,9 +727,154 @@ test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
 
 // ── A DEGENERATE SHAPE IS NOT A CHEAP ONE ─────────────────────────────────────────────────────
 test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
-  !fleet_fits(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 0)), fleet: spark_fleet_snapshot)
-    && !fleet_fits(c: cand(name: "zero_ranks", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 0, replica_count: 2)), fleet: spark_fleet_snapshot)
-    && fleet_fits(c: native_tp4_x2, fleet: spark_fleet_snapshot)
+  (match fleet_fit_of(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 0)), fleet: fixture_eight_host_fleet) {
+     FleetFitDegenerate { because: _ } => true
+     _ => false
+   })
+    && (match fleet_fit_of(c: cand(name: "zero_ranks", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 0, replica_count: 2)), fleet: fixture_eight_host_fleet) {
+         FleetFitDegenerate { because: _ } => true
+         _ => false
+       })
+    && fleet_fit_admits(f: fleet_fit_of(c: native_tp4_x2, fleet: fixture_eight_host_fleet))
+}
+
+// ── RED: A SHAPE NEEDING MORE HOSTS THAN THE SUBJECT IS ADMITTED REFUSES, NAMING THE HOSTS ─────
+//
+// THIS IS THE FAIL-OPEN THE SCALAR CARRIED. Against the production pair unit on group A, a two-replica
+// four-rank shape needs eight hosts and the subject is admitted four: the refusal carries exactly
+// srv5-srv8 by identity and a shortfall of four, and the positive control -- the one-replica shape
+// that runs there today -- is admitted over the same four identities. Before this change the same
+// call answered true against `host_count: 8`.
+test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
+  (match fleet_fit_of(c: native_tp4_x2, fleet: pair_unit_a_fleet_snapshot) {
+     FleetFitExceedsAdmissible { subject: s, required: r, admissible: hs, short_by: k } =>
+       serving_subject_eq(a: s, b: PairServingUnitOn { group: FabricGroupA })
+         && r == 8 && k == 4
+         && contains_host(hosts: hs, host: operator_host_srv5)
+         && contains_host(hosts: hs, host: operator_host_srv6)
+         && contains_host(hosts: hs, host: operator_host_srv7)
+         && contains_host(hosts: hs, host: operator_host_srv8)
+         && !contains_host(hosts: hs, host: operator_host_srv9)
+         && !contains_host(hosts: hs, host: operator_host_srv10)
+         && !contains_host(hosts: hs, host: operator_host_srv11)
+         && !contains_host(hosts: hs, host: operator_host_srv12)
+     _ => false
+   })
+    && (match fleet_fit_of(c: cand(name: "tp4x1_on_a", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)), fleet: pair_unit_a_fleet_snapshot) {
+         FleetFitWithinAdmissible { subject: _, required: r, admissible: hs } =>
+           r == 4 && contains_host(hosts: hs, host: operator_host_srv5) && !contains_host(hosts: hs, host: operator_host_srv9)
+         _ => false
+       })
+}
+
+// THE PRODUCTION SETS, BY IDENTITY IN BOTH DIRECTIONS. V4.1 resolves to the pair unit on group A
+// through the dated transition row and is admitted srv5-srv8 and nothing else; the GLM canary's
+// subject is admitted srv9-srv12 and nothing of group A. A set of the right size holding the wrong
+// hosts is exactly what a count could not detect, so no length appears here.
+test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() -> Bool {
+  let a = pair_unit_a_fleet_snapshot.admissible_hosts
+  let b = glm_canary_fleet_snapshot.admissible_hosts
+  serving_subject_eq(a: pair_unit_a_fleet_snapshot.subject, b: group_a_served_artifact_transition.subject)
+    && serving_subject_eq(a: glm_canary_fleet_snapshot.subject, b: glm_canary_serving_subject)
+    && contains_host(hosts: a, host: operator_host_srv5) && contains_host(hosts: a, host: operator_host_srv6)
+    && contains_host(hosts: a, host: operator_host_srv7) && contains_host(hosts: a, host: operator_host_srv8)
+    && !contains_host(hosts: a, host: operator_host_srv9) && !contains_host(hosts: a, host: operator_host_srv10)
+    && !contains_host(hosts: a, host: operator_host_srv11) && !contains_host(hosts: a, host: operator_host_srv12)
+    && contains_host(hosts: b, host: operator_host_srv9) && contains_host(hosts: b, host: operator_host_srv10)
+    && contains_host(hosts: b, host: operator_host_srv11) && contains_host(hosts: b, host: operator_host_srv12)
+    && !contains_host(hosts: b, host: operator_host_srv5) && !contains_host(hosts: b, host: operator_host_srv6)
+    && !contains_host(hosts: b, host: operator_host_srv7) && !contains_host(hosts: b, host: operator_host_srv8)
+}
+
+// THE TRANSITION ROW IS THE ROUTE, NOT A DECORATION: its subject's group is a group this repository
+// claims, its two sides are the two DeepSeek artifacts in the order the ruling names, both DeepSeek
+// domains take their artifact from it, and the V4.1 quality requirement is about its TO side.
+test fn the_group_a_transition_is_consumed_by_both_deepseek_fields() -> Bool {
+  (match group_a_served_artifact_transition.subject {
+     PairServingUnitOn { group: g } =>
+       any(spark_pair_serving_groups, claimed => (fabric_group_wire(g: claimed) as String) == (fabric_group_wire(g: g) as String))
+     PlacedServingArm { arm: _ } => false
+   })
+    && declaration_ref_eq(a: group_a_served_artifact_transition.from.identity, b: artifact_deepseek_v4_flash_native.identity)
+    && declaration_ref_eq(a: group_a_served_artifact_transition.to.identity, b: artifact_deepseek_v4_1_flash_native.identity)
+    && all(deepseek_domain.artifacts, a => declaration_ref_eq(a: a.identity, b: group_a_served_artifact_transition.from.identity))
+    && all(deepseek_v4_1_candidate_field.domain.artifacts, a => declaration_ref_eq(a: a.identity, b: group_a_served_artifact_transition.to.identity))
+    && declaration_ref_eq(a: deepseek_v4_1_quality_requirement.required_artifact, b: group_a_served_artifact_transition.to.identity)
+    && (group_a_served_artifact_transition.ruling.ruled_on as String) == "2026-09-12"
+    && decision_snapshot_key(input: deepseek_decision_input) != decision_snapshot_key(input: deepseek_v4_1_decision_input)
+}
+
+// A PLANTED EIGHT-RANK V4.1 SHAPE IS EXCLUDED BEFORE PARETO, NOT LEFT AS AN OBLIGATION. The production
+// V4.1 domain never enumerates it (four admissible hosts), so it is planted: a field of exactly that
+// shape over the authorized runtime answers NoFeasible under the host-fit constraint, where the same
+// field over the eight-host fixture fleet answers with evidence obligations. This is the exclusion
+// deep-crane-826's memory screen relies on host admissibility for (their #11193), and it holds even
+// though V4.1's footprint is externally reported -- the host fit is its own reading, never a gap.
+test fn a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eight_hosts() -> Bool {
+  match v4_1_profile_at(runtime: v4_1_runtime_published_arm64) {
+    ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
+    ServingProfileReady { profile: p } => {
+      let t = topology_shape(tensor_parallel_degree: 8, replica_count: 1)
+      let domain = serving_deployment_domain_over_standings(
+        artifacts: [artifact_deepseek_v4_1_flash_native],
+        topologies: [t],
+        standings: [ServingProfileReady { profile: p }],
+      )
+      let field = serving_candidate_field(
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eight_hosts"),
+        domain: domain,
+        candidates: derived_candidates_for(stem: "planted_tp8", domain: domain),
+      )
+      let over_a = serving_decision_input(
+        field: field,
+        evidence: pair_unit_a_evidence_current,
+        quality_requirement: deepseek_v4_1_quality_requirement,
+        selection_policy: deepseek_v4_1_selection_policy,
+        constraints: v4_1_selection_constraints,
+        constraint_authority: id_v4_1_constraint_authority,
+        axes: v4_1_selection_axes,
+      )
+      let over_eight = serving_decision_input(
+        field: field,
+        evidence: serving_evidence_snapshot(quality: [], runtime_feasibility: [], workload: unestablished_demand, fleet: fixture_eight_host_fleet, fleet_receipt: fixture_fleet_ref),
+        quality_requirement: deepseek_v4_1_quality_requirement,
+        selection_policy: deepseek_v4_1_selection_policy,
+        constraints: v4_1_selection_constraints,
+        constraint_authority: id_v4_1_constraint_authority,
+        axes: v4_1_selection_axes,
+      )
+      (match select_serving_deployment(input: over_a) {
+         NoFeasibleServingDeployment { causes: cs } => count(cs) > 0
+         _ => false
+       })
+        && (match select_serving_deployment(input: over_eight) {
+              ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+              _ => false
+            })
+    }
+  }
+}
+
+// THE EVIDENCE IDENTITY MOVES WITH THE HOST IDENTITIES, NOT WITH THEIR NUMBER. Two fixture fleets of
+// the same size over different units are different evidence, which is what a `host_count` in the key
+// could never say and what makes a stale decision over a re-cabled fleet mechanically detectable.
+fn settled_input_over(f: FleetSnapshot) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    field: settled_field,
+    evidence: serving_evidence_snapshot(quality: [passing_quality_for(tp: 4)], runtime_feasibility: [], workload: established_demand, fleet: f, fleet_receipt: fixture_fleet_ref),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: suite_ref,
+    constraints: serving_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: serving_selection_axes,
+  )
+}
+
+test fn swapping_one_admissible_host_for_another_changes_the_decision_identity() -> Bool {
+  let left = fixture_fleet_over(hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8])
+  let right = fixture_fleet_over(hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv9])
+  decision_snapshot_key(input: settled_input_over(f: left)) != decision_snapshot_key(input: settled_input_over(f: right))
+    && decision_snapshot_key(input: settled_input_over(f: left)) == decision_snapshot_key(input: settled_input_over(f: left))
 }
 
 // ── A DIFFERENT ARTIFACT IS A DECIDED NEGATIVE ────────────────────────────────────────────────
@@ -713,13 +899,23 @@ fn topology_in(shapes: List<TopologyShape>, tp: Nat, replicas: Nat) -> Bool {
   any(shapes, t => topology_shape_eq(a: t, b: topology_shape(tensor_parallel_degree: tp, replica_count: replicas)))
 }
 
+// THE V4.1 DOMAIN IS EVERY SHAPE THE PAIR UNIT ON GROUP A ADMITS, AND NOTHING WIDER: the four
+// admissible identities enumerate tp1-tp4, and no five-to-eight-rank shape exists in the domain to
+// be screened. That absence is asserted by identity of shape rather than by the domain's length.
 test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
-  let admitted = fleet_admitted_topologies(fleet: spark_fleet_snapshot)
+  let admitted = fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot)
   match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
     ServingFieldEstablished =>
       topology_in(shapes: admitted, tp: 4, replicas: 1)
         && topology_in(shapes: admitted, tp: 2, replicas: 1)
         && topology_in(shapes: admitted, tp: 1, replicas: 1)
+        && topology_in(shapes: admitted, tp: 2, replicas: 2)
+        && !topology_in(shapes: admitted, tp: 5, replicas: 1)
+        && !topology_in(shapes: admitted, tp: 6, replicas: 1)
+        && !topology_in(shapes: admitted, tp: 7, replicas: 1)
+        && !topology_in(shapes: admitted, tp: 8, replicas: 1)
+        && !topology_in(shapes: admitted, tp: 4, replicas: 2)
+        && all(deepseek_v4_1_candidate_field.domain.topologies, t => topology_in(shapes: admitted, tp: t.tensor_parallel_degree, replicas: t.replica_count))
         && count(v4_1_declared_profiles) == 3
         && (v4_1_runtime_published_arm64.image as String) == (v41_published_arm64_reference() as String)
         && match v4_1_runtime_published_arm64.vllm_source {
@@ -959,18 +1155,27 @@ test fn assessment_dispositions_join_the_constraint_identities_on_the_input() ->
     && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_authorized_runtime))
 }
 
+// THE COVERING CARTESIAN IS OVER THE SUBJECT'S ADMISSIBLE SET. GLM covers the canary's four hosts,
+// so tp4 x1 is in and tp4 x2 -- eight hosts -- is not; before this change the same claim asserted
+// the reverse over a scalar eight. The DeepSeek V4 Flash field covers the pair unit's four hosts and
+// carries tp4 x1, the shape that runs on group A today, and not tp8 x1.
 test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
   match establish_serving_candidate_field(field: glm_candidate_field) {
     ServingFieldEstablished =>
       count(glm_candidate_field.candidates)
         == count(glm_domain.artifacts) * count(glm_domain.topologies) * count(glm_domain.profiles)
-        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 2)
-        && !topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
+        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
+        && topology_in(shapes: glm_domain.topologies, tp: 1, replicas: 4)
+        && !topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 2)
+        && !topology_in(shapes: glm_domain.topologies, tp: 8, replicas: 1)
     ServingFieldUnestablished { causes: _ } => false
   } && match establish_serving_candidate_field(field: deepseek_candidate_field) {
     ServingFieldEstablished =>
       count(deepseek_candidate_field.candidates)
         == count(deepseek_domain.artifacts) * count(deepseek_domain.topologies) * count(deepseek_domain.profiles)
+        && topology_in(shapes: deepseek_domain.topologies, tp: 4, replicas: 1)
+        && !topology_in(shapes: deepseek_domain.topologies, tp: 8, replicas: 1)
+        && !topology_in(shapes: deepseek_domain.topologies, tp: 4, replicas: 2)
     ServingFieldUnestablished { causes: _ } => false
   }
 }
