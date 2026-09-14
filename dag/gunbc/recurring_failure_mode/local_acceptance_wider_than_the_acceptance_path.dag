@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.local_acceptance_wider_than_the_acceptance_path
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data local_acceptance_wider_than_the_acceptance_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "local_acceptance_wider_than_the_acceptance_path" as NonEmptyStr,
+
+  receipts: [
+    "**the local reader accepts source the acceptance path refuses, so the class is only catchable by pushing** (INVALID STATE: two readers of one grammar disagree about what is admissible, and the WIDER one is the one an author runs. A green local run is then evidence about the local reader and about nothing the gate will do. DESIGN section 5 names the shape directly -- a typecheck and a grep are not consumers -- and this is its inverse: the local consumer executes, goes green, and still establishes nothing, because the question it answered is not the question the gate asks.)",
+
+    "DISCRIMINATING FACT, and it is what separates this from ordinary staleness: a `//` annotation sitting INSIDE a declaration body -- a match arm, a record body -- is ADMITTED by `claim_batch` and `gunbc run` from a current local build, and REFUSED by the required floor at parse with `source annotation sits inside a declaration body. Only module-item grain is modeled; move it above the declaration it describes.` Same tree, same commit, two verdicts. The local binary is not out of date; it is running a reader that does not carry the annotation channel the gate applies (DESIGN section 4c: annotations are captured at module-item grain through an annotation-specific lexical channel).",
+
+    "HARM, and the reason it is worth a row rather than a note: the feedback channel for the class is a PUSHED CI RUN. Every instance costs a full required-floor cycle to discover, on a lane whose job roster is closed to growth precisely because a job is a standing claim on a paid runner. It also trains the wrong reflex -- an author who has watched local green and CI red diverge learns to distrust local evidence generally, which is expensive in the opposite direction.",
+
+    "RECEIPT (2026-09-13, gunbc#11195 and gunbc#11273, one session): the class reached CI TWICE. First in `src/v2/workflow/floor_cost_distribution.dag` -- four annotations inside a record body, refused at the v2 native route and invisible to the local run that preceded the push. Then, after the author had already met and repaired the class once, in `src/v2/workflow/floor_pure_producer_share.dag` lines 793-796 -- four annotations inside `refused_row_carriers_transfer`'s match body, local witness fold green over 13 witnesses, CI `floor_class=structural verdict=stands-red blockers=3`. Knowing the rule did not prevent the second instance, which is the evidence that the gap is mechanical and not attentional.",
+
+    "IT IS NOT VERSION SKEW, AND THE DISTINCTION IS NAMED RATHER THAN CITED because no rostered class carries it (review 65811: an earlier revision of this sentence cited a class it called a_stale_installed_gunbc_cannot_parse_annotations -- written without backticks here so it does not read as a citation of something that could be resolved -- which is a note in the author's own working memory and NOT a row in this directory -- a differentiator that resolved to nothing, landing in the same change that repaired the identical defect one file over). THE SKEW SHAPE is an OLD binary lacking a capability a current one has: the two readers agree about the rule and disagree about their vintage, and rebuilding closes it. THIS CLASS SURVIVES A FRESH BUILD OF THE CURRENT TREE: the readers are the same vintage and ENFORCE DIFFERENT RULES, so there is no rebuild that closes it. A reader who reaches for the skew explanation will rebuild, see the divergence persist, and have learned nothing.",
+
+    "RUNG FOUND AT: mitigatable. The gate refuses correctly and the refusal is typed and located, so nothing silently passes; what is missing is the refusal arriving before a runner is spent.",
+
+    "CEILING: structurally guaranteed. Membership is decidable -- whether an annotation attaches at module-item grain is a property of the parse, already computed on the acceptance path -- so the local reader can hold the same wall rather than a wider one. This is DESIGN section 5's `wall after grounding`: the authority exists and is executing; it is the second reader that does not consume it.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the local entry points authors actually run -- `gunbc run` and `claim_batch` -- ingest source through the SAME annotation channel the required floor's parse applies, so that any source the acceptance path refuses is refused locally with the same located diagnostic. Sufficient for the receipt above to reverse: the two `.dag` files that reached CI red would have refused at the authoring host. A trigger naming a lint, a pre-commit hook, or a private grep does NOT discharge this -- those are second representations of a rule the parser already owns (DESIGN section 3), and a wall that lives beside the reader instead of inside it is the next thing to drift.)",
+  ],
+
+  evidence: [],
+}

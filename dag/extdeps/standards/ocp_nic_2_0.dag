@@ -1,0 +1,25 @@
+module extdeps.standards.ocp_nic_2_0
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Independently versioned OCP Mezzanine card 2.0 Design, Revision 1.1.
+// Consumer: nic_attachment and the Mt. Collins candidate verdict witness.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "www.opencompute.org/documents/ocp-mezz-2-0-rev1-1-20200103-nocb-pdf",
+} }
+
+type OcpNic2PhysicalVariant = Type1 | Type2 | Type3 | Type4 | Type5
+
+data ocp_nic_2_generation_label: NonEmptyStr = "OCP 2.0"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.standards.ocp_nic_2_0", decl_name: "OcpNic2PhysicalVariant", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

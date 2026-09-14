@@ -4360,7 +4360,8 @@ fn floor_decode_refused_share_candidates(
                 match name.as_str() {
                     "MeasuredServeAboveRecompute"
                     | "NoMeasuredEffectOverItsConsumers"
-                    | "SupersededBySingleAuthorityRepair" => name,
+                    | "SupersededBySingleAuthorityRepair"
+                    | "KeyOmitsAnInputTheValueDependsOn" => name,
                     other => {
                         return Err(format!(
                             "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
@@ -4495,6 +4496,10 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
                 "MeasuredServeAboveRecompute" => true,
                 "NoMeasuredEffectOverItsConsumers" => false,
                 "SupersededBySingleAuthorityRepair" => false,
+                // A key objection is a fact about ONE producer's key, not about a shape other
+                // producers share, so it has nothing for a later identity to inherit. Transferring
+                // it would refuse unrelated candidates on an objection that does not apply to them.
+                "KeyOmitsAnInputTheValueDependsOn" => false,
                 other => {
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \

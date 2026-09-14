@@ -1,0 +1,44 @@
+module extdeps.standards.nic_attachment
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.ocp_nic_2_0 { OcpNic2PhysicalVariant }
+import extdeps.standards.ocp_nic_3_0 { OcpNic3PhysicalVariant }
+
+// Shared attachment shape, not a product roster. PCI-SIG's Card Electromechanical
+// specification Rev 3.0 names the conventional add-in-card interface. OCP's
+// independently versioned mechanical variants stay in their own standard modules.
+// Vendor daughter cards name their own authority, never a generic vendor enum.
+// Consumer: gunbc.machine_intake_mtcollins1_expansion_attachment. This fold
+// distinguishes attachment families only; it does not negotiate Ethernet modes.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https, locator: "pcisig.com/specifications?order=title&sort=asc",
+} }
+
+type NicAttachmentClass
+  = OcpNic2 { physical_variant: OcpNic2PhysicalVariant }
+  | OcpNic3 { physical_variant: OcpNic3PhysicalVariant }
+  | PcieCem
+  | VendorDaughterCard { form_authority: ExternalAuthority, form_name: NonEmptyStr }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.standards.nic_attachment", decl_name: "NicAttachmentClass", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.standards.ocp_nic_2_0.extdeps_model_scope.first_citation,
+    extdeps.standards.ocp_nic_3_0.extdeps_model_scope.first_citation,
+  ],
+}
+
+fn attachment_class_authority(attachment: NicAttachmentClass) -> ExternalAuthority {
+  match attachment {
+    OcpNic2 { physical_variant: _ } => extdeps.standards.ocp_nic_2_0.extdeps_model_scope.first_citation
+    OcpNic3 { physical_variant: _ } => extdeps.standards.ocp_nic_3_0.extdeps_model_scope.first_citation
+    PcieCem => extdeps_model_scope.first_citation
+    VendorDaughterCard { form_authority: authority, form_name: _ } => authority
+  }
+}

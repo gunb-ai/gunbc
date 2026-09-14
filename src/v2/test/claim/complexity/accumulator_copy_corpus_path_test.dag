@@ -12,10 +12,16 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusCoverageSurplus,
   CorpusPopulationBelowFloor,
   CorpusSuspectObserved,
+  NewlyRedAfterSurplus,
+  NewlyRedBeforeSurplus,
+  NewlyRedComplete,
+  NewlyRedPathMismatch,
   corpus_gate,
   corpus_gate_disposition_over,
-  corpus_rows_for_paths
+  corpus_rows_for_paths,
+  newly_red_difference
 }
+import v2.lens.common.source_analysis_standing { SourceUnreadable }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.logic { Bool }
@@ -306,5 +312,70 @@ test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict(
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+fn unmeasured_row(path: String) -> CorpusFileRow {
+  CorpusFileRow {
+    path: path,
+    standing: CorpusFileNotEstablished { cause: SourceUnreadable }
+  }
+}
+
+// THE ARROW-FORM CENSUS RECEIPT, AT THE GRAIN THAT CAN EXECUTE. The ingest that would colour a
+// real file is priced out of this lane; the join that decides "newly red" is not. Newly red is
+// scanned-suspect after AND scanned-zero before. Unmeasured is listed and is not red. A file
+// already red on main is not newly red.
+test fn a_file_red_only_after_the_repair_is_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 0)],
+    after: [scanned_row(path: planted_path, suspects: 1)]
+  ) {
+    NewlyRedComplete { newly_red: Cons { head: p, tail: Empty }, unmeasured: Empty } =>
+      p == planted_path
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn a_file_already_red_on_main_is_not_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 1)],
+    after: [scanned_row(path: planted_path, suspects: 3)]
+  ) {
+    NewlyRedComplete { newly_red: Empty, unmeasured: Empty } => true
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn an_unmeasured_before_arm_is_not_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [unmeasured_row(path: planted_path)],
+    after: [scanned_row(path: planted_path, suspects: 1)]
+  ) {
+    NewlyRedComplete { newly_red: Empty, unmeasured: Cons { head: p, tail: Empty } } =>
+      p == planted_path
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn a_path_identity_mismatch_refuses_rather_than_joining_by_position() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 0)],
+    after: [scanned_row(path: clean_path, suspects: 1)]
+  ) {
+    NewlyRedPathMismatch { before_path: b, after_path: a } =>
+      (b == planted_path) && (a == clean_path)
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
   }
 }
