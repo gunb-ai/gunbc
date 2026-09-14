@@ -19,7 +19,8 @@ import std.dissolution {
 // enumerated host-effect declarations so a missing mutation identity refuses.
 // phases.mutates is derived from persistent_host_effect at census_row.
 // deletion is std.dissolution: none when RetainAuthority, else retires_dissolution(identity).
-// intended_authority is a fold over disposition plus current_authority; it is not a row field.
+// intended_authority is a fold over disposition: Retain -> current; Bind -> target;
+// Rename -> canonical; Replace -> terminal or successor; Outside -> protocol.
 type ProtocolPhases {
   selects: Bool
   observes: Bool
@@ -72,9 +73,9 @@ type PersistentHostEffectStatus
 type HostConvergenceDisposition
   = RetainAuthority
   | BindToAuthority { target: DeclarationRef }
-  | RenameOutOfConvergence
-  | ReplaceAndDelete { successor: DeclarationRef }
-  | OutsideHostConvergence
+  | RenameOutOfConvergence { canonical: DeclarationRef }
+  | ReplaceAndDelete { successor: DeclarationRef, terminal: DeclarationRef? }
+  | OutsideHostConvergence { protocol: DeclarationRef }
 
 type HostConvergenceCensusRow {
   identity: DeclarationRef
@@ -179,9 +180,13 @@ fn intended_authority(row: HostConvergenceCensusRow) -> DeclarationRef {
   match row.disposition {
     RetainAuthority => row.current_authority
     BindToAuthority { target: t } => t
-    ReplaceAndDelete { successor: s } => s
-    RenameOutOfConvergence => row.current_authority
-    OutsideHostConvergence => row.current_authority
+    ReplaceAndDelete { successor: s, terminal: term } =>
+      match term {
+        Present { value: home } => home
+        Absent => s
+      }
+    RenameOutOfConvergence { canonical: c } => c
+    OutsideHostConvergence { protocol: p } => p
   }
 }
 
@@ -189,9 +194,9 @@ fn disposition_is_retain(d: HostConvergenceDisposition) -> Bool {
   match d {
     RetainAuthority => true
     BindToAuthority { target: _ } => false
-    RenameOutOfConvergence => false
-    ReplaceAndDelete { successor: _ } => false
-    OutsideHostConvergence => false
+    RenameOutOfConvergence { canonical: _ } => false
+    ReplaceAndDelete { successor: _, terminal: _ } => false
+    OutsideHostConvergence { protocol: _ } => false
   }
 }
 
@@ -214,11 +219,25 @@ fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRef
       } else {
         none
       }
-    ReplaceAndDelete { successor: s } =>
-      if declaration_ref_eq(a: row.identity, b: s) {
+    RenameOutOfConvergence { canonical: c } =>
+      if declaration_ref_eq(a: row.identity, b: c) {
         Present { value: SelfSuccessor { identity: row.identity } }
       } else {
         none
+      }
+    ReplaceAndDelete { successor: s, terminal: term } =>
+      if declaration_ref_eq(a: row.identity, b: s) {
+        Present { value: SelfSuccessor { identity: row.identity } }
+      } else {
+        match term {
+          Present { value: home } =>
+            if declaration_ref_eq(a: row.identity, b: home) {
+              Present { value: SelfSuccessor { identity: row.identity } }
+            } else {
+              none
+            }
+          Absent => none
+        }
       }
     _ => none
   }
@@ -307,6 +326,10 @@ fn std_reconcile() -> DeclarationRef {
   cite(module_path: "std.realization_reconcile", decl_name: "reconcile_effect")
 }
 
+fn show_effective_read() -> DeclarationRef {
+  cite(module_path: "std.realization_reconcile", decl_name: "ShowEffectiveRead")
+}
+
 fn fleet_plan() -> DeclarationRef {
   cite(module_path: "gunbc.fleet_converge_plan", decl_name: "fleet_converge_plan_artifact")
 }
@@ -378,7 +401,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.ensure", decl_name: "EnsureObservation"),
     persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence,
+    disposition: RenameOutOfConvergence { canonical: show_effective_read() },
     first_consumer: cite(module_path: "gunbc.ensure", decl_name: "ensure_decide"),
   ),
   census_row(
@@ -549,7 +572,10 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, true, true, false, true, true),
     current_authority: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: ReplaceAndDelete { successor: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport") },
+    disposition: ReplaceAndDelete {
+      successor: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
+      terminal: Present { value: fleet_plan() },
+    },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_dashboard_deploy_step_if"),
   ),
   census_row(
@@ -558,7 +584,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: ReplaceAndDelete { successor: live_member_observe() },
+    disposition: ReplaceAndDelete { successor: live_member_observe(), terminal: none },
     first_consumer: cite(module_path: "gunbc.roadmap_dashboard_instance_apply", decl_name: "dashboard_instance_apply"),
   ),
   census_row(
@@ -603,7 +629,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, true, false),
     current_authority: cite(module_path: "gunbc.spark.glm_canary_converge", decl_name: "glm_canary_converge"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.spark.glm_canary_converge", decl_name: "glm_canary_converge_wet"),
   ),
   census_row(
@@ -612,7 +638,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.spark.vllm_runtime_image_build", decl_name: "converge_vllm_runtime_image"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -657,7 +683,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, true, false),
     current_authority: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "converge_password_session_tools"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "runner_password_session_tool_converge_ci_wet"),
   ),
   census_row(
@@ -666,7 +692,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, false, true),
     current_authority: cite(module_path: "gunbc.runner_microvm_host_ready", decl_name: "runner_microvm_host_converge_wet"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -675,7 +701,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.runner_guest_image", decl_name: "runner_guest_image_converge_wet"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -690,16 +716,25 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
   census_row(
     identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
     subject: SrvBmcCredential,
-    phases: protocol_phases(false, false, false, false, false, false, false),
+    phases: protocol_phases(false, true, true, false, false, true, false),
     current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RenameOutOfConvergence,
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+    subject: SrvBmcCredential,
+    phases: protocol_phases(false, true, true, false, false, true, false),
+    current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.host_standup", decl_name: "host_standup_spine"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv4_converge_credential"),
     subject: SrvBmcCredential,
-    phases: protocol_phases(false, false, false, false, false, false, false),
+    phases: protocol_phases(false, true, true, false, false, true, false),
     current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
@@ -711,7 +746,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, true, false, false, false, false),
     current_authority: cite(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_actions_converge_wet"),
     persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence,
+    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -720,7 +755,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, true, false, false, false, false),
     current_authority: cite(module_path: "gunbc.fleet.app_control_plane_converge", decl_name: "app_control_plane_converge_wet"),
     persistent_host_effect: DoesNotMutateHost,
-    disposition: RenameOutOfConvergence,
+    disposition: RenameOutOfConvergence { canonical: std_goal_assessment() },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
@@ -747,7 +782,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, true, true, true, false, true, false),
     current_authority: cite(module_path: "gunbc.repo_local_git_config", decl_name: "converge"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: OutsideHostConvergence,
+    disposition: OutsideHostConvergence { protocol: std_reconcile() },
     first_consumer: cite(module_path: "gunbc.repo_local_git_config", decl_name: "repo_local_git_config_converge_actuate"),
   ),
   census_row(
@@ -758,6 +793,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_authorized_key_self_enroll_wet"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_authorized_key_self_enroll_wet"),
+    subject: FleetHostKeyEnrollment,
+    phases: protocol_phases(false, true, true, false, false, true, false),
+    current_authority: cite(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_authorized_key_self_enroll_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_authorized_key_enroll_target"),
   ),
 ]
 

@@ -145,7 +145,7 @@ test fn w_self_successor_refuses() -> Bool {
     phases: none_phases(),
     current_authority: id,
     persistent_host_effect: DoesNotMutateHost,
-    disposition: ReplaceAndDelete { successor: id },
+    disposition: ReplaceAndDelete { successor: id, terminal: none },
     first_consumer: id,
   )
   match admit_host_convergence_census(rows: [row]) {
