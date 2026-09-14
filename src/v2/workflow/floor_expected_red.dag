@@ -866,7 +866,12 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // verdict roster cannot carry it.
 //
 // THE POPULATION IS BOUNDED AND MEASURED, at identity grain, on the run named above: 44
-// interrupted, all on the CPU clock against `required_floor_claim_work_envelope_ms`'s 5000ms,
+// interrupted, all on the CPU clock against `required_floor_per_subject_cpu_line_ms` (the CPU
+// line; this sentence named the work envelope for one revision of gunbc#11195, which compared a
+// CPU reading to a work policy -- the fusion review 66007 found. The "5000ms" beside it does not
+// match that line's 500 and did not match its predecessor's either; it is left as written rather
+// than guessed at, because whether the figure or the clock attribution is the wrong half is not
+// decidable from this file and predates this change),
 // concentrated in live-tree corpus witnesses (13 in
 // `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
 // `v2.test.claim.enforcement_live_witness`, 6 in
