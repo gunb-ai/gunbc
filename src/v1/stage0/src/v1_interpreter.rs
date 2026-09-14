@@ -8076,8 +8076,6 @@ macro_rules! v1_bridge_family_arms {
             // name disagreeing with the roster fails to compile.
             family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
                 lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
-                arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
-                    crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
@@ -19207,6 +19205,20 @@ macro_rules! v1_builtin_arms {
                     &pool_roots,
                     qualified_name.as_str(),
                 )?))
+            },
+
+            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
+                let bare_name =
+                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
+                Ok(Some(
+                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
+                        $ctx,
+                        &pool_roots,
+                        bare_name.as_str(),
+                    )?,
+                ))
             },
 
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
