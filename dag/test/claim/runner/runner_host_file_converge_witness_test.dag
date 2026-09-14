@@ -535,7 +535,9 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
 
 // Observe succeeds on a host whose teardown is NOT yet effective -- that is what it exists to report --
 // and apply does not. Apply also refuses a reload it owed and did not perform, and a population with
-// any unit it could not read.
+// any unit it could not read. run_runner_host_files is not driven here: the floor classifies that
+// call as reaching shell.PosixCommandV.Check (no mock_response). Privilege, unread slots, and
+// ancestor refusal stay as the classifiers; re-enroll the integration when Check has a hermetic arm.
 test fn observe_reports_what_apply_refuses() -> Bool {
   let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
   let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
@@ -546,7 +548,3 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
 }
-
-// run_runner_host_files is not driven here. The floor classifies that call as reaching
-// shell.PosixCommandV.Check (no mock_response). Privilege, unread slots, and ancestor refusal are
-// already the evidence; re-enroll the integration when Check has a hermetic arm.
