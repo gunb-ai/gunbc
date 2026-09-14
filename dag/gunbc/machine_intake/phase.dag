@@ -1,6 +1,7 @@
 module gunbc.machine_intake_phase
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, content_hash_of_value }
 
 // THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware
 // qualification, OS provisioning and placement commissioning are separate transactions: they
@@ -193,5 +194,40 @@ fn refusal_owner_label(owner: QualificationRefusalOwner) -> NonEmptyStr {
     PlatformModel => "platform-model"
     QualificationPolicy => "qualification-policy"
     OperatorAction => "operator-action"
+  }
+}
+
+// A MACHINE'S OPERATING ENVIRONMENT IS A DECLARED QUALIFICATION-POLICY
+// PROPERTY, not a dashboard instance field and not a host toolchain list.
+// gunbc.roadmap_dashboard_instance distinguishes a lab from a production
+// slot (DispatchStateScope: instance-owned vs host-shared) and holds
+// production to a stricter bar; that SEMANTIC is reused here. The carrier is
+// not: DispatchHostEnvironment is a list of capability realizations (git,
+// cargo, tmux), and HostRole is PrimaryInstrument | CompanionInput. No
+// machine-level DevelopmentAndTest | Production type existed; minting it on
+// the policy FleetAdmissionReceipt already binds is the home, so BMC-secure
+// adjudication and promotion consult the same digest the ledger already
+// carries. Not std: this is a product qualification fact, not a universal
+// framework.
+type MachineOperatingEnvironment
+  = DevelopmentAndTest
+  | Production
+
+type IntakeQualificationPolicy {
+  environment: MachineOperatingEnvironment
+}
+
+fn intake_qualification_policy(environment: MachineOperatingEnvironment) -> IntakeQualificationPolicy {
+  IntakeQualificationPolicy { environment: environment }
+}
+
+fn production_qualification_policy() -> IntakeQualificationPolicy {
+  intake_qualification_policy(environment: Production)
+}
+
+fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> ContentHash {
+  match policy.environment {
+    DevelopmentAndTest => content_hash_of_value(value: "intake-qualification-policy:development-and-test")
+    Production => content_hash_of_value(value: "intake-qualification-policy:production")
   }
 }
