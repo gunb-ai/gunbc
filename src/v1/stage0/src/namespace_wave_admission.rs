@@ -1805,33 +1805,9 @@ pub struct TransitionAdmission {
 /// is the roster's own next touch. The distinction the paragraph above draws still holds and is
 /// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
 /// the array was being emptied.
-// gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
-// to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
-// these two TargetChanged bindings. Remove these permissions once consumed at the base;
-// retain runner_connectivity_recovery_witness_test and runner_canary_receipt_witness_test
-// as the executed evidence that the relocation preserves the process identity contract.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_connectivity_recovery",
-            in_declaration: "decide_wedged_runner_connectivity_action",
-            spelling: "process_identity_eq",
-            expected_candidates: &["gunbc.build_cache_instance"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11177 process_identity_eq: gunbc.runner_connectivity_recovery -> gunbc.build_cache_instance",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner_connectivity_recovery",
-            in_declaration: "verify_incarnation_replace_postcondition",
-            spelling: "process_identity_eq",
-            expected_candidates: &["gunbc.build_cache_instance"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+// DISSOLUTION: #11177's merge consumes its two process_identity_eq binding admissions.
+// This follow-up deletes those permissions after that merge; the relocation witnesses remain.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
