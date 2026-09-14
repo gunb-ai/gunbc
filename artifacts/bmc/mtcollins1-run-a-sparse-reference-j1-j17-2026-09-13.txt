@@ -1,5 +1,6 @@
 GUNBC-BOOTRUN host_utc=2026-09-13T01:48:26Z
 subject: RUN A sparse reference: 1x 16GB AFR4N-VK in J1 (SK0 MC0) + 1x 16GB AFR4N-VK in J17 (SK1 MC0); all other connectors empty; operator loaded after power-down/AC swap; prior auto power-on attempt UNOBSERVED
+subject-correction: the subject line above is WRONG and is kept only as what was written at capture time. The firmware DRAM table in this same capture reads SK0 MC0 (J1) = HMA82GR7AFR8N-VK 16GB 2R x8 and SK1 MC0 (J17) = HMA82GR7AFR4N-VK 16GB 1R x4, so this run is a MIXED pair, not a matched AFR4N-VK pair. The DRAM table is the authority for the population.
 auth: user gunbc via IPMI_PASSWORD env (-E); no credential on any argv
 rule: ends on host-produced evidence or explicit failure terminal; a quiet interval is NOT a result
 banner_at_8s=1  # activation acknowledgement only
