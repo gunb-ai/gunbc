@@ -2382,7 +2382,7 @@ pub fn type_node_is_established(
 }
 
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
-    ((n.params.clone().len() as i64) > 0)
+    ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
 }
 
 pub fn brand_grounds_transparently_to(
@@ -7145,10 +7145,6 @@ if earlier_same_formal.clone() {
     }
 }
 
-pub fn local_binding_type_is_callable(resolved: Rc<Node>) -> bool {
-    (resolved.connective.clone() == Connective::Arrow)
-}
-
 pub fn function_value_call_named_arg_diags(
     func_name: String,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -10397,7 +10393,7 @@ Rc::new(InferResult {
                         } else {
                             match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
                                 Some(binding) => Some(
-                                    if (local_binding_type_is_callable(binding.resolved.clone())
+                                    if (type_node_is_callable(binding.resolved.clone())
                                         || !v1_rt::map_has(
                                             &scope.body_locals.clone(),
                                             func_name.clone(),
@@ -10437,7 +10433,7 @@ Rc::new(InferResult {
                         } else {
                             match local_call_view.clone() {
                                 Some(view) => {
-                                    if local_binding_type_is_callable(view.resolved.clone()) {
+                                    if type_node_is_callable(view.resolved.clone()) {
                                         Some(view.resolved.clone())
                                     } else {
                                         std::option::Option::None
@@ -10998,13 +10994,13 @@ Rc::new(InferResult {
                                 } else {
                                     {
                                         let callable_local = match crate::v1_compiler_infer_sigs::call_target_local_binding(call_target.clone()) {
-    Some(carried) => if local_binding_type_is_callable(carried.resolved.clone()) {
+    Some(carried) => if type_node_is_callable(carried.resolved.clone()) {
                                             Some(carried.resolved.clone())
                                         } else {
                                             std::option::Option::None
                                         },
     std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
-    Some(binding) => if local_binding_type_is_callable(binding.resolved.clone()) {
+    Some(binding) => if type_node_is_callable(binding.resolved.clone()) {
                                             Some(binding.resolved.clone())
                                         } else {
                                             std::option::Option::None
