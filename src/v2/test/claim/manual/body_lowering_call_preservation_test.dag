@@ -24,7 +24,7 @@ import v2.std.node_reflection {
   coproduct_arm_keys,
   coproduct_nullary_inhabitants
 }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.text { String }
 
 data call_preservation_declared_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
@@ -76,22 +76,21 @@ type CallPreservationProducerShape
 data call_preservation_producer_shape_type: Symbol = ^CallPreservationProducerShape
 
 fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
-  if node_is_call(node: root) {
-    match call_callee_target(node: root) {
-      Accepted { value: c, diagnostics: _ } =>
-        match node_atom_identity_optional(node: c) {
-          Present { value: id } =>
-            if id == callee {
-              Present { value: root }
-            } else {
-              search_call_named_children(root: root, callee: callee)
-            }
-          Absent => search_call_named_children(root: root, callee: callee)
-        }
-      Rejected { diagnostics: _ } => search_call_named_children(root: root, callee: callee)
-    }
-  } else {
-    search_call_named_children(root: root, callee: callee)
+  match node_is_call(node: root) {
+    false => search_call_named_children(root: root, callee: callee)
+    true =>
+      match call_callee_target(node: root) {
+        Accepted { value: c, diagnostics: _ } =>
+          match node_atom_identity_optional(node: c) {
+            Present { value: id } =>
+              match id == callee {
+                true => optional_present(value: root)
+                false => search_call_named_children(root: root, callee: callee)
+              }
+            Absent => search_call_named_children(root: root, callee: callee)
+          }
+        Rejected { diagnostics: _ } => search_call_named_children(root: root, callee: callee)
+      }
   }
 }
 
