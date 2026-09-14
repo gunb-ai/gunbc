@@ -13,6 +13,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query { call_argument_targets, call_callee_target, node_is_call }
+import v2.std.collection { list_at_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -28,6 +29,10 @@ import v2.std.node {
 }
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
+
+data filing_ident_call_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
+
+data filing_nested_call_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
 
 fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
@@ -64,33 +69,6 @@ fn body_lowering_parsed_module() -> Optional<Node> {
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
-      }
-  }
-}
-
-test fn body_lowering_projection_lowers_to_transform() -> Bool {
-  match body_lowering_parsed_module() {
-    Absent => false
-    Present { value: tree } =>
-      match body_lowering_find_postfix_expr(root: tree) {
-        Absent => false
-        Present { value: postfix } =>
-          match body_lower_unwrap_captured(shell: postfix) {
-            Present { value: captured } =>
-              match body_lower_try_postfix_projection(node: captured) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: found, diagnostics: _ } =>
-                  match found {
-                    Present { value: lowered } =>
-                      match lowered.kind {
-                        ComputationNode { behavior: Transform } => true
-                        _ => false
-                      }
-                    Absent => false
-                  }
-              }
-            Absent => false
-          }
       }
   }
 }
@@ -144,6 +122,83 @@ fn tree_has_punct_call_operator(root: Node, punct: Symbol) -> Bool {
   })
 }
 
+fn normalize_source_root(src: String, file: Symbol) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: normalized, diagnostics: _ } => Present { value: normalized.root }
+          }
+      }
+  }
+}
+
+fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
+  match search_call_named(root: root, callee: outer) {
+    Absent => false
+    Present { value: call } =>
+      match list_at_optional(xs: call_argument_targets(node: call), index: 0) {
+        Absent => false
+        Present { value: arg0 } =>
+          match search_call_named(root: arg0, callee: inner) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+fn filing_ident_call_preserved() -> Bool {
+  match normalize_source_root(src: filing_ident_call_source, file: ^filing_ident_call) {
+    Absent => false
+    Present { value: root } =>
+      (call_named_arity(root: root, callee: ^g) == 1)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_lbrace)
+  }
+}
+
+fn filing_nested_call_preserved() -> Bool {
+  match normalize_source_root(src: filing_nested_call_source, file: ^filing_nested_call) {
+    Absent => false
+    Present { value: root } =>
+      nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_lbrace)
+  }
+}
+
+test fn body_lowering_projection_lowers_to_transform() -> Bool {
+  match body_lowering_parsed_module() {
+    Absent => false
+    Present { value: tree } =>
+      match body_lowering_find_postfix_expr(root: tree) {
+        Absent => false
+        Present { value: postfix } =>
+          match body_lower_unwrap_captured(shell: postfix) {
+            Present { value: captured } =>
+              match body_lower_try_postfix_projection(node: captured) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: lowered } =>
+                      match lowered.kind {
+                        ComputationNode { behavior: Transform } =>
+                          filing_nested_call_preserved()
+                        _ => false
+                      }
+                    Absent => false
+                  }
+              }
+            Absent => false
+          }
+      }
+  }
+}
+
 data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> Int { x.field }\n"
 
 test fn body_lowering_field_access_postfix_rejects() -> Bool {
@@ -164,7 +219,7 @@ test fn body_lowering_field_access_postfix_rejects() -> Bool {
               match body_lower_unwrap_captured(shell: postfix) {
                 Present { value: captured } =>
                   match body_lower_try_postfix_projection(node: captured) {
-                    Rejected { diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => filing_ident_call_preserved()
                     Accepted { value: _, diagnostics: _ } => false
                   }
                 Absent => false
