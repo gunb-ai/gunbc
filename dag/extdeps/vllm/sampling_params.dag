@@ -1,8 +1,10 @@
 module extdeps.vllm.sampling_params
 
 import std.types { Float }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 
 // vLLM'S SAMPLING PARAMETERS, as the OpenAI-compatible server actually binds them. The upstream
 // class is vllm.SamplingParams: `temperature` is a float, 0 selects greedy decoding, and the
@@ -17,12 +19,37 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.sampling_params",
+      decl_name: "SamplingTemperature",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE BOUND IS READ AT ONE VLLM REVISION, the same pin the sibling carriers observe against, and the
+// constructor consumes it: a later upstream that admits a negative temperature is a change to this
+// row, not a silent drift.
+type SamplingTemperatureBound {
+  minimum: Float
+  observed_at_revision: VllmSourceRevision
+}
+
+data sampling_temperature_bound: SamplingTemperatureBound = SamplingTemperatureBound {
+  minimum: 0.0,
+  observed_at_revision: vllm_source_revision_read,
+}
+
 type SamplingTemperature sole_constructor {
   value: Float
 }
 
 fn sampling_temperature(value: Float) -> SamplingTemperature? {
-  if value < 0.0 {
+  if value < sampling_temperature_bound.minimum {
     none
   } else {
     Present { value: SamplingTemperature { value: value } }
