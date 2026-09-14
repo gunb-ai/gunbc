@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_candidate
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value }
@@ -102,25 +102,64 @@ fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
 // THE KERNELS THE KEY NAMES MUST BE THE KERNELS THE RECIPE INSTALLS. main already carries one defect
 // of this shape -- a flashinfer version keyed and never passed to the build -- so a candidate whose
 // acquisition names a version other than the recipe's refuses rather than keying a pin nothing honours.
+// THE JIT-CACHE WHEEL'S PLATFORM IS NOT ASSERTED HERE YET, and that is a stack ordering fact rather than
+// a decision: extdeps.flashinfer.flashinfer flashinfer_wheel_platform_tag became a parsed optional in the
+// repair that landed on main (#11337 a106a87), which this branch predates. The assertion lands with the
+// re-anchor onto main, where the parsed tag is available.
+//
+// THE KERNEL CLOSURE THIS RUNTIME INSTALLS, BY PACKAGE. Upstream's Dockerfile installs all three at the
+// pinned version; a wheel population missing the cubin, or carrying two variants of one package, is not
+// the closure however many rows it has, so the population is compared as an exact bag rather than
+// counted.
+data v41_required_kernel_packages: List<NonEmptyStr> = [
+  "flashinfer-python" as NonEmptyStr,
+  "flashinfer-cubin" as NonEmptyStr,
+  "flashinfer-jit-cache" as NonEmptyStr,
+]
+
+fn v41_wheels_named(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> List<FlashInferWheel> {
+  filter(wheels, w => (w.package as String) == (package as String))
+}
+
+fn v41_kernel_population_defects(wheels: List<FlashInferWheel>) -> List<NonEmptyStr> {
+  let missing = map(filter(v41_required_kernel_packages, p => length(v41_wheels_named(wheels: wheels, package: p)) == 0), p => join(["the kernel population carries no ", p as String, " wheel"], "") as NonEmptyStr)
+  let duplicated = map(filter(v41_required_kernel_packages, p => length(v41_wheels_named(wheels: wheels, package: p)) > 1), p => join(["the kernel population carries more than one ", p as String, " wheel, so which variant this runtime installs is undecided"], "") as NonEmptyStr)
+  let foreign = map(filter(wheels, w => !any(v41_required_kernel_packages, p => (p as String) == (w.package as String))), w => join(["the kernel population carries ", w.package as String, ", which is not part of this runtime's kernel closure"], "") as NonEmptyStr)
+  concat(concat(missing, duplicated), foreign)
+}
+
 fn v41_kernel_defects(i: V41RuntimeArtifactInputs) -> List<NonEmptyStr> {
   match flashinfer_published_version(a: i.kernel_acquisition) {
     Absent => ["the kernel acquisition is a source revision with no published wheels, so no wheel digest can pin it" as NonEmptyStr]
     Present { value: v } =>
       if (v as String) != (i.recipe.flashinfer_version as String) {
         [join(["the kernel acquisition pins flashinfer ", v as String, " but the recipe installs ", i.recipe.flashinfer_version as String], "") as NonEmptyStr]
-      } else if length(i.kernel_wheels) == 0 {
-        ["the kernel acquisition names no wheel digests" as NonEmptyStr]
       } else {
-        [] as List<NonEmptyStr>
+        v41_kernel_population_defects(wheels: i.kernel_wheels)
       }
   }
 }
 
+// A PATCH WRITTEN AGAINST ANOTHER TREE IS NOT THIS RUNTIME'S PATCH. Carrying applies_to into the key
+// records which revision it was authored for; it does not make applying it to a different one sound, so a
+// population naming any other revision refuses rather than keying.
+fn v41_patch_applicability_defects(patches: List<V41EnginePatch>, source: VllmSourceRevision) -> List<NonEmptyStr> {
+  map(
+    filter(patches, p => (p.applies_to.full_revision as String) != (source.full_revision as String) || (p.applies_to.repository as String) != (source.repository as String)),
+    p => join(["patch ", p.path as String, " applies to ", p.applies_to.repository as String, "@", p.applies_to.full_revision as String, ", not the recipe's ", source.repository as String, "@", source.full_revision as String], "") as NonEmptyStr,
+  )
+}
+
+// ORDER IS SEMANTIC HERE AND ONLY HERE: patches apply in sequence, so the ordinal is part of each input's
+// name. Every other field travels as its own named input rather than inside one delimited string, so no
+// path containing an `@` or a `#` can spell another patch's identity.
 fn v41_patch_inputs(patches: List<V41EnginePatch>) -> List<ArtifactRealizationInput> {
-  map(enumerate(patches), p => v41_input(
-    identity: join(["patch.", to_string(p.first)], ""),
-    value: join([p.second.path as String, "@", p.second.applies_to.full_revision as String, "#", p.second.sha256.hex as String], ""),
-  ))
+  flat_map(enumerate(patches), p => [
+    v41_input(identity: join(["patch.", to_string(p.first), ".path"], ""), value: p.second.path as String),
+    v41_input(identity: join(["patch.", to_string(p.first), ".repository"], ""), value: p.second.applies_to.repository as String),
+    v41_input(identity: join(["patch.", to_string(p.first), ".revision"], ""), value: p.second.applies_to.full_revision as String),
+    v41_input(identity: join(["patch.", to_string(p.first), ".sha256"], ""), value: p.second.sha256.hex as String),
+  ])
 }
 
 fn v41_partition_authority_wire(a: V41EngramPartitionAuthority) -> String {
@@ -141,17 +180,22 @@ fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramRes
     let base = concat(concat(
       vllm_image_build_key_inputs(r: i.recipe),
       [v41_input(identity: "kernel_acquisition", value: flashinfer_acquisition_key(a: i.kernel_acquisition))],
-    ), map(i.kernel_wheels, w => v41_input(identity: join(["kernel_wheel.", w.package as String], ""), value: join([w.filename as String, "#", w.sha256.hex as String], ""))))
+    ), flat_map(i.kernel_wheels.sort_by(w => w.package as String), w => [
+      v41_input(identity: join(["kernel_wheel.", w.package as String, ".filename"], ""), value: w.filename as String),
+      v41_input(identity: join(["kernel_wheel.", w.package as String, ".sha256"], ""), value: w.sha256.hex as String),
+    ]))
     match i.patches {
       V41PatchesUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
       V41PatchesAbsentByObservation =>
         V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(base, [v41_input(identity: "patches", value: "none-by-observation")])) }
       V41PatchesObserved { patches: ps, partition: authority } => {
+        let applicability = v41_patch_applicability_defects(patches: ps, source: i.recipe.source)
+        if length(applicability) != 0 { V41IdentityRefused { defects: applicability } } else {
         let with_patches = concat(concat(base, v41_patch_inputs(patches: ps)), [v41_input(identity: "partition_authority", value: v41_partition_authority_wire(a: authority))])
         match authority {
           PartitionByLaunchConfiguration => V41IdentityKeyed { key: artifact_realization_digest(inputs: with_patches) }
           PartitionFixedByPatch => V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(with_patches, v41_partition_inputs(p: partition))) }
-        }
+        } }
       }
     }
   }
@@ -197,10 +241,14 @@ fn v41_admit_partition(p: V41EngramResidencyPartition) -> V41PartitionAdmission 
   }
 }
 
+// THE TWO SIDES ARE SETS, NOT SEQUENCES: which tensors are storage-backed is the fact, and the order they
+// were written in is not. artifact_realization_digest folds its inputs in order, so each side is
+// canonicalized by tensor name and each member is named by its own identity rather than by position --
+// otherwise reordering one list would mint a different candidate for the same realization.
 fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizationInput> {
   concat(
-    map(enumerate(p.storage_backed), n => v41_input(identity: join(["storage_backed.", to_string(n.first)], ""), value: n.second as String)),
-    map(enumerate(p.resident), n => v41_input(identity: join(["resident.", to_string(n.first)], ""), value: n.second as String)),
+    map(p.storage_backed.sort_by(n => n as String), n => v41_input(identity: join(["storage_backed.", n as String], ""), value: "storage-backed")),
+    map(p.resident.sort_by(n => n as String), n => v41_input(identity: join(["resident.", n as String], ""), value: "resident")),
   )
 }
 
@@ -256,8 +304,17 @@ type V41EngramRealizationInputs {
 // ONLY THE TWO ROUTES WHOSE TOKEN-TIME READ STAYS ON THE HOST. Route A is resident (the shape this
 // candidate exists to avoid) and route C reads NFS on every gather; both are refused here by name.
 fn v41_route_admitted(route: DeclarationRef) -> Bool {
-  (route.decl_name as String) == (engram_route_b_identity.decl_name as String)
-    || (route.decl_name as String) == (engram_route_d_identity.decl_name as String)
+  declaration_ref_eq(a: route, b: engram_route_b_identity) || declaration_ref_eq(a: route, b: engram_route_d_identity)
+}
+
+// A REFERENCE IS ITS MODULE, ITS DECLARATION AND ITS FIELD. Serializing two of the three would let a
+// field reference and its whole declaration key the same, which is the same conflation comparing only
+// decl_name made in the admission above.
+fn v41_decl_field_wire(f: DeclField) -> String {
+  match f {
+    WholeDeclaration => "*"
+    NamedField { field_name: n } => n as String
+  }
 }
 
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
@@ -272,7 +329,9 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
           V41ManifestObserved { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
               v41_input(identity: "row_store_encoding", value: d.hex as String),
-              v41_input(identity: "route", value: join([e.route.module_path as String, ".", e.route.decl_name as String], "")),
+              v41_input(identity: "route.module_path", value: e.route.module_path as String),
+              v41_input(identity: "route.decl_name", value: e.route.decl_name as String),
+              v41_input(identity: "route.field", value: v41_decl_field_wire(f: e.route.field)),
             ])) }
         }
       }
