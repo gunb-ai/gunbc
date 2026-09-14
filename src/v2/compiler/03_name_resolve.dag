@@ -31,7 +31,7 @@ import v2.compiler.namespace_graft {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, List, empty_map, map_get, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, List, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -241,7 +241,7 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<Validated
                 }
               Accepted { value: name, diagnostics: proj_diag } =>
                 let merged_diag = diagnostics_merge(outer: acc_diag, inner: proj_diag)
-                match map_get(m: prior, key: name) {
+                match map_lookup(m: prior, key: name) {
                   Absent =>
                     ModuleRootsValid {
                       seen: map_insert(m: prior, key: name, value: root),
@@ -571,7 +571,7 @@ fn subject_module_root_for_name(
   roots: ValidatedModuleRoots,
   name: QualifiedName
 ) -> Outcome<NormalizedTree> {
-  match map_get(m: roots.by_name, key: name) {
+  match map_lookup(m: roots.by_name, key: name) {
     Present { value: root } => Accepted { value: root, diagnostics: v2.std.diagnostic.None }
     Absent => Rejected { diagnostics: resolve_module_not_found_diagnostic_from_missing(requested: name) }
   }
