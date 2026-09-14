@@ -52,13 +52,13 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConv
 
 // ── WHICH INCARNATION ANSWERED, OBSERVED ON THE HOST ──────────────────────────────────────────
 //
-// THE PRODUCER gunbc.spark.vllm_serving_launch EndpointIncarnationObservation waited for. That
-// carrier's own header records that no production producer called its constructor: the only
-// reader of live launch facts minted a launch from a privileged probe and never read which
-// exporter belonged to it, and its live host read was itself a frontier. This module is the
-// observation, and it is taken almost entirely WITHOUT PRIVILEGE, over the fleet key session as the
-// managed automation principal, because the facts that bind an endpoint to an incarnation are ones
-// the kernel and the manager already expose to any reader on the host.
+// THE PRODUCER gunbc.spark.vllm_serving_launch EndpointIncarnationObservation names. That carrier's
+// header names THIS module as its production producer: before it, the only reader of live launch
+// facts minted a launch from a privileged probe and never read which exporter belonged to it, and
+// its live host read was itself a frontier. This module is the observation, and it is taken almost
+// entirely WITHOUT PRIVILEGE, over the fleet key session as the managed automation principal, because
+// the facts that bind an endpoint to an incarnation are ones the kernel and the manager already
+// expose to any reader on the host.
 //
 // THE JOIN IS AN IDENTITY OF ONE KERNEL VALUE READ FROM TWO SIDES, not a time-proximity heuristic.
 // The engine exports process_start_time_seconds through prometheus_client's process collector,
@@ -366,12 +366,22 @@ fn incarnation_after_process(
 // code distinguishes no-match (1) from scan-failure (2/3). So pgrep runs over
 // typed_argv_exec_over_fleet_ssh, whose SshSessionExecResult carries exit_code, and pgrep_scan_outcome
 // classifies it. A transport refusal (portable words / session) is a scan refusal, never a no-match.
-fn scan_engine_processes(target: SshTarget, context: FleetSshExecutionContext, pattern: NonEmptyStr) -> PgrepScanOutcome {
+// THE LEG NOT RUNNING AND THE LEG RUNNING TO A VERDICT ARE DIFFERENT FACTS, kept apart rather than
+// folded through a fabricated exit code. A TypedArgvExecRefused means the pgrep argv never reached a
+// process (portable words / session), so there is no exit code to classify; inventing one (exit -1)
+// would be an in-band sentinel for non-execution, the DESIGN 5 hole the inspect path already split
+// into InspectLegDidNotRun vs InspectCommandFailed. So this returns a leg-did-not-run arm, and only a
+// leg that RAN is handed to pgrep_scan_outcome.
+type EngineProcessScan
+  = EngineScanLegDidNotRun { cause: String }
+  | EngineScanClassified { outcome: PgrepScanOutcome }
+
+fn scan_engine_processes(target: SshTarget, context: FleetSshExecutionContext, pattern: NonEmptyStr) -> EngineProcessScan {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: pattern)) {
     TypedArgvExecRefused { reason: why } =>
-      PgrepScanFailed { exit_code: 0 - 1, stderr: join(["the pgrep leg did not run: ", why], "") }
+      EngineScanLegDidNotRun { cause: why }
     TypedArgvExecConverged { result: r } =>
-      pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      EngineScanClassified { outcome: pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) }
   }
 }
 
@@ -390,10 +400,12 @@ fn incarnation_after_host_facts(
 ) -> ServingIncarnationReading {
   let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
   match scan_engine_processes(target: target, context: context, pattern: pattern) {
-    PgrepScanFailed { exit_code: code, stderr: err } =>
+    EngineScanLegDidNotRun { cause: why } =>
+      IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["the pgrep leg did not run: ", why], "") } }
+    EngineScanClassified { outcome: PgrepScanFailed { exit_code: code, stderr: err } } =>
       IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep exited ", to_string(code), ", which is neither a match (0) nor a clean no-match (1), so the scan did not answer: ", trim(s: err)], "") } }
-    PgrepNoMatch => IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: pattern } }
-    PgrepMatched { listing: listing } =>
+    EngineScanClassified { outcome: PgrepNoMatch } => IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: pattern } }
+    EngineScanClassified { outcome: PgrepMatched { listing: listing } } =>
       match pgrep_pid_listing(stdout: listing) {
         PgrepPidLineUnparseable { line: l } =>
           IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep printed a non-pid line: ", l], "") } }

@@ -136,11 +136,12 @@ fn t_unreadable_realization(hosts: List<HostIdentity>) -> SparkServingRealizatio
 
 // ── THE INCARNATION EVIDENCE, AND WHICH OF IT PRODUCTION HAS ─────────────────────────────────────
 //
-// The fixtures above carry EndpointIncarnationUnobserved, which is what production carries. The rows
-// at the end of this file build an EndpointIncarnationObservation through its sole constructor, and
-// that is FIXTURE EVIDENCE: no production producer constructs one. Those rows establish that the
-// standing's positive arm works and that each missing fact refuses it. They establish nothing about
-// production reaching the positive arm, which it cannot today.
+// The fixtures above carry EndpointIncarnationUnobserved, the standing production carries when its
+// producer -- gunbc.spark.serving_incarnation_observe, wired through harness_serving_realization --
+// returns no observation on a bind. The rows at the end of this file build an
+// EndpointIncarnationObservation through its sole constructor as FIXTURE EVIDENCE so the positive arm
+// can be driven without a live host; production reaches that same arm through the producer when the
+// observation is obtained, which the_production_route_consumes_an_observed_incarnation exercises.
 fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
