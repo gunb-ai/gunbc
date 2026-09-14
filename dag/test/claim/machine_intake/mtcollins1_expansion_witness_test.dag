@@ -1,12 +1,16 @@
 module test.claim.mtcollins1_expansion_witness_test
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { rack_unit }
+import extdeps.publication { SpecificationDocumentDate }
 import gunbc.machine_intake_mtcollins1_expansion_observation {
   AttachmentPointStanding,
   AttachmentPointOffered,
+  AttachmentPointOccupied,
   AttachmentPointUnobserved,
   AttachmentPointAbsent,
+  AttachmentPointReportExceedsPlatform,
   MtCollinsUnitExpansionEvidence,
   UnitExpansionEvidence,
   NoExpansionObservationForUnit,
@@ -15,6 +19,69 @@ import gunbc.machine_intake_mtcollins1_expansion_observation {
   ocp_attachment_standing,
   expansion_evidence_for_unit,
   observed_unit,
+  MtCollinsExpansionOperatorObservation,
+  RearApertureReport,
+  RiserPositionsFitted,
+  RiserPositionsUnobserved,
+  OcpBayEmpty,
+  OcpBayPopulated,
+  OcpBayOccupancyUnobserved,
+}
+
+// The folds take an observation as a parameter, so a synthetic one exercises arms the held unit
+// has not reached. These are FIXTURES for the two repairs below, not reports about any machine.
+data fixture_apertures: RearApertureReport = RearApertureReport {
+  aperture_count: 2,
+  aperture_note: "Fixture value. Not an observation of any machine." as NonEmptyStr,
+}
+
+data populated_bay_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
+  observer: "witness fixture",
+  method: "Constructed by this witness to exercise the populated-bay arm. Not a report about any machine." as NonEmptyStr,
+  rear_apertures: fixture_apertures,
+  riser_occupancy: RiserPositionsUnobserved { settled_by: "fixture" as NonEmptyStr },
+  ocp_bay_occupancy: OcpBayPopulated { evidence: "fixture: a card occupies the bay" as NonEmptyStr },
+}
+
+data overreported_risers_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
+  observer: "witness fixture",
+  method: "Constructed by this witness to exercise the over-report arm. Not a report about any machine." as NonEmptyStr,
+  rear_apertures: fixture_apertures,
+  riser_occupancy: RiserPositionsFitted { positions: 3, evidence: "fixture: three reported on a two-position platform" as NonEmptyStr },
+  ocp_bay_occupancy: OcpBayOccupancyUnobserved { settled_by: "fixture" as NonEmptyStr },
+}
+
+// REPAIR CONTROL (review 66015, first finding). OcpBayEmpty and OcpBayPopulated used to produce the
+// identical Offered standing, so the coproduct's discriminating information was declared and then
+// discarded by its only consumer. A bay with a card in it offers nothing.
+test fn a_populated_ocp_bay_offers_nothing() -> Bool {
+  match ocp_attachment_standing(observation: populated_bay_fixture) {
+    AttachmentPointOccupied { basis: _ } => true
+    AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
+    AttachmentPointAbsent { basis: _ } => false
+    AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
+  }
+}
+
+// REPAIR CONTROL (review 66015, second finding). The platform bound was imported and then consumed
+// only by the arm where nothing was observed, so a report of three fitted risers on a two-position
+// platform was returned as an offer of three. A bound that does not bound is not a bound.
+test fn a_riser_report_beyond_the_platform_bound_refuses() -> Bool {
+  match pcie_attachment_standing(observation: overreported_risers_fixture) {
+    AttachmentPointReportExceedsPlatform { reported: reported, platform_upper_bound: bound } =>
+      reported == 3 && bound == 2
+    AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointOccupied { basis: _ } => false
+    AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
+    AttachmentPointAbsent { basis: _ } => false
+  }
 }
 
 // THE DISCRIMINATING CONTROL, and the reason this witness exists rather than a shape check. The
@@ -26,7 +93,9 @@ import gunbc.machine_intake_mtcollins1_expansion_observation {
 test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
   match pcie_attachment_standing(observation: mtcollins1_expansion_observation) {
     AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointOccupied { basis: _ } => false
     AttachmentPointAbsent { basis: _ } => false
+    AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
     AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: _ } => bound == 2
   }
 }
@@ -36,7 +105,9 @@ test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
 test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
   match ocp_attachment_standing(observation: mtcollins1_expansion_observation) {
     AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointOccupied { basis: _ } => false
     AttachmentPointAbsent { basis: _ } => false
+    AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
     AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: _ } => bound == 1
   }
 }
@@ -50,10 +121,14 @@ test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
           match ocp {
             AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => true
             AttachmentPointOffered { positions: _, basis: _ } => false
+            AttachmentPointOccupied { basis: _ } => false
             AttachmentPointAbsent { basis: _ } => false
+            AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
           }
         AttachmentPointOffered { positions: _, basis: _ } => false
+        AttachmentPointOccupied { basis: _ } => false
         AttachmentPointAbsent { basis: _ } => false
+        AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
       }
   }
 }

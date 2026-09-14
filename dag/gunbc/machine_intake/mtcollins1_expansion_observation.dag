@@ -1,7 +1,8 @@
 module gunbc.machine_intake_mtcollins1_expansion_observation
 
 import std.types { Bool, NonEmptyStr }
-import std.nat { Nat }
+import std.nat { Nat, nat_compare }
+import std.algebra { Ordering, Less, Equal, Greater }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.measure { RackUnit, rack_unit }
 import extdeps.publication { SpecificationDocumentDate }
@@ -83,14 +84,23 @@ data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = M
 // further than the evidence reaches.
 type AttachmentPointStanding
   = AttachmentPointOffered { positions: Nat, basis: NonEmptyStr }
+  | AttachmentPointOccupied { basis: NonEmptyStr }
   | AttachmentPointUnobserved { platform_upper_bound: Nat, settled_by: NonEmptyStr }
   | AttachmentPointAbsent { basis: NonEmptyStr }
+  | AttachmentPointReportExceedsPlatform { reported: Nat, platform_upper_bound: Nat }
 
 fn pcie_attachment_standing(observation: MtCollinsExpansionOperatorObservation) -> AttachmentPointStanding {
   let platform: MtCollins1UExpansion = mt_collins_1u_expansion
   match observation.riser_occupancy {
     RiserPositionsFitted { positions: positions, evidence: evidence } =>
-      AttachmentPointOffered { positions: positions, basis: evidence }
+      match nat_compare(a: positions, b: platform.full_height_half_length_gen4_x16_slots) {
+        Greater => AttachmentPointReportExceedsPlatform {
+          reported: positions,
+          platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
+        }
+        Equal => AttachmentPointOffered { positions: positions, basis: evidence }
+        Less => AttachmentPointOffered { positions: positions, basis: evidence }
+      }
     RiserPositionsUnobserved { settled_by: settled_by } =>
       AttachmentPointUnobserved {
         platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
@@ -105,7 +115,7 @@ fn ocp_attachment_standing(observation: MtCollinsExpansionOperatorObservation) -
     OcpMezzanineSlotPresent { generation: generation, multi_host: multi_host, occupancy_note: occupancy_note } =>
       match observation.ocp_bay_occupancy {
         OcpBayEmpty { evidence: evidence } => AttachmentPointOffered { positions: 1, basis: evidence }
-        OcpBayPopulated { evidence: evidence } => AttachmentPointOffered { positions: 1, basis: evidence }
+        OcpBayPopulated { evidence: evidence } => AttachmentPointOccupied { basis: evidence }
         OcpBayOccupancyUnobserved { settled_by: settled_by } =>
           AttachmentPointUnobserved { platform_upper_bound: 1, settled_by: settled_by }
       }
