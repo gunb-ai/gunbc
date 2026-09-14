@@ -713,8 +713,8 @@ test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
         match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
           RunIdentityMismatched { cause } =>
             !census_contains_subject(rows: workload_census, needle: candidate_biome_blob_mismatch_control)
-          ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-          WorkflowEquivalentOnly { inspected, observed, blob } => false
+          ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+          WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
           RunIdentityUnresolved { cause } => false
         }
       CandidateRejected { reason } => false
@@ -724,12 +724,12 @@ test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
 
 test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
   all(workload_census, c => match candidate_run_identity(c: c) {
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       revision == c.inspected_commit
         && (repository as String) == (c.repository as String)
         && (job_key as String) == (c.job_key as String)
         && matrix_selector == c.matrix_selector
-    WorkflowEquivalentOnly { inspected, observed, blob } =>
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       inspected == c.inspected_commit
         && (blob as String) == (c.workflow_blob_sha as String)
         && inspected != observed
@@ -740,12 +740,12 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
 
 test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
   let biome = match candidate_run_identity(c: candidate_biome_test) {
-    WorkflowEquivalentOnly { inspected, observed, blob } =>
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       match baseline_admission(c: candidate_biome_test) {
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
     RunIdentityMismatched { cause } => false
     RunIdentityUnresolved { cause } => false
   }
@@ -833,17 +833,24 @@ test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
 
 test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
   let pdns_same = match candidate_run_identity(c: candidate_pdns_dnsdist_arm) {
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       revision == candidate_pdns_dnsdist_arm.inspected_commit
-    WorkflowEquivalentOnly { inspected, observed, blob } => false
+        && match jobs_name_join {
+          JobsNameMatrixParenthetical { standing } => match standing {
+            TranscribedUncited { read_obligation } => true
+            CitedToAuthority { authority } => false
+          }
+          JobsNamePrefixOnly => false
+        }
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
     RunIdentityMismatched { cause } => false
     RunIdentityUnresolved { cause } => false
   }
   let biome_blob = match candidate_run_identity(c: candidate_biome_test) {
-    WorkflowEquivalentOnly { inspected, observed, blob } =>
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       inspected != observed
         && (blob as String) == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
     RunIdentityMismatched { cause } => false
     RunIdentityUnresolved { cause } => false
   }
@@ -893,8 +900,8 @@ test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
       BaselineRefused { cause } => true
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-    WorkflowEquivalentOnly { inspected, observed, blob } => false
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
     RunIdentityUnresolved { cause } => false
   }
 }
@@ -923,8 +930,8 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityMismatched { cause } => false
     }
 }
@@ -938,8 +945,8 @@ test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool 
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityMismatched { cause } => false
     }
 }
@@ -985,8 +992,8 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityUnresolved { cause } => false
     }
 }
@@ -1015,8 +1022,8 @@ test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityUnresolved { cause } => false
     }
 }
@@ -1045,8 +1052,8 @@ test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_obse
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityUnresolved { cause } => false
     }
 }
@@ -1144,8 +1151,8 @@ test fn witness_unread_job_run_is_unresolved_identity() -> Bool {
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
-      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => false
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => false
       RunIdentityMismatched { cause } => false
     }
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } => false

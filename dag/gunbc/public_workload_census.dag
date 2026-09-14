@@ -652,11 +652,13 @@ type RunIdentityStanding
       workflow_path: NonEmptyStr
       job_key: NonEmptyStr
       matrix_selector: JobMatrixIdentity
+      jobs_name_join: InspectedJobsNameJoin
     }
   | WorkflowEquivalentOnly {
       inspected: CommitSha
       observed: CommitSha
       blob: NonEmptyStr
+      jobs_name_join: InspectedJobsNameJoin
     }
   | RunIdentityMismatched { cause: NonEmptyStr }
   | RunIdentityUnresolved { cause: NonEmptyStr }
@@ -857,7 +859,7 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
             RunIdentityMismatched {
               cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
             }
-          InspectedLegBound { jobs_name_join: _ } =>
+          InspectedLegBound { jobs_name_join } =>
             if c.inspected_commit == head_sha {
               ObservedAtInspectedRevision {
                 repository: c.repository,
@@ -865,12 +867,14 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
                 workflow_path: c.workflow_path,
                 job_key: c.job_key,
                 matrix_selector: c.matrix_selector,
+                jobs_name_join: jobs_name_join,
               }
             } else if (c.workflow_blob_sha as String) == (workflow_blob_sha_at_head as String) {
               WorkflowEquivalentOnly {
                 inspected: c.inspected_commit,
                 observed: head_sha,
                 blob: c.workflow_blob_sha,
+                jobs_name_join: jobs_name_join,
               }
             } else {
               RunIdentityMismatched {
@@ -957,9 +961,9 @@ fn baseline_admission(c: WorkloadCandidate) -> BaselineAdmission {
       BaselineRefused { cause: concat("no run identity: ", cause) }
     RunIdentityMismatched { cause } =>
       BaselineRefused { cause: concat("observed run is not the inspected workload: ", cause) }
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       baseline_from_observed_correctness(c: c)
-    WorkflowEquivalentOnly { inspected, observed, blob } =>
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       BaselineRefused {
         cause: "workflow blob equivalence is not a versioned correctness baseline: tests, dependencies and invoked scripts can change while the workflow YAML bytes stay the same",
       }
@@ -977,9 +981,9 @@ type ArchitectureJoinStanding
 
 fn architecture_join_standing(c: WorkloadCandidate) -> ArchitectureJoinStanding {
   match candidate_run_identity(c: c) {
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } =>
       ArchitectureJoinOnInspectedRevision
-    WorkflowEquivalentOnly { inspected, observed, blob } =>
+    WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } =>
       ArchitectureJoinOnWorkflowEquivalentOnly {
         inspected: inspected,
         observed: observed,
@@ -1484,8 +1488,8 @@ fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandid
 fn selected_workloads() -> List<WorkloadCandidate> {
   filter(workload_census, c => match c.selection {
     SelectedWorkload { rank, complementarity } => match candidate_run_identity(c: c) {
-      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => true
-      WorkflowEquivalentOnly { inspected, observed, blob } => true
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector, jobs_name_join } => true
+      WorkflowEquivalentOnly { inspected, observed, blob, jobs_name_join } => true
       RunIdentityMismatched { cause } => false
       RunIdentityUnresolved { cause } => false
     }
