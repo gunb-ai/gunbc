@@ -9839,19 +9839,78 @@ pub fn infer_expr_body(
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => {
             let span = texpr.span.clone();
+            let literal_type = crate::v1_compiler_infer_types::infer_literal_node(lit.clone());
+            let literal_result = match (*lit.clone()).clone() {
+                LiteralValue::LitNull => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    "Optional".to_string(),
+                ) {
+                    Some(owner) => {
+                        let element =
+                            match expected.clone() {
+                                Some(exp) => {
+                                    if (exp.return_cardinality.clone() == Cardinality::CardOptional)
+                                    {
+                                        crate::v1_std_core::with_required_cardinality(exp.clone())
+                                    } else {
+                                        if (crate::v1_std_core::type_name_compatible(
+                                            crate::v1_std_core::authored_name_at(
+                                                scope.type_env.clone().source_indices.clone(),
+                                                exp.clone(),
+                                            ),
+                                            "Optional".to_string(),
+                                        ) && exposure_is_application(
+                                            expected_type_head_exposure(exp.clone(), scope.clone()),
+                                        )) {
+                                            match exp.children.clone().first().cloned() {
+    Some(arg) => crate::v1_compiler_infer_types::type_argument_node(arg.clone()),
+    std::option::Option::None => literal_type.clone(),
+}
+                                        } else {
+                                            literal_type.clone()
+                                        }
+                                    }
+                                }
+                                std::option::Option::None => literal_type.clone(),
+                            };
+                        Rc::new(NodeResolveResult {
+                            resolved: variant_owner_application(
+                                owner.clone(),
+                                Rc::new(vec![element.clone()]),
+                            ),
+                            diagnostics: Rc::new(vec![]),
+                        })
+                    }
+                    std::option::Option::None => Rc::new(NodeResolveResult {
+                        resolved: error_type(),
+                        diagnostics: Rc::new(vec![inference_error(
+                            "optional literal owner unavailable".to_string(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                    }),
+                },
+                _ => Rc::new(NodeResolveResult {
+                    resolved: literal_type.clone(),
+                    diagnostics: Rc::new(vec![]),
+                }),
+            };
             let plain = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
                 Rc::new(vec![]),
                 Some(Rc::new(InferredNode::Resolved {
-                    node: crate::v1_compiler_infer_types::infer_literal_node(lit.clone()),
+                    node: literal_result.resolved.clone(),
                 })),
                 span.clone(),
             );
             match (*literal_boundary_elaboration(lit.clone(), expected.clone(), scope.clone()))
                 .clone()
             {
-                LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
+                LiteralBoundary::LiteralBoundaryPlain => Rc::new(InferResult {
+                    typed: plain.clone(),
+                    diagnostics: literal_result.diagnostics.clone(),
+                }),
                 LiteralBoundary::LiteralBoundaryElaborated {
                     elaboration: e,
                     destination_type: dt,
@@ -9933,7 +9992,7 @@ match scope_parent.clone() {
 ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: binding.resolved.clone(),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), binding.resolved.clone()), scope.clone(), binding.resolved.clone()),
 })), span.clone(), span.clone()))
 },
 }
@@ -9986,7 +10045,7 @@ Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: gbinding.resolved.clone(),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), gbinding.resolved.clone()), scope.clone(), gbinding.resolved.clone()),
 })), span.clone(), span.clone()),
     diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
 })
@@ -11586,7 +11645,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 )
                 .iter()
                 .cloned()
-                .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
                     crate::v1_compiler_infer_types::prefer_specific_type(
                         acc,
                         t.clone(),
@@ -14499,63 +14558,151 @@ Rc::new(FieldInferResult {
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.clone().as_deref()));
-                let resolved_node_result = if is_present_ctor.clone() {
-                    {
-                        let val_field = Rc::new({
-                            let mut __result = Vec::new();
-                            for fir in fi_infer_results.iter().cloned() {
-                                if (crate::v1_std_core::field_init_node_name_at(
-                                    fir.typed_field.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) == "value".to_string())
-                                {
-                                    __result.push(fir);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned();
-                        let optional_owner = match owner_from_locals.clone() {
-                            Some(owner) => Some(owner.clone()),
-                            std::option::Option::None => match owner_from_variant_node.clone() {
-                                Some(owner) => Some(owner.clone()),
-                                std::option::Option::None => expected_owner.clone(),
+                let application_owner = if is_present_ctor.clone() {
+                    match owner_from_locals.clone() {
+                        Some(owner) => owner.clone(),
+                        std::option::Option::None => match owner_from_variant_node.clone() {
+                            Some(owner) => owner.clone(),
+                            std::option::Option::None => match expected_owner.clone() {
+                                Some(owner) => owner.clone(),
+                                std::option::Option::None => raw_resolved.clone(),
                             },
-                        };
-                        match val_field.clone() {
-                            Some(val_fir) => match optional_owner.clone() {
-                                Some(owner) => Rc::new(NodeResolveResult {
-                                    resolved: variant_owner_application(
-                                        owner.clone(),
-                                        Rc::new(vec![
-                                            crate::v1_compiler_infer_types::resolved_type(
-                                                val_fir.infer_result.clone().typed.clone(),
-                                            ),
-                                        ]),
-                                    ),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                std::option::Option::None => Rc::new(NodeResolveResult {
-                                    resolved: raw_resolved.clone(),
-                                    diagnostics: Rc::new(vec![inference_error(
-                                        "optional constructor owner unavailable".to_string(),
-                                        span.clone(),
-                                        scope.module_name.clone(),
-                                    )]),
-                                }),
-                            },
-                            std::option::Option::None => Rc::new(NodeResolveResult {
-                                resolved: raw_resolved.clone(),
-                                diagnostics: Rc::new(vec![]),
-                            }),
-                        }
+                        },
                     }
                 } else {
-                    Rc::new(NodeResolveResult {
-                        resolved: raw_resolved.clone(),
-                        diagnostics: Rc::new(vec![]),
-                    })
+                    raw_resolved.clone()
+                };
+                let resolved_node_result = if ((application_owner.connective.clone()
+                    == Connective::Disj)
+                    && ((application_owner.params.clone().len() as i64) > 0))
+                {
+                    {
+                        let generic_names = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in application_owner.params.clone().iter().cloned() {
+                                __result.push(crate::v1_std_core::generic_param_name_at(
+                                    p.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let variant_fields = match crate::v1_std_core::find_child_named(
+                            application_owner.clone(),
+                            type_name.clone().unwrap(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) {
+                            Some(variant) => variant.children.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let typed_record = crate::v1_std_core::make_named_expr_node(
+                            occurrence_identity.clone(),
+                            type_name.clone().unwrap(),
+                            Rc::new(ExprData::ExprRecordLit {
+                                parent_enum: local_variant_parent.clone(),
+                            }),
+                            typed_fields.clone(),
+                            Some(Rc::new(InferredNode::Resolved {
+                                node: application_owner.clone(),
+                            })),
+                            span.clone(),
+                            name_span.clone(),
+                        );
+                        let unification = unify_record_lit_field_walk(
+                            variant_fields.clone(),
+                            typed_record.clone(),
+                            generic_names.clone(),
+                            scope.clone(),
+                            Rc::new(GenericUnification {
+                                subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                        );
+                        Rc::new(NodeResolveResult {
+                            resolved: variant_owner_application(
+                                application_owner.clone(),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for name in generic_names.iter().cloned() {
+                                        __result.push(
+                                            match v1_rt::map_get(
+                                                &unification.subst.clone(),
+                                                name.clone(),
+                                            ) {
+                                                Some(argument) => argument.clone(),
+                                                std::option::Option::None => {
+                                                    type_variable_node(name.clone())
+                                                }
+                                            },
+                                        );
+                                    }
+                                    __result
+                                }),
+                            ),
+                            diagnostics: unification.diagnostics.clone(),
+                        })
+                    }
+                } else {
+                    if is_present_ctor.clone() {
+                        {
+                            let val_field = Rc::new({
+                                let mut __result = Vec::new();
+                                for fir in fi_infer_results.iter().cloned() {
+                                    if (crate::v1_std_core::field_init_node_name_at(
+                                        fir.typed_field.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) == "value".to_string())
+                                    {
+                                        __result.push(fir);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned();
+                            let optional_owner = match owner_from_locals.clone() {
+                                Some(owner) => Some(owner.clone()),
+                                std::option::Option::None => {
+                                    match owner_from_variant_node.clone() {
+                                        Some(owner) => Some(owner.clone()),
+                                        std::option::Option::None => expected_owner.clone(),
+                                    }
+                                }
+                            };
+                            match val_field.clone() {
+                                Some(val_fir) => match optional_owner.clone() {
+                                    Some(owner) => Rc::new(NodeResolveResult {
+                                        resolved: variant_owner_application(
+                                            owner.clone(),
+                                            Rc::new(vec![
+                                                crate::v1_compiler_infer_types::resolved_type(
+                                                    val_fir.infer_result.clone().typed.clone(),
+                                                ),
+                                            ]),
+                                        ),
+                                        diagnostics: Rc::new(vec![]),
+                                    }),
+                                    std::option::Option::None => Rc::new(NodeResolveResult {
+                                        resolved: raw_resolved.clone(),
+                                        diagnostics: Rc::new(vec![inference_error(
+                                            "optional constructor owner unavailable".to_string(),
+                                            span.clone(),
+                                            scope.module_name.clone(),
+                                        )]),
+                                    }),
+                                },
+                                std::option::Option::None => Rc::new(NodeResolveResult {
+                                    resolved: raw_resolved.clone(),
+                                    diagnostics: Rc::new(vec![]),
+                                }),
+                            }
+                        }
+                    } else {
+                        Rc::new(NodeResolveResult {
+                            resolved: raw_resolved.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        })
+                    }
                 };
                 let resolved_node = resolved_node_result.resolved.clone();
                 let type_diags = match effective_lookup.clone() {

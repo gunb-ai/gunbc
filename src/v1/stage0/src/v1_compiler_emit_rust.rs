@@ -106,6 +106,7 @@ pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
+pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 use crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -33575,16 +33576,17 @@ pub fn emit_typed_tco_reassign(
             emit_info.movable.clone(),
             |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
-                let ref_count = filtered_arg_values
-                    .iter()
-                    .cloned()
-                    .fold(0, |n: i64, av: _| {
-                        if expr_references_var(av.clone(), pname.clone(), si.clone()) {
-                            (n.clone() + 1)
-                        } else {
-                            n.clone()
-                        }
-                    });
+                let ref_count =
+                    filtered_arg_values
+                        .iter()
+                        .cloned()
+                        .fold(0, |n: i64, av: Rc<Node>| {
+                            if expr_references_var(av.clone(), pname.clone(), si.clone()) {
+                                (n.clone() + 1)
+                            } else {
+                                n.clone()
+                            }
+                        });
                 if (ref_count.clone() <= 1) {
                     v1_rt::rc_set_insert(m.clone(), pname.clone())
                 } else {
