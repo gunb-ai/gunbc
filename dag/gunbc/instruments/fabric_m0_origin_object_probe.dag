@@ -4,8 +4,10 @@ import std.types { Bool, NonEmptyStr, String, FilePath }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
-import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
-import gunbc.auth.gcp_secret_access { SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token }
+import gunbc.auth.access_token_source {
+  AccessTokenSource, OperatorSuppliedToken,
+  SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+}
 import gunbc.fabric_m0_origin_readback {
   OriginFetchOutcome,
   OriginObjectStaged,
