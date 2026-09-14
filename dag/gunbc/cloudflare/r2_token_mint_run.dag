@@ -74,6 +74,7 @@ import gunbc.auth.secret_ref_credential {
 }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.secret_provision { SecretProvisionAttemptIdentity, fleet_secret_ref }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision_actuator {
   snapshot_minted_secret,
   CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
@@ -272,7 +273,8 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
     instruction: join([
       "THE CUSTODY CONTAINER COULD NOT BE OBSERVED: ", cause as String,
       " -- create the empty secret ", secret_id as String,
-      " in gunbai-secrets from an operator gcloud session and converge the cells declared in gunbc.cloudflare.r2_mint_secret_access, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
+      " in ", fleet_secrets_gcp_project as String,
+      " from an operator gcloud session and converge the cells declared in gunbc.cloudflare.r2_mint_secret_access, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
     ], "") as NonEmptyStr,
     completion_evidence: DischargedAt {
       evidence: decl_ref(
