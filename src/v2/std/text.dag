@@ -67,6 +67,32 @@ fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
+// THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The nine byte-identical
+// copies that lived across v2.lens collapse here. That is the whole of what this change does, and
+// it is NOT one string_eq corpus-wide: declarations survive outside v2.lens, and one survives
+// inside it under a different name.
+//
+// THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
+// rots the moment anyone adds or removes a copy:
+//   grep -rn '^fn string_eq' src dag | grep -v 'src/v2/std/text.dag'
+// A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
+// after it stopped being true, which is why neither appears in this annotation.
+//
+// THAT COMMAND IS NECESSARY BUT NOT SUFFICIENT, and the exception is why this sentence exists: a
+// RENAMED clone does not match it. v2.lens.enforcement.grammar_coverage retains
+// grammar_coverage_string_eq, byte-identical to this function, and the grep above will never find
+// it. That clone carries its own declaration and reason at its own site -- the module declares no
+// imports, so adding the one import the collapse needs moves it into its own import closure and
+// other names stop resolving. So the residue is: whatever the command finds, PLUS any renamed
+// clone declared at its own site.
+//
+// TRIGGER, per fork rather than for the set: a fork collapses when a change touches its module,
+// or earlier if that module's import closure already reaches v2.std.text. There is no single event
+// that retires the whole residue, which is why this is a per-fork trigger and not a date.
+//
+// OWNER: the DESIGN section 3 single-authority reviewer, which is a standing review criterion and
+// not a person or a session. This annotation exists so that reviewer meets a declared residue
+// rather than rediscovering an undeclared one.
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
