@@ -27,6 +27,7 @@ pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     degrees_per_turn, square_millimetres_per_square_metre,
 };
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -1038,6 +1039,42 @@ pub fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> Nat {
 
 pub fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
     money_rate_micros(q.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AccountCredit {
+    pub issuer: Rc<DeclarationRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CreditRate<P> {
+    pub count: i64,
+    pub credit: Rc<AccountCredit>,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type CreditsPerMinute = Rc<CreditRate<PerMinute>>;
+
+pub fn account_credit(issuer: Rc<DeclarationRef>) -> Rc<AccountCredit> {
+    Rc::new(AccountCredit {
+        issuer: issuer.clone(),
+    })
+}
+
+pub fn credits_per_minute(count: Nat, credit: Rc<AccountCredit>) -> CreditsPerMinute {
+    Rc::new(CreditRate {
+        count: count.clone(),
+        credit: credit.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+    r.count.clone()
+}
+
+pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> Rc<DeclarationRef> {
+    r.credit.clone().issuer.clone()
 }
 
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {

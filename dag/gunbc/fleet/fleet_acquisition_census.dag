@@ -2,7 +2,11 @@ module gunbc.fleet_acquisition_census
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+<<<<<<< HEAD
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+=======
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+>>>>>>> origin/main
 import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
@@ -139,6 +143,7 @@ data switch_catalog_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
+<<<<<<< HEAD
 data printer_catalog: LotCatalogIdentity = CatalogRowUnread {
   observed_family: "Bambu Lab A1 mini" as NonEmptyStr,
   read_obligation: "Model and cite an upstream product catalog row; a1_mini_build_envelope describes only build volume, not catalog identity" as NonEmptyStr,
@@ -147,6 +152,18 @@ data printer_catalog: LotCatalogIdentity = CatalogRowUnread {
 data ams_catalog: LotCatalogIdentity = CatalogRowUnread {
   observed_family: "Bambu Lab AMS Lite" as NonEmptyStr,
   read_obligation: "Model and cite an upstream product catalog row; ams_lite_feed_path_suitability describes feed-path suitability, not catalog identity" as NonEmptyStr,
+=======
+data printer_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.printing.bambu_lab_a1_mini",
+  decl_name: "a1_mini_build_envelope",
+  field: WholeDeclaration,
+}
+
+data ams_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.printing.bambu_lab_ams_lite",
+  decl_name: "ams_lite_feed_path_suitability",
+  field: WholeDeclaration,
+>>>>>>> origin/main
 }
 
 data pdu_catalog_ref: DeclarationRef = DeclarationRef {
@@ -196,21 +213,33 @@ data switch_01_lot: ProcurementLot = private_received_lot(
 
 data printer_01_lot: ProcurementLot = private_received_lot(
   identity: printer_01_lot_identity,
+<<<<<<< HEAD
   catalog: printer_catalog,
+=======
+  catalog: CatalogRowExact { row: printer_catalog_ref },
+>>>>>>> origin/main
   display_label: "Bambu Lab A1 mini printer-01 acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
 
 data printer_02_lot: ProcurementLot = private_received_lot(
   identity: printer_02_lot_identity,
+<<<<<<< HEAD
   catalog: printer_catalog,
+=======
+  catalog: CatalogRowExact { row: printer_catalog_ref },
+>>>>>>> origin/main
   display_label: "Bambu Lab A1 mini printer-02 acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
 
 data ams_01_lot: ProcurementLot = private_received_lot(
   identity: ams_lot_identity,
+<<<<<<< HEAD
   catalog: ams_catalog,
+=======
+  catalog: CatalogRowExact { row: ams_catalog_ref },
+>>>>>>> origin/main
   display_label: "Bambu Lab AMS Lite acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
@@ -298,7 +327,11 @@ data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: dgx_spark_micro_center_lot.identity,
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
+<<<<<<< HEAD
       jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_uez_reduced_sales_tax"),
+=======
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
+>>>>>>> origin/main
       rate: parts_per_million(count: 33100),
     },
     residual: nyc_use_tax_residual,
@@ -327,23 +360,37 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: mt_collins_lot_identity,
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
+<<<<<<< HEAD
       jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
+=======
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
+>>>>>>> origin/main
       rate: parts_per_million(count: 66250),
     },
     residual: nyc_use_tax_residual,
   },
 }
 
+<<<<<<< HEAD
 // Operator rate reading relayed 2026-09-13: both lots were taxed at 8.875%.
 // Preserve this as operator-attested evidence; no receipt amount is published here.
+=======
+>>>>>>> origin/main
 data q80_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: q80_lot_identity,
   standing: SalesTaxAttestedIncluded {
     jurisdiction: AttestedAtCitedJurisdiction {
+<<<<<<< HEAD
       jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     },
     residual: ResidualUseTaxNone,
     attestation: "Operator read and attests that this lot was taxed at 8.875 percent, the New York City combined rate" as NonEmptyStr,
+=======
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "new_york_city"),
+    },
+    residual: ResidualUseTaxNone,
+    attestation: "Operator read the rate off the purchase records and states it is 8.875 percent. That figure is the New York City COMBINED rate and no other New York rate equals it - 4 percent state plus 4.5 percent city plus 0.375 percent MCTD - so the rate identifies the jurisdiction rather than being merely consistent with it, which is why this row may cite the city where the earlier bare 'New York tax was paid' could not. The full combined rate having been collected, no use-tax residual remains." as NonEmptyStr,
+>>>>>>> origin/main
   },
 }
 
@@ -351,10 +398,17 @@ data altrad8ud_board_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: altrad8ud_board_lot_identity,
   standing: SalesTaxAttestedIncluded {
     jurisdiction: AttestedAtCitedJurisdiction {
+<<<<<<< HEAD
       jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     },
     residual: ResidualUseTaxNone,
     attestation: "Operator read and attests that this lot was taxed at 8.875 percent, the New York City combined rate; tax collection is confirmed" as NonEmptyStr,
+=======
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "new_york_city"),
+    },
+    residual: ResidualUseTaxNone,
+    attestation: "Operator read the rate off the purchase records and states it is 8.875 percent, the New York City combined rate, which no other New York rate equals. That also settles the weaker antecedent this row previously carried - the corpus had not recorded whether the displayed Newegg total included tax at all, and a read rate answers that it did. The full combined rate having been collected, no use-tax residual remains." as NonEmptyStr,
+>>>>>>> origin/main
   },
 }
 

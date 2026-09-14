@@ -1,8 +1,12 @@
 module product.inventory
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, Map, String }
 import std.nat { Nat }
+<<<<<<< HEAD
 import std.list { index_first_occurrences }
+=======
+import std.list { list_member }
+>>>>>>> origin/main
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -52,6 +56,18 @@ fn mint_inventory_lot_identity(alloc: InventoryLotAllocator) -> InventoryLotAllo
 
 fn inventory_lot_identity_eq(left: InventoryLotIdentity, right: InventoryLotIdentity) -> Bool {
   minted_id_eq(left: left, right: right)
+}
+
+// MEMBERSHIP OVER LOT IDENTITIES IS AN INVENTORY FACT AND LIVES BESIDE THE EQUALITY IT USES.
+// It was authored in product.lot_sales_tax, which meant that asking "is this lot identity in this
+// list" - a question with nothing to do with tax - reached its answer through the SALES-TAX module.
+// gunbc.fleet_host_assembly then imported it from there to decide component-lot admission, so the
+// host-assembly model depended on the tax model for plain identity membership. DESIGN section 3:
+// a fact's home is its LAYER, not its file. This is that layer, because it is where
+// inventory_lot_identity_eq is declared, and a membership helper separated from the equality it
+// closes over is the split that put it in the wrong place to begin with. (review 65235)
+fn inventory_lot_identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
+  list_member(xs: lots, x: lot, eq: inventory_lot_identity_eq)
 }
 
 // A lot identity is ALLOCATOR-MINTED and carries no text. There is deliberately no fn from a
@@ -1257,6 +1273,7 @@ type InventoryPopulationBalance
   = InventoryPopulationSummed { balance: InventoryBalance }
   | InventoryPopulationRepeatedLot { repetition: InventoryLotRepetition }
 
+<<<<<<< HEAD
 fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
   let indexed = index_first_occurrences(xs: ledgers, key: ledger => ledger.lot.identity)
   match indexed.repetition {
@@ -1282,7 +1299,98 @@ fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPo
       })
       InventoryPopulationSummed {
         balance: inventory_balance_from_distribution(distribution: distribution),
+=======
+// Internal fold state: positions are consumed by the repeated-lot diagnostic and
+// are not published as part of a successful population reading.
+// THE REPEATED-LOT SCAN, AUTHORED ONCE. "Is there a repeated InventoryLotIdentity in this ordered
+// row list, and at which two ordinals" is one question, and it was answered by two line-for-line
+// copies of the same fold - this one and product.lot_sales_tax's LotTaxPopulationFold, which even
+// imported InventoryLotRepetition from here and then re-derived the scan that produces it. Two
+// sources for one fact, each free to drift: fix an off-by-one in one ordinal and the other keeps
+// answering the old way, silently, because both are green against their own fixtures. DESIGN
+// section 2 - model a concept once, derive every use, and net concepts must not grow by
+// re-invention. (review 65262)
+//
+// It lives HERE because InventoryLotIdentity and InventoryLotRepetition do, which is the same
+// reasoning that moved inventory_lot_identities_contain beside its equality one commit earlier.
+// The caller projects the identity out of whatever row shape it holds, so a tax evidence row and
+// an admitted ledger share the scan without sharing a row type.
+type LotRepetitionScan {
+  lot_positions: Map<InventoryLotIdentity, Nat>
+  repetition: InventoryLotRepetition?
+}
+
+fn empty_lot_repetition_scan() -> LotRepetitionScan {
+  LotRepetitionScan { lot_positions: empty_map(), repetition: none }
+}
+
+// FIRST OCCURRENCE WINS AND THE SCAN FREEZES ON THE FIRST REPEAT, so the reported pair is the
+// earliest collision rather than the last one seen. The ordinal is the map's size at insertion,
+// which is the row's position among DISTINCT lots - the same number both copies computed.
+fn scan_lot_for_repetition(acc: LotRepetitionScan, lot: InventoryLotIdentity) -> LotRepetitionScan {
+  match acc.repetition {
+    Present { value: found } => LotRepetitionScan {
+      lot_positions: acc.lot_positions,
+      repetition: Present { value: found },
+    }
+    Absent => match lookup(acc.lot_positions, lot) {
+      Present { value: first } => LotRepetitionScan {
+        lot_positions: acc.lot_positions,
+        repetition: Present { value: InventoryLotRepetition {
+          lot: lot,
+          first_ordinal: first,
+          ledger_ordinal: acc.lot_positions.length(),
+        } },
+>>>>>>> origin/main
       }
+      Absent => LotRepetitionScan {
+        lot_positions: map_insert(acc.lot_positions, lot, acc.lot_positions.length()),
+        repetition: none,
+      }
+    }
+  }
+}
+
+type InventoryPopulationFold {
+  distribution: StockDistribution
+  scan: LotRepetitionScan
+}
+
+fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
+  let settled = fold(ledgers, init: InventoryPopulationFold {
+    distribution: empty_stock_distribution(),
+    scan: empty_lot_repetition_scan(),
+  }, f: fn(acc, ledger) {
+    match acc.scan.repetition {
+      Present { value: _ } => acc
+      Absent => {
+        let next = scan_lot_for_repetition(acc: acc.scan, lot: ledger.lot.identity)
+        match next.repetition {
+          Present { value: _ } => InventoryPopulationFold { distribution: acc.distribution, scan: next }
+          Absent => {
+            let d = ledger.distribution
+            let total = acc.distribution
+            InventoryPopulationFold {
+              scan: next,
+              distribution: StockDistribution {
+                awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
+                unqualified: total.unqualified + d.unqualified,
+                quarantined: total.quarantined + d.quarantined,
+                available: total.available + d.available,
+                reserved: total.reserved + d.reserved,
+                installed: total.installed + d.installed,
+                departed: total.departed + d.departed,
+              },
+            }
+          }
+        }
+      }
+    }
+  })
+  match settled.scan.repetition {
+    Present { value: repeated } => InventoryPopulationRepeatedLot { repetition: repeated }
+    Absent => InventoryPopulationSummed {
+      balance: inventory_balance_from_distribution(distribution: settled.distribution),
     }
   }
 }
