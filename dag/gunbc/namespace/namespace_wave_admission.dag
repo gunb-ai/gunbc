@@ -243,7 +243,17 @@ data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification
     },
     DeclarationRef {
       module_path: "v1_compiler.namespace_wave_admission",
-      decl_name: "NAMESPACE_TRANSITION_ADMISSIONS",
+      decl_name: "load_transition_admissions",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "load_transition_admissions_from_dir",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "admission_roster_path_touched",
       field: WholeDeclaration
     },
     DeclarationRef {

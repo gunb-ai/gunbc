@@ -1,0 +1,33 @@
+module gunbc.namespace.transition_admission
+
+import std.types { NonEmptyStr, List, String }
+import std.decl_ref { DeclarationRef }
+import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
+
+// Directory-is-membership roster for namespace transition admissions.
+//
+// CONSUMERS (§3c): (1) v1_compiler.namespace_wave_admission load_transition_admissions
+// folds sibling files under dag/gunbc/namespace/transition_admission/ as the permission
+// set for adjudicate -- the production fold, required-ci wave-admission phase only.
+// (2) the parse sweep consumes each sibling as an ordinary module. (3)
+// admission_roster_path_touched reads the directory prefix on the unfiltered diff.
+// There is no committed list: a list would re-create the single-file collision this
+// module exists to delete. Recurring_failure_mode's derived roster.dag exists because
+// other modules import a List; this fold does not.
+
+type AdmissionSubject
+  = Binding {
+      enclosing: DeclarationRef
+      spelling: NonEmptyStr
+      expected_candidates: List<NonEmptyStr>
+    }
+  | Membership {
+      from_module: NonEmptyStr
+      target_module: NonEmptyStr
+    }
+
+type TransitionAdmission {
+  label: NonEmptyStr
+  subject: AdmissionSubject
+  disposition: NamespaceDeltaDisposition
+}

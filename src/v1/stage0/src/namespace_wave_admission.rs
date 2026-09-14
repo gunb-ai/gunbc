@@ -71,6 +71,7 @@
 )]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::rc::Rc;
 
 use crate::cli_run::declaration_index::{
     import_surface_has, index_get, index_records, DeclarationIndex, ModuleDeclarationRecord,
@@ -257,23 +258,24 @@ pub struct NamespaceDelta {
 
 /// The authored pattern naming one exact runtime delta subject.
 ///
-/// Its borrowed fields keep the admission roster const: no initializer can compute permission
-/// from observed deltas, a file, or process state. Runtime observations remain owned
-/// `DeltaSubject` values — a distinct type from an authored pattern.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Permission is the directory of authored `.dag` rows, not a const and not a value computed
+/// from observed deltas. Runtime observations remain owned `DeltaSubject` values — a distinct
+/// type from an authored pattern. Binding `module` / `in_declaration` realize
+/// `gunbc.namespace.transition_admission` `AdmissionSubject.Binding.enclosing` (`DeclarationRef`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdmissionSubject {
     Membership {
-        module: &'static str,
-        target: &'static str,
+        module: String,
+        target: String,
     },
     Binding {
-        module: &'static str,
-        in_declaration: &'static str,
-        spelling: &'static str,
+        module: String,
+        in_declaration: String,
+        spelling: String,
         /// Exact candidate set after the admitted transition, checked at the head before
         /// admission and at the base to derive consumption. A set, never merely one member
-        /// whose presence could hide unexpected candidates. The const roster stays authored.
-        expected_candidates: &'static [&'static str],
+        /// whose presence could hide unexpected candidates.
+        expected_candidates: Vec<String>,
     },
 }
 
@@ -285,7 +287,7 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 module: observed_module,
                 target: observed_target,
             },
-        ) => *module == observed_module && *target == observed_target,
+        ) => module == observed_module && target == observed_target,
         (
             AdmissionSubject::Binding {
                 module,
@@ -299,9 +301,9 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 spelling: observed_spelling,
             },
         ) => {
-            *module == observed_module
-                && *in_declaration == observed_declaration
-                && *spelling == observed_spelling
+            module == observed_module
+                && in_declaration == observed_declaration
+                && spelling == observed_spelling
         }
         _ => false,
     }
@@ -334,7 +336,7 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
 /// now is that its population must be an enumeration, never a predicate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionAdmission {
-    pub label: &'static str,
+    pub label: String,
     pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
 }
@@ -1806,7 +1808,9 @@ pub struct TransitionAdmission {
 /// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
 /// identity - so these seven still admit a real delta and deleting them would refuse a live
 /// transition rather than discharge a dead one.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+///
+/// THE CONST ROSTER IS DELETED. Production permission is the directory fold
+/// `load_transition_admissions`. Empty directory (or a missing directory) is this resting state.
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2248,7 +2252,7 @@ pub fn adjudicate(
                         continue;
                     }
                 }
-                delta.admitted_by = Some(admission.label.to_string());
+                delta.admitted_by = Some(admission.label.clone());
                 used.insert(i);
                 break;
             }
@@ -2321,14 +2325,14 @@ fn admission_satisfied_at(
     match &a.subject {
         AdmissionSubject::Membership { module, target } => {
             if membership
-                .get(*module)
-                .is_some_and(|members| members.contains(*target))
+                .get(module)
+                .is_some_and(|members| members.contains(target))
             {
                 Ok(())
             } else {
                 Err(format!(
                     "expected membership {module} -> {target}, found {:?}",
-                    membership.get(*module)
+                    membership.get(module)
                 ))
             }
         }
@@ -2338,15 +2342,14 @@ fn admission_satisfied_at(
             spelling,
             expected_candidates,
         } => {
-            let expected: BTreeSet<String> =
-                expected_candidates.iter().map(|s| s.to_string()).collect();
+            let expected: BTreeSet<String> = expected_candidates.iter().cloned().collect();
             let Some(record) = index_get(index, module) else {
                 return Err(format!(
                     "expected candidates {expected:?}, found no module {module}"
                 ));
             };
             let rows = binding_rows(index, record);
-            match rows.get(&((*in_declaration).to_string(), (*spelling).to_string())) {
+            match rows.get(&(in_declaration.clone(), spelling.clone())) {
                 Some(found) if *found == expected => Ok(()),
                 Some(found) => Err(format!(
                     "expected candidates {expected:?}, found candidates {found:?}"
@@ -2563,9 +2566,362 @@ pub enum WaveAdmissionOutcome {
     },
 }
 
-/// The roster's own source path, as the diff names it — the subject of the consumed-row
-/// deletion obligation.
-pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_admission.rs";
+/// Directory whose membership IS the transition-admission roster (trailing slash so the type
+/// module `dag/gunbc/namespace/transition_admission.dag` is not a roster touch).
+pub const ADMISSION_ROSTER_REL_PATH: &str = "dag/gunbc/namespace/transition_admission/";
+
+/// True when a diff path is a row file (or the directory itself) under the roster prefix.
+pub fn admission_roster_path_touched(rel: &str) -> bool {
+    rel == ADMISSION_ROSTER_REL_PATH.trim_end_matches('/')
+        || rel.starts_with(ADMISSION_ROSTER_REL_PATH)
+}
+
+const ROW_MODULE_PREFIX: &str = "gunbc.namespace.transition_admission.";
+
+/// Load production admissions from a workspace: the directory fold. A missing directory is
+/// the empty roster. A present malformed file refuses, located, never skipped.
+pub fn load_transition_admissions(workspace: &Path) -> Result<Vec<TransitionAdmission>, String> {
+    load_transition_admissions_from_dir(&workspace.join(ADMISSION_ROSTER_REL_PATH))
+}
+
+pub fn load_transition_admissions_from_dir(dir: &Path) -> Result<Vec<TransitionAdmission>, String> {
+    match std::fs::read_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(format!(
+            "transition-admission roster directory {} is unreadable: {e}",
+            dir.display()
+        )),
+        Ok(entries) => {
+            let mut files = Vec::new();
+            for entry in entries {
+                let entry = entry.map_err(|e| {
+                    format!(
+                        "transition-admission roster directory {} dirent failed: {e}",
+                        dir.display()
+                    )
+                })?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                    continue;
+                }
+                let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+                    format!(
+                        "transition-admission row {} has a non-utf8 stem",
+                        path.display()
+                    )
+                })?;
+                if stem == "roster" {
+                    return Err(format!(
+                        "transition-admission row {} is named roster.dag; this roster has no \
+                         committed list (directory membership is the list)",
+                        path.display()
+                    ));
+                }
+                files.push((stem.to_string(), path));
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut out = Vec::with_capacity(files.len());
+            for (stem, path) in files {
+                let rel = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("row.dag");
+                let content = std::fs::read_to_string(&path).map_err(|e| {
+                    format!(
+                        "transition-admission row {} is unreadable: {e}",
+                        path.display()
+                    )
+                })?;
+                out.push(parse_transition_admission_row(&path, rel, &stem, &content)?);
+            }
+            Ok(out)
+        }
+    }
+}
+
+fn parse_transition_admission_row(
+    path: &Path,
+    rel: &str,
+    stem: &str,
+    content: &str,
+) -> Result<TransitionAdmission, String> {
+    let located = |msg: String| format!("{}: {msg}", path.display());
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+        Rc::new(
+            vec![Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: rel.to_string(),
+                content: content.to_string(),
+            })]
+            .into(),
+        ),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if !fill.diagnostics.is_empty() {
+        return Err(located(format!(
+            "does not parse ({} diagnostic(s))",
+            fill.diagnostics.len()
+        )));
+    }
+    let module = fill
+        .modules
+        .iter()
+        .next()
+        .ok_or_else(|| located("parsed to no module".to_string()))?;
+    let source_indices: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> = Rc::new(
+        fill.newline_indices
+            .iter()
+            .fold(im::HashMap::new(), |acc, i| {
+                acc.update(i.file.clone(), i.clone())
+            }),
+    );
+    let module_path = crate::v1_std_core::authored_name_at(source_indices.clone(), module.clone());
+    let expected_module = format!("{ROW_MODULE_PREFIX}{stem}");
+    if module_path != expected_module {
+        return Err(located(format!(
+            "module `{module_path}` must be `{expected_module}` (stem is the relocation identity)"
+        )));
+    }
+    let mut data_items = Vec::new();
+    for item in crate::v1_std_core::module_items(module.clone()).iter() {
+        if crate::v1_compiler_infer_items::item_kind(item.clone())
+            == crate::v1_compiler_infer_items::ItemKind::DataItem
+        {
+            data_items.push(item.clone());
+        }
+    }
+    if data_items.len() != 1 {
+        return Err(located(format!(
+            "must declare exactly one data row, found {}",
+            data_items.len()
+        )));
+    }
+    let item = &data_items[0];
+    let decl_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+    if decl_name != stem {
+        return Err(located(format!(
+            "data declaration `{decl_name}` must equal file stem `{stem}`"
+        )));
+    }
+    let Some(body) = item.body.clone() else {
+        return Err(located("data row has no initializer".to_string()));
+    };
+    parse_transition_admission_expr(body, &source_indices).map_err(located)
+}
+
+fn peel_expr(expr: Rc<crate::v1_std_core::Node>) -> Rc<crate::v1_std_core::Node> {
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprCast => expr
+            .children
+            .iter()
+            .next()
+            .cloned()
+            .map(peel_expr)
+            .unwrap_or(expr),
+        _ => expr,
+    }
+}
+
+fn expr_string(expr: Rc<crate::v1_std_core::Node>) -> Result<String, String> {
+    let expr = peel_expr(expr);
+    crate::v1_std_core::expr_literal_string_optional(expr)
+        .ok_or_else(|| "expected a string literal".to_string())
+}
+
+fn expr_leaf_name(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    let raw = crate::v1_std_core::authored_name_at(source_indices.clone(), peel_expr(expr));
+    qualified_last_segment(raw)
+}
+
+fn parse_transition_admission_expr(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<TransitionAdmission, String> {
+    let expr = peel_expr(expr);
+    if expr_leaf_name(expr.clone(), source_indices) != "TransitionAdmission" {
+        return Err(format!(
+            "initializer must construct TransitionAdmission, found `{}`",
+            expr_leaf_name(expr, source_indices)
+        ));
+    }
+    let Some(label_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "label".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `label`".to_string());
+    };
+    let Some(subject_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "subject".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `subject`".to_string());
+    };
+    let Some(disposition_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "disposition".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `disposition`".to_string());
+    };
+    Ok(TransitionAdmission {
+        label: expr_string(label_e)?,
+        subject: parse_admission_subject(subject_e, source_indices)?,
+        disposition: parse_disposition(disposition_e, source_indices)?,
+    })
+}
+
+fn parse_disposition(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<NamespaceDeltaDisposition, String> {
+    match expr_leaf_name(expr, source_indices).as_str() {
+        "SameDeclarationIdentityRebind" => {
+            Ok(NamespaceDeltaDisposition::SameDeclarationIdentityRebind)
+        }
+        "UnusedSubjectMembershipRemoved" => {
+            Ok(NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved)
+        }
+        "ExplicitlyEvaluatedZeroDelta" => {
+            Ok(NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta)
+        }
+        "TargetChanged" => Ok(NamespaceDeltaDisposition::TargetChanged),
+        "NewAmbiguity" => Ok(NamespaceDeltaDisposition::NewAmbiguity),
+        "NewUnresolvedness" => Ok(NamespaceDeltaDisposition::NewUnresolvedness),
+        "NewPoolCoincidenceResolution" => {
+            Ok(NamespaceDeltaDisposition::NewPoolCoincidenceResolution)
+        }
+        "AuthoredReferenceResolution" => Ok(NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "UnexplainedSubjectMotion" => Ok(NamespaceDeltaDisposition::UnexplainedSubjectMotion),
+        "NotEvaluated" => Ok(NamespaceDeltaDisposition::NotEvaluated),
+        other => Err(format!("unknown NamespaceDeltaDisposition `{other}`")),
+    }
+}
+
+fn parse_admission_subject(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<AdmissionSubject, String> {
+    let expr = peel_expr(expr);
+    match expr_leaf_name(expr.clone(), source_indices).as_str() {
+        "Binding" => {
+            let Some(enclosing) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "enclosing".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `enclosing`".to_string());
+            };
+            let Some(spelling) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "spelling".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `spelling`".to_string());
+            };
+            let Some(candidates) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr,
+                "expected_candidates".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `expected_candidates`".to_string());
+            };
+            let (module, in_declaration) = parse_decl_ref(enclosing, source_indices)?;
+            Ok(AdmissionSubject::Binding {
+                module,
+                in_declaration,
+                spelling: expr_string(spelling)?,
+                expected_candidates: parse_string_list(candidates)?,
+            })
+        }
+        "Membership" => {
+            let Some(from_module) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "from_module".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Membership is missing field `from_module`".to_string());
+            };
+            let Some(target_module) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr,
+                "target_module".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Membership is missing field `target_module`".to_string());
+            };
+            Ok(AdmissionSubject::Membership {
+                module: expr_string(from_module)?,
+                target: expr_string(target_module)?,
+            })
+        }
+        other => Err(format!("unknown AdmissionSubject `{other}`")),
+    }
+}
+
+fn parse_decl_ref(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<(String, String), String> {
+    let expr = peel_expr(expr);
+    if expr_leaf_name(expr.clone(), source_indices) == "DeclarationRef" {
+        let module = crate::v1_std_core::record_lit_named_field_value_optional(
+            expr.clone(),
+            "module_path".to_string(),
+            source_indices.clone(),
+        )
+        .ok_or_else(|| "DeclarationRef is missing `module_path`".to_string())?;
+        let decl = crate::v1_std_core::record_lit_named_field_value_optional(
+            expr,
+            "decl_name".to_string(),
+            source_indices.clone(),
+        )
+        .ok_or_else(|| "DeclarationRef is missing `decl_name`".to_string())?;
+        return Ok((expr_string(module)?, expr_string(decl)?));
+    }
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprCall { .. } => {
+            let mut module = None;
+            let mut decl = None;
+            let mut positional = Vec::new();
+            for child in expr.children.iter() {
+                let value = crate::v1_std_core::arg_value(child.clone());
+                match crate::v1_std_core::arg_name_at(child.clone(), source_indices.clone()) {
+                    Some(name) if name == "module_path" => module = Some(expr_string(value)?),
+                    Some(name) if name == "decl_name" => decl = Some(expr_string(value)?),
+                    Some(_) => {}
+                    None => {
+                        if let Ok(s) = expr_string(value) {
+                            positional.push(s);
+                        }
+                    }
+                }
+            }
+            if let (Some(m), Some(d)) = (module, decl) {
+                return Ok((m, d));
+            }
+            if positional.len() >= 2 {
+                return Ok((positional[0].clone(), positional[1].clone()));
+            }
+            Err("decl_ref / DeclarationRef did not yield module_path and decl_name".to_string())
+        }
+        _ => Err("enclosing must be a DeclarationRef or decl_ref(...)".to_string()),
+    }
+}
+
+fn parse_string_list(expr: Rc<crate::v1_std_core::Node>) -> Result<Vec<String>, String> {
+    let expr = peel_expr(expr);
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprListLit => expr
+            .children
+            .iter()
+            .map(|c| expr_string(c.clone()))
+            .collect(),
+        _ => Err("expected_candidates must be a list".to_string()),
+    }
+}
 
 /// Whether one adjudicated run REFUSES, and the sentence naming why — the wall's verdict, held by
 /// the wall.
@@ -2846,15 +3202,16 @@ pub fn run_wave_admission_between(
     let base = base.to_string();
     let head = head.to_string();
     let workspace = workspace.to_path_buf();
+    let admissions = load_transition_admissions(&workspace)?;
     if base == head {
-        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+        if admissions.is_empty() {
             return Ok(WaveAdmissionOutcome::NoSubject { head });
         }
         // Landing owns roster debt even though it has no namespace delta to compare.
         return Ok(WaveAdmissionOutcome::Adjudicated {
             base,
             head,
-            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+            report: adjudicate(head_index, head_index, &admissions),
             roster_touched: false,
         });
     }
@@ -3096,8 +3453,10 @@ pub fn run_wave_admission_between(
     // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
     // predicate was false on every production run and the consumed-row deletion obligation it
     // gates could never come due.
-    let roster_touched = head_touched.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH);
-    let report = adjudicate(&base_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS);
+    let roster_touched = head_touched
+        .iter()
+        .any(|p| admission_roster_path_touched(p));
+    let report = adjudicate(&base_index, head_index, &admissions);
     Ok(WaveAdmissionOutcome::Adjudicated {
         base,
         head,
