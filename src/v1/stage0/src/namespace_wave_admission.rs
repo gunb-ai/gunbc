@@ -341,20 +341,25 @@ pub struct TransitionAdmission {
     pub disposition: NamespaceDeltaDisposition,
 }
 
-/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
-/// deltas, a file, environment state, or any runtime input: its permission set is exactly what an
-/// author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str` patterns
-/// distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject admitted
-/// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
-/// real module.
+/// AUTHORING IS SAFETY, NOT CONST-NESS. The standing claim above the deleted const was
+/// "CONST-NESS IS SAFETY, NOT STORAGE STYLE" — a const cannot be computed from observed
+/// deltas, a file, environment, or any runtime input. That sentence mixed two facts: (1) the
+/// permission set must be authored and reviewable, never derived from the delta it admits;
+/// (2) `const` was the vehicle that made (1) mechanically true. (1) survives. (2) is
+/// superseded: each permission is an authored `.dag` row in this repository, in the PR diff
+/// a reviewer reads. A runtime `read_dir` does not mint permission — it enumerates files
+/// git already carries. An added file admits because an author wrote it and a reviewer can
+/// see it; a computed predicate over observed deltas still has no constructor. A malformed
+/// file refuses, located. A mistyped/missing directory is the empty roster (git cannot
+/// store an empty directory), which admits fewer transitions, never more.
 ///
-/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
-/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
-/// denotes -- the wall reports the module-membership half of the same motion as
-/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
-/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
-/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
-/// genuine rebind that happened to land in the same module pair.
+/// EVERY ROW IS `TargetChanged` WHEN IT IS ABOUT A REBIND, AND THAT IS THE WHOLE CLAIM: a
+/// spelling authored on both sides now resolves to a different module. NONE of them changes
+/// WHICH DECLARATION the spelling denotes -- the wall reports the module-membership half of
+/// the same motion as `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose
+/// meaning had actually moved would refuse on its own row rather than be covered by these.
+/// The rows are enumerated by exact identity, never by a pattern over the renamed modules,
+/// because a pattern would admit a genuine rebind that happened to land in the same module pair.
 
 /// EMPTY IS THE RESTING STATE between transitions.
 ///
@@ -2578,8 +2583,12 @@ pub fn admission_roster_path_touched(rel: &str) -> bool {
 
 const ROW_MODULE_PREFIX: &str = "gunbc.namespace.transition_admission.";
 
-/// Load production admissions from a workspace: the directory fold. A missing directory is
-/// the empty roster. A present malformed file refuses, located, never skipped.
+/// Load production admissions from a workspace: the directory fold.
+///
+/// Missing directory (`ErrorKind::NotFound`) is the empty roster: git cannot carry an empty
+/// directory, so absence IS the resting empty-const state. That arm yields fewer admissions,
+/// never more — fail-closed on the admission axis. Every other `read_dir`, dirent, stem, parse,
+/// or type error refuses, located, and is never skipped.
 pub fn load_transition_admissions(workspace: &Path) -> Result<Vec<TransitionAdmission>, String> {
     load_transition_admissions_from_dir(&workspace.join(ADMISSION_ROSTER_REL_PATH))
 }
