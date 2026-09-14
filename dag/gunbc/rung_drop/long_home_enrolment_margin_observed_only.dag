@@ -1,0 +1,65 @@
+module gunbc.rung_drop.long_home_enrolment_margin_observed_only
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the 302ms enrolment margin over a newly enrolled long-home witness
+// (DESIGN 4b(3)). Sibling of `long_module_changed_witness_cpu_observed_only`, not an amendment of
+// it: that row's subject is the 500ms per-claim CPU ceiling on a CHANGED witness; this row's
+// subject is the 302ms enrolment-margin line on a NEWLY ENROLLED witness whose declaration ground
+// is long home. Citing the sibling as cover for this line is the inflation review 65779 named.
+// ============================================================================================
+//
+// WHAT THE ARM DOES AND WHY IT IS A DROP AND NOT A FIX. `v2.workflow.floor_enrolment_margin`
+// `EnrolmentExpensivenessDeclared` is non-blocking. For a newly enrolled identity whose
+// `enrolment_expensiveness_declaration` is LongHome, a reached-verdict observation over the
+// derived 302ms budget (and under the 500ms ceiling) previously classified EnrolmentOverMargin
+// and stopped the floor. After the enrolment-margin honour of that declaration, this gate
+// reports the CPU and decides nothing. Changed-witness remains observed-only for the same home
+// (`long_module_changed_witness_cpu_observed_only`). The composed run therefore no longer
+// refuses that reading at either gate. That removes a standing mechanically-preventable wall,
+// so it is declared here rather than landed silently.
+//
+// WHAT THIS DROP IS NOT. It is not the typed cost-debt constructor. Half two of the same
+// change (`v2.workflow.floor_cost_debt_admission` `floor_cost_debt_row`) still refuses a 325ms
+// observed reading into the roster, so Roster ground cannot be minted from a margin crossing.
+// Undeclared new witnesses at 325ms still refuse over the margin. Wall deadline and semantic
+// red stay armed. Censored and absent-with-verdict readings still stop the run on
+// changed-witness; those walls were not lowered.
+//
+// THE RESTORATION TRIGGER NAMES A CAPABILITY, not an artifact. The enrolment margin exists to
+// keep a newly enrolled identity inside runner-variance headroom of the 500ms ceiling.
+// NECESSITY — that a long-home identity's measured CPU is the shared per-frame front end
+// rather than the witness's own work — is a POINTER to the producer, not prose about the
+// sibling (DESIGN section 6). The instrument is `v1.cli_run` `write_required_floor_claim_cost_tsv`
+// (the required-floor-claim-cost artifact and the run's BUDGET-REFUSED announcements), the
+// same entry `v2.workflow.required_floor` names for the long-home changed-witness class at
+// gunbc#11004 / 6b153bf8. A newly enrolled LongHome identity executes in that same claim
+// frame; this gate reads that same receipt. Re-derive there; do not copy its figures here.
+// Restoring the 302ms enrolment wall while that front end still dominates the reading would
+// refuse "touched a long module" again. So this row retires with that capability: when a
+// newly enrolled long-home identity's measured CPU is its own work, the enrolment margin
+// re-arms for LongHome ground and this arm and this row retire together.
+data long_home_enrolment_margin_observed_only: RungDrop = RungDrop {
+  identity: "long_home_enrolment_margin_observed_only" as NonEmptyStr,
+
+  subject: "the 302ms enrolment-margin line over a newly enrolled witness whose expensiveness declaration ground is long home: a wall removed so this gate reports CPU and does not decide, matching ChangedCostDebtVerdictOnly for that home",
+
+  declared: "2026-09-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "shared-producer netting of the front end that survives consumption, after which a newly enrolled long-home identity's measured CPU is its own work and the enrolment margin re-arms for LongHome ground" },
+    population: [
+    "v2.workflow.floor_enrolment_margin EnrolmentExpensivenessDeclared (the LongHome ground: a newly enrolled identity whose enrolment_expensiveness_declaration is long home does not block this gate on an observed-over-margin reading)",
+    "v2.workflow.floor_enrolment_margin enrolment_margin_standing (the classification that selects that arm after the execution join, never from claim_cost)",
+    "src/v1/stage0/src/cli_run/required_floor_runner.rs enrolment_margin_standing_for (the seed realization of the same arm, keyed on enrolment_expensiveness_declaration long_home_holds)",
+    ],
+    restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a newly enrolled long-home identity's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required, and they are the same capability `long_module_changed_witness_cpu_observed_only` waits on, named here because a trigger that named only that sibling ROW would fire while this gate stayed stood down. WHAT THIS TRIGGER IS SUFFICIENT FOR: after it, a newly enrolled long-home identity observed over floor_enrolment_margin_budget_ms with a reached verdict is EnrolmentOverMargin again and blocks this gate. A run in which such an identity merely passes under EnrolmentExpensivenessDeclared does not discharge it, because that is the state this row declares",
+  }
+}
