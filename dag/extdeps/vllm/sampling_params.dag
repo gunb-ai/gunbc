@@ -1,6 +1,6 @@
 module extdeps.vllm.sampling_params
 
-import std.types { String, Bool, Float, NonEmptyStr }
+import std.types { Float }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -29,11 +29,3 @@ fn sampling_temperature(value: Float) -> SamplingTemperature? {
   }
 }
 
-fn sampling_temperature_value(t: SamplingTemperature) -> Float {
-  t.value
-}
-
-// GREEDY DECODING, the one temperature with a name upstream: SamplingParams treats 0 as argmax.
-fn sampling_is_greedy(t: SamplingTemperature) -> Bool {
-  t.value == 0.0
-}

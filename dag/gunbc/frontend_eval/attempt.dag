@@ -3,7 +3,7 @@ module gunbc.frontend_eval.attempt
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { Millisecond, TokenCount, token_count, token_count_value, measure_add }
 import extdeps.vllm.sampling_params { SamplingTemperature }
-import gunbc.frontend_eval.task { EvalTask, FrontendMutationClass, mutation_class_scored_separately, mutation_class_key, frontend_eval_tasks }
+import gunbc.frontend_eval.task { EvalTask, FrontendMutationClass, mutation_class_scored_separately, frontend_eval_tasks }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
 // identity a reader would need to re-run it: the model as served, the compiler program that judged
@@ -37,17 +37,6 @@ type EvalOutcome
   | ScopeExceeded
   | BudgetExhausted
   | TransportFailed
-
-fn eval_outcome_key(outcome: EvalOutcome) -> String {
-  match outcome {
-    AcceptedRepair => "accepted"
-    FrontendStillRed => "frontend_red"
-    TestsRed => "tests_red"
-    ScopeExceeded => "scope_exceeded"
-    BudgetExhausted => "budget_exhausted"
-    TransportFailed => "transport_failed"
-  }
-}
 
 fn eval_outcome_accepted(outcome: EvalOutcome) -> Bool {
   match outcome {
@@ -106,14 +95,6 @@ type ArmSummary {
   completion_tokens_over_accepted: TokenCount
   cycles_over_accepted: Int
   tool_calls_over_accepted: Int
-}
-
-fn bit(b: Bool) -> Int {
-  if b { 1 } else { 0 }
-}
-
-fn tokens_if(on: Bool, t: TokenCount) -> TokenCount {
-  if on { t } else { token_count(count: 0) }
 }
 
 fn tokens_int(t: TokenCount) -> Int {
