@@ -19041,14 +19041,7 @@ mod exit_failure_outcome_tests {
             sample_count: 1,
         };
         assert!(matches!(
-            claim_terminality(
-                &outcome,
-                &receipt,
-                WitnessSafetyPolicy {
-                    cpu_ms: 1_000,
-                    wall_ms: 1_000,
-                },
-            ),
+            claim_terminality(&outcome, &receipt, WitnessSafetyPolicy { wall_ms: 1_000 },),
             ClaimTerminality::VerdictReached { .. }
         ));
     }
