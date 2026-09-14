@@ -56,9 +56,6 @@ data call_preservation_lambda_arg_source: String = "module m\n\nfn apply(f: fn(I
 
 data call_preservation_match_arm_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller(b: Bool) -> Int { match b { true => g(x: 1), false => 0 } }\n"
 
-// Freeze table for the two producers (primary ident call, postfix dotted call).
-// One executed control per shape; erasure (callee dropped / first nested operand as the body)
-// must RED the row. Do not freeze a T-fold until every arm is green on the head.
 type CallPreservationProducerShape
   = SoleBodyIdentCall
   | PostfixDottedCall
@@ -481,26 +478,24 @@ fn count_named_edges_with_name(root: Node, name: Symbol) -> Int {
 
 fn positional_call_delta(with_call: String, without_call: String, callee: Symbol, with_file: Symbol, without_file: Symbol) -> Int {
   match normalize_unprepared(src: with_call, file: with_file) {
-    Absent => 0 - 1
+    Absent => (0 - 1)
     Present { value: a } =>
       match normalize_unprepared(src: without_call, file: without_file) {
-        Absent => 0 - 1
+        Absent => (0 - 1)
         Present { value: b } =>
-          count_positional_calls_to(root: a, callee: callee)
-            - count_positional_calls_to(root: b, callee: callee)
+          count_positional_calls_to(root: a, callee: callee) - count_positional_calls_to(root: b, callee: callee)
       }
   }
 }
 
 fn named_edge_delta(with_call: String, without_call: String, name: Symbol, with_file: Symbol, without_file: Symbol) -> Int {
   match normalize_unprepared(src: with_call, file: with_file) {
-    Absent => 0 - 1
+    Absent => (0 - 1)
     Present { value: a } =>
       match normalize_unprepared(src: without_call, file: without_file) {
-        Absent => 0 - 1
+        Absent => (0 - 1)
         Present { value: b } =>
-          count_named_edges_with_name(root: a, name: name)
-            - count_named_edges_with_name(root: b, name: name)
+          count_named_edges_with_name(root: a, name: name) - count_named_edges_with_name(root: b, name: name)
       }
   }
 }
