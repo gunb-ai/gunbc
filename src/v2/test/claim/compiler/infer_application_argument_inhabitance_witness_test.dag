@@ -1,0 +1,242 @@
+module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
+
+import v2.compiler.infer { infer }
+import v2.std.inhabitance {
+  inhabitance_cardinality_type,
+  inhabitance_node_undecidable_reason,
+  inhabitance_undecidable_reason_symbol
+}
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_int_literal_fixture_two,
+  dag_type_atom_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostics,
+  None,
+  Rejected,
+  Some,
+  diagnostics_has_reason
+}
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.node {
+  ComputationNode,
+  Conj,
+  Edge,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  node_synthetic
+}
+
+fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: parameter },
+        target: declared
+      }
+    ]
+  )
+}
+
+fn inhabitance_apply(domain: Node, arg: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_arrow_with_body_node(
+          domain: domain,
+          return_type_binding: ^dag_binding_type_int,
+          body: dag_int_literal_fixture_one()
+        )
+      },
+      Edge { label: Positional, target: arg }
+    ]
+  )
+}
+
+fn inhabitance_call_tree(arg: Node) -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_x,
+      declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+    ),
+    arg: arg
+  )
+}
+
+fn inhabitance_generic_formal_tree() -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_t,
+      declared: node_synthetic(
+        kind: TypeNode { connective: Instantiation },
+        children: [
+          Edge {
+            label: Positional,
+            target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+          }
+        ]
+      )
+    ),
+    arg: dag_int_literal_fixture_one()
+  )
+}
+
+fn inhabitance_optional_formal_tree() -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_opt,
+      declared: inhabitance_cardinality_type(
+        inner: dag_type_atom_node(identity: ^dag_binding_type_int)
+      )
+    ),
+    arg: dag_int_literal_fixture_one()
+  )
+}
+
+fn inhabitance_arity_unmodeled_tree() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_arrow_with_body_node(
+          domain: inhabitance_named_conj_domain(
+            parameter: ^inhabitance_param_x,
+            declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+          ),
+          return_type_binding: ^dag_binding_type_int,
+          body: dag_int_literal_fixture_one()
+        )
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_one()
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_two()
+      }
+    ]
+  )
+}
+
+fn inhabitance_formal_unresolved_tree() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^inhabitance_takes_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_one()
+      }
+    ]
+  )
+}
+
+test fn infer_incompatible_argument_refuses_holds() -> Bool {
+  match infer(
+    tree: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true))
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(
+        d: Some { diagnostics: nds },
+        reason: ^application_argument_does_not_inhabit
+      )
+  }
+}
+
+test fn infer_compatible_argument_admits_holds() -> Bool {
+  match infer(tree: inhabitance_call_tree(arg: dag_int_literal_fixture_one())) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: inhabitance_call_tree(
+      arg: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+    )
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_argument_type_not_derived
+      )
+  }
+}
+
+test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
+  match infer(tree: inhabitance_generic_formal_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_generic_formal
+      )
+  }
+}
+
+test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
+  match inhabitance_node_undecidable_reason(
+    n: inhabitance_cardinality_type(
+      inner: dag_type_atom_node(identity: ^dag_binding_type_int)
+    )
+  ) {
+    Absent => false
+    Present { value: reason } =>
+      inhabitance_undecidable_reason_symbol(reason: reason)
+        == ^inhabitance_undecidable_optional_carrier
+  }
+}
+
+test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
+  match infer(tree: inhabitance_optional_formal_tree()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(
+        d: Some { diagnostics: nds },
+        reason: ^infer_descent_not_derived
+      )
+  }
+}
+
+test fn infer_positional_surplus_refuses_holds() -> Bool {
+  match infer(tree: inhabitance_arity_unmodeled_tree()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(
+        d: Some { diagnostics: nds },
+        reason: ^application_positional_surplus
+      )
+  }
+}
+
+test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
+  match infer(tree: inhabitance_formal_unresolved_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_formal_unresolved
+      )
+  }
+}
