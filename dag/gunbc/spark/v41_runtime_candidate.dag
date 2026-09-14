@@ -16,6 +16,7 @@ import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
   flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels,
   FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel,
+  FlashInferWheelFilenameFields, flashinfer_wheel_filename_fields,
 }
 import extdeps.safetensors.format { SafetensorsEntry }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -103,20 +104,64 @@ fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
 // THE KERNELS THE KEY NAMES MUST BE THE KERNELS THE RECIPE INSTALLS. main already carries one defect
 // of this shape -- a flashinfer version keyed and never passed to the build -- so a candidate whose
 // acquisition names a version other than the recipe's refuses rather than keying a pin nothing honours.
-// THE JIT-CACHE WHEEL'S PLATFORM IS NOT ASSERTED HERE YET, and that is a stack ordering fact rather than
-// a decision: extdeps.flashinfer.flashinfer flashinfer_wheel_platform_tag became a parsed optional in the
-// repair that landed on main (#11337 a106a87), which this branch predates. The assertion lands with the
-// re-anchor onto main, where the parsed tag is available.
-//
 // THE KERNEL CLOSURE THIS RUNTIME INSTALLS, BY PACKAGE. Upstream's Dockerfile installs all three at the
 // pinned version; a wheel population missing the cubin, or carrying two variants of one package, is not
 // the closure however many rows it has, so the population is compared as an exact bag rather than
 // counted.
+data v41_jit_cache_package: NonEmptyStr = "flashinfer-jit-cache" as NonEmptyStr
+
 data v41_required_kernel_packages: List<NonEmptyStr> = [
   "flashinfer-python" as NonEmptyStr,
   "flashinfer-cubin" as NonEmptyStr,
-  "flashinfer-jit-cache" as NonEmptyStr,
+  v41_jit_cache_package,
 ]
+
+// THE JIT-CACHE WHEEL IS THE ONE PLATFORM-SPECIFIC MEMBER OF THIS CLOSURE, and its package name plus the
+// release version does not identify it. FlashInfer publishes flashinfer_jit_cache at one version across
+// several CUDA local labels and platforms, and admit_flashinfer_wheel admits every one of them, because a
+// local label is a legitimate suffix of the release version -- exactly what that check exists to allow. So
+// a row naming the cu129 build, or the x86_64 one, re-admits cleanly against this acquisition and would key
+// a runtime whose image installs kernels it cannot load. The other two members are `py3-none-any` and carry
+// no such choice, so the assertion is on this package alone rather than on the population.
+//
+// WHY THESE FOUR VALUES ARE ASSERTED AND NOT DERIVED. The CUDA local label is how FlashInfer's index spells
+// a CUDA 13.0 build (`cu130`) and the platform is the manylinux aarch64 tag the recipe's
+// manylinuxaarch64-builder produces; both are upstream spelling conventions rather than functions of the
+// recipe's `13.0.2` this repository can compute, and inventing that mapping here would mint an authority for
+// a naming scheme FlashInfer owns. The wheel's filename and digest are already in the runtime key, so this
+// is a refusal gate over an axis the key already carries, not a second identity.
+type V41KernelBuildTarget sole_constructor {
+  version: NonEmptyStr
+  python: NonEmptyStr
+  abi: NonEmptyStr
+  platform: NonEmptyStr
+}
+
+data v41_jit_cache_build_target: V41KernelBuildTarget = V41KernelBuildTarget {
+  version: "0.6.18.post1+cu130" as NonEmptyStr,
+  python: "cp39" as NonEmptyStr,
+  abi: "abi3" as NonEmptyStr,
+  platform: "manylinux_2_28_aarch64" as NonEmptyStr,
+}
+
+fn v41_kernel_field_defect(field: String, actual: String, expected: NonEmptyStr, filename: NonEmptyStr) -> List<NonEmptyStr> {
+  if actual == (expected as String) { [] as List<NonEmptyStr> } else {
+    [join(["the jit-cache wheel ", filename as String, " carries ", field, " ", actual, ", but this runtime installs ", expected as String], "") as NonEmptyStr]
+  }
+}
+
+fn v41_jit_cache_target_defects(wheels: List<FlashInferWheel>, target: V41KernelBuildTarget) -> List<NonEmptyStr> {
+  flat_map(v41_wheels_named(wheels: wheels, package: v41_jit_cache_package), w =>
+    match flashinfer_wheel_filename_fields(filename: w.filename as String) {
+      Absent => [join(["the jit-cache wheel ", w.filename as String, " does not parse as a wheel filename, so the build target it installs is unknown"], "") as NonEmptyStr]
+      Present { value: f } =>
+        concat(concat(concat(
+          v41_kernel_field_defect(field: "version", actual: f.version, expected: target.version, filename: w.filename),
+          v41_kernel_field_defect(field: "python tag", actual: f.python, expected: target.python, filename: w.filename)),
+          v41_kernel_field_defect(field: "abi tag", actual: f.abi, expected: target.abi, filename: w.filename)),
+          v41_kernel_field_defect(field: "platform tag", actual: f.platform, expected: target.platform, filename: w.filename))
+    })
+}
 
 fn v41_wheels_named(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> List<FlashInferWheel> {
   filter(wheels, w => (w.package as String) == (package as String))
@@ -149,7 +194,7 @@ fn v41_kernel_defects(i: V41RuntimeArtifactInputs) -> List<NonEmptyStr> {
       if (v as String) != (i.recipe.flashinfer_version as String) {
         [join(["the kernel acquisition pins flashinfer ", v as String, " but the recipe installs ", i.recipe.flashinfer_version as String], "") as NonEmptyStr]
       } else {
-        concat(v41_kernel_population_defects(wheels: i.kernel_wheels), v41_kernel_admission_defects(acquisition: i.kernel_acquisition, wheels: i.kernel_wheels))
+        concat(concat(v41_kernel_population_defects(wheels: i.kernel_wheels), v41_kernel_admission_defects(acquisition: i.kernel_acquisition, wheels: i.kernel_wheels)), v41_jit_cache_target_defects(wheels: i.kernel_wheels, target: v41_jit_cache_build_target))
       }
   }
 }
