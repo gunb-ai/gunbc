@@ -215,6 +215,36 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.object_store_git_wet_witness_test", function: "a_store_that_was_never_founded_opens_as_not_initialized_by_real_execution" },
+      entry: "dag/test/claim/object_store_git_wet_witness_test.dag",
+      function: "a_store_that_was_never_founded_opens_as_not_initialized_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.object_store_git_wet_witness_test", function: "one_host_stores_and_a_second_host_retrying_the_same_record_finds_it_present_by_real_execution" },
+      entry: "dag/test/claim/object_store_git_wet_witness_test.dag",
+      function: "one_host_stores_and_a_second_host_retrying_the_same_record_finds_it_present_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.object_store_git_wet_witness_test", function: "different_bytes_under_one_key_from_another_host_is_a_conflict_by_real_execution" },
+      entry: "dag/test/claim/object_store_git_wet_witness_test.dag",
+      function: "different_bytes_under_one_key_from_another_host_is_a_conflict_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.object_store_git_wet_witness_test", function: "a_listing_from_the_second_host_names_both_hosts_objects_at_one_commit_by_real_execution" },
+      entry: "dag/test/claim/object_store_git_wet_witness_test.dag",
+      function: "a_listing_from_the_second_host_names_both_hosts_objects_at_one_commit_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.object_store_git_wet_witness_test", function: "an_empty_founded_store_lists_empty_and_an_unreachable_remote_lists_unavailable_by_real_execution" },
+      entry: "dag/test/claim/object_store_git_wet_witness_test.dag",
+      function: "an_empty_founded_store_lists_empty_and_an_unreachable_remote_lists_unavailable_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",
