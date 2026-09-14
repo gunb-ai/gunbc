@@ -1,0 +1,152 @@
+diff --git a/dag/std/compiler_entry.dag b/dag/std/compiler_entry.dag
+index 5c2be3617ca..e9e63357aa6 100644
+--- a/dag/std/compiler_entry.dag
++++ b/dag/std/compiler_entry.dag
+@@ -118,13 +118,8 @@ type CompilerEntryDriver
+ // Roster membership is the opt-in; no environment switch and no per-module derived counts.
+ // Nanos are inclusive observations inside the existing context/prepare phases, NEVER additional
+ // exclusive rows. Nested producer spans overlap and must not be summed as a run-time saving.
+-type NativeDriverProducer {
+-  producer: String
+-  declaration: DeclarationRef
+-}
+-
+ type NativeDriverProducerCount {
+-  producer: String
++  declaration: DeclarationRef
+   executions: Int
+   nanos: Nanosecond
+ }
+@@ -132,12 +127,12 @@ type NativeDriverProducerCount {
+ // Host monotonic counts become std.measure Nanosecond at the snapshot boundary.
+ // Negative/overflowing counts and backwards clocks refuse at the realization boundary
+ // rather than fabricating a zero or saturating observation.
+-data native_driver_producer_roster: List<NativeDriverProducer> = [
+-  NativeDriverProducer { producer: "dag_language_model", declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model") },
+-  NativeDriverProducer { producer: "validate_module_roots", declaration: decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots") },
+-  NativeDriverProducer { producer: "symbol_index_fill_module_roots", declaration: decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots") },
+-  NativeDriverProducer { producer: "subject_resolution", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module") },
+-  NativeDriverProducer { producer: "inference", declaration: decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved") }
++data native_driver_producer_roster: List<DeclarationRef> = [
++  decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model"),
++  decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots"),
++  decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots"),
++  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module"),
++  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved")
+ ]
+ 
+ type NativeDriverExclusiveRows {
+diff --git a/src/v1/05_emit_rust.dag b/src/v1/05_emit_rust.dag
+index 18bdab14409..e57563aa422 100644
+--- a/src/v1/05_emit_rust.dag
++++ b/src/v1/05_emit_rust.dag
+@@ -3983,7 +3983,7 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
+   } else {
+     ""
+   }
+-  let producer_runtime = if native_driver_producer_roster |> any(row => file_derived_names |> any(n => n == module_to_filename(name: row.declaration.module_path))) {
++  let producer_runtime = if native_driver_producer_roster |> any(row => file_derived_names |> any(n => n == module_to_filename(name: row.module_path))) {
+     emit_native_producer_runtime()
+   } else { "" }
+   let shared_types = emit_non_empty_wrappers()
+@@ -9065,16 +9065,18 @@ fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, s
+ // It is emitted only when a rostered module is present. State belongs to the rostered
+ // producers, not to every function or to a keyed semantic cache. Entry counts are physical
+ // invocations; a guard includes early returns. TCO loop iterations are not extra host calls.
++// Counter slots are generated storage addresses only. Snapshot rows preserve the declaration
++// citation; no authored string is interpolated as a Rust counter identifier.
+ fn emit_native_producer_entry(module_path: String, name: String) -> String {
+-  match native_driver_producer_roster |> filter(row => row.declaration.module_path == module_path && row.declaration.decl_name == name) |> first {
+-    Present { value: row } => concat("    let __native_producer_observation = crate::__native_producers::", row.producer, ".enter();\n")
++  match native_driver_producer_roster |> enumerate |> filter(pair => pair.second.module_path == module_path && pair.second.decl_name == name) |> first {
++    Present { value: pair } => concat("    let __native_producer_observation = crate::__native_producers::counter_", to_string(value: pair.first), ".enter();\n")
+     Absent => ""
+   }
+ }
+ 
+ fn emit_native_producer_runtime() -> String {
+-  let counters = native_driver_producer_roster |> map(row => concat("    #[allow(non_upper_case_globals)] pub static ", row.producer, ": Counter = Counter::new();\n")) |> join(separator: "")
+-  let snapshots = native_driver_producer_roster |> map(row => concat("        ", row.producer, ".snapshot(\"", row.producer, "\"),\n")) |> join(separator: "")
++  let counters = native_driver_producer_roster |> enumerate |> map(pair => concat("    #[allow(non_upper_case_globals)] pub static counter_", to_string(value: pair.first), ": Counter = Counter::new();\n")) |> join(separator: "")
++  let snapshots = native_driver_producer_roster |> enumerate |> map(pair => concat("        counter_", to_string(value: pair.first), ".snapshot(\"", escape_string_literal_body(s: pair.second.module_path), "\", \"", escape_string_literal_body(s: pair.second.decl_name), "\"),\n")) |> join(separator: "")
+   concat(
+     "pub mod __native_producers \{\n",
+     "    use std::sync::Mutex;\n",
+@@ -9093,9 +9095,9 @@ fn emit_native_producer_runtime() -> String {
+     "            drop(observed);\n",
+     "            Guard \{ counter: self, started: Instant::now() \}\n",
+     "        \}\n",
+-    "        fn snapshot(&self, producer: &'static str) -> (&'static str, i64, i64) \{\n",
++    "        fn snapshot(&self, module_path: &'static str, decl_name: &'static str) -> (&'static str, &'static str, i64, i64) \{\n",
+     "            let observed = self.observed.lock().unwrap_or_else(|_| refused(\"counter poisoned\"));\n",
+-    "            (producer, observed.0, observed.1)\n",
++    "            (module_path, decl_name, observed.0, observed.1)\n",
+     "        \}\n",
+     "    \}\n",
+     "    impl Drop for Guard \{\n",
+@@ -9108,7 +9110,7 @@ fn emit_native_producer_runtime() -> String {
+     "        \}\n",
+     "    \}\n",
+     counters,
+-    "    pub fn snapshot() -> std::vec::Vec<(&'static str, i64, i64)> \{ vec![\n",
++    "    pub fn snapshot() -> std::vec::Vec<(&'static str, &'static str, i64, i64)> \{ vec![\n",
+     snapshots,
+     "    ] \}\n\}\n"
+   )
+@@ -17652,7 +17654,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
+       "    // tolerance before row_serialization was a measured row, which is what put that row on", "\n",
+       "    // the type rather than a wider tolerance on this arm.", "\n",
+       "    let producer_counts: Vec<NativeDriverProducerCount> = ", crate_name, "::__native_producers::snapshot().into_iter()", "\n",
+-      "        .map(|(producer, executions, nanos)| NativeDriverProducerCount \{ producer: producer.to_string(), executions, nanos: nanosecond(nanos) \}).collect();", "\n",
++      "        .map(|(module_path, decl_name, executions, nanos)| NativeDriverProducerCount \{ declaration: ", crate_name, "::std_decl_ref::decl_ref(module_path.to_string(), decl_name.to_string()), executions, nanos: nanosecond(nanos) \}).collect();", "\n",
+       "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{", "\n",
+       "        \"basis\": \"native_driver_wall\",", "\n",
+       "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",", "\n",
+diff --git a/src/v1/tests/src/native_driver_cost_refusal_test.rs b/src/v1/tests/src/native_driver_cost_refusal_test.rs
+index 32cc60b0e73..6cfa5b1a3ca 100644
+--- a/src/v1/tests/src/native_driver_cost_refusal_test.rs
++++ b/src/v1/tests/src/native_driver_cost_refusal_test.rs
+@@ -239,24 +239,25 @@ fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
+     for missing_guard in [false, true] {
+         let mut source = runtime.clone();
+         for (i, row) in roster.iter().enumerate() {
+-            let guard = emit_native_producer_entry(
+-                row.declaration.module_path.clone(),
+-                row.declaration.decl_name.clone(),
+-            );
++            let guard = emit_native_producer_entry(row.module_path.clone(), row.decl_name.clone());
+             assert!(!guard.is_empty(), "roster declaration is not observed");
+             let entry = if missing_guard && i == 0 { "" } else { &guard };
+             source.push_str(&format!(
+                 "fn probe_{i}() -> bool {{\n{entry} return true; }}\n"
+             ));
+         }
+-        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.1 == 0 && r.2 == 0));\n");
+-        for (i, _) in roster.iter().enumerate() {
++        source.push_str("fn main() { assert!(__native_producers::snapshot().iter().all(|r| r.2 == 0 && r.3 == 0));\n");
++        for (i, row) in roster.iter().enumerate() {
++            source.push_str(&format!(
++                "assert_eq!((__native_producers::snapshot()[{i}].0, __native_producers::snapshot()[{i}].1), ({:?}, {:?}));\n",
++                row.module_path, row.decl_name
++            ));
+             source.push_str(&format!(
+                 "for _ in 0..{} {{ assert!(probe_{i}()); }}\n",
+                 i + 2
+             ));
+         }
+-        source.push_str("for (i, (_, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
++        source.push_str("for (i, (_, _, executions, nanos)) in __native_producers::snapshot().iter().enumerate() { assert_eq!(*executions, (i + 2) as i64); assert!(*nanos >= 0); } }\n");
+         let path = root.join("observer.rs");
+         let binary = root.join("observer");
+         std::fs::write(&path, source).expect("write emitted observer");
+@@ -291,6 +292,10 @@ fn producer_observations_are_siblings_not_exclusive_rows() {
+     assert!(main.contains("\"producer_counts\": producer_counts"));
+     assert!(main.contains("Vec<NativeDriverProducerCount>"));
+     assert!(main.contains("nanos: nanosecond(nanos)"));
++    assert!(
++        main.contains("::std_decl_ref::decl_ref(module_path.to_string(), decl_name.to_string())")
++    );
++    assert!(!main.contains("producer: producer.to_string()"));
+     let exclusive = main
+         .split("let exclusive =")
+         .nth(1)

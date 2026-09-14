@@ -1,0 +1,38 @@
+[
+  {
+    "head": "95505db29228df9371d2aeacebba12441ee31ffa",
+    "path": "src/v1/stage0/src/std_compiler_entry.rs",
+    "sha256": "3f694226da56171994283f2a54fcbf5deae2cb88d183615ae6c623ae8d39a1a0",
+    "roster_occurrences": 0
+  },
+  {
+    "head": "95505db29228df9371d2aeacebba12441ee31ffa",
+    "path": "src/v1/stage0/src/v1_compiler_emit_rust.rs",
+    "sha256": "463fce6033ce47c52f9a798bd9bb66470188d7947c0342d490b4caea5108a56b",
+    "roster_occurrences": 0
+  },
+  {
+    "head": "a375db950e47f27daa8f623cfd025cf0b0b20c84",
+    "path": "src/v1/stage0/src/std_compiler_entry.rs",
+    "sha256": "3f694226da56171994283f2a54fcbf5deae2cb88d183615ae6c623ae8d39a1a0",
+    "roster_occurrences": 0
+  },
+  {
+    "head": "a375db950e47f27daa8f623cfd025cf0b0b20c84",
+    "path": "src/v1/stage0/src/v1_compiler_emit_rust.rs",
+    "sha256": "463fce6033ce47c52f9a798bd9bb66470188d7947c0342d490b4caea5108a56b",
+    "roster_occurrences": 0
+  },
+  {
+    "head": "8321c11f8fae9f2cdbd3a0de25217089e86e32fa",
+    "path": "src/v1/stage0/src/std_compiler_entry.rs",
+    "sha256": "3f694226da56171994283f2a54fcbf5deae2cb88d183615ae6c623ae8d39a1a0",
+    "roster_occurrences": 0
+  },
+  {
+    "head": "8321c11f8fae9f2cdbd3a0de25217089e86e32fa",
+    "path": "src/v1/stage0/src/v1_compiler_emit_rust.rs",
+    "sha256": "463fce6033ce47c52f9a798bd9bb66470188d7947c0342d490b4caea5108a56b",
+    "roster_occurrences": 0
+  }
+]

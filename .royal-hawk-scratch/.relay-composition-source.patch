@@ -1,0 +1,269 @@
+diff --git a/dag/std/compiler_entry.dag b/dag/std/compiler_entry.dag
+index e9e63357aa6..a720c86655f 100644
+--- a/dag/std/compiler_entry.dag
++++ b/dag/std/compiler_entry.dag
+@@ -135,6 +135,11 @@ data native_driver_producer_roster: List<DeclarationRef> = [
+   decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved")
+ ]
+ 
++// relay_emit observes formatting and writing each native-prepare-split line, after release
++// and outside preparation/evaluation. Its invocation count on the partition receipt is
++// relay_emit_executions, incremented at that output operation, including refused modules.
++// Neither its duration nor its count is inferred from the universe census. It names a candidate
++// gap; whether that gap explains a run's residual is answered only by the measured partition.
+ type NativeDriverExclusiveRows {
+   load: Nanosecond
+   universe_derivation: Nanosecond
+@@ -144,6 +149,7 @@ type NativeDriverExclusiveRows {
+   receipt_admission: Nanosecond
+   row_serialization: Nanosecond
+   module_release: Nanosecond
++  relay_emit: Nanosecond
+ }
+ 
+ type NativeDriverCostAccounting
+@@ -156,7 +162,7 @@ type NativeDriverCostAccounting
+ data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
+ 
+ fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
+-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release))
++  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit))
+ }
+ 
+ fn native_driver_cost_account(
+diff --git a/dag/test/claim/native_driver_cost_partition_witness_test.dag b/dag/test/claim/native_driver_cost_partition_witness_test.dag
+index f05b9c662a0..e946db203dc 100644
+--- a/dag/test/claim/native_driver_cost_partition_witness_test.dag
++++ b/dag/test/claim/native_driver_cost_partition_witness_test.dag
+@@ -28,7 +28,8 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
+     eval: nanosecond(count: 3531894),
+     receipt_admission: nanosecond(count: 31775),
+     row_serialization: nanosecond(count: 0),
+-    module_release: nanosecond(count: 0)
++    module_release: nanosecond(count: 0),
++    relay_emit: nanosecond(count: 7)
+   }
+ }
+ 
+@@ -37,7 +38,7 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
+ // fails here, rather than silently dropping that phase's time into the remainder.
+ test fn exclusive_sum_is_every_row_the_law_folds() -> Bool {
+   native_driver_exclusive_sum(rows: sample_exclusive_rows())
+-    == nanosecond(count: 3440612010317)
++    == nanosecond(count: 3440612010324)
+ }
+ 
+ test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool {
+@@ -63,7 +64,8 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
+       eval: nanosecond(count: 0),
+       receipt_admission: nanosecond(count: 0),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -85,7 +87,8 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
+       eval: nanosecond(count: 10),
+       receipt_admission: nanosecond(count: 0),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -119,7 +122,8 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
+       eval: nanosecond(count: 10),
+       receipt_admission: nanosecond(count: 10),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -141,7 +145,8 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
+       eval: nanosecond(count: 10),
+       receipt_admission: nanosecond(count: 80),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -168,7 +173,8 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
+       eval: nanosecond(count: 50),
+       receipt_admission: nanosecond(count: 0),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -189,7 +195,8 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
+       eval: nanosecond(count: 40),
+       receipt_admission: nanosecond(count: 10),
+       row_serialization: nanosecond(count: 0),
+-      module_release: nanosecond(count: 0)
++      module_release: nanosecond(count: 0),
++      relay_emit: nanosecond(count: 0)
+     },
+     tolerance: native_driver_cost_remainder_tolerance_nanos
+   ) {
+@@ -252,7 +259,8 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
+     eval: nanosecond(count: 3531894),
+     receipt_admission: nanosecond(count: 31775),
+     row_serialization: nanosecond(count: 158600186),
+-    module_release: nanosecond(count: 0)
++    module_release: nanosecond(count: 0),
++    relay_emit: nanosecond(count: 0)
+   }
+ }
+ 
+@@ -265,7 +273,8 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
+     eval: nanosecond(count: 3531894),
+     receipt_admission: nanosecond(count: 31775),
+     row_serialization: nanosecond(count: 0),
+-    module_release: nanosecond(count: 0)
++    module_release: nanosecond(count: 0),
++    relay_emit: nanosecond(count: 0)
+   }
+ }
+ 
+diff --git a/src/v1/05_emit_rust.dag b/src/v1/05_emit_rust.dag
+index e57563aa422..9e2bebe7be3 100644
+--- a/src/v1/05_emit_rust.dag
++++ b/src/v1/05_emit_rust.dag
+@@ -17478,6 +17478,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
+       "    let mut prepare_ok: u64 = 0;", "\n",
+       "    let mut prepare_refused: u64 = 0;", "\n",
+       "    let mut module_release_nanos: u128 = 0;", "\n",
++      "    let mut relay_emit_nanos: u128 = 0;", "\n",
++      "    let mut relay_emit_executions: u64 = 0;", "\n",
+       "    // The per-path refusal index is built ONCE here rather than per module: this loop is the", "\n",
+       "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x", "\n",
+       "    // refusals) when each module scanned the refusal list for itself.", "\n",
+@@ -17563,7 +17565,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
+       "        let release_started = Instant::now();", "\n",
+       "        drop(resolution);", "\n",
+       "        module_release_nanos += span_nanos(release_started);", "\n",
++      "        let relay_started = Instant::now();", "\n",
++      "        relay_emit_executions += 1;", "\n",
+       "        eprintln!(\"[native-prepare-split] module=\{\} resolve_nanos=\{module_resolve_nanos\} infer_nanos=\{module_infer_nanos\} prepare_nanos=\{module_prepare_nanos\} decls=\{\} outcome=\{outcome_label\}\", entry.module, identities);", "\n",
++      "        relay_emit_nanos += span_nanos(relay_started);", "\n",
+       "    \}", "\n",
+       "", "\n",
+       "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary", "\n",
+@@ -17618,6 +17623,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
+       "        receipt_admission: nanosecond(native_cost_i64(admission_nanos)),", "\n",
+       "        row_serialization: nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
+       "        module_release: nanosecond(native_cost_i64(module_release_nanos)),", "\n",
++      "        relay_emit: nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
+       "    \});", "\n",
+       "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;", "\n",
+       "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;", "\n",
+@@ -17666,6 +17672,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
+       "        \"parent_span_nanos\": parent_span_nanos,", "\n",
+       "        \"exclusive\": exclusive,", "\n",
+       "        \"producer_counts\": producer_counts,", "\n",
++      "        \"relay_emit_executions\": relay_emit_executions,", "\n",
+       "        \"sum_exclusive_nanos\": exclusive_sum,", "\n",
+       "        \"remainder_nanos\": remainder_nanos,", "\n",
+       "        \"corpus_reads\": corpus_reads,", "\n",
+diff --git a/src/v1/tests/src/native_driver_cost_refusal_test.rs b/src/v1/tests/src/native_driver_cost_refusal_test.rs
+index 6cfa5b1a3ca..d34e12e252b 100644
+--- a/src/v1/tests/src/native_driver_cost_refusal_test.rs
++++ b/src/v1/tests/src/native_driver_cost_refusal_test.rs
+@@ -39,6 +39,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
+             receipt_admission: nanosecond(0),
+             row_serialization: nanosecond(0),
+             module_release: nanosecond(0),
++            relay_emit: nanosecond(0),
+         }),
+         native_driver_cost_remainder_tolerance_nanos(),
+     );
+@@ -67,6 +68,7 @@ fn reconciled_parent_passes() {
+             receipt_admission: nanosecond(0),
+             row_serialization: nanosecond(0),
+             module_release: nanosecond(0),
++            relay_emit: nanosecond(0),
+         }),
+         native_driver_cost_remainder_tolerance_nanos(),
+     );
+@@ -156,15 +158,13 @@ fn a_child_that_has_not_exited_is_pending_not_unobserved() {
+     );
+ }
+ 
+-#[test]
+-fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
++fn assert_exclusive_span_order(main_rs: &str) {
+     // prepare and eval are exclusive rows of ONE partition, so a preparation interval that
+     // contained its module's evaluation intervals would count that work twice and inflate the
+     // exclusive sum against the parent. The 6 assertions above read markers and exit shapes and
+     // cannot see the endpoint move: the emitted text is identical either way except for WHERE the
+     // close sits, which is exactly what this asserts. Moving the close back across the evaluation
+     // loop -- the regression this file is being extended for -- reds here and nowhere else.
+-    let main_rs = driver_main();
+     let close = main_rs
+         .match_indices("let this_prepare = span_nanos(prepare_started);")
+         .map(|(i, _)| i)
+@@ -189,6 +189,32 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
+          eval and the two exclusive rows double-count: last close at {last_close}, evaluation opens \
+          at {eval_start}; emitted:\n{main_rs}"
+     );
++    // Extend this same span-order control to the newly named relay gap. The shared output
++    // site is after the refusal/accepted match, so every returning arm reaches the same count.
++    let release_close = main_rs
++        .find("module_release_nanos += span_nanos(release_started);")
++        .unwrap();
++    let relay_open = main_rs.find("let relay_started = Instant::now();").unwrap();
++    let relay_count = main_rs.find("relay_emit_executions += 1;").unwrap();
++    let relay_write = main_rs.find("eprintln!(\"[native-prepare-split]").unwrap();
++    let relay_close = main_rs
++        .find("relay_emit_nanos += span_nanos(relay_started);")
++        .unwrap();
++    let admission_open = main_rs
++        .find("let admission_started = Instant::now();")
++        .unwrap();
++    assert_eq!(
++        main_rs
++            .matches("let relay_started = Instant::now();")
++            .count(),
++        1
++    );
++    assert_eq!(main_rs.matches("relay_emit_executions += 1;").count(), 1);
++    assert!(last_close < release_close && release_close < relay_open);
++    assert!(relay_open < relay_count && relay_count < relay_write && relay_write < relay_close);
++    assert!(relay_close < admission_open);
++    assert!(main_rs.contains("relay_emit: nanosecond(native_cost_i64(relay_emit_nanos))"));
++    assert!(main_rs.contains("\"relay_emit_executions\": relay_emit_executions"));
+     // The accepted arm is the only one that evaluates, so its close is the one that can drift:
+     // assert it sits between inference returning and the evaluation loop rather than after it.
+     let infer_close = main_rs
+@@ -210,6 +236,22 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
+     );
+ }
+ 
++#[test]
++fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
++    let main_rs = driver_main();
++    assert_exclusive_span_order(&main_rs);
++    // A timer closed before formatting/output observes none of the relay's work. Keep the
++    // close spelled exactly the same and move only its position: the ordering control must red.
++    let close = "        relay_emit_nanos += span_nanos(relay_started);\n";
++    let write = "        eprintln!(\"[native-prepare-split]";
++    let missing_output_span = main_rs
++        .replace(close, "")
++        .replace(write, &format!("{close}{write}"));
++    assert!(
++        std::panic::catch_unwind(|| assert_exclusive_span_order(&missing_output_span)).is_err()
++    );
++}
++
+ // Execute the emitted observer itself: constructing a guard records entry, early return drops
+ // it, uncalled producers stay zero, and deleting an entry guard must turn the same assertion red.
+ #[test]

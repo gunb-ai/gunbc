@@ -1,0 +1,5 @@
+CHECKER_CONTROL positive PASS: full citation join and once-per-context assertion
+CHECKER_CONTROL missing RED: producer row identity set differs: dict_keys([('v2.compiler.compile', 'native_test_infer_resolved'), ('v2.compiler.compile', 'native_test_resolve_module'), ('v2.compiler.name_resolve', 'validate_module_roots'), ('v2.compiler.symbol_index_fill', 'symbol_index_fill_module_roots')])
+CHECKER_CONTROL duplicate RED: duplicate producer count: ('v2.compiler.compile', 'native_test_infer_resolved')
+CHECKER_CONTROL zero RED: ('v2.compiler.name_resolve', 'validate_module_roots') executed 0 times in one context
+Synthetic checker controls only; no native entry measurement or context scope established.

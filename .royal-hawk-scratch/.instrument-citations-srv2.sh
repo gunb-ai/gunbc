@@ -1,0 +1,24 @@
+set -euo pipefail
+export PATH="/home/briansrls/.cargo/bin:$PATH"
+instrument_head=6ecd05a7e78f7d16e2e2b4ca50966975211d7ea6
+instrument_root=$(mktemp -d /home/briansrls/royal-hawk-241/instrument.XXXXXX)
+printf '%s\n' "$instrument_root/instrument.log"
+git clone --no-checkout https://github.com/gunb-ai/gunbc.git "$instrument_root/repo"
+base64 -d > "$instrument_root/citation.bundle" <<'CITATION_BUNDLE'
+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
+CITATION_BUNDLE
+git -C "$instrument_root/repo" fetch "$instrument_root/citation.bundle" HEAD
+git -C "$instrument_root/repo" checkout --detach "$instrument_head"
+mkdir "$instrument_root/runner-temp"
+cd "$instrument_root/repo"
+systemd-run --user --scope -p MemoryMax=24G env PATH="$PATH" RUNNER_TEMP="$instrument_root/runner-temp" GITHUB_SHA="$instrument_head" CTRL_BUILD_MODE=local bash -c '
+set -euo pipefail
+# Match required_regen_host::seed_cargo_build exactly; package selection can change feature unification.
+cargo build --release --bin claim_executor
+./target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2
+cargo test --release -p v1-compiler-tests --lib native_driver_cost
+' > "$instrument_root/instrument.log" 2>&1 && instrument_status=0 || instrument_status=$?
+git diff --binary > "$instrument_root/generated.patch"
+git status --short > "$instrument_root/generated-status.txt"
+printf 'INSTRUMENT_DONE rc=%s root=%s\n' "$instrument_status" "$instrument_root"
+exit "$instrument_status"

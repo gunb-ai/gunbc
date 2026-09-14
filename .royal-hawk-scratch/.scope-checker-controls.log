@@ -1,0 +1,7 @@
+SCOPE_CHECKER positive PASS
+SCOPE_CHECKER missing RED: producer row identity set differs: dict_keys([('v2.compiler.compile', 'native_test_context_from_ingest'), ('v2.compiler.compile', 'native_test_infer_resolved'), ('v2.compiler.compile', 'native_test_resolve_module'), ('v2.compiler.name_resolve', 'validate_module_roots'), ('v2.compiler.symbol_index_fill', 'symbol_index_fill_module_roots')])
+SCOPE_CHECKER duplicate RED: duplicate producer count: ('v2.compiler.compile', 'native_test_context_from_ingest')
+SCOPE_CHECKER zero RED: ('v2.compiler.symbol_index_fill', 'symbol_index_fill_module_roots') executed 0 times in one context
+SCOPE_CHECKER constructor_zero RED: context constructor must execute exactly once in the bound context observation
+SCOPE_CHECKER constructor_two RED: context constructor must execute exactly once in the bound context observation
+Synthetic checker controls, NOT a native route context observation.

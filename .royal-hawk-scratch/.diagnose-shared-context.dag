@@ -1,0 +1,26 @@
+module local.shared_context_diagnostic
+
+import v2.test.name_resolve.admission_fail_closed { fc_dual_import_roots, fc_qn }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_with_admission_context_policy }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.resolution_policy { ImportScoped }
+
+test fn main() -> Bool {
+  match fc_dual_import_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots),
+        admission: Admission { subject: ResolutionSubject { name: fc_qn(seg: ^fc_import_a_seg) }, imports: [] },
+        index: source_root_index_empty(),
+        active_roots: [],
+        policy: ImportScoped
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_unbound_symbol
+      }
+  }
+}

@@ -1,0 +1,42 @@
+Scope command line contains environment variable, which is not expanded by default for now, but will be expanded by default in the future. Use --expand-environment=yes/no to explicitly control it as needed.
+Running as unit: run-r8fe05e5fd361443d85ce8e7375963ff9.scope; invocation ID: 01259bda19db453288512c9e23f5b52d
+   Compiling v1-compiler v0.1.0 (/home/briansrls/royal-hawk-241/verification.RAVFdi/repo/src/v1/stage0)
+    Finished `release` profile [optimized] target(s) in 4m 49s
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+PASS main
+DIAGNOSIS export_provider_has_unbound_service_marker PASS
+✓ typecheck v2.std.compilers.target_model done in 11 seconds
+PASS shared_context_duplicate_root_refusal_preserves_every_diagnostic_for_each_subject
+VERIFY shared_context_duplicate_root_refusal_preserves_every_diagnostic_for_each_subject PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+PASS shared_context_malformed_root_refusal_preserves_every_diagnostic_for_each_subject
+VERIFY shared_context_malformed_root_refusal_preserves_every_diagnostic_for_each_subject PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+PASS shared_context_resolves_two_subjects_and_preserves_missing_subject_location
+VERIFY shared_context_resolves_two_subjects_and_preserves_missing_subject_location PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+PASS resolve_dual_imports_do_not_collide_on_header_metadata
+VERIFY resolve_dual_imports_do_not_collide_on_header_metadata PASS
+✓ typecheck v2.std.compilers.target_model done in 11 seconds
+PASS resolve_with_admission_threads_validate_diagnostics_on_accept
+VERIFY resolve_with_admission_threads_validate_diagnostics_on_accept PASS
+✓ typecheck v2.std.compilers.target_model done in 11 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+PASS shared_root_validation_refusal_stays_at_prepare_for_each_identity
+VERIFY shared_root_validation_refusal_stays_at_prepare_for_each_identity PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+PASS the_requested_declaration_is_selected_and_evaluated
+VERIFY the_requested_declaration_is_selected_and_evaluated PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+PASS a_nested_same_named_graft_edge_is_not_selected
+VERIFY a_nested_same_named_graft_edge_is_not_selected PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+PASS an_absent_declaration_is_not_found
+VERIFY an_absent_declaration_is_not_found PASS
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+PASS a_sibling_modules_declaration_is_not_selected
+VERIFY a_sibling_modules_declaration_is_not_selected PASS
