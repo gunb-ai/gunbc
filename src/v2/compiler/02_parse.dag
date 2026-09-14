@@ -1606,10 +1606,54 @@ type PreparedGrammarExpr
       right: PreparedGrammarExpr,
       left_first: GrammarExprFirstFold,
       right_first: GrammarExprFirstFold,
-      ambiguous: Bool
+      ambiguous: Bool,
+      routes: Map<Symbol, ChoiceTokenRoute>
     }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
+
+// THE CHOICE ROUTE FOR A TOKEN CLASS IS A FACT ABOUT THE GRAMMAR, SO IT IS DECIDED AT PREPARE TIME.
+// parse_choice_on_present_token used to answer it at every choice node, at every token position,
+// with up to four linear scans of the two FIRST lists (symbol_list_contains, string equality per
+// element): 17% of the native route's process after C2 (perf --children, bounded K=16 root). The
+// decision reads only the two FIRST folds and the token's class, so prepare_grammar_expr folds it
+// once per choice into `routes`, keyed by class, using the same rule in the same order. A class with
+// no entry is a class the rule sends to backtracking -- including every class in neither FIRST set --
+// so absence is an answer, not a miss.
+type ChoiceTokenRoute
+  = ChoiceRouteLeft
+  | ChoiceRouteRight
+
+fn choice_token_route_for_class(
+  left_first: GrammarExprFirstFold,
+  right_first: GrammarExprFirstFold,
+  token_class: Symbol
+) -> Optional<ChoiceTokenRoute> {
+  let in_left = symbol_list_contains(xs: left_first.terminals, item: token_class)
+  let in_right = symbol_list_contains(xs: right_first.terminals, item: token_class)
+  if in_left && !in_right {
+    optional_present(value: ChoiceRouteLeft)
+  } else if in_right && !in_left {
+    optional_present(value: ChoiceRouteRight)
+  } else if left_first.nullable && in_right {
+    optional_present(value: ChoiceRouteRight)
+  } else {
+    optional_absent()
+  }
+}
+
+fn choice_token_routes(left_first: GrammarExprFirstFold, right_first: GrammarExprFirstFold) -> Map<Symbol, ChoiceTokenRoute> {
+  fold_list(
+    xs: list_append(left: left_first.terminals, right: right_first.terminals),
+    empty: empty_map(),
+    cons: fn(acc, token_class) {
+      match choice_token_route_for_class(left_first: left_first, right_first: right_first, token_class: token_class) {
+        Present { value: route } => map_insert(m: acc, key: token_class, value: route)
+        Absent => acc
+      }
+    }
+  )
+}
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1648,7 +1692,8 @@ fn prepare_grammar_expr(
           right: right_prepared.tree,
           left_first: left_prepared.first,
           right_first: right_prepared.first,
-          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first)
+          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first),
+          routes: choice_token_routes(left_first: left_prepared.first, right_first: right_prepared.first)
         },
         first: expr_first_fold_choice(left: left_prepared.first, right: right_prepared.first)
       }
@@ -2411,34 +2456,28 @@ fn parse_choice_on_present_token(
   left: PreparedGrammarExpr,
   right: PreparedGrammarExpr,
   tok: Token,
+  routes: Map<Symbol, ChoiceTokenRoute>,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable,
-  prov: ParseProvenanceState,
-  left_first: GrammarExprFirstFold,
-  right_first: GrammarExprFirstFold
+  prov: ParseProvenanceState
 ) -> ParseExprResult {
-  if symbol_list_contains(xs: left_first.terminals, item: tok.class) && !symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-    parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-  } else {
-    if symbol_list_contains(xs: right_first.terminals, item: tok.class) && !symbol_list_contains(xs: left_first.terminals, item: tok.class) {
+  match map_lookup(m: routes, key: tok.class) {
+    Present { value: ChoiceRouteLeft } =>
+      parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+    Present { value: ChoiceRouteRight } =>
       parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-    } else {
-      if left_first.nullable && symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-        parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-      } else {
-        parse_choice_residue_backtrack(
-          left: left,
-          right: right,
-          tokens: tokens,
-          all_tokens: all_tokens,
-          root: root,
-          table: table,
-          prov: prov
-        )
-      }
-    }
+    Absent =>
+      parse_choice_residue_backtrack(
+        left: left,
+        right: right,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
   }
 }
 
@@ -2448,6 +2487,7 @@ fn parse_choice_first_dispatch(
   left_first: GrammarExprFirstFold,
   right_first: GrammarExprFirstFold,
   ambiguous: Bool,
+  routes: Map<Symbol, ChoiceTokenRoute>,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2479,13 +2519,12 @@ fn parse_choice_first_dispatch(
           left: left,
           right: right,
           tok: tok,
+          routes: routes,
           tokens: tokens,
           all_tokens: all_tokens,
           root: root,
           table: table,
-          prov: prov,
-          left_first: left_first,
-          right_first: right_first
+          prov: prov
         )
     }
   }
@@ -2639,13 +2678,14 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous } =>
+    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous, routes: routes } =>
       parse_choice_first_dispatch(
         left: left,
         right: right,
         left_first: left_first,
         right_first: right_first,
         ambiguous: ambiguous,
+        routes: routes,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
