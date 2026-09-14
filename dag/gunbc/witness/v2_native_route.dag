@@ -1,6 +1,6 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item, list_starts_with }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item, list_starts_with, skip }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -902,10 +902,11 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
 }
 
 // The build clauses read the emitted-build receipt and nothing else: rustc named itself; the
-// RUSTFLAGS the lane set are the denial row, or the denial row then a remap-path-prefix flag
-// (equality of the denial prefix, not a substring contains -- a flag string that carries the
-// denial plus something other than remap is a different build environment and the receipt must
-// say so); and the build completed with status 0 and no warning header.
+// RUSTFLAGS the lane set are the denial row, or the denial row then ONE remap-path-prefix flag
+// (equality of the denial prefix, then a nonempty suffix that is that flag's assignment and
+// contains no later token -- a string that carries the denial plus something other than that
+// single remap is a different build environment and the receipt must say so); and the build
+// completed with status 0 and no warning header.
 fn native_route_emitted_build_rustc_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.emitted_build.rustc_identity != ""
 }
@@ -916,8 +917,10 @@ fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Boo
 
 fn native_route_rustflags_are_denial_then_remap(flags: String) -> Bool {
   let prefix = concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=")
-  length(xs: flags) > length(xs: prefix)
-    && list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
+  let suffix = skip(xs: flags, n: length(xs: prefix))
+  list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
+    && !is_empty(xs: suffix)
+    && !string_contains(s: suffix, pattern: " ")
 }
 
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {

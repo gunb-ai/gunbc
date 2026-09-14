@@ -1804,9 +1804,21 @@ pub struct TransitionAdmission {
 /// present at the base; #11182 merged, the seven inventory-evidence TargetChanged rows were
 /// deleted on main, and this roster's next touch does not resurrect them.
 ///
+/// gunbc#11193 remains from main: the `extdeps_external_authority_anchor` leaf in
+/// `extdeps.realization.artifact_store_fs`.
+///
 /// THE EIGHTEEN gunbc#11056 BuildPathTreatment TargetChanged rows are deleted here. The
 /// generation home is already on this PR's base, so those deltas are no longer producible.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#11193 artifact_store_fs anchor leaf narrows to its own declaration",
+    subject: AdmissionSubject::Binding {
+        module: "extdeps.realization.artifact_store_fs",
+        in_declaration: "extdeps_external_authority_anchor",
+        spelling: "extdeps_external_authority_anchor",
+        expected_candidates: &["extdeps.realization.artifact_store_fs"],
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
