@@ -199,7 +199,7 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // bytes -- not that those bytes name a host.
 // The effective principal, read the same way the hostname is: a typed observation that is Absent
 // when the probe did not succeed, never an empty name.
-func observe_effective_user_wet() -> NonEmptyStr?
+fn observe_effective_user_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
@@ -210,7 +210,7 @@ func observe_effective_user_wet() -> NonEmptyStr?
   }
 }
 
-func observe_host_short_wet() -> NonEmptyStr?
+fn observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(
@@ -231,7 +231,7 @@ func observe_host_short_wet() -> NonEmptyStr?
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
 // (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
-func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
+fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
   uses net: Network
 {
   let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
@@ -244,7 +244,7 @@ func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmiss
   )
 }
 
-func observe_timer_members_wet() -> List<TimerRetirementMember>
+fn observe_timer_members_wet() -> List<TimerRetirementMember>
   uses net: Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
@@ -290,7 +290,7 @@ fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation 
   })
 }
 
-func observe_cap_members_wet() -> CapMembersObservation
+fn observe_cap_members_wet() -> CapMembersObservation
   uses net: Network
 {
   let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
@@ -340,7 +340,7 @@ type FleetConvergeRequestObservation
 // (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
-func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
+fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
@@ -414,7 +414,7 @@ type RunnerUnitStandingRead
   = UnitStandingRead { standing: RunnerUnitStanding }
   | UnitStandingRefused { reason: NonEmptyStr }
 
-func observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
+fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
   uses net: Network
 {
   match read_unit_property(unit: unit, property: ActiveState) {
@@ -436,7 +436,7 @@ func observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRe
   }
 }
 
-func observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
+fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
@@ -464,7 +464,7 @@ func observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   }
 }
 
-func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
+fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
   uses net: Network
 {
   match fleet_converge_plan_bundle_digest_hex(
@@ -517,7 +517,7 @@ func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact)
   }
 }
 
-func fleet_converge_allocation_store_plan_wet() -> ProcessExit
+fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
   uses net: Network
 {
   match observe_host_short_wet() {
@@ -543,7 +543,7 @@ func fleet_converge_allocation_store_plan_wet() -> ProcessExit
   }
 }
 
-func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
+fn observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
   let spec = fabric_allocation_store_substrate_spec()
   if !allocation_store_presence_coordinates_match_path(spec: spec) {
     AllocationStoreSubstrateObservationRefused {
@@ -582,7 +582,7 @@ func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObserva
   }
 }
 
-func observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
+fn observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
   let parent = allocation_store_presence_parent(spec: spec)
   let contents = Filesystem.List(path: parent as String)
   if !contents.success {
@@ -611,7 +611,7 @@ func observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) 
   }
 }
 
-func observe_allocation_store_under_namespace_wet(
+fn observe_allocation_store_under_namespace_wet(
   spec: AllocationStoreSubstrateSpec,
   namespace: AllocationStoreDirectoryPrestate,
   entries: String,
@@ -684,7 +684,7 @@ func observe_allocation_store_under_namespace_wet(
 // admission, the expected-host admission, the generation lease and the receipt mint are obligations
 // of PLANNING, not of any one resource family, so a second copy of them beside this one would be a
 // parallel authority for whether a plan run is admissible at all.
-func fleet_converge_plan_wet() -> ProcessExit
+fn fleet_converge_plan_wet() -> ProcessExit
   uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: FullHost)
@@ -692,13 +692,13 @@ func fleet_converge_plan_wet() -> ProcessExit
 
 // RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
 // in gunbc.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
-func fleet_converge_launch_environment_plan_wet() -> ProcessExit
+fn fleet_converge_launch_environment_plan_wet() -> ProcessExit
   uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
 }
 
-func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
+fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -732,7 +732,7 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
 // that a scope could only widen. Routing plan through the same observer means the population the
 // plan hashes and the population apply re-observes come from one authority.
-func fleet_converge_plan_scoped_bound_wet(
+fn fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
   scope: FleetConvergeScope,
@@ -867,7 +867,7 @@ func fleet_converge_plan_scoped_bound_wet(
 // the operator typed, the bundle hash on disk, the revision and the repository must all agree with
 // what the plan receipt says, and the apply receipt carries the plan receipt's identity so the
 // final join can pair them without re-deriving anything.
-func fleet_converge_apply_wet() -> ProcessExit
+fn fleet_converge_apply_wet() -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -898,7 +898,7 @@ func fleet_converge_apply_wet() -> ProcessExit
   }
 }
 
-func fleet_converge_apply_bound_wet(
+fn fleet_converge_apply_bound_wet(
   run: ActionsRunBinding,
   plan_run_id: String,
   plan_receipt: FleetConvergePlanReceipt,
@@ -1129,7 +1129,7 @@ type OperatorLocalRunBinding
   = OperatorLocalRunBound { binding: ActionsRunBinding }
   | OperatorLocalRunUnbound { reason: String }
 
-func observe_operator_local_run_binding() -> OperatorLocalRunBinding
+fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
   uses net: Network
 {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -1153,7 +1153,7 @@ func observe_operator_local_run_binding() -> OperatorLocalRunBinding
   }
 }
 
-func fleet_converge_local_plan_wet(scope: String) -> ProcessExit
+fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope) {
@@ -1205,7 +1205,7 @@ fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bo
   trim(s: required) != "" && trim(s: observed) == trim(s: required)
 }
 
-func fleet_converge_operator_cli_entry(
+fn fleet_converge_operator_cli_entry(
   host: String,
   mode: String,
   scope: String,
@@ -1248,7 +1248,7 @@ func fleet_converge_operator_cli_entry(
   }
 }
 
-func fleet_converge_operator_cli_dispatch(
+fn fleet_converge_operator_cli_dispatch(
   host: String,
   mode: String,
   scope: String,
@@ -1293,7 +1293,7 @@ func fleet_converge_operator_cli_dispatch(
   }
 }
 
-func fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
+fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
   uses net: Network
 {
   match observe_operator_local_run_binding() {
@@ -1369,7 +1369,7 @@ type RunnerSlotProvenanceRead
   = SlotProvenanceRead { member: RunnerSlotMember }
   | SlotProvenanceRefused { reason: String }
 
-func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
+fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
   uses net: Network
 {
   let name = member.instance_name
@@ -1412,7 +1412,7 @@ func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMem
   }
 }
 
-func observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
+fn observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
   uses net: Network
 {
   match observe_runner_slot_members_wet() {

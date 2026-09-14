@@ -1,6 +1,9 @@
 module gunbc.roadmap_execution_contract
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import gunbc.ensure { EnsurePolicy }
 
 type ExecutionCapability
@@ -27,12 +30,56 @@ type ValidationOperation
   | CargoFmtValidation
   | ClosingContractAuthoringValidation { target: NonEmptyStr }
 
+type AttemptPathScope
+  = PathsUnrestricted
+  | PathsAllowed { prefixes: List<FilePath> }
+
+data paths_allowed_production_consumer_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "attempt_paths_admitted"),
+  reason: "PathsAllowed is constructible and attempt_paths_admitted already decides it; no production tick supplies a name-status observation as touched",
+  dissolution: unbound_dissolution(
+    description: "belt_verify_attempt_for_instance or the admitted-base POST /dispatch verify calls attempt_paths_admitted with a name-status observation over that exact diff window as touched, and a production tick refuses PathOutOfScope for a path outside the declared prefixes. Not satisfied by belt_verify_attempt_for_instance existing, nor by a witness constructing PathsAllowed, nor by a second path census"
+  ),
+)
+
+type PathScopeVerdict
+  = PathsAdmitted
+  | PathOutOfScope { path: FilePath }
+
+type ClaimSourceRootLayout
+  = PublicWorktreeLayout
+  | PinnedPublicPlusLocalRoot { public_prefix: NonEmptyStr }
+
+data pinned_public_plus_local_root_production_consumer_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "claim_source_root_args"),
+  reason: "claim_source_root_args already matches PinnedPublicPlusLocalRoot; no production ExecutionContract binds that arm",
+  dissolution: unbound_dissolution(
+    description: "a RoadmapNode the belt looks up — on gunbc.roadmap_authority or a plan supplied as a parameter — is constructed with ExecutionContract.source_roots = PinnedPublicPlusLocalRoot, and a production tick (POST /dispatch or belt verify) reads claim_source_root_args of that arm. Not satisfied by claim_source_root_args existing or matching the arm, nor by a witness constructing the arm in isolation, nor by binding every contract to PublicWorktreeLayout"
+  ),
+)
+
+data not_agent_work_production_constructor_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "gunbc.roadmap_execution_contract", decl_name: "WorkItemExecutionContract"),
+  reason: "launch, serve, verify, and contract_closure already refuse by NonAgentWorkMode; no RoadmapNode.execution is constructed as NotAgentWork",
+  dissolution: unbound_dissolution(
+    description: "a RoadmapNode the belt looks up — on gunbc.roadmap_authority or a plan supplied as a parameter — is constructed with execution: NotAgentWork { mode }, so LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. Not satisfied by not_agent_work_execution existing, nor by a witness constructing the arm, nor by minting a public node whose work is not operator-exclusive, external-lead, or calendar-observation"
+  ),
+)
+
+type NonAgentWorkMode
+  = OperatorExclusiveMode
+  | ExternalLeadMode
+  | CalendarObservationMode
+
 type WorkItemExecutionContract
   = ExecutionContractUnspecified
   | ExecutionContract {
       validations: List<ValidationOperation>,
       extra_capabilities: List<ExecutionCapability>,
+      path_scope: AttemptPathScope,
+      source_roots: ClaimSourceRootLayout,
     }
+  | NotAgentWork { mode: NonAgentWorkMode }
 
 type CapabilityRealization {
   capability: ExecutionCapability
@@ -121,7 +168,8 @@ fn execution_contract_required_capabilities(
 ) -> List<ExecutionCapability> {
   match contract {
     ExecutionContractUnspecified => []
-    ExecutionContract { validations, extra_capabilities } =>
+    NotAgentWork { mode: _ } => []
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       let required = fold(
         validations,
         init: extra_capabilities,
@@ -158,9 +206,10 @@ fn execution_contract_required_capabilities(
 // reading of the model says so.\n\nThis is the one decision, and it returns a THREE-valued closure
 // rather than a Bool because the two unclosed states have different remedies — author a contract,
 // versus fix the contract you authored — and dispatch_environment's located diagnostics depend on
-// telling them apart. contract_has_closing_validation is the Bool projection for the callers that
-// genuinely only need the predicate. No consumer re-derives either from the coproduct's
-// shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
+// telling them apart. Task derivation reads contract_awaits_closing_validation_authoring, which
+// is false for ContractNotAgentWork so a sized operator-exclusive node does not mint a task whose
+// brief replaces that mode with an agent contract. No consumer re-derives that from the
+// coproduct's shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
 // gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what
 // keeps that true when the fifth binding is written by hand.
 
@@ -168,11 +217,37 @@ type ContractClosure
   = ContractDeclaresNoValidation
   | ContractClosesNothing
   | ContractCloses { validations: List<ValidationOperation> }
+  | ContractNotAgentWork { mode: NonAgentWorkMode }
+
+fn non_agent_work_mode_label(mode: NonAgentWorkMode) -> String {
+  match mode {
+    OperatorExclusiveMode => "operator-exclusive"
+    ExternalLeadMode => "external-lead"
+    CalendarObservationMode => "calendar-observation"
+  }
+}
+
+fn non_agent_work_mode_from_label(label: String) -> NonAgentWorkMode? {
+  if label == non_agent_work_mode_label(mode: OperatorExclusiveMode) {
+    Present { value: OperatorExclusiveMode }
+  } else if label == non_agent_work_mode_label(mode: ExternalLeadMode) {
+    Present { value: ExternalLeadMode }
+  } else if label == non_agent_work_mode_label(mode: CalendarObservationMode) {
+    Present { value: CalendarObservationMode }
+  } else {
+    none
+  }
+}
+
+fn not_agent_work_execution(mode: NonAgentWorkMode) -> WorkItemExecutionContract {
+  NotAgentWork { mode: mode }
+}
 
 fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
   match contract {
     ExecutionContractUnspecified => ContractDeclaresNoValidation
-    ExecutionContract { validations, extra_capabilities: _ } =>
+    NotAgentWork { mode } => ContractNotAgentWork { mode: mode }
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       if count(validations) == 0 {
         ContractClosesNothing
       } else {
@@ -181,11 +256,12 @@ fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
   }
 }
 
-fn contract_has_closing_validation(contract: WorkItemExecutionContract) -> Bool {
+fn contract_awaits_closing_validation_authoring(contract: WorkItemExecutionContract) -> Bool {
   match contract_closure(contract: contract) {
-    ContractCloses { validations: _ } => true
-    ContractClosesNothing => false
-    ContractDeclaresNoValidation => false
+    ContractDeclaresNoValidation => true
+    ContractClosesNothing => true
+    ContractNotAgentWork { mode: _ } => false
+    ContractCloses { validations: _ } => false
   }
 }
 
@@ -207,7 +283,8 @@ fn dispatch_required_capabilities(
 ) -> List<ExecutionCapability> {
   match contract {
     ExecutionContractUnspecified => []
-    ExecutionContract { validations: _, extra_capabilities: _ } =>
+    NotAgentWork { mode: _ } => []
+    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       fold(
         concat(
           dispatch_platform_required_capabilities(),
@@ -224,11 +301,23 @@ fn dispatch_required_capabilities(
   }
 }
 
+fn agent_execution_contract(
+  validations: List<ValidationOperation>,
+  extra_capabilities: List<ExecutionCapability>,
+) -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: validations,
+    extra_capabilities: extra_capabilities,
+    path_scope: PathsUnrestricted,
+    source_roots: PublicWorktreeLayout,
+  }
+}
+
 fn gunbc_claim_execution_contract(
   entry: FilePath,
   function: NonEmptyStr,
 ) -> WorkItemExecutionContract {
-  ExecutionContract {
+  agent_execution_contract(
     validations: [
       GunbcClaimValidation {
         entry: entry,
@@ -236,7 +325,7 @@ fn gunbc_claim_execution_contract(
       },
     ],
     extra_capabilities: [],
-  }
+  )
 }
 
 // ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap_authority
@@ -263,18 +352,85 @@ data closing_contract_authoring_function: NonEmptyStr = "closing_contract_author
 fn closing_contract_authoring_contract(
   target: NonEmptyStr,
 ) -> WorkItemExecutionContract {
-  ExecutionContract {
+  agent_execution_contract(
     validations: [ClosingContractAuthoringValidation { target: target }],
     extra_capabilities: [],
-  }
+  )
 }
 
 fn cargo_test_execution_contract(
   filter: NonEmptyStr,
 ) -> WorkItemExecutionContract {
-  ExecutionContract {
+  agent_execution_contract(
     validations: [CargoTestValidation { filter: filter }],
     extra_capabilities: [],
+  )
+}
+
+fn claim_source_root_args(layout: ClaimSourceRootLayout) -> List<String> {
+  match layout {
+    PublicWorktreeLayout =>
+      ["--source-root", "dag", "--source-root", "src/v2"]
+    PinnedPublicPlusLocalRoot { public_prefix } =>
+      [
+        "--source-root", join([public_prefix as String, "/dag"], ""),
+        "--source-root", join([public_prefix as String, "/src/v2"], ""),
+        "--source-root", "dag",
+      ]
+  }
+}
+
+fn contract_source_roots(contract: WorkItemExecutionContract) -> ClaimSourceRootLayout {
+  match contract {
+    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots } =>
+      source_roots
+    ExecutionContractUnspecified => PublicWorktreeLayout
+    NotAgentWork { mode: _ } => PublicWorktreeLayout
+  }
+}
+
+fn allowed_prefix_boundary(prefix: String) -> String {
+  if ends_with(s: prefix, suffix: "/") {
+    prefix
+  } else {
+    join([prefix, "/"], "")
+  }
+}
+
+fn path_has_allowed_prefix(path: FilePath, prefixes: List<FilePath>) -> Bool {
+  any(
+    prefixes,
+    prefix => {
+      let declared = prefix as String
+      let observed = path as String
+      observed == declared
+        || starts_with(s: observed, prefix: allowed_prefix_boundary(prefix: declared))
+    },
+  )
+}
+
+fn attempt_paths_admitted(
+  scope: AttemptPathScope,
+  touched: List<FilePath>,
+) -> PathScopeVerdict {
+  match scope {
+    PathsUnrestricted => PathsAdmitted
+    PathsAllowed { prefixes } =>
+      fold(
+        touched,
+        init: PathsAdmitted,
+        f: fn(acc, path) {
+          match acc {
+            PathOutOfScope { path: found } => PathOutOfScope { path: found }
+            PathsAdmitted =>
+              if path_has_allowed_prefix(path: path, prefixes: prefixes) {
+                PathsAdmitted
+              } else {
+                PathOutOfScope { path: path }
+              }
+          }
+        },
+      )
   }
 }
 
@@ -294,6 +450,7 @@ fn dispatch_host_realization(
 fn validation_operation_command(
   validation: ValidationOperation,
   environment: DispatchHostEnvironment,
+  source_roots: ClaimSourceRootLayout,
 ) -> ModeledValidationCommand? {
   match validation {
     GunbcClaimValidation { entry, function } =>
@@ -305,14 +462,14 @@ fn validation_operation_command(
           Present { value: ModeledValidationCommand {
             label: "gunbc-claim" as NonEmptyStr,
             program: realization.executable,
-            args: [
-              "run",
-              "--source-root", "dag",
-              "--source-root", "src/v2",
-              "--entry", entry as String,
-              "--function", function as String,
-              "--claim-run",
-            ],
+            args: concat(
+              concat(["run"], claim_source_root_args(layout: source_roots)),
+              [
+                "--entry", entry as String,
+                "--function", function as String,
+                "--claim-run",
+              ],
+            ),
           } }
         Absent => none
       }
@@ -351,15 +508,15 @@ fn validation_operation_command(
           Present { value: ModeledValidationCommand {
             label: "closing-contract-authoring" as NonEmptyStr,
             program: realization.executable,
-            args: [
-              "run",
-              "--source-root", "dag",
-              "--source-root", "src/v2",
-              "--entry", closing_contract_authoring_entry as String,
-              "--function", closing_contract_authoring_function as String,
-              "--arg", join(["target=", target as String], ""),
-              "--claim-run",
-            ],
+            args: concat(
+              concat(["run"], claim_source_root_args(layout: source_roots)),
+              [
+                "--entry", closing_contract_authoring_entry as String,
+                "--function", closing_contract_authoring_function as String,
+                "--arg", join(["target=", target as String], ""),
+                "--claim-run",
+              ],
+            ),
           } }
         Absent => none
       }
@@ -379,7 +536,9 @@ fn execution_contract_validation_summary(
 ) -> String {
   match contract {
     ExecutionContractUnspecified => "execution contract unspecified"
-    ExecutionContract { validations, extra_capabilities: _ } =>
+    NotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": no agent may take this work"], "")
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
       join(
         map(
           validations,
@@ -387,6 +546,7 @@ fn execution_contract_validation_summary(
             match validation_operation_command(
               validation: validation,
               environment: environment,
+              source_roots: source_roots,
             ) {
               Present { value: command } =>
                 modeled_validation_command_wire(command: command)
@@ -411,7 +571,8 @@ fn validation_consumes_affected_set_window(validation: ValidationOperation) -> B
 fn execution_contract_needs_diff_window(contract: WorkItemExecutionContract) -> Bool {
   match contract {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } =>
+    NotAgentWork { mode: _ } => false
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       any(
         validations,
         validation => validation_consumes_affected_set_window(validation: validation),

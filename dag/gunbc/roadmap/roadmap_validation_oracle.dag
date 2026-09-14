@@ -31,11 +31,17 @@ import gunbc.roadmap_execution_contract {
   CargoTestValidation,
   CargoFmtValidation,
   WorkItemExecutionContract,
-  ExecutionContract,
-  ExecutionContractUnspecified,
+  NonAgentWorkMode,
   ClosingContractAuthoringValidation,
   closing_contract_authoring_entry,
   closing_contract_authoring_function,
+  non_agent_work_mode_label,
+  non_agent_work_mode_from_label,
+  contract_closure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  ContractNotAgentWork,
 }
 import gunbc.git_diff_change_window {
   ChangeWindowPreparationRefusal,
@@ -347,10 +353,12 @@ fn validation_oracle_scope(validation: ValidationOperation) -> OraclePinScope {
 fn validation_oracle_scopes(
   contract: WorkItemExecutionContract,
 ) -> List<OraclePinScope> {
-  match contract {
-    ExecutionContractUnspecified => []
-    ExecutionContract { validations, extra_capabilities: _ } =>
+  match contract_closure(contract: contract) {
+    ContractCloses { validations } =>
       map(validations, v => validation_oracle_scope(validation: v))
+    ContractDeclaresNoValidation => []
+    ContractClosesNothing => []
+    ContractNotAgentWork { mode: _ } => []
   }
 }
 
@@ -444,6 +452,8 @@ fn validation_oracle_set_observe(
 
 type ValidationRefusalCause
   = ValidationContractUnspecified
+  | ValidationContractClosesNothing
+  | ValidationNotAgentWork { mode: NonAgentWorkMode }
   | ValidationOracleUnpinnable {
       validation_label: String,
       reason: String,
@@ -637,10 +647,14 @@ fn validation_oracle_gate(
   revision: VersionIdentity,
   pin_read_detail: String,
 ) -> ValidationOracleGate {
-  match contract {
-    ExecutionContractUnspecified =>
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation =>
       ValidationOracleGateRefused { cause: ValidationContractUnspecified }
-    ExecutionContract { validations: _, extra_capabilities: _ } =>
+    ContractNotAgentWork { mode } =>
+      ValidationOracleGateRefused { cause: ValidationNotAgentWork { mode: mode } }
+    ContractClosesNothing =>
+      ValidationOracleGateRefused { cause: ValidationContractClosesNothing }
+    ContractCloses { validations: _ } =>
       match validation_oracle_scopes(contract: contract)
         |> filter(s => match s {
           OraclePinnable { oracle: _ } => false
@@ -748,6 +762,8 @@ fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusa
 fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified => "contract-unspecified"
+    ValidationContractClosesNothing => "contract-closes-nothing"
+    ValidationNotAgentWork { mode } => non_agent_work_mode_label(mode: mode)
     ValidationOracleUnpinnable { validation_label: _, reason: _ } =>
       "oracle-unpinnable"
     ValidationOracleMissing { entry: _, function: _, detail: _ } =>
@@ -771,6 +787,10 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified =>
       "the node declares no execution contract, so there is no validation to run"
+    ValidationContractClosesNothing =>
+      "the node declares an execution contract with no validation operations, so there is nothing to run"
+    ValidationNotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     ValidationOracleUnpinnable { validation_label, reason } =>
       join([
         "declared validation ",
@@ -835,66 +855,75 @@ fn validation_refusal_cause_decode(
 ) -> ValidationRefusalCause? {
   if cause_kind == "contract-unspecified" {
     Present { value: ValidationContractUnspecified }
-  } else if cause_kind == "command-unrealized" {
-    Present { value: ValidationCommandUnrealized }
-  } else if cause_kind == "pin-receipt-unreadable" {
-    Present {
-      value: ValidationPinReceiptUnreadable { detail: cause_detail },
-    }
-  } else if cause_kind == "command-refused" {
-    Present {
-      value: ValidationCommandRefused {
-        program: "unknown",
-        reason: cause_detail,
-      },
-    }
-  } else if cause_kind == "change-window-refused" {
-    Present {
-      value: ValidationChangeWindowRefused {
-        cause: ChangeWindowPersistenceRefused {
-          path: "",
-          cause: cause_detail,
-        },
-      },
-    }
-  } else if cause_kind == "oracle-unpinnable" {
-    Present {
-      value: ValidationOracleUnpinnable {
-        validation_label: "unknown",
-        reason: cause_detail,
-      },
-    }
-  } else if cause_kind == "oracle-missing" {
-    Present {
-      value: ValidationOracleMissing {
-        entry: "unknown",
-        function: "unknown",
-        detail: cause_detail,
-      },
-    }
-  } else if cause_kind == "oracle-ambiguous" {
-    Present {
-      value: ValidationOracleAmbiguous {
-        entry: "unknown",
-        function: "unknown",
-        declaration_count: 0,
-      },
-    }
-  } else if cause_kind == "oracle-unpinned-dependency" {
-    Present {
-      value: ValidationOracleUnpinnedDependency {
-        entry: "unknown",
-        imports: [],
-      },
-    }
-  } else if cause_kind == "oracle-pin-unrecorded" {
-    Present {
-      value: ValidationOraclePinUnrecorded {
-        channel: cause_detail as NonEmptyStr as VersionIdentity,
-      },
-    }
+  } else if cause_kind == "contract-closes-nothing" {
+    Present { value: ValidationContractClosesNothing }
   } else {
-    none
+    match non_agent_work_mode_from_label(label: cause_kind) {
+      Present { value: mode } =>
+        Present { value: ValidationNotAgentWork { mode: mode } }
+      Absent =>
+        if cause_kind == "command-unrealized" {
+          Present { value: ValidationCommandUnrealized }
+        } else if cause_kind == "pin-receipt-unreadable" {
+          Present {
+            value: ValidationPinReceiptUnreadable { detail: cause_detail },
+          }
+        } else if cause_kind == "command-refused" {
+          Present {
+            value: ValidationCommandRefused {
+              program: "unknown",
+              reason: cause_detail,
+            },
+          }
+        } else if cause_kind == "change-window-refused" {
+          Present {
+            value: ValidationChangeWindowRefused {
+              cause: ChangeWindowPersistenceRefused {
+                path: "",
+                cause: cause_detail,
+              },
+            },
+          }
+        } else if cause_kind == "oracle-unpinnable" {
+          Present {
+            value: ValidationOracleUnpinnable {
+              validation_label: "unknown",
+              reason: cause_detail,
+            },
+          }
+        } else if cause_kind == "oracle-missing" {
+          Present {
+            value: ValidationOracleMissing {
+              entry: "unknown",
+              function: "unknown",
+              detail: cause_detail,
+            },
+          }
+        } else if cause_kind == "oracle-ambiguous" {
+          Present {
+            value: ValidationOracleAmbiguous {
+              entry: "unknown",
+              function: "unknown",
+              declaration_count: 0,
+            },
+          }
+        } else if cause_kind == "oracle-unpinned-dependency" {
+          Present {
+            value: ValidationOracleUnpinnedDependency {
+              entry: "unknown",
+              imports: [],
+            },
+          }
+        } else if cause_kind == "oracle-pin-unrecorded" {
+          Present {
+            value: ValidationOraclePinUnrecorded {
+              channel: cause_detail as NonEmptyStr as VersionIdentity,
+            },
+          }
+        } else {
+          none
+        }
+    }
   }
 }
 

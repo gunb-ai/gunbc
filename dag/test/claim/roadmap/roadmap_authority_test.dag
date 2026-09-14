@@ -15,9 +15,15 @@ import gunbc.roadmap_authority {
   RoadmapAcceptanceEventHistoryLoadRefused,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
+  withheld_node_ids_from_live_history,
+  WithheldNodeIdsProjected,
+  WithheldNodeIdsProjectionRefused,
+  active_roadmap_nodes_projection,
+  ActiveRoadmapNodesProjected,
+  ActiveRoadmapNodesProjectionRefused,
+  active_roadmap_edges_projection,
+  ActiveRoadmapEdgesProjected,
+  ActiveRoadmapEdgesProjectionRefused,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
@@ -27,6 +33,11 @@ import gunbc.roadmap_authority {
   projected_roadmap_dependency_edges_projection,
   ProjectedRoadmapDependencyEdgesProjected,
   ProjectedRoadmapDependencyEdgesProjectionRefused,
+  startable_nodes_missing_closing_contract_for_accepted,
+  frontier_sets_from_events,
+  frontier_sets_from_live_history,
+  FrontierSetsProjected,
+  FrontierSetsProjectionRefused,
 }
 import gunbc.roadmap_spawner {
   roadmap_rendered_ghost_count,
@@ -46,6 +57,7 @@ import gunbc.v1_deletion_plan {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   ExecutionContract,
+  NotAgentWork,
   GunbcClaimValidation,
   CargoTestValidation,
   CargoFmtValidation,
@@ -53,6 +65,7 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   dispatch_required_capabilities,
   execution_capability_label,
+  PathsUnrestricted, PublicWorktreeLayout,
 }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
@@ -64,6 +77,18 @@ import gunbc.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
+  AcceptanceNodeRemainsSuperseded,
+  remains_superseded_revocations_join,
+  join_remains_superseded_to_declared_line,
+  RemainsSupersededRevocationsJoined,
+  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUndeclaredNode,
+  RemainsSupersededRevocationOnAmbiguousDeclaredNode,
+  receipt_node_match_verdict,
+  ReceiptMatchesNode,
+  LiveReceiptOnSupersededLine,
+  ReceiptDoesNotMatchNode,
+  node_ids_held_off_active_frontier,
   node_accepted,
   receipt_matches_node,
   node_criteria_digest,
@@ -75,6 +100,7 @@ import gunbc.roadmap_model {
   roadmap_parent_ids,
   is_top_level,
   Pointer,
+  RoadmapNodeIdentity,
   IntricacyLow,
   IntricacyMedium,
   IntricacyHigh,
@@ -114,22 +140,29 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
 fn active_nodes() -> List<RoadmapNode> {
-  match live_accepted_node_ids() {
-    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
-    Absent => []
+  match active_roadmap_nodes_projection() {
+    ActiveRoadmapNodesProjectionRefused { detail: _ } => []
+    ActiveRoadmapNodesProjected { nodes: nodes } => nodes
   }
 }
 fn active_edges() -> List<RoadmapEdge> {
-  match live_accepted_node_ids() {
-    Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
-    Absent => []
+  match active_roadmap_edges_projection() {
+    ActiveRoadmapEdgesProjectionRefused { detail: _ } => []
+    ActiveRoadmapEdgesProjected { edges: edges } => edges
   }
 }
 
 fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: ids, withheld: _ } => Present { value: ids }
+    FrontierSetsProjectionRefused { detail: _ } => Absent
+  }
+}
+
+fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
+  match withheld_node_ids_from_live_history() {
+    WithheldNodeIdsProjected { ids: ids } => Present { value: ids }
+    WithheldNodeIdsProjectionRefused { detail: _ } => Absent
   }
 }
 
@@ -327,8 +360,13 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
         && (accepted |> any(a => a == "2-claim-indexed-evidence"))
         && (accepted |> any(a => a == "2-scm-compatibility-shape"))
         && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && count(active_nodes()) == count(nodes()) - count(accepted)
-        && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+        && match live_withheld_node_ids() {
+          Absent => false
+          Present { value: withheld } =>
+            count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld)
+              && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+              && all(active_nodes(), n => !(withheld |> any(w => w == n.node)))
+        }
         && all(accepted, a => id_exists(id: a))
   }
 }
@@ -340,7 +378,212 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
       count(receipts) > 0
         && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
         && all(receipts, r => id_exists(id: r.node))
-        && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+        && all(receipts, r => all(declared_node(id: r.node as String), n =>
+          match receipt_node_match_verdict(r: r, rn: n) {
+            ReceiptMatchesNode => true
+            LiveReceiptOnSupersededLine { node: _ } => false
+            ReceiptDoesNotMatchNode => false
+          }
+        ))
+  }
+}
+
+test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bool {
+  let victims = declared_node(id: "entry-graph-union-construction")
+  count(victims) == 1
+    && all(victims, n =>
+      match receipt_node_match_verdict(
+        r: receipt_fixture(node: "entry-graph-union-construction", digest: tchash(s: "3502539e920d9e40")),
+        rn: n,
+      ) {
+        LiveReceiptOnSupersededLine { node } => node == n.node
+        ReceiptMatchesNode => false
+        ReceiptDoesNotMatchNode => false
+      }
+    )
+}
+
+test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
+  !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
+    && match live_withheld_node_ids() {
+      Absent => false
+      Present { value: withheld } =>
+        withheld |> any(w => w == tnid(s: "entry-graph-union-construction"))
+    }
+}
+
+test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
+  let prior = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let reopened = concat(prior, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-09-13" as NonEmptyStr,
+    },
+  ])
+  let accepted = declared_roadmap_nodes()
+    |> filter(n => node_accepted(receipts: project_live_acceptance_receipts(history: reopened), rn: n))
+    |> map(n => n.node)
+  let withheld = node_ids_held_off_active_frontier(history: reopened)
+  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+    |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+}
+
+test fn witness_revocation_frontier_disposition_discriminates() -> Bool {
+  witness_superseded_revocation_does_not_reopen_active_frontier()
+    && witness_reopen_revocation_returns_node_to_active_frontier()
+}
+
+test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
+  match remains_superseded_revocations_join(
+    history: live_acceptance_event_history(),
+    nodes: declared_roadmap_nodes(),
+  ) {
+    RemainsSupersededRevocationsJoined =>
+      all(
+        declared_node(id: "entry-graph-union-construction"),
+        n => match n.line {
+          SupersededLine { by: _, content: _ } => true
+          TicketLine { done: _, ticket: _ } => false
+          AuthoredLine { done: _, content: _ } => false
+          PlainLine { content: _ } => false
+          DerivableLine { prs: _, title: _, description: _ } => false
+        },
+      )
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  let prior = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  count(victims) == 1
+    && all(victims, n =>
+      match n.line {
+        TicketLine { done: _, ticket: _ } => true
+        SupersededLine { by: _, content: _ } => false
+        AuthoredLine { done: _, content: _ } => false
+        PlainLine { content: _ } => false
+        DerivableLine { prs: _, title: _, description: _ } => false
+      }
+    )
+    && match remains_superseded_revocations_join(
+      history: concat(prior, [
+        AcceptanceRevoked {
+          exact_prior_receipt: receipt,
+          disposition: AcceptanceNodeRemainsSuperseded {},
+          reason: "fixture remains-superseded on a live ticket line must refuse" as NonEmptyStr,
+          revoked_by: "operator" as NonEmptyStr,
+          revoked_on: "2026-09-13" as NonEmptyStr,
+        },
+      ]),
+      nodes: declared_roadmap_nodes(),
+    ) {
+      RemainsSupersededRevocationOnNonSupersededNode { node } =>
+        node == tnid(s: "namespace-occurrence-transport")
+      RemainsSupersededRevocationsJoined => false
+      RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+      RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+    }
+}
+
+test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
+  match remains_superseded_revocations_join(
+    history: [
+      AcceptanceRevoked {
+        exact_prior_receipt: receipt_fixture(
+          node: "not-a-declared-roadmap-node-for-join-red",
+          digest: tchash(s: "0123456789abcdef"),
+        ),
+        disposition: AcceptanceNodeRemainsSuperseded {},
+        reason: "fixture remains-superseded on an undeclared node must refuse" as NonEmptyStr,
+        revoked_by: "operator" as NonEmptyStr,
+        revoked_on: "2026-09-13" as NonEmptyStr,
+      },
+    ],
+    nodes: declared_roadmap_nodes(),
+  ) {
+    RemainsSupersededRevocationOnUndeclaredNode { node } =>
+      node == tnid(s: "not-a-declared-roadmap-node-for-join-red")
+    RemainsSupersededRevocationsJoined => false
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Bool {
+  match join_remains_superseded_to_declared_line(
+    node: tnid(s: "red-fixture"),
+    nodes: [
+      red_fixture(line: red_ticket(done: false), signoff: Unsigned),
+      red_fixture(line: SupersededLine { by: "successor", content: "fixture" }, signoff: Unsigned),
+    ],
+  ) {
+    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node } =>
+      node == tnid(s: "red-fixture")
+    RemainsSupersededRevocationsJoined => false
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
+  match frontier_sets_from_events(events: [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt_fixture(
+        node: "namespace-occurrence-transport",
+        digest: tchash(s: "0123456789abcdef"),
+      ),
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture orphan reopen revocation must refuse the frontier projection" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-09-13" as NonEmptyStr,
+    },
+  ]) {
+    FrontierSetsProjectionRefused { detail } =>
+      detail == "acceptance-history-unreplayable"
+    FrontierSetsProjected { accepted: _, withheld: _ } => false
+  }
+}
+
+test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool {
+  let prior = live_acceptance_event_history()
+  match first(
+    prior |> filter(e =>
+      match e {
+        AcceptanceRecorded { receipt: r } =>
+          r.node == tnid(s: "entry-graph-union-construction")
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+          false
+      }
+    ),
+  ) {
+    Absent => false
+    Present { value: recorded } =>
+      match recorded {
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+          false
+        AcceptanceRecorded { receipt } =>
+          match frontier_sets_from_events(events: concat(prior, [
+            AcceptanceRecorded { receipt: receipt },
+          ])) {
+            FrontierSetsProjectionRefused { detail } =>
+              detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
+            FrontierSetsProjected { accepted: _, withheld: _ } => false
+          }
+      }
   }
 }
 
@@ -693,7 +936,7 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
     && edge_exists(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine")
     && match bound_execution_contract_for(id: "2-scm-p1-proof-kernel") {
       ExecutionContractUnspecified => false
-      ExecutionContract { validations, extra_capabilities } =>
+      ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
         count(validations) == 1
           && count(extra_capabilities) == 0
           && validations |> any(validation => match validation {
@@ -704,6 +947,7 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
             CargoFmtValidation => false
             ClosingContractAuthoringValidation { target: _ } => false
           })
+      NotAgentWork { mode: _ } => false
     }
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
@@ -713,7 +957,7 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
 test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
   match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -724,13 +968,14 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
           CargoFmtValidation => false
           ClosingContractAuthoringValidation { target: _ } => false
         })
+    NotAgentWork { mode: _ } => false
   }
 }
 
 test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool {
   match bound_execution_contract_for(id: "v2-emitter-direct-rust-door") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -741,6 +986,7 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
           CargoFmtValidation => false
           ClosingContractAuthoringValidation { target: _ } => false
         })
+    NotAgentWork { mode: _ } => false
   }
 }
 
@@ -777,7 +1023,8 @@ fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
 test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
   match bound_execution_contract_for(id: "shell-typed-invocation") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
+    NotAgentWork { mode: _ } => false
   }
 }
 
@@ -793,11 +1040,13 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   all(
     nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
-        ExecutionContract { validations: _, extra_capabilities: _ } => true
+        ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } => true
+        NotAgentWork { mode: _ } => false
       }),
     n => match n.execution {
         ExecutionContractUnspecified => false
-        ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
+        ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) > 0
+        NotAgentWork { mode: _ } => false
       },
   )
 }
@@ -805,7 +1054,7 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
 test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
   match bound_execution_contract_for(id: "v1-test-migration") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
@@ -816,17 +1065,20 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
           CargoFmtValidation => false
           ClosingContractAuthoringValidation { target: _ } => false
         })
+    NotAgentWork { mode: _ } => false
   }
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
   match bound_execution_contract_for(id: "observation-raw-print-retirement") {
     ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
+    NotAgentWork { mode: _ } => false
   }
     && match bound_execution_contract_for(id: "shell-typed-invocation") {
       ExecutionContractUnspecified => false
-      ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+      ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
+      NotAgentWork { mode: _ } => false
     }
 }
 
@@ -866,15 +1118,39 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       match projected_roadmap_dependency_edges_projection() {
         ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(active_roadmap_edges_for_accepted(accepted: accepted), init: true, f: fn(acc, edge) {
-            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-          })
+          fold(
+            active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+            init: true,
+            f: fn(acc, edge) {
+              acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+            }
+          )
         ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
       }
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+    FrontierSetsProjectionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> Bool {
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      let unfiltered = startable_nodes_missing_closing_contract_for_accepted(
+        accepted: accepted,
+        withheld: [],
+      )
+      if count(unfiltered) == 0 {
+        false
+      } else {
+        let victim = first(unfiltered)
+        !(startable_nodes_missing_closing_contract_for_accepted(
+          accepted: accepted,
+          withheld: [victim.node],
+        ) |> any(x => x.node == victim.node))
+      }
   }
 }

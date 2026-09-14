@@ -199,7 +199,7 @@ fn deployed_tree_remote_exit(outcome: DeployedTreeRemoteOutcome) -> ProcessExit 
 // deployment_tree_remote_unit_name), ordered third so the binary is a precondition the membership
 // itself establishes. The argument above survives -- the caller still knows its own tree -- but
 // the sentence named the wrong caller.
-func ensure_deployed_tree_remote_wet(repository_path: String) -> ProcessExit {
+fn ensure_deployed_tree_remote_wet(repository_path: String) -> ProcessExit {
   deployed_tree_remote_exit(
     outcome: ensure_deployed_tree_remote(repository_path: repository_path as FilePath),
   )

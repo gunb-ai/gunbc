@@ -130,6 +130,7 @@ fn anc_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
     target_model: anc_hash(label: "target-model"),
     toolchain: anc_hash(label: "toolchain"),
     build_configuration: anc_hash(label: "build-configuration"),
+    required_lens_contract: anc_hash(label: "required-lens-contract"),
     materialized_artifact: artifact
   }
 }

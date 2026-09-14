@@ -1,6 +1,6 @@
 module gunbc.v1_maintenance_standing
 
-import std.types { String, NonEmptyStr, CommitSha }
+import std.types { String, NonEmptyStr, CommitSha, Timestamp }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Why this carrier exists rather than a sentence in DESIGN.md: a status with a
@@ -671,3 +671,153 @@ data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UN
 // because a category exemption arriving as a coproduct row is still a category exemption.
 
 data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT AUTHORIZED EXCEPTION UNDER THE 2026-08-20 PURPOSE TEST -- deliberately NOT a new admission category. THE AUTHORIZER: bright-ram-778 (XL-N manager), 2026-09-02, relayed to the authoring session; the relay is the record and this row is the citation. THE EXACT SUBJECT, named rather than described so this row cannot be stretched: the single declaration ct_function_value_adapter_bound_alignment_control_test in v1.compiler.compiler_tests_rust, a regression control asserting that the function-value adapter is emitted exactly where the impl Fn bound is emitted and NOT at a bare type-variable parameter.\n\nWHY NO NEW ADMISSION VARIANT, and this reverses the authorizer's own first instruction. The first form of this ruling added an EvidenceEnrollment variant to MaintenanceAdmissionInstance with prose saying every section 4b(4) climb in v1 has this shape. THAT IS A CATEGORY EXEMPTION ARRIVING AS A COPRODUCT ROW rather than as a sentence -- the very move the same ruling had just declined, because a category never comes up for review again while one exception does. Checked rather than assumed: the four existing instances were all introduced in ONE commit when this carrier was authored (f1f9dd8a07, gunbc#9671), so there is no practice of growing that list per admission, and a fifth would be a new row on a growth surface this carrier names three lines below it -- putting NewEscapeHatchOrAdmissionRow in play on top of the PublicSurfaceGrowth question. One declaration is authorized. No vocabulary is widened.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM. The adapter/bound alignment is an emission property v2 must preserve, and nothing else in the tree would notice a fork in it -- the adapter's predicate and the bound's predicate are one expression on one node today, and this control is what fails if they are ever separated. Section 4b(4) requires that a class's discriminating evidence REMAIN ENROLLED after a climb, so enrolling it is an obligation the design document places on us rather than a discretionary addition.\n\nTHE FIVE REFUSED CLASSES. Four are untouched: no semantic change, no compatibility obligation, no escape hatch or admission row, and the seed is no more capable after it. PUBLICSURFACEGROWTH FIRES LITERALLY AND IS AUTHORIZED ANYWAY, stated plainly rather than argued away -- AND THE AUTHORING CARRIER READS PERMISSIVE HERE, WHICH IS THE TRAP: compiler_tests_rust.dag spells this and all 45 of its declarations as bare `fn`, with zero `pub fn` anywhere, so reading the .dag would say the class does not fire. It does. PublicSurfaceGrowth is a diff over THE EMITTED SEED'S exported declarations, and stage0 emits `pub fn ct_function_value_adapter_bound_alignment_control_test` -- THE EMITTER ADDS THE VISIBILITY. The exception is authorized because the class exists to stop the seed ACCUMULATING CAPABILITY, and a test emitter accumulates none: nothing is expressible after this change that was not expressible before, and the declaration's entire content is evidence about behavior that already exists. This cites the RcStr row's statement of WHAT THE CLASS IS FOR and explicitly NOT its outcome -- it is not 'RcStr was admitted, so this is'.\n\nTHE REVIEW THAT FORCED THIS ROW, and the separation that matters. Reviews 58359 and 58380 refused this change for lacking a hand-Rust receipt -- a deleted scaffold path, a census shrink, or a deferral naming a lane and a concrete ROADMAP row -- citing DESIGN.md as the authority. DESIGN.md contains no such rule; verified against origin/main by the authoring session and independently by the authorizer. THE RULE IS REAL BUT ITS PROVENANCE IS FALSE: it lives in the REVIEW PROMPT owned by gunb-ai/ctrl (scripts/chatgpt-reviewer/prompts/gunbc.md), which states it verbatim and ATTRIBUTES IT TO gunbc's DESIGN.md, and whose stricter form is still scoped to 'v3 hand-Rust' although v3 was removed and migrated into v1. So the class is AUTHORITY SUBSTITUTION IN A REVIEW PROMPT, not provider invention, and its repair belongs to ctrl. Correspondingly the two refusals are NOT two independent sightings: they are two executions of ONE shared prompt, one producer, corroborating nothing about each other. AND NONE OF THAT MAKES THE CHANGE ADMISSIBLE -- the review's authority citation is false and the v1 admission obligation is independently real, which is why this row exists at all.\n\nWHY THE RECEIPT COULD NOT LAND IN THE SCAFFOLD INDEX. gunbc.language_source_scaffold_index carries LanguageSourceScaffoldRow with exactly carrier_module, blob_decl and disposition, and Disposition is a Terminal carrying a reason, or a Scaffold carrying a dissolves_to and a bind. No field a lane or a ROADMAP row could occupy exists, and none of its rows names either; authoring them in as prose would be the section 4c violation of putting commentary into a typed carrier.\n\nTHE SCOPE LIMIT. THIS AUTHORIZES THIS DECLARATION ONLY. It does NOT resolve whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- that boundary is recorded as unresolved above and stays unresolved. It establishes NO category for section 4b(4) evidence in v1: a later control needs its own authorization. Citing this row for either would be the authority-substitution failure DESIGN names, which this row also documents one level out.\n\nTHE COUNTER-ARGUMENT, preserved so whoever overturns this need not reconstruct it: a new exported fn in the emitted seed is exactly what the class names; the capability-versus-evidence distinction is authored rather than derived; and nothing mechanically holds it. WHO CAN OVERTURN IT: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is written to be easy to overturn."
+
+// A refusal-class boundary adjudicated by fierce-lark-661, relayed through eager-raven-113
+// on 2026-09-13. This changes how NewEscapeHatchOrAdmissionRow is applied, without adding
+// an arm to MaintenanceRefusal or MaintenanceAdmissionInstance. It is a policy change.
+// Its occasion is gunbc#11214's exact transition rows; permanent admissions remain refused.
+//
+// Eligibility is a decision made before enqueue. No exception exists on main then, and no
+// deletion obligation has begun. Queue residence changes neither the historical decision nor
+// that fact. Only the carrier's merge starts the separate deletion obligation. No queue arm
+// is needed in either vocabulary.
+//
+// The consumer of these vocabularies is review diligence under v1_seed_standing, at its
+// declared mitigatable rung (DESIGN 3c). No executing consumer reads the post-merge obligation;
+// this row claims no gate. The observation-producer lane is the trigger for a further climb:
+// it must supply fresh forge observations AND an executing consumer that applies chronology,
+// merge and actual row-deletion evidence. A declaration naming a follow-up proves none of those.
+// Conditions below remain prose for reviewers; they are not an executable adjudicator.
+type TransitionAdmissionEligibility =
+    EligibilityEstablished
+  | ConditionOneUnmetAtEligibility
+
+// These causes exist only after merge. Failing eligibility never enters this lifecycle.
+// Pending ends by the roster's next touch after the carrier merges; an open follow-up cannot
+// preserve the exception indefinitely. The namespace instrument independently derives consumed
+// rows from candidate sets; that is not execution of this review-diligence lifecycle.
+type BoundaryFailureCause =
+    FollowUpClosedUnmerged
+  | FollowUpLandedWithoutDeletingRows
+  | RunwayExpired
+
+type TransitionAdmissionDeletionObligation =
+    Pending
+  | Discharged
+  | Failed { cause: BoundaryFailureCause }
+
+// A dated receipt says what was observed then, forever. It does not promise that the carrier
+// remains outside the queue. The follow-up's PR creation time is distinct from commit authorship.
+type EligibilityObservation {
+  observed_at: Timestamp
+  carrier: NonEmptyStr
+  carrier_head: CommitSha
+  observation: PreEnqueueObservation
+  deletion_follow_up: NonEmptyStr
+  deletion_authored_at: Timestamp
+  decision: TransitionAdmissionEligibility
+}
+
+type PreEnqueueObservation =
+  | CarrierObservedNotEnqueued
+
+// Old specimens demonstrate cleanup, not compliance with the later pre-enqueue condition.
+// They never entered the boundary's deletion lifecycle. Their chronology can be re-derived
+// from the carrier merge and deletion PR creation times, without transcribing elapsed durations.
+type PriorDeletionReceipt {
+  carrier: NonEmptyStr
+  carrier_merged_as: CommitSha
+  carrier_merged_at: Timestamp
+  deletion_follow_up: NonEmptyStr
+  deletion_authored_at: Timestamp
+}
+
+// A reviewer records an obligation only after the carrier has merged. There is deliberately no
+// such receipt for gunbc#11214: its eligibility observation creates no post-merge obligation.
+type PostMergeDeletionReceipt {
+  carrier: NonEmptyStr
+  carrier_merged_as: CommitSha
+  observed_at: Timestamp
+  obligation: TransitionAdmissionDeletionObligation
+}
+
+type PendingRunway =
+  | OwedByRosterNextTouch
+
+type RefusalClassBoundary {
+  class_bounded: MaintenanceRefusal
+  condition_authored_before_enqueue: NonEmptyStr
+  condition_follow_up_lands: NonEmptyStr
+  pending_runway: PendingRunway
+  eligibility_observations: List<EligibilityObservation>
+  prior_deletions: List<PriorDeletionReceipt>
+  post_merge_receipts: List<PostMergeDeletionReceipt>
+}
+
+// Eligible shape: one measured namespace delta named by exact identity (module,
+// in_declaration, spelling) and expected candidate set, produced by the carrier's change.
+// An exact row lets that otherwise non-auto-admitted delta pass adjudicate; it does alter
+// that refusal. Other deltas are still adjudicated. This is not an assertion that no refusal
+// is suppressed, or that typing a boundary makes its policy correct.
+//
+// Condition one: the deletion follow-up PR must be authored before the carrier is enqueued.
+// A failure is ConditionOneUnmetAtEligibility and leaves the rows in the refused class.
+// Condition two begins only after merge: the follow-up must land and actually remove the
+// rows by the roster's next touch. Discharged records that deletion. Failed names abandonment,
+// an ineffective deletion, or expiry of that runway; each returns the rows to the refused class.
+// Pending is the bounded outstanding obligation, not evidence that deletion has occurred.
+//
+// This prescribes pre-enqueue practice rather than codifying it: both prior specimens below
+// had their follow-ups authored after merge. They demonstrate cleanup but cannot establish
+// eligibility under a boundary that did not yet exist. witty-moth-510 authored both deletions
+// and gunbc#11156's two transition rows; the specimens are not independent corroboration of
+// that author's practice. The adjudication is fierce-lark-661's, not the specimen author's.
+//
+// Re-derive the subject with namespace_wave_admission::adjudicate, binding_disposition and
+// disposition_auto_admitted, reached by run_required_wave_admission. gunbc#11165 replaced
+// admission lifecycle predictions with admission_satisfied_at over exact candidate sets;
+// it did not auto-admit TargetChanged. gunbc#11214 at the observed head still moves the
+// read_supplied_access_token / SuppliedTokenReady / SuppliedTokenUnavailable bindings from
+// gunbc.auth.gcp_secret_access to gunbc.auth.access_token_source in its five existing callers.
+// The table's present population is an instrument result, not a count maintained by this row.
+//
+// Observation source for the eligibility receipt: GitHub repository.pullRequest queried on
+// 2026-09-13, returning #11214 state OPEN and mergeQueueEntry null, and #11259 createdAt.
+// The old 09:07:38 value was commit authorship; 09:07:58 is the follow-up PR's creation.
+// The accompanying complete merge-queue event query returned no enqueue or removal events.
+// This supports the authored eligibility decision, but supplies no fresh evidence for a later
+// enqueue decision; review diligence must establish that chronology then.
+data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalClassBoundary {
+  class_bounded: NewEscapeHatchOrAdmissionRow,
+  condition_authored_before_enqueue: "The deletion follow-up PR is authored before the carrier is enqueued; otherwise eligibility fails as ConditionOneUnmetAtEligibility." as NonEmptyStr,
+  condition_follow_up_lands: "After the carrier merges, the follow-up must land and remove the admitted rows within pending_runway. An abandoned or ineffective follow-up, or an expired runway, leaves the rows in the refused class." as NonEmptyStr,
+  pending_runway: OwedByRosterNextTouch,
+  eligibility_observations: [
+    EligibilityObservation {
+      observed_at: "2026-09-13T22:48:31Z",
+      carrier: "gunbc#11214" as NonEmptyStr,
+      carrier_head: "3fbcc03767b874ad5575f47694356ebe678ad5e3",
+      observation: CarrierObservedNotEnqueued,
+      deletion_follow_up: "gunbc#11259" as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T09:07:58Z",
+      decision: EligibilityEstablished,
+    },
+  ],
+  prior_deletions: [
+    PriorDeletionReceipt {
+      carrier: "gunbc#10940" as NonEmptyStr,
+      carrier_merged_as: "6c7b081961",
+      carrier_merged_at: "2026-09-12T22:45:52Z",
+      deletion_follow_up: "gunbc#11156" as NonEmptyStr,
+      deletion_authored_at: "2026-09-12T23:55:07Z",
+    },
+    PriorDeletionReceipt {
+      carrier: "gunbc#11156" as NonEmptyStr,
+      carrier_merged_as: "d7b7ab96c1f",
+      carrier_merged_at: "2026-09-13T02:50:04Z",
+      deletion_follow_up: "gunbc#11240" as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T05:14:49Z",
+    },
+  ],
+  post_merge_receipts: [],
+}

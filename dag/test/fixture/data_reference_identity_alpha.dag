@@ -14,7 +14,7 @@ type DriAlphaNet {
 
 data dri_model: String = "dri-alpha-model"
 
-func dri_alpha_run(alpha_model: String = dri_model, alpha_endpoint: String = dri_shared_endpoint) -> String
+fn dri_alpha_run(alpha_model: String = dri_model, alpha_endpoint: String = dri_shared_endpoint) -> String
   uses net: DriAlphaNet
 {
   concat(alpha_model, alpha_endpoint)

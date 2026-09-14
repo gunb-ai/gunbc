@@ -1297,15 +1297,15 @@ data affected_set_reflect_meta_process_kind_type: Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: Symbol = ^RepoProcessKind
 
 fn ci_gate_processes() -> List<RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: RepoProcess { kind: CiGateProcess, identity: key })
-  })
+  coproduct_arm_keys(type_name: affected_set_reflect_gate_type) |> map(key =>
+    RepoProcess { kind: CiGateProcess, identity: key }
+  )
 }
 
 fn meta_processes() -> List<RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: RepoProcess { kind: MetaProcessRole, identity: key })
-  })
+  coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type) |> map(key =>
+    RepoProcess { kind: MetaProcessRole, identity: key }
+  )
 }
 
 fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) -> Bool {

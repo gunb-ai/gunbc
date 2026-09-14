@@ -1,0 +1,31 @@
+module gunbc.rung_drop.heal_healed_head_executed_verdict_without_human
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// Removing heal auto-dispatch lowers the executed-verdict rung on a healed head. The dispatch
+// was the only route that executed without a human (gunbc.rung_drop.floor_cut_heal). It could
+// not clear the merge gate and shadowed GitHub's name-keyed PR rollup. The loss is this row,
+// not an annotation on gunbc.ci_spec.
+
+data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
+  identity: "heal_healed_head_executed_verdict_without_human" as NonEmptyStr,
+
+  subject: "executed verdict on a healed head without a human",
+
+  declared: "2026-09-12",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "heal-generated-artifacts HealProduced heads",
+      "gunbc.ci_spec gunbc_ci_heal_commit_push_script (auto-dispatch splice, deleted)",
+    ],
+    restoration_trigger: "the gated pull_request run for a bot-pushed healed head starts and completes its required jobs with no human POST /actions/runs/<id>/approve and no workflow_dispatch on that SHA, so the name-keyed PR rollup sees those conclusions. SUFFICIENT FOR: HealProduced then statusCheckRollup showing real conclusions on that SHA with zero human approvals of that run and zero workflow_dispatch runs on that SHA. Approving the gated run is the standing remedy and does not restore an executed verdict without a human. Restoring tools.ci_heal_dispatch auto-invoke does not retire this row",
+  }
+}

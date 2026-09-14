@@ -32,7 +32,7 @@ import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_tool_call_parser,
 }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_arm_placement { glm_canary_host_claim }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   Glm53Exl3_205, Gitcommit90Sm121Exl3, SingleSparkTp1,
@@ -162,7 +162,7 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
   topology: SingleSparkTp1,
-  host: operator_host_srv9,
+  host: glm_canary_host_claim.host,
   served_model_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   max_model_len: token_count(count: 262144),
   max_num_seqs: ExperimentalOperatorBound {
@@ -654,7 +654,7 @@ fn cutover_text(c: CanaryCutover) -> String {
 // image digest, the weights and every flag are identical on both sides; what changes is that the
 // container becomes one this model started and can restart, instead of one a person started by hand and
 // nothing owns.
-func glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
+fn glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
   uses net: Network
 {
   match agreement {
@@ -741,7 +741,7 @@ fn glm_canary_health_wait(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollb
 // different act with a different blast radius -- roughly twelve minutes of this arm serving nothing --
 // so it is a different entry point that an operator names deliberately. Folding it into convergence
 // would mean every future scheduled run carried the authority to restart a server.
-func glm_canary_cutover_wet() -> ProcessExit
+fn glm_canary_cutover_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -997,7 +997,7 @@ fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
   }
 }
 
-func glm_canary_converge_wet() -> ProcessExit
+fn glm_canary_converge_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

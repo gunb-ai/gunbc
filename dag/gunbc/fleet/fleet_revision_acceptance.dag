@@ -1,8 +1,12 @@
 module gunbc.fleet_revision_acceptance
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
-import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Success, Cancelled, Skipped, Completed,
+}
+import extdeps.github.actions { github_event_name_merge_group }
+import extdeps.github.push_event { PushRefUpdate }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import std.contract_identity { ContractIdentity, ContractNamingSurface, ContractName, ContractEpoch, contract_epoch_eq }
@@ -167,6 +171,13 @@ type RequiredCiRefusal
   | CiHeadShaUndecodable { observed: String }
   | CiContractEpochMismatch { observed: String, required: String }
   | CiContractEpochUnobservable { cause: RequiredCiEpochUnobserved }
+  | RequiredCiMergeGroupRunAbsent { revision: GitObjectId }
+  | RequiredCiMergeGroupRunsTruncated { observed: Int, total: Int }
+  | RequiredCiMergeGroupRunUnconcluded { revision: GitObjectId, run_ids: List<Int> }
+  | RequiredCiRunsNotEventScoped { run_ids: List<Int> }
+  | RequiredCiRunAttemptHistoryUnestablished { revision: GitObjectId, run_ids: List<Int> }
+  | RequiredCiMergeGroupRunsNotSuccess { revision: GitObjectId, run_ids: List<Int> }
+  | RequiredCiContradictoryRuns { revision: GitObjectId, success_run_ids: List<Int>, non_success_run_ids: List<Int> }
 
 type RequiredCiAdmission<E>
   = RequiredCiAdmitted { succeeded: RequiredCiSucceeded<E> }
@@ -178,6 +189,7 @@ type DefaultBranchRefusal
   | BranchRepositoryNotThisRepository { observed: String, required: String }
   | BranchHeadRepositoryNotThisRepository { observed: String, required: String }
   | BranchHeadShaUndecodable { observed: String }
+  | BranchRefIsNotTheDefaultBranch { observed: String, required: String }
 
 type DefaultBranchAdmission<M>
   = DefaultBranchAdmitted { observed: DefaultBranchRevisionObserved<M> }
@@ -347,6 +359,195 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
   }
 }
 
+// THE MERGE-QUEUE BINDING OF THE CI PROPOSITION. Under GitHub's merge queue the required floor runs
+// on the queue's COMPOSED revision before that revision reaches the default branch, and the queue
+// then moves the branch to exactly that revision. So the run that proves RequiredCiSucceeded for R
+// is the merge_group run of the floor on R, and it has concluded by the time the push of R is
+// delivered -- the premise gunbc.fleet_desired_admission_workflow's opening annotation records as
+// false for the workflow_run binding above. This is a second PROVIDER of the same proposition, not
+// a new proposition: the carrier, the contract identity and admit_fleet_revision's exact-revision
+// join are unchanged.
+//
+// THE SUBJECT IS THE COMPUTATION, NOT A RUN. A revision can carry several merge_group runs of the
+// floor (a requeue, a re-run), and those are several OBSERVATIONS of one computation -- the
+// required contract on the composed tree R. They must AGREE. Choosing among them by creation time
+// would be a clock standing in for a fact, and choosing the successful one would be the absorbing
+// fallback with extra steps. So: a run that is not completed, or completed as Cancelled or Skipped,
+// carries no verdict and is dropped from the join; every remaining verdict must be Success to admit;
+// a Success beside any other verdict is RequiredCiContradictoryRuns and refuses carrying both id
+// sets, because an operator reading two logs is the only honest resolution.
+//
+// WHAT IS NOT CHECKED HERE THAT accept_required_ci_workflow_run CHECKS, AND WHAT THAT MEANS.
+// WorkflowRun carries no repository members, so this producer does not repeat the old producer's
+// repository and head-repository checks per run. Its repository warrant is the API request the
+// caller addresses to gunbc.repository's owner/name (gunbc.fleet_desired_admission
+// admit_fleet_desired_from_push_wet). A bare caller-supplied WorkflowRunList therefore does NOT
+// independently establish provenance -- a list handed to this fold from anywhere else is judged as
+// if it were that read.
+//
+// THE ACQUISITION IS REQUESTED EVENT-SCOPED, AND THE RESPONSE IS REQUIRED TO BE. The caller passes
+// event=merge_group to extdeps.github.workflow_runs ListForRef, so completeness is judged over a
+// merge-group-only population. The fold refuses a response containing any run that is not a
+// merge_group run (RequiredCiRunsNotEventScoped). That refusal establishes only what the RESPONSE
+// contains: it cannot distinguish a request that did not carry the selection from a response that
+// did not honour it, and a complete mixed-event list would establish its merge-group subset -- this
+// policy refuses it because it requires an event-scoped acquisition, not because the subset is
+// unknowable.
+//
+// REQUEST-BOUNDARY COVERAGE IS A TEMPORARY COVERAGE FRONTIER. It remains unbuilt behind a documented
+// substrate limitation -- extdeps.transports.rest REST replay fixtures match on an input digest the
+// host computes from per-parameter value_hash limbs (content_hash_service_inputs), which .dag cannot
+// author -- and it is not structurally impossible, not a permanent ceiling, and not established by
+// the response witness. RESIDUAL, stated: an unscoped request whose complete response happens to
+// contain only merge_group runs is indistinguishable to this guard. CLOSES ON: an executing, enrolled
+// control of the production request binding, where the realized event=merge_group passes and
+// removing or misbinding it is discriminated at that boundary. A digest helper, or a declared harness,
+// does not close it.
+//
+// RE-RUN ATTEMPTS ARE REFUSED, NOT JOINED. The list carries only each run's LATEST attempt, so a run
+// whose attempt 1 failed and attempt 2 succeeded arrives as one success, and a later cancelled
+// attempt can hide an earlier failure the same way. The latest-attempt selection happened in the
+// input, before this fold could apply its agreement policy. So a matching run with run_attempt > 1
+// refuses as RequiredCiRunAttemptHistoryUnestablished, BEFORE non-verdict snapshots are dropped.
+// Joining the attempt history by (run id, attempt) is the climb; it is not built here.
+//
+// ORDERING: completeness of the page, then its event scope, then identity (which runs are the
+// floor's on R), then the epoch, then attempt history, then outcome agreement -- identity before
+// outcome, as in the workflow_run binding. A partial page refuses before anything is judged from it,
+// because absence in a truncated page is ignorance, not absence.
+fn run_id_list_text(ids: List<Int>) -> String {
+  join(map(ids, i => to_string(i)), ",")
+}
+
+fn merge_group_run_is_floor_on(run: WorkflowRun, revision: GitObjectId) -> Bool {
+  let path_matches = match run.path {
+    Present { value: p } => p == artifact_path(a: WitnessFloorYamlArtifact)
+    none => false
+  }
+  let revision_matches = match git_object_id_from_untagged_hex(hex: run.head_sha as String) {
+    Present { value: oid } => git_object_id_eq(left: oid, right: revision)
+    none => false
+  }
+  path_matches && revision_matches
+}
+
+fn run_is_merge_group(run: WorkflowRun) -> Bool {
+  run.event == github_event_name_merge_group
+}
+
+fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
+  match run.status {
+    Completed =>
+      match run.conclusion {
+        Present { value: c } =>
+          match c {
+            Cancelled => false
+            Skipped => false
+            _ => true
+          }
+        none => false
+      }
+    _ => false
+  }
+}
+
+fn merge_group_run_succeeded(run: WorkflowRun) -> Bool {
+  match run.conclusion {
+    Present { value: c } =>
+      match c {
+        Success => true
+        _ => false
+      }
+    none => false
+  }
+}
+
+fn accept_required_ci_merge_group_runs(
+  revision: GitObjectId,
+  runs: WorkflowRunList,
+  observed_epoch: RequiredCiEpochObservation,
+) -> RequiredCiAdmission<NonEmptyStr> {
+  let off_event = runs.workflow_runs |> filter(r => !run_is_merge_group(run: r))
+  let floor_runs = runs.workflow_runs |> filter(r => merge_group_run_is_floor_on(run: r, revision: revision))
+  let rerun = floor_runs |> filter(r => r.run_attempt > 1)
+  let verdicts = floor_runs |> filter(r => merge_group_run_carries_verdict(run: r))
+  let successes = verdicts |> filter(r => merge_group_run_succeeded(run: r))
+  let others = verdicts |> filter(r => !merge_group_run_succeeded(run: r))
+  if length(runs.workflow_runs) < runs.total_count {
+    RequiredCiRefused {
+      cause: RequiredCiMergeGroupRunsTruncated { observed: length(runs.workflow_runs), total: runs.total_count },
+    }
+  } else if length(off_event) > 0 {
+    RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: map(off_event, r => r.id) } }
+  } else if length(floor_runs) == 0 {
+    RequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: revision } }
+  } else {
+    match required_ci_epoch_verdict(observed: observed_epoch) {
+      ContractEpochRefused { cause: c } => RequiredCiRefused { cause: c }
+      ContractEpochAgrees =>
+        if length(rerun) > 0 {
+          RequiredCiRefused {
+            cause: RequiredCiRunAttemptHistoryUnestablished { revision: revision, run_ids: map(rerun, r => r.id) },
+          }
+        } else if length(verdicts) == 0 {
+          RequiredCiRefused {
+            cause: RequiredCiMergeGroupRunUnconcluded { revision: revision, run_ids: map(floor_runs, r => r.id) },
+          }
+        } else if length(others) == 0 {
+          RequiredCiAdmitted {
+            succeeded: RequiredCiSucceeded {
+              revision: revision,
+              contract: required_ci_contract(),
+              evidence: concat("merge_group runs ", run_id_list_text(ids: map(successes, r => r.id))) as NonEmptyStr,
+            },
+          }
+        } else if length(successes) == 0 {
+          RequiredCiRefused {
+            cause: RequiredCiMergeGroupRunsNotSuccess { revision: revision, run_ids: map(others, r => r.id) },
+          }
+        } else {
+          RequiredCiRefused {
+            cause: RequiredCiContradictoryRuns {
+              revision: revision,
+              success_run_ids: map(successes, r => r.id),
+              non_success_run_ids: map(others, r => r.id),
+            },
+          }
+        }
+    }
+  }
+}
+
+// THE PUSH BINDING OF THE SCM PROPOSITION. The push event IS the branch fact: GitHub delivers it
+// because the ref moved, and it names the ref and the commit it moved to. No run of anything is
+// consulted -- the run's existence was never the fact, only a carrier that happened to hold the
+// event kind and branch. Repository identity is re-checked here for the same independence reason
+// observe_default_branch_revision gives. The payload's `ref` is the fully qualified name, so the
+// comparison is against refs/heads/ plus the default-branch authority rather than a second literal.
+fn observe_default_branch_push<M>(push: PushRefUpdate, evidence: M) -> DefaultBranchAdmission<M> {
+  let required_ref = concat("refs/heads/", fleet_default_branch())
+  if push.repository_full_name != fleet_repository_full_name() {
+    DefaultBranchRefused {
+      cause: BranchRepositoryNotThisRepository {
+        observed: push.repository_full_name,
+        required: fleet_repository_full_name(),
+      },
+    }
+  } else {
+    if push.ref != required_ref {
+      DefaultBranchRefused { cause: BranchRefIsNotTheDefaultBranch { observed: push.ref, required: required_ref } }
+    } else {
+      match git_object_id_from_untagged_hex(hex: push.after) {
+        Present { value: oid } =>
+          DefaultBranchAdmitted {
+            observed: DefaultBranchRevisionObserved { revision: oid, branch: fleet_default_branch(), evidence: evidence },
+          }
+        none => DefaultBranchRefused { cause: BranchHeadShaUndecodable { observed: push.after } }
+      }
+    }
+  }
+}
+
 // THE TYPED REFUSALS RENDERED FOR A HUMAN-FACING RECEIPT. Rendering lives beside each cause set so
 // a new refusal arm cannot be added without these folds refusing to compile -- the message set and
 // the cause set stay one authority. Consumers that ROUTE still match the variants; these are for
@@ -369,6 +570,39 @@ fn required_ci_refusal_message(cause: RequiredCiRefusal) -> String {
       "the required floor did not conclude Success, so the revision is unproven and the desired ref never advances onto it"
     CiHeadShaUndecodable { observed: raw } =>
       concat("the run's head_sha is not a decodable object id: ", raw)
+    RequiredCiMergeGroupRunAbsent { revision: r } =>
+      join([
+        "no qualifying merge-group run of the required floor was observed for revision ", git_object_id_wire_hex(oid: r) as String,
+        " in the complete queried result; this producer cannot establish the required CI proposition",
+      ], "")
+    RequiredCiRunsNotEventScoped { run_ids: ids } =>
+      join([
+        "The returned run list contains non-merge_group runs (IDs ", run_id_list_text(ids: ids),
+        "), contrary to the merge_group-only response required by this producer; admission remains unproved.",
+      ], "")
+    RequiredCiRunAttemptHistoryUnestablished { revision: r, run_ids: ids } =>
+      join([
+        "matching merge-group runs for ", git_object_id_wire_hex(oid: r) as String, " report a later attempt (runs ", run_id_list_text(ids: ids),
+        "), and the run list carries only each run's latest attempt, so an earlier attempt's verdict is unobserved; admission remains unproved",
+      ], "")
+    RequiredCiMergeGroupRunsTruncated { observed: o, total: t } =>
+      join(["the runs read for this revision is a partial page (", to_string(o), " of ", to_string(t), "), so absence of a verdict in it proves nothing"], "")
+    RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: ids } =>
+      join([
+        "the matching merge-group runs for ", git_object_id_wire_hex(oid: r) as String, " (runs ",
+        run_id_list_text(ids: ids), ") supply no usable verdict under this policy; admission remains unproved",
+      ], "")
+    RequiredCiMergeGroupRunsNotSuccess { revision: r, run_ids: ids } =>
+      join([
+        "the required floor did not conclude Success on the merge queue for ", git_object_id_wire_hex(oid: r) as String,
+        " (runs ", run_id_list_text(ids: ids), "), so the revision is unproven and the desired ref never advances onto it",
+      ], "")
+    RequiredCiContradictoryRuns { revision: r, success_run_ids: ok, non_success_run_ids: bad } =>
+      join([
+        "the merge_group runs for ", git_object_id_wire_hex(oid: r) as String, " disagree: runs ", run_id_list_text(ids: ok),
+        " concluded Success and runs ", run_id_list_text(ids: bad),
+        " did not -- two observations of one computation contradict each other, so read both logs; nothing here picks one",
+      ], "")
   }
 }
 
@@ -387,6 +621,8 @@ fn default_branch_refusal_message(cause: DefaultBranchRefusal) -> String {
       join(["the run's head repository is ", o, ", not ", r], "")
     BranchHeadShaUndecodable { observed: raw } =>
       concat("the run's head_sha is not a decodable object id: ", raw)
+    BranchRefIsNotTheDefaultBranch { observed: o, required: r } =>
+      join(["the push moved ref ", o, ", not ", r, " -- only a push to the default branch admits a fleet revision"], "")
   }
 }
 

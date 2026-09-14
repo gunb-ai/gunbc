@@ -203,7 +203,7 @@ fn assemble_program_from_module_roots(
     f: fn(validated_roots) {
       resolve_with_admission(
         lm: lm,
-        roots: validated_roots,
+        roots: validated_roots.roots,
         admission: admission
       )
     }
@@ -224,7 +224,7 @@ fn assemble_program_from_ingest(
         f: fn(validated_roots) {
           resolve_with_admission_grounded(
             lm: lm,
-            roots: validated_roots,
+            roots: validated_roots.roots,
             admission: admission,
             index: idx,
             active_roots: source_root_set_from_ingest(ingest: ingest)

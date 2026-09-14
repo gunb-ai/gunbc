@@ -10,7 +10,6 @@ import gunbc.merge_admission {
 import gunbc.heal_revalidation {
   HealOutcome, HealNoChange, HealProduced, HealAuthorCommitRequired,
   HealSupersededByAuthorHead, HealPushRefused,
-  HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
   HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
   PriorRunStillCurrent, SupersededByHealedHead, SupersededByAuthorHead,
   OrdinaryWorkflowDispatch, HealWorkflowDispatchSubjectMatched,
@@ -96,15 +95,10 @@ test fn author_commit_required_does_not_supersede_prior_run() -> Bool {
 test fn heal_produced_is_immediately_revalidation_required() -> Bool {
   let state = heal_revalidation_initial(outcome: produced())
   match state {
-    HealRevalidationRequired { prior_head: prior, healed_head: healed, changed_artifacts, dispatch } =>
+    HealRevalidationRequired { prior_head: prior, healed_head: healed, changed_artifacts } =>
       prior == prior_head
         && healed == healed_head
         && changed_artifacts == [".github/workflows/ci.yml"]
-        && match dispatch {
-          HealDispatchPending { healed_head: pending } => pending == healed_head
-          HealDispatchAccepted { healed_head: _, run: _ } => false
-          HealDispatchRefused { healed_head: _, cause: _ } => false
-        }
     HealRevalidationNotRequired { head: _ } => false
     HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
   }
@@ -119,41 +113,17 @@ test fn produced_head_supersedes_prior_run() -> Bool {
   }
 }
 
-test fn accepted_dispatch_is_not_revalidation() -> Bool {
+test fn produced_revalidation_is_denied_until_exact_head_coverage() -> Bool {
   !heal_revalidation_admits(
-    state: HealRevalidationRequired {
-      prior_head: prior_head,
-      healed_head: healed_head,
-      changed_artifacts: [".github/workflows/ci.yml"],
-      dispatch: HealDispatchAccepted { healed_head: healed_head, run: "run-42" }
-    },
+    state: heal_revalidation_initial(outcome: produced()),
     required_roster: required_roster,
     required_gates: [required_gate]
-  )
-}
-
-test fn refused_dispatch_stays_required_and_located() -> Bool {
-  let verdict = classify_heal_revalidation_admission(
-    state: HealRevalidationRequired {
-      prior_head: prior_head,
-      healed_head: healed_head,
-      changed_artifacts: [".github/workflows/ci.yml"],
-      dispatch: HealDispatchRefused {
-        healed_head: healed_head,
-        cause: "CreateWorkflowDispatch permission denied"
-      }
-    },
+  ) && match classify_heal_revalidation_admission(
+    state: heal_revalidation_initial(outcome: produced()),
     required_roster: required_roster,
     required_gates: [required_gate]
-  )
-  match verdict {
-    HealRevalidationDeniedRequired { healed_head: denied, dispatch } =>
-      denied == healed_head && match dispatch {
-        HealDispatchRefused { healed_head: refused, cause } =>
-          refused == healed_head && string_contains(s: cause, pattern: "permission denied")
-        HealDispatchPending { healed_head: _ } => false
-        HealDispatchAccepted { healed_head: _, run: _ } => false
-      }
+  ) {
+    HealRevalidationDeniedRequired { healed_head: denied } => denied == healed_head
     HealRevalidationAdmittedNoChange { head: _ } => false
     HealRevalidationAdmittedExactCoverage { healed_head: _ } => false
     HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
@@ -197,12 +167,12 @@ test fn manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidat
 }
 
 // These executing witnesses enumerate every current HealOutcome arm (including
-// HealAuthorCommitRequired) and every HealDispatchOutcome arm through exhaustive matches. A newly
-// added heal path or dispatch classification makes this file and the admission folds fail to
-// compile until it is explicitly classified; unclassified cannot become success. The RED controls
-// discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run,
-// old-head green from healed-head green, ordinary manual dispatch from heal revalidation, and
-// author-commit-required workflow drift from produced heal heads.
+// HealAuthorCommitRequired) through exhaustive matches. A newly added heal path makes this file
+// and the admission folds fail to compile until it is explicitly classified; unclassified cannot
+// become success. The RED controls discriminate old-head green from healed-head green, ordinary
+// manual dispatch from heal revalidation, and author-commit-required workflow drift from produced
+// heal heads. Auto-dispatch Accepted/Refused arms are deleted with the dispatch: a produced heal
+// is denied until exact-head coverage, and the release is a human approve of the gated run.
 
 test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool {
   let matched = classify_workflow_dispatch_preflight(
@@ -242,16 +212,16 @@ test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool 
 
 // A REPAIR THAT WAS NEVER PUBLISHED OWES NO REVALIDATION, AND THE CONTROL IS ITS PUBLISHED TWIN.
 // The discrimination that matters is against HealProduced, which reaches the same fold with the
-// same two heads and must come out the other way: produced pushed H1 and owes a dispatched run,
-// superseded-by-author pushed nothing and owes none. Asserting only the superseded arm would stay
+// same two heads and must come out the other way: produced pushed H1 and owes a human approve of
+// the gated pull_request run, superseded-by-author pushed nothing and owes none. Asserting only the superseded arm would stay
 // green if the fold collapsed both to NotRequired, which is the failure this pair rules out.
 test fn a_repair_the_author_superseded_owes_no_revalidation() -> Bool {
   match heal_revalidation_initial(outcome: superseded_by_author()) {
     HealRevalidationNotRequired { head } => head == prior_head
-    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _, dispatch: _ } => false
+    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _ } => false
     HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
   } && match heal_revalidation_initial(outcome: produced()) {
-    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _, dispatch: _ } => true
+    HealRevalidationRequired { prior_head: _, healed_head: _, changed_artifacts: _ } => true
     HealRevalidationNotRequired { head: _ } => false
     HealRevalidationCoverageObserved { prior_head: _, healed_head: _, changed_artifacts: _, coverage: _ } => false
   }

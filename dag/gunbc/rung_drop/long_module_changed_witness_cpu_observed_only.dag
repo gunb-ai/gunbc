@@ -8,8 +8,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // THE DECLARED RUNG DROP for the CPU line over a changed witness in a long module (DESIGN 4b(3)).
 // ============================================================================================
 //
-// WHAT THE ARM DOES AND WHY IT IS A DROP AND NOT A FIX. A changed witness in a test/claim/long
-// module now runs under CpuDeadlineObservedOnly: its CPU is measured and published and decides
+// THE ARM THIS ROW DECLARES WAS GENERALISED TO EVERY CLAIM ON 2026-09-12, AND THIS ROW IS NOT
+// RETIRED BY THAT (gunbc#11195, operator ruling via fierce-lark-661). The required floor's claim
+// ceiling moved onto eval_steps and CPU became observed-only for EVERY claim, so the long-home
+// arm below is no longer an exception -- it is the general case, and the `ClaimCpuDeadline`
+// carrier and the `changed_witness_cpu_deadline` predicate that selected it are deleted. What is
+// NOT changed is this row's own loss or its trigger: the loss is the CPU ceiling's power to red a
+// long-home changed witness, which is still lost, and the restoration trigger is the shared
+// front-end netting named below, which the eval-step cut does not touch and does not discharge.
+// A later reader must not read the generalisation as retirement: a wall that was removed for one
+// population and then removed for all of them has not come back.
+//
+// WHAT THE ARM DOES AND WHY IT IS A DROP AND NOT A FIX, AS WRITTEN WHEN IT LANDED. A changed
+// witness in a test/claim/long module runs with its CPU measured and published and deciding
 // nothing, while the verdict still gates and the wall safety deadline stays armed. That is the
 // same treatment a cost-debt row already receives, and the operator ruled it the right one -- but
 // it REMOVES a wall that was standing, so it is declared here rather than landed silently. What is

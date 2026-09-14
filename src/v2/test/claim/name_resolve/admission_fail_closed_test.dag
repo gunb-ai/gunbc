@@ -15,6 +15,7 @@ import v2.compiler.name_resolve {
   resolve_with_admission,
   resolve_with_admission_policy,
   subject_module_root_for_name,
+  module_root_find,
   validate_module_roots
 }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
@@ -47,7 +48,7 @@ import v2.std.resolution_policy { ImportScoped }
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
   let missing = fc_qn(seg: ^fc_missing_seg)
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
-  match subject_module_root_for_name(roots: roots, name: missing) {
+  match module_root_find(roots: roots, name: missing) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       match d.head.at {
@@ -472,7 +473,7 @@ test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_locat
       }
     )
     let missing = fc_qn(seg: ^fc_missing_seg)
-    accepted && match subject_module_root_for_name(roots: roots, name: missing) {
+    accepted && match module_root_find(roots: roots, name: missing) {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: expected } =>
         match resolve_with_admission_context_policy(
@@ -489,6 +490,93 @@ test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_locat
           Rejected { diagnostics: actual } =>
             non_empty_diagnostics_eq(a: expected, b: actual)
         }
+    }
+  })
+}
+
+// The validated index must return the same normalized tree and missing-name diagnostics
+// as the general scan. Duplicate populations remain refused before that index exists.
+test fn validated_subject_index_matches_general_lookup() -> Bool {
+  fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
+    match validate_module_roots(roots: roots) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: validated, diagnostics: _ } =>
+        validated.roots == roots && fold_list(
+          xs: [^fc_subject_a_seg, ^fc_subject_b_seg, ^fc_missing_seg],
+          empty: true,
+          cons: fn(ok, segment) {
+            let name = fc_qn(seg: segment)
+            ok && match module_root_find(roots: roots, name: name) {
+              Accepted { value: expected, diagnostics: expected_diag } =>
+                match subject_module_root_for_name(roots: validated, name: name) {
+                  Accepted { value: actual, diagnostics: actual_diag } =>
+                    actual == expected && diagnostics_eq(a: actual_diag, b: expected_diag)
+                  Rejected { diagnostics: _ } => false
+                }
+              Rejected { diagnostics: expected } =>
+                match subject_module_root_for_name(roots: validated, name: name) {
+                  Accepted { value: _, diagnostics: _ } => false
+                  Rejected { diagnostics: actual } => non_empty_diagnostics_eq(a: actual, b: expected)
+                }
+            }
+          }
+        )
+    }
+  })
+}
+
+// Duplicate roots refuse before a validated index can be consumed; the general
+// unvalidated lookup retains its ambiguity refusal for the same requested name.
+test fn keyed_validation_preserves_general_ambiguity_diagnostic() -> Bool {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
+    match module_root_find(roots: roots, name: fc_qn(seg: ^fc_dup_seg)) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: expected } =>
+        match validate_module_roots(roots: roots) {
+          Accepted { value: _, diagnostics: _ } => false
+          Rejected { diagnostics: actual } => non_empty_diagnostics_eq(a: actual, b: expected)
+        }
+    }
+  })
+}
+
+fn fc_validation_order_roots(malformed_first: Bool, unequal: Bool) -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: if unequal {
+      fc_module_root_export(seg: ^fc_dup_seg, export_sym: ^fc_other_export_sym)
+    } else { fc_module_root(seg: ^fc_dup_seg) }), f: fn(b) {
+      bind_outcome(o: fc_admitted(n: fc_malformed_subject_root()), f: fn(malformed) {
+        outcome_accepted(value: if malformed_first { [malformed, a, b] } else { [a, b, malformed] })
+      })
+    })
+  })
+}
+
+// The trailing malformed root must never replace the first duplicate refusal, even
+// when both duplicates contain exactly the same tree.
+test fn keyed_validation_equal_duplicate_precedes_malformed() -> Bool {
+  fc_with_roots(o: fc_validation_order_roots(malformed_first: false, unequal: false), f: fn(roots) {
+    match validate_module_roots(roots: roots) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+    }
+  })
+}
+
+test fn keyed_validation_unequal_duplicate_precedes_malformed() -> Bool {
+  fc_with_roots(o: fc_validation_order_roots(malformed_first: false, unequal: true), f: fn(roots) {
+    match validate_module_roots(roots: roots) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: actual } => actual.head.reason == ^resolve_duplicate_module_name
+    }
+  })
+}
+
+test fn keyed_validation_malformed_precedes_duplicate() -> Bool {
+  fc_with_roots(o: fc_validation_order_roots(malformed_first: true, unequal: false), f: fn(roots) {
+    match validate_module_roots(roots: roots) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: actual } => actual.head.reason == ^resolve_reason_malformed_imported_root
     }
   })
 }

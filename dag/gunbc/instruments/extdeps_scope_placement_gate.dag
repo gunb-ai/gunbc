@@ -243,7 +243,7 @@ fn scope_placement_gate_verdict(
   }
 }
 
-func run_extdeps_scope_placement_gate_body() -> ProcessExit {
+fn run_extdeps_scope_placement_gate_body() -> ProcessExit {
   scope_placement_gate_verdict(
     change_observation: scope_placement_change_added_paths(),
     freeze_observation: scope_placement_added_paths(),
@@ -265,14 +265,14 @@ fn scope_placement_failure_reason(exit: ProcessExit) -> String {
   }
 }
 
-func scope_placement_failure_receipt() -> String {
+fn scope_placement_failure_receipt() -> String {
   scope_placement_failure_reason(exit: run_extdeps_scope_placement_gate_body())
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   run_extdeps_scope_placement_gate_body()
 }
 
-func run_extdeps_scope_placement_gate() -> ProcessExit {
+fn run_extdeps_scope_placement_gate() -> ProcessExit {
   run_extdeps_scope_placement_gate_body()
 }
