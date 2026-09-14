@@ -22,6 +22,7 @@ import v2.workflow.floor_enrolment_margin {
 import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_row, floor_cost_debt_row_is_admitted,
+  FloorCostDebtReachedAVerdict,
 }
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
@@ -441,6 +442,7 @@ test fn an_observed_row_at_325ms_is_refused_against_the_required_floor_ceiling()
       identity: "fixture.tripwire_325",
       reading: ObservedCpuReading { cpu_ms: millisecond(count: 325) },
       ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+      verdict: FloorCostDebtReachedAVerdict,
     )
   )
 }
