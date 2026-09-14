@@ -1,0 +1,189 @@
+module test.claim.refinement_seam_enforcement_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS WITNESS ESTABLISHES. The refinement predicates std.types declares are enforced ONLY
+// where the value at the seam is a literal, and the branded PathSegment law is enforced nowhere at
+// all. The three probes under dag/test/probe/ are the census fixtures; this file is what makes
+// them evidence rather than decoration (DESIGN 4b: the RED must be authorable, and then it must be
+// executed).
+//
+// THE READING IS A DIFFERENTIAL, NEVER A TOTAL. gunbc.compile_diagnostic_census states the rule on
+// its own carrier: CensusObserved carries every diagnostic the whole compile produced, imported
+// closure included, so a total over an importing fixture is not a fact about the fixture. The two
+// exact forms it names are a count scoped to class AND subject, and a differential between two
+// censuses whose sources differ on ONE axis, where the shared closure cancels. Every assertion
+// below is the second form: each probe is paired with a control that is the same module with the
+// hostile term replaced by a safe one, so the delta is the blocking diagnostics the hostile term
+// alone caused.
+//
+// THE POSITIVE CONTROL IS ASSERTED FIRST AND IT IS LOAD-BEARING. A blank literal at a refined
+// position DOES refuse, blocking, with delta exactly 1. Without that assertion every zero below
+// would be indistinguishable from a harness that cannot refuse anything -- which is the shape
+// DESIGN 4b calls a permanently-green decoration. It also fixes the axis: the wall the zeros are
+// measured against is real and is one term away.
+//
+// THE ROUTE THIS MEASURES, named rather than assumed (DESIGN 4b(1): a class's rung is the minimum
+// across its in-scope paths, and citing the strongest is inflation). compile_dag_diagnostic_census
+// measures the v1 pipeline to the RUST RENDER TARGET on a synthetic single module, per its own
+// carrier note. The interpretation route and the python/go emission routes were measured by the
+// filing lane and are recorded on the gunbc.recurring_failure_mode row; this witness does not
+// assert them, because it cannot reach them.
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn census_ran(c: CompileDiagnosticCensus) -> Bool {
+  match c {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: _ } => true
+  }
+}
+
+// The blocking diagnostics the hostile term alone caused. Both censuses run, or the delta is
+// refused as -1000 rather than reported as a number: could-not-measure must never read as the
+// subject passing (DESIGN 5, the absorbing fallback).
+fn blocking_delta(hostile: String, safe: String) -> Int {
+  let h = census_of(source: hostile)
+  let s = census_of(source: safe)
+  if census_ran(c: h) && census_ran(c: s) {
+    blocking_total(c: h) - blocking_total(c: s)
+  } else {
+    -1000
+  }
+}
+
+data seam_hdr: String = "module probe_refinement_seam\nimport std.types { String, Bool, Int, List, NonEmptyStr, PathSegment }\n"
+
+// THE POSITIVE CONTROL. A blank literal cast to a refined alias refuses, blocking; the same cast
+// of a non-blank literal does not. Delta exactly 1.
+test fn a_blank_literal_at_a_refined_position_refuses() -> Bool {
+  blocking_delta(
+    hostile: seam_hdr + "fn f() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
+    safe: seam_hdr + "fn f() -> NonEmptyStr { \"ok\" as NonEmptyStr }\n"
+  ) == 1
+}
+
+// The same wall at the seam positions that DO hold it, so the zeros below are located rather than
+// general: record field, list literal, call argument, function return, let binding.
+test fn a_blank_literal_refuses_at_the_record_list_argument_return_and_let_seams() -> Bool {
+  blocking_delta(
+    hostile: seam_hdr + "type R { s: NonEmptyStr }\nfn f() -> R { R { s: \"\" } }\n",
+    safe: seam_hdr + "type R { s: NonEmptyStr }\nfn f() -> R { R { s: \"ok\" } }\n"
+  ) == 1
+  && blocking_delta(
+    hostile: seam_hdr + "data v: List<NonEmptyStr> = [\"\"]\n",
+    safe: seam_hdr + "data v: List<NonEmptyStr> = [\"ok\"]\n"
+  ) == 1
+  && blocking_delta(
+    hostile: seam_hdr + "fn take(s: NonEmptyStr) -> Int { 1 }\nfn f() -> Int { take(s: \"\") }\n",
+    safe: seam_hdr + "fn take(s: NonEmptyStr) -> Int { 1 }\nfn f() -> Int { take(s: \"ok\") }\n"
+  ) == 1
+  && blocking_delta(
+    hostile: seam_hdr + "fn f() -> NonEmptyStr { \"\" }\n",
+    safe: seam_hdr + "fn f() -> NonEmptyStr { \"ok\" }\n"
+  ) == 1
+  && blocking_delta(
+    hostile: seam_hdr + "fn f() -> NonEmptyStr { let v: NonEmptyStr = \"\"\n  v }\n",
+    safe: seam_hdr + "fn f() -> NonEmptyStr { let v: NonEmptyStr = \"ok\"\n  v }\n"
+  ) == 1
+}
+
+// EXPECTING-RED HOLE. The whole seam probe -- the #124 list-element shape, the alias-mediated
+// blank literal, and the two non-literal seams -- adds NOT ONE blocking diagnostic over a control
+// that is the identical module with every hostile term made safe. This assertion is the tripwire:
+// it goes red the day any of those seams starts refusing, and the probe is then rewritten to
+// expect the refusal.
+data seam_probe_control: String = "module probe_refinement_seam_control\nimport std.types { String, Int, List, NonEmptyStr, PathSegment }\nfn blanks() -> List<String> { [\"a\", \"b\"] }\nfn take_nonempty_list(xs: List<NonEmptyStr>) -> Int { count(xs) }\nfn blank_reaches_a_nonempty_list() -> Int { take_nonempty_list(xs: blanks()) }\ntype Seg = PathSegment\ndata blank_through_an_alias: Seg = \"ok\" as Seg\nfn take_nonempty(s: NonEmptyStr) -> Int { 1 }\nfn any_string_reaches_a_nonempty_parameter(raw: String) -> Int { take_nonempty(s: raw) }\nfn any_string_becomes_a_nonempty_return(raw: String) -> NonEmptyStr { raw as NonEmptyStr }\n"
+
+test fn every_non_literal_seam_and_the_alias_mediated_literal_still_admit_a_blank() -> Bool {
+  blocking_delta(
+    hostile: probe_source(name: "refinement_seam_admission_probe"),
+    safe: seam_probe_control
+  ) == 0
+}
+
+// EXPECTING-RED HOLE, and the sharper half of it stated on its own: one local alias line defeats
+// the literal wall the positive control above establishes. The pair differs only in whether the
+// cast names PathSegment directly or through `type Seg = PathSegment`.
+test fn an_alias_defeats_the_literal_wall_that_the_direct_spelling_holds() -> Bool {
+  blocking_delta(
+    hostile: seam_hdr + "data v: PathSegment = \"\" as PathSegment\n",
+    safe: seam_hdr + "data v: PathSegment = \"ok\" as PathSegment\n"
+  ) == 1
+  && blocking_delta(
+    hostile: seam_hdr + "type Seg = PathSegment\ndata v: Seg = \"\" as Seg\n",
+    safe: seam_hdr + "type Seg = PathSegment\ndata v: Seg = \"ok\" as Seg\n"
+  ) == 0
+}
+
+// EXPECTING-RED HOLE, measured first by the parallel census lane fierce-moth-238 and re-run by this
+// lane before enrolling. The alias edge drops the predicate with no cast, no brand and no data
+// binding: a blank returned through `type Seg = NonEmptyStr` is silent where the direct return
+// (asserted at delta 1 above) refuses. Two more #124-shaped cells with no parameter-literal
+// involved: a List<String> let returned as List<NonEmptyStr>, and the same let fed to a
+// List<PathSegment> parameter.
+test fn the_alias_edge_and_let_bound_lists_admit_a_blank_without_any_cast() -> Bool {
+  blocking_delta(
+    hostile: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"\" }\n",
+    safe: seam_hdr + "type Seg = NonEmptyStr\nfn f() -> Seg { \"ok\" }\n"
+  ) == 0
+  && blocking_delta(
+    hostile: seam_hdr + "fn f() -> List<NonEmptyStr> {\nlet raw: List<String> = [\"\"]\nraw\n}\n",
+    safe: seam_hdr + "fn f() -> List<NonEmptyStr> {\nlet raw: List<String> = [\"ok\"]\nraw\n}\n"
+  ) == 0
+  && blocking_delta(
+    hostile: seam_hdr + "fn take(xs: List<PathSegment>) -> Int { 0 }\nfn g() -> Int {\nlet raw: List<String> = [\"\"]\ntake(xs: raw)\n}\n",
+    safe: seam_hdr + "fn take(xs: List<PathSegment>) -> Int { 0 }\nfn g() -> Int {\nlet raw: List<String> = [\"ok\"]\ntake(xs: raw)\n}\n"
+  ) == 0
+}
+
+// EXPECTING-RED HOLE. Every character std.types path_segment_safety_note names as the law --
+// `..`, `/`, `\`, LF, NUL -- is admitted as a BARE LITERAL at the position the brand declares,
+// which is the one place every other predicate in this corpus refuses. `brand` is on the deferred
+// list, so PathSegment carries no decidable predicate; the law lives in a runtime fn no seam
+// consults.
+data path_segment_probe_control: String = "module probe_path_segment_control\nimport std.types { String, PathSegment, GlobSegment }\ndata navigates_out_of_its_parent: PathSegment = \"ok\" as PathSegment\ndata introduces_a_level: PathSegment = \"ok\" as PathSegment\ndata introduces_a_level_backslash: PathSegment = \"ok\" as PathSegment\ndata terminates_a_line_oriented_record: PathSegment = \"ok\" as PathSegment\ndata terminates_at_the_syscall_boundary: PathSegment = \"ok\" as PathSegment\ndata a_glob_segment_navigates_too: GlobSegment = \"ok\" as GlobSegment\nfn any_string_becomes_a_segment(raw: String) -> PathSegment { raw as PathSegment }\n"
+
+test fn no_path_segment_safety_character_is_refused_at_any_seam() -> Bool {
+  blocking_delta(
+    hostile: probe_source(name: "path_segment_predicate_admission_probe"),
+    safe: path_segment_probe_control
+  ) == 0
+}
+
+// EXPECTING-RED HOLE, and the consequence that ranks. Two production modules declare in prose that
+// their validating fn is the only constructor of a branded PathSegment that becomes a directory
+// name. A foreign module mints both with a cast carrying the exact `..` and `/` those functions
+// exist to refuse, and adds no blocking diagnostic. The control imports the SAME two production
+// modules, so their whole closure cancels and the delta is the forgery alone.
+data forgery_probe_control: String = "module probe_forgery_control\nimport std.types { String }\nimport gunbc.merge_admission_subject { WalkAttemptId }\nimport gunbc.fleet_known_hosts_anchor { FleetSshAttemptIdentity }\ndata forged_attempt_id_escapes_its_directory: WalkAttemptId = \"ok\" as WalkAttemptId\ndata forged_ssh_identity_introduces_a_level: FleetSshAttemptIdentity = \"ok\" as FleetSshAttemptIdentity\nfn any_string_becomes_an_attempt_id(raw: String) -> WalkAttemptId { raw as WalkAttemptId }\n"
+
+test fn a_branded_path_segment_can_be_forged_from_any_module() -> Bool {
+  blocking_delta(
+    hostile: probe_source(name: "branded_path_segment_forgery_probe"),
+    safe: forgery_probe_control
+  ) == 0
+}
