@@ -722,13 +722,38 @@ type HardConstraint {
   bound_micro: Int
 }
 
-type SelectionReceipt {
+// ── WHAT WAS ASKED, SEPARATED FROM WHAT CAME OF IT ─────────────────────────────────────────────
+//
+// A DECISION SCOPE IDENTIFIES THE QUESTION. Section 3d states the law this record implements: a
+// different candidate field, constraint set, evidence snapshot or funded-axis set is A DIFFERENT
+// DECISION, so a stale choice is mechanically detectable. Every one of those discriminators lives here,
+// and none of them depends on how the decision turned out.
+//
+// IT IS SEPARATE FROM THE RECEIPT BECAUSE A REFUSAL HAS A SCOPE AND NO OUTCOME. `SelectionReceipt` used
+// to carry both halves in one record, which made it unusable for the arm that most needs it: a refusal
+// could not be minted without naming a selected identity that does not exist, Pareto survivors from a
+// fold that may never have run, and a policy authority that may never have been consulted. Three fields
+// with no referent, in the carrier whose whole purpose is making a claim's scope checkable.
+//
+// THE WORST OF THE THREE WAS `pareto_survivors`, AND IT IS WHY THIS IS A DECOMPOSITION RATHER THAN A
+// CONVENIENCE. `select_realization` reaches `FeasibilityNone` BEFORE Pareto runs. An empty survivor list
+// there does not mean "the front was computed and nothing survived" -- it means the question was never
+// asked. Two different facts with one spelling, which is exactly the conflation this record exists to
+// prevent, and shipping it INTO the scope carrier would have put the defect inside the instrument.
+type DecisionScope {
   decision_subject: DeclarationRef
   candidate_field_identity: DeclarationRef
   candidate_field_standing: CandidateFieldStanding
   constraint_authority: DeclarationRef
   funded_axes: List<DeclarationRef>
   evidence_snapshot: DeclarationRef
+}
+
+// THE RECEIPT IS THE SCOPE PLUS THE OUTCOME, and it is still the only thing a SELECTION produces. It
+// loses nothing: every field it carried is still carried, and the six that describe the question now
+// have a name of their own so the refusal arm can carry them too.
+type SelectionReceipt {
+  scope: DecisionScope
   pareto_survivors: List<DeclarationRef>
   policy_authority: DeclarationRef
   selected_identity: DeclarationRef
@@ -744,7 +769,7 @@ type SelectionEvidenceNeed
 type RealizationSelectionResult<C>
   = SelectedWithin { candidate: C, receipt: SelectionReceipt }
   | CandidateFieldUnestablished { causes: List<NonEmptyStr> }
-  | NoFeasibleRealization { causes: List<NonEmptyStr> }
+  | NoFeasibleRealization { causes: List<NonEmptyStr>, scope: DecisionScope }
   | SelectionNeedsEvidence { needs: List<SelectionEvidenceNeed> }
   | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
   | RealizationSelectionRefused { defects: List<NonEmptyStr> }
@@ -1045,36 +1070,55 @@ fn candidate_field_standing_eq(a: CandidateFieldStanding, b: CandidateFieldStand
   }
 }
 
-fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
+// SCOPE EQUALITY IS THE OPERATIVE TEST FOR SECTION 3d, and separating it is what makes the law checkable
+// on a refusal. Two refusals of the same field under the same constraints, axes and evidence are the same
+// refusal; change any one of those and they are answers to different questions, whatever their cause text
+// says. A consumer that quotes a refusal outside its scope is now making a claim a machine can contradict.
+fn scopes_eq(a: DecisionScope, b: DecisionScope) -> Bool {
   declaration_ref_eq(a: a.decision_subject, b: b.decision_subject)
     && declaration_ref_eq(a: a.candidate_field_identity, b: b.candidate_field_identity)
     && candidate_field_standing_eq(a: a.candidate_field_standing, b: b.candidate_field_standing)
     && declaration_ref_eq(a: a.constraint_authority, b: b.constraint_authority)
     && declaration_refs_same_set(a: a.funded_axes, b: b.funded_axes)
     && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
+}
+
+fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
+  scopes_eq(a: a.scope, b: b.scope)
     && declaration_refs_same_set(a: a.pareto_survivors, b: b.pareto_survivors)
     && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
     && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
 }
 
-fn mint_receipt(
+// ONE PLACE BUILDS A SCOPE, so the six discriminators cannot drift apart between the arm that refuses
+// and the arm that selects. Both callers of this are inside this module: nothing outside std.decision
+// mints either a scope or a receipt.
+fn mint_scope(
   decision_subject: DeclarationRef,
   candidate_field_identity: DeclarationRef,
   candidate_field_standing: CandidateFieldStanding,
   constraint_authority: DeclarationRef,
   funded_axes: List<DeclarationRef>,
   evidence_snapshot: DeclarationRef,
-  pareto_survivors: List<DeclarationRef>,
-  policy_authority: DeclarationRef,
-  selected_identity: DeclarationRef,
-) -> SelectionReceipt {
-  SelectionReceipt {
+) -> DecisionScope {
+  DecisionScope {
     decision_subject: decision_subject,
     candidate_field_identity: candidate_field_identity,
     candidate_field_standing: candidate_field_standing,
     constraint_authority: constraint_authority,
     funded_axes: funded_axes,
     evidence_snapshot: evidence_snapshot,
+  }
+}
+
+fn mint_receipt(
+  scope: DecisionScope,
+  pareto_survivors: List<DeclarationRef>,
+  policy_authority: DeclarationRef,
+  selected_identity: DeclarationRef,
+) -> SelectionReceipt {
+  SelectionReceipt {
+    scope: scope,
     pareto_survivors: pareto_survivors,
     policy_authority: policy_authority,
     selected_identity: selected_identity,
@@ -1092,11 +1136,22 @@ fn apply_policy(
   axes: List<SelectionAxis>,
   evidence_snapshot: DeclarationRef,
 ) -> RealizationSelectionResult<ParetoEntry> {
+  let scope = mint_scope(
+    decision_subject: decision_subject,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: field_standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axis_refs(axes: axes),
+    evidence_snapshot: evidence_snapshot,
+  )
   match policy {
     UniqueSurvivorRequired { identity: pol } =>
       if (survivors |> count) == 1 {
         match survivors.first() {
-          Absent => NoFeasibleRealization { causes: ["unique-survivor policy over empty survivor set" as NonEmptyStr] }
+          Absent => NoFeasibleRealization {
+            causes: ["unique-survivor policy over empty survivor set" as NonEmptyStr],
+            scope: scope,
+          }
           Present { value: sid } =>
             match entry_by_identity(field: remaining, wanted: sid) {
               Absent => RealizationSelectionRefused { defects: ["unique survivor missing from remaining field" as NonEmptyStr] }
@@ -1104,12 +1159,7 @@ fn apply_policy(
                 SelectedWithin {
                   candidate: cand,
                   receipt: mint_receipt(
-                    decision_subject: decision_subject,
-                    candidate_field_identity: candidate_field_identity,
-                    candidate_field_standing: field_standing,
-                    constraint_authority: constraint_authority,
-                    funded_axes: funded_axis_refs(axes: axes),
-                    evidence_snapshot: evidence_snapshot,
+                    scope: scope,
                     pareto_survivors: survivors,
                     policy_authority: pol,
                     selected_identity: sid,
@@ -1119,7 +1169,10 @@ fn apply_policy(
         }
       } else {
         if (survivors |> count) == 0 {
-          NoFeasibleRealization { causes: ["no non-dominated feasible realization" as NonEmptyStr] }
+          NoFeasibleRealization {
+            causes: ["no non-dominated feasible realization" as NonEmptyStr],
+            scope: scope,
+          }
         } else {
           SelectionNeedsPolicy { survivors: survivors }
         }
@@ -1132,12 +1185,7 @@ fn apply_policy(
             SelectedWithin {
               candidate: cand,
               receipt: mint_receipt(
-                decision_subject: decision_subject,
-                candidate_field_identity: candidate_field_identity,
-                candidate_field_standing: field_standing,
-                constraint_authority: constraint_authority,
-                funded_axes: funded_axis_refs(axes: axes),
-                evidence_snapshot: evidence_snapshot,
+                scope: scope,
                 pareto_survivors: survivors,
                 policy_authority: pol,
                 selected_identity: pref,
@@ -1168,7 +1216,7 @@ fn merge_deferred_into_pick(
     SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: concat(ns, subj) }
     SelectionNeedsPolicy { survivors: _ } => SelectionNeedsEvidence { needs: subj }
     CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
-    NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
+    NoFeasibleRealization { causes: cs, scope: sc } => NoFeasibleRealization { causes: cs, scope: sc }
     RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
   }
 }
@@ -1188,6 +1236,11 @@ fn bind_pick_to_subject_closure(
   }
 }
 
+// THE SCOPE IS BUILT ONCE, BEFORE THE OUTCOME IS KNOWN, which is the point of separating it from the
+// receipt: the feasibility scan can refuse the whole field before Pareto runs, and that refusal is
+// still ABOUT a named field under named constraints, axes and evidence. Building it up front rather
+// than inside the refusing arm also means a refusal and any later selection cite the identical scope
+// by construction rather than by two call sites agreeing.
 fn select_realization(
   assessment: DecisionAssessment,
   candidate_field_identity: DeclarationRef,
@@ -1199,6 +1252,14 @@ fn select_realization(
   evidence_snapshot: DeclarationRef,
 ) -> RealizationSelectionResult<ParetoEntry> {
   let standing = establish_candidate_field(field: field)
+  let scope = mint_scope(
+    decision_subject: assessment.subject.identity,
+    candidate_field_identity: candidate_field_identity,
+    candidate_field_standing: standing,
+    constraint_authority: constraint_authority,
+    funded_axes: funded_axis_refs(axes: axes),
+    evidence_snapshot: evidence_snapshot,
+  )
   let pick = match standing {
     CandidateFieldUnestablishedStanding { causes: cs } => CandidateFieldUnestablished { causes: cs }
     CandidateFieldEstablished { identities: _ } =>
@@ -1206,13 +1267,13 @@ fn select_realization(
         FeasibilityNeedsEvidence { gaps: gs } =>
           SelectionNeedsEvidence { needs: as_unfunded_axis_needs(gaps: gs) }
         FeasibilityRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
-        FeasibilityNone { causes: cs } => NoFeasibleRealization { causes: cs }
+        FeasibilityNone { causes: cs } => NoFeasibleRealization { causes: cs, scope: scope }
         FeasibilityReady { remaining: rem } =>
             match pareto_survivor_identities(field: rem, axes: axes) {
               SelectionNeedsEvidence { needs: ns } => SelectionNeedsEvidence { needs: ns }
               RealizationSelectionRefused { defects: ds } => RealizationSelectionRefused { defects: ds }
               CandidateFieldUnestablished { causes: cs } => CandidateFieldUnestablished { causes: cs }
-              NoFeasibleRealization { causes: cs } => NoFeasibleRealization { causes: cs }
+              NoFeasibleRealization { causes: cs, scope: sc } => NoFeasibleRealization { causes: cs, scope: sc }
               SelectedWithin { candidate: c, receipt: r } => SelectedWithin { candidate: c, receipt: r }
               SelectionNeedsPolicy { survivors: sv } =>
                 apply_policy(

@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_membership_scan_where_a_map_primitive_exists: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_membership_scan_where_a_map_primitive_exists" as NonEmptyStr,
+
+  receipts: [
+    "**the cheap-to-write form of a correct completeness oracle is a nested scan, and nothing makes the map-backed form the default** INVALID STATE: an identity join over two populations is written as `all` over one containing `any` over the other -- quadratic in eval steps -- while `v2.std.collection` `empty_map` / `map_insert` / `map_lookup` are PrimitiveContracts already imported by 78 `dag/` modules. The author is not careless: the nested form is the one the substrate's list vocabulary suggests, and the map primitives live in a folder the author reads as someone else's layer.",
+
+    "HARM, AND IT CHANGED CHARACTER ON 2026-09-13. Before the two-tier ceiling a quadratic join was slow. After it, a NEW witness over the 100ms-equivalent budget REFUSES -- so the cheap-to-write form of a correct oracle is now the form the floor rejects, and the author's first encounter with the map primitives is a red run rather than a review comment.",
+
+    "THE DISTINGUISHING FACT THAT MAKES THIS A CLASS AND NOT AN INCIDENT: the correctness is not in question in any instance. Every specimen so far is a CORRECT join -- both directions, count intact -- written in the shape the vocabulary suggested. So the recognition rule is not 'the oracle is wrong'; it is 'the oracle is right and its cost shape is quadratic in a population that grows'. Reviewing for correctness finds nothing.",
+
+    "SPECIMEN A, the join: gunbc#10994, the first live application of the two-tier ruling. A correct identity join written as two nested all/any scans measured 2n^2 at 618,000 eval steps. Reported by fierce-lark-661, 2026-09-13.",
+
+    "SPECIMEN B, and it is the instructive one because the REPAIR is what failed: gunbc#11195's grandfathered roster, 3,795 identities, measured three ways on this repository's own [witness] line. (1) `any` over a flattened roster: 92,490 eval steps, 148ms. (2) map-backed via empty_map/map_insert/map_lookup: 39,940 eval steps -- THE FEWEST OF THE THREE -- and 36,000ms of CPU. (3) a short-circuiting descent over chunks that never flattens: 8,066 steps / 19ms on a hit, 43,583 / 76ms on a miss.",
+
+    "WHY SPECIMEN B IS A SECOND DEFECT AND NOT A CAVEAT ON THE FIRST. `map_insert` returns a NEW map, so folding n rows in is O(n^2) HOST work, and none of it is an eval step because it happens inside a primitive. The prescribed repair for the nested scan therefore reads as the CHEAPEST spelling on the clock the floor gates -- 39,940 against a 72,300 budget -- while costing 400x the CPU and breaching the 8,000ms wall deadline. THIS IS NOT GUIDANCE FOR AUTHORS. A per-site rule for choosing scan-vs-map by n prices an exception around a cost-shape defect, which DESIGN section 6 forbids in terms; the defect is the map's REALIZATION, which has no bulk constructor, so the idiom can only be expressed as an insert fold.",
+
+    "REPAIR, AND IT IS ONE REPAIR IN THE PRIMITIVE RATHER THAN A RULE IN EVERY CONSUMER: `v2.std.collection` gains a bulk constructor -- `map_from_list` / `map_from_pairs` as a single primitive call, O(n) or O(n log n) host -- or a persistent structure with structural sharing so insert is O(log n). The identity-join idiom then uses the bulk form and the nested scan has a default worth reaching for. Owner: the primitive's lane (clever-fox-89, gunbc#11121, primitive-backed map delegates); briefed by fierce-lark-661.",
+
+    "RUNG FOUND AT: mitigatable. Both specimens were caught by a human reading a diff or by an author measuring on a hunch; nothing refuses a nested join, and the new-witness tier refuses it only once it is over budget, which is a consequence rather than a detector -- it cannot tell a quadratic join from an honestly expensive witness, and it says nothing at all about the map-backed form, which passes the step clock while costing more.",
+
+    "ATTAINABLE CEILING: mechanically preventable. The shape is a source-level pattern over the Node tree -- a fold over one population containing a membership fold over another -- and the `complexity_accumulator_copy` lens family already prices folds of exactly this kind. NEXT-RUNG TRIGGER, naming the CAPABILITY: that lens recognises the nested-membership shape and refuses it on the acceptance path, sufficient that a quadratic join cannot land whether or not it happens to exceed a budget on the day it lands. A trigger that named the two-tier ceiling instead would be satisfied while the class stayed alive, because the ceiling only sees the instances that cross it.",
+
+    "WHAT THIS ROW DOES NOT CLAIM. It does not claim the map primitives are the wrong answer -- they are the right shape and the wrong realization, which is why the repair is filed against the realization. It does not claim a number for the n at which the insert fold becomes the more expensive choice; that number is a property of a defect that is scheduled to be removed, and pinning it would give the workaround a specification.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_insert", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_lookup", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_grandfathered_roster", decl_name: "floor_grandfathered_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "new_witness_over_budget_first_remedy", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps", decl_name: "floor_cost_cpu_regression_at_constant_eval_steps", field: WholeDeclaration },
+  ],
+}
