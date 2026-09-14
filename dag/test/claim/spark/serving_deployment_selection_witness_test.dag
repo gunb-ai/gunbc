@@ -134,9 +134,9 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
   }
 }
 
-test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
+test fn the_real_deepseek_v4_1_subject_returns_an_empty_field_rather_than_a_topology() -> Bool {
   match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+    NoFeasibleServingDeployment { causes: cs } => count(cs) > 0
     _ => false
   }
 }
@@ -153,7 +153,7 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "sm12_designed")) {
-      ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+      NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_component_route)
       _ => false
     }
     && decision_snapshot_key(input: deepseek_v4_1_decision_input)
@@ -206,21 +206,26 @@ fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDepl
   )
 }
 
-fn causes_name_authorized_runtime(cs: List<NonEmptyStr>) -> Bool {
-  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_authorized_runtime)))
+// ONE FOLD OVER EXCLUSION CAUSES, KEYED BY THE AXIS ASKED ABOUT. The previous shape hard-coded
+// ax_authorized_runtime, and the moment a second axis had to be asked about the honest move was to
+// generalise the existing fold rather than mint a parallel `causes_name_component_route` beside it.
+fn causes_name_axis(cs: List<NonEmptyStr>, axis: DeclarationRef) -> Bool {
+  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: axis)))
 }
 
 test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
   match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_vllm_gb10_lead, stem: "plant_gb10_lead")) {
-    NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+    NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_authorized_runtime)
     _ => false
   }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: spark_runtime, stem: "plant_spark_runtime")) {
-      NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+      NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_authorized_runtime)
       _ => false
     }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "plant_published_arm64")) {
-      ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+      NoFeasibleServingDeployment { causes: cs } =>
+        causes_name_axis(cs: cs, axis: ax_component_route)
+          && !causes_name_axis(cs: cs, axis: ax_authorized_runtime)
       _ => false
     }
     && match v4_1_runtime_published_arm64.vllm_source {
@@ -1507,41 +1512,52 @@ fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteS
     })
 }
 
-// ── THE PRODUCT ROOT: ONE LIVE CALL, BOTH ROUTE FACTS ─────────────────────────────────────────
+// ── THE PRODUCT ROOT: THE LIVE FIELD IS EMPTY, AND WHY ────────────────────────────────────────
 //
-// These two assertions were briefly two witnesses, and folding them is a cost repair that costs no
-// discrimination. Both match the SAME arm of the SAME `select_serving_deployment` call on the same input,
-// and they read different parts of the returned value: the obligation's rendered cause carries the
-// marker, component, consumer and exact context prefix, while `component_routes` carries the child's
-// typed standings. A conjunction goes red if EITHER half fails, so nothing is weakened; what is lost is
-// only which half the failure report names, a diagnostic convenience rather than a wall.
+// THIS CLAIM ASSERTED NEEDS-EVIDENCE UNTIL 2026-09-14 AND THE EXPECTATION MOVED BECAUSE THE FIELD
+// DID, NOT BECAUSE THE CLAIM WAS WRONG WHEN WRITTEN. It was authored while the V4.1 domain was
+// generated over an EIGHT-host scalar. #11308 replaced that with the subject's admissible host SET,
+// and V4.1's subject holds one fabric group -- so tp5 through tp8 correctly ceased to exist, and
+// with them every shape whose per-rank Engram share was small enough to fit.
 //
-// What IS bought is real: the first full-field live call in a witness pays a per-witness materialisation
-// and later calls in the same witness are far cheaper, so two witnesses meant two materialisations for
-// one decision. This subject already makes six such calls across five witnesses; it does not need a
-// seventh to read a second field of a value it has already computed.
+// THE DISCRIMINATOR, STATED HERE BECAUSE "INFEASIBLE" INVITES EXACTLY ONE QUESTION -- would more
+// hosts help? Yes, and this is the margin:
 //
-// THE TYPED STANDINGS ARE THE POINT OF THE SECOND HALF. Route standings used to reach only
-// `SelectedServingDeployment`, and this subject returns needs-evidence -- so the sole surviving
-// representation of a component's route question on the arm a consumer actually receives was the rendered
-// AxisGap sentence, and recovering `PlacementNeedsPolicy`'s typed survivor list from it meant parsing
-// prose. Deleting the carrier reds this; deleting only the rendered gap does not, which is the right
-// asymmetry: the text is display, not the record.
-test fn the_live_v4_1_serving_decision_reports_a_route_produced_obligation() -> Bool {
+//   ranks=8   engram needs 23.64 GiB per rank against an 81.14 GiB budget   fits, with room
+//   ranks=4   engram needs 47.28 GiB per rank against a  45.42 GiB budget   SHORT BY 1.86 GiB
+//
+// The budget is what is left of an observed 116.85 GiB idle-free rank reading after the artifact's
+// OTHER THREE components -- backbone, vision tower and aligner, and the DSpark draft model. The
+// last two are 7.89 GiB that a two-component reading of this problem omits, and they are the
+// difference between a two-component sum saying +0.113 GiB of headroom and the fold saying -1.86.
+// Corroborated by a second instrument on a different path: the Group A rollout lane, reading the
+// published checkpoint index and dividing rather than running this decision, reported 118.81 GiB
+// per rank against 116.9 free. Two derivations sharing no method, 0.1 GiB apart.
+//
+// SO THE ANSWER IS A SCOPED NEGATIVE AND THE MODEL IS RIGHT. Route A is excluded on the per-rank
+// resident lower bound; routes B, C and D are excluded on ESTABLISHED mechanism absence, because
+// the published image offers a memory-backed Engram placement only. Nothing here is an evidence
+// gap dressed as a refusal.
+//
+// WHAT THIS CLAIM LOST, SAID PLAINLY RATHER THAN QUIETLY DROPPED. It used to assert over
+// `component_routes` -- that every candidate carried a typed standing, and that some standing named
+// the Engram component under this consumer's context. `NoFeasibleServingDeployment` CARRIES CAUSES
+// AND NOTHING ELSE, so those assertions have no arm to stand on and are gone. That is the
+// `component_route_gap_over` frontier row's prediction arriving: the exclusion line carries
+// identities, not the child's reasons. The claim compensates as far as the arm allows by requiring
+// EVERY candidate identity to appear among the causes, which keeps a shrinking field from passing
+// silently -- but the typed standings are genuinely not checked on this path, and the row's trigger
+// is what restores them.
+test fn the_live_v4_1_serving_decision_is_emptied_by_the_component_route() -> Bool {
   match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    ServingDeploymentNeedsEvidence { needs: ns, component_routes: crs } =>
-      count(ns) > 0
-        && needs_name_axis(needs: ns, axis: ax_component_route)
-        && count(route_produced_causes(needs: ns)) > 0
-        && count(crs) == count(deepseek_v4_1_candidate_field.candidates)
-        && all(crs, cr => any(deepseek_v4_1_candidate_field.candidates,
-             k => declaration_ref_eq(a: k.identity, b: cr.candidate)))
-        && any(crs, cr => any(cr.routes, st =>
-             declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)
-               && declaration_ref_eq(a: component_route_standing_context(s: st).consumer, b: id_route_consumer)))
+    NoFeasibleServingDeployment { causes: cs } =>
+      count(cs) > 0
+        && causes_name_axis(cs: cs, axis: ax_component_route)
+        && all(deepseek_v4_1_candidate_field.candidates,
+             k => causes_name_axis(cs: cs, axis: k.identity))
+    ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
     ServingDeploymentSelected { selected: _ } => false
     ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
-    NoFeasibleServingDeployment { causes: _ } => false
     ServingDeploymentSelectionRefused { defects: _ } => false
   }
 }
