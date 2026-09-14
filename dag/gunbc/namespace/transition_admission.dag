@@ -1,6 +1,6 @@
 module gunbc.namespace.transition_admission
 
-import std.types { NonEmptyStr, List, String }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
 import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 
@@ -19,7 +19,9 @@ type AdmissionSubject
   = Binding {
       enclosing: DeclarationRef
       spelling: NonEmptyStr
-      expected_candidates: List<NonEmptyStr>
+      // Candidate declaring identities, same type as enclosing: module_path is the
+      // declarer the wall already joins; decl_name is that declaration's leaf.
+      expected_candidates: List<DeclarationRef>
     }
   | Membership {
       from_module: NonEmptyStr

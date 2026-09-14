@@ -2146,7 +2146,7 @@ fn row_source(stem: &str, label: &str, spelling: &str) -> String {
            subject: Binding {{\n\
              enclosing: decl_ref(\"probe.consumer\", \"use_it\"),\n\
              spelling: \"{spelling}\" as NonEmptyStr,\n\
-             expected_candidates: [\"probe.other\" as NonEmptyStr],\n\
+             expected_candidates: [decl_ref(\"probe.other\", \"{spelling}\")],\n\
            }},\n\
            disposition: TargetChanged,\n\
          }}\n"

@@ -2830,11 +2830,15 @@ fn parse_admission_subject(
                 return Err("Binding is missing field `expected_candidates`".to_string());
             };
             let (module, in_declaration) = parse_decl_ref(enclosing, source_indices)?;
+            let mut expected_candidates = Vec::new();
+            for (candidate_module, _) in parse_decl_ref_list(candidates, source_indices)? {
+                expected_candidates.push(candidate_module);
+            }
             Ok(AdmissionSubject::Binding {
                 module,
                 in_declaration,
                 spelling: expr_string(spelling)?,
-                expected_candidates: parse_string_list(candidates)?,
+                expected_candidates,
             })
         }
         "Membership" => {
@@ -2911,15 +2915,18 @@ fn parse_decl_ref(
     }
 }
 
-fn parse_string_list(expr: Rc<crate::v1_std_core::Node>) -> Result<Vec<String>, String> {
+fn parse_decl_ref_list(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<Vec<(String, String)>, String> {
     let expr = peel_expr(expr);
     match (*expr.expr_data).clone() {
         crate::v1_std_core::ExprData::ExprListLit => expr
             .children
             .iter()
-            .map(|c| expr_string(c.clone()))
+            .map(|c| parse_decl_ref(c.clone(), source_indices))
             .collect(),
-        _ => Err("expected_candidates must be a list".to_string()),
+        _ => Err("expected_candidates must be a list of DeclarationRef".to_string()),
     }
 }
 
