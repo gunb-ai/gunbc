@@ -10558,11 +10558,14 @@ impl SafetyInterruptTrigger {
 /// says `cost=UNMEASURED`, correctly — the row's cost is a lower bound with no upper bound. Read
 /// as the system's silence rather than as one surface's, it says the fact does not exist. It
 /// does: `claim_terminality` samples BOTH clocks around the same call regardless of how the
-/// claim ends, and threads both limits in from the `WitnessSafetyPolicy` that armed them.
+/// claim ends, and threads in the one limit `WitnessSafetyPolicy` still arms — the wall.
 ///
-/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A reading at or above its own limit PROVES
-/// real in-process computation: a thread-cpu observation cannot reach `cpu_safety_limit_ms` on a
-/// claim that burned no CPU. That direction is sound and it is the one a reader may use.
+/// WHAT THE PAIR DECIDES, AND IN ONE DIRECTION ONLY. A wall reading at or above its limit PROVES
+/// the claim was stopped rather than finished. The CPU figure is printed beside it and is
+/// compared against no ceiling: since 2026-09-12 the required floor arms no CPU deadline, so
+/// there is no CPU limit a reading could reach. An earlier revision of this paragraph said a
+/// thread-cpu observation "cannot reach `cpu_safety_limit_ms`" — a field this same change
+/// deletes.
 ///
 /// THE CONVERSE IS NOT SOUND, and the reason is not that these are bounds. Both readings are
 /// genuine observations at interrupt time — `run_claim_measured` samples both clocks around the
@@ -10606,7 +10609,6 @@ pub struct SafetyInterruptReading {
     pub raised_by: SafetyInterruptTrigger,
     pub elapsed_cpu_at_least_ms: u64,
     pub elapsed_wall_at_least_ms: u64,
-    pub cpu_safety_limit_ms: u64,
     pub wall_safety_limit_ms: u64,
 }
 
@@ -10620,13 +10622,11 @@ pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<Safety
             raised_by,
             elapsed_cpu_at_least_ms,
             elapsed_wall_at_least_ms,
-            cpu_safety_limit_ms,
             wall_safety_limit_ms,
         } => Some(SafetyInterruptReading {
             raised_by: *raised_by,
             elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
             elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
-            cpu_safety_limit_ms: *cpu_safety_limit_ms,
             wall_safety_limit_ms: *wall_safety_limit_ms,
         }),
         ClaimTerminality::VerdictReached { .. } | ClaimTerminality::Unwound { .. } => None,
@@ -10703,13 +10703,11 @@ impl ClaimCostReading {
                 raised_by,
                 elapsed_cpu_at_least_ms,
                 elapsed_wall_at_least_ms,
-                cpu_safety_limit_ms,
                 wall_safety_limit_ms,
             } => ClaimCostReading::RightCensored(SafetyInterruptReading {
                 raised_by: *raised_by,
                 elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
                 elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
-                cpu_safety_limit_ms: *cpu_safety_limit_ms,
                 wall_safety_limit_ms: *wall_safety_limit_ms,
             }),
         }
@@ -10823,7 +10821,6 @@ mod interrupted_before_verdict_tests {
             raised_by,
             elapsed_cpu_at_least_ms: 0,
             elapsed_wall_at_least_ms: 0,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         }
     }
@@ -10853,14 +10850,12 @@ mod interrupted_before_verdict_tests {
             raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
             elapsed_cpu_at_least_ms: 501,
             elapsed_wall_at_least_ms: 520,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         };
         let blocked = SafetyInterruptReading {
             raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
             elapsed_cpu_at_least_ms: 3,
             elapsed_wall_at_least_ms: 5_001,
-            cpu_safety_limit_ms: 500,
             wall_safety_limit_ms: 5_000,
         };
         assert_eq!(
@@ -10868,8 +10863,15 @@ mod interrupted_before_verdict_tests {
             "the trigger alone cannot tell these apart — that is the point"
         );
         assert_ne!(computed, blocked);
-        assert!(computed.elapsed_cpu_at_least_ms >= computed.cpu_safety_limit_ms);
-        assert!(blocked.elapsed_cpu_at_least_ms < blocked.cpu_safety_limit_ms);
+        // THE SEPARATING FACT IS THE WALL LIMIT, NOT A CPU ONE. This pair used to compare each
+        // row's CPU figure against a `cpu_safety_limit_ms` the reading carried; that field is
+        // deleted, because the required floor arms no CPU deadline and a carried CPU ceiling was a
+        // second representation of a limit nothing set. The discrimination the fixture exists for
+        // is unchanged and is now stated against the one armed limit: the blocked row sits at its
+        // wall ceiling having burned almost no CPU, the computed row is nowhere near it.
+        assert!(blocked.elapsed_wall_at_least_ms >= blocked.wall_safety_limit_ms);
+        assert!(computed.elapsed_wall_at_least_ms < computed.wall_safety_limit_ms);
+        assert!(computed.elapsed_cpu_at_least_ms > blocked.elapsed_cpu_at_least_ms);
     }
 
     /// A TERMINALITY THAT IS NOT AN INTERRUPT HAS NO READING, so a caller cannot obtain one for
@@ -10881,7 +10883,6 @@ mod interrupted_before_verdict_tests {
                 raised_by: SafetyInterruptTrigger::CpuDeadlineRaised,
                 elapsed_cpu_at_least_ms: 501,
                 elapsed_wall_at_least_ms: 520,
-                cpu_safety_limit_ms: 500,
                 wall_safety_limit_ms: 5_000,
             })
             .is_some()
@@ -10991,7 +10992,6 @@ pub enum ClaimTerminality {
         raised_by: SafetyInterruptTrigger,
         elapsed_cpu_at_least_ms: u64,
         elapsed_wall_at_least_ms: u64,
-        cpu_safety_limit_ms: u64,
         wall_safety_limit_ms: u64,
     },
     /// THE HOST UNWOUND, so there is no verdict and no interruption — the two arms above are the
@@ -11010,35 +11010,42 @@ pub enum ClaimTerminality {
     },
 }
 
-/// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
-/// pure in-process claim, CPU safety protects against runaway evaluation while wall safety
-/// protects against a blocked or descheduled process — different jobs, so the wall limit must
-/// be independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
-/// preempt a computation still inside its CPU envelope. For a genuinely blocking or effectful
-/// claim wall may instead be the primary per-row guard. Neither limit is a cost allowance;
-/// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
-/// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
-/// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+/// ONE ARMED SAFETY LIMIT, THE WALL, protecting against a blocked or descheduled process. It is
+/// not a cost allowance: crossing it is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
+/// `wall_safety_limit_ms` field for the live-wired instantiation of this policy
+/// (`v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms` is its declared
+/// value).
 ///
-/// PREEMPTION-1 (operator-directed, 2026-08-19): "crossing either blocks" holds only when
+/// IT USED TO BE A PAIR, AND THE CPU HALF IS DELETED RATHER THAN LOOSENED. This doc described
+/// "two independently derived safety limits" with the wall derived LOOSER than a CPU limit, and
+/// cited a `cpu_safety_limit_ms` field that this same change removes. What replaced the CPU half
+/// is not another clock: the claim ceiling now gates on EVAL STEPS, a property of the tree rather
+/// than of the runner, and CPU is observed and published for every claim without deciding
+/// anything (`v2.workflow.required_floor` `claim_cost_basis_standing`). So there is no longer a
+/// CPU envelope for the wall to be derived looser than, and the independence argument that
+/// sentence made has no second limit to be independent of.
+///
+/// PREEMPTION-1 (operator-directed, 2026-08-19), RESTATED FOR ONE LIMIT: "crossing it blocks" holds only when
 /// `eval_expr`'s cooperative stride-poll actually observes the crossing (see that function's own
 /// comment on the residue this leaves, and `std.evaluation_budget`
 /// `evaluation_budget_opaque_host_call_note` for the modeled fact). A claim whose cost accrues
 /// entirely inside one opaque host call — a native `free_call.*` arm such as
 /// `compile_dag_rust_emit_check`, which runs synchronously and never calls back into `eval_expr`
-/// — crosses neither limit as far as the poll can tell, however long it runs, and completes as
+/// — does not cross the limit as far as the poll can tell, however long it runs, and completes as
 /// `ClaimTerminality::VerdictReached` rather than `SafetyInterrupted`. Measured, not suspected:
 /// floor run 32301212975 recorded `root_d_checkpoint_scalar_declared_arity_witness_holds`
 /// (dominated by a `compile_dag_rust_emit_check` call) reaching a verdict at 60317ms CPU against
 /// a 5000ms `cpu_ms` limit, twelve times over and uninterrupted, reported through
 /// `RequiredFloorOutcome`'s `completed_over_cost_requirement` population rather than through a
-/// safety interrupt. These two limits are real protection for cost that accrues across many
-/// `eval_expr` calls and no protection — not weaker, none — for cost that accrues inside a
-/// single opaque host call; nothing downstream may be built on the assumption that arming them
-/// makes a host call interruptible.
+/// safety interrupt. That measurement is kept because it is the evidence for the residue, and it
+/// is reported against the CPU limit standing at the time; the residue itself is unchanged by
+/// that limit's deletion, because it was never the CPU clock that made a host call
+/// uninterruptible — it is the absent stride-poll. The wall limit is real protection for cost
+/// that accrues across many `eval_expr` calls and no protection — not weaker, none — for cost
+/// that accrues inside a single opaque host call; nothing downstream may be built on the
+/// assumption that arming it makes a host call interruptible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WitnessSafetyPolicy {
-    pub cpu_ms: u64,
     pub wall_ms: u64,
 }
 
@@ -11069,7 +11076,6 @@ pub fn claim_terminality(
             raised_by: SafetyInterruptTrigger::from(*kind),
             elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
-            cpu_safety_limit_ms: policy.cpu_ms,
             wall_safety_limit_ms: policy.wall_ms,
         },
         // THE WILDCARD IS DELETED. It stood here as `_ => VerdictReached`, which is correct for
@@ -18404,11 +18410,11 @@ pub fn run_claims_in_process(
 /// exceeded the budget converts to the same typed refusal here — the witness is over
 /// the fast-lane classification either way, and silent green would fail open on the
 /// operator eval-budget ruling (2026-08-17). The budget compared here is the caller's
-/// armed `witness_eval_budget`/`witness_wall_budget`; the required-floor caller arms
-/// them independently from `required_floor_claim_cpu_safety_limit_ms` and
-/// `required_floor_claim_wall_safety_limit_ms` (BUDGET POLICY CUT, 2026-08-19,
-/// superseding correction — two safety deadlines, never one scalar copied into both
-/// clocks) — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
+/// armed `witness_eval_budget`/`witness_wall_budget`. THE REQUIRED-FLOOR CALLER ARMS
+/// ONLY THE WALL ONE since 2026-09-12, from `required_floor_claim_wall_safety_limit_ms`;
+/// it passes `None` for the CPU budget, because its claim ceiling is the eval-step
+/// comparison against `claim_eval_step_budget_for_identity` and CPU is observed-only
+/// for every claim. The fast lane still arms both. — the separate completed-cost line, `required_floor_claim_cost_line_ms`, is
 /// diagnostic only and is judged above this function, once a claim has already reached a
 /// verdict, and decides nothing about admission.
 /// A Fail/RuntimeError stays itself: those are already loud, and
@@ -24328,12 +24334,11 @@ pub struct DiscoveryCorpusOptions {
     /// directories. Import resolution still uses the full source_roots. Empty = full walk.
     pub discovery_scope_dirs: Vec<String>,
     /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
-    /// PR-path posture from the required-floor claim loop; that loop's own constant split
-    /// into `required_floor_claim_cpu_safety_limit_ms` / `required_floor_claim_wall_safety_limit_ms`
-    /// (interrupt, now two independent deadlines) and `required_floor_claim_cost_line_ms`
-    /// (completed-cost, diagnostic only) under the BUDGET POLICY CUT (2026-08-19,
-    /// superseding correction) — this field is unaffected by that split and still names one
-    /// ceiling.
+    /// PR-path posture from the required-floor claim loop; that loop now carries
+    /// `claim_eval_step_budget_for_identity` (the claim ceiling, a comparison rather than a
+    /// deadline), `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) and
+    /// `required_floor_claim_cost_line_ms` (completed-cost, diagnostic only). This field is
+    /// unaffected by any of that and still names one ceiling on the fast lane's own CPU clock.
     /// When set, every
     /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
@@ -41409,17 +41414,27 @@ pub struct RequiredFloorClaim {
     pub function: String,
     pub qualified: String,
     pub execution_mode: v1_interpreter::ExecutionMode,
-    /// The CPU SAFETY DEADLINE: arms the CPU interrupt clock. Never `budget_ms` — operator
-    /// ruling 2026-08-19 (BUDGET POLICY CUT) — because it does not express what a claim is
-    /// allowed to cost, only the point past which it is presumed runaway on the CPU clock and
-    /// interrupted before reaching a verdict. Independently derived from `wall_safety_limit_ms`
-    /// and TIGHTER than it (superseding correction, same date): CPU and wall protect against
-    /// different failures — runaway evaluation vs. a blocked/descheduled process — so a
-    /// mechanical copy of one figure into both is forbidden.
-    pub cpu_safety_limit_ms: u64,
-    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock, independently derived and
-    /// LOOSER than `cpu_safety_limit_ms` so ordinary host scheduling delay cannot itself trip an
-    /// interrupt on a computation still inside its CPU envelope.
+    /// THE EVAL-STEP BUDGET: how much WORK this claim may perform, in interpreter evaluation
+    /// steps. It REPLACED `cpu_safety_limit_ms` on 2026-09-12 (operator ruling via
+    /// fierce-lark-661), and the replacement is not a rename: eval steps are a property of the
+    /// claim and of the tree, while the CPU figure it displaced moved ~10% across three heads of
+    /// gunbc#11173 that changed no executable source, so a 500ms CPU line was adjudicating which
+    /// runner dequeued the job.
+    ///
+    /// IT IS NOT A DEADLINE AND ARMS NOTHING. Nothing interrupts a claim on steps; the budget is
+    /// compared once against the completed claim's step count, so it cannot miss an interrupt.
+    /// What it cannot see is cost that accrues WITHOUT performing steps — an opaque host call, or
+    /// a step that got more expensive — and the second of those is the declared §4b(3) drop
+    /// `gunbc.rung_drop` `floor_cost_cpu_regression_at_constant_eval_steps`.
+    ///
+    /// Its value is `v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, declared
+    /// policy grounded through the pinned calibration fixture in
+    /// `v2.workflow.floor_eval_step_calibration` — never derived from the live population.
+    pub eval_step_budget: u64,
+    /// The WALL SAFETY DEADLINE: arms the wall interrupt clock. It is now the ONLY armed
+    /// per-claim deadline, and it is unchanged by the eval-step cut because its job is
+    /// unchanged: catching a claim that is blocked or descheduled, which no amount of
+    /// work-counting can see.
     pub wall_safety_limit_ms: u64,
     /// The COMPLETED-COST LINE. DIAGNOSTIC ONLY — never a merge-admission, quarantine, or
     /// cost-debt-population decision (operator ruling 2026-08-19, superseding correction: 1552ms
@@ -41433,9 +41448,12 @@ pub struct RequiredFloorClaim {
     /// `v2.workflow.required_floor` `ChangedWitnessCostPolicy`, derived by
     /// `changed_witness_cost_policy` from the intersection of changed-witness selection and
     /// `v2.workflow.floor_cost_debt` enrollment (FLOOR-CHANGED-COST-0, operator ruling
-    /// 2026-08-30). It selects WHICH CLOCK IS ARMED, never what the claim is allowed to cost:
-    /// `cpu_safety_limit_ms` above carries the same 500ms figure under both policies, and under
-    /// the override that figure is measured against and published rather than enforced.
+    /// 2026-08-30). It no longer selects which clock is armed: since the claim ceiling moved onto
+    /// eval steps, `claim_cost_basis_standing` makes CPU `BasisObservedOnly` for EVERY claim, so
+    /// no CPU figure refuses under either arm and `cpu_safety_limit_ms` no longer exists. What it
+    /// selects is whether the claim's cost observation is PUBLISHED as a cost-debt receipt --
+    /// which the override does and the ordinary arm does not. The prior wording survived the
+    /// deletion of the field it cited (review 65674).
     pub cost_policy: ChangedWitnessCostPolicy,
 }
 
@@ -41480,9 +41498,11 @@ pub struct ChangedWitnessCostObservation {
     /// The wall-clock reading, for the deadline that remains armed. Modeled as the `WallClock`
     /// member of the same list.
     pub wall_clock_nanos: u128,
-    /// The policy line the observation is reported against
-    /// (`required_floor_claim_cpu_safety_limit_ms`), on the CPU clock — the model carries that
-    /// basis beside it as `observed_against_basis` rather than in this field's name.
+    /// The policy line the observation is reported against, on the CPU clock — the model carries
+    /// that basis beside it as `observed_against_basis` rather than in this field's name. SINCE
+    /// 2026-09-12 IT IS THE DIAGNOSTIC `required_floor_claim_cost_line_ms` and not a ceiling: no
+    /// CPU line decides anything for any claim, so the figure an observation is reported against
+    /// is the one the floor already declares as explicitly deciding nothing.
     pub cpu_line_ms: u64,
 }
 
@@ -41528,8 +41548,9 @@ pub enum RequiredFloorDisposition {
     /// still enters the seen set and the roster's staleness check keeps its meaning.
     DeclinedOutsideRequiredGate,
     /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
-    /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
-    /// withheld from execution until made cheap. Carries no payload — the roster is the
+    /// it PASSES and, when the roster was built, cost more CPU than the 500ms line then standing
+    /// (now `required_floor_claim_work_envelope_ms`, the policy the eval-step budget is grounded
+    /// against) allowed, so it is withheld from execution until made cheap. Carries no payload — the roster is the
     /// authority for which identities these are, and duplicating the measured cost here would be
     /// a second representation of a number that is only ever read from the fold.
     ///
@@ -42726,44 +42747,61 @@ fn write_required_floor_claim_cost_tsv(
         file,
         "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
          observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
-         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\t\
+         censoring_raised_by\teval_steps\teval_steps_at_least\tcost_line_ms\t\
          preemption_reachability"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         // THE MATCH IS THE POINT. Rendering these columns requires naming which reading this row
         // carries, so no future edit can fill a cost column from a bound without deleting an arm.
-        let (
-            observed_wall,
-            observed_cpu,
-            wall_at_least,
-            cpu_at_least,
-            wall_limit,
-            cpu_limit,
-            raised,
-        ) = match &row.reading {
-            ClaimCostReading::Observed {
-                observed_cpu_ms,
-                observed_wall_ms,
-            } => (
-                observed_wall_ms.to_string(),
-                observed_cpu_ms.to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-            ),
-            ClaimCostReading::RightCensored(reading) => (
-                String::new(),
-                String::new(),
-                reading.elapsed_wall_at_least_ms.to_string(),
-                reading.elapsed_cpu_at_least_ms.to_string(),
-                reading.wall_safety_limit_ms.to_string(),
-                reading.cpu_safety_limit_ms.to_string(),
-                reading.raised_by.label().to_string(),
-            ),
+        // EVAL STEPS ARE SPLIT BY READING EXACTLY AS THE CLOCKS ARE, and for the same reason.
+        //
+        // A COMPLETED CLAIM PERFORMED ITS STEPS. An INTERRUPTED ONE DID NOT: its count is whatever
+        // the deadline poll happened to have reached, so it is a lower bound quantised by the stop
+        // and not a property of the work. `gunbc.floor_cost_distribution` says exactly this in a
+        // comment -- "an interrupted row's `eval_steps` is itself quantised by the deadline poll"
+        // -- while pairing rows on that same column for its equal-work cohort, and
+        // `gunbc.guarantee_stall` `eval_steps_outside_the_reading_coproduct_stall` has the class on
+        // file: the knowledge lives in prose where nothing can execute it.
+        //
+        // THIS PR IS WHY THAT STOPPED BEING TOLERABLE. eval_steps is now the quantity the claim
+        // ceiling GATES on, so printing a censored row's quantised count in the same column as a
+        // performed one offers a ceiling-comparable number for a claim that never finished — the
+        // fabricated-plausible-output shape DESIGN §5 forbids, in the one column a reader is now
+        // most likely to compare against a budget. Observed in run 34743785983, which printed a
+        // censored `eval_steps=100` as a real count.
+        //
+        // THE COLUMN PAIR IS THE SCHEMA'S OWN IDIOM (`observed_cpu_ms` / `cpu_at_least_ms`), so a
+        // reader that wants performed steps reads `eval_steps` and gets nothing for a censored row,
+        // rather than getting a number that means something else. The FULL repair — moving the
+        // count inside the reading arms so no fold can compare the two without matching which it
+        // holds — is that stall row's own migration and is deliberately not ridden in here.
+        let (eval_steps_performed, eval_steps_at_least) = match &row.reading {
+            ClaimCostReading::Observed { .. } => (row.eval_steps.to_string(), String::new()),
+            ClaimCostReading::RightCensored(_) => (String::new(), row.eval_steps.to_string()),
         };
+        let (observed_wall, observed_cpu, wall_at_least, cpu_at_least, wall_limit, raised) =
+            match &row.reading {
+                ClaimCostReading::Observed {
+                    observed_cpu_ms,
+                    observed_wall_ms,
+                } => (
+                    observed_wall_ms.to_string(),
+                    observed_cpu_ms.to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ),
+                ClaimCostReading::RightCensored(reading) => (
+                    String::new(),
+                    String::new(),
+                    reading.elapsed_wall_at_least_ms.to_string(),
+                    reading.elapsed_cpu_at_least_ms.to_string(),
+                    reading.wall_safety_limit_ms.to_string(),
+                    reading.raised_by.label().to_string(),
+                ),
+            };
         writeln!(
             file,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -42777,9 +42815,9 @@ fn write_required_floor_claim_cost_tsv(
             wall_at_least,
             cpu_at_least,
             wall_limit,
-            cpu_limit,
             raised,
-            row.eval_steps,
+            eval_steps_performed,
+            eval_steps_at_least,
             row.cost_line_ms,
             row.preemption_reachability.replace(['\t', '\n'], " ")
         )
