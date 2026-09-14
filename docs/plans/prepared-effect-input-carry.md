@@ -1,7 +1,29 @@
 # Prepared effect input carried into nullary warm rows (PR two of the #10994 chain)
 
-PHASE 1 — MODEL ONLY. No code in this document's PR state; it is the shape sent to
-eager-raven-113, fierce-lark-661 and bright-boar-435 for adjudication before implementation.
+ADJUDICATED AND IMPLEMENTED. The model below was sent to eager-raven-113, fierce-lark-661 and
+bright-boar-435 before any code was written; all three approved both decisions (2026-09-14), each
+with one condition, and every condition is discharged in the landed change:
+
+- the carried value's DISPOSITION is printed on the floor's phase line beside its content digest,
+  so a run whose carrier refused is diagnosable rather than silent (bright-boar's condition on
+  Decision 1);
+- `std.materialization_ladder` is cited IN SOURCE, not only here: the four obligations are typed
+  values in `v2.workflow.floor_prepared_effect_input_ladder`, decided by the ladder's own fold and
+  exercised by `v2.test.floor_prepared_effect_input_ladder` (the condition both fierce-lark and
+  eager-raven attached to Decision 2);
+- the binding's absence after the tier is cleared has its own control (eager-raven's condition b).
+
+Two things the evidence found that this document's first cut did not, recorded because both
+changed the implementation rather than the prose:
+
+1. `run_in_context` calls `call_function` DIRECTLY, reaching neither the cross-claim tier nor the
+   prepared-input binding. A control that evaluated the producer that way asserted a value
+   RECOMPUTE also produces — the decoration DESIGN section 4b names. The controls now evaluate
+   through an ordinary call site and assert an OBSERVED SERVE from the tier's own hit observer.
+2. With that fixed, the changed-carrier RED went red on the REAL implementation: the
+   producer-to-carry map held a CLONE of the carry, so re-binding the acquisition left the key
+   unchanged and the producer was served a value derived from the previous carrier. It now holds
+   the acquisition NODE and reads its current binding at every key derivation.
 
 ## The gap, stated at the floor's own vocabulary
 
@@ -143,7 +165,27 @@ one prepared subject, with no store, no path, and no cross-run reuse. Minting a 
 would put a run-scoped binding into the durable-artifact algebra. If the reviewers read that the
 other way, the alternative is a real one and this is the decision to take before code.
 
-## Evidence plan (phase 2, after this model is adjudicated)
+## Evidence
+
+### Executed at fixture grain, through the real `install_pure_producer_share` path
+
+`cargo test --release -p v1-compiler --lib pure_producer_share` — 17 passed, 0 failed. Five of
+them are this change's:
+
+- the input is acquired ONCE and its producer warmed over it, with the producer then SERVED
+  (asserted from the tier's hit observer, not from the value);
+- **the discriminating RED**: a changed carrier content is not served the value derived from the
+  old one. Discrimination receipt — with `cross_claim_key_args` returning `None` (the
+  empty-argument-row implementation this control targets), this test FAILS; with the real
+  implementation all 17 pass;
+- the prepared-input binding is absent after the tier is cleared, and the producer answers for
+  itself again;
+- a carried row naming an input nobody prepares stops the line;
+- a non-nullary acquisition is refused.
+
+### Still owed at live grain (stated as owed, not as done)
+
+## Evidence plan (the live arm)
 
 1. **Identical verdict.** The seven required-lane claims plus #10994's forecast witness produce
    the same verdicts with the rows enrolled as without. A carry that changes a verdict is a
