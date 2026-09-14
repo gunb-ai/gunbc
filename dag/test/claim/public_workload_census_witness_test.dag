@@ -596,7 +596,9 @@ test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool {
 test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
   let selected = selected_workloads()
   count(selected) == 3
-    && count(correctness_admitted_workloads()) == 2
+    && census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_pdns_dnsdist_arm)
+    && !census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_biome_test)
+    && !census_contains_subject(rows: correctness_admitted_workloads(), needle: candidate_openobserve_arm_build)
     && candidate_biome_test.job_key == "test"
     && candidate_pdns_dnsdist_arm.job_key == "build-dnsdist"
     && candidate_openobserve_arm_build.job_key == "build_pr_image_arm64"
@@ -638,9 +640,15 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
 }
 
 test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
-  let biome = match baseline_admission(c: candidate_biome_test) {
-    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
-    BaselineRefused { cause } => false
+  let biome = match candidate_run_identity(c: candidate_biome_test) {
+    WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
+      match baseline_admission(c: candidate_biome_test) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+    RunIdentityMismatched { cause } => false
+    RunIdentityUnresolved { cause } => false
   }
   let pdns = match baseline_admission(c: candidate_pdns_dnsdist_arm) {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
@@ -746,8 +754,8 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
       BaselineRefused { cause } => false
     }
     && match baseline_admission(c: candidate_biome_test) {
-      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
-      BaselineRefused { cause } => false
+      BaselineRefused { cause } => true
+      BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
 }
 

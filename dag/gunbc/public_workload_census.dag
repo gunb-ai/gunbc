@@ -839,7 +839,9 @@ fn baseline_admission(c: WorkloadCandidate) -> BaselineAdmission {
     ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } =>
       baseline_from_observed_correctness(c: c)
     WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } =>
-      baseline_from_observed_correctness(c: c)
+      BaselineRefused {
+        cause: "workflow blob equivalence is not a versioned correctness baseline: tests, dependencies and invoked scripts can change while the workflow YAML bytes stay the same",
+      }
   }
 }
 
