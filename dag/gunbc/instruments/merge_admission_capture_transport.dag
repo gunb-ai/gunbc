@@ -13,7 +13,7 @@ fn source_root_argv(roots: List<String>) -> List<String> {
   })
 }
 
-func run_merge_admission_capture_subprocess(
+fn run_merge_admission_capture_subprocess(
   source_roots: List<String>,
   claim_entry: String,
   claim_function: String

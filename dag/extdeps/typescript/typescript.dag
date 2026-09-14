@@ -1,0 +1,48 @@
+module extdeps.typescript
+
+import std.types { FilePath, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/compiler-options.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.typescript",
+      decl_name: "typescript.Compiler",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// TypeScript 5.9.2 tsc CLI realization. npx fetches the compiler at runtime, so this
+// operation is NOT hermetic. Fetch or compiler failures remain nonzero exits; there
+// is no fallback. A hermetic compile authority remains the dissolution condition in
+// tools.emit_host_transport.emit_host_ts_compilation_missing_trigger.
+// tsc may emit JavaScript while reporting type diagnostics and exiting nonzero:
+// success describes the exit, never the existence or absence of emitted files.
+service typescript.Compiler {
+  operation Compile {
+    input { workdir: FilePath, source_path: FilePath, out_dir: FilePath, target: String, module: String }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "npx", "-y", "-p", "typescript@5.9.2", "tsc", "--target", "{target}", "--module", "{module}", "--outDir", "{out_dir}", "{source_path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "TypeScript compilation or compiler acquisition reported failure; output files may exist"
+    }
+  }
+}

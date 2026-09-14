@@ -65,6 +65,7 @@ import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_ver
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
 import gunbc.rung_drop.roadmap_sizing_authored_to_derived { roadmap_sizing_authored_to_derived }
+import gunbc.rung_drop.long_home_enrolment_margin_observed_only { long_home_enrolment_margin_observed_only }
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
 import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_healed_head_executed_verdict_without_human }
@@ -116,6 +117,7 @@ data rung_drop_roster: List<RungDrop> = [
   v1_consumer_census_live_population_off_the_merge_path(),
   long_module_changed_witness_cpu_observed_only,
   roadmap_sizing_authored_to_derived,
+  long_home_enrolment_margin_observed_only,
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
   heal_healed_head_executed_verdict_without_human,

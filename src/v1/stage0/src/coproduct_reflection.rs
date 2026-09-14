@@ -1534,7 +1534,7 @@ pub fn eval_fn_arrow_decl_facts_live(
     let (fn_decls, _module_count) = decls_parse_only_fail_closed(
         &abs_pool_roots,
         &pool_files,
-        &[ItemKind::FnItem, ItemKind::FuncItem],
+        &[ItemKind::FnItem],
         "fn_arrow_decl_facts_live",
     )
     .map_err(|msg| InterpError::TypeError { msg })?;
@@ -1882,11 +1882,10 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {
             ItemKind::FnItem => 0,
-            ItemKind::FuncItem => 1,
-            ItemKind::TypeItem => 2,
-            ItemKind::DataItem => 3,
-            ItemKind::ServiceItem => 4,
-            ItemKind::OtherItem => 5,
+            ItemKind::TypeItem => 1,
+            ItemKind::DataItem => 2,
+            ItemKind::ServiceItem => 3,
+            ItemKind::OtherItem => 4,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1909,7 +1908,6 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
 fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
     let variant = match kind {
         ItemKind::FnItem => "FnItem",
-        ItemKind::FuncItem => "FuncItem",
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
@@ -1931,7 +1929,7 @@ fn marshal_decl_fact_node(
 ) -> InterpResult<Value> {
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
-        ItemKind::FnItem | ItemKind::FuncItem => {
+        ItemKind::FnItem => {
             Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
@@ -1985,7 +1983,7 @@ fn marshal_export_signature_node(
 ) -> InterpResult<Value> {
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
-        ItemKind::FnItem | ItemKind::FuncItem => marshal_fn_export_signature_node(ctx, si, item),
+        ItemKind::FnItem => marshal_fn_export_signature_node(ctx, si, item),
         ItemKind::DataItem => match item
             .inferred
             .as_ref()

@@ -43,7 +43,7 @@ fn cron_tag_upsert_protocol_keystone_holds() -> Bool {
     && witness_upsert_tagged_entries_appends_when_tag_absent()
 }
 
-func upsert_tagged_cron_tab(
+fn upsert_tagged_cron_tab(
   tag: String,
   schedule: String,
   command: String,
