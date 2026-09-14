@@ -1,0 +1,65 @@
+--- a/src/v2/lens/complexity_accumulator_copy/corpus_census.dag
++++ b/src/v2/lens/complexity_accumulator_copy/corpus_census.dag
+@@ -17,6 +17,7 @@
+   corpus_paths,
+   corpus_report,
+   corpus_report_from_rows,
++  corpus_file_row,
+   corpus_rows_for_paths
+ }
+ import std.algebra { Cons, Empty }
+@@ -58,7 +59,16 @@
+ import v2.std.node_query { find_arrow_body_child, find_named_child }
+ import v2.std.witness { Holds, Violates }
+ import v2.std.collection { List }
+-import v2.std.integer { Int }
++import v2.std.integer { Int, integer_int_to_decimal_string }
++import v2.lens.common.source_analysis_standing {
++  LanguageGrammarRejected,
++  LanguageGrammarUnavailable,
++  SourceAnalysisNotEstablishedCause,
++  SourceNormalizationRejected,
++  SourceParseRejected,
++  SourceTokenizationRejected,
++  SourceUnreadable
++}
+ import v2.lens.complexity_accumulator_copy.roster_gate {
+   GateClean,
+   GateNotEstablished,
+@@ -219,6 +229,36 @@
+   corpus_report_from_rows(rows: corpus_rows_for_paths(paths: split(s: paths_csv, delimiter: ",")))
+ }
+ 
++fn not_established_cause_token(cause: SourceAnalysisNotEstablishedCause) -> String {
++  match cause {
++    LanguageGrammarUnavailable => "LanguageGrammarUnavailable"
++    LanguageGrammarRejected => "LanguageGrammarRejected"
++    SourceUnreadable => "SourceUnreadable"
++    SourceTokenizationRejected => "SourceTokenizationRejected"
++    SourceParseRejected => "SourceParseRejected"
++    SourceNormalizationRejected => "SourceNormalizationRejected"
++  }
++}
++
++fn census_tsv_line_for_path(path: String) -> String {
++  let row = corpus_file_row(path: path)
++  match row.standing {
++    CorpusFileScanned { suspects: s, refusals: r, causes: _ } =>
++      concat(
++        path,
++        concat(
++          "\tscanned\t",
++          concat(
++            integer_int_to_decimal_string(value: s),
++            concat("\t", integer_int_to_decimal_string(value: r))
++          )
++        )
++      )
++    CorpusFileNotEstablished { cause: cause } =>
++      concat(path, concat("\tnot_established\t", concat(not_established_cause_token(cause: cause), "\t0")))
++  }
++}
++
+ fn subtree_gate() -> CorpusGateDisposition {
+   corpus_gate(pool_roots: ["dag/extdeps/filesystem"], population_floor: 5)
+ }

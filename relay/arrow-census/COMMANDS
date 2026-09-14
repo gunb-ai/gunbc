@@ -1,0 +1,59 @@
+NOT FOR MERGE. Branch origin/relay/arrow-census. Delete after the #11315 census receipt is attached.
+
+ARMS (parent builds once each on srv1)
+  before:  origin/main  0d96f5e27c46764bcb103076abd413cfcb03edd6
+           then: git apply relay/arrow-census/tsv-onto-main.patch
+           (TSV channel only; does not change fold lowering)
+  after:   5f931fcc92a  (census_tsv_line_for_path already present)
+
+BUILD (each arm-root)
+  export PATH="/home/briansrls/.cargo/bin:$PATH"
+  export CTRL_BUILD_MODE=local
+  export RUSTFLAGS='-D warnings'
+  cargo build --release -p v1-compiler --bin gunbc
+  binary: $ARM_ROOT/target/release/gunbc
+
+FIXTURE CONTROL
+  test/fixture_roots/complexity_accumulator_copy/clean_linear.dag
+  expected TSV standing: scanned  0  0
+
+POPULATION
+  relay/arrow-census/arrow-form-files.txt
+  520 paths, sorted UTF-8 byte order, under dag/ and src/v2, produced by:
+  f: ( ... =>  inside 400 chars, after stripping f: fn(
+  (520 on 5f931fcc92a; the ~518 figure was the same heuristic on origin/main.)
+
+BATCH 1 SLICE
+  relay/arrow-census/batch1-slice.txt
+  = fixture + first 16 lines of arrow-form-files.txt  (17 paths)
+
+PER-FILE COMMAND (cwd = arm-root)
+  $GUNBC run --source-root dag --source-root src/v2 \
+    --entry src/v2/lens/complexity_accumulator_copy/corpus_census.dag \
+    --function census_tsv_line_for_path \
+    --arg path=<relative-path>
+
+TSV CAPTURE
+  census_tsv_line_for_path returns String, not ProcessExit. gunbc exits 2 and prints:
+    error: function `census_tsv_line_for_path` returned `<LINE>`, not `ProcessExit`.
+  <LINE> is:
+    <path>	scanned	<suspects>	<refusals>
+    or
+    <path>	not_established	<cause>	0
+  Extract with: returned `(.*)`, not `ProcessExit`
+
+RUN A SLICE
+  bash relay/arrow-census/run-slice.sh <arm-root> <file-list-slice> <out-dir>
+  Each file: systemd-run --user --scope -p MemoryMax=16G -p RuntimeMaxSec=1200
+             /usr/bin/time -v <per-file command>
+  First file in the slice reads /sys/fs/cgroup/memory.max inside the scope (written once to out-dir/memory.max.readback).
+  Appends one TSV row per file to out-dir/runs.tsv
+  Columns: path	reason	wall_sec	cpu_user_sec	cpu_sys_sec	max_rss_kb	status	tsv
+  reason is one of: ok | suspect | timeout | oom | other
+
+  Parallelism 8 is the caller's job (split the slice, 8 invocations, or xargs -P 8 wrapping
+  single-path slices). This script is one slice, sequential, so MemoryMax readback is unambiguous.
+
+JOIN
+  stern-cat-726 keeps authorship of newly_red_difference over the two arms' runs.tsv.
+  newly red = after reason=suspect AND before reason=ok. timeout/oom/other = unmeasured, not red.

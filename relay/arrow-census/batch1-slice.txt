@@ -1,0 +1,17 @@
+test/fixture_roots/complexity_accumulator_copy/clean_linear.dag
+dag/extdeps/accounting/budget.dag
+dag/extdeps/accounting/encumbrance.dag
+dag/extdeps/ampere/mt_collins_product_brief/memory_population.dag
+dag/extdeps/astronomy/stellar_classification.dag
+dag/extdeps/bazel/target_pattern.dag
+dag/extdeps/bmc/access_profile.dag
+dag/extdeps/bmc/capability.dag
+dag/extdeps/bmc/os_install_actuator_toolchain.dag
+dag/extdeps/bmc/pid_control_decode.dag
+dag/extdeps/bmc/redfish.dag
+dag/extdeps/bmc/redfish_virtual_media.dag
+dag/extdeps/bmc/types.dag
+dag/extdeps/bmc/webui/nbd_proxy_serve.dag
+dag/extdeps/boards/asrock_rack.dag
+dag/extdeps/boards/types.dag
+dag/extdeps/cloud/gcp/auth_print_access_token.dag
