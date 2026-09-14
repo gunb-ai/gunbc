@@ -107,30 +107,39 @@ fn cloudflare_r2_data_paths() -> ProviderDataPathClosure {
   ProviderDataPathClosure {
     execution: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
+      consulted: [],
     },
     durable_storage: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+      consulted: [],
     },
     backups: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_backups_location_obligation"),
+      consulted: [],
     },
     logs: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_logs_location_obligation"),
+      consulted: [],
     },
     telemetry: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_telemetry_location_obligation"),
+      consulted: [],
     },
     control_plane: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_control_plane_location_obligation"),
+      consulted: [],
     },
     support_access: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_support_access_obligation"),
+      consulted: [],
     },
     administrative_access: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_administrative_access_obligation"),
+      consulted: [],
     },
     spill: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_spill_location_obligation"),
+      consulted: [],
     },
   }
 }
