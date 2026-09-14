@@ -3,6 +3,10 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import extdeps.tools.sha256sum
+import gunbc.output_policy { OutcomeIsData }
 import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -344,6 +348,40 @@ type SparkPairUnitRender
   = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
   | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
+// THE DECLARED UNIT DIGEST IS THE SHA-256 OF THE RENDERED BYTES, taken once at this render
+// boundary. The host probe's unit_sha is the same family (FIPS 180-4 via sha256sum stdin). A
+// structural fingerprint of the Dag value is a different family and must not stand here: compared
+// with the observed unit digest it would be incomparable, never agreement. A hash of a host copy
+// is an observation, not a declaration. This is configuration provenance, not loaded-weight identity.
+type DeclaredUnitDigestStanding
+  = DeclaredUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
+  | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
+
+fn spark_pair_digest_unit_render(render: SparkPairUnitRender) -> DeclaredUnitDigestStanding {
+  match render {
+    SparkPairUnitRenderRefused { unit_name: n, cause: c } =>
+      DeclaredUnitDigestUnavailable { obligation: c }
+    SparkPairUnitRendered { unit_name: n, text: t } => {
+      let observed = sha256sum.Sha256.DigestStdin(content: t, expect: OutcomeIsData)
+      if observed.success == false {
+        DeclaredUnitDigestUnavailable { obligation: "sha256sum could not digest the rendered head unit bytes" as NonEmptyStr }
+      } else {
+        match sha256sum_line_digest(line: observed.line) {
+          Absent =>
+            DeclaredUnitDigestUnavailable { obligation: "sha256sum printed no digest field for the rendered head unit bytes" as NonEmptyStr }
+          Present { value: d } =>
+            match sha256_digest_content_hash(digest: d) {
+              Absent =>
+                DeclaredUnitDigestUnavailable { obligation: "the sha256sum hex for the rendered head unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
+              Present { value: h } =>
+                DeclaredUnitDigested { unit_name: n, digest: h }
+            }
+        }
+      }
+    }
+  }
+}
+
 fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
@@ -480,6 +518,30 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
 
 fn spark_pair_realizations() -> List<SparkPairRealization> {
   map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
+}
+
+fn spark_pair_head_unit_declared_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match first(flat_map(spark_pair_realizations(), r =>
+    match r {
+      SparkPairRealizationRefused { group: g, cause: c } =>
+        if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) {
+          [DeclaredUnitDigestUnavailable { obligation: c }]
+        } else {
+          [] as List<DeclaredUnitDigestStanding>
+        }
+      SparkPairRealized { group: g, head: h, workers: _ } =>
+        if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) {
+          [spark_pair_digest_unit_render(render: h.unit)]
+        } else {
+          [] as List<DeclaredUnitDigestStanding>
+        }
+    })) {
+    Absent =>
+      DeclaredUnitDigestUnavailable {
+        obligation: "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr,
+      }
+    Present { value: standing } => standing
+  }
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a

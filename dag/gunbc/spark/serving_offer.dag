@@ -29,7 +29,10 @@ import gunbc.spark.vllm_serving_launch {
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
   launch_unit_provenance, launch_wire,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
+import gunbc.spark.pair_serving_realization {
+  spark_pair_head_unit_name,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+}
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
 import gunbc.serving.serving_availability {
@@ -331,16 +334,11 @@ type SparkServiceIdentityCause
   | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
   | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
 
-// THE DECLARED SIDE OF THE UNIT COMPARISON IS ITSELF A STANDING, because nothing in .dag computes it.
-// std.content_hash only admits a SHA-256 read from outside as hex (sha256_hex_digest), and the probe's
-// unit_sha is a SHA-256 of the unit file on the host. Minting a structural fingerprint of the rendered
-// text and comparing it to that would be a cross-family comparison: incomparable, never agreement.
-// The production caller therefore passes DeclaredUnitDigestUnavailable.
-type DeclaredUnitDigestStanding
-  = DeclaredUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
-  | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
-
-data spark_pair_head_unit_digest_unavailable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no operation available to this path computes a SHA-256 over the rendered bytes of gunbc.spark.pair_serving_realization spark_pair_head_unit_file, so there is no declared unit digest in the family the host's unit_sha is read in, and whether the answering incarnation was launched from our declaration cannot be compared. TRIGGER: a SHA-256 digest of the rendered head unit bytes, SUFFICIENT FOR DeclaredUnitDigested to be compared with VllmServingLaunch.unit_digest through gunbc.spark.vllm_serving_launch launch_unit_provenance"
+// THE DECLARED SIDE OF THE UNIT COMPARISON IS MINTED AT THE RENDER BOUNDARY
+// (gunbc.spark.pair_serving_realization spark_pair_digest_unit_render): SHA-256 of the exact
+// rendered systemd unit bytes, or a refusal that carries the render/hash refusal. This module
+// consumes that standing; it does not hash. A structural fingerprint remains the wrong family.
+data spark_pair_head_unit_digest_unavailable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the declared head-unit digest was not supplied to this standing, so whether the answering incarnation was launched from our declaration cannot be compared. TRIGGER: gunbc.spark.pair_serving_realization spark_pair_head_unit_declared_digest, SUFFICIENT FOR DeclaredUnitDigested to be compared with VllmServingLaunch.unit_digest through gunbc.spark.vllm_serving_launch launch_unit_provenance"
 
 data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: the engine incarnation the answering endpoint process belongs to was not observed on this bind. gunbc.spark.serving_incarnation_observe is the producer -- it binds the answering exporter to a gunbc.spark.vllm_serving_launch VllmServingLaunch over the fleet key session -- and this standing is reached when that producer returned no observation for a specific reason it names: no fleet ssh context on this bind, the process not found or ambiguous at the exported start instant, hidepid hiding /proc, or the container image id unread. That last needs gunbc.spark.managed_access_bootstrap InspectServingContainer (installed through gunbc.spark.managed_grant_install): the unprivileged facts -- unit, start-tick identity, cgroup container id -- are established without it, but the image digest that completes the launch is read only through the inspect leg, so a host without that grant fails the inspect command (sudo denies) with the container named"
 

@@ -18,7 +18,8 @@ import gunbc.spark.vllm_observed {
   ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
 }
 import gunbc.spark.pair_serving_realization {
-  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_head_unit_name,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
 }
 import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
@@ -40,7 +41,6 @@ import gunbc.spark.serving_offer {
   SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
   ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
-  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   spark_pair_head_unit_digest_unavailable_obligation, spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch {
@@ -49,9 +49,7 @@ import gunbc.spark.vllm_serving_launch {
   LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
 }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
-import gunbc.harness.harness_seat { harness_serving_route }
 import gunbc.spark.first_party_serving { spark_first_party_route }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 
 // THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
 // membership is checked against the operator's allocation and can establish the region. The readback
@@ -520,6 +518,7 @@ test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Boo
     ServingRouteRegionUnobserved { obligation: _ } => false
   }
 }
+
 
 fn t_sha256(hex: String) -> ContentHash {
   Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })

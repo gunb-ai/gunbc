@@ -50,9 +50,10 @@ import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkOfferProjection,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
-  SparkServingRoute, DeclaredUnitDigestUnavailable, spark_pair_head_unit_digest_unavailable_obligation,
+  SparkServingRoute,
   spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_declared_digest }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
 import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
@@ -570,9 +571,8 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
 // below), reading the group's head host over the fleet key session at the same instant the endpoint
 // launch was read, and a witness hands in a fixture observation to drive the arms past the
-// incarnation refusal. One absence remains real on this path and is stated where it is passed: no
-// SHA-256 of the rendered head unit exists to compare a launch's unit digest with, so a route with an
-// observed incarnation stops at ServiceDeclaredUnitDigestUnavailable until that digest exists.
+// incarnation refusal. The declared head-unit digest is the SHA-256 of the bytes
+// gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -585,7 +585,7 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
 fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRoute {
   spark_serving_route_standing(
     realization: harness_serving_realization(group: group, launch: launch, readback: readback, incarnation: incarnation),
-    declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation },
+    declared_unit: spark_pair_head_unit_declared_digest(group: group),
   )
 }
 

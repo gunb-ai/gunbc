@@ -986,7 +986,16 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_spx_ui_surface_hashes_to_the_catalog_identity", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_sol_host_payload_hashes_to_the_positive_control_identity", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {}
+    tail: Cons {
+      head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.hashing_the_same_rendered_bytes_is_stable", operation: "DigestStdin", ground: NoMockResponse {} },
+      tail: Cons {
+        head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.unit_text_differing_by_one_byte_gives_a_different_digest", operation: "DigestStdin", ground: NoMockResponse {} },
+        tail: Cons {
+          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.a_declared_observed_mismatch_does_not_bind_as_declared", operation: "DigestStdin", ground: NoMockResponse {} },
+          tail: Empty {}
+        }
+      }
+    }
   }
   }
   }

@@ -940,6 +940,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_digest_stdin_reason,
     dissolution: excl_local_repo_wet_digest_stdin_dissolve},
   WitnessExclusionRow {
+    pattern: "spark_pair_head_unit_digest_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "materialization_store_local_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
