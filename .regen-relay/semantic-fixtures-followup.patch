@@ -1,5 +1,5 @@
 diff --git a/src/v1/stage0/src/bin/infer_semantics_witness.rs b/src/v1/stage0/src/bin/infer_semantics_witness.rs
-index 21c934599e0..b0965061a73 100644
+index 21c934599e0..415263e1241 100644
 --- a/src/v1/stage0/src/bin/infer_semantics_witness.rs
 +++ b/src/v1/stage0/src/bin/infer_semantics_witness.rs
 @@ -22,17 +22,17 @@ use v1_compiler::v1_compiler_infer_patterns::{self, NodeLookupStatus};
@@ -204,7 +204,7 @@ index 21c934599e0..b0965061a73 100644
          }
          other => panic!("expected Resolved(Int?), got {:?}", other),
      }
-@@ -2263,8 +2252,29 @@ fn authored_optional_wrong_arity_refuses() {
+@@ -2263,8 +2252,46 @@ fn authored_optional_wrong_arity_refuses() {
      );
  }
  
@@ -225,8 +225,25 @@ index 21c934599e0..b0965061a73 100644
 +    )), "malformed owner must refuse at the producer");
 +}
 +
++// Consumer: node_type_compatible must preserve the element-mismatch refusal
++// when inference stops producing CardOptional. Shared owner spelling is insufficient.
++fn optional_application_rejects_mismatched_element() {
++    assert!(
++        !node_type_compatible(
++            make_optional_type(leaf_node("Int".to_string())),
++            make_optional_type(leaf_node("String".to_string())),
++            empty_source_indices(),
++        ),
++        "Optional<Int> and Optional<String> must remain incompatible"
++    );
++}
++
  fn main() -> ExitCode {
      let tests: &[(&str, fn())] = &[
++        (
++            "optional_application_rejects_mismatched_element",
++            optional_application_rejects_mismatched_element,
++        ),
 +        (
 +            "optional_application_rejects_non_coproduct_owner",
 +            optional_application_rejects_non_coproduct_owner,

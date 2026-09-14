@@ -1,0 +1,5 @@
+# Refusal-preservation blocker
+
+Exact main committed seed ed853cf430e executes node_type_compatible on Int? versus String? as false, but on applied Optional<Int> versus Optional<String> as true. The reduction uses the existing semantic witness fixtures with_optional_cardinality and applied_generic_type_node; it diagnoses the comparator, not the ungenerated B seed. The comparator's remaining non-collection application path compares only authored names, so the approved deletion of CardOptional recursion would erase the old element mismatch refusal when the producers switch to applied Optional.
+
+Production edits are paused pending gatekeeper ruling msg_77fcd537. Recommendation: ordinary canonical application-argument comparison at the shared root, no Optional-specific equivalence and no CardOptional compatibility. The decision is whether that belongs in B or proves B needs the broader argument-role cut and must compose as A. The permanent negative optional_application_rejects_mismatched_element is included in the semantic fixture followup, using the actual canonical producer after regeneration. The pending transaction input remains unchanged.
