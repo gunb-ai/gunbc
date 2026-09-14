@@ -272,7 +272,11 @@ type MergeQueueDesire
 
 type BypassRosterDesire
   = BypassRosterUnsigned { awaiting: DissolutionCondition }
-  | BypassRosterSignedOff { actors: List<RulesetBypassActor>, ruling: NonEmptyStr }
+  | BypassRosterSignedOff {
+      actors: List<RulesetBypassActor>,
+      ruling: NonEmptyStr,
+      restoration: DissolutionCondition,
+    }
 
 // THE PROPOSED SETTINGS, EACH DERIVED RATHER THAN PICKED.
 //
@@ -299,13 +303,10 @@ type BypassRosterDesire
 // THE ENTRY COUNTS ARE THE OPERATOR'S LIVE CHOICE, not the commissioning 1s this file first
 // proposed. Merging one at a time still means a failure names one pull request rather than a
 // batch. Building three at a time is what the operator set on 2026-09-13 after the one-entry
-// protocol was observed converging; declaring 1 would PUT over that raise.
+// protocol was observed converging; declaring 1 would PUT over that raise. Re-derive live
+// parameters with github.Rulesets.Get / `verify`, not a transcribed GET snapshot.
 //
-// max_entries_to_build ROSE. The trigger lived on merge_queue_build_concurrency_increase; it
-// FIRED (receipt on that row). This file does not re-bind it as a live bound.
-//
-// min_entries_to_merge_wait is the live GET's 1 (2026-09-14), not the commissioning 5.
-data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_dissolution(description: "FIRED 2026-09-13: operator raised the live passing-CI ruleset (id 16178731) max_entries_to_build from 1 to 3 after ~40 queue landings that day -- entries composed, the required aggregate executing on each composition, successful candidates advancing: the one-entry protocol this row named was observed converging. GET 2026-09-14 still reads build 3 / merge 1 / min 1 / wait 1 / timeout 90 / ALLGREEN / SQUASH. This row is history, not a live bound. Desired max_entries_to_build is 3.")
+// min_entries_to_merge_wait follows the same live choice (1), not the commissioning 5.
 // The margin covers queue-side scheduling either side of the check itself -- the composition being
 // built and the result being reported -- which is time the floor's own job timeout does not bound.
 data merge_queue_response_margin: Minute = minute(count: 30)
@@ -364,7 +365,7 @@ fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
 
 data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
   policy: merge_queue_floor_aligned_policy(),
-  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90. Operator raised max_entries_to_build to 3 on 2026-09-13 after ~40 queue landings; GET 2026-09-14 reads 3 -- declare 3, do not PUT 1 over it." as NonEmptyStr,
+  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90. Operator raised max_entries_to_build to 3 on 2026-09-13 after ~40 queue landings; declare 3 so Apply does not PUT 1 over it. Re-derive with github.Rulesets.Get / verify." as NonEmptyStr,
 }
 
 data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
@@ -376,12 +377,13 @@ data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
     }
   ],
   ruling: "Operator emergency path; a bypass merge is a landing the composed run cannot vouch for — recorded, not forbidden. royal-eagle-761 2026-09-13: keep Maintain always-allow as desired until the operator rules to drop it, so the first converge is a Noop rather than stripping the path." as NonEmptyStr,
+  restoration: unbound_dissolution(description: "Operator ruling to drop Maintain always-allow from the passing-CI ruleset. Until that ruling this grant stays desired so Apply does not revoke a path the operator already enabled."),
 }
 
 fn desired_bypass_actors() -> List<RulesetBypassActor> {
   match desired_bypass_roster {
     BypassRosterUnsigned { awaiting: _ } => []
-    BypassRosterSignedOff { actors: as_, ruling: _ } => as_
+    BypassRosterSignedOff { actors: as_, ruling: _, restoration: _ } => as_
   }
 }
 
@@ -1576,14 +1578,37 @@ fn repo_ruleset_ensure_plan_for(
   }
 }
 
+fn put_would_destroy_undeclared_or_unread_live_state(d: RulesetDivergence) -> Bool {
+  match d {
+    RulesetRuleUnexpected { rule: _ } => true
+    RulesetBypassActorUnexpected { actor: _ } => true
+    RefNameExcludeNonEmpty { observed: _ } => true
+    RefNameIncludeDrift { observed: _ } => true
+    RequiredContextUnexpected { context: _ } => true
+    RequiredContextUnactionable { count: _ } => true
+    RequiredStatusChecksParametersUnreadable { missing: _ } => true
+    RequiredStatusChecksRuleAmbiguous { count: _ } => true
+    MergeQueueParametersUnreadable { missing: _ } => true
+    MergeQueueRuleAmbiguous { count: _ } => true
+    MergeQueueUndeclared { grouping_strategy: _, merge_method: _ } => true
+    ReaderBypassStandingUnrecognized { raw: _ } => true
+    RulesetNameDrift { observed: _ } => false
+    RulesetEnforcementDrift { observed: _ } => false
+    RulesetTargetDrift { observed: _ } => false
+    RulesetBypassGranted { observed: _ } => false
+    RulesetRuleAbsent { rule: _ } => false
+    RequiredStatusChecksRuleAbsent => false
+    RequiredContextMissing { context: _ } => false
+    StrictPolicyDrift { observed: _ } => false
+    DoNotEnforceOnCreateDrift { observed: _ } => false
+    RulesetBypassActorAbsent { actor: _ } => false
+    MergeQueueRuleAbsent => false
+    MergeQueueSettingDrift { setting: _, observed: _, desired: _ } => false
+  }
+}
+
 fn divergences_a_put_would_destroy(ds: List<RulesetDivergence>) -> List<RulesetDivergence> {
-  fold(ds, init: [], f: fn(acc, d) {
-    match d {
-      RulesetRuleUnexpected { rule: _ } => append(acc, items: [d])
-      RulesetBypassActorUnexpected { actor: _ } => append(acc, items: [d])
-      _ => acc
-    }
-  })
+  filter(ds, d => put_would_destroy_undeclared_or_unread_live_state(d: d))
 }
 
 fn merge_queue_put_plan() -> EnsurePlan<RepoRulesetApplyPlan> {

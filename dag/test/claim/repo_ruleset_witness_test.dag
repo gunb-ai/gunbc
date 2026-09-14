@@ -1,6 +1,7 @@
 module test.claim.repo_ruleset_witness_test
 
 import std.types { Bool, String, Int, NonEmptyStr }
+import std.dissolution { dissolution_description }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
@@ -69,6 +70,7 @@ import extdeps.github.rulesets {
   RequiredStatusChecksRule,
   PullRequestRule,
   RequiredStatusChecks,
+  RequiredStatusChecksParametersIncomplete,
   NoRequiredStatusChecksRule,
   MultipleRequiredStatusChecksRules,
   RequiredStatusCheckStanding,
@@ -653,8 +655,8 @@ test fn w_RED_an_unobserved_bypass_roster_is_an_unknown_and_not_a_divergence() -
 test fn w_the_bypass_roster_carries_a_signed_ruling() -> Bool {
   match desired_bypass_roster {
     BypassRosterUnsigned { awaiting: _ } => false
-    BypassRosterSignedOff { actors: as_, ruling: r } =>
-      length(as_) == 1 && (r as String) != ""
+    BypassRosterSignedOff { actors: as_, ruling: r, restoration: rest } =>
+      length(as_) == 1 && (r as String) != "" && (dissolution_description(condition: rest) != "")
   }
 }
 
@@ -703,6 +705,48 @@ test fn w_RED_an_undeclared_live_rule_refuses_apply() -> Bool {
     bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
   }) {
     Refuse { reason: r } => string_contains(s: r, pattern: "undeclared rule present")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_a_live_ref_name_exclude_refuses_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: ["refs/heads/do-not-wipe"],
+    rule_types: desired_ruleset_rule_types(),
+    standing: desired_shaped_standing(),
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undeclared live state")
+        && string_contains(s: r, pattern: "ref_name exclude")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn w_RED_unreadable_required_status_check_parameters_refuse_apply() -> Bool {
+  match repo_ruleset_ensure_decision(observed: RulesetObserved {
+    name: gunbc_passing_ci_ruleset_name,
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [default_branch_ref_alias],
+    exclude: [],
+    rule_types: desired_ruleset_rule_types(),
+    standing: RequiredStatusChecksParametersIncomplete { missing: ["strict_required_status_checks_policy"] },
+    merge_queue: desired_merge_queue_standing(),
+    bypass_roster: BypassRosterObserved { actors: desired_bypass_actors() },
+  }) {
+    Refuse { reason: r } =>
+      string_contains(s: r, pattern: "undeclared live state")
+        && string_contains(s: r, pattern: "did not carry")
     Noop => false
     Apply { plan: _ } => false
   }
