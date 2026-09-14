@@ -640,9 +640,9 @@ test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bo
     scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1") },
     request: witness_write_request(),
   )
-  let this_attempt_dir = concat(
-    r2_mint_receipt_dir_root, r2_mint_receipt_dir,
-    concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2"), "/"))
+  let this_attempt_dir = r2_mint_receipt_dir(
+    scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2") },
+  )
   string_contains(s: stale, pattern: "-mint-receipt.txt")
     && !string_contains(s: stale, pattern: this_attempt_dir)
 }
@@ -652,9 +652,9 @@ test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bo
 // so that file is not evidence for any attempt instead of being evidence for this one.
 test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool {
   let unscoped = r2_mint_receipt_path_in(scope: R2MintReceiptUnscoped, request: witness_write_request())
-  let attempt_dir = concat(
-    r2_mint_receipt_dir_root, r2_mint_receipt_dir,
-    concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1"), "/"))
+  let attempt_dir = r2_mint_receipt_dir(
+    scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1") },
+  )
   !string_contains(s: unscoped, pattern: attempt_dir)
 }
 
