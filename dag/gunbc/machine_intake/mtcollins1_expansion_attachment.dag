@@ -1,0 +1,108 @@
+module gunbc.machine_intake_mtcollins1_expansion_attachment
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic2, OcpNic3, PcieCem, VendorDaughterCard }
+import extdeps.standards.ocp_nic_2_0 { ocp_nic_2_generation_label }
+import extdeps.standards.ocp_nic_3_0 { ocp_nic_3_generation_label }
+import extdeps.ampere.mt_collins_1u_product_brief.specifications {
+  OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot, mt_collins_1u_ocp_slot,
+}
+import gunbc.machine_intake_mtcollins1_expansion_observation {
+  MtCollinsUnitExpansionEvidence, UnitExpansionEvidence, NoExpansionObservationForUnit,
+  OcpPhysicalVariantStanding, OcpPhysicalVariantUnresolved, OcpPhysicalVariantCited,
+  AttachmentPointOffered, AttachmentPointUnobserved, AttachmentPointAbsent,
+  AttachmentPointOccupied, AttachmentPointReportExceedsPlatform,
+  expansion_evidence_for_unit,
+}
+
+// Admission is ONLY an attachment-interface/generation match for evaluation.
+// It cannot construct physical-fit, installed-configuration, qualification or
+// multi-host compatibility evidence. In particular OCP 3.0 does not entail SFF.
+// Consumer: candidate_verdicts and its executing witness in this change.
+type AdmissionScope = InterfaceGenerationOnly {} | InterfaceFamilyOnly {}
+
+type PhysicalFitStanding = PhysicalFitUnresolved { candidate: NicAttachmentClass, settled_by: NonEmptyStr }
+
+type AttachmentRefusal
+  = WrongOcpGeneration { candidate_generation: NonEmptyStr, bay_generation: NonEmptyStr }
+  | WrongInterfaceFamily { candidate: NicAttachmentClass }
+  | RiserOccupancyUnobserved { platform_upper_bound: Nat, settled_by: NonEmptyStr }
+  | AttachmentPointUnavailable { basis: NonEmptyStr }
+  | OccupiedAttachmentPoint { basis: NonEmptyStr }
+  | RiserReportExceedsPlatform { reported: Nat, platform_upper_bound: Nat }
+  | NoObservationForUnit { requested_unit: DeclarationRef }
+
+type AttachmentVerdict
+  = Admitted {
+      scope: AdmissionScope,
+      physical_fit: PhysicalFitStanding,
+      unit_evidence: MtCollinsUnitExpansionEvidence,
+    }
+  | Refused { cause: AttachmentRefusal }
+
+fn ocp_generation_attachment(
+  candidate: NicAttachmentClass,
+  candidate_generation: NonEmptyStr,
+  bay: OcpSlotStanding,
+  evidence: MtCollinsUnitExpansionEvidence,
+  physical_variant: OcpPhysicalVariantStanding,
+) -> AttachmentVerdict {
+  match bay {
+    NoOcpSlot => Refused { cause: AttachmentPointUnavailable { basis: "The platform declares no OCP bay." } }
+    OcpMezzanineSlotPresent { generation: generation, multi_host: _, occupancy_note: _ } => {
+      if generation != candidate_generation {
+        Refused { cause: WrongOcpGeneration { candidate_generation: candidate_generation, bay_generation: generation } }
+      } else {
+        Admitted {
+          scope: InterfaceGenerationOnly {},
+          physical_fit: PhysicalFitUnresolved {
+            candidate: candidate,
+            settled_by: match physical_variant {
+              OcpPhysicalVariantUnresolved { settled_by: settle } => settle
+              OcpPhysicalVariantCited { variant: _, authority: _ } => "The bay variant is cited; compare this candidate's retention and clearance with the exact bay before asserting physical fit. Firmware, thermal and host-topology qualification are separate obligations."
+            },
+          },
+          unit_evidence: evidence,
+        }
+      }
+    }
+  }
+}
+
+// The supplied evidence remains in the admitted receipt so OCP occupancy cannot
+// disappear when the generation matches. An aperture count is never read here.
+fn attachment_against_evidence(candidate: NicAttachmentClass, evidence: MtCollinsUnitExpansionEvidence, bay: OcpSlotStanding) -> AttachmentVerdict {
+  match evidence {
+    NoExpansionObservationForUnit { requested_unit: unit } => Refused { cause: NoObservationForUnit { requested_unit: unit } }
+    UnitExpansionEvidence { observation: observation, pcie: pcie, ocp: _ } => match candidate {
+      VendorDaughterCard { form_authority: _, form_name: _ } => Refused { cause: WrongInterfaceFamily { candidate: candidate } }
+      OcpNic2 { physical_variant: _ } => ocp_generation_attachment(candidate: candidate, candidate_generation: ocp_nic_2_generation_label, bay: bay, evidence: evidence, physical_variant: observation.ocp_physical_variant)
+      OcpNic3 { physical_variant: _ } => ocp_generation_attachment(candidate: candidate, candidate_generation: ocp_nic_3_generation_label, bay: bay, evidence: evidence, physical_variant: observation.ocp_physical_variant)
+      PcieCem => match pcie {
+        AttachmentPointOccupied { basis: basis } => Refused { cause: OccupiedAttachmentPoint { basis: basis } }
+        AttachmentPointReportExceedsPlatform { reported: reported, platform_upper_bound: bound } =>
+          Refused { cause: RiserReportExceedsPlatform { reported: reported, platform_upper_bound: bound } }
+        AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: settle } =>
+          Refused { cause: RiserOccupancyUnobserved { platform_upper_bound: bound, settled_by: settle } }
+        AttachmentPointAbsent { basis: basis } => Refused { cause: AttachmentPointUnavailable { basis: basis } }
+        AttachmentPointOffered { positions: positions, basis: _ } => {
+          if positions > 0 {
+            Admitted {
+              scope: InterfaceFamilyOnly {},
+              physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: "Compare the exact fitted riser assembly, connector, retention and card clearance with the candidate card and its fitted bracket; populated riser positions alone do not establish card fit or electrical qualification." },
+              unit_evidence: evidence,
+            }
+          } else {
+            Refused { cause: AttachmentPointUnavailable { basis: "No fitted PCIe riser positions are offered." } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn attachment_for_unit(candidate: NicAttachmentClass, unit: DeclarationRef) -> AttachmentVerdict {
+  attachment_against_evidence(candidate: candidate, evidence: expansion_evidence_for_unit(unit: unit), bay: mt_collins_1u_ocp_slot)
+}
