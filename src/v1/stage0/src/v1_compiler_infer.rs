@@ -379,7 +379,6 @@ pub struct InferScope {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub caller_decl_name: String,
-    pub unbound_call_generic_names: Rc<Vec<String>>,
     pub in_flight_lambda_param_names: Rc<Vec<String>>,
 }
 
@@ -8376,7 +8375,6 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-            unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
@@ -8426,7 +8424,6 @@ pub fn extend_scope(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
-        unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
@@ -8460,7 +8457,6 @@ pub fn extend_scope_match_bound(
         item_registry: scope.item_registry.clone(),
         caller_decl_name: scope.caller_decl_name.clone(),
         lambda_param_provenance: scope.lambda_param_provenance.clone(),
-        unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
         in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
     })
 }
@@ -8496,7 +8492,6 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             item_registry: scope.item_registry.clone(),
             caller_decl_name: scope.caller_decl_name.clone(),
             lambda_param_provenance: scope.lambda_param_provenance.clone(),
-            unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
             in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
         })
     }
@@ -8920,7 +8915,6 @@ let fold_scope = Rc::new(InferScope {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: prov_map.clone(),
-    unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 });
 let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
@@ -8948,7 +8942,6 @@ let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
     item_registry: scope.item_registry.clone(),
     caller_decl_name: scope.caller_decl_name.clone(),
     lambda_param_provenance: nf_prov_map.clone(),
-    unbound_call_generic_names: scope.unbound_call_generic_names.clone(),
     in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
 })
                         } else {
@@ -9089,33 +9082,6 @@ pub fn expression_is_uppercase_constructor_reference(
     }
 }
 
-pub fn scope_with_unbound_call_generics(
-    scope: Rc<InferScope>,
-    generic_names: Rc<Vec<String>>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<InferScope> {
-    Rc::new(InferScope {
-        type_env: scope.type_env.clone(),
-        func_env: scope.func_env.clone(),
-        locals: scope.locals.clone(),
-        body_locals: scope.body_locals.clone(),
-        match_bound_names: scope.match_bound_names.clone(),
-        module_name: scope.module_name.clone(),
-        service_registry: scope.service_registry.clone(),
-        item_registry: scope.item_registry.clone(),
-        caller_decl_name: scope.caller_decl_name.clone(),
-        lambda_param_provenance: scope.lambda_param_provenance.clone(),
-        unbound_call_generic_names: generic_names.iter().cloned().fold(
-            scope.unbound_call_generic_names.clone(),
-            |acc: Rc<Vec<String>>, g: String| match v1_rt::map_get(&subst, g.clone()) {
-                Some(_) => acc.clone(),
-                std::option::Option::None => v1_rt::concat(acc.clone(), Rc::new(vec![g.clone()])),
-            },
-        ),
-        in_flight_lambda_param_names: scope.in_flight_lambda_param_names.clone(),
-    })
-}
-
 pub fn infer_call_arguments_generic_pass(
     call_args: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
@@ -9226,14 +9192,9 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 std::option::Option::None
             };
-            let arg_scope = scope_with_unbound_call_generics(
-                scope.clone(),
-                generic_names.clone(),
-                st.subst.clone(),
-            );
             let ar = infer_expr(
                 crate::v1_std_core::arg_value(a.clone()),
-                arg_scope.clone(),
+                scope.clone(),
                 expected.clone(),
             );
             let next_subst = if (is_lambda_expr(crate::v1_std_core::arg_value(a.clone()))
@@ -12412,7 +12373,6 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 item_registry: lam_scope.item_registry.clone(),
                 caller_decl_name: lam_scope.caller_decl_name.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                unbound_call_generic_names: lam_scope.unbound_call_generic_names.clone(),
                 in_flight_lambda_param_names: v1_rt::concat(lam_scope.in_flight_lambda_param_names.clone(), lam_params.clone()),
             });
             let body_result =
@@ -19802,7 +19762,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         item_registry: fn_scope.item_registry.clone(),
                         caller_decl_name: fn_decl_name.clone(),
                         lambda_param_provenance: fn_scope.lambda_param_provenance.clone(),
-                        unbound_call_generic_names: Rc::new(vec![]),
                         in_flight_lambda_param_names: Rc::new(vec![]),
                     });
                     let fn_return_expected = if (item.inferred.clone() != std::option::Option::None)
@@ -25453,7 +25412,6 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             caller_decl_name: "".to_string(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-            unbound_call_generic_names: Rc::new(vec![]),
             in_flight_lambda_param_names: Rc::new(vec![]),
         });
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
