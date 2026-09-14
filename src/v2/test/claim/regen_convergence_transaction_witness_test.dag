@@ -545,29 +545,46 @@ test fn mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild() -> 
     role: GenerationSubject,
     seed: SeedEmbedded
   )
-  let either_order = fn(rows: List<RegenChangedSurface>) -> Bool {
-    match regen_plan_next_stage(
-      ordinal: 1,
-      producer_generation_id: "g0",
-      candidate_tree_id: "tree-g0",
-      candidate_tree_digest: "tree-digest-g0",
-      changed: rows,
-      build_target: "claim_executor",
-      build_invocation: "cargo build --release --bin claim_executor"
-    ) {
-      RegenStagePlanned { stage: stage } =>
-        count(stage.planned_surfaces) == 2
-          && count(stage.deferred_surfaces) == 0
-          && match stage.kind {
-            InstallSeedCompatibilityCut => true
-            PromoteGenerationInputs => false
-            PublishNonSeedOutputs => false
-          }
-      RegenStagePlanningRefused { refusal: _ } => false
-      RegenConvergenceTerminal => false
-    }
+  match regen_plan_next_stage(
+    ordinal: 1,
+    producer_generation_id: "g0",
+    candidate_tree_id: "tree-g0",
+    candidate_tree_digest: "tree-digest-g0",
+    changed: [producer, subject],
+    build_target: "claim_executor",
+    build_invocation: "cargo build --release --bin claim_executor"
+  ) {
+    RegenStagePlanned { stage: first } =>
+      count(first.planned_surfaces) == 2
+        && count(first.deferred_surfaces) == 0
+        && match first.kind {
+          InstallSeedCompatibilityCut => true
+          PromoteGenerationInputs => false
+          PublishNonSeedOutputs => false
+        }
+        && match regen_plan_next_stage(
+          ordinal: 1,
+          producer_generation_id: "g0",
+          candidate_tree_id: "tree-g0",
+          candidate_tree_digest: "tree-digest-g0",
+          changed: [subject, producer],
+          build_target: "claim_executor",
+          build_invocation: "cargo build --release --bin claim_executor"
+        ) {
+          RegenStagePlanned { stage: second } =>
+            count(second.planned_surfaces) == 2
+              && count(second.deferred_surfaces) == 0
+              && match second.kind {
+                InstallSeedCompatibilityCut => true
+                PromoteGenerationInputs => false
+                PublishNonSeedOutputs => false
+              }
+          RegenStagePlanningRefused { refusal: _ } => false
+          RegenConvergenceTerminal => false
+        }
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
   }
-  either_order(rows: [producer, subject]) && either_order(rows: [subject, producer])
 }
 
 test fn single_generation_input_still_promotes_alone() -> Bool {
