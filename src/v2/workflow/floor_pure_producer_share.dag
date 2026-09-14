@@ -984,7 +984,12 @@ fn share_roster_pending_collisions(
 //     stated to the ladder as `MemoTier { keying: ContentKeyed }` and printed per run on the
 //     `phase=prepared-effect-input-acquire` line as `content_digest=`;
 //   provider scope       -> `floor_prepared_effect_input_ladder.floor_preparation_frame`, the
-//     obligation LCA of the consuming claims;
+//     obligation LCA of the consuming claims — and the ladder's verdict at a SHARED-STATE LCA is
+//     AuthoredDuplication rather than Discharged, which is the ladder refusing to let a provider
+//     stand in for the carry: section 2's repair there is to carry the first value, so the pair
+//     `every_carried_identity_is_authored_duplication_before_the_carry` /
+//     `every_carried_identity_is_a_single_demand_after_the_carry` states the transition this row
+//     kind performs instead of claiming a discharge the ladder would not give;
 //   retention            -> `floor_prepared_effect_input_ladder.cross_claim_tier_retention`,
 //     released at the provider's scope exit with the tier's exact byte ceiling.
 // The conformance rows and the fold that decides them live in

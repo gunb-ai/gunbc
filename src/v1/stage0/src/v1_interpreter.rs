@@ -1894,6 +1894,7 @@ pub fn clear_cross_claim_pure_memos() {
     // from ANOTHER COMMIT — a stale serve the key cannot catch, because the key represents the
     // carried content and the carried content would be exactly what is wrong.
     CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow_mut().clear());
+    CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.set(false));
     CROSS_CLAIM_IMPLICIT_CARRY.with(|m| m.borrow_mut().clear());
     // The retained refusal is tier state too: leaving it across a reset is how a stale path
     // outlives the store that produced it (review 57554).
@@ -2467,6 +2468,12 @@ thread_local! {
     /// is a different declaration and is never served.
     static CROSS_CLAIM_PREPARED_INPUT: RefCell<HashMap<usize, Rc<PreparedEffectInputCarry>>> =
         RefCell::new(HashMap::new());
+    /// Whether ANY prepared input is installed on this thread. `eval_call` consults the carry on
+    /// every nullary call, and a `RefCell` borrow plus a hash lookup per call is a cost-shape
+    /// defect on the interpreter's hottest path when the usual answer is "none installed" —
+    /// DESIGN section 6's bare-minimum-cost rule, which is not priced per site. A `Cell<bool>`
+    /// read answers the common case without touching the map, and is set only where the map is.
+    static CROSS_CLAIM_PREPARED_INPUT_PRESENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// PRODUCER fn node -> the carried input its value depends on, for rows whose producer
     /// reaches the acquisition INSIDE itself (`ImplicitAcquisition`). The carried content is
     /// folded into the key on both the warm and the serve, so such an entry is content-keyed
@@ -2548,6 +2555,7 @@ pub fn install_prepared_effect_input(acquisition_node: &Rc<Node>, carry: Prepare
         m.borrow_mut()
             .insert(Rc::as_ptr(acquisition_node) as usize, carry);
     });
+    CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.set(true));
     keep_cross_claim_fn(acquisition_node);
 }
 
@@ -2582,6 +2590,9 @@ pub fn prepared_effect_input_is_bound(acquisition_node: &Rc<Node>) -> bool {
 }
 
 fn prepared_input_for(fn_node: &Rc<Node>) -> Option<Rc<PreparedEffectInputCarry>> {
+    if !CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.get()) {
+        return None;
+    }
     CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).cloned())
 }
 

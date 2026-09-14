@@ -8,8 +8,8 @@ import std.cache_interface {
 import std.materialization_ladder {
   CacheCoverage, CacheKeying, CacheProvider, ContentKeyed, CoversIdentities, DemandNature,
   Frame, FrameDemand, FrameKind, IsolatedChildrenFrame, LadderVerdict, MemoTier,
-  PureComputation, SharedStateFrame, WorldRead, materialization_ladder,
-  verdict_is_discharged_by
+  PureComputation, SharedStateFrame, WorldRead, ladder_verdict_is_green, materialization_ladder,
+  verdict_is_accepted_single_recompute, verdict_is_authored_duplication
 }
 import std.measure { byte_size }
 import v2.std.collection { List }
@@ -123,12 +123,38 @@ fn producer_demand(producer: String, claim: String) -> FrameDemand {
   }
 }
 
-// Two consuming claim frames is the minimum that makes the demand SHARED — one demand is a
-// single recompute the ladder accepts and this roster refuses to enrol besides ("a
-// single-consumer warm row is the per-claim budget relocated, not a recurrence removed"). The
-// live population is larger; these two stand for the shape, and the roster's own measurement
-// field names the instrument that re-derives the real one.
-fn carried_input_demands(rows: List<CarriedInputWarmRow>, inputs: List<PreparedEffectInput>) -> List<FrameDemand> {
+// TWO DEMAND SHAPES, BEFORE AND AFTER THE CARRY, because the ladder's verdict for this mechanism
+// is not one fact but a transition — and the first cut of this module asserted the wrong half of
+// it, which the floor caught by execution (`the_carry_is_discharged_at_the_preparation_lca`
+// returned false on run 34854251612).
+//
+// WHAT THE LADDER ACTUALLY SAYS, and it is DESIGN section 2's own sentence: when several demands
+// share a least common ancestor that is a SHARED-STATE frame, the repetition is AUTHORED
+// DUPLICATION and the repair is to CARRY, REWIRE OR SHARE THE FIRST VALUE — "caching a later
+// request only makes redundant work cheap and suppresses the signal that would make it rank for
+// deletion". `group_redundant_verdict` implements exactly that: it reaches `discharge_verdict`
+// only when the obligation LCA's last frame is NOT shared state. So a provider can never
+// discharge this shape, and asserting `Discharged` was asking the ladder to bless the move it
+// exists to refuse.
+//
+// So the two shapes are stated and both are checked. BEFORE: each consuming claim demands the
+// identity for itself, two isolated claim frames under preparation, and the ladder answers
+// AuthoredDuplication at the preparation LCA — the ladder NAMING the defect this change removes.
+// AFTER: the demand is rewired to preparation, where it happens ONCE, and the ladder answers
+// AcceptedSingleRecompute — no obligation left, because there is no repetition left. The provider
+// below is not thereby decoration: it is WHERE the carried value is held between the acquisition
+// and the claims, and its own obligations (content keying, store tier, bounded retention) are
+// checked in the witness against `std.cache_interface`'s predicates.
+
+// Two consuming claim frames is the minimum that makes a demand SHARED — one demand is a single
+// recompute the ladder accepts and this roster refuses to enrol besides ("a single-consumer warm
+// row is the per-claim budget relocated, not a recurrence removed"). The live population is
+// larger; these two stand for the shape, and the roster's own measurement field names the
+// instrument that re-derives the real one.
+fn carried_input_demands_before_the_carry(
+  rows: List<CarriedInputWarmRow>,
+  inputs: List<PreparedEffectInput>
+) -> List<FrameDemand> {
   concat(
     fold(inputs, init: [], f: fn(acc, prepared) {
       concat(acc, [
@@ -145,9 +171,41 @@ fn carried_input_demands(rows: List<CarriedInputWarmRow>, inputs: List<PreparedE
   )
 }
 
-fn carried_input_ladder_verdicts() -> List<LadderVerdict> {
+// AFTER: one demand per identity, sited at preparation itself — the acquisition happens once
+// there and the producer is folded once over the carried value.
+fn acquisition_demand_at_preparation(acquisition: String) -> FrameDemand {
+  FrameDemand {
+    identity: acquisition,
+    site: [floor_preparation_frame()],
+    nature: WorldRead { staleness_envelope_declared: true }
+  }
+}
+
+fn producer_demand_at_preparation(producer: String) -> FrameDemand {
+  FrameDemand {
+    identity: producer,
+    site: [floor_preparation_frame()],
+    nature: PureComputation
+  }
+}
+
+fn carried_input_demands_after_the_carry(
+  rows: List<CarriedInputWarmRow>,
+  inputs: List<PreparedEffectInput>
+) -> List<FrameDemand> {
+  concat(
+    fold(inputs, init: [], f: fn(acc, prepared) {
+      concat(acc, [acquisition_demand_at_preparation(acquisition: prepared.acquisition)])
+    }),
+    fold(rows, init: [], f: fn(acc, row) {
+      concat(acc, [producer_demand_at_preparation(producer: row.producer)])
+    })
+  )
+}
+
+fn carried_input_verdicts_before_the_carry() -> List<LadderVerdict> {
   materialization_ladder(
-    demands: carried_input_demands(
+    demands: carried_input_demands_before_the_carry(
       rows: floor_cross_claim_carried_input_warm_rows,
       inputs: floor_cross_claim_prepared_effect_inputs
     ),
@@ -156,15 +214,42 @@ fn carried_input_ladder_verdicts() -> List<LadderVerdict> {
   )
 }
 
-// Every enrolled identity is DISCHARGED BY THIS PROVIDER, decided by the ladder fold rather than
-// claimed here. A row the ladder refuses — scope too narrow, existence-keyed, retention
-// unbounded, no provider at this layer — fails this fold, and that is the point of carrying the
-// facts as values.
-fn every_carried_identity_is_discharged() -> Bool {
-  let verdicts = carried_input_ladder_verdicts()
+fn carried_input_verdicts_after_the_carry() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: carried_input_demands_after_the_carry(
+      rows: floor_cross_claim_carried_input_warm_rows,
+      inputs: floor_cross_claim_prepared_effect_inputs
+    ),
+    providers: [prepared_effect_input_provider()],
+    cost_floor_exempt: []
+  )
+}
+
+// Every enrolled identity is AUTHORED DUPLICATION before the carry, decided by the ladder fold
+// rather than claimed here: two claim-sited demands whose LCA is the preparation frame.
+fn every_carried_identity_is_authored_duplication_before_the_carry() -> Bool {
+  let verdicts = carried_input_verdicts_before_the_carry()
   fold(carried_input_identities(), init: true, f: fn(acc, identity) {
     acc && any(xs: verdicts, predicate: fn(v) {
-      verdict_is_discharged_by(v: v, identity: identity, provider_id: "floor-cross-claim-pure-share")
+      verdict_is_authored_duplication(v: v, identity: identity, site_count: 2)
     })
+  })
+}
+
+// And every one of them is a SINGLE RECOMPUTE after it: the carry removed the repetition rather
+// than making it cheap, which is the only move DESIGN section 2 admits at a shared-state LCA.
+fn every_carried_identity_is_a_single_demand_after_the_carry() -> Bool {
+  let verdicts = carried_input_verdicts_after_the_carry()
+  fold(carried_input_identities(), init: true, f: fn(acc, identity) {
+    acc && any(xs: verdicts, predicate: fn(v) {
+      verdict_is_accepted_single_recompute(v: v, identity: identity)
+    })
+  })
+}
+
+// The after-state carries no refusal of any kind: every verdict is green.
+fn the_minimized_demand_graph_is_green() -> Bool {
+  fold(carried_input_verdicts_after_the_carry(), init: true, f: fn(acc, v) {
+    acc && ladder_verdict_is_green(v: v)
   })
 }

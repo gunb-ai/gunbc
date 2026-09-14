@@ -1,9 +1,11 @@
 module v2.test.floor_prepared_effect_input_ladder
 
 import v2.workflow.floor_prepared_effect_input_ladder {
-  carried_input_identities, carried_input_ladder_verdicts, cross_claim_tier_retention,
-  every_carried_identity_is_discharged, floor_preparation_frame,
-  prepared_effect_input_provider
+  carried_input_identities, carried_input_verdicts_after_the_carry,
+  carried_input_verdicts_before_the_carry, cross_claim_tier_retention,
+  every_carried_identity_is_a_single_demand_after_the_carry,
+  every_carried_identity_is_authored_duplication_before_the_carry,
+  the_minimized_demand_graph_is_green, prepared_effect_input_provider
 }
 import v2.workflow.floor_pure_producer_share {
   carried_input_roster_collisions, carried_input_rows_without_a_prepared_input,
@@ -11,19 +13,27 @@ import v2.workflow.floor_pure_producer_share {
   floor_cross_claim_prepared_effect_inputs
 }
 import std.cache_interface { retention_growth_is_bounded, retention_has_exact_byte_bound }
-import std.materialization_ladder { CacheProvider, Frame, LadderVerdict, provider_is_content_keyed, provider_is_store_tier }
+import std.materialization_ladder { provider_is_content_keyed, provider_is_store_tier }
 import v2.std.logic { Bool }
 
-// THE LADDER OBLIGATIONS ARE DECIDED BY THE FOLD, NOT ASSERTED IN PROSE. Each test below names
-// one of the four facts DESIGN section 2 requires of a provider that may discharge a repeated
-// demand, and each is answered by `std.materialization_ladder` or `std.cache_interface` over the
-// live rows rather than by a sentence in this file.
+// THE LADDER OBLIGATIONS ARE DECIDED BY THE FOLD, NOT ASSERTED IN PROSE. Each test below is
+// answered by `std.materialization_ladder` or `std.cache_interface` over the LIVE rows rather than
+// by a sentence in this file: the verdict transition the carry performs, and the three properties
+// of the place the carried value is held while it is carried.
 
-// SCOPE reaches the obligation LCA: the provider's scope is required-floor PREPARATION, which is
-// the least common visible ancestor of the consuming claims. A provider scoped inside a claim
-// would be refused RefusedScopeTooNarrow by the same fold.
-test fn the_carry_is_discharged_at_the_preparation_lca() -> Bool {
-  every_carried_identity_is_discharged()
+// THE VERDICT TRANSITION, which is what this mechanism actually is. An earlier cut of this file
+// asserted `Discharged` and the floor refused it by execution (run 34854251612): at a SHARED-STATE
+// obligation LCA the ladder answers AuthoredDuplication and never reaches a provider at all,
+// because DESIGN section 2 says the repair there is to CARRY the value and not to cache it. So the
+// pair below states the transition the carry performs — the ladder naming the defect before, and
+// no repetition left after.
+test fn the_demand_is_authored_duplication_before_the_carry() -> Bool {
+  every_carried_identity_is_authored_duplication_before_the_carry()
+}
+
+test fn the_demand_is_a_single_acquisition_after_the_carry() -> Bool {
+  every_carried_identity_is_a_single_demand_after_the_carry()
+    && the_minimized_demand_graph_is_green()
 }
 
 // KEY represents every declared input the result depends on: the tier is CONTENT-keyed, which is
@@ -46,7 +56,8 @@ test fn the_retention_is_scope_released_and_byte_bounded() -> Bool {
 // discharge test vacuously true, which is the decoration DESIGN section 4b refuses.
 test fn the_covered_population_is_not_empty() -> Bool {
   length(xs: carried_input_identities()) > 0
-    && length(xs: carried_input_ladder_verdicts()) > 0
+    && length(xs: carried_input_verdicts_before_the_carry()) > 0
+    && length(xs: carried_input_verdicts_after_the_carry()) > 0
 }
 
 // THE TWO ROSTER WALLS, over the live rows: every carried-input row names an input that is
