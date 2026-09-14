@@ -5,7 +5,7 @@ import std.measure { token_count, token_count_value, token_count_remaining_in_wi
 import std.roster_frontier {
   FrontierRow,
   frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
-  fold_frontier_expiry, frontier_expiry_clean,
+  fold_frontier_expiry, frontier_expiry_clean, concat_frontier_row_groups,
 }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_display_key }
@@ -19,6 +19,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
   deepseek_v4_1_flash_frontier, deepseek_v4_1_flash_frontier_dsv41_1,
   deepseek_v4_1_flash_frontier_dsv41_2, deepseek_v4_1_flash_frontier_harness_wire,
+  deepseek_v4_1_flash_frontier_dsv41_10,
   deepseek_v4_1_flash_safetensors_payload_footprint, deepseek_v4_1_flash_safetensors_payload_total,
   deepseek_v4_1_flash_safetensors_index_total_size, deepseek_v4_1_flash_safetensors_tree_file_bytes,
   DeepseekV41EncoderChat, DeepseekV41EncoderThinking,
@@ -76,11 +77,57 @@ fn frontier_keys_contain(rows: List<FrontierRow>, decl_name: String) -> Bool {
   any(frontier_path_subjects(rows: rows), k => k == want)
 }
 
+// ── THE GROUPS ARE JOINED TO THE AGGREGATE, NOT MERELY CHECKED BESIDE IT ──────────────────────
+//
+// CHECKING THE RIGHT HELPER INDEPENDENTLY DOES NOT PROVE THE CLAIMED PATH USES IT. A first cut read
+// each GROUP directly for well-formedness and membership while keyed-roster construction and the
+// expiry fold read the AGGREGATE, and nothing joined the two -- so the discriminator was the original
+// defect itself: drop dsv41_10 from `deepseek_v4_1_flash_frontier`, change nothing else, and every
+// assertion still passed. The control added to prevent a recurrence could not detect the recurrence.
+// The membership negative did not see it either, because it asks whether a subject is in DSV41-2, not
+// whether it is in the aggregate.
+//
+// So the aggregate's subject identities are reconciled against the union of the intended groups in
+// BOTH directions, with the count equality rejecting duplicates rather than standing in for the join.
+// `a_three_group_aggregate_is_refused` below is the discriminating negative: it constructs exactly the
+// disconnected aggregate this cut shipped and asserts the reconciliation REFUSES it.
+data expected_flash_frontier_groups: List<List<FrontierRow>> = [
+  deepseek_v4_1_flash_frontier_dsv41_1,
+  deepseek_v4_1_flash_frontier_dsv41_2,
+  deepseek_v4_1_flash_frontier_harness_wire,
+  deepseek_v4_1_flash_frontier_dsv41_10,
+]
+
+fn frontier_aggregate_covers_groups(aggregate: List<FrontierRow>, groups: List<List<FrontierRow>>) -> Bool {
+  let expected = flat_map(groups, g => frontier_path_subjects(rows: g))
+  let actual = frontier_path_subjects(rows: aggregate)
+  count(actual) == count(expected)
+    && all(expected, e => any(actual, a => a == e))
+    && all(actual, a => any(expected, e => e == a))
+}
+
+test fn the_flash_frontier_aggregate_is_exactly_its_declared_groups() -> Bool {
+  frontier_aggregate_covers_groups(
+    aggregate: deepseek_v4_1_flash_frontier,
+    groups: expected_flash_frontier_groups)
+}
+
+test fn a_three_group_aggregate_is_refused() -> Bool {
+  !frontier_aggregate_covers_groups(
+    aggregate: concat_frontier_row_groups(groups: [
+      deepseek_v4_1_flash_frontier_dsv41_1,
+      deepseek_v4_1_flash_frontier_dsv41_2,
+      deepseek_v4_1_flash_frontier_harness_wire,
+    ]),
+    groups: expected_flash_frontier_groups)
+}
+
 test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() -> Bool {
   let expiry = fold_frontier_expiry(rows: deepseek_v4_1_flash_frontier, present_decls: [])
   frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_1)
     && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_2)
     && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_harness_wire)
+    && frontier_rows_well_formed(rows: deepseek_v4_1_flash_frontier_dsv41_10)
     && match frontier_rows_keyed_roster_build(rows: deepseek_v4_1_flash_frontier) {
       KeyedRosterBuilt { rows: _ } => true
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
@@ -93,6 +140,8 @@ test fn declared_frontier_groups_are_consumed_and_partition_the_named_facts() ->
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_engram")
     && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_1, decl_name: "deepseek_v4_1_flash_engram")
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_effort_preamble")
+    && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_10, decl_name: "deepseek_v4_1_flash_engram_population")
+    && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_engram_population")
     && frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_harness_wire, decl_name: "deepseek_v4_1_flash_system_token")
     && !frontier_keys_contain(rows: deepseek_v4_1_flash_frontier_dsv41_2, decl_name: "deepseek_v4_1_flash_system_token")
 }
