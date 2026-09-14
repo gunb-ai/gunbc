@@ -135,7 +135,18 @@ type CompilerEntryDriver
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
 
-// SCRATCH BISECT ROWS (not for landing), bisect_row_accumulation and bisect_loop_setup. TWO
+// SCRATCH BISECT ROWS (not for landing): bisect_row_accumulation, bisect_loop_setup, and the
+// partitioning pair bisect_arm_exit and bisect_driver_tail. THE SECOND PAIR IS NOT A GUESS AT A
+// CULPRIT -- it is a partition. Three hypotheses for the remainder have now been measured and
+// refuted (module_release, relay_emit, and the clock apparatus, the last falsified by a direct
+// 35 ns/call measurement on the fold host), so these two spans cover the ONLY regions left
+// uncovered by construction rather than naming a fourth suspect: bisect_arm_exit is the
+// iteration body from the match's close to the release span, which is where the match arm's
+// bindings drop; bisect_driver_tail is from the row-serialization close to the parent close.
+// Between them they answer WHICH HALF the remainder lives in -- inside the per-module loop or
+// outside it -- whichever way they land, in one fold instead of two.
+//
+// THE FIRST PAIR, and what it established. TWO
 // non-overlapping spans around the only work in the per-module iteration that no exclusive row
 // covers, added to read ONE full fold and find which carries the ~240 ms remainder. A third span
 // around the "iteration tail" was written and then deleted: as written it opened and closed with
@@ -154,6 +165,8 @@ type NativeDriverExclusiveRows {
   relay_emit: Nanosecond
   bisect_row_accumulation: Nanosecond
   bisect_loop_setup: Nanosecond
+  bisect_arm_exit: Nanosecond
+  bisect_driver_tail: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -166,7 +179,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit) + nanosecond_count(n: rows.bisect_row_accumulation) + nanosecond_count(n: rows.bisect_loop_setup))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit) + nanosecond_count(n: rows.bisect_row_accumulation) + nanosecond_count(n: rows.bisect_loop_setup) + nanosecond_count(n: rows.bisect_arm_exit) + nanosecond_count(n: rows.bisect_driver_tail))
 }
 
 fn native_driver_cost_account(
