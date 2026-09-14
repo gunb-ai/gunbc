@@ -223,8 +223,9 @@ fn connective_multiplicity(c: Connective) -> Multiplicity {
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    Cardinality => RequiresTerminationProof
+    Cardinality => Bounded
     Instantiation => Bounded
+
   }
 }
 
