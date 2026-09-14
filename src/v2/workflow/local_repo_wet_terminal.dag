@@ -321,6 +321,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_head_unit_digest_witness", function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit" },
+      entry: "dag/test/claim/spark/spark_pair_head_unit_digest_witness_test.dag",
+      function: "spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",

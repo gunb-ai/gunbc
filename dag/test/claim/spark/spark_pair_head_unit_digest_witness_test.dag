@@ -1,6 +1,6 @@
 module test.claim.spark.spark_pair_head_unit_digest_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash {
@@ -14,9 +14,11 @@ import gunbc.spark.pair_serving_desired {
 }
 import gunbc.spark.pair_serving_realization {
   SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   spark_pair_digest_unit_render, spark_pair_head_unit_file, spark_pair_container_spec,
-  spark_pair_container_env, spark_pair_head_unit_name,
+  spark_pair_container_env, spark_pair_head_unit_name, spark_pair_head_unit_declared_digest,
+  spark_pair_realizations,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, HubCachePlacement, spark_hub_cache_root,
@@ -142,6 +144,38 @@ test fn a_declared_observed_mismatch_does_not_bind_as_declared() -> Bool {
         LaunchedFromDifferentUnit { observed: _, declared: _ } => true
         LaunchedFromDeclaredUnit { declared: _ } => false
         LaunchUnitDigestsIncomparable => false
+      }
+  }
+}
+
+// PRODUCTION MINT: spark_pair_head_unit_declared_digest hashes the realized head unit, which is
+// what harness_serving_route passes as declared_unit. A fixture render hashed beside the roster
+// would not prove that fold.
+test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
+  match first(spark_pair_realizations()) {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        SparkPairRealizationRefused { group: g, cause: c } =>
+          match spark_pair_head_unit_declared_digest(group: g) {
+            DeclaredUnitDigestUnavailable { obligation: o } => (o as String) == (c as String)
+            DeclaredUnitDigested { unit_name: _, digest: _ } => false
+          }
+        SparkPairRealized { group: g, head: h, workers: _ } =>
+          match spark_pair_digest_unit_render(render: h.unit) {
+            DeclaredUnitDigestUnavailable { obligation: _ } => false
+            DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
+              match spark_pair_head_unit_declared_digest(group: g) {
+                DeclaredUnitDigestUnavailable { obligation: _ } => false
+                DeclaredUnitDigested { unit_name: n, digest: from_group } =>
+                  (n as String) == (spark_pair_head_unit_name as String)
+                    && match compare_content_hash(left: from_unit, right: from_group) {
+                      ContentHashEqual => true
+                      ContentHashDifferent => false
+                      ContentHashCrossFamilyIncomparable => false
+                    }
+              }
+          }
       }
   }
 }

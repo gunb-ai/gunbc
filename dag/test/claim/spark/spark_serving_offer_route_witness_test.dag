@@ -41,7 +41,7 @@ import gunbc.spark.serving_offer {
   SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
   ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
-  spark_pair_head_unit_digest_unavailable_obligation, spark_serving_incarnation_unobserved_obligation,
+  spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, vllm_serving_launch, endpoint_incarnation_observation,
@@ -144,8 +144,10 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production mints the digest at gunbc.spark.pair_serving_realization spark_pair_head_unit_declared_digest" as NonEmptyStr
+
 fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
-  DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation }
+  DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
 }
 
 fn t_standing(realization: SparkServingRealization) -> SparkServingRoute {
@@ -496,6 +498,12 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 
 
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
+//
+// Production's harness_serving_route now hashes via DigestStdin, so a hermetic driver of that
+// function is NoMockResponse rather than a standing verdict. The standing's incarnation-unobserved
+// refusal stays enrolled below (an_agreeing_unit_digest_without_an_observation_refuses). The
+// production mint spark_pair_head_unit_declared_digest is executed in
+// test.claim.spark.spark_pair_head_unit_digest_witness.
 
 // PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
 // harness_bind_candidate calls, with the incarnation standing production passes when the observer

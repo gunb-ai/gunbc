@@ -991,8 +991,17 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
       tail: Cons {
         head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.unit_text_differing_by_one_byte_gives_a_different_digest", operation: "DigestStdin", ground: NoMockResponse {} },
         tail: Cons {
-          head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_head_unit_digest_witness.a_declared_observed_mismatch_does_not_bind_as_declared", operation: "DigestStdin", ground: NoMockResponse {} },
-          tail: Empty {}
+          head: FloorRouteGapExpectation {
+            identity: "test.claim.spark.spark_pair_head_unit_digest_witness.a_declared_observed_mismatch_does_not_bind_as_declared",
+            operation: "DigestStdin", ground: NoMockResponse {}
+          },
+          tail: Cons {
+            head: FloorRouteGapExpectation {
+              identity: "test.claim.spark.spark_pair_head_unit_digest_witness.spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit",
+              operation: "DigestStdin", ground: NoMockResponse {}
+            },
+            tail: Empty {}
+          }
         }
       }
     }
