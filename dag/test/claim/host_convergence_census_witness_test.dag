@@ -12,7 +12,6 @@ import gunbc.host_convergence_census {
   RetainCarriesDeletion,
   NonRetainLacksDeletion,
   RetainCurrentIntendedMismatch,
-  PersistentMutationPhaseMismatch,
   SelfSuccessor,
   IdentityMissingFromCensus,
   HostConvergenceDisposition,
@@ -36,6 +35,7 @@ import gunbc.host_convergence_census {
   host_convergence_census_rows,
   host_convergence_census_standing,
   host_convergence_census_is_admitted,
+  persistent_status_mutates,
   std_decision,
   fleet_plan,
 }
@@ -53,7 +53,7 @@ fn fixture_row(
   census_row(
     identity: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: name),
     subject: DesiredRealizationSelection,
-    phases: protocol_phases(false, false, false, false, false, mutates, false, false),
+    phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: current),
     intended_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: intended),
     persistent_host_effect: if mutates { ReachesPersistentHostMutation } else { DoesNotMutateHost },
@@ -163,23 +163,14 @@ test fn w_retain_current_intended_mismatch_refuses() -> Bool {
   }
 }
 
-test fn w_mutation_flag_without_mutates_phase_refuses() -> Bool {
-  let row = census_row(
-    identity: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
-    subject: DesiredRealizationSelection,
-    phases: none_phases(),
-    current_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
-    intended_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: RetainAuthority,
-    first_consumer: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "phase_mismatch"),
-    deletion: NoDeletionOwed,
+test fn w_derived_mutates_follows_host_effect_status() -> Bool {
+  fold(
+    well_formed_pair(),
+    init: true,
+    f: fn(acc, r) {
+      acc && (r.phases.mutates == persistent_status_mutates(s: r.persistent_host_effect))
+    },
   )
-  match admit_host_convergence_census(rows: [row]) {
-    CensusMalformed { cause: PersistentMutationPhaseMismatch { identity: id } } =>
-      id.decl_name as String == "phase_mismatch"
-    _ => false
-  }
 }
 
 test fn w_self_successor_refuses() -> Bool {
