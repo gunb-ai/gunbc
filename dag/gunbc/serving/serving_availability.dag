@@ -21,8 +21,14 @@ import gunbc.spark.vllm_endpoint_process_launch {
 // taken at all -- the answer is not "no", it is "not established" -- and it must never be folded
 // into either of the others, which would be the ⊤/⊥-as-ignorance conflation DESIGN §5 forbids.
 //
-// EVERY ARM CARRIES WHEN AND FROM WHERE. A bare Available with no time can outlive the observation
-// that produced it indefinitely; the timestamp is what lets a consumer refuse a stale one.
+// EVERY ARM CARRIES WHEN AND FROM WHERE, AND AVAILABLE CARRIES WHICH PROCESS ANSWERED. A bare Available
+// with no time can outlive the observation that produced it, and one with no launch can be attached to
+// an offer on a DIFFERENT exporter process: the models probe and the metrics probe are two reads, and a
+// restart between them would otherwise pair process A's answer with process B's identity.
+//
+// MODEL ADMISSION IS NOT AVAILABILITY. A route serving a model this harness is not admitted to ask can
+// still take work from a consumer that is; whether this demand may use what the route advertises is
+// gunbc.serving.admitted_model's question, decided beside this one, never folded into it.
 //
 // THE GRAIN IS THE ENDPOINT PROCESS, NOT THE ENGINE. The launch identity here is the process that
 // exports /metrics (gunbc.rung_drop serving_offer_identity_is_the_exporter_process). An unchanged
@@ -31,6 +37,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
 type ServingAvailability
   = ServingAvailable {
       endpoint: ServingRouteEndpoint
+      launch: VllmEndpointProcessLaunch
       observed_at: Timestamp
       receipt: ObservationReceiptRef
     }
@@ -51,15 +58,19 @@ type ServingAvailability
 // what was seen -- no successful answer inside the bound -- and does not claim the engine is hung.
 type ServingUnavailableCause
   = FrontDoorDidNotAnswerSuccessfullyWithinBound { url: NonEmptyStr, bound: Second }
-  | RouteAdvertisesNoAdmittedModel { advertised: String }
   | EndpointProcessReplaced { expected: VllmEndpointProcessLaunch, observed: VllmEndpointProcessLaunch }
+
+// WHAT THE FRONT-DOOR READ ITSELF ESTABLISHED, before any launch is joined to it. An answer that parsed
+// is an answer whatever model it names; an answer nobody could read establishes nothing.
+type FrontDoorRead
+  = FrontDoorAnswered
+  | FrontDoorDidNotAnswer { url: NonEmptyStr, bound: Second }
+  | FrontDoorAnswerUnreadable { cause: NonEmptyStr }
 
 fn serving_unavailable_cause_text(cause: ServingUnavailableCause) -> String {
   match cause {
     FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b } =>
       join(["the route at ", u as String, " did not answer successfully within ", to_string(second_count(s: b)), "s"], "")
-    RouteAdvertisesNoAdmittedModel { advertised: a } =>
-      join(["the route advertises no model this harness is admitted to ask; it advertises: ", a], "")
     EndpointProcessReplaced { expected: e, observed: o } =>
       join([
         "the endpoint process was replaced: bound to ", vllm_endpoint_process_launch_key(launch: e) as String,
@@ -70,8 +81,8 @@ fn serving_unavailable_cause_text(cause: ServingUnavailableCause) -> String {
 
 fn serving_availability_text(a: ServingAvailability) -> String {
   match a {
-    ServingAvailable { endpoint: e, observed_at: t, receipt: _ } =>
-      join([serving_route_endpoint_wire(e: e) as String, " available at ", t], "")
+    ServingAvailable { endpoint: e, launch: l, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " available at ", t, " from endpoint process ", vllm_endpoint_process_launch_key(launch: l) as String], "")
     ServingUnavailable { endpoint: e, observed_at: t, cause: c, receipt: _ } =>
       join([serving_route_endpoint_wire(e: e) as String, " unavailable at ", t, ": ", serving_unavailable_cause_text(cause: c)], "")
     ServingAvailabilityUnread { endpoint: e, attempted_at: t, cause: c } =>
@@ -94,7 +105,7 @@ fn serving_availability_after_launch_read(
       ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
     LaunchObserved { launch: current, receipt: r } =>
       if vllm_endpoint_process_launch_is(launch: current, other: expected) {
-        ServingAvailable { endpoint: endpoint, observed_at: now, receipt: r }
+        ServingAvailable { endpoint: endpoint, launch: current, observed_at: now, receipt: r }
       } else {
         ServingUnavailable {
           endpoint: endpoint,
@@ -102,6 +113,32 @@ fn serving_availability_after_launch_read(
           cause: EndpointProcessReplaced { expected: expected, observed: current },
           receipt: r,
         }
+      }
+  }
+}
+
+// A FRONT-DOOR READ BRACKETED BY TWO LAUNCH READS. The launch is read before and after the front door;
+// only when both name the same exporter process is the answer attributed to it. A different process
+// after than before is a restart inside the bracket, so the answer belongs to neither with certainty and
+// the route is unavailable naming both. Either launch unread, or an unreadable answer, is unread.
+fn serving_availability_bracketing_read(
+  endpoint: ServingRouteEndpoint,
+  before: VllmEndpointProcessLaunchObservation,
+  front_door: FrontDoorRead,
+  after: VllmEndpointProcessLaunchObservation,
+  now: Timestamp,
+) -> ServingAvailability {
+  match front_door {
+    FrontDoorDidNotAnswer { url: u, bound: b } =>
+      ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b }, receipt: "gunbc.serving.front-door-read" as ObservationReceiptRef }
+    FrontDoorAnswerUnreadable { cause: c } =>
+      ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: c }
+    FrontDoorAnswered =>
+      match before {
+        LaunchUnobserved { group: _, obligation: o } =>
+          ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+        LaunchObserved { launch: first, receipt: _ } =>
+          serving_availability_after_launch_read(endpoint: endpoint, expected: first, observation: after, now: now)
       }
   }
 }

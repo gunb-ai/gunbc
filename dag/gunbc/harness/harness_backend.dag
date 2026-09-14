@@ -8,8 +8,8 @@ import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
 import gunbc.serving.serving_availability {
-  ServingAvailability, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
-  FrontDoorDidNotAnswerSuccessfullyWithinBound, RouteAdvertisesNoAdmittedModel,
+  ServingAvailability, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
+  serving_availability_bracketing_read,
 }
 import extdeps.vllm.metrics {
   VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason,
@@ -175,21 +175,20 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
   }
 }
 
-// THE MODELS PROBE AS AN AVAILABILITY READING. Serving is available; a front door that did not answer
-// inside the bound, or that advertises nothing admitted, is unavailable with that cause; a front door
-// that answered with a document nobody could read is unread, because an unreadable answer is not
-// evidence either way.
-fn harness_models_availability(endpoint: ServingRouteEndpoint, standing: HarnessBackendStanding, now: Timestamp) -> ServingAvailability {
+// WHAT THE MODELS PROBE ESTABLISHED ABOUT THE FRONT DOOR, AND NOTHING ABOUT ADMISSION. Serving and
+// model-not-admitted are both answers; whether this harness may use the model is decided separately.
+fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead {
   match standing {
-    HarnessBackendServing { model: _, unit: _, readback: _ } =>
-      ServingAvailable { endpoint: endpoint, observed_at: now, receipt: "gunbc.harness.models-probe" as ObservationReceiptRef }
-    HarnessBackendModelNotAdmitted { advertised: a } =>
-      ServingUnavailable { endpoint: endpoint, observed_at: now, cause: RouteAdvertisesNoAdmittedModel { advertised: a }, receipt: "gunbc.harness.models-probe" as ObservationReceiptRef }
-    HarnessBackendUnreachable { url: u } =>
-      ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u as NonEmptyStr, bound: harness_front_door_probe_bound }, receipt: "gunbc.harness.models-probe" as ObservationReceiptRef }
-    HarnessBackendUnreadable { cause: c } =>
-      ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
+    HarnessBackendServing { model: _, unit: _, readback: _ } => FrontDoorAnswered
+    HarnessBackendModelNotAdmitted { advertised: _ } => FrontDoorAnswered
+    HarnessBackendUnreachable { url: u } => FrontDoorDidNotAnswer { url: u as NonEmptyStr, bound: harness_front_door_probe_bound }
+    HarnessBackendUnreadable { cause: c } => FrontDoorAnswerUnreadable { cause: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
   }
+}
+
+// THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingAvailability {
+  serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
 }
 
 // THE ROSTER IS OBSERVED ONE ROUTE AT A TIME AND THE ANSWER KEEPS BOTH HALVES. An earlier fold

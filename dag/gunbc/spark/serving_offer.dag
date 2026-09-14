@@ -21,7 +21,7 @@ import gunbc.spark.first_party_serving {
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationObservation, EndpointIncarnationStanding,
@@ -117,13 +117,22 @@ type SparkServingReadiness
   = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
   | ServingUnobserved { obligation: NonEmptyStr }
 
-// READINESS IS A PROJECTION OF AVAILABILITY, NEVER A SECOND READING. gunbc.serving.serving_availability
-// is the one statement of whether a route can take new work; an offer is ready exactly when that
-// reading is available, and every other arm -- unavailable with its cause, or unread -- carries its
-// text into the obligation, so the offer refuses naming why.
-fn spark_serving_readiness_of(availability: ServingAvailability) -> SparkServingReadiness {
+// READINESS IS A PROJECTION OF AVAILABILITY, NEVER A SECOND READING, AND ONLY FOR THE PROCESS IT WAS
+// READ FROM. gunbc.serving.serving_availability is the one statement of whether a route can take new
+// work; an offer on a launch is ready exactly when that reading is available AND names that same
+// endpoint process. An available reading from another process refuses naming both, so an answer from
+// process A can never make an offer on process B ready.
+fn spark_serving_readiness_of(availability: ServingAvailability, launch: VllmEndpointProcessLaunch) -> SparkServingReadiness {
   match availability {
-    ServingAvailable { endpoint: _, observed_at: t, receipt: r } => ServingObserved { ready_at: t, receipt: r }
+    ServingAvailable { endpoint: _, launch: observed, observed_at: t, receipt: r } =>
+      if vllm_endpoint_process_launch_is(launch: observed, other: launch) {
+        ServingObserved { ready_at: t, receipt: r }
+      } else {
+        ServingUnobserved { obligation: join([
+          "availability was observed from endpoint process ", vllm_endpoint_process_launch_key(launch: observed) as String,
+          " but the offer names ", vllm_endpoint_process_launch_key(launch: launch) as String,
+        ], "") as NonEmptyStr }
+      }
     ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } =>
       ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
     ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
