@@ -6,8 +6,8 @@ import std.resources { Network }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
-import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
-import gunbc.auth.gcp_secret_access {
+import gunbc.auth.access_token_source {
+  AccessTokenSource, OperatorSuppliedToken,
   SuppliedTokenResolution, SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
 }
 import gunbc.fleet.printer_project_delivery {

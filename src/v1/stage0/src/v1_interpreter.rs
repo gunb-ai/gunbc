@@ -9768,7 +9768,7 @@ mod cast_scope_index_tests {
         let (prepared, _) = prepare_repository_closure(
             &roots,
             &witness_exclusion_substrings(),
-            Some((&index, std::slice::from_ref(&entry))),
+            Some((&index, std::slice::from_ref(&entry), &[])),
         )
         .expect("real scope prepares strictly");
         let scope = claim_scope_for(&prepared, &entry).expect("real scope exists");

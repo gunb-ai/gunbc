@@ -224,6 +224,23 @@ fn spark_managed_grants_withheld(outcome: SparkGrantOutcome) -> List<SparkGrantI
   spark_managed_grants_withheld_under(outcome: outcome, basis: spark_managed_grant_install_basis)
 }
 
+// THE ADMISSIONS THAT PROCEED WITH AN OBLIGATION STILL OPEN, for the install run's typed receipt.
+// An accepted risk moves a grant out of the withheld list and into the install set, and nothing
+// about that move discharges the disclosure obligation the admission carries -- so the install run
+// must carry these forward as their own list, or a run that installed on accepted risk produces a
+// receipt indistinguishable from one with nothing outstanding (raised by bright-boar-435 against the
+// first cut of the acceptance row).
+fn spark_managed_grants_admitted_on_accepted_risk(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
+  flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: spark_managed_grant_install_basis), a =>
+    match a {
+      GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: b } => [GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: b }]
+      GrantInstallWithheld { grant: _, obligation: _ } => []
+      GrantInstallAdmitted { grant: _ } => []
+      GrantInstallStandingUnobserved { grant: _, cause: _ } => []
+      GrantInstallNotNeeded => []
+    })
+}
+
 // THE UNOBSERVED ADMISSIONS, for the run verdict. "Nothing to install because the host holds it" and
 // "nothing to install because the standing could not be read" are different facts; the second is a
 // refusal the install run must stop on, exactly as a withheld grant is.
