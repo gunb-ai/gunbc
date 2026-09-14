@@ -920,7 +920,7 @@ fn native_route_rustflags_are_denial_then_remap(flags: String) -> Bool {
   let suffix = skip(xs: flags, n: length(xs: prefix))
   list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
     && !is_empty(xs: suffix)
-    && !any(xs: suffix, predicate: fn(c) { c == " " })
+    && !string_contains(s: suffix, pattern: " ")
 }
 
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
