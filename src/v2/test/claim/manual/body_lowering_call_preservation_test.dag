@@ -237,9 +237,16 @@ test fn call_preservation_sole_body_named_step_fold_keeps_fold_callee_not_lbrace
     Present { value: root } =>
       !tree_has_lbrace_operator(root: root)
         && !tree_has_punct_call_operator(root: root, punct: ^dag_token_comma)
-        && (call_arity_named(root: root, callee: ^fold) >= 1)
+        && (call_arity_named(root: root, callee: ^fold) == 3)
         && !call_args_include_punct(root: root, callee: ^fold, punct: ^dag_token_comma)
-        && call_args_include_punct(root: root, callee: ^fold, punct: ^step)
+        && match call_arg_identity_at(root: root, callee: ^fold, index: 0) {
+          Present { value: a0 } => a0 == ^xs
+          Absent => false
+        }
+        && match call_arg_identity_at(root: root, callee: ^fold, index: 2) {
+          Present { value: a2 } => a2 == ^step
+          Absent => false
+        }
   }
 }
 
