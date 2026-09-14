@@ -177,7 +177,6 @@ fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadines
     host: deploy.host_label,
     observed_timers: [],
     observed_caps: [],
-    observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
@@ -499,7 +498,7 @@ test fn a_refusal_cause_containing_an_apostrophe_stays_well_formed() -> Bool {
 // is still unobserved here, exactly as production supplies it; what changed is that the planner
 // asked the host first. Before this, srv2's five running units planned two refusals.
 test fn observed_converged_units_plan_no_refusal_under_unobserved_readiness() -> Bool {
-  let deploy = wt_srv3_deploy()()
+  let deploy = wt_srv3_deploy()
   let plans = witness_plans_with_standings(
     deploy: deploy,
     readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -517,7 +516,7 @@ test fn observed_converged_units_plan_no_refusal_under_unobserved_readiness() ->
 // refused over exactly the units that need it. The refusal population is the discriminator -- a
 // planner that ignored standings would refuse enable as well.
 test fn observed_enabled_inactive_units_refuse_only_the_start_transition() -> Bool {
-  let deploy = wt_srv3_deploy()()
+  let deploy = wt_srv3_deploy()
   let plans = witness_plans_with_standings(
     deploy: deploy,
     readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -542,7 +541,7 @@ test fn observed_enabled_inactive_units_refuse_only_the_start_transition() -> Bo
 // UNOBSERVED STANDINGS KEEP THE OLD SHAPE: both transitions refused over every desired unit. This
 // is the control that pins the degradation direction as fail-closed.
 test fn unobserved_standings_refuse_both_transitions_over_every_unit() -> Bool {
-  let deploy = wt_srv3_deploy()()
+  let deploy = wt_srv3_deploy()
   let plans = witness_plans(deploy: deploy, readiness: runner_activation_readiness_unobserved_no_transaction)
   runner_activation_refusal_count(plans: plans) == 2
     && (plans |> all(p => match p {
