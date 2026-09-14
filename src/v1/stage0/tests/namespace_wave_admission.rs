@@ -2172,6 +2172,31 @@ fn a_malformed_row_file_refuses_located_and_is_not_skipped() {
 }
 
 #[test]
+fn a_candidate_decl_name_that_is_not_the_binding_spelling_refuses() {
+    let dir = std::env::temp_dir().join("gunbc_transition_admission_phantom_leaf");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("probe_consumer_use_it_widget.dag");
+    std::fs::write(
+        &path,
+        row_source("probe_consumer_use_it_widget", "from-file", "widget").replace(
+            "decl_ref(\"probe.other\", \"widget\")",
+            "decl_ref(\"probe.other\", \"not_the_spelling\")",
+        ),
+    )
+    .unwrap();
+    let err = load_transition_admissions_from_dir(&dir).expect_err("phantom leaf must refuse");
+    assert!(
+        err.contains(&path.display().to_string()),
+        "refusal must name the file: {err}"
+    );
+    assert!(
+        err.contains("must equal Binding.spelling `widget`"),
+        "refusal must name the mismatch: {err}"
+    );
+}
+
+#[test]
 fn two_row_files_on_two_branches_merge_without_conflict() {
     let root = std::env::temp_dir().join("gunbc_transition_admission_two_file_merge");
     let _ = std::fs::remove_dir_all(&root);

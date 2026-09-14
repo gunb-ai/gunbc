@@ -43,8 +43,9 @@ type AdmissionSubject
   = Binding {
       enclosing: DeclarationRef
       spelling: NonEmptyStr
-      // Candidate declaring identities, same type as enclosing: module_path is the
-      // declarer the wall already joins; decl_name is that declaration's leaf.
+      // Candidate declaring identities, same type as enclosing. The wall join is
+      // module_path. decl_name must equal Binding.spelling (the relocated leaf);
+      // load refuses a mismatch so a phantom leaf cannot pass.
       expected_candidates: List<DeclarationRef>
     }
   | Membership {
