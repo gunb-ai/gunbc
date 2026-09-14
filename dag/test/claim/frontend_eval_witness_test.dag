@@ -1,0 +1,122 @@
+module test.claim.frontend_eval_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.frontend_eval.task {
+  EvalTask, FrontendMutationClass, TextMutation,
+  ExpressionNesting, LabeledPositionShape, CoproductIdentity, MatchArmCoverage, ImportTopologySentinel,
+  RefusedAtParse, RefusedAtResolve,
+  frontend_eval_tasks, frontend_eval_task_count, mutation_class_scored_separately, mutation_class_key,
+  frontend_eval_tasks_json,
+}
+import gunbc.frontend_eval.attempt {
+  EvalAttempt, EvalUsage, EvalArm, EvalOutcome, ArmSummary,
+  LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard,
+  AcceptedRepair, FrontendStillRed, TestsRed, ScopeExceeded, BudgetExhausted, TransportFailed,
+  eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted,
+}
+import gunbc.frontend_eval.card { frontend_language_card }
+
+fn tasks_in_class(class: FrontendMutationClass) -> Int {
+  count(frontend_eval_tasks |> filter(t => t.class == class))
+}
+
+// THE ROSTER SHAPE THE RULING ADMITTED: four language classes of four, one sentinel class of four,
+// twenty rows. A row count alone would be a change detector; the per-class join is the claim.
+test fn roster_is_four_per_class_over_five_classes() -> Bool {
+  frontend_eval_task_count() == 20
+    && tasks_in_class(class: ExpressionNesting) == 4
+    && tasks_in_class(class: LabeledPositionShape) == 4
+    && tasks_in_class(class: CoproductIdentity) == 4
+    && tasks_in_class(class: MatchArmCoverage) == 4
+    && tasks_in_class(class: ImportTopologySentinel) == 4
+}
+
+fn id_occurs(id: NonEmptyStr) -> Int {
+  count(frontend_eval_tasks |> filter(t => t.id == id))
+}
+
+test fn task_ids_are_unique() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && id_occurs(id: t.id) == 1)
+}
+
+// A MUTATION MUST CHANGE THE TEXT AND NAME A SITE. An empty `old` matches everywhere and `old == new`
+// mutates nothing; either would be a task whose RED is unauthorable.
+test fn every_mutation_names_a_site_and_changes_it() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && t.mutation.old != "" && t.mutation.old != t.mutation.new)
+}
+
+// NESTING IS THE ONLY PARSE-STAGE CLASS, and every resolve-stage task names the lexeme its refusal
+// must carry, so the control run can refuse a specimen that reds at the wrong wall.
+test fn parse_stage_is_exactly_the_nesting_class() -> Bool {
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && match t.expected_stage {
+    RefusedAtParse => t.class == ExpressionNesting
+    RefusedAtResolve => t.class != ExpressionNesting && t.expected_lexeme != ""
+  })
+}
+
+test fn only_the_sentinel_is_scored_separately() -> Bool {
+  mutation_class_scored_separately(class: ImportTopologySentinel)
+    && mutation_class_scored_separately(class: ExpressionNesting) == false
+    && mutation_class_scored_separately(class: LabeledPositionShape) == false
+    && mutation_class_scored_separately(class: CoproductIdentity) == false
+    && mutation_class_scored_separately(class: MatchArmCoverage) == false
+}
+
+test fn task_projection_carries_every_row_id() -> Bool {
+  let json = frontend_eval_tasks_json()
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && contains(json, join(["\"id\": \"", t.id as String, "\""], "")))
+}
+
+fn fixture_attempt(id: String, class: FrontendMutationClass, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  EvalAttempt {
+    task_id: id as NonEmptyStr, class: class, arm: arm,
+    model_id: "m", model_snapshot: "s", compiler_program_sha256: "c", card_sha256: "k", tool_schema_sha256: "t",
+    temperature_milli: 0, max_tokens: 1,
+    usage: EvalUsage { prompt_tokens: 0, completion_tokens: reasoning * 2, reasoning_tokens: reasoning },
+    cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall_ms: 0,
+  }
+}
+
+data fixture_attempts: List<EvalAttempt> = [
+  fixture_attempt(id: "a", class: ExpressionNesting, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 10, cycles: 1),
+  fixture_attempt(id: "b", class: MatchArmCoverage, arm: LowEffortBare, outcome: FrontendStillRed, reasoning: 1000, cycles: 6),
+  fixture_attempt(id: "c", class: ImportTopologySentinel, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 30, cycles: 3),
+  fixture_attempt(id: "a", class: ExpressionNesting, arm: LowEffortTools, outcome: ScopeExceeded, reasoning: 5, cycles: 1),
+]
+
+// SENTINELS ARE COUNTED APART AND A RED CONTRIBUTES NOTHING TO THE MEANS: the 1000-token failure
+// on `b` must not move the accepted mean, and `c` must land in the sentinel column, not the language one.
+test fn arm_summary_splits_sentinel_and_excludes_reds_from_means() -> Bool {
+  let s = arm_summary(attempts: fixture_attempts, arm: LowEffortBare)
+  s.attempts == 3
+    && s.language_attempts == 2 && s.language_accepted == 1
+    && s.sentinel_attempts == 1 && s.sentinel_accepted == 1
+    && s.reasoning_tokens_over_accepted == 40
+    && s.cycles_over_accepted == 4
+}
+
+// SCOPE EXCEEDED IS NOT ACCEPTED, however green the tests were: the evaluator-modification wall.
+test fn scope_exceeded_is_not_an_accepted_repair() -> Bool {
+  eval_outcome_accepted(outcome: ScopeExceeded) == false
+    && eval_outcome_accepted(outcome: TestsRed) == false
+    && eval_outcome_accepted(outcome: AcceptedRepair)
+    && arm_summary(attempts: fixture_attempts, arm: LowEffortTools).language_accepted == 0
+}
+
+test fn report_renders_one_line_per_arm_from_rows() -> Bool {
+  let r = frontend_eval_report(attempts: fixture_attempts)
+  contains(r, "| low_bare | 1/2 | 1/1 | 20 | 40 | 2 | 0 |")
+    && contains(r, "| low_tools | 0/1 | 0/0 | - | - | - | - |")
+    && contains(r, "| max_bare | 0/0 | 0/0 | - | - | - | - |")
+    && count(eval_arms) == 4
+}
+
+// THE CARD IS A PROJECTION: it must carry the operator table and the item forms it claims to
+// project, and it must not carry a task's mutation text (an answer leaking into the arm).
+test fn card_projects_operators_and_item_forms_and_no_task_text() -> Bool {
+  let card = frontend_language_card()
+  contains(card, "`&&` left 7 right 8")
+    && contains(card, " match ")
+    && contains(card, "- `fn` <TypeParams> (params) -> ReturnType (return required) body: expression")
+    && fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && (t.mutation.new == "" || contains(card, t.mutation.new) == false))
+}

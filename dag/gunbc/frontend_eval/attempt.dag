@@ -1,0 +1,168 @@
+module gunbc.frontend_eval.attempt
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.frontend_eval.task { FrontendMutationClass, mutation_class_scored_separately, mutation_class_key }
+
+// AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
+// identity a reader would need to re-run it: the model as served, the compiler program that judged
+// it, the card and tool schema it saw, and the decode configuration. A row missing any of those
+// would compare two arms that were not the same experiment.
+type EvalArm
+  = LowEffortBare
+  | MaxEffortBare
+  | LowEffortTools
+  | LowEffortToolsCard
+
+fn eval_arm_key(arm: EvalArm) -> String {
+  match arm {
+    LowEffortBare => "low_bare"
+    MaxEffortBare => "max_bare"
+    LowEffortTools => "low_tools"
+    LowEffortToolsCard => "low_tools_card"
+  }
+}
+
+data eval_arms: List<EvalArm> = [LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard]
+
+// CORRECTNESS IS LEXICOGRAPHIC. Only AcceptedRepair counts; the other arms say WHICH gate refused,
+// so a red is attributable rather than a bare failure. ScopeExceeded is the evaluator-modification
+// wall: any byte changed outside the subject module -- the entry, a neighbour -- refuses the attempt
+// regardless of whether the tests then pass.
+type EvalOutcome
+  = AcceptedRepair
+  | FrontendStillRed
+  | TestsRed
+  | ScopeExceeded
+  | BudgetExhausted
+  | TransportFailed
+
+fn eval_outcome_key(outcome: EvalOutcome) -> String {
+  match outcome {
+    AcceptedRepair => "accepted"
+    FrontendStillRed => "frontend_red"
+    TestsRed => "tests_red"
+    ScopeExceeded => "scope_exceeded"
+    BudgetExhausted => "budget_exhausted"
+    TransportFailed => "transport_failed"
+  }
+}
+
+fn eval_outcome_accepted(outcome: EvalOutcome) -> Bool {
+  match outcome {
+    AcceptedRepair => true
+    FrontendStillRed => false
+    TestsRed => false
+    ScopeExceeded => false
+    BudgetExhausted => false
+    TransportFailed => false
+  }
+}
+
+// USAGE IS WIRE-OBSERVED, NOT MODEL-REPORTED: the counts come from the serving engine's usage
+// block on each response, summed over the attempt's cycles.
+type EvalUsage {
+  prompt_tokens: Int
+  completion_tokens: Int
+  reasoning_tokens: Int
+}
+
+type EvalAttempt {
+  task_id: NonEmptyStr
+  class: FrontendMutationClass
+  arm: EvalArm
+  model_id: String
+  model_snapshot: String
+  compiler_program_sha256: String
+  card_sha256: String
+  tool_schema_sha256: String
+  temperature_milli: Int
+  max_tokens: Int
+  usage: EvalUsage
+  cycles: Int
+  tool_calls: Int
+  edits: Int
+  outcome: EvalOutcome
+  wall_ms: Int
+}
+
+// THE PER-ARM FOLD. Accepted counts are split into the four language classes and the sentinel,
+// because the ruling that admitted this demo scores them apart: a sentinel success is evidence
+// about tool routing, not about the language prior.
+type ArmSummary {
+  arm: EvalArm
+  attempts: Int
+  language_attempts: Int
+  language_accepted: Int
+  sentinel_attempts: Int
+  sentinel_accepted: Int
+  reasoning_tokens_over_accepted: Int
+  completion_tokens_over_accepted: Int
+  cycles_over_accepted: Int
+  tool_calls_over_accepted: Int
+}
+
+fn empty_summary(arm: EvalArm) -> ArmSummary {
+  ArmSummary {
+    arm: arm, attempts: 0, language_attempts: 0, language_accepted: 0,
+    sentinel_attempts: 0, sentinel_accepted: 0,
+    reasoning_tokens_over_accepted: 0, completion_tokens_over_accepted: 0,
+    cycles_over_accepted: 0, tool_calls_over_accepted: 0,
+  }
+}
+
+fn bit(b: Bool) -> Int {
+  if b { 1 } else { 0 }
+}
+
+fn add_attempt(acc: ArmSummary, a: EvalAttempt) -> ArmSummary {
+  let accepted = eval_outcome_accepted(outcome: a.outcome)
+  let sentinel = mutation_class_scored_separately(class: a.class)
+  ArmSummary {
+    arm: acc.arm,
+    attempts: acc.attempts + 1,
+    language_attempts: acc.language_attempts + bit(b: sentinel == false),
+    language_accepted: acc.language_accepted + bit(b: sentinel == false && accepted),
+    sentinel_attempts: acc.sentinel_attempts + bit(b: sentinel),
+    sentinel_accepted: acc.sentinel_accepted + bit(b: sentinel && accepted),
+    reasoning_tokens_over_accepted: acc.reasoning_tokens_over_accepted + (if accepted { a.usage.reasoning_tokens } else { 0 }),
+    completion_tokens_over_accepted: acc.completion_tokens_over_accepted + (if accepted { a.usage.completion_tokens } else { 0 }),
+    cycles_over_accepted: acc.cycles_over_accepted + (if accepted { a.cycles } else { 0 }),
+    tool_calls_over_accepted: acc.tool_calls_over_accepted + (if accepted { a.tool_calls } else { 0 }),
+  }
+}
+
+fn arm_summary(attempts: List<EvalAttempt>, arm: EvalArm) -> ArmSummary {
+  fold(attempts |> filter(a => a.arm == arm), init: empty_summary(arm: arm), f: (acc, a) => add_attempt(acc: acc, a: a))
+}
+
+fn ratio_text(num: Int, den: Int) -> String {
+  join([to_string(value: num), "/", to_string(value: den)], "")
+}
+
+fn mean_text(total: Int, n: Int) -> String {
+  if n == 0 { "-" } else { to_string(value: total / n) }
+}
+
+fn arm_summary_line(s: ArmSummary) -> String {
+  let accepted = s.language_accepted + s.sentinel_accepted
+  join([
+    "| ", eval_arm_key(arm: s.arm),
+    " | ", ratio_text(num: s.language_accepted, den: s.language_attempts),
+    " | ", ratio_text(num: s.sentinel_accepted, den: s.sentinel_attempts),
+    " | ", mean_text(total: s.reasoning_tokens_over_accepted, n: accepted),
+    " | ", mean_text(total: s.completion_tokens_over_accepted, n: accepted),
+    " | ", mean_text(total: s.cycles_over_accepted, n: accepted),
+    " | ", mean_text(total: s.tool_calls_over_accepted, n: accepted),
+    " |",
+  ], "")
+}
+
+// THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
+// instrument). Means are over ACCEPTED attempts only, because correctness is lexicographically
+// prior: a cheap wrong answer is not a cheaper answer.
+fn frontend_eval_report(attempts: List<EvalAttempt>) -> String {
+  join(concat([
+    "| arm | language accepted | sentinel accepted | mean reasoning tok (accepted) | mean completion tok (accepted) | mean cycles (accepted) | mean tool calls (accepted) |",
+    "|---|---|---|---|---|---|---|",
+  ], eval_arms |> map(arm => arm_summary_line(s: arm_summary(attempts: attempts, arm: arm)))), "\n")
+}

@@ -1,0 +1,64 @@
+module gunbc.frontend_eval.card
+
+import std.types { String, Bool, Int, List }
+import std.syntax { ItemForm, OperatorSpec, BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody, AliasBody }
+import extdeps.languages.dag.syntax { dag_syntax_spec }
+
+// THE LANGUAGE CARD IS A PROJECTION OF THE SYNTAX AUTHORITY, NOT A SECOND ONE. The arm that hands
+// the model a card must hand it something derived from extdeps.languages.dag.syntax at the
+// revision under test, so the card can never disagree with the parser and never carries an eval
+// answer: it renders item forms, the operator table with binding powers, and the keyword roster,
+// and nothing else -- in particular no expression-form prose, because the corpus carries no
+// declarative authority for expression forms to project from. That gap is a finding of the
+// measurement, recorded rather than papered over with hand-written examples.
+fn body_kind_key(kind: BodyKind) -> String {
+  match kind {
+    ExprBody => "expression"
+    BlockBody => "block"
+    TypeBody => "type"
+    ValueBody => "value"
+    NoBody => "none"
+    ServiceBody => "service"
+    ResourceBody => "resource"
+    AliasBody => "alias"
+  }
+}
+
+fn card_flag(on: Bool, label: String) -> String {
+  if on { concat(" ", label) } else { "" }
+}
+
+fn item_form_line(form: ItemForm) -> String {
+  join([
+    "- `", form.keyword, "`",
+    card_flag(on: form.has_type_params, label: "<TypeParams>"),
+    card_flag(on: form.has_params, label: "(params)"),
+    card_flag(on: form.has_return_type, label: "-> ReturnType"),
+    card_flag(on: form.return_required, label: "(return required)"),
+    " body: ", body_kind_key(kind: form.body_kind),
+  ], "")
+}
+
+fn operator_line(op: OperatorSpec) -> String {
+  join([
+    "- `", op.symbol, "` left ", to_string(value: op.left_bp), " right ", to_string(value: op.right_bp),
+  ], "")
+}
+
+fn frontend_language_card() -> String {
+  let spec = dag_syntax_spec
+  let keywords = map_keys(spec.keyword_set) |> sort_by(k => k)
+  join([
+    "# .dag syntax card (projected from extdeps.languages.dag.syntax)",
+    "",
+    "## Module-scope item forms",
+    join(spec.item_forms |> map(f => item_form_line(form: f)), "\n"),
+    "",
+    "## Infix operators by binding power (higher binds tighter)",
+    join(spec.operators |> map(o => operator_line(op: o)), "\n"),
+    "",
+    "## Reserved keywords",
+    join(keywords, " "),
+    "",
+  ], "\n")
+}

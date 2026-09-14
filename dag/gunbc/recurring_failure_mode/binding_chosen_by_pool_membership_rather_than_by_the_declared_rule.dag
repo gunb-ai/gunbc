@@ -8,6 +8,7 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
   identity: "binding_chosen_by_pool_membership_rather_than_by_the_declared_rule" as NonEmptyStr,
 
   receipts: [
+    "RECEIPT 2026-09-14 (gunbc.frontend_eval.task, the Demo 0 control run): the class is not confined to coproduct arms. Four entry-scoped specimens each DELETED an import member that the module then used -- std.pareto's `Ordering` (a type), std.frame_boundary's `LifecycleByConvention` (an arm), std.evaluation_budget's `nanosecond_count` (a fn), std.goal_assessment's `FreeSemigroup` (a type) -- and all four ACCEPTED and ran their witness tests green with no diagnostic on the entry-scoped path. So a dropped import has NO AUTHORABLE RED on this frontend for any declaration kind, and the eval's import-topology sentinel was re-specified as a misnamed cross-module callee (which does refuse: undefined function) rather than kept as a permanently green decoration, per DESIGN section 4b.",
     "**binding chosen by pool membership rather than by the declared resolution rule** (THE ROOT IN ONE SENTENCE, AND IT IS AN ASYMMETRY: A COPRODUCT ARM IS POOL-VISIBLE CORPUS-WIDE WHILE NOT BEING A LOCAL BINDING UNDER ITS OWN SPELLING.",
 
     "An off-chain module that imports nothing may reference another module's arm name and receive only an ADVISORY -- unlisted import use -- never a refusal; and INSIDE the declaring module not even that advisory fires, because there the spelling is in source_visible_names.",

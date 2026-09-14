@@ -1,0 +1,30 @@
+module gunbc.frontend_eval.instrument
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.frontend_eval.task { frontend_eval_tasks_json }
+import gunbc.frontend_eval.card { frontend_language_card }
+
+// THE ENTRY POINTS A DRIVER CALLS. Each writes one projection of an in-repo authority to a path the
+// driver names, so the driver never re-types a task row or a card line: it consumes bytes this
+// module produced from the same declarations the witnesses exercise. Attempt rows come back the
+// other way -- the driver emits them as a `.dag` data module and a generated entry folds them
+// through gunbc.frontend_eval.attempt.frontend_eval_report, so the table is computed in the
+// interpreter from typed rows rather than in the driver.
+fn write_projection(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["write failed for ", path, ": ", w.error], ""))
+  }
+}
+
+fn write_tasks(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_tasks_json())
+}
+
+fn write_card(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_language_card())
+}
