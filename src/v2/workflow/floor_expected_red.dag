@@ -348,10 +348,6 @@ fn floor_expected_red_chunk_00() -> List<String> {
   Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     Empty {} }
 }
 
-fn floor_expected_red_chunk_01() -> List<String> {
-  Cons { head: "test.claim.duplicate_record_field_refusal_witness.a_record_literal_assigning_one_field_twice_refuses", tail: Empty {} }
-}
-
 fn floor_expected_red_chunk_02() -> List<String> {
   Cons { head: "test.claim.exact_witness_admission_witness.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: Cons { head: "test.claim.exact_witness_admission_witness.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: Empty {} } }
 }
@@ -709,6 +705,12 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // regression control beside red_control_planted_identity_escape_still_alarms and
 // red_control_planted_identity_escape_finding_count_is_one. The exact known-red admission in
 // gunbc.explicit_witness_admission is deleted in the same change.
+
+// RETIRED chunk_01 EXPECTED-RED ADMISSION. A record literal naming one field twice now refuses in
+// `v1.compiler.parse` `parse_field_init_list_acc`, naming the field and both positions, so
+// `test.claim.duplicate_record_field_refusal_witness` holds. THE WITNESS IS NOT DELETED (DESIGN
+// 4b(4)): its red, its accepted control, and a new positions assertion stay enrolled as the
+// ordinary regression control; only the expected-red admission is deleted here.
 
 // RETIRED chunk_23 EXPECTED-RED ADMISSION history. PositionGenericTypeArgument now constructs the
 // missing element obligation at the direct-call seam; the witness remains enrolled as an ordinary
@@ -1122,7 +1124,7 @@ fn floor_expected_red_chunk_decl_fact_value_projection() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_decl_fact_value_projection(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_decl_fact_value_projection(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

@@ -46,7 +46,7 @@ import v1.std.core {
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex, authored_name_at, kernel_span,
+  NewlineIndex, authored_name_at, kernel_span, byte_to_line_col,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
@@ -6050,19 +6050,50 @@ fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: Stri
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {
-  parse_field_init_list_acc(tokens: tokens, ctx: ctx, acc: [])
+  parse_field_init_list_acc(tokens: tokens, ctx: ctx, acc: [], seen: empty_map())
 }
 
-fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> FieldInitsResult {
+// THE ONE FOLD OVER A RECORD LITERAL'S FIELD LIST, and so the one place a repeated key can be
+// refused. Missing and unknown keys refuse later, against the declaration; a REPEATED key needs no
+// declaration at all -- two values stated for one field is wrong whatever the type says -- so it
+// refuses here, where all three record-literal spellings (named, brace-initial key, string key) pass
+// through, naming the field and BOTH positions. Before this, the second assignment silently won
+// (gunbc.recurring_failure_mode duplicate_record_literal_field_silently_last_wins). `_` is the
+// positional-init placeholder name, not an authored key, and is never compared.
+fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>, seen: Map<String, SourceSpan>) -> FieldInitsResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     FieldInitsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = parse_field_init(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let key = r.field.name
+    let duplicate: ErrorNode? = match map_get(seen, key) {
+      Present { value: first_span } =>
+        if key == "_" { none }
+        else { Present { value: parse_error(msg: duplicate_field_init_message(ctx: ctx, field: key, first: first_span, again: r.field.span), span: r.field.span) } }
+      Absent => none
+    }
+    if has_err(err: duplicate) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: duplicate } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_field_init_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field))
+    parse_field_init_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field), seen: map_insert(seen, key, r.field.span))
+  }
+}
+
+// The refusal is located at the SECOND assignment; the message carries both positions as
+// line:col in that same file, so a reader can find both assignments and choose between them.
+fn duplicate_field_init_message(ctx: ParseContext, field: String, first: SourceSpan, again: SourceSpan) -> String {
+  concat("duplicate field '", field, "' in record literal: first at ", field_init_position(ctx: ctx, span: first), ", again at ", field_init_position(ctx: ctx, span: again))
+}
+
+fn field_init_position(ctx: ParseContext, span: SourceSpan) -> String {
+  match map_get(ctx.source_indices, span.file) {
+    Present { value: index } => {
+      let lc = byte_to_line_col(index: index, offset: span.start)
+      concat(int_to_string(value: lc.line), ":", int_to_string(value: lc.col))
+    }
+    Absent => concat("byte ", int_to_string(value: span.start))
   }
 }
 
