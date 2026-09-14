@@ -30,7 +30,8 @@ import std.decision {
 }
 import gunbc.spark.v41_published_image_observation {
   ImageEngramPlacementMechanism, v41_published_engram_placement,
-  image_offers_storage_backed_engram, engram_placement_mechanism_render,
+  EngramPlacementStorageBacked, EngramPlacementMemoryBackedOnly, EngramPlacementSettingsAbsent,
+  engram_placement_mechanism_render,
   v41_published_arm64_digest,
 }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
@@ -2943,7 +2944,12 @@ fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryS
 // the strong way rather than the weak one: not "we could not find a storage path" but "we found the
 // placement setting, and it materializes from memory".
 //
-// THE DERIVATION IS FROM THE TYPE, NOT FROM THE PROSE. `image_offers_storage_backed_engram` reads the
+// THE DERIVATION MATCHES ALL THREE ARMS RATHER THAN A BOOL, because two of them are not the same
+// fact. Finding the placement setting and reading it MEMORY-BACKED is falsifiable and establishes an
+// absence; finding NO setting is a statement about the search, and a search cannot rule out a
+// mechanism it did not look for. A Bool bridge collapsed both to false and this fold turned that into
+// MechanismEstablishedAbsent, so the weaker reading excluded routes exactly as hard as the stronger
+// one -- an answer outrunning its evidence (DESIGN sections 5 and 3d). Found by review 66335.
 // observed arm; if a later reading of a different image returns the storage-backed arm, these routes
 // become prerequisite-observed here with no edit to this function. That is also why the absence is not
 // hardcoded: the fact that B, C and D are excluded today is a CONSEQUENCE of a reading, and a reading
@@ -2953,27 +2959,45 @@ fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryS
 // not retire the route, does not establish anything about a patched build, and -- in the other
 // direction -- the storage-backed arm would NOT establish feasibility either: it would make the route a
 // candidate whose serving still has to be observed in a launch, which is the separate axis below.
+// THE MAPPING TAKES THE PLACEMENT AS A PARAMETER so each arm's RED is authorable by a fixture.
+// `engram_mechanism_standing_for` reads the pinned image, which has exactly one arm today -- so a
+// control over it could only ever exercise that arm, and DESIGN 4b calls a check whose red cannot be
+// authored a decoration rather than a weak wall. Passing the value in makes all three reachable.
+fn mechanism_standing_from_placement(m: ImageEngramPlacementMechanism) -> NonResidentMechanismStanding {
+  match m {
+    EngramPlacementStorageBacked { setting: _, how: _ } =>
+      MechanismPrerequisiteObserved {
+      runtime: engram_runtime_under_evaluation,
+      receipt: engram_image_placement_receipt,
+      caveat: "the image offers a storage-backed placement path, which rules this route IN as a candidate and establishes nothing about serving: the launch axis still needs a receipt in which the runtime is observed serving this component from this route" as NonEmptyStr,
+      }
+    EngramPlacementMemoryBackedOnly { setting: _, allocation: _, absent_capabilities: _ } =>
+      MechanismEstablishedAbsent {
+      runtime: engram_runtime_under_evaluation,
+      receipt: engram_image_placement_receipt,
+      how: join([
+        "this route needs the runtime to materialize the component from a storage tier while serving, and the pinned serving image does not offer one. ",
+        engram_placement_mechanism_render(m: v41_published_engram_placement) as String,
+        ". A host-memory placement is not a storage route: it changes which pool holds the tables, and on a unified-memory host it does not even change that",
+      ], "") as NonEmptyStr,
+      }
+    EngramPlacementSettingsAbsent { searched: sr } =>
+      MechanismUnobserved {
+      runtime: engram_runtime_under_evaluation,
+      obligation: join([
+        "the image was searched and NO placement setting was found, which is not the same fact as a setting that is memory-backed. Finding the setting and reading it memory-backed is falsifiable and excludes this route; finding nothing is a statement about the SEARCH, and a search that names ",
+        to_string(count(sr)),
+        " location(s) cannot rule out a mechanism it did not look for. TO ESTABLISH: read the placement setting itself, or widen the search and record what it covered",
+      ], "") as NonEmptyStr,
+      }
+    }
+}
+
 fn engram_mechanism_standing_for(r: MaterializationRoute) -> NonResidentMechanismStanding {
   if declaration_ref_eq(a: r.identity, b: engram_route_a_identity) {
     MechanismNotRequiredByThisRoute
   } else {
-    if image_offers_storage_backed_engram(m: v41_published_engram_placement) {
-      MechanismPrerequisiteObserved {
-        runtime: engram_runtime_under_evaluation,
-        receipt: engram_image_placement_receipt,
-        caveat: "the image offers a storage-backed placement path, which rules this route IN as a candidate and establishes nothing about serving: the launch axis still needs a receipt in which the runtime is observed serving this component from this route" as NonEmptyStr,
-      }
-    } else {
-      MechanismEstablishedAbsent {
-        runtime: engram_runtime_under_evaluation,
-        receipt: engram_image_placement_receipt,
-        how: join([
-          "this route needs the runtime to materialize the component from a storage tier while serving, and the pinned serving image does not offer one. ",
-          engram_placement_mechanism_render(m: v41_published_engram_placement) as String,
-          ". A host-memory placement is not a storage route: it changes which pool holds the tables, and on a unified-memory host it does not even change that",
-        ], "") as NonEmptyStr,
-      }
-    }
+    mechanism_standing_from_placement(m: v41_published_engram_placement)
   }
 }
 
@@ -3077,7 +3101,7 @@ data engram_materialization_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_mechanism_standing_for"),
     reason: "the storage routes are excluded for ONE image digest, and they return to a live candidate field under any runtime that can execute them",
-    dissolution: unbound_dissolution(description: "WHAT IS ESTABLISHED, so a later reader does not mistake this for a dead end: routes B, C and D are excluded because the pinned image's only Engram placement setting is memory-backed. STORAGE-BACKED ENGRAM WAS NOT TRIED AND DID NOT FAIL -- no runtime on this fleet offers it, so there was nothing to try. TRIGGER: a reading of any serving runtime whose Engram placement is storage-backed, which makes image_offers_storage_backed_engram true for that image. SUFFICIENT FOR: engram_mechanism_standing_for returns MechanismPrerequisiteObserved for B, C and D under that runtime, at which point they are candidates again and their exclusion depends on the launch and cost evidence that does not exist yet -- not on this reading." as NonEmptyStr),
+    dissolution: unbound_dissolution(description: "WHAT IS ESTABLISHED, so a later reader does not mistake this for a dead end: routes B, C and D are excluded because the pinned image's only Engram placement setting is memory-backed. STORAGE-BACKED ENGRAM WAS NOT TRIED AND DID NOT FAIL -- no runtime on this fleet offers it, so there was nothing to try. TRIGGER: a reading of any serving runtime whose Engram placement is storage-backed, whose observation row carries EngramPlacementStorageBacked. SUFFICIENT FOR: engram_mechanism_standing_for returns MechanismPrerequisiteObserved for B, C and D under that runtime, at which point they are candidates again and their exclusion depends on the launch and cost evidence that does not exist yet -- not on this reading." as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_resident_provider"),

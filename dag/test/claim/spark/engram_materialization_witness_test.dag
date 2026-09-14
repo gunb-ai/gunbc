@@ -72,6 +72,10 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_entry_named,
   deepseek_v4_1_flash_engram_population_standing,
 }
+import gunbc.spark.v41_published_image_observation {
+  ImageEngramPlacementMechanism, EngramPlacementStorageBacked, EngramPlacementMemoryBackedOnly,
+  EngramPlacementSettingsAbsent, v41_published_engram_placement,
+}
 import gunbc.fabric.engram_materialization {
   ComponentSubject, component_subject, ComponentSubjectStanding, establish_component_subject,
   ComponentSubjectEstablished, ComponentSubjectPopulationIncomplete, ComponentSubjectRefused,
@@ -133,6 +137,7 @@ import gunbc.fabric.engram_materialization {
   engram_host_nvme_provider, engram_page_cache_provider, engram_resident_provider,
   engram_published_encoding, engram_published_artifact, engram_published_faithfulness,
   engram_resident_encoding, engram_resident_artifact, engram_resident_faithfulness,
+  mechanism_standing_from_placement,
   engram_route_field, engram_route_evidence_rows, engram_route_standing, engram_pool_relief,
   engram_route_evidence_snapshot,
   route_provider_serves_token_time, route_provider_is_fill_only,
@@ -802,6 +807,41 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
 // fourth arm this returned `NoPoolReliefEveryHopInMemoryPool` and this claim would have been green
 // asserting the wrong thing; now it must refuse and NAME the unresolved provider. Deleting the
 // `PoolReliefRouteUnresolved` arm reds this claim rather than silently restoring the old answer.
+// THE THREE PLACEMENT READINGS ARE THREE STANDINGS, AND THE MIDDLE ONE WAS COLLAPSED. A Bool bridge
+// mapped both "the setting is memory-backed" and "no setting was found" to false, and the consumer
+// turned false into MechanismEstablishedAbsent -- so a search that found NOTHING excluded routes B, C
+// and D exactly as hard as a reading that found the setting and read it. Finding the setting is
+// falsifiable; finding nothing is a statement about the SEARCH. Review 66335, DESIGN sections 5 and 3d.
+//
+// NO WITNESS COVERED THE SettingsAbsent PATH, which is why the mapping now takes the placement as a
+// parameter: the pinned image has one arm, so a control over the pinned value could only ever exercise
+// that arm and would be a decoration by DESIGN 4b's own test. All three reds are authorable here.
+test fn an_absent_placement_setting_is_unobserved_rather_than_an_established_absence() -> Bool {
+  match mechanism_standing_from_placement(m: EngramPlacementSettingsAbsent {
+    searched: ["/opt/vllm/engine/config.py" as NonEmptyStr],
+  }) {
+    MechanismUnobserved { runtime: _, obligation: o } => count(o as String) > 0
+    MechanismEstablishedAbsent { runtime: _, receipt: _, how: _ } => false
+    MechanismPrerequisiteObserved { runtime: _, receipt: _, caveat: _ } => false
+    MechanismNotRequiredByThisRoute => false
+  }
+    && match mechanism_standing_from_placement(m: v41_published_engram_placement) {
+      MechanismEstablishedAbsent { runtime: _, receipt: _, how: _ } => true
+      MechanismUnobserved { runtime: _, obligation: _ } => false
+      MechanismPrerequisiteObserved { runtime: _, receipt: _, caveat: _ } => false
+      MechanismNotRequiredByThisRoute => false
+    }
+    && match mechanism_standing_from_placement(m: EngramPlacementStorageBacked {
+      setting: "engram_offload=nvme" as NonEmptyStr,
+      how: "fixture: an image whose placement setting names a storage tier" as NonEmptyStr,
+    }) {
+      MechanismPrerequisiteObserved { runtime: _, receipt: _, caveat: _ } => true
+      MechanismEstablishedAbsent { runtime: _, receipt: _, how: _ } => false
+      MechanismUnobserved { runtime: _, obligation: _ } => false
+      MechanismNotRequiredByThisRoute => false
+    }
+}
+
 test fn a_route_naming_an_unadmitted_provider_refuses_pool_relief_rather_than_claiming_the_pool() -> Bool {
   match pool_relief_standing(
     r: materialization_route(
