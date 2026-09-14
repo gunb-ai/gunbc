@@ -1,7 +1,12 @@
 module gunbc.frontend_eval.control
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { FreeMonoid, Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.lens.module_graph {
+  ImportResolutionFact, ModuleDeclarationFact, import_closure, import_resolution_facts_live, module_declaration_facts_live,
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import extdeps.shell
@@ -23,35 +28,59 @@ import gunbc.frontend_eval.task {
 //
 // THE WORKSPACE IS AN ISOLATED CLOSURE, NOT THE CORPUS, because preparing the whole corpus as source
 // roots costs ~95 s per invocation regardless of the entry, while an entry's transitive closure
-// runs in about a second. Module paths are resolved by the layer convention below and a module
-// that does not read at that path refuses the run rather than being skipped.
-data control_closure_budget: Int = 400
+// runs in about a second. WHICH FILES FORM THE CLOSURE IS THE MODULE GRAPH'S FACT, NOT THIS
+// MODULE'S: v2.lens.module_graph import_closure folds the same import-resolution and
+// module-declaration facts the frontend produced, so no import line is parsed here and no
+// layer-to-directory table is minted (review 65965). Those facts cost minutes to build because the
+// host prepares the whole corpus once, so control_run builds them ONCE and every task folds its
+// closure from the same rows.
+type ModuleGraphFacts {
+  edges: List<ImportResolutionFact>
+  nodes: List<ModuleDeclarationFact>
+}
 
-fn module_file_path(module_path: String) -> String? {
-  let parts = split(s: module_path, delimiter: ".")
-  match parts |> first {
-    Absent => none
-    Present { value: layer } => {
-      let rel = join(parts |> skip(n: 1), "/")
-      if layer == "std" || layer == "extdeps" || layer == "gunbc" || layer == "test" || layer == "product" || layer == "tools" || layer == "strategy" || layer == "workflow" {
-        Present { value: join(["dag/", layer, "/", rel, ".dag"], "") }
-      } else {
-        if layer == "v2" { Present { value: join(["src/v2/", rel, ".dag"], "") } } else { none }
-      }
-    }
+fn module_graph_facts() -> ModuleGraphFacts {
+  ModuleGraphFacts {
+    edges: import_resolution_facts_live(pool_roots: witness_layer_roots, importer_roots: witness_layer_roots, exclude_substrings: []),
+    nodes: module_declaration_facts_live(pool_roots: witness_layer_roots),
   }
 }
 
-fn import_targets(source: String) -> List<String> {
-  split(s: source, delimiter: "\n")
-    |> filter(line => starts_with(s: line, prefix: "import "))
-    |> map(line => import_target_of_line(line: line))
+fn closure_paths(m: FreeMonoid<String>) -> List<String> {
+  match m {
+    Empty => []
+    Cons { head, tail } => concat([head], closure_paths(m: tail))
+  }
 }
 
-fn import_target_of_line(line: String) -> String {
-  let after_keyword = substring(s: line, start: 7, end: length(line))
-  let before_brace = first_line_item_or_empty(items: split(s: after_keyword, delimiter: "{"))
-  trim(first_line_item_or_empty(items: split(s: trim(before_brace), delimiter: " ")))
+type ClosureCopy
+  = ClosureCopied { modules: List<String> }
+  | ClosureRefused { detail: String }
+
+fn copy_one(workspace: String, rel: String) -> String {
+  let r = Filesystem.Read(path: rel)
+  if r.success == false {
+    join(["closure path does not read: ", rel, ": ", r.error], "")
+  } else {
+    let dir = shell.Mkdir.Parents(path: parent_dir(path: join([workspace, "/", rel], "")) as FilePath)
+    let w = Filesystem.Write(path: join([workspace, "/", rel], ""), content: r.content)
+    if dir.success && w.success { "" } else { join(["write failed for ", rel, ": ", w.error], "") }
+  }
+}
+
+// COPY THE ENTRY'S IMPORT CLOSURE INTO `workspace`. An empty closure is a refusal, not an empty
+// workspace: the entry itself is always a member, so emptiness means the facts do not know it.
+fn copy_closure(workspace: String, entry_path: String, facts: ModuleGraphFacts) -> ClosureCopy {
+  let paths = closure_paths(m: import_closure(entry_path: entry_path, edges: facts.edges, nodes: facts.nodes))
+  if count(paths) == 0 {
+    ClosureRefused { detail: join(["module graph carries no closure for ", entry_path], "") }
+  } else {
+    let failures = paths |> map(rel => copy_one(workspace: workspace, rel: rel)) |> filter(f => f != "")
+    match failures |> first {
+      Present { value: f } => ClosureRefused { detail: f }
+      Absent => ClosureCopied { modules: paths }
+    }
+  }
 }
 
 fn first_line_item_or_empty(items: List<String>) -> String {
@@ -61,62 +90,17 @@ fn first_line_item_or_empty(items: List<String>) -> String {
   }
 }
 
-fn already(seen: List<String>, m: String) -> Bool {
-  count(seen |> filter(x => x == m)) > 0
-}
-
-type ClosureCopy
-  = ClosureCopied { modules: List<String> }
-  | ClosureRefused { detail: String }
-
-// COPY THE TRANSITIVE IMPORT CLOSURE INTO `workspace`. Recursion carries a strictly decreasing
-// budget (DESIGN section 4: bounded and forward); exhausting it is a named refusal, not a truncation.
-fn copy_closure(workspace: String, pending: List<String>, seen: List<String>, budget: Int) -> ClosureCopy {
-  if budget <= 0 {
-    ClosureRefused { detail: "closure budget exhausted" }
-  } else {
-    match pending |> first {
-      Absent => ClosureCopied { modules: seen }
-      Present { value: m } => {
-        let rest = pending |> skip(n: 1)
-        if already(seen: seen, m: m) {
-          copy_closure(workspace: workspace, pending: rest, seen: seen, budget: budget - 1)
-        } else {
-          match module_file_path(module_path: m) {
-            Absent => ClosureRefused { detail: join(["no layer convention for module ", m], "") }
-            Present { value: rel } => {
-              let r = Filesystem.Read(path: rel)
-              if r.success {
-                let dir = shell.Mkdir.Parents(path: parent_dir(path: join([workspace, "/", rel], "")) as FilePath)
-                let w = Filesystem.Write(path: join([workspace, "/", rel], ""), content: r.content)
-                if dir.success && w.success {
-                  copy_closure(workspace: workspace, pending: concat(rest, import_targets(source: r.content)), seen: concat(seen, [m]), budget: budget - 1)
-                } else {
-                  ClosureRefused { detail: join(["write failed for ", rel, ": ", w.error], "") }
-                }
-              } else {
-                ClosureRefused { detail: join(["module ", m, " does not read at ", rel, ": ", r.error], "") }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 fn parent_dir(path: String) -> String {
   let parts = split(s: path, delimiter: "/")
   join(parts |> take(n: count(parts) - 1), "/")
 }
 
-fn entry_base(path: String) -> String {
-  match split(s: path, delimiter: "/") |> last {
-    Present { value: b } => b
-    Absent => path
-  }
-}
-
+// TEST-FN DISCOVERY DIVERGES FROM THE FACT PRODUCERS, WITH THE REASON STATED (DESIGN section 3b):
+// v2.std.decl_index DeclFact carries ItemKind FnItem but not the `test` marker (that flag lives only
+// in the seed's cli_run is_test), so no in-tree fact distinguishes a test fn from a fn. Until a
+// declaration fact carries it, the roster is read from the entry's own `test fn ` lines, at
+// module scope, where the parser also requires them. TRIGGER: DeclFact or ItemKind carrying the
+// test marker; this fn is then deleted, not adapted.
 fn test_fns(source: String) -> List<String> {
   split(s: source, delimiter: "\n")
     |> filter(line => starts_with(s: line, prefix: "test fn "))
@@ -175,10 +159,9 @@ fn all_tests_pass(gunbc_program: String, workspace: String, entry: String, fns: 
   count(fns |> filter(f => run_entry(gunbc_program: gunbc_program, workspace: workspace, entry: entry, function: f).accepted == false))
 }
 
-fn control_task(gunbc_program: String, workspace_root: String, task: EvalTask) -> TaskControl {
+fn control_task(gunbc_program: String, workspace_root: String, facts: ModuleGraphFacts, task: EvalTask) -> TaskControl {
   let workspace = join([workspace_root, "/", task.id as String], "")
-  let entry_module = join(["test.claim.", first_line_item_or_empty(items: split(s: entry_base(path: task.entry_path), delimiter: "."))], "")
-  match copy_closure(workspace: workspace, pending: [entry_module], seen: [], budget: control_closure_budget) {
+  match copy_closure(workspace: workspace, entry_path: task.entry_path, facts: facts) {
     ClosureRefused { detail } => ControlRefused { task: task.id, detail: detail }
     ClosureCopied { modules: _ } => {
       let subject_path = join([workspace, "/", task.subject_path], "")
@@ -253,7 +236,8 @@ fn control_refused(c: TaskControl) -> Bool {
 //   --function control_run --arg gunbc_program=target/release/gunbc --arg workspace_root=target/frontend-eval/control
 //   --arg receipt_path=target/frontend-eval/control_receipt.txt`
 fn control_run(gunbc_program: String, workspace_root: String, receipt_path: String) -> ProcessExit {
-  let controls = frontend_eval_tasks |> map(t => control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, task: t))
+  let facts = module_graph_facts()
+  let controls = frontend_eval_tasks |> map(t => control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: facts, task: t))
   let receipt = join(controls |> map(c => control_line(c: c)), "\n")
   let w = Filesystem.Write(path: receipt_path, content: concat(receipt, "\n"))
   let refused = count(controls |> filter(c => control_refused(c: c)))
@@ -284,7 +268,7 @@ data dropped_import_specimen: EvalTask = EvalTask {
 }
 
 fn dropped_import_probe(gunbc_program: String, workspace_root: String) -> ProcessExit {
-  match control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, task: dropped_import_specimen) {
+  match control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: module_graph_facts(), task: dropped_import_specimen) {
     ControlRefused { task: _, detail } =>
       if contains(detail, "ACCEPTED") {
         ExitSuccess

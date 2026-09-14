@@ -15,7 +15,7 @@ import gunbc.frontend_eval.attempt {
   eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
 }
 import gunbc.frontend_eval.card { frontend_language_card }
-import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, mutation_site_occurrences, import_targets, module_file_path, test_fns }
+import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, mutation_site_occurrences, test_fns }
 import std.measure { millisecond, token_count, token_count_value }
 import extdeps.vllm.sampling_params { sampling_temperature, SamplingTemperature }
 
@@ -145,8 +145,9 @@ test fn card_projects_operators_and_item_forms_and_no_task_text() -> Bool {
 }
 
 // THE CONTROL INSTRUMENT'S PURE FOLDS, exercised hermetically: stage classification from the
-// refusal's own vocabulary, the occurrence count that gates a mutation, import-line parsing, the
-// layer convention for module paths, and test-fn discovery. The effectful run is control_run.
+// refusal's own vocabulary, the occurrence count that gates a mutation, and test-fn discovery.
+// Closure membership is the module graph's fact and is not re-tested here. The effectful run is
+// control_run.
 fn stage_key_read(text: String) -> String {
   match refusal_stage(text: text) {
     StageRead { stage } => frontend_stage_key(stage: stage)
@@ -170,12 +171,8 @@ test fn control_occurrences_counts_disjoint_matches() -> Bool {
     && mutation_site_occurrences(haystack: "nothing here", needle: "Equal") == 0
 }
 
-test fn control_parses_import_lines_and_module_paths() -> Bool {
-  import_targets(source: "module m\n\nimport std.types { Bool }\nimport extdeps.process.posix_exit {\n  X,\n}\nfn f() -> Bool { true }\n") == ["std.types", "extdeps.process.posix_exit"]
-    && module_file_path(module_path: "std.pareto") == Present { value: "dag/std/pareto.dag" }
-    && module_file_path(module_path: "v2.compiler.parse") == Present { value: "src/v2/compiler/parse.dag" }
-    && module_file_path(module_path: "nowhere.x") == none
-    && test_fns(source: "test fn a_b() -> Bool { true }\nfn c() -> Bool { true }\ntest fn d() -> Bool { true }\n") == ["a_b", "d"]
+test fn control_discovers_test_fns_at_module_scope() -> Bool {
+  test_fns(source: "test fn a_b() -> Bool { true }\nfn c() -> Bool { true }\n  test fn indented() -> Bool { true }\ntest fn d() -> Bool { true }\n") == ["a_b", "d"]
 }
 
 // THE TEMPERATURE DOMAIN IS BOUNDED BY CONSTRUCTION: a negative sampling temperature has no
