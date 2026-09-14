@@ -1,10 +1,10 @@
 module std.list
 
 import std.types { List, Bool }
-
-// Membership and mutual cover under a caller-supplied equality. Predicate any/filter/count
-// stay the substrate methods; this module does not nickname them.
-
+// Temporary realization: the seed intercepts algebra.contains and discards eq.
+// Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
+// list_cover when the declared contains route executes caller equality, with the
+// existing equality witness green and declaration-body mutation red.
 fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
   xs.any(y => eq(y, x))
 }
