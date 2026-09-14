@@ -1683,8 +1683,17 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
     || n.params |> count > 0
 }
 
+// CALLABILITY IS THE ARROW CONNECTIVE; A NON-EMPTY PARAMETER LIST IS SUFFICIENT, NEVER NECESSARY.
+// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
+// and a nullary `fn() -> R` is an Arrow with an empty parameter list. This predicate used to be
+// `params |> count > 0` alone, which read "takes an argument" as "is a function type": every nullary
+// function type answered false, so the call seam discarded a found nullary local and retried its
+// name as a global ("function 'pick' not found in scope"), and the nominal brand checks below treated
+// a nullary arrow as a named type. The params disjunct is kept because a declaration-shaped node
+// carries its formals in params, and on such a node a non-empty list IS a callable fact.
+// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn type_node_is_callable(n: Node) -> Bool {
-  n.params |> count > 0
+  n.connective == Arrow || n.params |> count > 0
 }
 
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
@@ -5022,22 +5031,20 @@ fn function_value_call_named_arg_diags(
       let arity_diags = match callable_type {
         Present { value: callable } =>
           let param_count = callable.params |> count
-          if param_count > 0 {
-            let supplied = typed_args |> count
-            if supplied > param_count {
-              match typed_args |> skip(param_count) |> first {
-                Present { value: overflow } =>
-                  [make_error_node(
-                    diagnostic: CallPositionalSurplus {
-                      callee: func_name,
-                      supplied: supplied,
-                      capacity: param_count,
-                      span: overflow.span
-                    },
-                    module_name: module_name)]
-                Absent => []
-              }
-            } else { [] }
+          let supplied = typed_args |> count
+          if supplied > param_count {
+            match typed_args |> skip(param_count) |> first {
+              Present { value: overflow } =>
+                [make_error_node(
+                  diagnostic: CallPositionalSurplus {
+                    callee: func_name,
+                    supplied: supplied,
+                    capacity: param_count,
+                    span: overflow.span
+                  },
+                  module_name: module_name)]
+              Absent => []
+            }
           } else { [] }
         Absent => []
       }
@@ -6739,7 +6746,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let local_call_view = if sig != none { none } else { match map_get(scope.locals, func_name) {
-        Present { value: binding } => Present { value: if binding.resolved.params |> count > 0 || !map_has(scope.body_locals, func_name) {
+        Present { value: binding } => Present { value: if type_node_is_callable(n: binding.resolved) || !map_has(scope.body_locals, func_name) {
             NodeResolveResult { resolved: binding.resolved, diagnostics: [] }
           } else {
             expand_type_for_field_access(n: binding.resolved, env: scope.type_env, module_name: scope.module_name)
@@ -6754,7 +6761,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let local_call_refused = local_call_diags |> any(d => is_error_diagnostic(d: d.diagnostic))
       let callable_local = if local_call_refused { none } else {
         match local_call_view {
-          Present { value: view } => if view.resolved.params |> count > 0 { Present { value: view.resolved } } else { none }
+          Present { value: view } => if type_node_is_callable(n: view.resolved) { Present { value: view.resolved } } else { none }
           Absent => none
         }
       }
@@ -7088,12 +7095,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
             Present { value: carried } =>
-              if carried.resolved.params |> count > 0 { Present { value: carried.resolved } }
+              if type_node_is_callable(n: carried.resolved) { Present { value: carried.resolved } }
               else { none }
             Absent =>
               match map_get(scope.locals, func_name) {
                 Present { value: binding } =>
-                  if binding.resolved.params |> count > 0 { Present { value: binding.resolved } }
+                  if type_node_is_callable(n: binding.resolved) { Present { value: binding.resolved } }
                   else { none }
                 Absent => none
               }
