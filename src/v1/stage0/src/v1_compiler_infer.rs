@@ -10074,6 +10074,7 @@ Rc::new(InferResult {
                                     )
                                         && !is_never_constrained_enclosing_generic_base(
                                             resolved_base.clone(),
+                                            base_typed.clone(),
                                             scope.clone(),
                                         ));
                                     if defer_field_miss.clone() {
@@ -13009,7 +13010,69 @@ pub fn enclosing_fn_generic_names(scope: Rc<InferScope>) -> Rc<Vec<String>> {
     }
 }
 
-pub fn is_never_constrained_enclosing_generic_base(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+pub fn enclosing_fn_value_param_names(scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    if (scope.caller_decl_name.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            scope.caller_decl_name.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved { sig: s, .. } => Rc::new({
+                let mut __result = Vec::new();
+                for p in split_sig_params(
+                    s.params.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+                .value_params
+                .iter()
+                .cloned()
+                {
+                    __result.push(crate::v1_std_core::param_node_name_at(
+                        p.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ));
+                }
+                __result
+            }),
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
+pub fn field_base_is_enclosing_value_param(base: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*base.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = crate::v1_std_core::expr_var_name_at(
+                base.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            let mut __found = false;
+            for p in enclosing_fn_value_param_names(scope.clone())
+                .iter()
+                .cloned()
+            {
+                if (p.clone() == name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        _ => false,
+    }
+}
+
+pub fn is_never_constrained_enclosing_generic_base(
+    n: Rc<Node>,
+    base_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: id, .. }) => {
             let names = enclosing_fn_generic_names(scope.clone());
@@ -13023,17 +13086,23 @@ pub fn is_never_constrained_enclosing_generic_base(n: Rc<Node>, scope: Rc<InferS
                 }
                 __found
             };
-            let in_unbound_callee = {
-                let mut __found = false;
-                for g in scope.unbound_call_generic_names.clone().iter().cloned() {
-                    if (g.clone() == id.clone()) {
-                        __found = true;
-                        break;
+            if !in_enclosing.clone() {
+                false
+            } else if field_base_is_enclosing_value_param(base_expr.clone(), scope.clone()) {
+                true
+            } else {
+                let in_unbound_callee = {
+                    let mut __found = false;
+                    for g in scope.unbound_call_generic_names.clone().iter().cloned() {
+                        if (g.clone() == id.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            };
-            (in_enclosing.clone() && !in_unbound_callee.clone())
+                    __found
+                };
+                !in_unbound_callee.clone()
+            }
         }
         _ => false,
     }

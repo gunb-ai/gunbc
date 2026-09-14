@@ -6609,7 +6609,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         Absent =>
           let defer_field_miss = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
-            && !is_never_constrained_enclosing_generic_base(n: resolved_base, scope: scope)
+            && !is_never_constrained_enclosing_generic_base(n: resolved_base, base_expr: base_typed, scope: scope)
           if defer_field_miss {
             let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: field_name,
@@ -8066,6 +8066,12 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
 // would see only inner's U and refuse enclosing T. The in-flight call carries the
 // callee names not yet in subst (unbound_call_generic_names); those stay deferred
 // even when they share a spelling.
+//
+// The id-string cut is not enough when the FIELD BASE is an enclosing value parameter
+// whose type is that same spelling: asks<T>(item: T) { only_fn<T>(f: ignored =>
+// item.no_such_field) } has callee T in flight, so !in_unbound_callee would defer
+// item.no_such_field. Discriminate on the binder: an ExprVar that is an enclosing
+// function value parameter is never constrained by a later pass of that function.
 fn is_unconstrained_type_variable_base(n: Node) -> Bool {
   match n.inferred {
     Present { value: inf } => is_type_variable(inferred: inf)
@@ -8085,13 +8091,41 @@ fn enclosing_fn_generic_names(scope: InferScope) -> List<String> {
   }
 }
 
-fn is_never_constrained_enclosing_generic_base(n: Node, scope: InferScope) -> Bool {
+fn enclosing_fn_value_param_names(scope: InferScope) -> List<String> {
+  if scope.caller_decl_name == "" {
+    []
+  } else {
+    match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: scope.caller_decl_name) {
+      FuncSigResolved { sig: s, declared: _ } =>
+        split_sig_params(params: s.params, source_indices: scope.type_env.source_indices).value_params
+          |> map(p => param_node_name_at(n: p, source_indices: scope.type_env.source_indices))
+      _ => []
+    }
+  }
+}
+
+fn field_base_is_enclosing_value_param(base: Node, scope: InferScope) -> Bool {
+  match base.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: base, source_indices: scope.type_env.source_indices)
+      enclosing_fn_value_param_names(scope: scope) |> any(p => p == name)
+    _ => false
+  }
+}
+
+fn is_never_constrained_enclosing_generic_base(n: Node, base_expr: Node, scope: InferScope) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: id } } =>
       let names = enclosing_fn_generic_names(scope: scope)
       let in_enclosing = names |> any(g => g == id)
-      let in_unbound_callee = scope.unbound_call_generic_names |> any(g => g == id)
-      in_enclosing && !in_unbound_callee
+      if !in_enclosing {
+        false
+      } else if field_base_is_enclosing_value_param(base: base_expr, scope: scope) {
+        true
+      } else {
+        let in_unbound_callee = scope.unbound_call_generic_names |> any(g => g == id)
+        !in_unbound_callee
+      }
     _ => false
   }
 }
