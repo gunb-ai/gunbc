@@ -32,7 +32,11 @@ import gunbc.spark.pinned_base_env_classification {
   classify_pinned_base_image_env,
   env_secret_standing_is_secret_bearing,
   fixture_non_secret_config,
+  fixture_pem_shaped_config,
+  fixture_pem_shaped_value,
   fixture_secret_shaped_config,
+  fixture_secret_shaped_value,
+  pinned_base_classification_carries_text,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 
@@ -51,10 +55,23 @@ test fn interface_style_env_names_are_not_secret_bearing() -> Bool {
 
 test fn a_pem_value_classifies_as_secret_bearing() -> Bool {
   env_secret_standing_is_secret_bearing(
-    standing: classify_container_image_config_env(
-      config: container_image_config_from_env(env: ["TLS_CERT=-----BEGIN PRIVATE KEY-----fixture"]),
-    ),
+    standing: classify_container_image_config_env(config: fixture_pem_shaped_config()),
   )
+}
+
+test fn a_secret_shaped_value_never_appears_in_the_classification_receipt() -> Bool {
+  let named = classify_pinned_base_image_env(
+    config: fixture_secret_shaped_config(),
+    pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  )
+  let pem = classify_pinned_base_image_env(
+    config: fixture_pem_shaped_config(),
+    pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  )
+  env_secret_standing_is_secret_bearing(standing: named.standing)
+    && env_secret_standing_is_secret_bearing(standing: pem.standing)
+    && !pinned_base_classification_carries_text(row: named, text: fixture_secret_shaped_value)
+    && !pinned_base_classification_carries_text(row: pem, text: fixture_pem_shaped_value)
 }
 
 test fn digest_mismatch_is_typed_and_located() -> Bool {

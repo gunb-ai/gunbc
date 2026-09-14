@@ -117,6 +117,24 @@ fn env_secret_standing_is_secret_bearing(standing: EnvSecretStanding) -> Bool {
   }
 }
 
+fn env_secret_standing_carried_strings(standing: EnvSecretStanding) -> List<String> {
+  match standing {
+    EnvContainsNoSecretShapedEntry { names: ns } => map(ns, n => n as String)
+    EnvContainsSecretShapedEntry { secret_shaped_names: ns } => map(ns, n => n as String)
+  }
+}
+
+fn pinned_base_classification_carried_strings(row: PinnedBaseImageEnvClassification) -> List<String> {
+  concat(
+    concat([row.pin as String], map(row.env_names, n => n as String)),
+    env_secret_standing_carried_strings(standing: row.standing),
+  )
+}
+
+fn pinned_base_classification_carries_text(row: PinnedBaseImageEnvClassification, text: String) -> Bool {
+  any(pinned_base_classification_carried_strings(row: row), s => string_contains(s: s, pattern: text))
+}
+
 fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
   uses net: Network
 {
@@ -137,8 +155,20 @@ fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
   }
 }
 
+data fixture_secret_shaped_value: String = "fixture-not-a-live-secret"
+data fixture_pem_shaped_value: String = "-----BEGIN PRIVATE KEY-----fixture"
+
 fn fixture_secret_shaped_config() -> ContainerImageConfig {
-  container_image_config_from_env(env: ["PATH=/usr/bin", "AWS_SECRET_ACCESS_KEY=fixture-not-a-live-secret"])
+  container_image_config_from_env(env: [
+    "PATH=/usr/bin",
+    join(["AWS_SECRET_ACCESS_KEY=", fixture_secret_shaped_value], ""),
+  ])
+}
+
+fn fixture_pem_shaped_config() -> ContainerImageConfig {
+  container_image_config_from_env(env: [
+    join(["TLS_CERT=", fixture_pem_shaped_value], ""),
+  ])
 }
 
 fn fixture_non_secret_config() -> ContainerImageConfig {
