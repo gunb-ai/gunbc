@@ -1,0 +1,53 @@
+module gunbc.recurring_failure_mode.rest_response_coproduct_decoded_type_blind
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data rest_response_coproduct_decoded_type_blind: RecurringFailureMode = RecurringFailureMode {
+  identity: "rest_response_coproduct_decoded_type_blind" as NonEmptyStr,
+
+  receipts: [
+    "**REST response coproduct decoded type-blind** (INVALID STATE: an interpreted program receives a REST response whose declared output type has a nullary-coproduct field -- `extdeps.github.workflow_runs` `WorkflowRun.status: WorkflowRunStatus` -- and the value bound to that field is the raw wire string (`\"completed\"`), not an arm of the coproduct.",
+
+    "Every match over the field then reads the real variant as its wildcard arm, or refuses non-exhaustively if it has none.",
+
+    "The mechanism was the v1 interpreter's response mapping (`v1_interpreter.rs` `map_response_to_value_json`), which decoded every JSON value through the type-blind `json_to_value` although the operation node carried the fully resolved output type. The declared `std.serialization` `CoproductWireContract` rows that name each coproduct's wire spelling were read by the Rust emitter only, and never by the interpreter.",
+
+    "HARM: section 5 silent wrongness at the language layer. THE SPECIMEN, measured live: `gunbc.fleet_revision_acceptance` `accept_required_ci_merge_group_runs` matched `run.status` with `Completed => ... _ => false`. On the merge-queue landing a8d4fdeb its merge_group run 34853888826 concluded success, and fleet-desired run 34859333101 refused it as RequiredCiMergeGroupRunUnconcluded. The route refused every real landing, which is why the push-on-main required run could not be cut once the merge queue was on.",
+
+    "A local probe, calling `github.WorkflowRuns.ListForRef` for that revision and matching the conclusion, returned `PatternMatchFailure \{ value: \"success\" \}`.",
+
+    "THE WITNESS THAT DID NOT SEE IT, stated because it is the lesson: every row of `test.claim.fleet_desired_merge_queue_admission_witness_test` handed the fold a CONSTRUCTED `WorkflowRun`, so all of them stayed green while the wet route refused every real landing. They discriminated on the fold and not on the path that mattered -- the decode between the wire and the fold.",
+
+    "THE REPAIR: the interpreter decodes a REST response by its declared output type (`decode_json_by_declared_type`). A nullary coproduct is spelled through the one declared authority: a `CoproductWireContract` row keyed by declaration identity, else the declaring module's `wire_contract` encoding, in the precedence the emitter applies, read with the emitter's own readers (`coproduct_wire_contract_encoding`, `naming_policy_node`).",
+
+    "Every failure arm refuses as `RestResponseUndecodable` at the located field path: no contract, an unsupported encoding or naming, a non-string value, an unknown spelling. There is no lenient arm, so a string that happens to equal an arm's authored name is refused when no contract declares that naming. `Bool` is the one native carrier, taking a JSON boolean. With an outcome field the refusal is `RestBodyUndecodable`; without one it is an evaluation failure.",
+
+    "THE SIX STRING-FORM CONTRACT ROWS, repaired in the same change, in four modules: `extdeps.github.workflow_runs_contracts`, `checks_contracts`, `merge_state_contracts` and `mergeable_state_contracts` authored `coproduct: \"Name\"` where `std.serialization` `CoproductWireContract.coproduct` is a `DeclarationRef`. The ill-typed rows were Accepted, and no reader could select them by identity. They now carry `DeclarationRef`.",
+
+    "THE CENSUS of nullary coproducts reachable from a REST operation's declared output, over `dag/`, at this change. Contract-carrying before the change: CheckStatus, CheckConclusion, ContainerState, ConditionEnum, FormatTypeEnum, MarketplaceEnum, PullRequestState, ReviewState, WorkflowRunStatus, WorkflowRunConclusion. Covered by a module `wire_contract`: AnthropicStopReason and AnthropicMessages200ServiceTier (`extdeps.llm.anthropic_messages_api` imports `llm_snake_wire_contract`). Given rows here: UserType (AsAuthored), IssueState and OpenAiFinishReason (SnakeCase). Still undeclared, and therefore refusing: `extdeps.cloud.gcp.secret_manager` `SmVersionState`, whose wire spelling (ENABLED) needs a strip-prefix screaming-snake naming that `std.serialization` `VariantNaming` does not model.",
+
+    "INSTRUMENT: the census above was a static enumeration run once for this change and is NOT a standing instrument. The standing one is the refusal itself. Every interpreted REST response that reaches an undeclared or misspelled coproduct now stops as `RestResponseUndecodable` at the located field, per section 3's rule that the deletion is the census.",
+
+    "RECOGNITION RULE: when an interpreted consumer of an external API takes a wildcard arm, or refuses non-exhaustively on a value that prints as a lowercase or screaming string, ask what representation the DECODE produced before asking what the fold did wrong. A fold witness over constructed records cannot answer that question; a replay of the recorded body can.",
+
+    "THE NEIGHBOURS THIS IS NOT. `a_positive_control_certifies_the_defect_it_exists_to_catch` is a control that passes because of the defect; here the controls were correct and the path they skipped carried it. `carrier_by_spelling` is a bare spelling binding the wrong declaration at acceptance; here the declaration was right and the runtime value never inhabited it. `absorbing_fallback` is a mechanism widening to a superset; the old decode did not widen, it failed to narrow.",
+
+    "RUNG FOUND AT: below the ladder -- the wrong representation was Accepted, and nothing typed, located or countable fired on the interpretation path. RUNG AFTER THIS CHANGE: mitigatable at the interpreter's REST response boundary, a typed located refusal discriminated by `test.claim.rest_exchange_replay_test` `an_unknown_spelling_refuses_at_the_located_field` and `a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match`, with the recorded-body positive control `the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision`.",
+
+    "The mutation that returned the decode to `json_to_value` turned all five new rows red.",
+
+    "CEILING: 2, mechanically preventable at the boundary, plus 3 for the declaration side. Whether a live body spells an arm is an external fact, observed at a declared boundary and never constructed, so the runtime refusal is the honest rung. Whether every REST-reachable nullary coproduct HAS a declared spelling is decidable over the corpus.",
+
+    "NEXT-RUNG TRIGGER, phrased as the capability: acceptance refuses a REST operation whose declared output reaches a nullary coproduct with neither a `CoproductWireContract` row nor a module `wire_contract`, sufficient that SmVersionState's missing spelling is a compile-time refusal rather than a first-live-response one. A second trigger belongs beside it: `std.serialization` `VariantNaming` models the strip-prefix screaming-snake spelling that Secret Manager's version states use.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet_revision_acceptance", decl_name: "accept_required_ci_merge_group_runs", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.github.workflow_runs_contracts", decl_name: "workflow_run_status_wire_contract", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "an_unknown_spelling_refuses_at_the_located_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.fleet_desired_merge_queue_admission_witness_test", decl_name: "the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision", field: WholeDeclaration },
+  ],
+}

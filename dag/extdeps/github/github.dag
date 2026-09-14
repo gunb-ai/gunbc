@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.github.github_contracts { user_type_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
