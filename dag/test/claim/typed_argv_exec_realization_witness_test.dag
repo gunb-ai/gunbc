@@ -1,6 +1,7 @@
 module test.claim.typed_argv_exec_realization_witness
 
 import extdeps.access.posix_effective_principal
+import extdeps.sudo.run_as { SudoRunAsAny }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op { posix_effective_principal_read_argv }
 import extdeps.sudo.nopasswd_execute_probe {
@@ -11,6 +12,7 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_execute_probe_argv,
+  sudo_nopasswd_execute_probe_words,
   sudo_nopasswd_grant_list_argv,
   sudo_nopasswd_grant_list_admits_probe,
 }
@@ -61,10 +63,11 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
   match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: check } => {
       let result = sudo.NopasswdExecuteProbe.Check(
-        probe: SudoNopasswdExecuteProbeShape {
+        probe_words: sudo_nopasswd_execute_probe_words(probe: SudoNopasswdExecuteProbeShape {
           command_path: cmd.grant.command_path,
           check_argv: check,
-        }
+          run_as: cmd.grant.run_as,
+        })
       )
       result.success
     }
@@ -73,7 +76,7 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
 }
 
 test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
-  let probe = "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
+  let probe = SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/tailscale", run_as: SudoRunAsAny }
   let result = sudo.NopasswdGrantList.Read()
   let argv = sudo_nopasswd_grant_list_argv()
   result.success
@@ -87,21 +90,21 @@ test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
 test fn witness_sudo_grant_list_password_only_refuses() -> Bool {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "User ghrunner may run the following commands:\n    (ALL) PASSWD: /usr/bin/tailscale",
-    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+    probe: SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/tailscale", run_as: SudoRunAsAny },
   )
 }
 
 test fn witness_sudo_grant_list_other_nopasswd_does_not_admit_target() -> Bool {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "User ghrunner may run the following commands:\n    (ALL) NOPASSWD: /usr/bin/apt-get\n    (ALL) PASSWD: /usr/bin/tailscale",
-    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+    probe: SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/tailscale", run_as: SudoRunAsAny },
   )
 }
 
 test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "    (ALL) NOPASSWD: /usr/bin/tailscale-helper",
-    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+    probe: SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/tailscale", run_as: SudoRunAsAny },
   )
 }
 
@@ -147,7 +150,7 @@ test fn witness_tailscale_roster_selects_grant_list_not_execute_probe() -> Bool 
     cmd: ci_deploy_srv1_access.privileged_commands.skip(n: 4).first()
   ) {
     SudoNopasswdGrantListProbe { probe: p } =>
-      p as String == "/usr/bin/tailscale"
+      (p.command_path as String) == "/usr/bin/tailscale"
     _ => false
   }
 }
@@ -218,6 +221,7 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
       let probe = SudoNopasswdExecuteProbeShape {
         command_path: cmd.grant.command_path,
         check_argv: check,
+        run_as: cmd.grant.run_as,
       }
       match typed_argv_exec_over_ssh(
         host: operator_host_srv1 as NonEmptyStr,
@@ -244,6 +248,6 @@ test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool
 test fn witness_sudo_grant_list_exact_nopasswd_row_accepts() -> Bool {
   sudo_nopasswd_grant_list_admits_probe(
     listing: "    (ALL) NOPASSWD: /usr/bin/tailscale",
-    probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
+    probe: SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/tailscale", run_as: SudoRunAsAny },
   )
 }

@@ -11,6 +11,7 @@ import gunbc.fleet_intent_network {
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
+import extdeps.sudo.run_as { SudoRunAsAny }
 import gunbc.runner_host_deploy {
   srv3_runner_host_deploy,
   srv4_runner_host_deploy,
@@ -120,7 +121,7 @@ data runner_capacity_slot_add_required_operations: List<RunnerCapacitySlotAddPri
   PrivOpSystemdUnitStart {},
 ]
 
-data runner_capacity_sudo_grant_list_probe: SudoNopasswdGrantListProbeShape = "/usr/bin/sudo" as SudoNopasswdGrantListProbeShape
+data runner_capacity_sudo_grant_list_probe: SudoNopasswdGrantListProbeShape = SudoNopasswdGrantListProbeShape { command_path: "/usr/bin/sudo", run_as: SudoRunAsAny }
 
 fn runner_capacity_in_band_transport_binding(host: HostIdentity) -> RunnerCapacityInBandTransportBinding {
   RunnerCapacityInBandTransportBinding {

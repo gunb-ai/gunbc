@@ -1,5 +1,7 @@
 module gunbc.fleet_posix_accounts
 
+import extdeps.sudo.run_as { SudoRunAs, SudoRunAsAny, SudoRunAsLogin, sudo_run_as_eq }
+import v2.std.algebra { any }
 import extdeps.access.posix { PosixUser, PosixLoginName }
 import std.nat { Nat }
 import std.types { Timestamp }
@@ -31,26 +33,21 @@ type PosixAccountDeclaredProbe {
   host: NonEmptyStr
 }
 
-// WHO THE GRANTED COMMAND MAY RUN AS, stated rather than implied. Every grant before this field rendered
-// `(ALL)`, which lets the grantee run the command as any user, root included; that remains
-// SudoRunAsAny, spelled for what it permits. SudoRunAsLogin narrows a grant to one target account, which
-// is how a login principal is allowed to run exactly one helper as a no-login service identity without
-// gaining any other identity.
-type SudoRunAs
-  = SudoRunAsAny
-  | SudoRunAsLogin { login: NonEmptyStr }
-
-fn sudo_run_as_sudoers_spec(r: SudoRunAs) -> String {
-  match r {
-    SudoRunAsAny => "(ALL)"
-    SudoRunAsLogin { login } => join(["(", login as String, ")"], "")
-  }
-}
-
 type PosixSudoGrant {
   command_path: NonEmptyStr
   run_as: SudoRunAs
   probe: SudoNopasswdProbeKind
+}
+
+// A GRANT IS HELD ONLY AS ITSELF: the same command path AND the same run-as target. A narrowed grant
+// does not satisfy a request for (ALL), and (ALL) is not reported as the narrowed grant it exceeds -
+// admission, lint and verification all ask this one question.
+fn posix_sudo_grant_same(a: PosixSudoGrant, b: PosixSudoGrant) -> Bool {
+  (a.command_path as String) == (b.command_path as String) && sudo_run_as_eq(a: a.run_as, b: b.run_as)
+}
+
+fn posix_sudo_grant_held(held: List<PosixSudoGrant>, requested: PosixSudoGrant) -> Bool {
+  any(held, g => posix_sudo_grant_same(a: g, b: requested))
 }
 
 // PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over
@@ -279,6 +276,8 @@ type CiRunnerSudoBinary
   | SudoRm
   | SudoUseradd
   | SudoUsermod
+  | SudoGroupadd
+  | SudoSync
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -290,6 +289,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoRm => fleet_rm_binary_path
     SudoUseradd => fleet_useradd_binary_path
     SudoUsermod => fleet_usermod_binary_path
+    SudoGroupadd => fleet_groupadd_binary_path
+    SudoSync => fleet_sync_binary_path
   }
 }
 
@@ -303,6 +304,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoRm => NopasswdExecuteCheck { check_argv: "--version" }
     SudoUseradd => NopasswdExecuteCheck { check_argv: "-D" }
     SudoUsermod => NopasswdExecuteCheck { check_argv: "--help" }
+    SudoGroupadd => NopasswdExecuteCheck { check_argv: "--help" }
+    SudoSync => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
@@ -320,9 +323,19 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // binary like its siblings, probed with --help (exit 0); what it may change is decided by the one
 // operation that renders it, EnsureSupplementaryGroupMembership: append one named group to one
 // named login, never a primary-group, shell, home, or password change.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod]
+// groupadd AND sync JOIN THE ROSTER WITH THE FABRIC ORIGIN'S HOST INTENT. The origin's handoff needs one
+// explicitly allocated group both of its principals are enrolled in, rather than an account-name group
+// useradd may or may not create, so the group is its own operation, EnsureSystemGroup: a --system group
+// of one name, never a gid or membership change. A directory beneath the 0700 origin root can only be
+// opened by its owner or root, so the fsync that makes a created directory's name durable in its parent
+// is SyncDirectory: sync of one named path, which the sudoers match pins in full. Both are probed like
+// their siblings; the rendered grant is the whole binary and what it may do is the operation that
+// renders it. THIS WIDENS THE ROSTER ON THE NEXT DEPLOY and is stated here rather than discovered there.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoGroupadd, SudoSync]
 
 data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
+data fleet_groupadd_binary_path: NonEmptyStr = "/usr/sbin/groupadd"
+data fleet_sync_binary_path: NonEmptyStr = "/usr/bin/sync"
 data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
 data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"

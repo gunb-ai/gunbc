@@ -1,6 +1,7 @@
 module extdeps.sudo.nopasswd_execute_probe
 
 import std.types { String, NonEmptyStr }
+import extdeps.sudo.run_as { SudoRunAs }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -29,9 +30,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type SudoNopasswdExecuteProbeShape {
   command_path: NonEmptyStr
   check_argv: NonEmptyStr
+  run_as: SudoRunAs
 }
 
-type SudoNopasswdGrantListProbeShape = NonEmptyStr where brand("SudoNopasswdGrantListProbeShape")
+type SudoNopasswdGrantListProbeShape {
+  command_path: NonEmptyStr
+  run_as: SudoRunAs
+}
 
 type SudoNopasswdProbeKind
   = NopasswdExecuteCheck { check_argv: NonEmptyStr }

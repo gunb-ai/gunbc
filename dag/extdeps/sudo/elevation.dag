@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { list_append }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.run_as { SudoRunAs, sudo_run_as_invocation_words }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -76,6 +77,22 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
     bin_path: sudo_binary_path as String,
     args: list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
+}
+
+// ELEVATION TO A NAMED TARGET. The same non-interactive invocation, with the run-as words
+// extdeps.sudo.run_as derives from the grant's own SudoRunAs, so the argv that exercises a narrowed
+// grant and the sudoers rule that authorizes it come from one value. For SudoRunAsAny it is exactly
+// sudo_elevate.
+fn sudo_elevate_as(run_as: SudoRunAs, command: List<String>) -> ElevatedInvocation {
+  ElevatedInvocation {
+    bin_path: sudo_binary_path as String,
+    args: list_append(left: concat([sudo_non_interactive_flag as String], sudo_run_as_invocation_words(r: run_as)), right: command),
+  }
+}
+
+fn sudo_elevate_as_argv(run_as: SudoRunAs, command: List<String>) -> List<String> {
+  let elevated = sudo_elevate_as(run_as: run_as, command: command)
+  list_append(left: [elevated.bin_path], right: elevated.args)
 }
 
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the

@@ -22,6 +22,7 @@ import std.types { String, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.sudo.run_as { SudoRunAs, SudoRunAsLogin, sudo_run_as_sudoers_spec }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -33,6 +34,8 @@ import gunbc.fleet_posix_accounts {
   SudoUseradd,
   SudoUsermod,
   SudoSystemctl,
+  SudoGroupadd,
+  SudoSync,
 }
 
 // THE OPERATION, PARAMETERIZED. Not a nullary enum of binaries: a binary path alone cannot say
@@ -52,6 +55,8 @@ type ExecutorPrivilegedOperation
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
+  | EnsureSystemGroup { group: NonEmptyStr }
+  | SyncDirectory { path: NonEmptyStr }
   | InstallFile {
       source: NonEmptyStr
       destination: NonEmptyStr
@@ -94,6 +99,16 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       "-aG" as NonEmptyStr,
       g,
       l
+    ]
+    EnsureSystemGroup { group: g } => [
+      ci_runner_sudo_binary_path(b: SudoGroupadd),
+      "--system" as NonEmptyStr,
+      g
+    ]
+    SyncDirectory { path: p } => [
+      ci_runner_sudo_binary_path(b: SudoSync),
+      "--" as NonEmptyStr,
+      p
     ]
     InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
       ci_runner_sudo_binary_path(b: SudoInstall),
@@ -166,7 +181,7 @@ fn executor_privileged_operation_sudoers_command(op: ExecutorPrivilegedOperation
 // grantee to run the command as ANY user including other service accounts; Spark already rendered
 // ALL=(root). These were two different grants wearing one vocabulary. root is the narrower of the
 // two and is what every operation here actually needs.
-data executor_sudoers_run_as: NonEmptyStr = "root" as NonEmptyStr
+data executor_sudoers_run_as: SudoRunAs = SudoRunAsLogin { login: "root" }
 
 fn executor_privileged_operation_sudoers_line(
   grantee: NonEmptyStr,
@@ -174,9 +189,9 @@ fn executor_privileged_operation_sudoers_line(
 ) -> NonEmptyStr {
   join([
     grantee as String,
-    " ALL=(",
-    executor_sudoers_run_as as String,
-    ") NOPASSWD: ",
+    " ALL=",
+    sudo_run_as_sudoers_spec(r: executor_sudoers_run_as),
+    " NOPASSWD: ",
     executor_privileged_operation_sudoers_command(op: op) as String
   ], "") as NonEmptyStr
 }
@@ -290,6 +305,7 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 type OperationPrecondition
   = NoPrecondition
   | AccountExistsCheck { login: NonEmptyStr }
+  | GroupExistsCheck { group: NonEmptyStr }
 
 // THE MATCH IS EXHAUSTIVE WITH NO WILDCARD ARM, so a new operation must decide whether it needs a
 // precondition rather than defaulting to "none" and inheriting the same silent non-idempotence
@@ -298,6 +314,8 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
   match op {
     EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
     EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
+    EnsureSystemGroup { group: g } => GroupExistsCheck { group: g }
+    SyncDirectory { path: _ } => NoPrecondition
     EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
     RemoveDirectoryTree { path: _ } => NoPrecondition
     SystemdDaemonReload => NoPrecondition
@@ -317,6 +335,7 @@ fn operation_precondition_argv(p: OperationPrecondition) -> List<NonEmptyStr> {
   match p {
     NoPrecondition => []
     AccountExistsCheck { login: l } => ["id" as NonEmptyStr, "-u" as NonEmptyStr, l]
+    GroupExistsCheck { group: g } => ["getent" as NonEmptyStr, "group" as NonEmptyStr, g]
   }
 }
 

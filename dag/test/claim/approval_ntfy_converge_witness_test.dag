@@ -14,7 +14,7 @@ import gunbc.executor_privileged_operation {
   EnsureSystemAccount, EnsureOwnedDirectory, SystemdDaemonReload,
   executor_privileged_operation_precondition, executor_privileged_operation_converge_command,
   executor_privileged_operation_converge_command_emit_scaffold,
-  OperationPrecondition, NoPrecondition, AccountExistsCheck,
+  OperationPrecondition, NoPrecondition, AccountExistsCheck, GroupExistsCheck,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
@@ -46,6 +46,7 @@ test fn witness_directory_ensure_needs_no_precondition() -> Bool {
   }) {
     NoPrecondition => true
     AccountExistsCheck { login: _ } => false
+    GroupExistsCheck { group: _ } => false
   }
 }
 
@@ -58,6 +59,7 @@ test fn witness_account_precondition_names_the_same_login() -> Bool {
   }) {
     AccountExistsCheck { login } => (login as String) == "gunbc-ntfy"
     NoPrecondition => false
+    GroupExistsCheck { group: _ } => false
   }
 }
 

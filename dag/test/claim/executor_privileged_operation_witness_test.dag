@@ -297,3 +297,21 @@ test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
   )
 }
 
+
+// groupadd EXITS 9 WHEN THE GROUP EXISTS, so EnsureSystemGroup is guarded by getent the way
+// EnsureSystemAccount is guarded by id, and a directory sync needs no guard. The positive precedes the
+// refusal: a precondition that named a different group would short-circuit on the wrong fact.
+test fn a_system_group_is_guarded_by_its_own_name_and_a_sync_is_not_guarded() -> Bool {
+  let group_guard = match executor_privileged_operation_precondition(op: EnsureSystemGroup { group: "gunbc-fabric-handoff" }) {
+    GroupExistsCheck { group } => (group as String) == "gunbc-fabric-handoff"
+    AccountExistsCheck { login: _ } => false
+    NoPrecondition => false
+  }
+  let sync_unguarded = match executor_privileged_operation_precondition(op: SyncDirectory { path: "/var/lib/gunbc-fabric-origin" }) {
+    NoPrecondition => true
+    AccountExistsCheck { login: _ } => false
+    GroupExistsCheck { group: _ } => false
+  }
+  group_guard && sync_unguarded
+    && join(map(executor_privileged_operation_argv(op: EnsureSystemGroup { group: "gunbc-fabric-handoff" }), w => w as String), " ") == "/usr/sbin/groupadd --system gunbc-fabric-handoff"
+}

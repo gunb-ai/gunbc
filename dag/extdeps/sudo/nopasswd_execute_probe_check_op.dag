@@ -9,6 +9,7 @@ import extdeps.sudo.nopasswd_execute_probe {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { any, length }
+import extdeps.sudo.run_as { sudo_run_as_sudoers_spec, sudo_run_as_invocation_words }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,8 +24,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // noninteractive list query because some other entry is NOPASSWD. The typed observation must also
 // contain an exact NOPASSWD row for the requested command path.
 
+// THE PROBE RUNS AS THE GRANT'S TARGET: a narrowed grant is exercised with -u <login>, since without it
+// sudo would ask for root and the narrowed rule would not match.
+fn sudo_nopasswd_execute_probe_words(probe: SudoNopasswdExecuteProbeShape) -> List<String> {
+  concat(concat(["-n"], sudo_run_as_invocation_words(r: probe.run_as)), [probe.command_path as String, probe.check_argv as String])
+}
+
 fn sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape) -> List<String> {
-  ["sudo", "-n", probe.command_path as String, probe.check_argv as String]
+  concat(["sudo"], sudo_nopasswd_execute_probe_words(probe: probe))
 }
 
 fn sudo_nopasswd_grant_list_argv() -> List<String> {
@@ -39,7 +46,8 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
   if length(xs: parts) != 2 {
     false
   } else {
-    parts.skip(n: 1).first().trim() == probe as String
+    parts.first().trim() == sudo_run_as_sudoers_spec(r: probe.run_as)
+      && parts.skip(n: 1).first().trim() == probe.command_path as String
   }
 }
 
@@ -57,12 +65,12 @@ fn sudo_nopasswd_grant_list_admits_probe(
 
 service sudo.NopasswdExecuteProbe {
   operation Check {
-    input { probe: SudoNopasswdExecuteProbeShape }
+    input { probe_words: List<String> }
     output { success: Bool from "exit_success" }
     readonly
 
     transport shell {
-      argv: ["sudo", "-n", "{probe.command_path}", "{probe.check_argv}"]
+      argv: ["sudo", probe_words]
     }
     exit {
       0 => Unit

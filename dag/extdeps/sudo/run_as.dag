@@ -1,0 +1,67 @@
+module extdeps.sudo.run_as
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// WHO A SUDO COMMAND RUNS AS: one fact with three renderings that must never disagree.
+//
+// sudoers(5) Runas_Spec is the parenthesized list before a command in a user specification - `(ALL)`
+// lets the grantee name any target user, `(login)` exactly one. sudo(8) -u selects the target at
+// invocation, and without -u the target is root. sudo -l prints each granted command with its
+// Runas_Spec. So a grant, the invocation that uses it, and the listing that verifies it all carry the
+// run-as target, and a consumer that compares only the command path cannot tell `(ALL)`, `(root)` and
+// `(gunbc-fabric-origin)` apart for one path.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudoers.man/"
+  }
+}
+
+data sudo_invocation_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.sudo.run_as",
+      decl_name: "SudoRunAs",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [sudo_invocation_citation]
+}
+
+// SudoRunAsAny is `(ALL)`: the grantee may run the command as any user, and an invocation that names
+// no target runs it as root. SudoRunAsLogin narrows the grant, and the invocation, to one account.
+type SudoRunAs
+  = SudoRunAsAny
+  | SudoRunAsLogin { login: NonEmptyStr }
+
+fn sudo_run_as_sudoers_spec(r: SudoRunAs) -> String {
+  match r {
+    SudoRunAsAny => "(ALL)"
+    SudoRunAsLogin { login } => join(["(", login as String, ")"], "")
+  }
+}
+
+fn sudo_run_as_eq(a: SudoRunAs, b: SudoRunAs) -> Bool {
+  sudo_run_as_sudoers_spec(r: a) == sudo_run_as_sudoers_spec(r: b)
+}
+
+// THE INVOCATION WORDS. An `(ALL)` grant is exercised with no -u, which targets root; a narrowed grant
+// is exercised only as its one login, because without -u sudo would ask for root and the grant would
+// not match.
+fn sudo_run_as_invocation_words(r: SudoRunAs) -> List<String> {
+  match r {
+    SudoRunAsAny => []
+    SudoRunAsLogin { login } => ["-u", login as String]
+  }
+}

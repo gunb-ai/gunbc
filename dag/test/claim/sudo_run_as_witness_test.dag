@@ -1,0 +1,78 @@
+module test.claim.sudo_run_as_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.access { AccessDecision, Permit, Deny }
+import extdeps.sudo.run_as { SudoRunAs, SudoRunAsAny, SudoRunAsLogin, sudo_run_as_sudoers_spec }
+import extdeps.sudo.elevation { sudo_elevate_as_argv }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape, SudoNopasswdGrantListProbeShape, NopasswdGrantListCheck,
+}
+import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_execute_probe_argv, sudo_nopasswd_grant_list_admits_probe }
+import gunbc.fleet_posix_accounts { PosixSudoGrant, posix_sudo_grant_same, posix_sudo_grant_held }
+import gunbc.ci_deploy_access { PrivilegedCommand, deploy_access_grant_admits_probe, deploy_access_sudoers_line, ci_deploy_srv1_access }
+
+// ONE PATH, THREE RUN-AS TARGETS, AND EVERY CONSUMER KEEPS THEM APART. Each assertion names a consumer
+// that previously compared only the command path: grant sameness (admission and roster lint), the
+// sudo -l listing check, the execute probe's argv and the elevation argv. A green positive precedes
+// each refusal, so an inert predicate cannot pass the negative arms.
+
+data helper: NonEmptyStr = "/opt/gunbc/bin/gunbc-fabric-origin"
+
+fn grant(r: SudoRunAs) -> PosixSudoGrant {
+  PosixSudoGrant { command_path: helper, run_as: r, probe: NopasswdGrantListCheck }
+}
+
+fn any_target() -> SudoRunAs { SudoRunAsAny }
+fn root_target() -> SudoRunAs { SudoRunAsLogin { login: "root" } }
+fn origin_target() -> SudoRunAs { SudoRunAsLogin { login: "gunbc-fabric-origin" } }
+
+test fn grant_sameness_distinguishes_all_root_and_one_login_for_one_path() -> Bool {
+  posix_sudo_grant_same(a: grant(r: origin_target()), b: grant(r: origin_target()))
+    && !posix_sudo_grant_same(a: grant(r: origin_target()), b: grant(r: any_target()))
+    && !posix_sudo_grant_same(a: grant(r: origin_target()), b: grant(r: root_target()))
+    && !posix_sudo_grant_same(a: grant(r: any_target()), b: grant(r: root_target()))
+    && posix_sudo_grant_held(held: [grant(r: origin_target())], requested: grant(r: origin_target()))
+    && !posix_sudo_grant_held(held: [grant(r: origin_target())], requested: grant(r: any_target()))
+}
+
+test fn the_sudoers_spec_renders_each_target() -> Bool {
+  sudo_run_as_sudoers_spec(r: any_target()) == "(ALL)"
+    && sudo_run_as_sudoers_spec(r: root_target()) == "(root)"
+    && sudo_run_as_sudoers_spec(r: origin_target()) == "(gunbc-fabric-origin)"
+}
+
+test fn the_grant_listing_admits_only_the_row_with_the_requested_target() -> Bool {
+  let listing = "User gunbc-fleet may run the following commands:\n    (gunbc-fabric-origin) NOPASSWD: /opt/gunbc/bin/gunbc-fabric-origin"
+  sudo_nopasswd_grant_list_admits_probe(listing: listing, probe: SudoNopasswdGrantListProbeShape { command_path: helper, run_as: origin_target() })
+    && !sudo_nopasswd_grant_list_admits_probe(listing: listing, probe: SudoNopasswdGrantListProbeShape { command_path: helper, run_as: any_target() })
+    && !sudo_nopasswd_grant_list_admits_probe(listing: listing, probe: SudoNopasswdGrantListProbeShape { command_path: helper, run_as: root_target() })
+}
+
+test fn the_probe_and_the_elevation_run_as_the_target() -> Bool {
+  join(sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape { command_path: helper, check_argv: "--help", run_as: origin_target() }), " ")
+    == "sudo -n -u gunbc-fabric-origin /opt/gunbc/bin/gunbc-fabric-origin --help"
+    && join(sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape { command_path: helper, check_argv: "--help", run_as: any_target() }), " ")
+    == "sudo -n /opt/gunbc/bin/gunbc-fabric-origin --help"
+    && join(sudo_elevate_as_argv(run_as: origin_target(), command: [helper as String, "put"]), " ")
+    == "/usr/bin/sudo -n -u gunbc-fabric-origin /opt/gunbc/bin/gunbc-fabric-origin put"
+}
+
+test fn deploy_admission_permits_a_held_path_but_not_the_same_path_under_another_target() -> Bool {
+  let held = ci_deploy_srv1_access.principal.sudo_grants |> first
+  match held {
+    Absent => false
+    Present { value: g } => {
+      let permitted = match deploy_access_grant_admits_probe(access: ci_deploy_srv1_access, cmd: PrivilegedCommand { grant: g }) {
+        Permit => true
+        Deny { refusal: _ } => false
+      }
+      let narrowed = match deploy_access_grant_admits_probe(access: ci_deploy_srv1_access, cmd: PrivilegedCommand { grant: PosixSudoGrant { command_path: g.command_path, run_as: root_target(), probe: g.probe } }) {
+        Permit => false
+        Deny { refusal: _ } => true
+      }
+      permitted && narrowed
+        && deploy_access_sudoers_line(access: ci_deploy_srv1_access, cmd: PrivilegedCommand { grant: PosixSudoGrant { command_path: g.command_path, run_as: root_target(), probe: g.probe } })
+          != deploy_access_sudoers_line(access: ci_deploy_srv1_access, cmd: PrivilegedCommand { grant: g })
+    }
+  }
+}
