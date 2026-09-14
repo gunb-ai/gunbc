@@ -853,8 +853,6 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
         1
       }
     ComputationNode { behavior: Transform } =>
-      // A fold-family call the seam left as a Transform (see analyze_lowered_fold_call): a site,
-      // never a bound carrier.
       match lowered_transform_combiner_optional(node: n) {
         Present { value: combiner } =>
           if v2.compiler.fold_lowering.fold_family_head(sym: combiner) {
