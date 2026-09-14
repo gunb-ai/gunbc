@@ -12,8 +12,13 @@ production head. It is not a fixed-point receipt or an installed generated candi
 
 Validation so far: frontend parses the changed inference source (import-only diagnostics
 in the single-file parse probe); generic_variant_pattern_preserves_argument remains
-RED on the unmodified generation-one relay seed; optional_literal_pattern_preserves_argument
-passes semantically but its first-run CPU is 637ms, above the 500ms floor budget.
-The arity control and regenerated-seed green controls remain owed.
+RED on the unmodified generation-one relay seed (223ms CPU), specifically a pattern
+binding T and refusing its children field. The authored zero-parameter Optional/none
+arity control compiles with no diagnostic on that seed, so its new refusal is discriminating.
+Existing none_present_branch_binds covers the literal application call site. A redundant
+annotated-literal control was measured and omitted; its annotation already supplies Item,
+so it did not discriminate the payload repair. The permanent inferred Optional pattern
+control and new generic pattern control retain their unannotated discriminating form.
+The regenerated-seed green controls and floor ceiling receipts remain owed.
 The Optional representation census is PR comment 5658746422; its implementation is held
 pending the separate gatekeeper/side-chat ruling.
