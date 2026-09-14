@@ -116,13 +116,13 @@ type RunnerHostDeploy {
 //
 // BOTH CARRY INTERACTIVE SESSIONS AND THAT IS ALREADY PRICED. gunbc.session_residency places
 // session containers on exactly these two hosts, and the conservation wall charges each of them a
-// sessions slice out of the same RAM before any width is admitted -- which is why srv2 commits five
+// sessions slice out of the same RAM before any width is admitted -- which is why srv2 was held at five before the 26/25 transition deleted that arm (it now yields a typed width refusal and no deploy row)
 // where srv3 and srv4 commit twenty-one. Nothing here re-decides that; the row consumes the width
 // the admission axes produced.
 //
 // srv1 AND srv2 DIFFER FROM EACH OTHER FOR A HARDWARE REASON, not a policy one: srv1 took the 64
 // GiB DIMM upgrade and srv2's failed memory training and was reverted. srv1 is bound by cores at
-// twenty-one. srv2 commits five, and this row previously said it was BOUND BY MEMORY at that number
+// twelve under the 26/25 slot. srv2 commits nothing -- its width refuses and it has no deploy row -- and this row previously said it was BOUND BY MEMORY at five
 // -- which was false, and false in the direction that reads as a measurement. That five came from
 // subtracting a session reservation that is UNESTABLISHED on srv2, so no memory axis ever measured
 // it; with the axis honestly unmeasured nothing sits at srv2's committed width and the five is a

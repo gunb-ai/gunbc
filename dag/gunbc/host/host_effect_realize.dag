@@ -157,6 +157,12 @@ import gunbc.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
+import gunbc.runner_host_deploy {
+  runner_host_deploy_for,
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+  RunnerHostDeployRefused,
+}
 import gunbc.runner_slot_population_census {
   SlotCensus,
   slot_census_from_command_outcome,
@@ -3909,19 +3915,31 @@ fn realize_live_deploy_apply_on_host(
       census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
     )
     let required = transition_required_retiring(host: host)
+    let admission = runner_host_deploy_for(host: host)
     realize_shell_on_host(
       script: retained_srvn(
         body: live_deploy_apply_script_for(
           spec: spec,
           plan: plan,
-          cap_authorization: cap_converge_decision(
-            host: host,
-            required_retiring: required,
-            observation: surplus_observation_from_census_and_retirement(
-              census: census,
-              standings: observe_retirement_standings(transport: transport, units: required),
-            ),
-          ),
+          cap_authorization: match admission {
+            RunnerHostDeployRefused { host: rh, cause: rc } =>
+              CapConvergeWithheld {
+                cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+              }
+            RunnerHostDeployUnmodeled { host: uh } =>
+              CapConvergeWithheld {
+                cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+              }
+            RunnerHostDeployFound { deploy: _ } =>
+              cap_converge_decision(
+                host: host,
+                required_retiring: required,
+                observation: surplus_observation_from_census_and_retirement(
+                  census: census,
+                  standings: observe_retirement_standings(transport: transport, units: required),
+                ),
+              )
+          },
         ),
         reason: "live_deploy apply (unit install + start)",
       ),

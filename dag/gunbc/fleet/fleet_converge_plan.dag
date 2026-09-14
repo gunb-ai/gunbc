@@ -1261,7 +1261,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_retirement: retirement_evidence,
     } => {
       let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)
-      let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
+      let cap_refused = fleet_converge_cap_refusal_count(host: host, observed_caps: observed_caps)
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
       let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings)
@@ -1330,7 +1330,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
         concat(
           concat(
             concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers))),
-            concat(["# cap-axis"], membership_plan_lines_cap(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))),
+            concat(["# cap-axis"], fleet_converge_cap_lines(host: host, observed_caps: observed_caps)),
           ),
           concat(["# runner-slot"], fleet_converge_slot_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)),
         ),
@@ -1370,7 +1370,7 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
         concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence))),
         concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings))),
-        concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
+        concat("# cap-refusals=", to_string(fleet_converge_cap_refusal_count(host: host, observed_caps: observed_caps))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
         concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
       ]
@@ -1497,6 +1497,49 @@ fn slot_apply_lines(
           concat(["# runner-slot: tree removal, admitted ONLY for a unit with an independently reobserved RetirementComplete; every other disposition renders a withheld line instead"], p.teardown_scripts)
         },
       )
+  }
+}
+
+// THE CAP AXIS CONSUMES HOST ADMISSION, BECAUSE A REFUSED HOST MAY NOT RECEIVE A CAP EITHER.
+//
+// `fleet_converge_desired_caps` takes no host: it is the fleet-wide desired cap set. Reconciling it
+// against a REFUSED host's observed caps proposed cap writes for a machine whose runner width could
+// not be derived -- the same hazard the slot family already refuses, one axis over. Routing srv2 away
+// from membership reconciliation while leaving the cap axis open would have converged ceilings on the
+// one host nobody can size.
+//
+// THE DISPOSITION IS TYPED RATHER THAN AN EMPTY PLAN. An empty desired set is not "no change" to
+// `caps_reconcile` -- an owned observed member absent from desired is MemberRemoved -- so a refused
+// host handed `[]` would propose tearing its existing caps down. The refusal carries no plan at all.
+type FleetConvergeCapAxis
+  = CapAxisPlanned { plan: MembershipPlan<CapMember, NonEmptyStr> }
+  | CapAxisHostRefused { host: HostIdentity, cause: String }
+
+fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) -> FleetConvergeCapAxis {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployRefused { host: h, cause: c } => CapAxisHostRefused { host: h, cause: c }
+    RunnerHostDeployUnmodeled { host: h } =>
+      CapAxisHostRefused {
+        host: h,
+        cause: "this host has no runner deploy row, so no per-slot cap population is derivable for it",
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      CapAxisPlanned { plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps) }
+  }
+}
+
+fn fleet_converge_cap_refusal_count(host: NonEmptyStr, observed_caps: List<CapMember>) -> Int {
+  match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
+    CapAxisHostRefused { host: _, cause: _ } => 1
+    CapAxisPlanned { plan: p } => membership_refusal_count(plan: p)
+  }
+}
+
+fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -> List<String> {
+  match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
+    CapAxisHostRefused { host: h, cause: c } =>
+      [concat(concat("REFUSED-HOST-NOT-ADMITTED cap-axis host=", h as String), concat(" cause=", c))]
+    CapAxisPlanned { plan: p } => membership_plan_lines_cap(plan: p)
   }
 }
 

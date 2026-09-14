@@ -19,7 +19,7 @@ import gunbc.runner_slot_provision {
 }
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
-import gunbc.host_axis_caps { CapMember }
+import gunbc.host_axis_caps { CapMember, desired_cap_member }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.fabric_cell_observation_admission {
@@ -75,6 +75,8 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
+  fleet_converge_cap_lines,
+  fleet_converge_cap_refusal_count,
   fabric_cell_observation_refusal_line,
   TimerRetirementMember,
   FleetConvergePlanSubject,
@@ -2399,4 +2401,41 @@ test fn absent_evidence_and_observed_pending_are_different_subjects() -> Bool {
   )
   let pending = fleet_converge_member_set_fingerprint(request: drift_request(standings: [drift_populated_standing()]))
   serialize_content_hash(hash: absent) != serialize_content_hash(hash: pending)
+}
+
+
+// ── A REFUSED HOST REACHES NO AXIS, NOT MERELY NO SLOT PLAN ───────────────────────────────────
+//
+// Routing srv2 away from membership reconciliation repaired ONE axis. The cap axis took no host at
+// all -- `fleet_converge_desired_caps` is fleet-wide -- so a refused host still reconciled desired
+// caps against its observed ones and proposed cap writes for the machine whose width cannot be
+// derived. These rows hold both axes to the same admission.
+test fn a_refused_host_produces_no_cap_plan() -> Bool {
+  let lines = fleet_converge_cap_lines(host: "srv2" as NonEmptyStr, observed_caps: [])
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED cap-axis"))
+    && fleet_converge_cap_refusal_count(host: "srv2" as NonEmptyStr, observed_caps: []) == 1
+}
+
+// THE POSITIVE CONTROL FOR THE CAP AXIS, without which the row above is satisfied by a cap axis that
+// refuses every host and converges no ceiling anywhere.
+test fn an_admitted_host_still_produces_a_cap_plan() -> Bool {
+  let lines = fleet_converge_cap_lines(host: "srv1" as NonEmptyStr, observed_caps: [])
+  !any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+}
+
+// A REFUSED HOST'S CAP REFUSAL CARRIES NO PLAN AT ALL, which is stronger than an empty desired set.
+// `caps_reconcile` reads an owned observed member absent from desired as MemberRemoved, so handing a
+// refused host `[]` would propose TEARING DOWN the ceilings it already carries. The disposition has
+// no plan for that arm to render.
+test fn a_refused_hosts_existing_caps_are_not_proposed_for_removal() -> Bool {
+  let observed = [
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      property: "MemoryMax" as NonEmptyStr,
+      bytes_value: "17179869184" as NonEmptyStr,
+    ),
+  ]
+  let lines = fleet_converge_cap_lines(host: "srv2" as NonEmptyStr, observed_caps: observed)
+  !any(lines, l => string_contains(s: l, pattern: "REMOVE"))
+    && any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
 }
