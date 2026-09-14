@@ -2750,6 +2750,32 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
 }
 
 fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_peel_call_surface(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: left_id } =>
+          if body_lower_surface_punct_token(id: left_id) {
+            body_lower_try_postfix_projection(node: pair.right)
+          } else {
+            body_lower_try_postfix_projection_at(node: stripped)
+          }
+        Absent =>
+          match body_lower_try_postfix_projection(node: pair.left) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: found, diagnostics: d } =>
+              match found {
+                Present { value: _ } =>
+                  outcome_with_diagnostics(value: found, diagnostics: d)
+                Absent => body_lower_try_postfix_projection(node: pair.right)
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_try_postfix_projection_at(node: Node) -> Outcome<Optional<Node>> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
@@ -2894,6 +2920,17 @@ fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> 
 }
 
 fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
+  match body_lower_try_body_lowered(node: body_capture) {
+    Rejected { diagnostics: _ } => body_lower_match_arm_body_operand_fallback(body_capture: body_capture)
+    Accepted { value: found, diagnostics: _ } =>
+      match found {
+        Present { value: lowered } => Present { value: lowered }
+        Absent => body_lower_match_arm_body_operand_fallback(body_capture: body_capture)
+      }
+  }
+}
+
+fn body_lower_match_arm_body_operand_fallback(body_capture: Node) -> Optional<Node> {
   match body_lower_find_captured(root: body_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_from_shell_optional(shell: expr)
     ParseSubtreeAbsent =>
@@ -2902,13 +2939,13 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
           if emitted == ^dag_surface_expr {
             match parse_production_captured_child_optional(node: body_capture) {
               Present { value: captured } =>
-                body_lower_match_arm_body_optional(body_capture: captured)
+                body_lower_match_arm_body_operand_fallback(body_capture: captured)
               Absent => optional_absent()
             }
           } else if emitted == ^dag_surface_match_arm_stmt_body {
             match parse_production_captured_child_optional(node: body_capture) {
               Present { value: captured } =>
-                body_lower_match_arm_body_optional(body_capture: captured)
+                body_lower_match_arm_body_operand_fallback(body_capture: captured)
               Absent => optional_absent()
             }
           } else {
