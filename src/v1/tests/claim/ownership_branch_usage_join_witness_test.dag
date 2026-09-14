@@ -1,0 +1,48 @@
+module v1.tests.claim.ownership_branch_usage_join
+
+import v1.compiler.ownership {
+  empty_usage_accum,
+  record_use,
+  merge_branch_usages,
+  binding_fan_out,
+  Read,
+  Consumed,
+  UsageAccum
+}
+
+// Fixture-grain controls of merge_branch_usages (B0 branch-usage join). Executed only by
+// SeedRootedFloorPhase (dag + src/v1 pool). Not discovered by the ordinary floor.
+
+fn accum_has_name(accum: UsageAccum, name: String) -> Bool {
+  accum.touched |> any(n => n == name)
+}
+
+test fn merge_unions_touched_names_from_both_branches() -> Bool {
+  let left = record_use(accum: empty_usage_accum(), name: "x", kind: Read, site: "then", binding_kind: none, span_start: 0)
+  let right = record_use(accum: empty_usage_accum(), name: "y", kind: Consumed, site: "else", binding_kind: none, span_start: 0)
+  let merged = merge_branch_usages(base: empty_usage_accum(), branches: [left, right])
+  accum_has_name(accum: merged, name: "x") && accum_has_name(accum: merged, name: "y")
+}
+
+test fn merge_keeps_higher_fan_out_on_the_same_binding() -> Bool {
+  let low = record_use(accum: empty_usage_accum(), name: "acc", kind: Read, site: "a", binding_kind: none, span_start: 0)
+  let high = record_use(
+    accum: record_use(accum: empty_usage_accum(), name: "acc", kind: Read, site: "a", binding_kind: none, span_start: 0),
+    name: "acc",
+    kind: Consumed,
+    site: "b",
+    binding_kind: none,
+    span_start: 1
+  )
+  let merged = merge_branch_usages(base: empty_usage_accum(), branches: [low, high])
+  match map_get(merged.bindings, "acc") {
+    Present { value: usage } => binding_fan_out(usage: usage) == 2
+    Absent => false
+  }
+}
+
+test fn merge_with_no_branches_preserves_the_base() -> Bool {
+  let base = record_use(accum: empty_usage_accum(), name: "z", kind: Read, site: "scrut", binding_kind: none, span_start: 0)
+  let merged = merge_branch_usages(base: base, branches: [])
+  accum_has_name(accum: merged, name: "z")
+}

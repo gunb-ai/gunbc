@@ -1,0 +1,25 @@
+module v2.test.claim.seed_rooted_witness_roster
+
+import v2.std.collection { List }
+import v2.workflow.seed_rooted_witness {
+  seed_rooted_witness_modules,
+  seed_rooted_source_roots
+}
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  xs |> any(x => x == target)
+}
+
+test fn ownership_branch_usage_join_is_on_the_typed_roster() -> Bool {
+  list_contains_str(xs: seed_rooted_witness_modules(), target: "v1.tests.claim.ownership_branch_usage_join")
+}
+
+test fn an_unrostered_src_v1_claim_is_not_absorbed() -> Bool {
+  list_contains_str(xs: seed_rooted_witness_modules(), target: "v1.tests.claim.transport_roster_closure_witness_test") == false
+}
+
+test fn seed_pool_is_dag_and_src_v1_never_src_v2() -> Bool {
+  list_contains_str(xs: seed_rooted_source_roots(), target: "dag")
+    && list_contains_str(xs: seed_rooted_source_roots(), target: "src/v1")
+    && (list_contains_str(xs: seed_rooted_source_roots(), target: "src/v2") == false)
+}

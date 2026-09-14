@@ -1,0 +1,53 @@
+module v2.workflow.seed_rooted_witness
+
+import v2.std.collection { List }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { String }
+
+// TYPED ROSTER OF SEED-ROOTED WITNESS MODULES, NOT DIRECTORY MEMBERSHIP.
+//
+// A directory under src/v1/tests/claim would absorb the on-demand files already living there
+// (transport_roster_closure, checkpoint_identity_keying, …). required_floor forbids a directory
+// deciding admission. Membership is this list: adding a row is the priced census.
+//
+// Executed by RequiredCiPhase SeedRootedFloorPhase on the witnesses lane, with source roots
+// seed_rooted_source_roots ONLY for this roster's entry closures — never by widening
+// gunbc.ci_layer_roots witness_layer_roots or witness_discovery_scan_dirs.
+//
+// Terminals write into the same required_floor_disposition.tsv at module.function grain so
+// v2.workflow.floor_changed_witness discharges Planned+terminal with no new standing vocabulary.
+//
+// COST: eval of the ownership controls is ~0 ms; the standing claim is process_shared_index over
+// dag+src/v1 plus one resolve_entry_graph. Printed every run as
+// `[seed-rooted-floor] wall_ms= modules_resolved= claims=`. First required-ci measurement is the
+// price the bankruptcy header requires; this row does not transcribe a number.
+//
+// DISSOLUTION: delete rows as v1 surface dies. Empty list + unenroll SeedRootedFloorPhase in one
+// motion (variant may remain representable-unenrolled, then delete with the host enum). Does not
+// retire required_gate_bankruptcy or non_executing_witness_module_prefixes.
+
+type SeedRootedWitnessRow {
+  module_path: String
+  entry: String
+}
+
+fn seed_rooted_source_roots() -> List<String> {
+  ["dag", "src/v1"]
+}
+
+data seed_rooted_witness_rows: List<SeedRootedWitnessRow> = [
+  SeedRootedWitnessRow {
+    module_path: "v1.tests.claim.ownership_branch_usage_join",
+    entry: "src/v1/tests/claim/ownership_branch_usage_join_witness_test.dag"
+  }
+]
+
+fn seed_rooted_witness_modules() -> List<String> {
+  seed_rooted_witness_rows |> map(r => r.module_path)
+}
+
+fn seed_rooted_witness_entries() -> List<String> {
+  seed_rooted_witness_rows |> map(r => r.entry)
+}
+
+data seed_rooted_witness_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: seed_rooted_witness_rows is empty and gunbc.required_ci_phase_roster unenrols SeedRootedFloorPhase; the host RequiredCiPhase arm and this module delete together. Satisfied by v1 deletion, never by widening witness_layer_roots.")
