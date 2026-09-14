@@ -1,0 +1,871 @@
+RETAKE M=none head=7607ab49e6a7d0ff57d1fdcdc4dd18f1f0a90229 T=7607ab49e6a7d0ff57d1fdcdc4dd18f1f0a90229 kind=bisect-diagnostic(no-overlay)
+Running as unit: run-re1726956453247749716389e8fdf97f5.scope; invocation ID: 94f74929e2ba4ca3891bea6321064a41
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.9
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling serde v1.0.228
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde_derive v1.0.228
+   Compiling yoke v0.8.2
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling zmij v1.0.21
+   Compiling ar_archive_writer v0.5.1
+   Compiling serde_json v1.0.149
+   Compiling tinystr v0.8.3
+   Compiling bitmaps v2.1.0
+   Compiling psm v0.1.31
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling litemap v0.8.2
+   Compiling itoa v1.0.18
+   Compiling writeable v0.6.3
+   Compiling rand_core v0.6.4
+   Compiling rand_xoshiro v0.6.0
+   Compiling icu_locale_core v2.2.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling unicode-properties v0.1.4
+   Compiling zeroize v1.8.2
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_runtime)
+   Compiling smallvec v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling untrusted v0.9.0
+   Compiling utf8parse v0.2.2
+   Compiling crc32fast v1.5.0
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling simd-adler32 v0.3.9
+   Compiling rustls v0.23.40
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling adler2 v2.0.1
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling percent-encoding v2.3.2
+   Compiling form_urlencoded v1.2.2
+   Compiling indexmap v2.14.0
+   Compiling miniz_oxide v0.8.9
+   Compiling anstream v1.0.0
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_extdeps_languages)
+   Compiling rustls-webpki v0.103.13
+   Compiling webpki-roots v1.0.7
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling log v0.4.29
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling once_cell v1.21.4
+   Compiling winnow v0.7.15
+   Compiling clap_lex v1.1.0
+   Compiling toml_write v0.1.2
+   Compiling toml_edit v0.22.27
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0)
+   Compiling base64 v0.22.1
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/bisect.Uqef6H/repo/src/v1/stage0_v1_infer)
+   Compiling clap v4.6.1
+   Compiling toml v0.8.23
+   Compiling hmac v0.12.1
+   Compiling lazy_static v1.5.0
+   Compiling hex v0.4.3
+    Finished `release` profile [optimized] target(s) in 8m 26s
+memory-cgroup-bind: not requested
+v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)
+v2-native-route: emitting src/v2/compiler/00_compile.dag (seed, in-process)
+◐ started compile.frontend
+✓ compile.frontend done in 8 seconds
+✓ compile.normalize done in 399ms
+✓ compile.reconcile done in 1 minutes
+✓ compile.analyses done in 326ms
+◐ started compile.emit
+✓ compile.emit done in 5 minutes
+v2-native-route: emitted 181 files into /home/briansrls/eager-raven-113/bisect.Uqef6H/runner-temp/gunbc-emit-compile/src_v2_compiler_00_compile_dag (closure 26e3596cb8055b08be5fb9b4dff40a17538661f23b5190a10ff77ccfe82a686f); emission arena released (rss_kb_before=Some(7297848) trim_reclaimed_kb=Some(3560944) rss_kb_after=Some(3736904)); cargo build
+v2-native-route: emitted crate built — argv=["cargo", "build", "--release", "--manifest-path", "/home/briansrls/eager-raven-113/bisect.Uqef6H/runner-temp/gunbc-emit-compile/src_v2_compiler_00_compile_dag/Cargo.toml"] RUSTFLAGS="-D warnings" compiler=/home/briansrls/.cargo/bin/rustc exit_status=0 warning_count=0 rustc=rustc 1.93.0 (254b59607 2026-01-19); binary: rustc; commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c; commit-date: 2026-01-19; host: aarch64-unknown-linux-gnu; release: 1.93.0; LLVM version: 21.1.8
+v2-native-route: emitted compiler at /home/briansrls/eager-raven-113/bisect.Uqef6H/repo/target/release/gunbc-emitted-closure-src-v2-compiler-00-compile-dag (sha256 93088322f9f3bbe6a30271d04356f2e5f6909d0fc9f012a9d60943654cb53bd8)
+v2-native-route: old route not present at /home/briansrls/eager-raven-113/bisect.Uqef6H/repo/target/release/gunbc for the spawn window (nothing to withdraw; the receipt records the path it looked for)
+v2-native-route: malformed control observed path="target/v2-native-lane/malformed-control-root/poison.dag" reason="tokenize_lex_e1_unrecognized_char"
+v2-native-route: adjudicating through the emitted compiler
+[native-prepare-split] module=v2.test.algebra_laws.field_patch_monoid resolve_nanos=6519547816 infer_nanos=0 prepare_nanos=6519548136 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.affected_set_universe resolve_nanos=6499886922 infer_nanos=0 prepare_nanos=6499887282 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.algebra.freemonoid_first_skip_witness resolve_nanos=6563068174 infer_nanos=0 prepare_nanos=6563068934 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.algebra.generic_alias_coproduct_instantiation resolve_nanos=6430068154 infer_nanos=0 prepare_nanos=6430068514 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.algebra.list_linear_combinators resolve_nanos=6572581016 infer_nanos=0 prepare_nanos=6572581296 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.auth_declared_but_unwired_witness resolve_nanos=6339651255 infer_nanos=109382827 prepare_nanos=6449034602 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.bash_build_round_trip resolve_nanos=6448826922 infer_nanos=0 prepare_nanos=6448827322 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.bash_command_fold resolve_nanos=6474597523 infer_nanos=0 prepare_nanos=6474597843 decls=62 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.bash_program_fold resolve_nanos=6404213919 infer_nanos=0 prepare_nanos=6404214239 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.arrow_body_form_witness resolve_nanos=6178554282 infer_nanos=0 prepare_nanos=6178554602 decls=21 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.data_initializer_fn_value resolve_nanos=6111548458 infer_nanos=0 prepare_nanos=6111548738 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.declaration_structure_preserved resolve_nanos=6242978231 infer_nanos=0 prepare_nanos=6242978551 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.frontier_three_state resolve_nanos=6342551654 infer_nanos=0 prepare_nanos=6342551974 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.infer_transform_binary_infix_witness_test resolve_nanos=6238182540 infer_nanos=0 prepare_nanos=6238182900 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.long.body_lowering_atom_body_discriminator_witness resolve_nanos=6228624224 infer_nanos=100761582 prepare_nanos=6329386326 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.body_lowering.match_as_field_name resolve_nanos=6208097496 infer_nanos=0 prepare_nanos=6208097776 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.single_arm_match resolve_nanos=6315778238 infer_nanos=0 prepare_nanos=6315778558 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering.statement_let_bind resolve_nanos=6417582550 infer_nanos=0 prepare_nanos=6417582870 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering_well_formed_wall resolve_nanos=6344482023 infer_nanos=0 prepare_nanos=6344482303 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.body_lowering_wrapper_retained resolve_nanos=6339825249 infer_nanos=0 prepare_nanos=6339825569 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.bootstrap resolve_nanos=6412038467 infer_nanos=112361272 prepare_nanos=6524400179 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.build_artifact_verification_witness resolve_nanos=6371247689 infer_nanos=0 prepare_nanos=6371248009 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.build_transport_admission_witness resolve_nanos=6400668311 infer_nanos=0 prepare_nanos=6400668631 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.build_workspace_grant_witness resolve_nanos=6333675376 infer_nanos=0 prepare_nanos=6333675696 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.byte_cardinality_grounding resolve_nanos=6151301318 infer_nanos=0 prepare_nanos=6151301638 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.c_compilation_unit_witness resolve_nanos=6242119742 infer_nanos=0 prepare_nanos=6242120062 decls=24 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.cardinality_fold_propagation resolve_nanos=6165597767 infer_nanos=0 prepare_nanos=6165598087 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.cargo_build_run_argv_witness resolve_nanos=6117895884 infer_nanos=0 prepare_nanos=6117896124 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.ci_placement_witness resolve_nanos=6326454440 infer_nanos=0 prepare_nanos=6326454760 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim_pipeline.infer resolve_nanos=6172581436 infer_nanos=100223773 prepare_nanos=6272805689 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim_pipeline.normalize resolve_nanos=6224779685 infer_nanos=0 prepare_nanos=6224780005 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim_pipeline.resolve resolve_nanos=6250804976 infer_nanos=0 prepare_nanos=6250805336 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim_pipeline.translate resolve_nanos=6209039081 infer_nanos=101702777 prepare_nanos=6310742378 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.compilation_unit_witness resolve_nanos=78160 infer_nanos=0 prepare_nanos=78240 decls=15 outcome=context_refused
+[native-prepare-split] module=v2.test.compile_door_ledger_ownership resolve_nanos=6177298232 infer_nanos=0 prepare_nanos=6177298552 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.compiler.compile_eval_thesis_proof resolve_nanos=6113180638 infer_nanos=0 prepare_nanos=6113180958 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.compiler_materialization_witness resolve_nanos=6279397120 infer_nanos=157274145 prepare_nanos=6436671665 decls=8 outcome=accepted
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_corpus_path_test resolve_nanos=6307055458 infer_nanos=0 prepare_nanos=6307056138 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash resolve_nanos=6163603910 infer_nanos=110093293 prepare_nanos=6273697763 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_roster_gate_std resolve_nanos=6166692219 infer_nanos=102758500 prepare_nanos=6269451239 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_roster_gate_swift resolve_nanos=6233125812 infer_nanos=116689002 prepare_nanos=6349815294 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_roster_gate resolve_nanos=6332052030 infer_nanos=0 prepare_nanos=6332052310 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_roster_standing resolve_nanos=6210006020 infer_nanos=146663855 prepare_nanos=6356670435 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.claim.complexity.accumulator_copy_unreadable_subject resolve_nanos=6164895355 infer_nanos=0 prepare_nanos=6164895715 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.complexity_contract_subject_partition_witness resolve_nanos=6351076763 infer_nanos=0 prepare_nanos=6351077123 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.complexity_gate.budget_roster_completeness resolve_nanos=6614150 infer_nanos=0 prepare_nanos=6614550 decls=2 outcome=context_refused
+[native-prepare-split] module=v2.test.complexity_gate.source_bridged_add_budget resolve_nanos=6302298921 infer_nanos=0 prepare_nanos=6302299361 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.complexity_gate.source_bridged_bind_budget resolve_nanos=6452447327 infer_nanos=0 prepare_nanos=6452447607 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.complexity_gate.source_bridged_branch_budget resolve_nanos=6433341458 infer_nanos=0 prepare_nanos=6433341818 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.complexity_gate.source_bridged_loop_budget resolve_nanos=6479274959 infer_nanos=0 prepare_nanos=6479275319 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.computation_identity_test resolve_nanos=6600988556 infer_nanos=0 prepare_nanos=6600988916 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.concept_index_enumeration resolve_nanos=6836150 infer_nanos=0 prepare_nanos=6836310 decls=11 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test resolve_nanos=6480614238 infer_nanos=0 prepare_nanos=6480614638 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.cross_tree_import_model resolve_nanos=6541713445 infer_nanos=0 prepare_nanos=6541713765 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.dag_acceptance_rustc_wet resolve_nanos=6425222347 infer_nanos=0 prepare_nanos=6425222707 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.dag_acceptance resolve_nanos=6677143560 infer_nanos=0 prepare_nanos=6677143920 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.determinism_contract_test resolve_nanos=6500248034 infer_nanos=0 prepare_nanos=6500248354 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.diagnostic_sequence_outcome_witness resolve_nanos=6450826554 infer_nanos=0 prepare_nanos=6450826874 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.discovery_enumeration_test resolve_nanos=6543928143 infer_nanos=0 prepare_nanos=6543928423 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.discrimination_gate.discrimination_roster resolve_nanos=6582109331 infer_nanos=0 prepare_nanos=6582109691 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.doc_reachability.lens_unit.verdict_flip_test resolve_nanos=6583460595 infer_nanos=128629687 prepare_nanos=6712090842 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.duplicate_computation.duplicate_computation resolve_nanos=6528272930 infer_nanos=0 prepare_nanos=6528273250 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.duplicate_computation.placement_grain_witness resolve_nanos=6287518210 infer_nanos=128556725 prepare_nanos=6416075575 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.claim.effect_demand.effect_demand_census_test resolve_nanos=492802 infer_nanos=0 prepare_nanos=492882 decls=49 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.effect_demand.effect_demand_floor_join_test resolve_nanos=28920 infer_nanos=0 prepare_nanos=29000 decls=12 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.effect_io_host_grant_witness resolve_nanos=6383454892 infer_nanos=0 prepare_nanos=6383455252 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.effect_plan_bash_materialize_test resolve_nanos=6379100614 infer_nanos=0 prepare_nanos=6379101014 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.bool_literal_projection resolve_nanos=6377334467 infer_nanos=0 prepare_nanos=6377334827 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.c_semantic_decl_routing resolve_nanos=6668300526 infer_nanos=0 prepare_nanos=6668300926 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.conditional_delimiting resolve_nanos=6698684359 infer_nanos=0 prepare_nanos=6698684719 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.decl_emit_consolidated resolve_nanos=6660964173 infer_nanos=0 prepare_nanos=6660964613 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.emit_module_contribution resolve_nanos=6631234343 infer_nanos=0 prepare_nanos=6631234663 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.produced_decl_support_preserved resolve_nanos=6482564713 infer_nanos=0 prepare_nanos=6482565033 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.produced_decl_two_target resolve_nanos=6960075385 infer_nanos=0 prepare_nanos=6960076065 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_bind_let_emit resolve_nanos=6546437675 infer_nanos=0 prepare_nanos=6546438035 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_binop_emit resolve_nanos=6602303781 infer_nanos=0 prepare_nanos=6602304061 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_body_add_emit resolve_nanos=6488619466 infer_nanos=0 prepare_nanos=6488620186 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_call_emit resolve_nanos=6824953117 infer_nanos=0 prepare_nanos=6824953437 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_conditional_emit resolve_nanos=6875727360 infer_nanos=0 prepare_nanos=6875727720 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_field_access_emit resolve_nanos=6715099320 infer_nanos=0 prepare_nanos=6715099680 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_fold_call_closure_emit resolve_nanos=6483004012 infer_nanos=0 prepare_nanos=6483004372 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_freemonoid_char_string_grounding resolve_nanos=6474484998 infer_nanos=0 prepare_nanos=6474485318 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_literal_bind_emit resolve_nanos=6481027130 infer_nanos=0 prepare_nanos=6481027450 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_logic_complement_emit resolve_nanos=6262308043 infer_nanos=0 prepare_nanos=6262308323 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_logic_meet_join_emit resolve_nanos=6341270331 infer_nanos=0 prepare_nanos=6341270611 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_loop_emit resolve_nanos=6301663745 infer_nanos=0 prepare_nanos=6301664065 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_match_emit resolve_nanos=6330649336 infer_nanos=0 prepare_nanos=6330649656 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_produced_decl_emit resolve_nanos=6769913428 infer_nanos=0 prepare_nanos=6769913748 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_production_closure_let_emit resolve_nanos=6888033524 infer_nanos=0 prepare_nanos=6888033844 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_record_construct_emit resolve_nanos=6343886708 infer_nanos=0 prepare_nanos=6343887028 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_signature_general_emit resolve_nanos=6928225067 infer_nanos=0 prepare_nanos=6928225427 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.rust_variant_construct_emit resolve_nanos=7124299938 infer_nanos=0 prepare_nanos=7124300218 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_all_lex_parity resolve_nanos=6906669539 infer_nanos=0 prepare_nanos=6906670099 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_binding_keys_parity resolve_nanos=6585386254 infer_nanos=0 prepare_nanos=6585386654 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_decoration_binding_test resolve_nanos=6471613708 infer_nanos=0 prepare_nanos=6471614028 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_emit_substrings_test resolve_nanos=7181200201 infer_nanos=0 prepare_nanos=7181200521 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_lex_binding_parity resolve_nanos=6742663890 infer_nanos=0 prepare_nanos=6742664210 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_lookup_receipt_test resolve_nanos=6558351280 infer_nanos=132321531 prepare_nanos=6690673411 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.emit.semantic_decl_profile_codec resolve_nanos=6529723102 infer_nanos=0 prepare_nanos=6529723542 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_profile_path_parity resolve_nanos=7000088238 infer_nanos=0 prepare_nanos=7000088518 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_routing_generic resolve_nanos=6683034376 infer_nanos=0 prepare_nanos=6683034936 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_routing resolve_nanos=6703738533 infer_nanos=0 prepare_nanos=6703738933 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_rules_parity_test resolve_nanos=6501960210 infer_nanos=0 prepare_nanos=6501960570 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_serialize_parity resolve_nanos=7009364382 infer_nanos=0 prepare_nanos=7009364742 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_string_codec resolve_nanos=6684144488 infer_nanos=0 prepare_nanos=6684144928 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.semantic_decl_target_refusal resolve_nanos=7001648922 infer_nanos=0 prepare_nanos=7001649322 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.std_logic_selfhost_witness resolve_nanos=6683551420 infer_nanos=0 prepare_nanos=6683551780 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.target_text_carrier resolve_nanos=6670162430 infer_nanos=158236000 prepare_nanos=6828398990 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.emit.trait_derive_seed_emit_binding_test resolve_nanos=6475593782 infer_nanos=0 prepare_nanos=6475594142 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract resolve_nanos=6509472076 infer_nanos=0 prepare_nanos=6509472436 decls=37 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit.type_alias_emit resolve_nanos=6520094950 infer_nanos=0 prepare_nanos=6520095270 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.emit_host_gate.target_coverage_completeness resolve_nanos=6332570495 infer_nanos=0 prepare_nanos=6332570815 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.emitted_binary_effect_confinement_red_control resolve_nanos=6507324513 infer_nanos=0 prepare_nanos=6507324873 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement.cost_coverage_witness resolve_nanos=6435232394 infer_nanos=0 prepare_nanos=6435232714 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement.determinism_transitive_witness resolve_nanos=6352465028 infer_nanos=0 prepare_nanos=6352465388 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement.grammar_coverage_witness resolve_nanos=6368228566 infer_nanos=0 prepare_nanos=6368229246 decls=16 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement.lens_module_gate_witness resolve_nanos=6413624550 infer_nanos=0 prepare_nanos=6413624870 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement_inventory_witness resolve_nanos=6318509613 infer_nanos=0 prepare_nanos=6318509933 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.enforcement_live_witness resolve_nanos=6453264300 infer_nanos=0 prepare_nanos=6453264620 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.bind_round_trip resolve_nanos=6325502384 infer_nanos=0 prepare_nanos=6325502744 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.branch_eval_by_execution resolve_nanos=6384763707 infer_nanos=0 prepare_nanos=6384764067 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.branch_if_then_else_round_trip resolve_nanos=6252279292 infer_nanos=0 prepare_nanos=6252280012 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.c_add_emit_host_run resolve_nanos=6310367611 infer_nanos=0 prepare_nanos=6310367891 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.c_type_decl_emit_host_run resolve_nanos=6246630890 infer_nanos=0 prepare_nanos=6246631250 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.dag_add_emit_round_trip resolve_nanos=6627357186 infer_nanos=0 prepare_nanos=6627357506 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.dag_binding_denotation resolve_nanos=6510058796 infer_nanos=0 prepare_nanos=6510059156 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.effect_io_eval_by_execution resolve_nanos=6885647390 infer_nanos=0 prepare_nanos=6885647670 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_add_equals_eval resolve_nanos=6780203730 infer_nanos=0 prepare_nanos=6780204090 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_complement_equals_eval resolve_nanos=6762072802 infer_nanos=0 prepare_nanos=6762073162 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_field_access_equals_eval resolve_nanos=6436051603 infer_nanos=0 prepare_nanos=6436051923 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_filesystem_read_equals_eval resolve_nanos=6884899628 infer_nanos=0 prepare_nanos=6884900228 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_fold_closure_equals_eval resolve_nanos=6379423144 infer_nanos=0 prepare_nanos=6379423504 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_loop_equals_eval resolve_nanos=6353645986 infer_nanos=0 prepare_nanos=6353646306 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_match_equals_eval resolve_nanos=6500728925 infer_nanos=0 prepare_nanos=6500729285 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_meet_join_equals_eval resolve_nanos=6663438088 infer_nanos=0 prepare_nanos=6663438448 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_module_equals_eval resolve_nanos=6481915708 infer_nanos=0 prepare_nanos=6481916148 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_shell_exec_run_equals_eval resolve_nanos=6889949756 infer_nanos=0 prepare_nanos=6889950116 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_transport_wire resolve_nanos=6494508824 infer_nanos=0 prepare_nanos=6494509184 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_host_variant_construct_equals_eval resolve_nanos=6279441303 infer_nanos=0 prepare_nanos=6279441663 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_ingest_grammar_relation_round_trip resolve_nanos=6337155860 infer_nanos=0 prepare_nanos=6337156220 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_ingest_python_same_language_round_trip resolve_nanos=6257247554 infer_nanos=0 prepare_nanos=6257247914 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_ingest_type_decl_round_trip resolve_nanos=6108213993 infer_nanos=0 prepare_nanos=6108214513 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_ingest_typescript_same_language_round_trip resolve_nanos=6345467354 infer_nanos=0 prepare_nanos=6345467714 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_classical_not_ingested_family_witness resolve_nanos=6236347164 infer_nanos=0 prepare_nanos=6236347484 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_complement_family_witness resolve_nanos=6496347461 infer_nanos=0 prepare_nanos=6496347861 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_family_crate_witness resolve_nanos=6720498405 infer_nanos=0 prepare_nanos=6720498765 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_field_access_family_witness resolve_nanos=6652388549 infer_nanos=0 prepare_nanos=6652388869 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_kernel_witness resolve_nanos=6261405282 infer_nanos=0 prepare_nanos=6261405642 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_match_loop_fold_family_witness resolve_nanos=6781665882 infer_nanos=0 prepare_nanos=6781666242 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_meet_join_family_witness resolve_nanos=6767561014 infer_nanos=0 prepare_nanos=6767561334 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.emit_on_demand_variant_construct_family_witness resolve_nanos=6541403409 infer_nanos=0 prepare_nanos=6541403729 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects resolve_nanos=6215879902 infer_nanos=0 prepare_nanos=6215880342 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.floor_diff_observe_witness resolve_nanos=6280563850 infer_nanos=0 prepare_nanos=6280564170 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.fold_assembly_round_trip resolve_nanos=6202024872 infer_nanos=0 prepare_nanos=6202025192 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.infer_atom_grounding_rules resolve_nanos=6214437798 infer_nanos=0 prepare_nanos=6214438278 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.infer_product_introduction resolve_nanos=6229787298 infer_nanos=0 prepare_nanos=6229787578 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.add_arrow_eval_by_execution resolve_nanos=6261907748 infer_nanos=0 prepare_nanos=6261908108 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.bind_eval_by_execution resolve_nanos=6139577665 infer_nanos=0 prepare_nanos=6139577945 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.emit_host_classical_not_ingested_equals_eval resolve_nanos=6140421063 infer_nanos=0 prepare_nanos=6140421423 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.emit_host_native_only_verdict resolve_nanos=6208252144 infer_nanos=0 prepare_nanos=6208252464 decls=34 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.emit_host_produced_module_equals_eval resolve_nanos=6036047690 infer_nanos=0 prepare_nanos=6036048010 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.loop_eval_by_execution resolve_nanos=6174890953 infer_nanos=0 prepare_nanos=6174891233 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.pick_ingested_probe resolve_nanos=6216093281 infer_nanos=0 prepare_nanos=6216093761 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.pick_ingested_structural_lowering resolve_nanos=6169343958 infer_nanos=0 prepare_nanos=6169344278 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.loop_round_trip resolve_nanos=6329878992 infer_nanos=0 prepare_nanos=6329879352 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.match_bool_round_trip resolve_nanos=6501302470 infer_nanos=0 prepare_nanos=6501302830 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.native_selected_witness_bundle resolve_nanos=6518317536 infer_nanos=0 prepare_nanos=6518317816 decls=31 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.proactive_verification_ledger_overlap_execution resolve_nanos=6304142707 infer_nanos=105675166 prepare_nanos=6409818473 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.execution.rust_emit_host_call_equals_eval resolve_nanos=6376365286 infer_nanos=0 prepare_nanos=6376365606 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.rust_record_construct_emit_host_equals_eval resolve_nanos=6292183646 infer_nanos=0 prepare_nanos=6292183966 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.self_host_candidate_generation_stage_verdicts resolve_nanos=6290592114 infer_nanos=0 prepare_nanos=6290592394 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.self_host_candidate_generation resolve_nanos=6379751525 infer_nanos=0 prepare_nanos=6379751805 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.self_host_compiler_closure_emit resolve_nanos=6235416872 infer_nanos=111273269 prepare_nanos=6346690741 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.execution.self_host_fixed_point resolve_nanos=6296079723 infer_nanos=0 prepare_nanos=6296080003 decls=15 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.typescript_closure_emit_by_execution resolve_nanos=6257689116 infer_nanos=0 prepare_nanos=6257689476 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.typescript_enum_union_emit_by_execution resolve_nanos=6297629319 infer_nanos=0 prepare_nanos=6297629639 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.execution.typescript_import_emit_by_execution resolve_nanos=6264964657 infer_nanos=0 prepare_nanos=6264964977 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps.spice_element_letter resolve_nanos=6100739440 infer_nanos=0 prepare_nanos=6100739800 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.formats.spice_rc_ngspice_oracle resolve_nanos=6043736516 infer_nanos=109411261 prepare_nanos=6153148297 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps.spice_rc_passive_deck_claims resolve_nanos=6057612210 infer_nanos=0 prepare_nanos=6057612570 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_build_policy_leak resolve_nanos=6208766883 infer_nanos=105650805 prepare_nanos=6314418208 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_clippy_dead_param resolve_nanos=6176231542 infer_nanos=0 prepare_nanos=6176231982 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_dead_param resolve_nanos=6323857239 infer_nanos=0 prepare_nanos=6323857599 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_policy_leak resolve_nanos=6642947619 infer_nanos=118588299 prepare_nanos=6761536518 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_dead_param resolve_nanos=6325411837 infer_nanos=0 prepare_nanos=6325412157 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_policy_leak resolve_nanos=6827857229 infer_nanos=110812386 prepare_nanos=6938670255 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.cargo_run_dead_param resolve_nanos=6500508646 infer_nanos=0 prepare_nanos=6500509006 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.gcp_login_dead_param resolve_nanos=6559488089 infer_nanos=0 prepare_nanos=6559488449 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.gcp_oauth_fusion_fork resolve_nanos=6355913229 infer_nanos=118091777 prepare_nanos=6474005926 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.gist_create_policy_leak resolve_nanos=6532641648 infer_nanos=112016152 prepare_nanos=6644658440 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.git_policy_leak resolve_nanos=6323035922 infer_nanos=103471396 prepare_nanos=6426507958 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy resolve_nanos=6240544051 infer_nanos=106186926 prepare_nanos=6346731777 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test resolve_nanos=6235860067 infer_nanos=106174246 prepare_nanos=6342035034 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.clean_gist_create resolve_nanos=6635919026 infer_nanos=0 prepare_nanos=6635919386 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff resolve_nanos=6509830371 infer_nanos=0 prepare_nanos=6509830731 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_build resolve_nanos=6721746459 infer_nanos=0 prepare_nanos=6721746819 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_clippy resolve_nanos=6387001488 infer_nanos=0 prepare_nanos=6387001808 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_gcp_login resolve_nanos=6230894588 infer_nanos=0 prepare_nanos=6230894948 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.embedded_policy_literal_local resolve_nanos=6182039699 infer_nanos=104130198 prepare_nanos=6286170737 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename resolve_nanos=6032416067 infer_nanos=111558149 prepare_nanos=6143974736 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_green resolve_nanos=6120695115 infer_nanos=103024673 prepare_nanos=6223720348 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_coverage_domain_green resolve_nanos=6123604204 infer_nanos=103539795 prepare_nanos=6227144519 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_local_red resolve_nanos=6189721999 infer_nanos=102870312 prepare_nanos=6292592831 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_build resolve_nanos=6477902405 infer_nanos=0 prepare_nanos=6477902765 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_doc resolve_nanos=6771278033 infer_nanos=0 prepare_nanos=6771278393 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_fmt resolve_nanos=6433439012 infer_nanos=0 prepare_nanos=6433439372 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_shape_transport_policy.lens_unit.transport_fusion_gcp_oauth resolve_nanos=6648101149 infer_nanos=0 prepare_nanos=6648101549 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.fact_cardinality.lens_unit.synthetic_fork_red resolve_nanos=6812915797 infer_nanos=0 prepare_nanos=6812916117 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.fact_cardinality.lens_unit.synthetic_unified_green resolve_nanos=6667361183 infer_nanos=0 prepare_nanos=6667361543 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.fallback_arm_census_planted resolve_nanos=6420874145 infer_nanos=0 prepare_nanos=6420874505 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.floor.bash_command_serialization_cost_model resolve_nanos=6202384785 infer_nanos=0 prepare_nanos=6202385145 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.floor.pure_producer_share_refusal resolve_nanos=6051480750 infer_nanos=0 prepare_nanos=6051481070 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.floor_discovery_source_authority_test resolve_nanos=6023690910 infer_nanos=0 prepare_nanos=6023691230 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.floor_non_verdict_admission_test resolve_nanos=6025468595 infer_nanos=0 prepare_nanos=6025468915 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.fn_family.lens_unit.discriminators_test resolve_nanos=5947362625 infer_nanos=0 prepare_nanos=5947362945 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.fold_lowering resolve_nanos=45080 infer_nanos=0 prepare_nanos=45160 decls=16 outcome=context_refused
+[native-prepare-split] module=v2.test.generated.language_behavior_equivalence resolve_nanos=9840 infer_nanos=0 prepare_nanos=9920 decls=5 outcome=context_refused
+[native-prepare-split] module=v2.test.generated.testgen_category_wishlist resolve_nanos=6000633526 infer_nanos=0 prepare_nanos=6000633886 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.generated_conformance_floor resolve_nanos=6316292126 infer_nanos=0 prepare_nanos=6316292446 decls=35 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.gha_workflow_yaml_fold_serialize resolve_nanos=6029952684 infer_nanos=0 prepare_nanos=6029953124 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.gha_workflow_yaml_fold_structural resolve_nanos=5865303910 infer_nanos=93142031 prepare_nanos=5958446421 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.gpt_oss_120b_resolution resolve_nanos=5859978406 infer_nanos=0 prepare_nanos=5859978726 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.grammar.formal_productions_for_lhs resolve_nanos=5814551293 infer_nanos=0 prepare_nanos=5814551733 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.grammar.validate_grammar resolve_nanos=5923397067 infer_nanos=0 prepare_nanos=5923397787 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.graph_invariant.lens_unit.reach_kernel_test resolve_nanos=5844102972 infer_nanos=0 prepare_nanos=5844103332 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.graph_invariant.reach_repair_witness_test resolve_nanos=5918646043 infer_nanos=0 prepare_nanos=5918646323 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.grounding_lens resolve_nanos=5929298444 infer_nanos=0 prepare_nanos=5929298764 decls=15 outcome=resolve_refused
+[native-prepare-split] module=v2.test.grounding_typescript.sg_claims resolve_nanos=5861254317 infer_nanos=0 prepare_nanos=5861254637 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.host_build_environment_row resolve_nanos=5846833575 infer_nanos=0 prepare_nanos=5846833935 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb resolve_nanos=5778701807 infer_nanos=0 prepare_nanos=5778702167 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.host_language_transport_script.corpus.migrated_transports_clean resolve_nanos=5965862469 infer_nanos=111016665 prepare_nanos=6076879694 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.host_language_transport_script.corpus.wall_residue_live resolve_nanos=5867600055 infer_nanos=146548134 prepare_nanos=6014148749 decls=10 outcome=accepted
+[native-prepare-split] module=v2.test.host_language_transport_script.lens_unit.transport_script_position resolve_nanos=6279324498 infer_nanos=153698523 prepare_nanos=6433023541 decls=6 outcome=accepted
+[native-prepare-split] module=v2.test.host_language_transport_script.scanner.bare_string_literal resolve_nanos=6324739245 infer_nanos=110410143 prepare_nanos=6435149988 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.host_language_transport_script.scanner.let_bound_literal resolve_nanos=6383303648 infer_nanos=130412946 prepare_nanos=6513717194 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.long.identity_captured_navigation_roster_gate resolve_nanos=6238305759 infer_nanos=143567841 prepare_nanos=6381874240 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.claim.identity_captured_navigation_roster_gate resolve_nanos=6610814915 infer_nanos=0 prepare_nanos=6610815235 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.impossible_bug.release_demos resolve_nanos=6546771766 infer_nanos=180368395 prepare_nanos=6727140881 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.claim.infer_self_grounding_wall resolve_nanos=6654333133 infer_nanos=0 prepare_nanos=6654333453 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.infer_semantics_witness resolve_nanos=6492945975 infer_nanos=103988235 prepare_nanos=6596934730 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.integer.interval_derivation resolve_nanos=6437115579 infer_nanos=0 prepare_nanos=6437115979 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.integer.value_set_decode_reason resolve_nanos=6679285831 infer_nanos=0 prepare_nanos=6679286231 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.intent_linearity.lens_unit.discriminators resolve_nanos=6868759140 infer_nanos=0 prepare_nanos=6868759780 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.intent_linearity.lens_unit.runtime_axis resolve_nanos=6632157189 infer_nanos=0 prepare_nanos=6632157589 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.interface_summary.interface_summary_firewall resolve_nanos=6341731131 infer_nanos=0 prepare_nanos=6341731411 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.interface_summary.typed_module_key resolve_nanos=6293170646 infer_nanos=0 prepare_nanos=6293170966 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.languages_consumer_census.corpus.data_decl_ratchet resolve_nanos=6569239799 infer_nanos=102773230 prepare_nanos=6672013549 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.languages_consumer_census.corpus.per_language_row_ratchet resolve_nanos=6466400927 infer_nanos=117885533 prepare_nanos=6584287060 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.languages_consumer_census.corpus.rust_language_external_consumer resolve_nanos=6492713515 infer_nanos=115744004 prepare_nanos=6608458079 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.languages_consumer_census.corpus.rust_spec_external_consumer resolve_nanos=6535399291 infer_nanos=116879649 prepare_nanos=6652279420 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.languages_consumer_census.corpus.rust_statements_composition_only resolve_nanos=6643009219 infer_nanos=114601999 prepare_nanos=6757611738 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.layer_transition resolve_nanos=6322159035 infer_nanos=0 prepare_nanos=6322159315 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.lean_bit_width_admissibility_witness resolve_nanos=6468430445 infer_nanos=0 prepare_nanos=6468430845 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.lean_overflow_semantics_witness resolve_nanos=6796393214 infer_nanos=0 prepare_nanos=6796393494 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.live_tree.live_tree_collision resolve_nanos=6516761443 infer_nanos=107754050 prepare_nanos=6624516333 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.local_binding_shadow_compile resolve_nanos=6200143237 infer_nanos=0 prepare_nanos=6200143557 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.local_binding_shadow resolve_nanos=6826330213 infer_nanos=0 prepare_nanos=6826330613 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.local_repo_wet_terminal_test resolve_nanos=6602243354 infer_nanos=0 prepare_nanos=6602243714 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.locality_affinity_witness resolve_nanos=6134637318 infer_nanos=0 prepare_nanos=6134637638 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.a4_opacity resolve_nanos=6595552082 infer_nanos=0 prepare_nanos=6595552442 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.accumulator_copy_compile_gate resolve_nanos=6650990233 infer_nanos=0 prepare_nanos=6650990593 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.accumulator_copy_fold_analysis resolve_nanos=26242950 infer_nanos=0 prepare_nanos=26243030 decls=21 outcome=context_refused
+[native-prepare-split] module=v2.test.long.alias_decl_parse_witness resolve_nanos=6343213304 infer_nanos=116430647 prepare_nanos=6459644671 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.long.bash_program_real_probes_witness resolve_nanos=6028776950 infer_nanos=0 prepare_nanos=6028777310 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.compile_door_ledger resolve_nanos=6080847045 infer_nanos=0 prepare_nanos=6080847325 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.compiler_frontier_probe_entry resolve_nanos=6152069701 infer_nanos=0 prepare_nanos=6152070021 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.cross_tree_real_ingest_activation resolve_nanos=5930778495 infer_nanos=0 prepare_nanos=5930778855 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.cwc_resolution_probe resolve_nanos=6083892974 infer_nanos=0 prepare_nanos=6083893294 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.dag_caret_symbol_lex resolve_nanos=6030594870 infer_nanos=0 prepare_nanos=6030595150 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.dag_comma_optional_list resolve_nanos=6014403960 infer_nanos=0 prepare_nanos=6014404320 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.dag_compile_clean_scope_sigma_test resolve_nanos=6016403288 infer_nanos=0 prepare_nanos=6016403608 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.dag_import_block_lexeme_stamp resolve_nanos=6024057407 infer_nanos=0 prepare_nanos=6024057727 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.dag_repeat_spine_wellformed resolve_nanos=6168969832 infer_nanos=0 prepare_nanos=6168970192 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.decl_index_enumeration resolve_nanos=6034361291 infer_nanos=0 prepare_nanos=6034361691 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.direct_rust_door_production_group resolve_nanos=5888865707 infer_nanos=94433183 prepare_nanos=5983299410 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.door_real_module_probe resolve_nanos=5892414406 infer_nanos=0 prepare_nanos=5892414806 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.long.effect_reach_test resolve_nanos=5895023743 infer_nanos=0 prepare_nanos=5895024103 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.fallback_arm_census_witness resolve_nanos=5885713670 infer_nanos=117036116 prepare_nanos=6002750306 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.long.free_monoid_not_diverged_green resolve_nanos=5971142383 infer_nanos=95194507 prepare_nanos=6066337410 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.frontier_probe_closure_matrix_integration resolve_nanos=6800709800 infer_nanos=0 prepare_nanos=6800710200 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.gap4_parse_tokens_remain resolve_nanos=7384749582 infer_nanos=0 prepare_nanos=7384750142 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.infer_transform_binary_infix_witness resolve_nanos=6807830003 infer_nanos=118308961 prepare_nanos=6926139644 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.inhabitant_neutralization_e2e_witness resolve_nanos=6971150754 infer_nanos=154674270 prepare_nanos=7125825664 decls=6 outcome=accepted
+[native-prepare-split] module=v2.test.long.lattice_coexistence_debt resolve_nanos=6587122000 infer_nanos=111786935 prepare_nanos=6698909535 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.lattice_not_diverged_green resolve_nanos=6393025096 infer_nanos=113562262 prepare_nanos=6506587878 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.long.live_read_classification_test resolve_nanos=6422824743 infer_nanos=0 prepare_nanos=6422825143 decls=19 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.mandatory_tag_extdeps_corpus_test resolve_nanos=6373158546 infer_nanos=0 prepare_nanos=6373158866 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.mandatory_tag_gate_witness resolve_nanos=6419129979 infer_nanos=0 prepare_nanos=6419130339 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.meta_exec_confinement_clean_tree resolve_nanos=6188482405 infer_nanos=119428446 prepare_nanos=6307911851 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.module_binding_host_consistency resolve_nanos=6001150767 infer_nanos=0 prepare_nanos=6001151127 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.module_storage_binding_derivation resolve_nanos=5901657526 infer_nanos=114743948 prepare_nanos=6016401994 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.namespace_graft_normalize_witness resolve_nanos=5971089614 infer_nanos=139112127 prepare_nanos=6110202261 decls=8 outcome=accepted
+[native-prepare-split] module=v2.test.claim.long.native_routing_membership_receipt_test resolve_nanos=5954138870 infer_nanos=0 prepare_nanos=5954139190 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.no_dual_representation_test_test resolve_nanos=5894502591 infer_nanos=94606546 prepare_nanos=5989109657 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.long.parse_binding_fidelity_witness resolve_nanos=5840841377 infer_nanos=99388285 prepare_nanos=5940230222 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.long.parse_table_memo_amortization resolve_nanos=5903489957 infer_nanos=0 prepare_nanos=5903490237 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.parse_table_memo_counter_witness resolve_nanos=6115243345 infer_nanos=0 prepare_nanos=6115243665 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.parse_table_memo_governed_witness resolve_nanos=6265794563 infer_nanos=0 prepare_nanos=6265794883 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.parser_completeness_frontier resolve_nanos=6006883792 infer_nanos=0 prepare_nanos=6006884112 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.pipeline_stage_add_pick_relationship resolve_nanos=5912708291 infer_nanos=106756516 prepare_nanos=6019465367 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.long.pipeline_stage_match_corpus resolve_nanos=5975095071 infer_nanos=110205009 prepare_nanos=6085300600 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.production_qualification_origin_probe_witness resolve_nanos=6001789223 infer_nanos=0 prepare_nanos=6001789583 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.qualified_record_literal_parse resolve_nanos=6077784698 infer_nanos=0 prepare_nanos=6077785058 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.ratchet_baseline resolve_nanos=6026995255 infer_nanos=96686115 prepare_nanos=6123681930 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.realization_vocabulary_containment_witness resolve_nanos=5963039917 infer_nanos=0 prepare_nanos=5963040197 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.s1_closure_receipt resolve_nanos=6110646525 infer_nanos=96065192 prepare_nanos=6206712317 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.self_host_module_emit_derisk resolve_nanos=6207719405 infer_nanos=0 prepare_nanos=6207719685 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.source_bridged_pipeline_bridge_witness resolve_nanos=6099639488 infer_nanos=102063057 prepare_nanos=6201703065 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.string_head_linear_witness resolve_nanos=6171509426 infer_nanos=0 prepare_nanos=6171509786 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.symbol_index_scaling_receipt resolve_nanos=6112560549 infer_nanos=131906699 prepare_nanos=6244467688 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.syntactic_audit_witness resolve_nanos=6112862114 infer_nanos=152809225 prepare_nanos=6265671819 decls=9 outcome=accepted
+[native-prepare-split] module=v2.test.long.typescript_descriptor_node_run_witness resolve_nanos=5913830104 infer_nanos=98875725 prepare_nanos=6012706389 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.long.typescript_import_pipeline resolve_nanos=5914841752 infer_nanos=0 prepare_nanos=5914842072 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.vacuity_consumer_witness resolve_nanos=5936209962 infer_nanos=0 prepare_nanos=5936210322 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.validate_ingest_staging_stage_bisect resolve_nanos=5933583716 infer_nanos=0 prepare_nanos=5933584036 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.variant_visibility resolve_nanos=5865995282 infer_nanos=0 prepare_nanos=5865995642 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.wave1_gate1_a1_fn_body_seam_witness resolve_nanos=6138591401 infer_nanos=119607009 prepare_nanos=6258198930 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_a1_projection_call_witness resolve_nanos=6033842696 infer_nanos=107500080 prepare_nanos=6141343256 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_a1_symbol_index_body_producer_witness resolve_nanos=5940562477 infer_nanos=120374693 prepare_nanos=6060937690 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness resolve_nanos=5993311217 infer_nanos=128250405 prepare_nanos=6121562142 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_c1_copied_port_derivation_witness resolve_nanos=6018896084 infer_nanos=128300806 prepare_nanos=6147197450 decls=7 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness resolve_nanos=5900080482 infer_nanos=96233594 prepare_nanos=5996314556 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_d_mvp_subsumption_witness resolve_nanos=6004344912 infer_nanos=101145175 prepare_nanos=6105490567 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.long.wave1_gate1_general_body_producer_witness resolve_nanos=6034469719 infer_nanos=124077188 prepare_nanos=6158547467 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.claim.loop_infer_iteration resolve_nanos=6024919043 infer_nanos=0 prepare_nanos=6024919403 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.loop_multiplicity_measure resolve_nanos=6197922235 infer_nanos=0 prepare_nanos=6197922595 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.machine_shape_construction_wall resolve_nanos=5981874793 infer_nanos=0 prepare_nanos=5981875153 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.add_body_emit_python resolve_nanos=6074181774 infer_nanos=0 prepare_nanos=6074182054 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.add_body_emit_typescript resolve_nanos=6073068013 infer_nanos=0 prepare_nanos=6073068333 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.add_body_producer_claim resolve_nanos=5974180250 infer_nanos=0 prepare_nanos=5974180530 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.add_body_value_expression_fold_typescript resolve_nanos=5862421275 infer_nanos=0 prepare_nanos=5862421595 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.bash_emit_command resolve_nanos=5854937207 infer_nanos=0 prepare_nanos=5854937567 decls=19 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.bind_demand_driven_eval resolve_nanos=5844722368 infer_nanos=0 prepare_nanos=5844722648 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.bind_emit resolve_nanos=5832541361 infer_nanos=0 prepare_nanos=5832541721 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.body_lowering_infix resolve_nanos=5853280849 infer_nanos=0 prepare_nanos=5853281209 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.body_lowering_match resolve_nanos=5886511387 infer_nanos=0 prepare_nanos=5886511707 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.body_lowering_normalize_add resolve_nanos=5895412787 infer_nanos=0 prepare_nanos=5895413067 decls=25 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.body_lowering_projection_call resolve_nanos=5879815165 infer_nanos=0 prepare_nanos=5879815525 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.body_lowering_variants resolve_nanos=5852457136 infer_nanos=109656490 prepare_nanos=5962114266 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.manual.bootstrap_footprint_anchor resolve_nanos=5775701223 infer_nanos=0 prepare_nanos=5775701543 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.branch_if_then_else_emit resolve_nanos=5833623424 infer_nanos=0 prepare_nanos=5833623744 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.branch_infer_fail_open_audit resolve_nanos=3960 infer_nanos=0 prepare_nanos=4040 decls=2 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.branch_infer_if_then_else resolve_nanos=5925248882 infer_nanos=0 prepare_nanos=5925249202 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.branch_infer resolve_nanos=6052562087 infer_nanos=0 prepare_nanos=6052562447 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.branch_lazy_arm_eval_acceptance resolve_nanos=6032942209 infer_nanos=0 prepare_nanos=6032942529 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.c_add_emit_translate resolve_nanos=6048273715 infer_nanos=0 prepare_nanos=6048274035 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.call_carrier_node_query resolve_nanos=6037474672 infer_nanos=0 prepare_nanos=6037474992 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.caret_sigil_surface resolve_nanos=7320 infer_nanos=0 prepare_nanos=7360 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.content_hash_loop_bound_edge_order resolve_nanos=6409996766 infer_nanos=0 prepare_nanos=6409997166 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.content_hash_named_edge_order resolve_nanos=6450392254 infer_nanos=0 prepare_nanos=6450392574 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.coproduct_reflection_conformance resolve_nanos=6304347816 infer_nanos=0 prepare_nanos=6304348216 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.cpp_add_emit_translate resolve_nanos=5908445713 infer_nanos=0 prepare_nanos=5908446073 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.cross_language_add_python_to_typescript resolve_nanos=6421127982 infer_nanos=0 prepare_nanos=6421128262 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.manual.cross_tree_constructor_binding_test resolve_nanos=6156550577 infer_nanos=0 prepare_nanos=6156550857 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.derivable_coercion_nickname_triple resolve_nanos=59194763 infer_nanos=0 prepare_nanos=59194803 decls=3 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.discriminant_intrinsic resolve_nanos=5926928036 infer_nanos=0 prepare_nanos=5926928436 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.emit_directive_bash resolve_nanos=6048742059 infer_nanos=0 prepare_nanos=6048742379 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.emit_directive_gha resolve_nanos=6276698798 infer_nanos=0 prepare_nanos=6276699078 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.emit_directive_rust resolve_nanos=6305077277 infer_nanos=0 prepare_nanos=6305077637 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.emit_ingest_same_language_row_fold resolve_nanos=6608490086 infer_nanos=0 prepare_nanos=6608490406 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.emit_source_store resolve_nanos=6413773529 infer_nanos=0 prepare_nanos=6413773889 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.english_emit_add resolve_nanos=6119716642 infer_nanos=0 prepare_nanos=6119716962 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.field_access_emit resolve_nanos=6259632820 infer_nanos=0 prepare_nanos=6259633140 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.find_witness_distinct_node_zip_fold resolve_nanos=7522551 infer_nanos=0 prepare_nanos=7522871 decls=6 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.find_witness_identity resolve_nanos=36080 infer_nanos=0 prepare_nanos=36200 decls=11 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.floor_drain_retention resolve_nanos=6310767312 infer_nanos=0 prepare_nanos=6310767672 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.fn_as_value resolve_nanos=6252418235 infer_nanos=0 prepare_nanos=6252418555 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.fold_call_closure_emit resolve_nanos=6190745542 infer_nanos=0 prepare_nanos=6190745862 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.fold_source resolve_nanos=6159233055 infer_nanos=0 prepare_nanos=6159233415 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.generic_instantiation_runtime resolve_nanos=6602862562 infer_nanos=0 prepare_nanos=6602862922 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.go_add_emit_translate resolve_nanos=6922755801 infer_nanos=0 prepare_nanos=6922756201 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.go_grammar_claim resolve_nanos=6357011396 infer_nanos=0 prepare_nanos=6357011716 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.infer_bounded_lattice_completeness_anchor resolve_nanos=80810413 infer_nanos=0 prepare_nanos=80810613 decls=5 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.ingest_bridge resolve_nanos=6727692803 infer_nanos=0 prepare_nanos=6727693363 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.inhabitant_neutralization resolve_nanos=6904532573 infer_nanos=272065000 prepare_nanos=7176598253 decls=6 outcome=accepted
+[native-prepare-split] module=v2.test.manual.int_cross_target_coercion resolve_nanos=363281 infer_nanos=0 prepare_nanos=363361 decls=3 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.int_literal_parse_smoke resolve_nanos=6590640444 infer_nanos=0 prepare_nanos=6590640804 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.kotlin_grammar_claim resolve_nanos=6188844992 infer_nanos=0 prepare_nanos=6188845272 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.language_model_dissolution resolve_nanos=6116306775 infer_nanos=0 prepare_nanos=6116307095 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.llvm_ir_b2_omni_in_b_probe resolve_nanos=6504114334 infer_nanos=0 prepare_nanos=6504114654 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.loop_demand_driven_eval resolve_nanos=6041595192 infer_nanos=0 prepare_nanos=6041595512 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.loop_emit resolve_nanos=5990992665 infer_nanos=0 prepare_nanos=5990992985 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.map_lookup_miss_witness_violates resolve_nanos=5978952218 infer_nanos=0 prepare_nanos=5978952538 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.map_structural_key_equality resolve_nanos=6124241857 infer_nanos=0 prepare_nanos=6124242217 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.match_bool_emit resolve_nanos=6375433174 infer_nanos=0 prepare_nanos=6375433534 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.match_infer_fail_open_audit resolve_nanos=6155566310 infer_nanos=0 prepare_nanos=6155566630 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.medium_node_instantiation resolve_nanos=6008153904 infer_nanos=0 prepare_nanos=6008154224 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.medium_source_serializer_determinism_fidelity resolve_nanos=5908563976 infer_nanos=0 prepare_nanos=5908564296 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.medium_source_text_instantiation resolve_nanos=6449936047 infer_nanos=0 prepare_nanos=6449936367 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.model_core_anchor resolve_nanos=6118558524 infer_nanos=0 prepare_nanos=6118558804 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.node_minimal_representation_test resolve_nanos=6537262290 infer_nanos=0 prepare_nanos=6537262690 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.nominal_distinctness_cross_call resolve_nanos=5919800469 infer_nanos=0 prepare_nanos=5919800829 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.parallel_executor resolve_nanos=6118395288 infer_nanos=0 prepare_nanos=6118395648 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.path_y_fidelity_successor resolve_nanos=6136043043 infer_nanos=0 prepare_nanos=6136043403 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.posix_output_capture resolve_nanos=6019028482 infer_nanos=100042012 prepare_nanos=6119071534 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.manual.process_numeric_refinements resolve_nanos=5926998424 infer_nanos=119289612 prepare_nanos=6046288596 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.manual.program_assembly_multi_file resolve_nanos=6009685166 infer_nanos=0 prepare_nanos=6009685566 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.program_partition_body_emit resolve_nanos=5990644649 infer_nanos=0 prepare_nanos=5990645009 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.python_add_emit_translate resolve_nanos=5956912232 infer_nanos=0 prepare_nanos=5956912912 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.python_grammar_claim resolve_nanos=5939926723 infer_nanos=0 prepare_nanos=5939927083 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.qualified_pattern_reconcile resolve_nanos=5980425491 infer_nanos=0 prepare_nanos=5980425811 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.recompute_trace_probe resolve_nanos=5947800199 infer_nanos=103690747 prepare_nanos=6051500546 decls=2 outcome=infer_refused
+[native-prepare-split] module=v2.test.manual.record_construct_emit resolve_nanos=5937364557 infer_nanos=0 prepare_nanos=5937364837 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.refinement_authoritative_constants resolve_nanos=5985134995 infer_nanos=127616086 prepare_nanos=6112751601 decls=6 outcome=accepted
+[native-prepare-split] module=v2.test.manual.refinement_ordered_iteration resolve_nanos=5968176607 infer_nanos=0 prepare_nanos=5968176927 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.resolve_compile_anchor resolve_nanos=6120144274 infer_nanos=0 prepare_nanos=6120144594 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.runtime_run resolve_nanos=6711850035 infer_nanos=0 prepare_nanos=6711850315 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.rust_add_emit_translate resolve_nanos=6528211880 infer_nanos=0 prepare_nanos=6528212280 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.rust_wire_serde_naming_policy_test resolve_nanos=6431743483 infer_nanos=0 prepare_nanos=6431743723 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.scheduler_runnable_frontier resolve_nanos=6187361596 infer_nanos=0 prepare_nanos=6187361916 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg1b_signature_realization_failclosed resolve_nanos=6588044731 infer_nanos=0 prepare_nanos=6588045091 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg2_mode2_non_grammar_emit resolve_nanos=6372353763 infer_nanos=0 prepare_nanos=6372354083 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg2_type_expression_projection resolve_nanos=6290740267 infer_nanos=0 prepare_nanos=6290740587 decls=23 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg2_typescript_type_expression_projection resolve_nanos=6232285588 infer_nanos=0 prepare_nanos=6232285948 decls=23 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg5_set_non_ordable_falsification resolve_nanos=6309429867 infer_nanos=124916355 prepare_nanos=6434346782 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.manual.sg_collection_projection resolve_nanos=6437539397 infer_nanos=0 prepare_nanos=6437539757 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.sg_rc_layering resolve_nanos=99428970 infer_nanos=0 prepare_nanos=99429130 decls=9 outcome=context_refused
+[native-prepare-split] module=v2.test.manual.structured_body_dispatch resolve_nanos=6742873578 infer_nanos=0 prepare_nanos=6742873978 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.structured_body_subsumption_set resolve_nanos=6432698579 infer_nanos=0 prepare_nanos=6432698899 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.target_carriers_fidelity resolve_nanos=6234042161 infer_nanos=0 prepare_nanos=6234042521 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.target_model_atom_lookup_dissolution resolve_nanos=6196634847 infer_nanos=0 prepare_nanos=6196635207 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.target_model_operator_lookup_dissolution resolve_nanos=6034197778 infer_nanos=0 prepare_nanos=6034198138 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.target_operation_grounding_emit_typescript resolve_nanos=6294490294 infer_nanos=0 prepare_nanos=6294490654 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.test_claim_cache_digest_sensitivity resolve_nanos=6305295300 infer_nanos=0 prepare_nanos=6305295620 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_test_migration_debt.test_migration_debt_test resolve_nanos=6341347930 infer_nanos=0 prepare_nanos=6341348250 decls=16 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.timeseries_passive_map_fold_anchor resolve_nanos=6368186841 infer_nanos=0 prepare_nanos=6368187241 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_add_emit_translate resolve_nanos=6770716984 infer_nanos=0 prepare_nanos=6770717304 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_bind_let_iife_emit resolve_nanos=6865369056 infer_nanos=0 prepare_nanos=6865369416 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_derive_grammar_relation_row_round_trip resolve_nanos=6390227856 infer_nanos=0 prepare_nanos=6390228176 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_eager_materialize_dedup_cutover resolve_nanos=6934270343 infer_nanos=0 prepare_nanos=6934270703 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_eager_materialize_forward_dedup resolve_nanos=6796631696 infer_nanos=0 prepare_nanos=6796631976 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_eager_materialize_serialize resolve_nanos=6655219994 infer_nanos=129984216 prepare_nanos=6785204610 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.manual.typescript_effect_io_emit resolve_nanos=6264581861 infer_nanos=0 prepare_nanos=6264582181 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_field_access_emit resolve_nanos=6254372901 infer_nanos=0 prepare_nanos=6254373261 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_grammar_claim resolve_nanos=6352420907 infer_nanos=0 prepare_nanos=6352421267 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_pr3_typed_fn_translate resolve_nanos=6271859695 infer_nanos=0 prepare_nanos=6271860375 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_program_emit_run resolve_nanos=6240913208 infer_nanos=0 prepare_nanos=6240913568 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_record_construct_emit resolve_nanos=6252199096 infer_nanos=0 prepare_nanos=6252199816 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.typescript_record_task_translate resolve_nanos=6210277123 infer_nanos=0 prepare_nanos=6210277483 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.manual.value_null_split_witness resolve_nanos=6309047013 infer_nanos=0 prepare_nanos=6309047333 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.map_carrier_shape_gate resolve_nanos=6114314929 infer_nanos=0 prepare_nanos=6114315289 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.materialize.materialize_witness resolve_nanos=6258026443 infer_nanos=0 prepare_nanos=6258026803 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.meta_exec_confinement.lens_unit.discriminators resolve_nanos=6196361309 infer_nanos=0 prepare_nanos=6196361589 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.meta_exec_confinement.roster_soundness resolve_nanos=6186810911 infer_nanos=0 prepare_nanos=6186811231 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.meta_exec_confinement.scanner.planted_leak resolve_nanos=6195278907 infer_nanos=104127310 prepare_nanos=6299406737 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.module_own_declaration_wins resolve_nanos=6178935240 infer_nanos=113796830 prepare_nanos=6292732670 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.claim.module_resolution_plan_witness resolve_nanos=140641 infer_nanos=0 prepare_nanos=140721 decls=4 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.module_storage_binding resolve_nanos=6170342806 infer_nanos=0 prepare_nanos=6170343126 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.name_resolve.admission_fail_closed resolve_nanos=6328747740 infer_nanos=0 prepare_nanos=6328748100 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.name_resolve.malformed_imported_root resolve_nanos=6822611901 infer_nanos=0 prepare_nanos=6822612221 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.name_resolve_cross_tree_resolution resolve_nanos=7076967634 infer_nanos=0 prepare_nanos=7076967954 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.namespace_graft.collapsed_reader_test resolve_nanos=15151863 infer_nanos=0 prepare_nanos=15152023 decls=4 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.namespace_graft.graft_shape_test resolve_nanos=10257162 infer_nanos=0 prepare_nanos=10257522 decls=10 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.namespace_graft.marker_strip_test resolve_nanos=7360 infer_nanos=0 prepare_nanos=7440 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.namespace_graft.zero_metadata_test resolve_nanos=6783870224 infer_nanos=136937205 prepare_nanos=6920807869 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.claim.native_cache_fusion_test resolve_nanos=6654360969 infer_nanos=148938136 prepare_nanos=6803300225 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.no_dual_representation_test.lens_unit.controls resolve_nanos=6659269751 infer_nanos=194358163 prepare_nanos=6853628554 decls=11 outcome=accepted
+[native-prepare-split] module=v2.test.claim.normalized_tree_admission resolve_nanos=6554871641 infer_nanos=0 prepare_nanos=6554871961 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.operand_flow_witness resolve_nanos=6411159607 infer_nanos=0 prepare_nanos=6411159967 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.d1_declaration_grammar_parse resolve_nanos=6586120491 infer_nanos=0 prepare_nanos=6586120851 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.d5_expression_grammar_parse resolve_nanos=6504803835 infer_nanos=0 prepare_nanos=6504804195 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.expression_bodied_fn_decl_parse resolve_nanos=6358028670 infer_nanos=0 prepare_nanos=6358029030 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.grammar_validation_test resolve_nanos=6322952126 infer_nanos=0 prepare_nanos=6322952446 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.parse_binding_fidelity resolve_nanos=6239484342 infer_nanos=0 prepare_nanos=6239484742 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.parse_table_claims resolve_nanos=28020796 infer_nanos=0 prepare_nanos=28020996 decls=6 outcome=context_refused
+[native-prepare-split] module=v2.test.parse.parse_table_content_key resolve_nanos=6255877011 infer_nanos=0 prepare_nanos=6255877411 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.parse_token_first_empty_semantics resolve_nanos=6173380510 infer_nanos=0 prepare_nanos=6173380870 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.token_stream_cursor resolve_nanos=6390512848 infer_nanos=0 prepare_nanos=6390513248 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.parse.where_refinement_clause_parse resolve_nanos=6252769760 infer_nanos=0 prepare_nanos=6252770080 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.parse_engine_hooks_test resolve_nanos=6188172413 infer_nanos=0 prepare_nanos=6188172773 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.port_locus_classification resolve_nanos=6301334961 infer_nanos=152364950 prepare_nanos=6453700391 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.claim.proactive_verification_ledger_witness resolve_nanos=6139759374 infer_nanos=107796886 prepare_nanos=6247557060 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.product_receipt_evidence_cause_swap_test resolve_nanos=6200685908 infer_nanos=0 prepare_nanos=6200686588 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.program_assembly.real_ingest resolve_nanos=6239724029 infer_nanos=0 prepare_nanos=6239724349 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.provenance.cross_file_provenance resolve_nanos=6263409367 infer_nanos=0 prepare_nanos=6263410087 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.provenance.loaded_carrier_receipts resolve_nanos=6423169348 infer_nanos=0 prepare_nanos=6423169988 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.provenance.occurrence_id_model resolve_nanos=6454968481 infer_nanos=0 prepare_nanos=6454968841 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.provenance.parse_stamp_span_index resolve_nanos=6274315655 infer_nanos=0 prepare_nanos=6274316015 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.qualified_name.freemonoid_eq_witness resolve_nanos=6352470818 infer_nanos=0 prepare_nanos=6352471138 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.qualified_name.from_dotted_string resolve_nanos=6335077747 infer_nanos=129461815 prepare_nanos=6464540122 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.claim.qualified_name.path_algebra_test resolve_nanos=6330894210 infer_nanos=0 prepare_nanos=6330894570 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.rc_probe_wire_decode_call resolve_nanos=6243948052 infer_nanos=0 prepare_nanos=6243948412 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.realization_runner_witness resolve_nanos=6446971651 infer_nanos=0 prepare_nanos=6446972011 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli resolve_nanos=6394295995 infer_nanos=0 prepare_nanos=6394296355 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.realization_vocabulary_containment.lens_unit.discriminators resolve_nanos=6401126543 infer_nanos=0 prepare_nanos=6401126903 decls=16 outcome=resolve_refused
+[native-prepare-split] module=v2.test.realization_vocabulary_containment.no_new_debt_gate resolve_nanos=6421538108 infer_nanos=0 prepare_nanos=6421538468 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.realization_vocabulary_containment.roster_soundness resolve_nanos=6446349131 infer_nanos=0 prepare_nanos=6446349411 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.realization_vocabulary_containment.scanner.planted_leak resolve_nanos=6317026998 infer_nanos=119856375 prepare_nanos=6436883933 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.realize_advisory_soundness_test resolve_nanos=6355210516 infer_nanos=0 prepare_nanos=6355210836 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.regen_convergence_transaction_witness_test resolve_nanos=2739371 infer_nanos=0 prepare_nanos=2739891 decls=34 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.repair_input_origin_split_witness_test resolve_nanos=6348366328 infer_nanos=0 prepare_nanos=6348366968 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.resolve.namespace_only_policy resolve_nanos=6398699537 infer_nanos=0 prepare_nanos=6398699897 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.resolve.qualified_module_projection_resolve resolve_nanos=6191914842 infer_nanos=0 prepare_nanos=6191915162 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.roster_registry_test resolve_nanos=6446408615 infer_nanos=0 prepare_nanos=6446408935 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.round_trip.dag_comment_wall_test resolve_nanos=6387611492 infer_nanos=0 prepare_nanos=6387611852 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.round_trip.source_authority_contract_test resolve_nanos=6314355430 infer_nanos=110696218 prepare_nanos=6425052168 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.rust_crate_partition_witness resolve_nanos=6409839625 infer_nanos=0 prepare_nanos=6409840025 decls=16 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.ancestry_witness resolve_nanos=6354828118 infer_nanos=0 prepare_nanos=6354828438 decls=27 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.closure_emit_population_admission resolve_nanos=6341024422 infer_nanos=0 prepare_nanos=6341024782 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.compiler_closure_emit_from_ingest resolve_nanos=6325985200 infer_nanos=0 prepare_nanos=6325985520 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.compiler_closure_ingest_boundary_witness resolve_nanos=7320 infer_nanos=0 prepare_nanos=7400 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.self_host.compiler_frontier_emit_probe resolve_nanos=6231020448 infer_nanos=108005006 prepare_nanos=6339025934 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.crate_layout_witness resolve_nanos=6175467818 infer_nanos=0 prepare_nanos=6175468178 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.direct_rust_door_emission_witness_test resolve_nanos=6551789576 infer_nanos=125270478 prepare_nanos=6677060534 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.direct_rust_door_fixture_containment_witness_test resolve_nanos=6591063698 infer_nanos=0 prepare_nanos=6591064018 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.direct_rust_door_group_algebra resolve_nanos=6734908333 infer_nanos=0 prepare_nanos=6734908693 decls=23 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.emit_coverage_frontier_test resolve_nanos=6489177277 infer_nanos=0 prepare_nanos=6489177637 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.emitter_producer_provenance_witness resolve_nanos=6471724406 infer_nanos=0 prepare_nanos=6471724766 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.frontier_probe_cause_location_roundtrip resolve_nanos=6605562041 infer_nanos=0 prepare_nanos=6605562401 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.frontier_probe_cause_location resolve_nanos=6472059008 infer_nanos=0 prepare_nanos=6472059328 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.frontier_probe_empty_ingest resolve_nanos=6367222055 infer_nanos=0 prepare_nanos=6367222415 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.frontier_probe_overlap_detail resolve_nanos=6442043445 infer_nanos=0 prepare_nanos=6442043845 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.frontier_probe_semantic_family_receipt resolve_nanos=6712227923 infer_nanos=0 prepare_nanos=6712228243 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.native_agreement_label_probe_test resolve_nanos=6624053279 infer_nanos=0 prepare_nanos=6624053639 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.native_agreement_rejected_actual_test resolve_nanos=6814296346 infer_nanos=0 prepare_nanos=6814296706 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.native_agreement_test resolve_nanos=6618532537 infer_nanos=0 prepare_nanos=6618532937 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.native_routing_frontier_test resolve_nanos=6493088899 infer_nanos=0 prepare_nanos=6493089539 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.parity_window_test resolve_nanos=6467415352 infer_nanos=0 prepare_nanos=6467415712 decls=18 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.peano_nat_structural_realization_test resolve_nanos=6398870910 infer_nanos=0 prepare_nanos=6398871190 decls=29 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.production_qualification_origin_probe_witness_test resolve_nanos=6363447243 infer_nanos=0 prepare_nanos=6363447523 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.self_host.ref_transport_coverage resolve_nanos=6630127387 infer_nanos=0 prepare_nanos=6630127747 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.rust_module_emission_population resolve_nanos=6854434516 infer_nanos=0 prepare_nanos=6854434916 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.seed_retention_frontier_test resolve_nanos=6482870578 infer_nanos=0 prepare_nanos=6482870898 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.stage0_executable_assembly_test resolve_nanos=97281 infer_nanos=0 prepare_nanos=97361 decls=20 outcome=context_refused
+[native-prepare-split] module=v2.test.self_host.stage0_production_target resolve_nanos=7074016904 infer_nanos=0 prepare_nanos=7074017304 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.subject_evidence_cause_swap_witness_test resolve_nanos=7033357457 infer_nanos=0 prepare_nanos=7033357857 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.v2_emitter_direct_rust_door_contract resolve_nanos=7075072390 infer_nanos=130366659 prepare_nanos=7205439569 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.verdict_failure_kind_witness_test resolve_nanos=5640 infer_nanos=0 prepare_nanos=5720 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.self_host.wave1_gate1_a1_fn_body_seam_witness resolve_nanos=6663775369 infer_nanos=116102320 prepare_nanos=6779878529 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.wave1_gate1_a1_symbol_index_body_producer_witness resolve_nanos=6673830250 infer_nanos=0 prepare_nanos=6673831010 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.wave1_gate1_c1_copied_port_derivation_witness resolve_nanos=6479968608 infer_nanos=124421755 prepare_nanos=6604390923 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.wave1_gate1_d_mvp_subsumption_witness resolve_nanos=6701057644 infer_nanos=146041444 prepare_nanos=6847099648 decls=5 outcome=accepted
+[native-prepare-split] module=v2.test.claim.self_host.witness_bulk_routing_test resolve_nanos=6586360570 infer_nanos=0 prepare_nanos=6586360930 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.self_host.witness_entry_eligibility_census_classification_test resolve_nanos=6250473580 infer_nanos=139468577 prepare_nanos=6389942797 decls=6 outcome=accepted
+[native-prepare-split] module=v2.test.claim.shell_emission_authorization_test resolve_nanos=6149521003 infer_nanos=0 prepare_nanos=6149521763 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.simulated_relationship.lens_unit.discriminators resolve_nanos=6476812477 infer_nanos=0 prepare_nanos=6476812837 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.source_root_tagging resolve_nanos=6264168198 infer_nanos=0 prepare_nanos=6264168598 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.spine.spine_receipt_witness resolve_nanos=6673758933 infer_nanos=0 prepare_nanos=6673759293 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.sql_create_table_fold resolve_nanos=6321837758 infer_nanos=0 prepare_nanos=6321838118 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.stage0_partition_rebuild_scope_witness resolve_nanos=97640 infer_nanos=0 prepare_nanos=97720 decls=25 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.stage0_partition_roster_layout_join_witness resolve_nanos=6374678336 infer_nanos=0 prepare_nanos=6374678696 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.staged_front_end resolve_nanos=6436936995 infer_nanos=0 prepare_nanos=6436937355 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.staging resolve_nanos=6271956832 infer_nanos=0 prepare_nanos=6271957192 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std_grounding.terminal_gate resolve_nanos=6209559053 infer_nanos=0 prepare_nanos=6209559373 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.structural_similarity.lens_unit.discriminators resolve_nanos=6472348501 infer_nanos=0 prepare_nanos=6472348861 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.symbol_identity_semantics resolve_nanos=6457254760 infer_nanos=0 prepare_nanos=6457255120 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.symbol_index.containment resolve_nanos=6781330940 infer_nanos=0 prepare_nanos=6781331300 decls=19 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.target_model_external_authority_decode resolve_nanos=6822216711 infer_nanos=0 prepare_nanos=6822217071 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.target_model_survivor_witness resolve_nanos=6609492830 infer_nanos=0 prepare_nanos=6609493150 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.tokenize.annotation_channel resolve_nanos=7110657864 infer_nanos=0 prepare_nanos=7110658224 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.tokenize.lex_match_thunk_claims resolve_nanos=6979798883 infer_nanos=333194059 prepare_nanos=7312993622 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.tokenize.source_text_ingress resolve_nanos=6769880254 infer_nanos=174161600 prepare_nanos=6944042535 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.tokenize.string_literal_raw_newline resolve_nanos=6349076874 infer_nanos=0 prepare_nanos=6349077554 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.trait_derive_completeness_predicate resolve_nanos=6356697426 infer_nanos=0 prepare_nanos=6356697746 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.translate_underived_refusal resolve_nanos=6479522814 infer_nanos=0 prepare_nanos=6479523134 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.undecidable_verdict_collapse_wall_test resolve_nanos=6468107567 infer_nanos=0 prepare_nanos=6468107927 decls=10 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.use_site_verdict_test resolve_nanos=6292852322 infer_nanos=0 prepare_nanos=6292852722 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.vacuity_consumer_witness resolve_nanos=6271414074 infer_nanos=0 prepare_nanos=6271414394 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.verilog_interlock_emission_test resolve_nanos=6404801626 infer_nanos=0 prepare_nanos=6404802026 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.witness_admission_test resolve_nanos=12842573 infer_nanos=0 prepare_nanos=12842813 decls=17 outcome=context_refused
+[native-prepare-split] module=v2.test.claim.witness_cost_locality_test resolve_nanos=6422780501 infer_nanos=0 prepare_nanos=6422780861 decls=13 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.witness_exclusion_reconciliation_test resolve_nanos=6212485910 infer_nanos=0 prepare_nanos=6212486270 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.body_lowering_retention_census resolve_nanos=6141601097 infer_nanos=0 prepare_nanos=6141601377 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.frontier_probe_closure_matrix resolve_nanos=6152859344 infer_nanos=0 prepare_nanos=6152859624 decls=9 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.frontier_probe_closure_readthrough resolve_nanos=6486291765 infer_nanos=0 prepare_nanos=6486292125 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.product_receipt resolve_nanos=6501880909 infer_nanos=0 prepare_nanos=6501881229 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.source_root_overflow_never_empty_witness resolve_nanos=6307049503 infer_nanos=0 prepare_nanos=6307049863 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.wrap_decision_gate_smoke resolve_nanos=6249552585 infer_nanos=0 prepare_nanos=6249552905 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.claim.wrap_decision_predicate resolve_nanos=6239530624 infer_nanos=0 prepare_nanos=6239530944 decls=15 outcome=resolve_refused
+[native-prepare-split] module=v2.test.compiler.pipeline.infer_stage resolve_nanos=6021486682 infer_nanos=99007210 prepare_nanos=6120494572 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.compiler.pipeline.lower_stage resolve_nanos=5957878218 infer_nanos=102398384 prepare_nanos=6060277442 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.compiler.pipeline.tokenize_stage resolve_nanos=5928338697 infer_nanos=102462944 prepare_nanos=6030802161 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.lens_complexity_accumulator_copy resolve_nanos=6113406343 infer_nanos=0 prepare_nanos=6113406703 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps.coordination_claims resolve_nanos=6067713714 infer_nanos=0 prepare_nanos=6067714114 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps.formats.spice_passive_projection resolve_nanos=6614112016 infer_nanos=0 prepare_nanos=6614112416 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.extdeps_react.structural_receipts resolve_nanos=6739195853 infer_nanos=0 prepare_nanos=6739196213 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.filesystem.filesystem_read_dag_file resolve_nanos=6188523975 infer_nanos=0 prepare_nanos=6188524295 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.floor_changed_witness resolve_nanos=94171349 infer_nanos=0 prepare_nanos=94171549 decls=49 outcome=context_refused
+[native-prepare-split] module=v2.test.floor_enrolment_margin resolve_nanos=6607809070 infer_nanos=0 prepare_nanos=6607809470 decls=14 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_identity_captured_navigation resolve_nanos=6644904183 infer_nanos=0 prepare_nanos=6644904463 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.language_model.python_l1_static resolve_nanos=22323652 infer_nanos=0 prepare_nanos=22323692 decls=8 outcome=context_refused
+[native-prepare-split] module=v2.test.language_model.python_r1 resolve_nanos=6454932758 infer_nanos=0 prepare_nanos=6454933198 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.language_model.rust_r1 resolve_nanos=6154057952 infer_nanos=0 prepare_nanos=6154058352 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.language_model.rust_r3_internal resolve_nanos=6060606326 infer_nanos=0 prepare_nanos=6060606646 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.application_subterm_at_empty_path resolve_nanos=6627134631 infer_nanos=0 prepare_nanos=6627135031 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.apply_lens_enforce_uses_projection resolve_nanos=6094076824 infer_nanos=0 prepare_nanos=6094077144 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.apply_lens_introspect_rejection_is_advisory resolve_nanos=6051257168 infer_nanos=0 prepare_nanos=6051257488 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.empty_required_lenses_skip_gate resolve_nanos=6079301444 infer_nanos=0 prepare_nanos=6079301764 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.enforce_rejecting_gate_fires resolve_nanos=6097336079 infer_nanos=0 prepare_nanos=6097336399 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.introspect_clean_tree_passes resolve_nanos=6436534243 infer_nanos=0 prepare_nanos=6436534603 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.rejecting_lens_blocks_before_compile resolve_nanos=6154566276 infer_nanos=0 prepare_nanos=6154566596 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.required_lens_coverage_join resolve_nanos=6196149768 infer_nanos=0 prepare_nanos=6196150128 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.serialize_applied_diff_swap_operands resolve_nanos=6126274559 infer_nanos=0 prepare_nanos=6126274919 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.sg_claims resolve_nanos=6646587513 infer_nanos=0 prepare_nanos=6646587833 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.substitute_at_ambiguous_duplicate_name resolve_nanos=6330396364 infer_nanos=0 prepare_nanos=6330396684 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.substitute_at_depth_three resolve_nanos=6874100855 infer_nanos=0 prepare_nanos=6874101215 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.substitute_at_depth_two resolve_nanos=6371555415 infer_nanos=0 prepare_nanos=6371555735 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_application.subterm_at_ambiguous_duplicate_name resolve_nanos=6270315516 infer_nanos=0 prepare_nanos=6270315836 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity.algebra_receipts resolve_nanos=6255668415 infer_nanos=0 prepare_nanos=6255668735 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity.map_id resolve_nanos=6227440339 infer_nanos=0 prepare_nanos=6227440659 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity.nested resolve_nanos=6180182864 infer_nanos=0 prepare_nanos=6180183144 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity.while_external_condition resolve_nanos=6173268075 infer_nanos=0 prepare_nanos=6173268435 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity_lowering.catalog_sound resolve_nanos=6259891594 infer_nanos=0 prepare_nanos=6259891954 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_complexity_lowering.loop_invariant_hoist resolve_nanos=6183578318 infer_nanos=0 prepare_nanos=6183578678 decls=7 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_cost.atom_zero resolve_nanos=6114946034 infer_nanos=101514701 prepare_nanos=6216461295 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.bounded_summation resolve_nanos=122761 infer_nanos=0 prepare_nanos=122841 decls=3 outcome=context_refused
+[native-prepare-split] module=v2.test.lens_cost.copied_port_derivation resolve_nanos=6168864857 infer_nanos=145916724 prepare_nanos=6314782181 decls=7 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.disj_alternative_floor resolve_nanos=6113214627 infer_nanos=110562378 prepare_nanos=6223777565 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.disj_max resolve_nanos=6161994749 infer_nanos=105973639 prepare_nanos=6267968908 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.expr_refusal resolve_nanos=6200559189 infer_nanos=0 prepare_nanos=6200559469 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_cost.loop_illegal_named resolve_nanos=6106125158 infer_nanos=103942590 prepare_nanos=6210068268 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.loop_iteration_floor resolve_nanos=6167932734 infer_nanos=110380337 prepare_nanos=6278313751 decls=2 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.loop_linear resolve_nanos=6020687845 infer_nanos=97206682 prepare_nanos=6117895047 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.loop_unknown resolve_nanos=6069641488 infer_nanos=103215707 prepare_nanos=6172857675 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.map_linear resolve_nanos=6102559584 infer_nanos=100079694 prepare_nanos=6202639718 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.nested_product resolve_nanos=6061151413 infer_nanos=100272575 prepare_nanos=6161424588 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner resolve_nanos=6019538841 infer_nanos=0 prepare_nanos=6019539201 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_cost.summary_span resolve_nanos=6246289699 infer_nanos=0 prepare_nanos=6246290019 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_cost.valuation resolve_nanos=18059795 infer_nanos=0 prepare_nanos=18060315 decls=24 outcome=context_refused
+[native-prepare-split] module=v2.test.lens_coverage.discriminant_predicate_defect_key resolve_nanos=6207953032 infer_nanos=0 prepare_nanos=6207953432 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_coverage.hollow_type_defect_key resolve_nanos=6278750112 infer_nanos=0 prepare_nanos=6278750472 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_coverage.near_miss_vacuous_not_parallel resolve_nanos=6189000060 infer_nanos=0 prepare_nanos=6189000380 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_coverage.parallel_authority_defect_key resolve_nanos=6163113381 infer_nanos=0 prepare_nanos=6163113701 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_coverage.sibling_degenerate_not_hollow resolve_nanos=6166698882 infer_nanos=0 prepare_nanos=6166699202 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_dependency_fidelity.dependency_fidelity_test resolve_nanos=6151125556 infer_nanos=0 prepare_nanos=6151125876 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_determinism.reach_witness resolve_nanos=6198446766 infer_nanos=0 prepare_nanos=6198447046 decls=22 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_disposition_redundancy.disposition_redundancy_test resolve_nanos=6052254472 infer_nanos=0 prepare_nanos=6052254832 decls=28 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_doc_reachability.doc_reachability_test resolve_nanos=6002261944 infer_nanos=119212610 prepare_nanos=6121475114 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.lens_enforcement.gate_test resolve_nanos=6111022764 infer_nanos=0 prepare_nanos=6111023324 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.computation_not_type_carrier resolve_nanos=6038444877 infer_nanos=100746828 prepare_nanos=6139192225 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_fact_density.conj_positional_only_no_fact resolve_nanos=5994784289 infer_nanos=100864630 prepare_nanos=6095649519 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_fact_density.fact_bundle_compile_lens_passes resolve_nanos=5940855065 infer_nanos=0 prepare_nanos=5940855385 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.fact_bundle_named resolve_nanos=6007867418 infer_nanos=95855253 prepare_nanos=6103723191 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_blocked_in_run_gates resolve_nanos=6169675383 infer_nanos=0 prepare_nanos=6169675743 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses resolve_nanos=6286934195 infer_nanos=0 prepare_nanos=6286934475 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_compile_lens_rejects resolve_nanos=6257075935 infer_nanos=0 prepare_nanos=6257076255 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_nested_rejected resolve_nanos=6255341932 infer_nanos=0 prepare_nanos=6255342212 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_no_fact resolve_nanos=6237671752 infer_nanos=107119096 prepare_nanos=6344791368 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_fact_density.hollow_alias_vtc_empty_lenses_rejected resolve_nanos=6197656133 infer_nanos=0 prepare_nanos=6197656413 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_fact_density.kernel_ambient_bool resolve_nanos=6137867124 infer_nanos=98732387 prepare_nanos=6236599992 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_grounding_ledger.grounding_ledger_test resolve_nanos=6063518061 infer_nanos=0 prepare_nanos=6063518341 decls=6 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_idempotency.sg_claims resolve_nanos=5934627403 infer_nanos=96050780 prepare_nanos=6030678703 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_idempotency.write_effect resolve_nanos=5899735316 infer_nanos=0 prepare_nanos=5899735636 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_identical_variant_payload.sg_claims resolve_nanos=6062594769 infer_nanos=0 prepare_nanos=6062595129 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_inert_carrier.inert_carrier_test resolve_nanos=6051911487 infer_nanos=0 prepare_nanos=6051912167 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_lifecycle_carrier.raw_prose_field_flagged resolve_nanos=5966133338 infer_nanos=119483865 prepare_nanos=6085618123 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.lens_mock_totality.cron_mock_totality resolve_nanos=5891538867 infer_nanos=0 prepare_nanos=5891539187 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.diagnostic_mock_totality resolve_nanos=6037025020 infer_nanos=0 prepare_nanos=6037025420 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.filesystem_mock_totality resolve_nanos=6075247352 infer_nanos=0 prepare_nanos=6075247672 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.gcp_mock_totality resolve_nanos=5988966517 infer_nanos=0 prepare_nanos=5988966877 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.git_mock_totality resolve_nanos=6105652528 infer_nanos=0 prepare_nanos=6105652928 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.github_mock_totality resolve_nanos=5929130289 infer_nanos=0 prepare_nanos=5929130649 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.http_pilot_mock_totality resolve_nanos=5971090551 infer_nanos=0 prepare_nanos=5971090831 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.llm_mock_totality resolve_nanos=6059187580 infer_nanos=0 prepare_nanos=6059188060 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.sec_edgar_mock_totality resolve_nanos=6041001388 infer_nanos=0 prepare_nanos=6041001708 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.sheets_mock_totality resolve_nanos=6054033547 infer_nanos=0 prepare_nanos=6054033867 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mock_totality.shell_mock_totality resolve_nanos=5989398184 infer_nanos=0 prepare_nanos=5989398504 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_mutation_adequacy.mutation_adequacy_test resolve_nanos=6018260159 infer_nanos=0 prepare_nanos=6018260439 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_non_fold_residue.non_fold_residue_test resolve_nanos=6042608159 infer_nanos=124774853 prepare_nanos=6167383892 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.lens_parallelism.data_dependency resolve_nanos=5928530574 infer_nanos=0 prepare_nanos=5928530934 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_registry.sg_claims resolve_nanos=6133869311 infer_nanos=0 prepare_nanos=6133869591 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_structural_resolution.binds_to_resolved resolve_nanos=5982251269 infer_nanos=0 prepare_nanos=5982251909 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.constant_not_dominated_by_linear resolve_nanos=6034366368 infer_nanos=0 prepare_nanos=6034366728 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.exponential_dominates_polynomial resolve_nanos=6031727348 infer_nanos=0 prepare_nanos=6031727668 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.factorial_dominates_exponential resolve_nanos=6075171575 infer_nanos=0 prepare_nanos=6075171895 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.linear_not_dominated_by_polynomial resolve_nanos=6038358308 infer_nanos=0 prepare_nanos=6038358588 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.polynomial_dominates_linear resolve_nanos=6039533501 infer_nanos=0 prepare_nanos=6039533781 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.synthesis_gap_information_theoretic resolve_nanos=6375322361 infer_nanos=0 prepare_nanos=6375322641 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.synthesis_gap_polynomial resolve_nanos=6509936727 infer_nanos=0 prepare_nanos=6509937047 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_synthesis.synthesis_no_technique_diagnostic resolve_nanos=6424104003 infer_nanos=106671313 prepare_nanos=6530775796 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_table_decision_tree.sg_claims resolve_nanos=6417476409 infer_nanos=0 prepare_nanos=6417476809 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_testgen.dag_input_surface resolve_nanos=6362364915 infer_nanos=0 prepare_nanos=6362365235 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_testgen.generator_provenance resolve_nanos=6360913179 infer_nanos=108280200 prepare_nanos=6469193899 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_testgen.shadow_ci_receipt resolve_nanos=6188337728 infer_nanos=100023051 prepare_nanos=6288361379 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged resolve_nanos=6022980183 infer_nanos=106948196 prepare_nanos=6129929059 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.bitwidth_modeled_passes resolve_nanos=6014319897 infer_nanos=103813745 prepare_nanos=6118134082 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.coordinate_index_not_flagged resolve_nanos=6003336120 infer_nanos=101803218 prepare_nanos=6105140178 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.electrical_blocked_pending_flagged resolve_nanos=6503702165 infer_nanos=122782256 prepare_nanos=6626485061 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.flat_scalar_unit_leaf_flagged resolve_nanos=6398947524 infer_nanos=125201346 prepare_nanos=6524149390 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.label_version_not_flagged resolve_nanos=6366115869 infer_nanos=108338363 prepare_nanos=6474454712 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses resolve_nanos=6174393020 infer_nanos=0 prepare_nanos=6174393420 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_unit_modeling.modeled_unit_field_passes resolve_nanos=6493348076 infer_nanos=119278325 prepare_nanos=6612627041 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.novel_unit_flagged resolve_nanos=6292293951 infer_nanos=104496111 prepare_nanos=6396790582 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses resolve_nanos=6088587253 infer_nanos=0 prepare_nanos=6088587573 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_vacuity.vacuity_test resolve_nanos=97136444 infer_nanos=0 prepare_nanos=97136524 decls=10 outcome=context_refused
+[native-prepare-split] module=v2.test.lens_visibility.visibility_test resolve_nanos=6191015540 infer_nanos=123090021 prepare_nanos=6314106201 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.lens_wiring_liveness.wiring_liveness_corpus_test resolve_nanos=6186230906 infer_nanos=0 prepare_nanos=6186231266 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_wiring_liveness.wiring_liveness_preflight_test resolve_nanos=6649811229 infer_nanos=0 prepare_nanos=6649811549 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.lens_wiring_liveness.wiring_liveness_test resolve_nanos=6508050443 infer_nanos=0 prepare_nanos=6508050763 decls=3 outcome=resolve_refused
+[native-prepare-split] module=v2.test.long.grounding_lens_whole_tree resolve_nanos=6514842813 infer_nanos=113065265 prepare_nanos=6627908518 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.manual.ownership_movable resolve_nanos=6334978680 infer_nanos=0 prepare_nanos=6334979000 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.native_decl_selection resolve_nanos=6265405762 infer_nanos=0 prepare_nanos=6265406122 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.native_lane_smoke resolve_nanos=6216417558 infer_nanos=104475114 prepare_nanos=6320893592 decls=1 outcome=accepted
+[native-prepare-split] module=v2.test.required_ci_measurement resolve_nanos=6157102396 infer_nanos=0 prepare_nanos=6157102716 decls=2 outcome=resolve_refused
+[native-prepare-split] module=v2.test.runtimes.effect_io_handler_claims resolve_nanos=6409269090 infer_nanos=0 prepare_nanos=6409269650 decls=8 outcome=resolve_refused
+[native-prepare-split] module=v2.test.runtimes.effect_io_host_mode resolve_nanos=6887066479 infer_nanos=0 prepare_nanos=6887066759 decls=4 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std.reducible resolve_nanos=6887989349 infer_nanos=0 prepare_nanos=6887989709 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std.timeseries_signal_passives resolve_nanos=6507438211 infer_nanos=136427477 prepare_nanos=6643866168 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.std_dependents.dependents_test resolve_nanos=6544639495 infer_nanos=135688555 prepare_nanos=6680328490 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.std_grounding.runtime_value_node_projection resolve_nanos=6692148077 infer_nanos=0 prepare_nanos=6692148397 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std_grounding.value_carrier_laws resolve_nanos=123158747 infer_nanos=0 prepare_nanos=123159107 decls=11 outcome=context_refused
+[native-prepare-split] module=v2.test.std_model_core.bool_fact_lookup resolve_nanos=6750323202 infer_nanos=0 prepare_nanos=6750323602 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std_text.carrier_claims resolve_nanos=6453410055 infer_nanos=0 prepare_nanos=6453410295 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.v2_native_route resolve_nanos=621002 infer_nanos=0 prepare_nanos=621122 decls=65 outcome=context_refused
+[native-prepare-split] module=v2.test.wet_evidence resolve_nanos=6614531729 infer_nanos=0 prepare_nanos=6614532009 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.lens_discrimination_family_eval resolve_nanos=5920 infer_nanos=0 prepare_nanos=5960 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_effect_family_eval resolve_nanos=3720 infer_nanos=0 prepare_nanos=3800 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_idempotency_family_eval resolve_nanos=3480 infer_nanos=0 prepare_nanos=3560 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_leaf_model_verification_family_eval resolve_nanos=2760 infer_nanos=0 prepare_nanos=2840 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_ownership_family_eval resolve_nanos=3600 infer_nanos=0 prepare_nanos=3640 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_parallelism_family_eval resolve_nanos=3880 infer_nanos=0 prepare_nanos=3960 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_subsumption_family_eval resolve_nanos=2520 infer_nanos=0 prepare_nanos=2600 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_synthesis_family_eval resolve_nanos=1920 infer_nanos=0 prepare_nanos=2000 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_unused_parameters_family_eval resolve_nanos=3280 infer_nanos=0 prepare_nanos=3360 decls=1 outcome=context_refused
+[native-cost-partition] {"basis":"native_driver_wall","basis_note":"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos","closure_modules":2252,"closure_reads":2251,"corpus_reads":5618,"eval_max_nanos":1709567,"eval_mean_nanos":571756,"eval_p50_nanos":472002,"eval_p95_nanos":902483,"exclusive":{"bisect_loop_setup":{"_phantom":null,"count":1761366},"bisect_row_accumulation":{"_phantom":null,"count":129129676},"context":{"_phantom":null,"count":2089713364398},"eval":{"_phantom":null,"count":188107931},"load":{"_phantom":null,"count":228898402},"module_release":{"_phantom":null,"count":1639406},"prepare":{"_phantom":null,"count":4257056574575},"receipt_admission":{"_phantom":null,"count":88967465054},"relay_emit":{"_phantom":null,"count":13274176},"row_serialization":{"_phantom":null,"count":11089563},"universe_derivation":{"_phantom":null,"count":17281712657}},"file_refusals":207,"head":"7607ab49e6a7d0ff57d1fdcdc4dd18f1f0a90229","identities":3629,"ingested_paths":2251,"mode":"adjudicate","parent_span_nanos":6453679770733,"peak_rss_bytes":1502277632,"prepare_max_nanos":7384750142,"prepare_mean_nanos":5962264110,"prepare_ok":138,"prepare_p50_nanos":6293170966,"prepare_p95_nanos":6828398990,"prepare_refused":576,"producer":"std.compiler_entry.SourceRootEvalDriver","remainder_nanos":86753529,"rss_bytes":1502277632,"scanned_paths":5618,"sum_exclusive_nanos":6453593017204,"tolerance_nanos":50000000,"unique_modules":714,"verdict":"NativeDriverCostRemainderExceedsTolerance"}
+REFUSED: native driver cost RemainderExceedsTolerance { residual_nanos: 86753529, tolerance_nanos: 50000000 } -- unattributed driver work; name the span, do not widen the tolerance
+v2-native-route: driver rows persisted to /home/briansrls/eager-raven-113/bisect.Uqef6H/repo/target/v2-native-lane/driver-rows.jsonl (990984 bytes, byte-for-byte verified)
+v2-native-route: old route restored
+v2-native-route: refused: V2-NATIVE REFUSAL cause=NativeRunFailed status=Some(1) — /home/briansrls/eager-raven-113/bisect.Uqef6H/repo/target/release/gunbc-emitted-closure-src-v2-compiler-00-compile-dag — the native run printed no terminal marker
+[native-prepare-split] module=v2.test.std.reducible resolve_nanos=6887989349 infer_nanos=0 prepare_nanos=6887989709 decls=5 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std.timeseries_signal_passives resolve_nanos=6507438211 infer_nanos=136427477 prepare_nanos=6643866168 decls=4 outcome=accepted
+[native-prepare-split] module=v2.test.std_dependents.dependents_test resolve_nanos=6544639495 infer_nanos=135688555 prepare_nanos=6680328490 decls=3 outcome=accepted
+[native-prepare-split] module=v2.test.std_grounding.runtime_value_node_projection resolve_nanos=6692148077 infer_nanos=0 prepare_nanos=6692148397 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std_grounding.value_carrier_laws resolve_nanos=123158747 infer_nanos=0 prepare_nanos=123159107 decls=11 outcome=context_refused
+[native-prepare-split] module=v2.test.std_model_core.bool_fact_lookup resolve_nanos=6750323202 infer_nanos=0 prepare_nanos=6750323602 decls=1 outcome=resolve_refused
+[native-prepare-split] module=v2.test.std_text.carrier_claims resolve_nanos=6453410055 infer_nanos=0 prepare_nanos=6453410295 decls=12 outcome=resolve_refused
+[native-prepare-split] module=v2.test.v2_native_route resolve_nanos=621002 infer_nanos=0 prepare_nanos=621122 decls=65 outcome=context_refused
+[native-prepare-split] module=v2.test.wet_evidence resolve_nanos=6614531729 infer_nanos=0 prepare_nanos=6614532009 decls=11 outcome=resolve_refused
+[native-prepare-split] module=v2.test.workflow.lens_discrimination_family_eval resolve_nanos=5920 infer_nanos=0 prepare_nanos=5960 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_effect_family_eval resolve_nanos=3720 infer_nanos=0 prepare_nanos=3800 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_idempotency_family_eval resolve_nanos=3480 infer_nanos=0 prepare_nanos=3560 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_leaf_model_verification_family_eval resolve_nanos=2760 infer_nanos=0 prepare_nanos=2840 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_ownership_family_eval resolve_nanos=3600 infer_nanos=0 prepare_nanos=3640 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_parallelism_family_eval resolve_nanos=3880 infer_nanos=0 prepare_nanos=3960 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_subsumption_family_eval resolve_nanos=2520 infer_nanos=0 prepare_nanos=2600 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_synthesis_family_eval resolve_nanos=1920 infer_nanos=0 prepare_nanos=2000 decls=1 outcome=context_refused
+[native-prepare-split] module=v2.test.workflow.lens_unused_parameters_family_eval resolve_nanos=3280 infer_nanos=0 prepare_nanos=3360 decls=1 outcome=context_refused
+[native-cost-partition] {"basis":"native_driver_wall","basis_note":"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos","closure_modules":2252,"closure_reads":2251,"corpus_reads":5618,"eval_max_nanos":1709567,"eval_mean_nanos":571756,"eval_p50_nanos":472002,"eval_p95_nanos":902483,"exclusive":{"bisect_loop_setup":{"_phantom":null,"count":1761366},"bisect_row_accumulation":{"_phantom":null,"count":129129676},"context":{"_phantom":null,"count":2089713364398},"eval":{"_phantom":null,"count":188107931},"load":{"_phantom":null,"count":228898402},"module_release":{"_phantom":null,"count":1639406},"prepare":{"_phantom":null,"count":4257056574575},"receipt_admission":{"_phantom":null,"count":88967465054},"relay_emit":{"_phantom":null,"count":13274176},"row_serialization":{"_phantom":null,"count":11089563},"universe_derivation":{"_phantom":null,"count":17281712657}},"file_refusals":207,"head":"7607ab49e6a7d0ff57d1fdcdc4dd18f1f0a90229","identities":3629,"ingested_paths":2251,"mode":"adjudicate","parent_span_nanos":6453679770733,"peak_rss_bytes":1502277632,"prepare_max_nanos":7384750142,"prepare_mean_nanos":5962264110,"prepare_ok":138,"prepare_p50_nanos":6293170966,"prepare_p95_nanos":6828398990,"prepare_refused":576,"producer":"std.compiler_entry.SourceRootEvalDriver","remainder_nanos":86753529,"rss_bytes":1502277632,"scanned_paths":5618,"sum_exclusive_nanos":6453593017204,"tolerance_nanos":50000000,"unique_modules":714,"verdict":"NativeDriverCostRemainderExceedsTolerance"}
+REFUSED: native driver cost RemainderExceedsTolerance { residual_nanos: 86753529, tolerance_nanos: 50000000 } -- unattributed driver work; name the span, do not widen the tolerance
