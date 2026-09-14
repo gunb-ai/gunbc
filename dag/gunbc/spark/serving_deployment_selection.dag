@@ -1708,6 +1708,28 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
     })
 }
 
+// THE REFUSAL'S SCOPE IS DELIBERATELY NOT CARRIED ACROSS THIS BOUNDARY, AND SAYING SO IS THE POINT.
+//
+// `std.decision` `NoFeasibleRealization` now carries a `DecisionScope` -- the candidate field,
+// constraint authority, funded axes and evidence snapshot the refusal was about. The arm below maps it
+// to `NoFeasibleServingDeployment { causes }` and does NOT carry the scope forward, so a serving-layer
+// refusal still says only WHY and not WHAT-WAS-REFUSED.
+//
+// THAT IS A DECISION HERE RATHER THAN AN ACCIDENT, AND WITHOUT THIS BLOCK IT WOULD BE INDISTINGUISHABLE
+// FROM ONE. A record pattern binding a subset of a variant's fields is accepted, with the unbound fields
+// becoming implicit wildcards -- so this arm compiled unchanged when the field was added, and nothing in
+// its text records that the omission was considered. The intention and the oversight have the same
+// spelling, which is the class filed as
+// `gunbc.recurring_failure_mode.a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard`.
+//
+// WHY NOT PROPAGATE IT: giving `ServingDeploymentSelection` its own scope is a change to THIS layer's
+// result type and to every consumer that reads it, which is a different decision from the one the
+// decision layer just made, and it deserves to be made rather than inherited. The honest state today is
+// that the scope stops here, on purpose, with the reason written down.
+//
+// WHAT WOULD CHANGE IT: an operator-facing consumer that needs to tell two serving refusals apart -- at
+// which point the serving result carries the scope and this block is deleted with the change that adds
+// it.
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
   match establish_serving_candidate_field(field: input.field) {
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
@@ -1805,7 +1827,7 @@ type ShapeAdmission
 // said so. It does NOT establish that the one candidate was the complete intended domain -- the
 // completeness join answers that, and the two are deliberately separate questions.
 fn compared_candidate_count(r: SelectionReceipt) -> Nat {
-  match r.candidate_field_standing {
+  match r.scope.candidate_field_standing {
     CandidateFieldEstablished { identities: ids } => count(ids)
     CandidateFieldUnestablishedStanding { causes: _ } => 0
   }

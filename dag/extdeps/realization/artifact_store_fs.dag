@@ -72,7 +72,7 @@ type ArtifactFsListResult
   | ArtifactFsListRefused { verb: Verb, target: NamespacePosition, frame: Frame }
   | ArtifactFsListFailed { path: String }
 
-func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {
+fn artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
     Deny { refusal: refusal } => ArtifactFsPutRefused {
       verb: Write,
@@ -90,7 +90,7 @@ func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> A
   }
 }
 
-func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
+fn artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
     Deny { refusal: refusal } => ArtifactFsRefused {
       verb: Read,
@@ -108,7 +108,7 @@ func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
   }
 }
 
-func artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDeleteResult {
+fn artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDeleteResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
     Deny { refusal: refusal } => ArtifactFsDeleteRefused {
       verb: Write,
@@ -126,7 +126,7 @@ func artifact_fs_delete(store_root: String, key: ContentHash) -> ArtifactFsDelet
   }
 }
 
-func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
+fn artifact_fs_list(store_root: String) -> ArtifactFsListResult {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
     Deny { refusal: refusal } => ArtifactFsListRefused {
       verb: Read,
@@ -188,7 +188,7 @@ type ArtifactEvictionStep
   | EvictionRefused { key: ContentHash, verb: Verb, target: NamespacePosition, frame: Frame }
   | EvictionFailed { key: ContentHash, path: String }
 
-func evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
+fn evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
   match artifact_fs_delete(store_root: store_root, key: key) {
     ArtifactFsDeleteOk => EvictionDeleted { key: key }
     ArtifactFsDeleteRefused { verb: v, target: t, frame: f } =>
@@ -197,7 +197,7 @@ func evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
   }
 }
 
-func apply_store_evictions(store_root: String, evicted: List<ContentHash>) -> List<ArtifactEvictionStep> {
+fn apply_store_evictions(store_root: String, evicted: List<ContentHash>) -> List<ArtifactEvictionStep> {
   evicted |> map(key => evict_one(store_root: store_root, key: key))
 }
 

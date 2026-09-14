@@ -184,6 +184,27 @@ test fn invalid_interval_and_cross_clock_refuse() -> Bool {
     })
 }
 
+// All four instants use the same CPU clock, so interval comparability cannot carry this RED.
+// Removing the wall-basis refusal must not turn CPU consumption into elapsed VM allocation time.
+test fn cpu_clock_meter_refuses() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let meter = RunnerMeterObservation {
+    subject: subject,
+    configured_vcpus: hardware_thread_count(count: 4),
+    capacity_acquired: fixture_instant(ns: 0, origin: "fixture-boot", basis: CpuClock),
+    jailer_launched: fixture_instant(ns: 10000000000, origin: "fixture-boot", basis: CpuClock),
+    vmm_reaped: fixture_instant(ns: 50000000000, origin: "fixture-boot", basis: CpuClock),
+    capacity_retired: fixture_instant(ns: 60000000000, origin: "fixture-boot", basis: CpuClock),
+    clock_resolution: nanosecond(count: 1),
+    evidence: fixture_source(),
+  }
+  match produce_runner_usage_receipt(expected: subject,
+    reading: RunnerMeterObserved { observation: meter }, initiator: fixture_initiator(subject: subject)) {
+    RunnerUsageRefused { cause: UsageClockBasisNotWall } => true
+    _ => false
+  }
+}
+
 test fn zero_cpu_or_unrecorded_resolution_refuse() -> Bool {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let no_cpu = match produce_runner_usage_receipt(expected: subject,
@@ -411,7 +432,8 @@ fn main() -> Bool {
   fractional_minutes_preserve_meter_and_exclude_staging() &&
   missing_meter_and_initiator_refuse() &&
   different_tenant_or_attempt_cannot_supply_usage_or_initiator() &&
-  invalid_interval_and_cross_clock_refuse() && zero_cpu_or_unrecorded_resolution_refuse() &&
+  invalid_interval_and_cross_clock_refuse() && cpu_clock_meter_refuses() &&
+  zero_cpu_or_unrecorded_resolution_refuse() &&
   independent_present_then_absent_is_accepted() && destroyer_cannot_attest_its_own_teardown() &&
   an_always_absent_instrument_refuses() && every_residue_and_unreadable_resource_refuses() &&
   missing_observer_receipt_is_detectable() && stale_or_wrong_teardown_subjects_refuse()

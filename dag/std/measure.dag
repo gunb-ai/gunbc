@@ -6,6 +6,7 @@ import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
 import std.algebra { FieldOfFractions }
 import std.types { Int, Bool, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 import extdeps.units.iso_80000_3 {
@@ -18,6 +19,7 @@ import extdeps.units.iso_80000_3 {
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
+  parts_per_million_unity_count,
 }
 
 type Quantity =
@@ -994,6 +996,38 @@ fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
   money_rate_micros(q: q)
 }
 
+// Vendor account credits are scrip, not CurrencyCode. AccountCredit names the issuer the
+// same way MoneyRate carries currency: CreditRate<P> stays period-parameterized, and two
+// sellers' credits are not the same quantity because their AccountCredit issuer
+// DeclarationRefs differ. A module-path string is a second name for the seller already
+// cited as DeclarationRef (DESIGN §3).
+type AccountCredit {
+  issuer: DeclarationRef
+}
+
+type CreditRate<P> {
+  count: Nat
+  credit: AccountCredit
+}
+
+type CreditsPerMinute = CreditRate<PerMinute>
+
+fn account_credit(issuer: DeclarationRef) -> AccountCredit {
+  AccountCredit { issuer: issuer }
+}
+
+fn credits_per_minute(count: Nat, credit: AccountCredit) -> CreditsPerMinute {
+  CreditRate { count: count, credit: credit }
+}
+
+fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+  r.count
+}
+
+fn credits_per_minute_issuer(r: CreditsPerMinute) -> DeclarationRef {
+  r.credit.issuer
+}
+
 fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   MoneyPerHour {
     amount: money_amount_micro(count: money_per_minute_micros(q: q) * minutes_per_hour()),
@@ -1425,6 +1459,23 @@ fn basis_point_count(bp: BasisPoint) -> Nat {
 
 fn basis_point_unity_count() -> Nat {
   parts_per_ten_thousand_unity_count()
+}
+
+// Dimensionless ratio at Micro scale: count 66250 is 6.625 percent of unity. Percent and
+// BasisPoint occupy Dimensionless at One with whole-point / permyriad counts and cannot carry
+// this remainder. This is the third scale of the same authority, not a product-module unit.
+type PartsPerMillion = Measure<Dimensionless, Micro, Nat>
+
+fn parts_per_million(count: Nat) -> PartsPerMillion {
+  Measure { count: count }
+}
+
+fn parts_per_million_count(m: PartsPerMillion) -> Nat {
+  measure_count(m)
+}
+
+fn parts_per_million_scale_million() -> Nat {
+  parts_per_million_unity_count()
 }
 
 // One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same

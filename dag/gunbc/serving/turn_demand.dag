@@ -1,6 +1,8 @@
 module gunbc.serving.turn_demand
 
-import std.types { NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, serialize_content_hash }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
@@ -42,18 +44,81 @@ import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
 // them one Work. That is not a missing field; it is a wrong answer about identity, and the fabric's
 // whole reuse and receipt story is keyed on it.
 //
-// SO THE MANIFEST IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED. Nothing in this repository yet
-// observes the exact model, tokenizer and runtime closure a launch loaded -- that is a privileged
-// read against a running engine and it belongs to the launch-receipt lane. Until it exists, a serving
-// turn has no exact Work, and this module says so rather than manufacturing one.
-type ServingTurnSource
-  = TurnSourceManifest { manifest: SourceManifestRef, receipt: ObservationReceiptRef }
-  | TurnSourceUnestablished { obligation: NonEmptyStr }
+// SO THE MANIFEST IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED. Until every component below is
+// observed, a serving turn has no exact Work, and this module says so rather than manufacturing one.
+//
+// WHAT THE MANIFEST IS MADE OF: three components, each observed or not on its own. A turn's source is
+// the weights the engine loaded, the tokenizer it loaded, and the runtime it runs in. One boolean over
+// all three would hide which is missing, and the three have different producers: an incarnation
+// observation can supply the runtime image digest (gunbc.spark.serving_offer spark_serving_turn_runtime),
+// and nothing in this repository reads the weight or tokenizer bytes a running engine loaded.
+type ServingTurnComponent = TurnWeights | TurnTokenizer | TurnRuntime
 
-data serving_turn_source_obligation: NonEmptyStr = "no observation in this repository establishes the exact model weights, tokenizer and runtime closure a serving launch loaded, so an inference turn has no canonical source manifest; the named consumer is gunbc.serving.turn_demand serving_turn_work and the trigger is a launch receipt that reads them from the running engine" as NonEmptyStr
+fn serving_turn_component_wire(component: ServingTurnComponent) -> NonEmptyStr {
+  match component {
+    TurnWeights => "weights" as NonEmptyStr
+    TurnTokenizer => "tokenizer" as NonEmptyStr
+    TurnRuntime => "runtime" as NonEmptyStr
+  }
+}
 
-fn serving_turn_source_unestablished() -> ServingTurnSource {
-  TurnSourceUnestablished { obligation: serving_turn_source_obligation }
+type TurnComponentStanding
+  = TurnComponentObserved { digest: ContentHash, receipt: ObservationReceiptRef }
+  | TurnComponentUnobserved { obligation: NonEmptyStr }
+
+type ServingTurnSource {
+  weights: TurnComponentStanding
+  tokenizer: TurnComponentStanding
+  runtime: TurnComponentStanding
+}
+
+// THE WEIGHTS AND TOKENIZER OBLIGATIONS NAME THE ONLY THING THAT DISCHARGES THEM. The snapshot pinned in
+// gunbc.spark.pair_serving_desired is what we DECLARED the engine should load. Reading it as what the
+// engine DID load is the declaration standing in for the realization, so it never fills these.
+data serving_turn_weights_obligation: NonEmptyStr = "no observation in this repository establishes the weight bytes a serving engine loaded; the pinned snapshot revision is a declaration, not a reading. TRIGGER: an observer of the loaded weight bytes, bound to the answering launch, SUFFICIENT FOR TurnComponentObserved on the weights component" as NonEmptyStr
+
+data serving_turn_tokenizer_obligation: NonEmptyStr = "no observation in this repository establishes the tokenizer bytes a serving engine loaded; the pinned snapshot revision is a declaration, not a reading. TRIGGER: an observer of the loaded tokenizer bytes, bound to the answering launch, SUFFICIENT FOR TurnComponentObserved on the tokenizer component" as NonEmptyStr
+
+type TurnComponentReading {
+  component: ServingTurnComponent
+  standing: TurnComponentStanding
+}
+
+fn serving_turn_component_readings(source: ServingTurnSource) -> List<TurnComponentReading> {
+  [
+    TurnComponentReading { component: TurnWeights, standing: source.weights },
+    TurnComponentReading { component: TurnTokenizer, standing: source.tokenizer },
+    TurnComponentReading { component: TurnRuntime, standing: source.runtime },
+  ]
+}
+
+fn turn_component_obligation(reading: TurnComponentReading) -> List<NonEmptyStr> {
+  match reading.standing {
+    TurnComponentObserved { digest: _, receipt: _ } => [] as List<NonEmptyStr>
+    TurnComponentUnobserved { obligation: o } =>
+      [join([serving_turn_component_wire(component: reading.component) as String, ": ", o as String], "") as NonEmptyStr]
+  }
+}
+
+fn turn_component_digest_wire(reading: TurnComponentReading) -> List<String> {
+  match reading.standing {
+    TurnComponentUnobserved { obligation: _ } => [] as List<String>
+    TurnComponentObserved { digest: d, receipt: _ } =>
+      [join([serving_turn_component_wire(component: reading.component) as String, "=", serialize_content_hash(hash: d) as String], "")]
+  }
+}
+
+// THE MANIFEST IS THE CANONICAL RENDERING OF THE THREE DIGESTS, in a fixed component order, so two
+// turns whose engines loaded different bytes in any component have different manifests and therefore
+// different Work. It exists only when every component was observed.
+fn serving_turn_manifest(source: ServingTurnSource) -> SourceManifestRef? {
+  let readings = serving_turn_component_readings(source: source)
+  let obligations = flat_map(readings, r => turn_component_obligation(reading: r))
+  if length(obligations) > 0 {
+    none
+  } else {
+    Present { value: join(flat_map(readings, r => turn_component_digest_wire(reading: r)), ";") as SourceManifestRef }
+  }
 }
 
 type ServingTurnRequest {
@@ -88,12 +153,22 @@ fn serving_turn_output_obligations() -> DeclaredOutputObligations {
 
 type ServingTurnContract
   = TurnContractBound { contract: WorkContract }
-  | TurnContractUnestablished { obligation: NonEmptyStr }
+  | TurnContractUnestablished { missing: List<ServingTurnComponent>, obligation: NonEmptyStr }
 
+// THE REFUSAL NAMES EVERY MISSING COMPONENT, not the first. A turn missing weights and runtime needs two
+// producers, and reporting one of them would send a reader to build it and meet the second refusal.
 fn serving_turn_contract(request: ServingTurnRequest) -> ServingTurnContract {
-  match request.source {
-    TurnSourceUnestablished { obligation: o } => TurnContractUnestablished { obligation: o }
-    TurnSourceManifest { manifest: m, receipt: _ } =>
+  let readings = serving_turn_component_readings(source: request.source)
+  match serving_turn_manifest(source: request.source) {
+    Absent =>
+      TurnContractUnestablished {
+        missing: flat_map(readings, r => match r.standing {
+          TurnComponentObserved { digest: _, receipt: _ } => [] as List<ServingTurnComponent>
+          TurnComponentUnobserved { obligation: _ } => [r.component]
+        }),
+        obligation: join(map(flat_map(readings, r => turn_component_obligation(reading: r)), o => o as String), " | ") as NonEmptyStr,
+      }
+    Present { value: m } =>
       TurnContractBound {
         contract: WorkContract {
           program: serving_turn_program,
@@ -136,11 +211,11 @@ fn serving_turn_requirements(
 // second construction path for one identity and would survive a change to how keys are made.
 type ServingTurnWork<P>
   = TurnWorkBound { work: Work<P> }
-  | TurnWorkUnestablished { obligation: NonEmptyStr }
+  | TurnWorkUnestablished { missing: List<ServingTurnComponent>, obligation: NonEmptyStr }
 
 fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements: ExecutionRequirements) -> ServingTurnWork<P> {
   match serving_turn_contract(request: request) {
-    TurnContractUnestablished { obligation: o } => TurnWorkUnestablished { obligation: o }
+    TurnContractUnestablished { missing: m, obligation: o } => TurnWorkUnestablished { missing: m, obligation: o }
     TurnContractBound { contract: c } =>
       TurnWorkBound { work: work_for(principal: principal, contract: c, requirements: requirements) }
   }

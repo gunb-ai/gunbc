@@ -1,0 +1,52 @@
+module product.data_category
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE HANDLING-CLASS MARKERS, ONE ROW EACH, AND NOTHING ELSE. A category here names a class of data
+// the product handles -- it is the C in product.data_class Classified<C, T> -- and it GRANTS
+// NOTHING: which sinks a category may reach, under which lawful basis, kept for how long, and in
+// whose scope, are rows of the data-handling map, which is private policy and is never enumerated
+// in this tree (parent ruling msg_144d9121, point 4: the marker identifies the handling class; the
+// grant lives on the sink and the permit). So "PersonalIdentity" never reads as "permitted".
+//
+// OPEN BY ROW, NOT A CLOSED ENUM. Each category is its own bare type declaration, so a category is
+// added by adding a declaration and its private description row, not by widening a coproduct every
+// match would then have to re-eliminate. std.magnitude Magnitude is the same shape: a nominal
+// identity with no inhabitant, consulted only as a type argument.
+//
+// ONE ROSTER, TWO HALVES (DESIGN 3, agreed with the M2 compliance lane 2026-09-13). The marker is
+// public and type-level; the DESCRIPTION -- what we process under it, where, for what purpose,
+// under which basis, with what ratification standing -- is gunbc-private strategy.data_map, whose
+// rows cite these declarations by DeclarationRef { module_path: "product.data_category", decl_name }.
+// The eight markers below are one per description row, under the same names that lane authors.
+// The join is walled on the citing side, by a cited-declaration-exists witness; nothing here copies
+// that lane's names.
+//
+// THE SCOPE EXCLUSION IS EXPRESSED BY ABSENCE. The private map states an explicit exclusion: no
+// end-user personal data. PersonalIdentity names the identity of an ACCOUNT or ADMIN principal --
+// the person who signed in -- and there is deliberately no EndUserPersonalData marker: a category
+// with no marker has no Classified constructor, no sink row and no permit, which is the type-level
+// form of "we do not hold it".
+
+type PersonalIdentity
+type SourceAndBuildInput
+type BuildOutput
+type CiSecret
+type JobLog
+type MeteringTelemetry
+type SupportCommunication
+type AbuseAndSanctionsRecord
+
+// THE RUNTIME NAME OF EACH MARKER. A type argument has no value at run time, and the interpretation
+// path does not yet judge marker identity at generic positions (gunbc.recurring_failure_mode
+// generic_application_admits_distinct_unit_variant_arguments and its bare-marker sibling), so
+// every Classified value and every Sink also carries the marker's declaration reference, and the
+// admission fold compares those. These are the only spellings of the references; a consumer that
+// needs one imports it rather than re-spelling the module path. Only the references with a
+// consumer exist (PersonalIdentity and BuildOutput, read by their mints); a marker gains its reference function with its first mint or sink, so no
+// function here is a declaration nothing reads (DESIGN 3c, review 65204).
+data data_category_module_path: String = "product.data_category"
+
+fn personal_identity_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "PersonalIdentity") }
+fn build_output_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "BuildOutput") }

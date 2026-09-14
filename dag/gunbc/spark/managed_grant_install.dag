@@ -397,7 +397,7 @@ type SparkGrantInstallOutcome
 // staged, so nothing can be stranded. An earlier cut staged first and then discarded the cleanup
 // standing when it built that arm, while the cleanup predicate answered `true` for it
 // unconditionally -- a receipt that could not show a cleanup failure it had already caused.
-func spark_grant_install_execute(
+fn spark_grant_install_execute(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
@@ -522,7 +522,7 @@ fn spark_grant_install_from_privileged(
 // THE READBACK IS THE GRANTEE'S OWN ENUMERATION, not the installer's. sudo answers "may THIS account
 // run THIS command", and the account that matters is the one the serving lane will use -- asking as
 // the installing principal would confirm a grant for the wrong subject entirely.
-func spark_grant_read_back(
+fn spark_grant_read_back(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   grant: SparkManagedGrant,
@@ -662,7 +662,7 @@ type SparkGrantInstallRun {
   outcomes: List<SparkGrantInstallOutcome>
 }
 
-func spark_grant_install_host(
+fn spark_grant_install_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
@@ -728,7 +728,7 @@ fn spark_grant_install_run_cleanup_completed(run: SparkGrantInstallRun) -> Bool 
 
 // The grant reading, taken through the transport that will do the installing rather than a separate
 // one: a standing measured as one principal and acted on as another is two facts wearing one name.
-func spark_grant_probe_outcome(
+fn spark_grant_probe_outcome(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkGrantOutcome
@@ -755,7 +755,7 @@ func spark_grant_probe_outcome(
 // THE INSTALL NAMES ITS TARGET OR IT DOES NOT RUN, the same rule the reboot probe applies to itself
 // and for the same reason: writing sudoers across a whole fleet from an unset variable is a fan-out
 // nobody asked for, and the observe entry's all-hosts arm exists for reading, not writing.
-func spark_grant_install_ci_wet() -> ProcessExit
+fn spark_grant_install_ci_wet() -> ProcessExit
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {

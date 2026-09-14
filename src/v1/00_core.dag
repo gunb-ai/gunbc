@@ -429,6 +429,7 @@ type CompilerDiagnostic
   | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
   | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
+  | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
   | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
@@ -650,6 +651,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
+    EffectfulSelfRecursionUnrealized { name: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
@@ -749,6 +751,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, span: _ } =>
       concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
+    EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
     EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
@@ -880,6 +883,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     DataReferenceVisibilityBudgetExceeded { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

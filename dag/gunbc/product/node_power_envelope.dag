@@ -1,5 +1,13 @@
 module product.node_power_envelope
 
+// FROZEN homogeneous-candidate power path. No new host/population rows or
+// callers on this aggregate PopulationOption surface. It cannot certify power
+// for a selected MemoryConfiguration (especially retained/mixed placements).
+// Cutover trigger: per-connector load and channel-coverage evaluation consumes
+// MemoryConfiguration.population, preserving the present unsupported-density,
+// coverage and missing-power-evidence refusals; delete this aggregate input
+// atomically. See gunbc.memory_change_evaluation.memory_change_consumer_frontiers.
+
 import std.types { EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {

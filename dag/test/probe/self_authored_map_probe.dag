@@ -1,0 +1,76 @@
+module test.probe.self_authored_map_probe
+
+// THIS MODULE MUST NOT RESOLVE. The route review 65282 found: a caller that cannot forge a permit
+// or a key can still author the POLICY the fold admits against -- a one-row map admitting its own
+// category to its own sink, the same posture handed as active -- and read the payload off the
+// permit. Both spellings of that map are here. The record literal refuses as
+// SoleConstructorViolation on DataHandlingMap; the mint call refuses as
+// ConstructorCallAdmissionRefused, because data_handling_map admits only the private policy
+// authority and the admission witness's sealed fixture builder; and the third function reaches for
+// that fixture builder directly, which refuses the same way because it is sealed to its tests.
+
+import std.types { NonEmptyStr, List, Bool }
+import std.decl_ref { decl_ref }
+import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import product.fabric.provider_route { ProviderRoute }
+import product.data_category { PersonalIdentity, personal_identity_ref }
+import product.data_class {
+  DataHandlingRow, DataHandlingMap, DurableOrigin, StoreDurably, DataEffectAdmitted, DataEffectRefused,
+  admit_data_effect, durable_origin_sink, personal_identity_category, data_handling_map, public_fabric_posture,
+}
+import gunbc.principal_projection { oidc_projection }
+import test.claim.fabric.data_class_admission_witness_test { fx_map }
+
+fn claims() -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://issuer.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "external-subject" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
+    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: none, name: none },
+  }
+}
+
+fn my_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.probe.self_authored_map_probe", decl_name: "my_route"),
+    service: decl_ref(module_path: "test.probe.self_authored_map_probe", decl_name: "my_route"),
+    region: decl_ref(module_path: "test.probe.self_authored_map_probe", decl_name: "my_route"),
+  }
+}
+
+fn my_rows() -> List<DataHandlingRow> {
+  [DataHandlingRow {
+    category: personal_identity_ref(),
+    sink: DurableOrigin { route: my_route() },
+    purposes: [personal_identity_ref()],
+    recipients: [personal_identity_ref()],
+    operations: [StoreDurably],
+    retention: personal_identity_ref(),
+    lawful_basis: personal_identity_ref(),
+    posture: public_fabric_posture(),
+  }]
+}
+
+fn reveal_under(handling_map: DataHandlingMap) -> OidcStandardClaims? {
+  let sink = durable_origin_sink(category: personal_identity_category(), route: my_route(), purpose: personal_identity_ref(), recipient: personal_identity_ref())
+  match admit_data_effect(classified: oidc_projection(claims: claims()).standard, sink: sink, operation: StoreDurably, handling_map: handling_map, posture: public_fabric_posture()) {
+    DataEffectAdmitted { permit: p } => Present { value: p.value }
+    DataEffectRefused { cause: _ } => none
+  }
+}
+
+fn authored_map_literal() -> OidcStandardClaims? {
+  reveal_under(handling_map: DataHandlingMap { authority: personal_identity_ref(), rows: my_rows() })
+}
+
+fn authored_map_through_the_mint() -> OidcStandardClaims? {
+  reveal_under(handling_map: data_handling_map(authority: personal_identity_ref(), rows: my_rows()))
+}
+
+fn authored_map_through_the_fixture_builder() -> OidcStandardClaims? {
+  reveal_under(handling_map: fx_map(rows: my_rows()))
+}

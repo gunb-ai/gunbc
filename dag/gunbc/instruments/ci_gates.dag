@@ -42,10 +42,10 @@ fn run_gate_list(gates: List<Gate>) -> ProcessExit {
   })
 }
 
-func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
+fn run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   run_gate_list(gates: spec.gates)
 }
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   run_gate_list(gates: gunbc_ci_gates)
 }

@@ -28,7 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_asset_identity { chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -42,7 +42,11 @@ import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
 import product.inventory {
   CatalogRowExact,
+  CatalogRowUnread,
+  LandedCostHeldPrivately,
+  LotReceived,
   InventoryEvent,
+  InventoryLotEvidence,
   InventoryLotAllocator,
   InventoryLotIdentity,
   LandedCostUnsettled,
@@ -591,3 +595,85 @@ fn dimm_lot_intent_fits_the_lot() -> Bool {
   intended_allocation_total(rows: dimm_lot_64gib_32x_intended_allocation)
     <= dimm_lot_64gib_32x.quantity_acquired
 }
+
+// Procurement grain is independent of LAN arrival grain. One vendor receipt
+// cannot establish another acquisition's SKU or a serial-to-host binding.
+// Receipt facts and capability gaps are carried by gunbc.recurring_failure_mode
+// inventory_history_has_no_dated_evidence, inventory_order_cancellation_is_unrepresentable
+// and inventory_receipt_cannot_identify_assets.
+
+data dgx_spark_micro_center_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dimm_lot).id
+
+data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dimm_lot).alloc
+
+data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
+
+data fleet_lot_allocator_after_dgx_spark_ebay: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).alloc
+
+// An exact catalog citation is scoped to its evidenced acquisition.
+data dgx_spark_micro_center_catalog_reference: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.systems.nvidia",
+  decl_name: "nvidia_dgx_spark_4tb_catalog",
+  field: WholeDeclaration,
+}
+
+data dgx_spark_micro_center_lot: ProcurementLot = ProcurementLot {
+  identity: dgx_spark_micro_center_lot_identity,
+  receipt: ReceiptHeldPrivately,
+  catalog: CatalogRowExact { row: dgx_spark_micro_center_catalog_reference },
+  display_label: "NVIDIA DGX Spark, Micro Center acquisition" as NonEmptyStr,
+  quantity_acquired: 6,
+  landed_cost: LandedCostHeldPrivately,
+}
+
+data dgx_spark_micro_center_lot_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dgx_spark_micro_center_lot_identity },
+  LotReceived { lot: dgx_spark_micro_center_lot_identity, quantity: dgx_spark_micro_center_lot.quantity_acquired },
+]
+
+data dgx_spark_ebay_pair_lot: ProcurementLot = ProcurementLot {
+  identity: dgx_spark_ebay_pair_lot_identity,
+  receipt: ReceiptHeldPrivately,
+  catalog: CatalogRowUnread {
+    observed_family: "NVIDIA DGX Spark" as NonEmptyStr,
+    read_obligation: "Operator attests 4 TB; the cited NVIDIA source documents two storage configurations. Observe storage capacity and source-lot identity of the eBay pair delivered 2026-08-06 before citing an exact extdeps.systems.nvidia catalog row; the Micro Center receipt does not cover this pair" as NonEmptyStr,
+  },
+  display_label: "NVIDIA DGX Spark, eBay pair acquisition" as NonEmptyStr,
+  quantity_acquired: 2,
+  landed_cost: LandedCostHeldPrivately,
+}
+
+data dgx_spark_ebay_pair_lot_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dgx_spark_ebay_pair_lot_identity },
+  LotReceived { lot: dgx_spark_ebay_pair_lot_identity, quantity: dgx_spark_ebay_pair_lot.quantity_acquired },
+]
+
+// Inventory labels are allocated in the order the six serials were relayed from
+// the receipt. They do not claim host-slot order. The receipt identity stays private.
+fn dgx_spark_micro_center_asset(identity: PhysicalAssetIdentity, serial: NonEmptyStr) -> PhysicalAsset {
+  PhysicalAsset {
+    identity: identity,
+    catalog: dgx_spark_micro_center_catalog_reference,
+    physical_serial: Present { value: serial },
+    procurement: none,
+  }
+}
+
+data dgx_spark_serialized_assets: List<PhysicalAsset> = [
+  dgx_spark_micro_center_asset(identity: dgx_spark_01, serial: "1980526005202" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_02, serial: "1984025004768" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_03, serial: "1984025004355" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_04, serial: "1980526004162" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_05, serial: "1983925004641" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_06, serial: "1980526004937" as NonEmptyStr),
+]
+
+data dgx_spark_procurement_ledgers: List<InventoryLotEvidence> = [
+  InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+  InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+]
+
+data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
+  dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04,
+  dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08,
+]
