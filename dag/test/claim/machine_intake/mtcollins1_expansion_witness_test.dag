@@ -168,10 +168,19 @@ test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
 // A different unit gets no answer rather than this unit's answer. Without this arm the lookup could
 // return unit 1's standing for any machine asked about, which is the shape that makes a per-unit
 // observation read as a fleet fact.
+//
+// THE REFERENCE NAMES A REAL DECLARATION AND THAT IS NOT INCIDENTAL. This fixture used to cite
+// gunbc.machine_intake_mtcollins2_access_observation.mtcollins2_access_observation, which does not
+// exist anywhere; the declarations lens refused it as CITED-MODULE-ABSENT, found by quiet-swift-866's
+// CI on the dependent branch before this branch's own run reached it. A test that asks "what does
+// the lookup do for a unit that is not this one" was itself citing a unit that is not anything --
+// a fabricated reference inside the control against fabricated answers. It now points at a real
+// declaration in this module. That declaration is a fixture rather than a machine, and it stands in
+// for "a reference that is not observed_unit"; nothing here claims it identifies a host.
 test fn another_unit_gets_no_observation_rather_than_this_one() -> Bool {
   let other_unit: DeclarationRef = DeclarationRef {
-    module_path: "gunbc.machine_intake_mtcollins2_access_observation",
-    decl_name: "mtcollins2_access_observation",
+    module_path: "test.claim.mtcollins1_expansion_witness_test",
+    decl_name: "fixture_apertures",
     field: WholeDeclaration,
   }
   match expansion_evidence_for_unit(unit: other_unit) {
