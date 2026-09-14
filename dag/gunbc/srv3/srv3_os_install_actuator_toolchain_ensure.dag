@@ -21,7 +21,7 @@ data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Sca
   }
 }
 
-func srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
+fn srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
   uses net: Network
 {
   host_toolchain_ensure(host: operator_host_srv3, kind: OsInstallActuator)

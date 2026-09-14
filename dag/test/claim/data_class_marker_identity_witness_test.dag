@@ -1,0 +1,28 @@
+module test.claim.data_class_marker_identity_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MARKER-NOMINAL WITNESS APPLIED TO Classified, on the emitted-Rust path.
+// test.claim.phantom_marker_type_argument_identity_witness establishes that distinct bare
+// marker declarations used as type arguments render distinctly; this is the same claim on the
+// product's carrier: Classified<PersonalIdentity, T> and Classified<BuildOutput, T> are two
+// declared identities in the projection, never one erased Classified<()>, so on that path a
+// value of one handed where the other is declared is a rustc type error. It establishes
+// RENDERING, not refusal: no rustc run is enrolled here, so the emission path's rung for the
+// sink-category class is claimed no higher than "rendered distinctly" in this change.
+
+fn w_classified_markers_render_distinctly() -> Bool {
+  compile_dag_rust_emit_check(
+    "module classified_marker_identity\n\nimport product.data_category { PersonalIdentity, BuildOutput }\nimport product.data_class { Classified }\n\ntype TwoClassifications {\n  who: Classified<PersonalIdentity, String>\n  what: Classified<BuildOutput, String>\n}\n",
+    "src/classified_marker_identity.rs",
+    ["Classified<PersonalIdentity", "Classified<BuildOutput"],
+    ["Classified<()"]
+  )
+}
+
+test fn classified_over_two_markers_is_two_identities_in_the_projection() -> Bool {
+  w_classified_markers_render_distinctly()
+}

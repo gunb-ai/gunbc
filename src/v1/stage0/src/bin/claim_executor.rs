@@ -1110,10 +1110,17 @@ fn run() -> Result<ExitCode, ExitCode> {
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW, the same way the
+            // wave-admission phase reads it: the match-bearing consumers of a coproduct whose
+            // arm set changed are derived from that index and its base-side reconstruction,
+            // never from a second corpus walk. `None` here means the parse refused (the line
+            // is already stopped) and the floor refuses the planning row rather than planning
+            // blind.
             match v1_compiler::cli_run::run_required_floor(
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
+                head_index.as_ref(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);
@@ -1527,10 +1534,13 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if required_floor_mode {
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        // The standalone floor entry runs no parse phase, so no declaration index exists to
+        // lend; on a CI commit the floor refuses its planning row rather than planning blind.
         return match v1_compiler::cli_run::run_required_floor(
             &source_roots,
             &commit,
             v1_compiler::cli_run::ShardStyle::single_shard(),
+            None,
         ) {
             Ok(outcome) => {
                 report_required_floor_outcome(&outcome);
@@ -2130,18 +2140,19 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for refused in &outcome.interrupted_before_verdict {
         eprintln!(
             "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} \
-             cpu_at_least={}ms/{}ms wall_at_least={}ms/{}ms enrolled_expected_red={} {}",
+             cpu_at_least={}ms wall_at_least={}ms/{}ms enrolled_expected_red={} {}",
             refused.qualified,
             refused.interrupt.raised_by.label(),
-            // BOTH CLOCKS, EACH AGAINST ITS OWN LIMIT. These are LOWER BOUNDS, which is what
-            // `at_least` says: the deadline preempted the witness, so the true cost is above
-            // them by an unbounded amount. They are printed anyway because the PAIR is what a
-            // reader needs — a row blocked on I/O that went away shows a small cpu figure beside
-            // a wall figure at its ceiling, and a row that genuinely computed shows cpu at or
-            // above the cpu limit. `cost=UNMEASURED` in the sentence that follows stays true of
-            // both and is what stops either figure being read as this row's cost.
+            // BOTH CLOCKS, AND ONLY ONE LIMIT, BECAUSE ONLY ONE IS ARMED. These are LOWER
+            // BOUNDS, which is what `at_least` says: the deadline preempted the witness, so the
+            // true cost is above them by an unbounded amount. The CPU figure is printed WITHOUT a
+            // ceiling beside it since 2026-09-12 — the required floor arms no CPU deadline, so
+            // there is no CPU limit this reading could be compared against, and printing one
+            // would invent a ceiling the run never set. The pair is still what a reader needs: a
+            // row blocked on I/O shows a small cpu figure beside a wall figure at its ceiling,
+            // and a row that genuinely computed shows a large one. `cost=UNMEASURED` in the
+            // sentence that follows stays true of both.
             refused.interrupt.elapsed_cpu_at_least_ms,
-            refused.interrupt.cpu_safety_limit_ms,
             refused.interrupt.elapsed_wall_at_least_ms,
             refused.interrupt.wall_safety_limit_ms,
             refused.enrolled_expected_red,

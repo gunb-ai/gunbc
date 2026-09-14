@@ -55,6 +55,46 @@ fn provider_route_eq(a: ProviderRoute, b: ProviderRoute) -> Bool {
     && declaration_ref_eq(a: a.region, b: b.region)
 }
 
+// A REGION IS OBSERVED OR THE ROUTE DOES NOT EXIST. product.supplier.ubicloud wrote this
+// coproduct first (UbicloudRegionObservation / UbicloudRouteStanding); product.supplier.cloudflare_r2
+// was the proven coincidence (DESIGN section 6). The minting law lives here so a third supplier
+// cannot independently edit it. A ProviderRoute is minted ONLY in the read arm: there is no
+// value of ProviderRegionObservation that yields a route with an unobserved region.
+//
+// NOT A MEMBER: gunbc.spark.serving_offer SparkServingRoute. The reason it is not this coproduct
+// is stated at that type's declaration (DESIGN section 3b: diverges with a stated reason).
+//
+// OBLIGATION IS DeclarationRef, NOT NonEmptyStr. That is the grain ProviderPathUnread already
+// uses, so a refusal can locate the named row. Ubicloud's first instance carried the sentence
+// itself; the coincidence is the reason that form is retired rather than kept as a stated
+// divergence.
+type ProviderRegionObservation
+  = ProviderRegionRead { region: DeclarationRef }
+  | ProviderRegionUnread { obligation: DeclarationRef }
+
+type ProviderRouteStanding
+  = ProviderRouteObserved { route: ProviderRoute }
+  | ProviderRouteRegionUnobserved { obligation: DeclarationRef }
+
+fn provider_route_from_region(
+  provider: DeclarationRef,
+  service: DeclarationRef,
+  region: ProviderRegionObservation,
+) -> ProviderRouteStanding {
+  match region {
+    ProviderRegionUnread { obligation } =>
+      ProviderRouteRegionUnobserved { obligation: obligation },
+    ProviderRegionRead { region: observed } =>
+      ProviderRouteObserved {
+        route: ProviderRoute {
+          provider: provider,
+          service: service,
+          region: observed,
+        },
+      },
+  }
+}
+
 // The posture is a REVISION, never an ambient "current". A permit records the exact revision it
 // was evaluated against, so a posture change makes standing permits STALE rather than silently
 // tolerated - the difference between a decision that can be re-derived and one that merely
@@ -182,6 +222,22 @@ fn jurisdiction_drop_enrolled(
 // obligation that must refuse. Collapsing them is how an unexamined path reads as a clean one,
 // which is the same move product.supplier.ubicloud refuses by carrying IsolationNotObserved
 // beside its catalog rows rather than inventing a guarantee from a price list.
+//
+// THE UNREAD ARM CITES WHAT WAS READ, OR IT CITES NOTHING. Located already carries evidence: as
+// the document that ANSWERED. Unread is the dual: documents were consulted and did not answer,
+// or nobody looked. Those two states refuse the same way -- the path is unresolved -- and they
+// are not the same fact. A single obligation slot cannot record the negative reading, so the
+// citation leaked into prose and a reviewer correctly treated the prose as not a consumer.
+// consulted: is the same DeclarationRef vocabulary evidence: already uses (DESIGN section 3:
+// no second citation name). The empty list is NEVER-LOOKED. A nonempty list is RESEARCHED AND
+// UNANSWERED. The production consumer of the SLOT, once filled, is product.fabric.provider_admission
+// path_refusals, which matches first_unread_standing once and records obligation and consulted
+// from that standing on ProviderRouteFactsIncomplete so a live denial can tell the two
+// remedies apart. Filling the slot without that fold reaching admit_provider_use would be the
+// gunbc#11194 shape under another name.
+//
+// Production nonempty consulted: product.supplier.hetzner nine-path closures. Each unread
+// path cites only the readings that closure actually consulted; never-looked stays [].
 type ProviderPathStanding
   = ProviderPathLocated {
       operator: DeclarationRef,
@@ -189,7 +245,7 @@ type ProviderPathStanding
       evidence: DeclarationRef,
     }
   | ProviderPathAbsent { evidence: DeclarationRef }
-  | ProviderPathUnread { obligation: DeclarationRef }
+  | ProviderPathUnread { obligation: DeclarationRef, consulted: List<DeclarationRef> }
 
 // CLOSED OVER THE PATHS WE PRESENTLY KNOW WE MUST GOVERN, and closed deliberately: adding a
 // material path forces EVERY route to answer for it rather than letting existing rows stay
@@ -238,21 +294,23 @@ type ProviderRouteFacts {
   facts_revision: ContentHash
 }
 
-// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE OBLIGATION DIRECTLY. There is deliberately no
+// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE UNREAD STANDING DIRECTLY. There is deliberately no
 // Bool predicate here. A path_is_resolved returning Bool DISCARDS exactly the payload a refusal
-// then needs, so the refusal builder has to walk the same value a second time - and that second
-// walk is what forces a seed to exist, which is what made the seed a place to fabricate an
-// obligation. Matching once removes the seed rather than improving it: an empty list is "no
-// obligation", a one-element list IS the located obligation, and neither can lie.
+// then needs, so the refusal builder has to walk the same value a second time - and it is that
+// second walk which forces a seed to exist, which is where a fabricated obligation gets to live.
+// Matching once removes the seed rather than improving it: an empty list is "no unread path",
+// a one-element list IS that standing, and neither can lie.
 //
-// The nine paths are visited in a FIXED order, so the reported obligation is deterministic
-// rather than whichever arm a fold happened to reach last. The order is now the two groups below
-// concatenated rather than a third transcription of the same nine fields: one list that could
-// disagree with the groups is exactly the fork section 3 consolidates later at interest. The
-// relative order within each group is unchanged; spill now precedes the access paths, which moves
-// nothing that any consumer reads, since determinism rather than the particular sequence is what
-// this fold owes.
-fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+// The nine paths are visited in a FIXED order, so the reported unread path is deterministic
+// rather than whichever arm a fold happened to reach last. obligation and consulted are both
+// projected from this one value -- they are not independently walked. An unread path whose
+// consulted list is empty still STOPS the walk, because the standing itself is the found
+// signal, not count(consulted)>0. The order is the two groups below concatenated rather than a
+// third transcription of the same nine fields: one list that could disagree with the groups is
+// exactly the fork section 3 consolidates later at interest. The relative order within each group
+// is unchanged; spill now precedes the access paths, which moves nothing that any consumer
+// reads, since determinism rather than the particular sequence is what this fold owes.
+fn first_unread_standing(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
   fold(
     concat(data_bearing_paths(c: c), provider_access_paths(c: c)),
     init: [],
@@ -263,7 +321,7 @@ fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRe
         match p {
           ProviderPathLocated { operator, jurisdiction, evidence } => acc,
           ProviderPathAbsent { evidence } => acc,
-          ProviderPathUnread { obligation } => [obligation],
+          ProviderPathUnread { obligation, consulted } => [p],
         }
       }
     },

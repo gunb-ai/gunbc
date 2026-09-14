@@ -233,11 +233,11 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "required-floor-in-flight-shared-fill-findings",
-    primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "changed_witness_cpu_deadline", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "claim_cost_basis_standing", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "gunbc.rung_drop.floor_cost_claim_qualification_unavailable", decl_name: "floor_cost_claim_qualification_unavailable", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the required floor's in-flight shared-fill ownership and deadline accounting are changed so this characterization no longer describes the shipped mechanism; the row deletes with the superseded findings document. Registered at subject grain: changed_witness_cpu_deadline is the modeled CPU enforcement decision whose bootstrap realization this document characterizes.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the required floor's in-flight shared-fill OWNERSHIP is changed so this characterization no longer describes the shipped mechanism; the row deletes with the superseded findings document. THE OTHER CONJUNCT OF THIS TRIGGER HAS ALREADY FIRED AND THE ROW IS DELIBERATELY RETAINED, which is stated here because a half-fired trigger read as unfired is how a dead assumption keeps answering questions: the deadline-accounting half died on 2026-09-12 when the claim ceiling moved onto eval_steps and CPU became observed-only for every claim, and changed_witness_cpu_deadline -- the subject this row was registered at -- was deleted with it. The registration moves to claim_cost_basis_standing, the successor decision about which quantity may refuse a claim, and the document carries a superseded-half banner at its head. The shared-fill half is untouched and is the live subject: eval steps are netted of fill exactly as CPU is, so the ownership argument transfers to the new ceiling without restatement, and it is still what required-floor-in-flight-shared-fill-design.md cites.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

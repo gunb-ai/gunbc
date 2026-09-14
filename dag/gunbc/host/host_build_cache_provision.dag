@@ -84,7 +84,7 @@ fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
   }
 }
 
-func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
+fn provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
   uses net: Network
 {
   match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {

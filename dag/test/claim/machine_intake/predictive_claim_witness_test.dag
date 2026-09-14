@@ -443,7 +443,7 @@ test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible(
   conversation_visible && falsifier_visible
 }
 
-func predictive_claim_contract_probe() -> ProcessExit {
+fn predictive_claim_contract_probe() -> ProcessExit {
   if prediction_must_have_a_distinguishable_falsifier()
     && commitment_must_strictly_precede_start()
     && observation_must_follow_start_and_respect_committed_bound()

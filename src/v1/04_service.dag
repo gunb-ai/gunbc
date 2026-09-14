@@ -27,7 +27,7 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_items {
-  ItemInfo, ItemKind, FuncItem, TypedModule,
+  ItemInfo, ItemKind, TypedModule,
   inferred_to_outputs
 }
 

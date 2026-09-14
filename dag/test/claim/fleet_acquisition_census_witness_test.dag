@@ -1,0 +1,97 @@
+module test.claim.fleet_acquisition_census_witness
+
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import product.inventory {
+  InventoryLotEvidence, AllLedgersAdmitted, LedgerEvidenceRefused,
+  admit_ledger_evidence, sum_inventory_balances,
+  InventoryPopulationSummed, InventoryPopulationRepeatedLot,
+  inventory_lot_identity_eq,
+}
+import gunbc.fleet_physical_inventory {
+  dgx_spark_micro_center_lot,
+}
+import gunbc.fleet_acquisition_census {
+  fleet_acquisition_ledgers,
+  fleet_tax_join_covers_every_ledger,
+  fleet_acquisition_census_standing,
+  CensusFloor,
+  CensusClosed,
+  mt_collins_twenty_lot,
+  mt_collins_lot_identity,
+  q80_processor_lot,
+  altrad8ud_board_lot,
+}
+import gunbc.fleet_host_assembly {
+  srv_assembly_components,
+  srv_assembly_containments,
+  every_board_component_is_from_the_four_board_lot,
+  every_cooler_component_is_from_its_lot,
+  every_recorded_component_lot_is_admitted,
+  assembly_covers_component_roster,
+  assembly_containments_join,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sum_lot_quantities(evidence: List<InventoryLotEvidence>) -> Nat {
+  fold(evidence, init: 0, f: fn(acc, e) { acc + e.lot.quantity_acquired })
+}
+
+fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: Nat, owned: Nat) -> Bool {
+  match admit_ledger_evidence(evidence: evidence) {
+    AllLedgersAdmitted { ledgers: ledgers } => {
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
+          b.acquired == acquired && b.received == received && b.owned == owned
+      }
+    }
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+data without_mt_collins: List<InventoryLotEvidence> = fleet_acquisition_ledgers.filter(
+  e => !inventory_lot_identity_eq(left: e.lot.identity, right: mt_collins_lot_identity)
+)
+
+// Quantities are summed from the named lots, not transcribed as a census-size literal.
+test fn w_joined_lots_derive_one_population() -> Bool {
+  let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
+  fleet_tax_join_covers_every_ledger()
+    && population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
+    && match fleet_acquisition_census_standing {
+      CensusFloor { close_by: c } => (c as String).length() > 0
+      CensusClosed => false
+    }
+}
+
+test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool {
+  let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
+  let omitted = mt_collins_twenty_lot.quantity_acquired
+  population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
+    && population_is(
+      evidence: without_mt_collins,
+      acquired: q - omitted,
+      received: q - omitted,
+      owned: q - omitted,
+    )
+}
+
+test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
+  !inventory_lot_identity_eq(left: q80_processor_lot.identity, right: mt_collins_twenty_lot.identity)
+    && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: q80_processor_lot.identity)
+    && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: dgx_spark_micro_center_lot.identity)
+    && q80_processor_lot.quantity_acquired == 62
+    && altrad8ud_board_lot.quantity_acquired == 4
+    && mt_collins_twenty_lot.quantity_acquired == 20
+}
+
+test fn w_assembly_binds_boards_and_coolers_to_their_lots() -> Bool {
+  every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
+    && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
+    && every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
+    && assembly_covers_component_roster(rows: srv_assembly_components)
+    && assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+}

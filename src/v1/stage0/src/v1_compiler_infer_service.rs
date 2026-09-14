@@ -9,7 +9,7 @@ pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_items::inferred_to_outputs;
-use crate::v1_compiler_infer_items::ItemKind::FuncItem;
+use crate::v1_compiler_infer_items::ItemKind::*;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
 pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;

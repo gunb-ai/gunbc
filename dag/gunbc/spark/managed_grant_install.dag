@@ -68,6 +68,9 @@ import gunbc.spark.grant_privileged_operation {
 }
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
+  spark_managed_grants_withheld,
+  spark_managed_grants_install_unobserved,
+  SparkGrantInstallAdmission,
   spark_managed_grant_report,
   spark_managed_grant_standing_from_outcome,
   GrantHeld,
@@ -397,7 +400,7 @@ type SparkGrantInstallOutcome
 // staged, so nothing can be stranded. An earlier cut staged first and then discarded the cleanup
 // standing when it built that arm, while the cleanup predicate answered `true` for it
 // unconditionally -- a receipt that could not show a cleanup failure it had already caused.
-func spark_grant_install_execute(
+fn spark_grant_install_execute(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
@@ -522,7 +525,7 @@ fn spark_grant_install_from_privileged(
 // THE READBACK IS THE GRANTEE'S OWN ENUMERATION, not the installer's. sudo answers "may THIS account
 // run THIS command", and the account that matters is the one the serving lane will use -- asking as
 // the installing principal would confirm a grant for the wrong subject entirely.
-func spark_grant_read_back(
+fn spark_grant_read_back(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   grant: SparkManagedGrant,
@@ -660,9 +663,11 @@ data spark_grant_install_ci_attempt_raw: String = "spark-grant-install-ci"
 type SparkGrantInstallRun {
   standing_report: String
   outcomes: List<SparkGrantInstallOutcome>
+  withheld: List<SparkGrantInstallAdmission>
+  unobserved: List<SparkGrantInstallAdmission>
 }
 
-func spark_grant_install_host(
+fn spark_grant_install_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   principal: NonEmptyStr,
@@ -678,6 +683,8 @@ func spark_grant_install_host(
         context: context, host: host, principal: principal,
         administrator: administrator, grant: g,
       )),
+    withheld: spark_managed_grants_withheld(outcome: outcome),
+    unobserved: spark_managed_grants_install_unobserved(outcome: outcome),
   }
 }
 
@@ -696,8 +703,15 @@ fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
 // An empty outcome list is SUCCESS here and only here: it means the reconcile found nothing missing,
 // which the standing report states in its own words. The reconcile has already refused to put an
 // unobserved grant in the install set, so "nothing to install" cannot arrive from ignorance.
+//
+// A WITHHELD GRANT IS NOT "NOTHING TO INSTALL". An empty install set because nothing was missing and an
+// empty install set because every missing grant was withheld are different facts, and the second is a
+// refusal the run must stop on: the reconcile has already decided the host needs a grant it may not
+// have, so exiting green would put that refusal in the receipt text and nowhere in the process result.
+// AN UNREAD STANDING IS THE SAME CLASS: a probe that never ran or failed yields no install set and no
+// withheld grant, and inferring success from those empty lists would pass a host nobody measured.
 fn spark_grant_install_run_succeeded(run: SparkGrantInstallRun) -> Bool {
-  fold(run.outcomes, init: true, f: fn(acc, o) {
+  run.withheld.length() == 0 && run.unobserved.length() == 0 && fold(run.outcomes, init: true, f: fn(acc, o) {
     acc && spark_grant_install_succeeded(outcome: o)
   })
 }
@@ -728,7 +742,7 @@ fn spark_grant_install_run_cleanup_completed(run: SparkGrantInstallRun) -> Bool 
 
 // The grant reading, taken through the transport that will do the installing rather than a separate
 // one: a standing measured as one principal and acted on as another is two facts wearing one name.
-func spark_grant_probe_outcome(
+fn spark_grant_probe_outcome(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkGrantOutcome
@@ -755,7 +769,7 @@ func spark_grant_probe_outcome(
 // THE INSTALL NAMES ITS TARGET OR IT DOES NOT RUN, the same rule the reboot probe applies to itself
 // and for the same reason: writing sudoers across a whole fleet from an unset variable is a fan-out
 // nobody asked for, and the observe entry's all-hosts arm exists for reading, not writing.
-func spark_grant_install_ci_wet() -> ProcessExit
+fn spark_grant_install_ci_wet() -> ProcessExit
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {

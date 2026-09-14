@@ -85,7 +85,7 @@ fn classify_code_search_page(page: CodeSearchPage) -> CodeSearchPageRead {
   }
 }
 
-func perform_code_search_page(
+fn perform_code_search_page(
   auth_token: Secret,
   q: String,
   per_page: Int,
@@ -160,7 +160,7 @@ fn classify_workflow_source(request: WorkflowSourceRequest, file: RepositoryFile
   }
 }
 
-func perform_workflow_source_read(
+fn perform_workflow_source_read(
   auth_token: Secret,
   owner: String,
   repo: String,

@@ -44,12 +44,12 @@ data m4_governed_probe_corpus: List<PublishedMockCase> = [
   m4_probe_case_allowed
 ]
 
-func witness_published_realizes() -> Bool {
+fn witness_published_realizes() -> Bool {
   let r = GovernedProbe.Allowed()
   return r.ok == "published-realized"
 }
 
-func witness_unpublished_fails_closed() -> Bool {
+fn witness_unpublished_fails_closed() -> Bool {
   let r = GovernedProbe.Forbidden()
   return r.ok != ""
 }

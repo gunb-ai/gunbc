@@ -2,10 +2,12 @@ module extdeps.ci_runner.circleci
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { hardware_thread_count }
+import std.measure { account_credit, credits_per_minute, hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
+  ArmCreditsPerMinute,
+  ArmListPriceStanding,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -117,3 +119,14 @@ data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: circleci_catalog_snapshot,
   availability: circleci_runner_catalog,
 )
+
+// Credit price live-fetched 2026-09-13 from circleci.com/pricing/price-list (dated
+// 2026-08-31 on that page): (Arm) Docker / Remote Docker 2 CPU / 8 GB is 13 credits/min,
+// matching arm.medium. USD, silicon, capacity, and offer standing are unread in the census.
+data circleci_arm_list_price: ArmListPriceStanding = ArmCreditsPerMinute {
+  per_minute: credits_per_minute(
+    count: 13,
+    credit: account_credit(issuer: circleci_provider_identity),
+  ),
+  priced_label: "arm.medium",
+}

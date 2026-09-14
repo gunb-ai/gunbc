@@ -90,7 +90,7 @@ pattern credential_chain(
   }
 }
 
-func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
+fn github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
   uses net: std.resources.Network
 {
   url = shell.Env.Get(name: runtime.oidc_request_url_env)
@@ -104,7 +104,7 @@ func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Se
   return { token: response.subject_token as String }
 }
 
-func metadata_oidc(audience: String) -> { token: Secret }
+fn metadata_oidc(audience: String) -> { token: Secret }
   uses net: std.resources.Network
 {
   response = gcp.Metadata.GetIdentityToken(audience: audience)
