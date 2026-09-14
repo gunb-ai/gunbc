@@ -26,10 +26,13 @@ import std.types { NonEmptyStr }
 // stand in for the join. (iii) ROWS MAY ONLY LEAVE -- AND THE TWO HALVES OF THAT SIT AT DIFFERENT
 // RUNGS, which an earlier revision of this sentence flattened into one claim (review 65720).
 //
-//   REMOVALS CARRY A TYPED DISPOSITION, and that half executes: `floor_grandfathered_removals`
-//   is a declared list of `GrandfatheredRemoval` arms, and
-//   `every_declared_removal_names_a_row_the_roster_actually_holds` folds it against the live
-//   roster on the acceptance path.
+//   REMOVALS CARRY A TYPED DISPOSITION AND THEY SUBTRACT: `floor_grandfathered_removals` is a
+//   declared list of `GrandfatheredRemoval` arms, and `floor_grandfathered_holds` is the frozen cut
+//   MINUS that list, so a declared removal actually shrinks the universe. The fold
+//   `every_declared_removal_names_a_cut_row_and_has_left_the_roster` asserts both halves on the
+//   acceptance path: each removal names a row the CUT held (so it is not a typo) and each removal
+//   no longer holds (so the subtraction happened). Until review 65986 that fold asserted the
+//   REMOVED rows were still members, which described a contract with no downward direction.
 //
 //   AN ADDITION IS REFUSED BY `roster_change_verdict` -- WHICH NOTHING ON THE ACCEPTANCE PATH
 //   CALLS AGAINST THIS ROSTER. Its only executing consumers are three-row fixtures in
@@ -91,8 +94,8 @@ type GrandfatheredRemoval =
 // STRIKING THEM IS A CORRECTION TO THE ROSTER'S CONSTRUCTION AND NOT A REMOVAL UNDER THE MONOTONE
 // CONTRACT, and the distinction is load-bearing rather than bookkeeping. A removal below is a typed
 // disposition for a row that was LEGITIMATELY a member at the cut and whose identity later died;
-// `all_removals_name_roster_members` requires exactly that, so every removal names a row the roster
-// still holds. These three are the opposite case: their identities are LIVE, and they were never
+// the removal witness requires exactly that -- present in the CUT, absent from the roster after
+// subtraction. These three are the opposite case: their identities are LIVE, and they were never
 // eligible, because the population they were drawn from post-dates the cut this roster claims to
 // be. A removal row for them would both fail that witness and misdescribe what happened.
 //
@@ -756,7 +759,12 @@ fn floor_grandfathered_chunks() -> List<List<String>> {
 }
 
 
-fn floor_grandfathered_roster() -> List<String> {
+// THE CUT AS A FLAT LIST, AND IT IS NAMED FOR THE CUT RATHER THAN FOR THE ROSTER (review 65986).
+// Before removals subtracted, "roster" and "cut" were the same population and one name served both.
+// They are now different: the roster is the cut MINUS the declared removals. Leaving this producer
+// called `floor_grandfathered_roster` would have left two surfaces named for the roster answering
+// differently about membership, which is the meaning fork DESIGN section 3 forbids.
+fn floor_grandfathered_cut() -> List<String> {
   list_flat_map(xs: floor_grandfathered_chunks(), f: fn(c) { c })
 }
 
@@ -769,7 +777,7 @@ fn floor_grandfathered_roster() -> List<String> {
 // All three answer the same question over the same 3,795 rows; the numbers are from this
 // repository's own `[witness]` line on the authoring host.
 //
-//   (1) `any(xs: floor_grandfathered_roster(), ...)` -- flattens first, so every membership
+//   (1) `any(xs: floor_grandfathered_cut(), ...)` -- flattens first, so every membership
 //       question MATERIALISES A SECOND COPY of all 3,795 rows before comparing the first one.
 //       92,490 eval steps, ~148ms. Above this file's own new-witness ceiling: the roster's evidence
 //       would have been refused by the tier the roster exists to serve.
@@ -803,8 +811,56 @@ fn floor_grandfathered_roster() -> List<String> {
 // MEMBERSHIP IS AT IDENTITY GRAIN in every spelling: whole-identity equality, never a prefix and
 // never a count. A prefix test would grandfather every future witness in an already-enrolled
 // module, which is the addition this contract forbids wearing a different shape.
+// MEMBERSHIP IS THE FROZEN CUT MINUS THE DECLARED REMOVALS, AND THAT SUBTRACTION IS THE WHOLE
+// MONOTONE CONTRACT (review 65986). An earlier revision read the chunks alone, so a declared
+// removal DOCUMENTED a departure without causing one: the universe could never shrink, and the
+// fold cited as executing the removal half asserted the removed row was STILL A MEMBER. DESIGN
+// section 5 is explicit that a disposition list which cannot shrink the subject universe is not a
+// removal mechanism, and claiming that half executed while the only acceptance-path fold asserted
+// the opposite is the rung inflation section 4b(1) forbids.
+//
+// THE CUT STAYS FROZEN AND THE REMOVALS SUBTRACT, WHICH IS WHY THE CHUNK ROWS ARE NOT DELETED
+// INSTEAD. The chunks are what the floor's discovery producer OBSERVED at the cut commit; editing
+// them to express a later departure would destroy the only record that the row was ever a
+// legitimate member, and with it the ability to check that a removal names a real one rather than a
+// typo. Keeping the cut and subtracting a typed list preserves both: the universe shrinks
+// monotonically, and every subtraction stays checkable against what was observed.
+//
+// THIS IS ALSO WHAT KEEPS THE STRIKE AND THE REMOVAL FROM BECOMING TWO NAMES FOR ONE THING. A
+// STRIKE edits the chunks because THE CUT ITSELF WAS WRONG -- the row was never eligible, so the
+// observation is corrected at its source. A REMOVAL leaves the cut alone because the cut was RIGHT
+// and the member later left. Different facts, different surfaces, and neither can stand in for the
+// other.
+//
+// THE COST ORDER IS DELIBERATE. The cut scan short-circuits on a hit and the removal scan runs only
+// after one, so a MISS -- the worst case this module's own consumer measures -- pays nothing for the
+// subtraction, and a hit pays a walk over a list whose length is the number of rows that have ever
+// left (four at this writing).
 fn floor_grandfathered_holds(name: String) -> Bool {
+  if grandfathered_cut_holds(name: name) {
+    removal_withdraws(name: name, removals: floor_grandfathered_removals) == false
+  } else {
+    false
+  }
+}
+
+// THE CUT AS OBSERVED, BEFORE ANY SUBTRACTION. Separately named because the removal witness must
+// ask "was this a member at the cut" -- the anti-typo half -- which `floor_grandfathered_holds` can
+// no longer answer now that it subtracts.
+fn grandfathered_cut_holds(name: String) -> Bool {
   grandfathered_in_chunks(name: name, chunks: floor_grandfathered_chunks())
+}
+
+fn removal_withdraws(name: String, removals: List<GrandfatheredRemoval>) -> Bool {
+  match removals {
+    Empty {} => false
+    Cons { head: r, tail: rest } =>
+      if removal_identity(removal: r) == name {
+        true
+      } else {
+        removal_withdraws(name: name, removals: rest)
+      }
+  }
 }
 
 fn grandfathered_in_chunks(name: String, chunks: List<List<String>>) -> Bool {
@@ -860,8 +916,8 @@ fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {
 // transcribed roster count costs: its prose carried three different figures, no two agreeing, none
 // of them the roster's length, while the roster itself was correct throughout. This folds the same
 // chunks the roster folds, so it cannot disagree with what the floor consults.
-fn floor_grandfathered_roster_size() -> Int {
-  length(xs: floor_grandfathered_roster())
+fn floor_grandfathered_cut_size() -> Int {
+  length(xs: floor_grandfathered_cut())
 }
 
 // ── THE MONOTONE CONTRACT, AS AN EXECUTING VERDICT RATHER THAN AS THE PROSE ABOVE ──────────

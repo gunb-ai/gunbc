@@ -35,7 +35,7 @@ import v2.workflow.floor_grandfathered_roster {
   GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
   RosterChangeVerdict, RosterChangeAdmitted, RosterAdditionRefused, RosterRemovalWithoutDisposition,
   roster_change_verdict, roster_change_admitted, removal_identity,
-  floor_grandfathered_holds, floor_grandfathered_roster_size,
+  floor_grandfathered_holds, grandfathered_cut_holds, floor_grandfathered_cut_size,
   floor_grandfathered_removals,
 }
 
@@ -154,7 +154,7 @@ test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool {
 // never by count. What it catches is a different failure: a roster that decoded partially, or a
 // chunk fold that lost its tail, would still answer correctly for the one identity the join probes.
 test fn the_roster_is_not_truncated() -> Bool {
-  int_gt(a: floor_grandfathered_roster_size(), b: 3000)
+  int_gt(a: floor_grandfathered_cut_size(), b: 3000)
 }
 
 // ── THE MONOTONE CONTRACT REFUSES BOTH WAYS A ROSTER CAN GO WRONG ──────────────────────────
@@ -368,9 +368,14 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
 // and says which, because a consumer that checked one and reported "the contract holds" would be
 // the vacuous pass the contract exists to prevent:
 //
-//   (a) EVERY DECLARED REMOVAL NAMES A REAL ROSTER MEMBER -- what this witness asserts. A
-//       disposition naming something the roster never held retires nothing while satisfying
-//       `roster_change_verdict`, so the verdict would pass over a list of fictions.
+//   (a) EVERY DECLARED REMOVAL NAMES A ROW THE CUT HELD, AND HAS SINCE LEFT THE ROSTER -- what
+//       this witness asserts, in two conjuncts. The first is the anti-fiction half: a disposition
+//       naming something the cut never held retires nothing while satisfying
+//       `roster_change_verdict`, so the verdict would pass over a list of fictions. The second is
+//       the half that makes it a REMOVAL rather than an annotation: the identity must be absent
+//       from `floor_grandfathered_holds`, which is the cut minus the declared removals. It is
+//       asserted against the CUT and the ROSTER separately because those are now different
+//       predicates, and a removal has to be present in one and absent from the other.
 //
 //   (b) EVERY REMOVED MEMBER HAS A VALID DISPOSITION -- the complement, and NOT checkable here.
 //       It quantifies over the LIVE MEASURED POPULATION, which is a run artifact and not a
@@ -387,9 +392,15 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
 // red on a fifth honest removal while passing over four wrong ones. What replaces it is a
 // NON-VACUITY check: the list is non-empty, so (a) is asserted over a real population rather than
 // being trivially true over nothing.
-test fn every_declared_removal_names_a_row_the_roster_actually_holds() -> Bool {
+// THE SUBTRACTION IS THE HALF THIS WITNESS USED TO ASSERT BACKWARDS (review 65986). It required
+// `floor_grandfathered_holds` to be TRUE of every removed identity, which welded the removed rows
+// into the roster: completing a removal would have turned this witness red, so the contract had no
+// downward direction and the header's claim that the removal half executed was inflated. Both
+// halves are now asserted in the direction the contract actually runs.
+test fn every_declared_removal_names_a_cut_row_and_has_left_the_roster() -> Bool {
   removals_are_present(removals: floor_grandfathered_removals)
-    && all_removals_name_roster_members(removals: floor_grandfathered_removals)
+    && all_removals_name_cut_members(removals: floor_grandfathered_removals)
+    && all_removals_have_left(removals: floor_grandfathered_removals)
 }
 
 fn removals_are_present(removals: List<GrandfatheredRemoval>) -> Bool {
@@ -399,14 +410,26 @@ fn removals_are_present(removals: List<GrandfatheredRemoval>) -> Bool {
   }
 }
 
-fn all_removals_name_roster_members(removals: List<GrandfatheredRemoval>) -> Bool {
+fn all_removals_name_cut_members(removals: List<GrandfatheredRemoval>) -> Bool {
+  match removals {
+    Empty {} => true
+    Cons { head: r, tail: rest } =>
+      if grandfathered_cut_holds(name: removal_identity(removal: r)) {
+        all_removals_name_cut_members(removals: rest)
+      } else {
+        false
+      }
+  }
+}
+
+fn all_removals_have_left(removals: List<GrandfatheredRemoval>) -> Bool {
   match removals {
     Empty {} => true
     Cons { head: r, tail: rest } =>
       if floor_grandfathered_holds(name: removal_identity(removal: r)) {
-        all_removals_name_roster_members(removals: rest)
-      } else {
         false
+      } else {
+        all_removals_have_left(removals: rest)
       }
   }
 }
