@@ -617,8 +617,17 @@ fn emits_no_tree_removal(lines: List<String>) -> Bool {
   !any(lines, l => string_contains(s: l, pattern: "-rf"))
 }
 
+// THE MASK PREDICATE NAMES THE RENDERED VERB, NOT THE WORD.
+//
+// `mask` appears in the REFUSAL prose as well as in the command: a unit outside the authorized scope
+// renders `cause=... it may be neither masked nor deleted`, so a bare substring test reads a refusal
+// as an actuation. That is exactly what happened -- exact-head CI failed
+// `a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted` while the production
+// behaviour was correct, because the control was matching the sentence explaining why nothing was
+// masked. The serializer quotes each argv word, so the quoted verb is present in the emitted command
+// and absent from every prose cause.
 fn emits_mask(lines: List<String>) -> Bool {
-  any(lines, l => string_contains(s: l, pattern: "mask"))
+  any(lines, l => string_contains(s: l, pattern: "'mask'"))
 }
 
 // 1. AN ACTIVE SURPLUS SLOT PRODUCES NO REMOVAL AND NO MASK. It is not even a removable member:

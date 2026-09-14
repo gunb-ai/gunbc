@@ -2228,6 +2228,14 @@ fn witness_srv4_complete_standing() -> RunnerRetirementStanding {
 // that retires nothing at all. Four controls asserted `!any(-rf)` and failed against the ADD path's
 // cleanup rather than against any retirement effect. The discriminating string is the RETIRED unit's
 // tree, which no ADD for srv4-01..12 can name.
+// THE MASK PREDICATE NAMES THE RENDERED VERB, NOT THE WORD. `mask` appears in the REFUSAL prose as
+// well as in the command -- a unit outside the authorized scope renders `cause=... neither masked nor
+// deleted` -- so a bare substring test reads a refusal as an actuation. The serializer quotes each
+// argv word, so the quoted verb is in the emitted command and in no prose cause.
+fn emits_mask_command(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "'mask'"))
+}
+
 fn removes_retired_tree(lines: List<String>) -> Bool {
   any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
 }
@@ -2244,7 +2252,7 @@ fn witness_srv4_apply(standings: List<RunnerRetirementStanding>) -> List<String>
 // and no removal -- a pass that did both would establish its own postcondition.
 test fn the_first_pass_masks_the_surplus_slot_and_removes_no_tree() -> Bool {
   let lines = witness_srv4_apply(standings: [])
-  any(lines, l => string_contains(s: l, pattern: "mask"))
+  emits_mask_command(lines: lines)
     && !removes_retired_tree(lines: lines)
 }
 
@@ -2253,7 +2261,7 @@ test fn the_first_pass_masks_the_surplus_slot_and_removes_no_tree() -> Bool {
 test fn the_second_pass_removes_that_exact_tree_and_does_not_remask() -> Bool {
   let lines = witness_srv4_apply(standings: [witness_srv4_complete_standing()])
   removes_retired_tree(lines: lines)
-    && !any(lines, l => string_contains(s: l, pattern: "mask"))
+    && !emits_mask_command(lines: lines)
 }
 
 // A POPULATED CGROUP REMOVES NOTHING, whatever the unit says about itself. This is the decisive
@@ -2300,7 +2308,7 @@ test fn absent_evidence_neither_masks_nor_removes_at_the_renderer() -> Bool {
     retirement_evidence: witness_no_retirement_evidence(),
   )
   !removes_retired_tree(lines: lines)
-    && !any(lines, l => string_contains(s: l, pattern: "mask"))
+    && !emits_mask_command(lines: lines)
 }
 
 // A REFUSED HOST NEVER REACHES MEMBERSHIP RECONCILIATION. srv2's admitted width is zero because its
@@ -2314,7 +2322,7 @@ test fn a_width_zero_host_is_refused_before_any_membership_effect() -> Bool {
   )
   any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
     && !any(lines, l => string_contains(s: l, pattern: "-rf"))
-    && !any(lines, l => string_contains(s: l, pattern: "mask"))
+    && !emits_mask_command(lines: lines)
     && !any(lines, l => string_contains(s: l, pattern: "ADD runner-slot"))
 }
 
