@@ -1,0 +1,12 @@
+   Compiling v1-compiler v0.1.0 (/tmp/crisp-seed-recovery/ownership-root/src/v1/stage0)
+    Finished `release` profile [optimized] target(s) in 5m 07s
+     Running tests/ownership_branch_read.rs (/tmp/crisp-seed-recovery/b-main-tgt/release/deps/ownership_branch_read-b7f9cad55d4306a3)
+
+running 4 tests
+test authored_constructor_orders_emit_clones ... ok
+test branch_read_survives_larger_projection_path ... ok
+test projected_before_consumed_stays_movable ... ok
+test whole_read_then_consume_stays_non_movable ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
