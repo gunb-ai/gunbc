@@ -264,13 +264,21 @@ fn commit_delta(workspace: &Path, sha: &str) -> Result<ClaimDelta, String> {
     for rel in base_side.iter().filter(|p| in_sweep_scope(p)) {
         let content = git_stdout(workspace, &["show", &format!("{parent}:{rel}")])
             .map_err(|e| format!("{sha}: cannot read {rel} at its parent ({e})"))?;
-        base.extend(base_records(rel, &content)?);
+        base.extend(base_records(
+            rel,
+            &content,
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        )?);
     }
     let mut head = Vec::new();
     for rel in head_touched.iter().filter(|p| in_sweep_scope(p)) {
         let content = git_stdout(workspace, &["show", &format!("{sha}:{rel}")])
             .map_err(|e| format!("{sha}: cannot read {rel} at the commit ({e})"))?;
-        head.extend(base_records(rel, &content)?);
+        head.extend(base_records(
+            rel,
+            &content,
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        )?);
     }
     Ok(claim_delta(&base, &head))
 }
@@ -414,7 +422,12 @@ mod tests {
     use super::*;
 
     fn records(rel: &str, src: &str) -> Vec<ModuleDeclarationRecord> {
-        base_records(rel, src).unwrap_or_else(|e| panic!("fixture must parse: {e}"))
+        base_records(
+            rel,
+            src,
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        )
+        .unwrap_or_else(|e| panic!("fixture must parse: {e}"))
     }
 
     fn subject(id: &str, base: &[(&str, &str)], head: &[(&str, &str)]) -> JointClaimSubject {

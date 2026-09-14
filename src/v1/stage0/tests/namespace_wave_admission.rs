@@ -780,7 +780,11 @@ fn an_absent_authority_refuses_rather_than_proceeding_on_the_hosts_say_so() {
 #[test]
 fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() {
     let malformed = "module probe.home\n\nfn broken( -> { this is not a program";
-    let refused = base_records("dag/probe/home.dag", malformed);
+    let refused = base_records(
+        "dag/probe/home.dag",
+        malformed,
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     assert!(
         refused.is_err(),
         "an unparseable baseline is UNOBSERVABLE, not empty -- returning an empty record set \
@@ -792,7 +796,11 @@ fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() 
     // POSITIVE CONTROL ON THE SAME FUNCTION: a well-formed base source still yields records, so
     // the arm above is discriminating rather than a function that refuses unconditionally.
     let wellformed = "module probe.home\n\ndata widget: Int = 1\n";
-    let read = base_records("dag/probe/home.dag", wellformed);
+    let read = base_records(
+        "dag/probe/home.dag",
+        wellformed,
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     assert!(
         read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
         "a base source that parses must produce records, else the refusal above proves nothing \
@@ -813,7 +821,11 @@ fn widget() -> Int {
   1
 }
 ";
-    let read = base_records("dag/probe/home.dag", body_comment);
+    let read = base_records(
+        "dag/probe/home.dag",
+        body_comment,
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     assert!(
         read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
         "annotation-grain refusals must not make the base unreadable when the parser already \

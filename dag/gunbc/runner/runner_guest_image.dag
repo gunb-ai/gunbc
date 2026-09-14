@@ -530,14 +530,14 @@ data runner_guest_image_receipt_dir: String = "target"
 
 data runner_guest_image_receipt_path: String = "target/runner-guest-image-standing.txt"
 
-func executor_home_wet() -> String? {
+fn executor_home_wet() -> String? {
   match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
     Absent => none
     Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
   }
 }
 
-func measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArtifactVerdict {
+fn measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArtifactVerdict {
   guest_artifact_verdict(
     artifact: artifact,
     observed: sha256sum_file_digest_via_shell(
@@ -546,7 +546,7 @@ func measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArt
   )
 }
 
-func write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> ProcessExit {
+fn write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> ProcessExit {
   let text = serialize_systemd_unit_file(file: runner_guest_agent_unit())
   let a = Filesystem.Write(path: runner_guest_agent_unit_path(root: root, image: image), content: text)
   if !a.success {
@@ -564,7 +564,7 @@ func write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> Proces
   }
 }
 
-func runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> ProcessExit {
+fn runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> ProcessExit {
   let text = runner_guest_image_standing_text(s: standing)
   let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_guest_image_receipt_dir)], transport: LocalExec)
   let w = Filesystem.Write(path: runner_guest_image_receipt_path, content: concat(text, "\n"))
@@ -593,7 +593,7 @@ func runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> Proce
 // first attempt put this reasoning in a comment inside the converge body, which DESIGN 4c refuses at
 // module-item grain -- annotations attach to declarations, so a step worth explaining is a step worth
 // naming.
-func runner_guest_image_build_and_receipt_wet(
+fn runner_guest_image_build_and_receipt_wet(
   root: String,
   image: RunnerGuestImage,
   artifact: ActionsRunnerBinaryArtifact,
@@ -627,7 +627,7 @@ func runner_guest_image_build_and_receipt_wet(
 // OBSERVE MEASURES AND REPAIRS NOTHING, which is this repository's ordering law rather than this
 // module's preference: it fetches the base artifacts if they are absent, reports what their bytes
 // hash to, and reports whether an image already stands. It never builds one.
-func runner_guest_image_observe_wet() -> ProcessExit
+fn runner_guest_image_observe_wet() -> ProcessExit
   uses net: Network
 {
   match executor_home_wet() {
@@ -659,7 +659,7 @@ func runner_guest_image_observe_wet() -> ProcessExit
 // sits BEFORE the extraction rather than after the image exists: an artifact whose bytes contradict
 // a recorded expectation must not reach a filesystem this fleet then boots, and a check that ran
 // afterwards would be reporting on a VM image that already exists on disk.
-func runner_guest_image_converge_wet() -> ProcessExit
+fn runner_guest_image_converge_wet() -> ProcessExit
   uses net: Network
 {
   match executor_home_wet() {

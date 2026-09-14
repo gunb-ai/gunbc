@@ -1331,7 +1331,7 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // and its reason is stated here rather than beside it because DESIGN section 4c models annotations
 // at module-item grain only. An annotation inside a body is a parse refusal, which is how this
 // note came to be here.
-func verify() -> ProcessExit {
+fn verify() -> ProcessExit {
   match inspect_goal(
     subject: gunbc_repository,
     goal: desired_repo_ruleset_goal(),
