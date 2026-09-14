@@ -224,6 +224,66 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_content_addressed_put_reads_back_to_its_own_digest_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_content_addressed_put_reads_back_to_its_own_digest_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "the_same_bytes_twice_are_already_present_and_staging_is_left_empty_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "the_same_bytes_twice_are_already_present_and_staging_is_left_empty_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_verdict_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "different_bytes_under_an_occupied_key_are_never_replaced_and_fail_the_verdict_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_key_absent_from_an_established_directory_is_absent_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_key_absent_from_an_established_directory_is_absent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_put_never_creates_the_objects_directory_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_put_never_creates_the_objects_directory_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_key_directory_that_was_never_established_is_unavailable_and_not_created_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_key_directory_that_was_never_established_is_unavailable_and_not_created_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_symbolically_linked_key_directory_is_refused_and_nothing_lands_outside_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_symbolically_linked_key_directory_is_refused_and_nothing_lands_outside_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "a_key_that_escapes_lexically_is_refused_before_any_effect_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "a_key_that_escapes_lexically_is_refused_before_any_effect_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "an_origin_root_that_is_a_symbolic_link_is_refused_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "an_origin_root_that_is_a_symbolic_link_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_filesystem_wet_witness_test", function: "an_object_leaf_that_is_a_symbolic_link_is_never_staged_even_with_the_expected_bytes_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_filesystem_wet_witness_test.dag",
+      function: "an_object_leaf_that_is_a_symbolic_link_is_never_staged_even_with_the_expected_bytes_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.memory_capture_real_execution_witness", function: "w_capture_digest_binds_consumed_content" },
       entry: "dag/test/claim/host/memory_capture_real_execution_witness_test.dag",
       function: "w_capture_digest_binds_consumed_content",
