@@ -259,6 +259,7 @@ test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> 
         route: route,
         facts: t_facts_with_durable_storage(route: route, storage: ProviderPathUnread {
           obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_durable_storage_location_obligation"),
+          consulted: [],
         }),
       ),
       tag: "facts-incomplete",

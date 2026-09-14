@@ -2,10 +2,18 @@ module test.claim.spark_managed_grant_reconcile_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.systemd { systemd_binary_directory }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   EnableLingerForOwnAccount,
   RebootThisHost,
+  InspectServingContainer,
+  SparkGrantInstallBasis,
+  InstallBasisAbsent,
+  OperatorAcceptedUnresolvedDisclosureRisk,
+  spark_managed_grant_install_basis,
+  spark_install_basis_accepts_risk_for,
+  spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_population,
   spark_managed_grant_argv,
   spark_managed_grant_sudoers_command,
@@ -14,6 +22,16 @@ import gunbc.spark.managed_access_bootstrap { GrantEnumerated, GrantAbsent, Gran
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_standing_from_outcome,
   spark_managed_grants_to_install,
+  spark_managed_grants_to_install_under,
+  spark_managed_grants_withheld,
+  spark_managed_grants_withheld_under,
+  spark_managed_grants_install_unobserved,
+  GrantInstallWithheld,
+  GrantInstallAdmitted,
+  GrantInstallAdmittedOnAcceptedRisk,
+  GrantInstallNotNeeded,
+  spark_grant_install_admissions_under,
+  spark_grant_install_admission_wire,
   spark_managed_grants_unobserved,
   spark_managed_grants_converged,
   spark_managed_grant_sudoers_content,
@@ -39,28 +57,58 @@ data srv6_listing_before: String = "Matching Defaults entries for gunbc-automati
 
 data srv6_listing_after: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
 
+// AUTHORED, NOT MEASURED. No host holds the container-inspect grant yet (measured 2026-09-13: srv5 and
+// srv6 hold linger only), so this listing is the shape sudo would render once the operator installs
+// it, spelled independently of the model rather than rendered from spark_managed_grant_sudoers_command.
+data srv6_listing_with_inspect: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n    (root) NOPASSWD: /usr/bin/docker container inspect gunbc-spark-pair\n"
+
 test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   let missing = spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_before })
   missing.length() == 1
     && any(missing, m => match m {
          RebootThisHost => true
          EnableLingerForOwnAccount { subject: _ } => false
+         InspectServingContainer { container: _ } => false
+       })
+    && !any(missing, m => match m {
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => true
+         InspectServingContainer { container: _ } => false
        })
 }
 
 // THE DISCRIMINATING PAIR. The same function over the same shape of input answers differently once
 // the grant is present, which is what makes it a reconcile rather than a constant.
 test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
-  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_after }).length() == 0
-    && spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
+  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_with_inspect }).length() == 0
+    && spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_with_inspect })
     && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_before })
+}
+
+// THE HOSTS AS THEY STAND TODAY ARE NOT CONVERGED, and the one missing grant is inspect. This is the
+// access capability the live serving readers wait on, reported by the reconcile that installs it.
+test fn the_measured_hosts_are_missing_exactly_the_inspect_grant() -> Bool {
+  let missing = spark_managed_grants_to_install_under(
+    outcome: GrantEnumerated { listing: srv6_listing_after },
+    basis: fixture_accepted_risk(),
+  )
+  missing.length() == 1
+    && all(missing, m => match m {
+         InspectServingContainer { container: c } => c as String == "gunbc-spark-pair"
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => false
+       })
+    && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
 }
 
 // Sudo demanding a password IS the answer "none", successfully obtained, so every desired grant is
 // missing and the remedy is to install them.
 test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
-  spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
+  spark_managed_grants_to_install_under(
+    outcome: o,
+    basis: fixture_accepted_risk(),
+  ).length() == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
 
@@ -89,7 +137,7 @@ test fn nothing_to_install_does_not_imply_converged() -> Bool {
   let unobserved = GrantProbeRefused { cause: "leg refused" }
   spark_managed_grants_to_install(outcome: unobserved).length() == 0
     && !spark_managed_grants_converged(outcome: unobserved)
-    && spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
+    && spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_with_inspect })
 }
 
 // The subject the live hosts actually grant. Named once so the assertions below join against one
@@ -103,6 +151,9 @@ fn linger_grant() -> SparkManagedGrant {
 // independently observed string, not a second reading of the model.
 data measured_installed_linger_command: String = "/usr/bin/loginctl enable-linger gunbc-automation"
 data measured_installed_reboot_command: String = "/usr/bin/systemctl reboot"
+// Authored from docs.docker.com/reference/cli/docker/container/inspect/ and the container name the
+// pair realization creates; not yet measured on a host, because no host holds it.
+data authored_inspect_command: String = "/usr/bin/docker container inspect gunbc-spark-pair"
 
 // THE OLD TEST HERE WAS VACUOUS AND ITS NAME CLAIMED OTHERWISE. It asserted
 //
@@ -119,6 +170,17 @@ data measured_installed_reboot_command: String = "/usr/bin/systemctl reboot"
 test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
   spark_managed_grant_sudoers_command(grant: linger_grant()) as String == measured_installed_linger_command
     && spark_managed_grant_sudoers_command(grant: RebootThisHost) as String == measured_installed_reboot_command
+    && spark_managed_grant_sudoers_command(grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr }) as String == authored_inspect_command
+}
+
+// THE INSPECT GRANT IS ONE VERB ON ONE OBJECT. The discriminating inputs are the widenings a later
+// edit would reach for: another verb, and a name wildcard. Neither may equal the derived command.
+test fn the_inspect_grant_names_no_other_verb_and_no_wildcard() -> Bool {
+  let c = spark_managed_grant_sudoers_command(grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr }) as String
+  c != "/usr/bin/docker container inspect *"
+    && c != "/usr/bin/docker container exec gunbc-spark-pair"
+    && c != "/usr/bin/docker ps"
+    && !string_contains(c, "*")
 }
 
 // THE ARGV AND THE COMMAND ARE THE SAME WORDS, asserted as an equality over the word list rather
@@ -132,7 +194,11 @@ test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool
     let content = spark_managed_grant_sudoers_content(grant: g)
     acc
       && spark_managed_grant_argv(grant: g).length() == words.length() + 2
-      && command == concat(systemd_binary_directory as String, concat("/", join(words, " ")))
+      && command == match g {
+           EnableLingerForOwnAccount { subject: _ } => concat(systemd_binary_directory as String, concat("/", join(words, " ")))
+           RebootThisHost => concat(systemd_binary_directory as String, concat("/", join(words, " ")))
+           InspectServingContainer { container: _ } => join(words, " ")
+         }
       && string_contains(content, "gunbc-automation ALL=(root) NOPASSWD: ")
       && string_contains(content, command)
   })
@@ -156,6 +222,8 @@ test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool {
   join(spark_managed_grant_argv(grant: linger_grant()), " ")
     == "sudo -n loginctl enable-linger gunbc-automation"
     && join(spark_managed_grant_argv(grant: RebootThisHost), " ") == "sudo -n systemctl reboot"
+    && join(spark_managed_grant_argv(grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr }), " ")
+      == "sudo -n /usr/bin/docker container inspect gunbc-spark-pair"
 }
 
 // Narrow on every axis sudoers offers. A wildcard command would make the population decorative,
@@ -226,7 +294,7 @@ test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant()
 // the account and the host and carries no `NOPASSWD:` marker, so it yields no command at all -- the
 // join skips it instead of counting it as an entry that failed to match.
 test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
-  spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
+  spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_with_inspect })
     && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: "User gunbc-automation may run the following commands on srv6:\n" })
 }
 
@@ -290,4 +358,140 @@ test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
   spark_managed_grants_to_install(
     outcome: GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
   ).length() == 0
+}
+
+// A FIXTURE DECISION, never a real one: it exists only to show the accepted-risk arm admits.
+fn fixture_accepted_risk() -> SparkGrantInstallBasis {
+  OperatorAcceptedUnresolvedDisclosureRisk {
+    actor: "fixture" as NonEmptyStr,
+    decided_on: "1970-01-01" as NonEmptyStr,
+    accepted_for: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
+  }
+}
+
+// THE RED: WITH NO PRECONDITION, THE INSPECT GRANT IS NOT IN THE INSTALL SET, over the measured
+// listing where it is the one grant not held. It is reported withheld with its typed cause and the
+// host stays unconverged. Merging the grant installs nothing by itself. This control is driven with
+// an explicit absent basis: the production row carried InstallBasisAbsent until the operator's
+// 2026-09-14 acceptance, and the production half of this witness moved to
+// the_production_basis_admits_inspect_on_accepted_risk below when that row changed.
+//
+// IT ALSO EXERCISES THE FAIL-CLOSED REFUSAL RENDERING. spark_managed_grant_report resolves the basis
+// from the production row, which is now an acceptance, so its "install=withheld" arm is no longer
+// reached through the report -- and that arm is the refusal wire any FUTURE data-bearing grant with
+// no acceptance falls to. So the wire is driven here directly under the absent basis, keeping its RED
+// enrolled per DESIGN 4b(4) rather than leaving it specification-without-execution (review 66129).
+test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 0
+    && all(spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent), w => match w {
+         GrantInstallWithheld { grant: g, obligation: ob } =>
+           ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+             && match g {
+                  InspectServingContainer { container: _ } => true
+                  RebootThisHost => false
+                  EnableLingerForOwnAccount { subject: _ } => false
+                }
+         GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => false
+         GrantInstallAdmitted { grant: _ } => false
+         GrantInstallStandingUnobserved { grant: _, cause: _ } => false
+         GrantInstallNotNeeded => false
+       })
+    && spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent).length() == 1
+    && !spark_managed_grants_converged(outcome: o)
+    && any(
+         flat_map(spark_grant_install_admissions_under(outcome: o, basis: InstallBasisAbsent), a => spark_grant_install_admission_wire(a: a)),
+         line => string_contains(line, "install=withheld disclosure=unestablished cause="),
+       )
+}
+
+// THE PRODUCTION ROW AFTER THE OPERATOR'S 2026-09-14 ACCEPTANCE. Over the measured listing the inspect
+// grant is now IN the install set through the production basis, admitted on accepted risk with the
+// disclosure obligation still attached, and nothing is withheld. The actor is the operator's fleet
+// login and the decision names the pinned pair container, so the row is attributable and scoped.
+test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  let installing = spark_managed_grants_to_install(outcome: o)
+  installing.length() == 1
+    && all(installing, g => match g {
+         InspectServingContainer { container: c } => c as String == "gunbc-spark-pair"
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => false
+       })
+    && spark_managed_grants_withheld(outcome: o).length() == 0
+    && any(spark_grant_install_admissions_under(outcome: o, basis: spark_managed_grant_install_basis), a => match a {
+         GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: b } =>
+           ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+             && match b {
+                  OperatorAcceptedUnresolvedDisclosureRisk { actor: who, decided_on: when, accepted_for: _ } =>
+                    who as String == fleet_bootstrap_principal_login() as String && when as String == "2026-09-14"
+                  InstallBasisAbsent => false
+                }
+         GrantInstallAdmitted { grant: _ } => false
+         GrantInstallWithheld { grant: _, obligation: _ } => false
+         GrantInstallStandingUnobserved { grant: _, cause: _ } => false
+         GrantInstallNotNeeded => false
+       })
+    && string_contains(spark_managed_grant_report(host: "srv6", outcome: o), "install=admitted-on-accepted-risk")
+}
+
+// THE ACCEPTANCE DOES NOT WIDEN. The production basis names one grant; a data-bearing grant it does not
+// name -- the same verb over a different container -- is not accepted by it, so a future grant row
+// cannot ride in on this decision.
+test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool {
+  spark_install_basis_accepts_risk_for(
+    basis: spark_managed_grant_install_basis,
+    grant: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
+  ) == false
+    && spark_install_basis_accepts_risk_for(
+         basis: spark_managed_grant_install_basis,
+         grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
+       )
+}
+
+// THE PRECONDITION IS THE ONLY THING THAT MOVES IT, and it does not move the dataless grants: from the
+// same listing, an operator acceptance admits inspect, while reboot is admitted either way.
+test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_before }
+  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 1
+    && spark_managed_grants_to_install_under(
+         outcome: o,
+         basis: fixture_accepted_risk(),
+       ).length() == 2
+}
+
+// THE TWO AXES STAY TWO. Accepting the risk admits the install but does not classify anything: the
+// admission still carries the disclosure obligation, and the report says the grant was admitted with the
+// disclosure unestablished rather than reading as if the knowledge wall came down.
+test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  any(spark_grant_install_admissions_under(outcome: o, basis: fixture_accepted_risk()), a => match a {
+    GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: _ } =>
+      ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+    GrantInstallAdmitted { grant: _ } => false
+    GrantInstallWithheld { grant: _, obligation: _ } => false
+    GrantInstallStandingUnobserved { grant: _, cause: _ } => false
+    GrantInstallNotNeeded => false
+  })
+    && spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length() == 0
+}
+
+// ACCEPTANCE IS SCOPED TO THE GRANT IT NAMES. A basis naming a different container admits nothing.
+test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
+  spark_managed_grants_to_install_under(
+    outcome: GrantEnumerated { listing: srv6_listing_after },
+    basis: OperatorAcceptedUnresolvedDisclosureRisk {
+      actor: "fixture" as NonEmptyStr,
+      decided_on: "1970-01-01" as NonEmptyStr,
+      accepted_for: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
+    },
+  ).length() == 0
+}
+
+// HELD AND UNREAD DO NOT SHARE AN ARM. A refused probe leg admits every grant as standing-unobserved,
+// while a listing that names every grant admits none that way: the verdict can tell them apart.
+test fn an_unread_standing_is_its_own_admission_and_not_nothing_needed() -> Bool {
+  spark_managed_grants_install_unobserved(outcome: GrantProbeRefused { cause: "leg refused" }).length()
+      == spark_managed_grant_population.length()
+    && spark_managed_grants_install_unobserved(outcome: GrantEnumerated { listing: srv6_listing_with_inspect }).length() == 0
 }

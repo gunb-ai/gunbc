@@ -43,6 +43,27 @@ fn jobserver_makeflags_fifo_auth(fifo_path: String) -> String {
   join(["--jobserver-auth=fifo:", fifo_path], "")
 }
 
+// THE VARIABLE NAME GNU MAKE USES TO CARRY THAT SPELLING. The auth clause and the env key are
+// two facts of one upstream protocol; a reader that re-authors "MAKEFLAGS" while this module
+// already owns the clause would fork the name the same way concatenating the prefix would.
+data jobserver_makeflags_env_name: String = "MAKEFLAGS"
+
+// THE INVERSE OF THE SPELLING ABOVE, so a reader of MAKEFLAGS does not concatenate the prefix a
+// second time. An empty path is not a fifo: the prefix alone is the grammar, not a location.
+fn jobserver_fifo_path_from_makeflags(makeflags: String) -> String? {
+  let prefix = jobserver_makeflags_fifo_auth(fifo_path: "")
+  if starts_with(s: makeflags, prefix: prefix) {
+    let path = substring(s: makeflags, start: string_length(s: prefix), end: string_length(s: makeflags))
+    if path == "" {
+      none
+    } else {
+      Present { value: path }
+    }
+  } else {
+    none
+  }
+}
+
 type JobserverCitation
   = JobserverCited { config: JobserverConfig, provenance: String }
   | JobserverAbsent

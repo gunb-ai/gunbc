@@ -116,10 +116,13 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 /// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
 /// pure function of an input already compiled in the same run. That is the DESIGN §6
 /// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
-/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
-/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
-/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
-/// recomputing, never to raise the line.
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms CPU
+/// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
+/// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
+/// raise the line. That deadline is gone (the claim ceiling gates on
+/// `claim_eval_step_budget_for_identity` since 2026-09-12 and CPU is observed-only), which does
+/// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
+/// same whether or not a clock refuses on it.
 ///
 /// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
 /// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
@@ -524,7 +527,7 @@ pub fn compile_dag_multi_module_fixture(
     }
 }
 
-/// Resolved-registry projection for the Rust emit target: one row per `FnItem` / `FuncItem` in
+/// Resolved-registry projection for the Rust emit target: one row per `FnItem` in
 /// each `TypedModule.item_registry` (not the bare-name-merged `ResolvedGraph.item_registry`).
 /// `ordered_parameter_names` applies `emit_ident(..., Rust)` on authored params and resource-use
 /// names, then `service_var_name` per service, concatenated in that order — the same per-arm
@@ -567,7 +570,7 @@ fn project_resolved_rust_fn_signatures(
     let mut bare_fn_module_count: HashMap<String, usize> = HashMap::new();
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
-            if matches!(local.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            if matches!(local.kind, ItemKind::FnItem) {
                 *bare_fn_module_count.entry(local.name.clone()).or_insert(0) += 1;
             }
         }
@@ -576,7 +579,7 @@ fn project_resolved_rust_fn_signatures(
     for typed in graph.modules.iter() {
         for local in typed.item_registry.values() {
             match local.kind {
-                ItemKind::FnItem | ItemKind::FuncItem => {
+                ItemKind::FnItem => {
                     if bare_fn_module_count.get(&local.name).copied().unwrap_or(0) > 1 {
                         continue;
                     }
@@ -1348,7 +1351,7 @@ pub fn transport_script_position_facts_for_path(
     let mut facts = Vec::new();
     for item in items.iter() {
         let kind = item_kind(item.clone());
-        if !matches!(kind, ItemKind::FuncItem | ItemKind::FnItem) {
+        if !matches!(kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
