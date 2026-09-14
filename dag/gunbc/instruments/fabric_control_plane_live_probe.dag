@@ -1864,7 +1864,7 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
             rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
             receipt: "gunbc.observation.power-1",
           },
-          opportunity: NoFeasibleAlternativeUse,
+          opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.opportunity-1" },
         },
       },
     ],
