@@ -1,0 +1,299 @@
+module gunbc.git_use_authority
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.algebra { Cons }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
+// COVERAGE: direct .dag Git/GitHub imports only; the required-lane wall is not yet executing.
+// Rust uses are unreached: next capability is a Node dependency producer including Rust sources.
+// Configured/opaque .dag process invocations are a KNOWN BYPASS, unreached until Node-derived
+// process provenance follows capability bindings to executable dependencies. Direct imports in
+// gunbc.scm.* are refused here; Git execution there is NOT established absent by this policy.
+// Terminal policy and ledger vocabulary. The required-parse bridge supplies parsed identities
+// and imports; it must not classify imports or carry a second authorization roster in Rust.
+// Consumption frontier: the existing required parse lane must supply its independently
+// discovered source identities and parsed module/import records to git_import_authority_verdict,
+// then carry its total result into the required host gate outcome. The trigger is that connection
+// EXECUTING with missing-population and forbidden-import refusals stopping the lane, and legal
+// controls accepted. Approval or arrival of wiring alone does not consume this frontier.
+// Witnesses are evidence of policy behavior, not production consumers or a required-lane wall.
+
+type NativeAuthorityMode
+  = BridgeAuthority
+  | NativeAuthority
+
+// DECLARED CONSUMPTION FRONTIER for the mode carrier, and a deliberately EMPTY slot where a
+// selector used to stand. The two modes are a real distinction this ledger must carry: every
+// row states a bridge disposition and a cutover disposition, and which one applies is a fact
+// about the MODE, not about the row. So the mode type stays and the rows keep both fields.
+//
+// WHAT WAS CUT, AND WHY THE CUT IS NOT A CONCESSION ON SHAPE. The selector took two deferred
+// zero-argument branches so selection could choose WHICH COMPUTATION TO INVOKE rather than
+// which already-computed value to return -- the distinction that starts mattering the moment a
+// route has effects. That shape is right and is not abandoned. But it does not compile today:
+// v1 inference discards a local callable whose resolved parameter count is zero, so both
+// branches report as not found in scope. A declaration the compiler REFUSES is not a declared
+// frontier at all -- DESIGN 3c's admissible middle state presumes the declaration is at least
+// well formed under the current substrate, and this one was known-rejected. Landing it would
+// have parked non-compiling source inside the required-witness claim home, leaving every test
+// declaration that imports this module green by absence.
+//
+// The selector therefore lands WITH ITS CONSUMER, in the lane that has both: the
+// gunbc.git_use_census.report report_git_uses entry that reads git_use_rows and renders each
+// row's selected disposition beside its use identity, once the dispatched nullary-callable
+// inference repair makes the deferred-branch shape expressible. Adding a dummy argument, or
+// eagerly supplying both values to evade the defect, stays refused (DESIGN 5 workaround rule):
+// the defect is the thing to fix, and the specimen is the evidence that repair lane needs.
+//
+// These modes do NOT seal gunbc.native_scm_interaction_contract Landed. A bridge landing mint
+// still needs independently acquired merge read-back bound to the exact projection and imported
+// native baseline. Until that producer and its exclusive mint execute, no construction rung is
+// claimed for Landed; a validator over its current presentation record would not supply one.
+
+type GitUseRole
+  = GitBootstrapImport
+  | GitWorkspaceSourceAuthority
+  | GitProposalReviewPublication
+  | GitHistoryDiffGateObservation
+  | GitDeploymentRevisionIdentity
+  | GitCompatibilityProjection
+
+type GitUseAuthorization
+  = DeclaredLegacyGitUse { retirement_capability: NonEmptyStr }
+  | NamedBootstrapImportAdapter
+  | NamedCompatibilityProjector
+  | DeclaredLegacyDeploymentAdapter { retirement_capability: NonEmptyStr }
+
+type GitUseClassification
+  = ClassifiedGitUse { role: GitUseRole, authorization: GitUseAuthorization }
+  | UnclassifiedGitUse { reason: NonEmptyStr }
+
+type GitUseSurface
+  = ParsedDagGitDependency { imported_module: NonEmptyStr }
+  | RustGitDependency { operation: NonEmptyStr }
+  | DagGitProcessDependency { operation: NonEmptyStr }
+
+type GitUseRow {
+  consumer: DeclarationRef
+  surface: GitUseSurface
+  classification: GitUseClassification
+  bridge_disposition: NonEmptyStr
+  cutover_disposition: NonEmptyStr
+}
+
+// These are two different subjects. Import closure can be mechanically prevented by an executing
+// gate. Approval-bound roster growth remains review diligence: no field here asserts its own
+// approval. Its next capability is independently originated operator evidence verifiable at the
+// gate for the exact changed obligation set. Rust uses remain census-only until a Node-tree
+// dependency producer includes Rust sources. Verdicts retain each uncovered use identity and disposition, never only a count.
+
+type ParsedGitModuleImports {
+  source_path: String
+  module_name: String
+  imports: List<String>
+}
+
+// expected_source_paths must originate in the required parse walk BEFORE parsing, not be
+// copied from successfully produced module records. The identity join detects omitted sources.
+// This input contract does not establish that a producer currently supplies that independence.
+type ParsedGitImportPopulation
+  = ParsedGitImportsAvailable { expected_source_paths: List<String>, modules: List<ParsedGitModuleImports> }
+  | ParsedGitImportsIncomplete { missing_modules: List<String> }
+  | ParsedGitImportsUnavailable { reason: NonEmptyStr }
+
+type GitImportAuthorityFinding
+  = ForbiddenGitImport { module_name: String, imported_module: String }
+  | GitImportInsideNativeScm { module_name: String, imported_module: String }
+  | GitUseClassificationMissing { consumer: DeclarationRef, reason: NonEmptyStr }
+  | GitUseAuthorizationMisclassified { consumer: DeclarationRef }
+  | GitImportPopulationIncomplete { missing_modules: List<String> }
+  | GitImportPopulationUnavailable { reason: NonEmptyStr }
+  | GitImportSourceMissing { source_path: String }
+  | GitImportSourceUnexpected { source_path: String }
+  | GitImportPopulationEmpty
+
+type GitImportAuthorityVerdict
+  = GitImportAuthorityClean { modules_checked: Int, imports_checked: Int, rust_uses_uncovered: List<GitUseRow>, dag_process_uses_uncovered: List<GitUseRow> }
+  | GitImportAuthorityRefused { findings: List<GitImportAuthorityFinding>, rust_uses_uncovered: List<GitUseRow>, dag_process_uses_uncovered: List<GitUseRow> }
+
+fn git_dependency_module(module_name: String) -> Bool {
+  module_name == "extdeps.git" || module_name.starts_with("extdeps.git.")
+    || module_name == "extdeps.github" || module_name.starts_with("extdeps.github.")
+}
+
+fn git_authorization_matches_role(role: GitUseRole, authorization: GitUseAuthorization) -> Bool {
+  match authorization {
+    DeclaredLegacyGitUse { retirement_capability: _ } => true
+    NamedBootstrapImportAdapter => match role {
+      GitBootstrapImport => true
+      _ => false
+    }
+    NamedCompatibilityProjector => match role {
+      GitCompatibilityProjection => true
+      _ => false
+    }
+    DeclaredLegacyDeploymentAdapter { retirement_capability: _ } => match role {
+      GitDeploymentRevisionIdentity => true
+      _ => false
+    }
+  }
+}
+
+
+// A ROW'S STANDING IS RESOLVED ONCE, AND BOTH CHANNELS READ THAT ONE VALUE.
+//
+// Two folds used to answer this question independently -- one in the finding channel, one in
+// the index channel -- and both destructured row.classification and both called
+// git_authorization_matches_role. That is not a shared read of a resolved fact; it is two
+// sources that can produce DIFFERENT values, and the divergence has a direction that matters:
+// add an arm to GitUseClassification or a finding to the finding channel, and the index can
+// keep admitting an import the finding channel has already condemned. A forbidden import
+// silently reclassified as authorized is the exact outcome this policy exists to refuse, so the
+// fork is a correctness concern and not a tidiness one (DESIGN 2, DESIGN 3).
+//
+// So standing is a closed sum resolved by one fold. The finding channel projects its findings
+// and the index channel projects its admissibility; neither re-derives the decision, and a new
+// classification arm or a new finding is one edit that both channels inherit. Condemned carries
+// its findings rather than a Bool beside them, so "condemned" and "why" cannot disagree either.
+type GitUseRowStanding
+  = GitUseRowInGoodStanding
+  | GitUseRowCondemned { findings: List<GitImportAuthorityFinding> }
+
+fn git_use_row_standing(row: GitUseRow) -> GitUseRowStanding {
+  match row.classification {
+    UnclassifiedGitUse { reason } =>
+      GitUseRowCondemned { findings: [GitUseClassificationMissing { consumer: row.consumer, reason: reason }] }
+    ClassifiedGitUse { role, authorization } =>
+      if git_authorization_matches_role(role: role, authorization: authorization) {
+        GitUseRowInGoodStanding
+      } else {
+        GitUseRowCondemned { findings: [GitUseAuthorizationMisclassified { consumer: row.consumer }] }
+      }
+  }
+}
+
+fn git_use_row_findings(row: GitUseRow) -> List<GitImportAuthorityFinding> {
+  match git_use_row_standing(row: row) {
+    GitUseRowInGoodStanding => []
+    GitUseRowCondemned { findings } => findings
+  }
+}
+
+// The index admits exactly the rows the finding channel does not condemn. The module/target
+// pair is what the index is KEYED by; answering membership is git_import_authorized's job.
+fn git_use_row_admits_its_import(row: GitUseRow) -> Bool {
+  match git_use_row_standing(row: row) {
+    GitUseRowInGoodStanding => true
+    GitUseRowCondemned { findings: _ } => false
+  }
+}
+
+// Index each admitted module/target once; the corpus fold does not rescan the ledger per edge.
+fn git_import_authorization_index(rows: List<GitUseRow>) -> Map<String, Map<String, Bool>> {
+  fold(rows, init: empty_map(), f: fn(index, row) {
+    match row.surface {
+      RustGitDependency { operation: _ } => index
+      DagGitProcessDependency { operation: _ } => index
+      ParsedDagGitDependency { imported_module } => {
+        let owner = row.consumer.module_path as String
+        let target = imported_module as String
+        if git_use_row_admits_its_import(row: row) {
+          let targets = match map_lookup(m: index, key: owner) {
+            Present { value } => value
+            Absent => empty_map()
+          }
+          map_insert(index, owner, map_insert(targets, target, true))
+        } else { index }
+      }
+    }
+  })
+}
+
+fn git_import_authorized(index: Map<String, Map<String, Bool>>, module_name: String, imported_module: String) -> Bool {
+  match map_lookup(m: index, key: module_name) {
+    Absent => false
+    Present { value: targets } => match map_lookup(m: targets, key: imported_module) {
+      Absent => false
+      Present { value: admitted } => admitted
+    }
+  }
+}
+
+fn git_findings_prepend(items: List<GitImportAuthorityFinding>, onto: List<GitImportAuthorityFinding>) -> List<GitImportAuthorityFinding> {
+  fold(items, init: onto, f: fn(acc, item) { Cons { head: item, tail: acc } })
+}
+
+// Production-scope selection is policy, never host wiring. Fixtures are still parsed by the
+// required source admission; only this authority census excludes their intentionally bad imports.
+fn git_import_production_source(path: String) -> Bool {
+  !(path.starts_with("dag/test/") || path.starts_with("src/v2/test/")
+    || path.starts_with("src/v1/tests/") || path.starts_with("src/v2/native_lane_fixture/"))
+}
+
+fn git_import_findings(index: Map<String, Map<String, Bool>>, module_name: String, imported_module: String) -> List<GitImportAuthorityFinding> {
+  if !git_dependency_module(module_name: imported_module) {
+    []
+  } else if module_name.starts_with("gunbc.scm.") {
+    [GitImportInsideNativeScm { module_name: module_name, imported_module: imported_module }]
+  } else if git_import_authorized(index: index, module_name: module_name, imported_module: imported_module) {
+    []
+  } else {
+    [ForbiddenGitImport { module_name: module_name, imported_module: imported_module }]
+  }
+}
+
+fn git_import_authority_verdict(rows: List<GitUseRow>, population: ParsedGitImportPopulation) -> GitImportAuthorityVerdict {
+  let index = git_import_authorization_index(rows: rows)
+  let rust_rows = fold(rows, init: [], f: fn(acc, row) {
+    match row.surface { RustGitDependency { operation: _ } => Cons { head: row, tail: acc } _ => acc }
+  })
+  let process_rows = fold(rows, init: [], f: fn(acc, row) {
+    match row.surface { DagGitProcessDependency { operation: _ } => Cons { head: row, tail: acc } _ => acc }
+  })
+  let row_findings = fold(rows, init: [], f: fn(acc, row) { git_findings_prepend(items: git_use_row_findings(row: row), onto: acc) })
+  match population {
+    ParsedGitImportsUnavailable { reason } => GitImportAuthorityRefused {
+      findings: Cons { head: GitImportPopulationUnavailable { reason: reason }, tail: row_findings }, rust_uses_uncovered: rust_rows, dag_process_uses_uncovered: process_rows
+    }
+    ParsedGitImportsIncomplete { missing_modules } => GitImportAuthorityRefused {
+      findings: Cons { head: GitImportPopulationIncomplete { missing_modules: missing_modules }, tail: row_findings }, rust_uses_uncovered: rust_rows, dag_process_uses_uncovered: process_rows
+    }
+    ParsedGitImportsAvailable { expected_source_paths, modules } => {
+      let expected = fold(expected_source_paths, init: empty_map(), f: fn(acc, path) { map_insert(acc, path, true) })
+      let observed = fold(modules, init: empty_map(), f: fn(acc, m) { map_insert(acc, m.source_path, true) })
+      let missing = fold(expected_source_paths, init: row_findings, f: fn(acc, path) {
+        match map_lookup(m: observed, key: path) {
+          Present { value: _ } => acc
+          Absent => Cons { head: GitImportSourceMissing { source_path: path }, tail: acc }
+        }
+      })
+      let joined = fold(modules, init: missing, f: fn(acc, m) {
+        match map_lookup(m: expected, key: m.source_path) {
+          Present { value: _ } => acc
+          Absent => Cons { head: GitImportSourceUnexpected { source_path: m.source_path }, tail: acc }
+        }
+      })
+      let findings = fold(modules, init: joined, f: fn(acc, m) {
+        if git_import_production_source(path: m.source_path) {
+          fold(m.imports, init: acc, f: fn(fs, target) {
+            git_findings_prepend(items: git_import_findings(index: index, module_name: m.module_name, imported_module: target), onto: fs)
+          })
+        } else { acc }
+      })
+      if count(modules) == 0 || count(expected_source_paths) == 0 {
+        GitImportAuthorityRefused { findings: Cons { head: GitImportPopulationEmpty, tail: findings }, rust_uses_uncovered: rust_rows, dag_process_uses_uncovered: process_rows }
+      } else if count(findings) != 0 {
+        GitImportAuthorityRefused { findings: findings, rust_uses_uncovered: rust_rows, dag_process_uses_uncovered: process_rows }
+      } else {
+        GitImportAuthorityClean {
+          modules_checked: count(modules),
+          imports_checked: fold(modules, init: 0, f: fn(n, m) {
+            if git_import_production_source(path: m.source_path) { n + count(m.imports) } else { n }
+          }),
+          rust_uses_uncovered: rust_rows, dag_process_uses_uncovered: process_rows
+        }
+      }
+    }
+  }
+}
