@@ -69,6 +69,7 @@ import gunbc.floor_cost_distribution {
   CompletedIdentityAbsent,
   CompletedIdentityUnavailable,
   CompletedIdentityStepsDiffer,
+  CompletedIdentityStepsNotPerformed,
   same_head_eval_step_violations
 }
 
@@ -975,6 +976,11 @@ fn eval_step_violation_line(v: EvalStepDeterminismViolation) -> String {
       concat("\tABSENT ", concat(i, concat(" completed on ", concat(c as String, concat(", not present on ", a as String)))))
     CompletedIdentityUnavailable { identity: i, module: _, completed_attempt: c, unavailable_attempt: u } =>
       concat("\tUNAVAILABLE ", concat(i, concat(" completed on ", concat(c as String, concat(", reached no verdict on ", u as String)))))
+    CompletedIdentityStepsNotPerformed { identity: i, module: _, attempt: a } =>
+      concat(
+        "\tSTEPS-NOT-PERFORMED ",
+        concat(i, concat(concat(" on ", a as String), " reached a verdict but its step count is a bound, not work performed -- the two attempts cannot be compared"))
+      )
     CompletedIdentityStepsDiffer { identity: i, module: _, left_attempt: la, left_steps: ls, right_attempt: ra, right_steps: rs } =>
       concat(
         "\tSTEPS-DIFFER ",
@@ -1145,16 +1151,16 @@ fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> Calibra
   } else if count(matched) == 0 {
     SpecimenStepsRightCensored {
       identity: wanted,
-      lower_bound: fold(
-        all_matched |> map(r => eval_step_count_value(s: eval_steps_at_least(reading: r.cost))),
-        init: 0,
-        f: (m, n) => if n > m { n } else { m }
-      ),
+      lower_bound: first(reverse(
+        all_matched
+          |> map(r => eval_step_count_value(s: eval_steps_at_least(reading: r.cost)))
+          |> sort_by(n => n)
+      )),
     }
   } else {
-    let steps = matched
-    let low = fold(steps, init: max_of(xs: steps), f: (m, n) => if n < m { n } else { m })
-    let high = fold(steps, init: 0, f: (m, n) => if n > m { n } else { m })
+    let steps = matched |> sort_by(n => n)
+    let low = first(steps)
+    let high = first(reverse(steps))
     if low != high {
       SpecimenStepsNotDeterministic { identity: wanted, low: low, high: high }
     } else {
@@ -1170,10 +1176,6 @@ fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> Calibra
 
 // The seed for the minimum fold. `fold` needs an init that is already a member, and 0 is not one --
 // it would make every population's minimum 0 and hide exactly the disagreement above.
-fn max_of(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: (m, n) => if n > m { n } else { m })
-}
-
 fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> String {
   match g {
     SpecimenJoined { grounding: gr } => match gr {
