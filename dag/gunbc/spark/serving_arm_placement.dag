@@ -1,0 +1,66 @@
+module gunbc.spark.serving_arm_placement
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+
+// WHICH HOST EACH DECLARED SERVING ARM OCCUPIES, AND NOTHING ELSE ABOUT THE ARM.
+//
+// WHY THIS IS ITS OWN AUTHORITY RATHER THAN A FIELD READ OFF THE ARM. The GLM canary's host lived on
+// `glm_canary_arm.host` in gunbc.spark.glm_canary_converge, which is the arm's convergence root and
+// imports gunbc.spark.serving_deployment_selection for its candidate vocabulary. Any census of what
+// the fleet is spoken for by must read that claim -- and gunbc.spark.host_commitment is imported BY
+// serving selection in the follow-up, so a census reaching up into the canary module would close the
+// loop selection -> host_commitment -> glm_canary_converge -> selection, which the import graph's one
+// law refuses. The placement fact is the part both sides need and the only part, so it sits below
+// both and neither module grows a second copy of it.
+//
+// A CLAIM IS NOT A CAPABILITY AND NOT A LEASE. This row says an arm has been placed on a host by an
+// authority that owns that decision. It does not say the arm is currently running, does not measure
+// the host, and confers nothing: a consumer that wants to know whether the process is alive must
+// observe it, and a consumer that wants exclusive use must acquire one (see the standing divergence
+// recorded in gunbc.spark.host_commitment). What it does establish is the one thing an emptiness
+// check cannot: that SOMEBODY has already spoken for this machine, so a lane placing new work must
+// not read it as free.
+//
+// RELEASE IS A RECEIPT, NOT AN EDIT, and that is stated here rather than modelled here because the
+// vocabulary has no consumer yet. Deleting a row below would make a host claimable again on the
+// strength of an edit, which is the absence-as-fact inference the llama.cpp reservation lifecycle in
+// gunbc.spark.llama_cpp_rpc_observed exists to refuse -- there, a positive observation mints and only
+// a positive release receipt with its named evidence clears. The same shape is owed here. TRIGGER:
+// the first lane that actually stops a serving arm and reads its host back -- a stop receipt naming
+// the process population, listeners and memory state on that host, exactly as
+// LlamaCppRpcReleaseReceipt does -- at which point a claim is discharged by that receipt and by
+// nothing else. Until then a row is withdrawn only by the authority that placed it.
+type ServingArmHostClaim {
+  arm: DeclarationRef
+  host: HostIdentity
+  basis: NonEmptyStr
+}
+
+// THE GLM CANARY, WHICH IS SERVING ON srv9 TODAY.
+//
+// gunbc.serving.serving_enrollment carries the state this row records: the canary is serving on srv9
+// and nothing in this repository launched it through the pair route. That module also records why the
+// pair-serving claim on group B was WITHDRAWN while this claim was not -- what was given up was a
+// claim on hosts, explicitly not a front door -- so an observer reading only the pair roster sees srv9
+// as unclaimed and is wrong. This row is what makes the difference readable from below.
+data glm_canary_host_claim: ServingArmHostClaim = ServingArmHostClaim {
+  arm: decl_ref(module_path: "gunbc.spark.glm_canary_converge", decl_name: "glm_canary_arm"),
+  host: operator_host_srv9,
+  basis: "SPARK canary, operator 2026-09-08: the GLM 5.3 Flash exl3 canary is placed on srv9 and answers there. gunbc.serving.serving_enrollment derives the group B route head from this arm rather than from the pair roster, precisely because the pair claim on group B was withdrawn and the canary was not" as NonEmptyStr,
+}
+
+// THE ROSTER. A serving arm placed on a host appears here; the fleet census reads this list and never
+// an individual row, so a second arm is one row and no edit anywhere else.
+//
+// THERE IS NO `spark_serving_arm_claimed_hosts()` BESIDE IT, and the absence is deliberate. One was
+// written -- a `map` from this roster to bare host identities -- imported by the census, and never
+// called, because the census consumes the CLAIMS: it needs the arm each host is committed to in order
+// to say why, and a list of identities throws exactly that away. A projection with no call site is
+// DESIGN section 3c's red state, and the honest fix for one is deletion rather than a consumer
+// invented to justify it (found by claude review 64213).
+data spark_serving_arm_host_claims: List<ServingArmHostClaim> = [
+  glm_canary_host_claim,
+]

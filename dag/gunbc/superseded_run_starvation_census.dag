@@ -707,7 +707,7 @@ fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<Ref
   }
 }
 
-func superseded_run_starvation_census(
+fn superseded_run_starvation_census(
   auth_token: String,
   owner: String,
   repo: String,

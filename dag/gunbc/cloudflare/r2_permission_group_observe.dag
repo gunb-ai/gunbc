@@ -45,7 +45,7 @@ import gunbc.auth.secret_ref_credential {
 // typed permission-group roster would require deciding which ids matter before anyone has seen the
 // list -- and the list is the input to that decision. The typed model lands in the change that
 // records the observation, with the retrieval date beside it.
-func observe_account_permission_groups() -> String uses net: Network {
+fn observe_account_permission_groups() -> String uses net: Network {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: _ } =>
       "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for"
