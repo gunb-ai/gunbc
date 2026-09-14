@@ -243,6 +243,12 @@ fn regen_dependency_closure_ids(disposition: RegenDependencyClosureDisposition) 
 
 // One typed classification surface. Planning consumes the arm and retains its reason; no Bool
 // predicate aliases the coproduct membership or walks the same row again for deferral.
+// Generation role answers whether a surface produces the NEXT emit, not whether rustc can
+// compile the file without its sibling. A coherent candidate that changes both an emitter
+// mirror and a std mirror it re-exports is one cargo rebuild. Deferring the subject until
+// after that rebuild installs a SPLIT pair (specimens ZPOD7I/odPcpu/D42vz4: E0432 unresolved
+// import of a symbol only the deferred mirror introduced). InstallSeedCompatibilityCut
+// therefore plans GenerationInput and BootstrapSourceMirror with the seed-embedded subjects.
 fn regen_surface_stage_disposition(
   row: RegenChangedSurface,
   kind: RegenStageKind
@@ -256,8 +262,8 @@ fn regen_surface_stage_disposition(
       UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
     }
     InstallSeedCompatibilityCut => match row.generation_role {
-      GenerationInput => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
-      BootstrapSourceMirror => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      GenerationInput => SurfacePlannedForStage
+      BootstrapSourceMirror => SurfacePlannedForStage
       GenerationSubject => match row.seed_membership {
         SeedEmbedded => SurfacePlannedForStage
         OutsideSeed => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
@@ -339,6 +345,25 @@ type RegenStageClosureAdmission
   = RegenStageClosureAdmitted { closure_id: String }
   | RegenStageClosureRefused { refusal: RegenConvergenceRefusal }
 
+// rustc rebuilds the seed as one crate graph. The two modeled seed-embedded cuts name
+// different *generation* questions; they are one install/rebuild motion. Distinct
+// authored ids (seed-core vs seed-surface) stay distinct and still refuse.
+fn regen_stage_rebuild_closure_id(closure_id: String) -> String {
+  if closure_id == "generation-input-cut" {
+    "seed-embedded-install-cut"
+  } else {
+    if closure_id == "seed-compatibility-cut" {
+      "seed-embedded-install-cut"
+    } else {
+      closure_id
+    }
+  }
+}
+
+fn regen_closures_share_rebuild(a: String, b: String) -> Bool {
+  a == b || regen_stage_rebuild_closure_id(closure_id: a) == regen_stage_rebuild_closure_id(closure_id: b)
+}
+
 type RegenSurfacePopulationMembership
   = SurfacePopulationMember
   | SurfacePopulationAbsent
@@ -365,8 +390,14 @@ fn regen_admit_stage_closure(
     match acc {
       NoStageClosureRows => ConsistentStageClosure { closure_id: row.dependency_closure_id }
       ConsistentStageClosure { closure_id: closure_id } => {
-        if closure_id == row.dependency_closure_id {
-          ConsistentStageClosure { closure_id: closure_id }
+        if regen_closures_share_rebuild(a: closure_id, b: row.dependency_closure_id) {
+          ConsistentStageClosure {
+            closure_id: if closure_id == row.dependency_closure_id {
+              closure_id
+            } else {
+              regen_stage_rebuild_closure_id(closure_id: closure_id)
+            }
+          }
         } else {
           InconsistentStageClosure {
             closure_id: closure_id,
@@ -375,7 +406,7 @@ fn regen_admit_stage_closure(
         }
       }
       InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign } => {
-        if closure_id == row.dependency_closure_id {
+        if regen_closures_share_rebuild(a: closure_id, b: row.dependency_closure_id) {
           InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign }
         } else {
           InconsistentStageClosure {
@@ -391,7 +422,7 @@ fn regen_admit_stage_closure(
       refusal: StageDependencyClosureIncomplete { closure_id: "", missing: [] }
     }
     ConsistentStageClosure { closure_id: closure_id } => {
-      let required = changed |> filter(row => row.dependency_closure_id == closure_id)
+      let required = changed |> filter(row => regen_closures_share_rebuild(a: row.dependency_closure_id, b: closure_id))
       let missing = fold(required, init: [], f: fn(acc, row) {
         match regen_surface_population_membership(identity: row.identity, rows: planned) {
           SurfacePopulationMember => acc
@@ -477,6 +508,9 @@ type RegenNextStageNeed
   | NextStageNeedsSeedCompatibility
   | NextStageNeedsPublish
 
+// A producer-role mirror plus a seed-embedded subject is one cargo rebuild, not
+// Promote-then-subject. Promote remains the input-only cut; mixed sets drop to
+// InstallSeedCompatibilityCut, which plans every seed-embedded changed mirror.
 fn regen_plan_next_stage(
   ordinal: Int,
   producer_generation_id: String,
@@ -488,10 +522,20 @@ fn regen_plan_next_stage(
 ) -> RegenStagePlanOutcome {
   let need = fold(changed, init: NextStageNeedsPublish, f: fn(acc, row) {
     match acc {
-      NextStageNeedsProducer => NextStageNeedsProducer
-      NextStageNeedsSeedCompatibility => match row.generation_role {
+      NextStageNeedsProducer => match row.generation_role {
         GenerationInput => NextStageNeedsProducer
         BootstrapSourceMirror => NextStageNeedsProducer
+        GenerationSubject => match row.seed_membership {
+          SeedEmbedded => NextStageNeedsSeedCompatibility
+          OutsideSeed => NextStageNeedsProducer
+          UnresolvedSeedMembership { reason: _ } => NextStageNeedsProducer
+        }
+        NonSeedGeneratedOutput => NextStageNeedsProducer
+        UnresolvedGenerationRole { reason: _ } => NextStageNeedsProducer
+      }
+      NextStageNeedsSeedCompatibility => match row.generation_role {
+        GenerationInput => NextStageNeedsSeedCompatibility
+        BootstrapSourceMirror => NextStageNeedsSeedCompatibility
         GenerationSubject => NextStageNeedsSeedCompatibility
         NonSeedGeneratedOutput => NextStageNeedsSeedCompatibility
         UnresolvedGenerationRole { reason: _ } => NextStageNeedsSeedCompatibility

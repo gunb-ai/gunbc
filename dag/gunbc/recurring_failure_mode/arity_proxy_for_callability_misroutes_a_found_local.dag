@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.arity_proxy_for_callability_misroutes_a_found_local
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data arity_proxy_for_callability_misroutes_a_found_local: RecurringFailureMode = RecurringFailureMode {
+  identity: "arity_proxy_for_callability_misroutes_a_found_local" as NonEmptyStr,
+
+  receipts: [
+    "**a callability question answered by counting parameters** (the v1 seed's direct-call seam in `v1.compiler.infer` decided whether a body-scope binding could be applied by asking whether its resolved type had MORE THAN ZERO parameters, so every nullary function value -- `fn() -> R` as a parameter, a let-bound `fn() { ... }`, a parameter typed by an alias of `fn() -> R` -- was classified as not callable, discarded, and the call retried as a GLOBAL name.)",
+
+    "INVALID STATE: a local binding whose type is a function type classified as non-callable at the call seam because its parameter list is empty.",
+
+    "HARM, stated as the diagnostic the author receives rather than only the resolution that failed: `function 'pick' not found in scope`, located at the call, about a binding that IS in scope and IS callable. The census keys it as class InternalError, subject function:pick -- so the refusal is not only wrong about the subject, it is typed as a compiler-internal fault. A misdirected refusal is worse than a plain one: it sends the author to search for a missing declaration that exists, and the only moves it suggests are dodges -- give the function a parameter, rename it, hoist it to module scope -- each of which would have laundered a floor defect into the corpus. gunbc#11317's mode/disposition selector hit it and stopped rather than dodging, which is why it arrived here clean.",
+
+    "DISCOVERED BY quick-moth-77 while compiling gunbc#11317; this row is filed by the repairing lane, which holds the executed evidence.",
+
+    "DISTINGUISHING FACTS. (1) Arity was a PROXY, and it already had a name: `v1.compiler.infer` `type_node_is_callable` answered `params |> count > 0`, and the three call-seam tests spelled the same count inline beside it. `scope.locals` also carries entries that genuinely are not callable -- coproduct-arm owners (connective Disj) bound for variant-constructor calls, and value-typed bindings -- and the count did screen those out; it screened out every nullary function type with them, because the property it stood in for is the type's CONNECTIVE. Every callable value type is minted as an Arrow node (`v1.compiler.types` `make_callable_type`, `v1.compiler.parse` `parse_callable_type_expr`), and a nullary one has an empty parameter list. The repair edits that one predicate to `connective == Arrow || params |> count > 0` -- a non-empty list stays a sufficient callable fact, since a declaration-shaped node carries its formals there -- and routes the three inline counts through it, rather than minting a second predicate beside it. (2) So the repair reaches more than the call seam. SEVEN other sites consume the predicate. FOUR carry an exemption where a check should be: `direct_call_argument_inhabitance_diags`, `direct_call_arg_type_mismatch`, `structured_application_site_type_mismatch_with_peeled`, `applied_type_argument_conflicts`. TWO exempt for a reason that still holds: `nominal_product_head_name` (an arrow has no nominal head, so "" is right) and `coproduct_payload_where_parent_required` (an arrow is never an arm payload). ONE is not an exemption: `infer_record_lit_structural` passes a callable field's declared type down as the expected type; record-field inhabitance has no producer at all (PositionRecordLiteralField is one of the positions `declared_type_inhabitance` lists as awaiting one), so `Cfg { cb: 7 }` is accepted for that reason and not because of any exemption. Before the repair a nullary arrow reaching the four exemption sites was judged as a named type there. (3) A separate `> 0` guard in `function_value_call_named_arg_diags` skipped the positional-surplus check whenever the callable had no parameters. It was unreachable while no nullary callable reached it; widening the seam alone would have admitted `pick(3)` against `fn() -> Int` silently, so it was removed in the same change -- the forked-logic trap DESIGN section 6 names, found by asking what the widened value's consumers would now see. (4) NOT this class, measured so it is not mistaken for a residue: a BARE reference to a nullary declaration (`let pick = seven`) is inferred as an application of it, by the reference arm's own `(fsig.params |> count) == 0` branch in `infer_expr`, so the let binds the RESULT and `pick()` then refuses at every binary tested. And an unannotated let-bound lambda (`let pick = fn(x) { x }`) is uncallable at EVERY arity, unary included, before and after this repair -- an arity-independent typing gap, not an arity proxy.",
+
+    "RUNG FOUND AT: 1, mitigatable in the loud-but-misdirected form -- every specimen refused, located, with the wrong cause.",
+
+    "EXECUTED EVIDENCE, named rather than transcribed: `test.claim.infer_nullary_local_callable_witness_test`, admitted to the required floor by the `test.claim.infer_` prefix in `v2.workflow.required_floor` `required_gate_prefixes`. Its nullary cells (a nullary parameter called, an alias-typed nullary parameter called, a lambda passed to a nullary formal and called) and its surplus cell are the discriminating REDs, false against the seed before the repair and true after; its nullary-global and unary-local cells are the accepted positive controls, green before and after.",
+
+    "RUNG NOW: 3, structurally guaranteed on the ExprCall bare-name path for body-scope bindings whose type is a structural or alias-expanded function type -- the accepted corpus cannot contain a found nullary local reported as not found, nor a nullary local applied to a surplus positional argument, on the floor's acceptance path.",
+
+    "CEILING: 3. Callability is decidable from the modeled type, so the class cannot honestly sit lower; it cannot reach 4 while the call seam receives a binding by spelling and asks of it afterwards, rather than receiving a callable-typed carrier by construction.",
+
+    "WHAT IS NOT CLOSED, and it is a DIFFERENT CLASS sharing this one's fall-through: a body local the seam rejects because it genuinely is not callable is also retried as a global name. `fn host(pick: Int) -> Int { pick() }` still refuses with the same misdirected `function 'pick' not found in scope`, and with a global `fn pick()` beside it the call silently binds past the shadowing parameter. That is filed separately as `gunbc.recurring_failure_mode` `shadowing_body_local_bypassed_by_global_call_fallback`, because its invalid state, harm and recognition rule differ from this row's.",
+
+    "NEXT-RUNG TRIGGER: none for this class on the path named above -- it sits at its ceiling there. What would move the ceiling itself is a call seam that receives a callable-typed carrier from binding resolution by construction rather than a binding by spelling it then interrogates.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "type_node_is_callable", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_nullary_local_callable_witness_test", decl_name: "nullary_parameter_callable_resolves", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_nullary_local_callable_witness_test", decl_name: "nullary_local_refuses_a_surplus_argument", field: WholeDeclaration },
+  ],
+}

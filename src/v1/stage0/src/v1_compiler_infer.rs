@@ -2382,7 +2382,7 @@ pub fn type_node_is_established(
 }
 
 pub fn type_node_is_callable(n: Rc<Node>) -> bool {
-    ((n.params.clone().len() as i64) > 0)
+    ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
 }
 
 pub fn brand_grounds_transparently_to(
@@ -7183,33 +7183,25 @@ pub fn function_value_call_named_arg_diags(
             let arity_diags = match callable_type.clone() {
                 Some(callable) => {
                     let param_count = (callable.params.clone().len() as i64);
-                    if (param_count.clone() > 0) {
+                    let supplied = (typed_args.clone().len() as i64);
+                    if (supplied.clone() > param_count.clone()) {
+                        match typed_args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(param_count.clone() as usize)
+                            .next()
                         {
-                            let supplied = (typed_args.clone().len() as i64);
-                            if (supplied.clone() > param_count.clone()) {
-                                match typed_args
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(param_count.clone() as usize)
-                                    .next()
-                                {
-                                    Some(overflow) => {
-                                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                                            Rc::new(CompilerDiagnostic::CallPositionalSurplus {
-                                                callee: func_name.clone(),
-                                                supplied: supplied.clone(),
-                                                capacity: param_count.clone(),
-                                                span: overflow.span.clone(),
-                                            }),
-                                            module_name.clone(),
-                                        )])
-                                    }
-                                    std::option::Option::None => Rc::new(vec![]),
-                                }
-                            } else {
-                                Rc::new(vec![])
-                            }
+                            Some(overflow) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::CallPositionalSurplus {
+                                    callee: func_name.clone(),
+                                    supplied: supplied.clone(),
+                                    capacity: param_count.clone(),
+                                    span: overflow.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )]),
+                            std::option::Option::None => Rc::new(vec![]),
                         }
                     } else {
                         Rc::new(vec![])
@@ -10401,8 +10393,7 @@ Rc::new(InferResult {
                         } else {
                             match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
                                 Some(binding) => Some(
-                                    if (((binding.resolved.clone().params.clone().len() as i64)
-                                        > 0)
+                                    if (type_node_is_callable(binding.resolved.clone())
                                         || !v1_rt::map_has(
                                             &scope.body_locals.clone(),
                                             func_name.clone(),
@@ -10442,7 +10433,7 @@ Rc::new(InferResult {
                         } else {
                             match local_call_view.clone() {
                                 Some(view) => {
-                                    if ((view.resolved.clone().params.clone().len() as i64) > 0) {
+                                    if type_node_is_callable(view.resolved.clone()) {
                                         Some(view.resolved.clone())
                                     } else {
                                         std::option::Option::None
@@ -11003,13 +10994,13 @@ Rc::new(InferResult {
                                 } else {
                                     {
                                         let callable_local = match crate::v1_compiler_infer_sigs::call_target_local_binding(call_target.clone()) {
-    Some(carried) => if ((carried.resolved.clone().params.clone().len() as i64) > 0) {
+    Some(carried) => if type_node_is_callable(carried.resolved.clone()) {
                                             Some(carried.resolved.clone())
                                         } else {
                                             std::option::Option::None
                                         },
     std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
-    Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
+    Some(binding) => if type_node_is_callable(binding.resolved.clone()) {
                                             Some(binding.resolved.clone())
                                         } else {
                                             std::option::Option::None

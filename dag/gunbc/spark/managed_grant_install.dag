@@ -70,6 +70,7 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grants_withheld,
   spark_managed_grants_install_unobserved,
+  spark_managed_grants_admitted_on_accepted_risk,
   SparkGrantInstallAdmission,
   spark_managed_grant_report,
   spark_managed_grant_standing_from_outcome,
@@ -665,6 +666,7 @@ type SparkGrantInstallRun {
   outcomes: List<SparkGrantInstallOutcome>
   withheld: List<SparkGrantInstallAdmission>
   unobserved: List<SparkGrantInstallAdmission>
+  admitted_on_accepted_risk: List<SparkGrantInstallAdmission>
 }
 
 fn spark_grant_install_host(
@@ -685,14 +687,50 @@ fn spark_grant_install_host(
       )),
     withheld: spark_managed_grants_withheld(outcome: outcome),
     unobserved: spark_managed_grants_install_unobserved(outcome: outcome),
+    admitted_on_accepted_risk: spark_managed_grants_admitted_on_accepted_risk(outcome: outcome),
   }
 }
 
+// THE RUN TEXT ENDS WITH WHAT IS STILL OWED. A run that installed a grant on accepted risk has an
+// obligation open after it greens; that fact is a typed list on the run (admitted_on_accepted_risk)
+// and this projection renders one line per entry so the receipt cannot read as clean. The verdict
+// below deliberately does not consult the list: the operator accepted the risk and proceeding is
+// the point; what must not happen is the receipt forgetting it.
+//
+// IT WAS IN THE REPORT TEXT AND NOT IN THE TYPE. Before this list existed the admission reached the
+// receipt only as prose -- standing_report already rendered "install=admitted-on-accepted-risk ...
+// outstanding=<obligation>" -- so the rendered text said the obligation was open while the typed run
+// said nothing, and every consumer that matches on the result rather than parsing a string read
+// the two runs as the same (raised by bright-boar-435 on the first cut of the acceptance row). A
+// rendered report is not a carrier, for the same reason DESIGN 4c gives for commentary: nothing
+// downstream can match on it.
 fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
   join(concat(
-    [run.standing_report],
-    map(run.outcomes, o => spark_grant_install_outcome_wire(outcome: o)),
+    concat(
+      [run.standing_report],
+      map(run.outcomes, o => spark_grant_install_outcome_wire(outcome: o)),
+    ),
+    map(run.admitted_on_accepted_risk, a => spark_grant_install_outstanding_wire(admission: a)),
   ), "")
+}
+
+fn spark_grant_install_outstanding_wire(admission: SparkGrantInstallAdmission) -> String {
+  match admission {
+    GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: _ } =>
+      join(["outstanding-after-install grant=", spark_managed_grant_wire(grant: g) as String, " obligation=", o as String, "\n"], "")
+    GrantInstallWithheld { grant: _, obligation: _ } => ""
+    GrantInstallAdmitted { grant: _ } => ""
+    GrantInstallStandingUnobserved { grant: _, cause: _ } => ""
+    GrantInstallNotNeeded => ""
+  }
+}
+
+// Whether the run, green or not, leaves a disclosure obligation open. A consumer that reads a green
+// verdict and wants to conclude "nothing outstanding" asks this and not the verdict. Its executing
+// consumer is spark_grant_install_ci_wet, whose receipt header carries the answer as
+// obligation_outstanding_after_install= so a fleet-converge log states it on its first line.
+fn spark_grant_install_run_leaves_obligation_outstanding(run: SparkGrantInstallRun) -> Bool {
+  run.admitted_on_accepted_risk.length() > 0
 }
 
 // THE VERDICT COMES FROM THE VARIANTS, never from the receipt text. This module's sibling records
@@ -790,7 +828,8 @@ fn spark_grant_install_ci_wet() -> ProcessExit
             administrator: spark_grant_install_administrator_standing(host: only),
           )
           let body = join([
-            "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
+            "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String,
+            " obligation_outstanding_after_install=", if spark_grant_install_run_leaves_obligation_outstanding(run: run) { "true" } else { "false" }, "\n",
             context_receipt,
             spark_grant_install_run_text(run: run),
           ], "")

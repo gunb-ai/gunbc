@@ -12,10 +12,16 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusCoverageSurplus,
   CorpusPopulationBelowFloor,
   CorpusSuspectObserved,
+  NewlyRedAfterSurplus,
+  NewlyRedBeforeSurplus,
+  NewlyRedComplete,
+  NewlyRedPathMismatch,
   corpus_gate,
   corpus_gate_disposition_over,
-  corpus_rows_for_paths
+  corpus_rows_for_paths,
+  newly_red_difference
 }
+import v2.lens.common.source_analysis_standing { SourceUnreadable }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.logic { Bool }
@@ -23,8 +29,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S CPU LINE, MEASURED PER FUNCTION.
-// The line is v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms, named rather
+// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S WORK ENVELOPE, MEASURED PER
+// FUNCTION. The figure is v2.workflow.required_floor required_floor_claim_work_envelope_ms, named rather
 // than transcribed; interpreted ingest of the five-line fixture below measures several times it,
 // so every predicate that reaches the ingest reports
 // interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of
@@ -87,6 +93,68 @@ fn a_clean_accumulating_fold_stays_clean_through_the_corpus_path() -> Bool {
   match fixture_rows() {
     Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
     _ => false
+  }
+}
+
+// THE A/B THAT SEPARATES THE LAMBDA SPELLING FROM EVERYTHING ELSE, AND IT IS THE ENROLLED
+// EVIDENCE FOR gunbc.recurring_failure_mode fold_shape_visible_to_no_lens. The two arrow fixtures
+// are byte-for-byte the fn-form fixtures above with `fn(acc, x) { .. }` rewritten
+// `(acc, x) => ..` and nothing else changed -- same callee, same ports, same combiner, same
+// planted copy. So the ONLY thing either predicate can be answering about is the spelling.
+//
+// BEFORE THE REPAIR the planted arrow subject reported NO suspect: v2.compiler.fold_lowering
+// searched for the ^dag_surface_fn_literal production alone, so an arrow-lambda step yielded no
+// carrier, the seam produced no Loop, and a quadratic identical to one the gate catches was
+// admitted in silence. The clean arrow subject reported no suspect too -- which is the whole
+// danger, because a lens that sees nothing and a lens that sees nothing wrong give the same
+// answer, and that is why the pair is a PAIR: after the repair the planted one is caught and the
+// clean one is still clean, which no blind traversal can do.
+//
+// PLAIN fns RATHER THAN test fns, on this file's own standing rather than a fresh judgement:
+// each reaches the interpreted ingest, which measures several times
+// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms and would report
+// interrupted_before_verdict. They pass by execution under claim_batch, same as their fn-form
+// siblings above, and dissolve on the same trigger.
+fn arrow_fixture_rows() -> List<CorpusFileRow> {
+  corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy_arrow.dag",
+    "test/fixture_roots/complexity_accumulator_copy/clean_linear_arrow.dag"
+  ])
+}
+
+fn a_planted_copied_accumulator_spelled_with_an_arrow_lambda_is_caught() -> Bool {
+  match arrow_fixture_rows() {
+    Cons { head: planted, tail: _ } => row_has_suspect(row: planted)
+    Empty => false
+  }
+}
+
+fn a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean() -> Bool {
+  match arrow_fixture_rows() {
+    Cons { head: _, tail: Cons { head: clean, tail: _ } } => row_scanned_without_suspect(row: clean)
+    _ => false
+  }
+}
+
+// THE STEP FORM MUST BE READ AT THE STEP ARGUMENT, AND THIS IS THE SUBJECT THAT SAYS SO
+// (review 65699). The outer step is an arrow lambda whose accumulator is `acc`; its BODY carries
+// an ordinary fn literal whose accumulator is `a`. `parse_subtree_find_production_captured` is a
+// whole-subtree PRE-ORDER FIRST MATCH, so a reading that searches the fold call for a step
+// production finds the INNER literal and builds a seam Loop whose body and carrier belong to it.
+// The copy planted on the OUTER carrier -- list_append(left: ..., right: acc) -- then goes
+// unseen, because `acc` is not the carrier the lens was handed.
+//
+// That is worse than the invisibility this lane repaired: an invisible site is silent, and this
+// one ANSWERS, confidently, about the wrong accumulator (DESIGN section 5, no fabricated
+// plausible output). Measured 0 on main AND 0 on this lane's first cut, 1 once the step form is
+// read from the `f:` argument and descends only the captured-child chain. It is the discriminator
+// for the search GRAIN, which no fixture differing only in lambda spelling can reach.
+fn a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step() -> Bool {
+  match corpus_rows_for_paths(paths: [
+    "test/fixture_roots/complexity_accumulator_copy/planted_copy_nested_arrow.dag"
+  ]) {
+    Cons { head: nested, tail: _ } => row_has_suspect(row: nested)
+    Empty => false
   }
 }
 
@@ -243,5 +311,70 @@ test fn a_complete_report_over_the_same_population_reaches_its_ordinary_verdict(
     CorpusPopulationBelowFloor { files: _, floor: _ } => false
     CorpusNoSuspectsObserved { files: _, refusal_sites: _, refusal_causes: _ } => false
     CorpusNotEstablishedObserved { rows: _ } => false
+  }
+}
+
+fn unmeasured_row(path: String) -> CorpusFileRow {
+  CorpusFileRow {
+    path: path,
+    standing: CorpusFileNotEstablished { cause: SourceUnreadable }
+  }
+}
+
+// THE ARROW-FORM CENSUS RECEIPT, AT THE GRAIN THAT CAN EXECUTE. The ingest that would colour a
+// real file is priced out of this lane; the join that decides "newly red" is not. Newly red is
+// scanned-suspect after AND scanned-zero before. Unmeasured is listed and is not red. A file
+// already red on main is not newly red.
+test fn a_file_red_only_after_the_repair_is_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 0)],
+    after: [scanned_row(path: planted_path, suspects: 1)]
+  ) {
+    NewlyRedComplete { newly_red: Cons { head: p, tail: Empty }, unmeasured: Empty } =>
+      p == planted_path
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn a_file_already_red_on_main_is_not_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 1)],
+    after: [scanned_row(path: planted_path, suspects: 3)]
+  ) {
+    NewlyRedComplete { newly_red: Empty, unmeasured: Empty } => true
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn an_unmeasured_before_arm_is_not_newly_red() -> Bool {
+  match newly_red_difference(
+    before: [unmeasured_row(path: planted_path)],
+    after: [scanned_row(path: planted_path, suspects: 1)]
+  ) {
+    NewlyRedComplete { newly_red: Empty, unmeasured: Cons { head: p, tail: Empty } } =>
+      p == planted_path
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedPathMismatch { before_path: _, after_path: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
+  }
+}
+
+test fn a_path_identity_mismatch_refuses_rather_than_joining_by_position() -> Bool {
+  match newly_red_difference(
+    before: [scanned_row(path: planted_path, suspects: 0)],
+    after: [scanned_row(path: clean_path, suspects: 1)]
+  ) {
+    NewlyRedPathMismatch { before_path: b, after_path: a } =>
+      (b == planted_path) && (a == clean_path)
+    NewlyRedComplete { newly_red: _, unmeasured: _ } => false
+    NewlyRedBeforeSurplus { path: _ } => false
+    NewlyRedAfterSurplus { path: _ } => false
   }
 }
