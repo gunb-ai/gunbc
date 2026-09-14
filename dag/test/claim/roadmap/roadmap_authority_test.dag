@@ -560,7 +560,7 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
 
 test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool {
   let prior = live_acceptance_event_history()
-  let recorded = first(
+  match first(
     prior |> filter(e =>
       match e {
         AcceptanceRecorded { receipt: r } =>
@@ -569,17 +569,20 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
           false
       }
     ),
-  )
-  match recorded {
-    AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-      false
-    AcceptanceRecorded { receipt } =>
-      match frontier_sets_from_events(events: concat(prior, [
-        AcceptanceRecorded { receipt: receipt },
-      ])) {
-        FrontierSetsProjectionRefused { detail } =>
-          detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
-        FrontierSetsProjected { accepted: _, withheld: _ } => false
+  ) {
+    Absent => false
+    Present { value: recorded } =>
+      match recorded {
+        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+          false
+        AcceptanceRecorded { receipt } =>
+          match frontier_sets_from_events(events: concat(prior, [
+            AcceptanceRecorded { receipt: receipt },
+          ])) {
+            FrontierSetsProjectionRefused { detail } =>
+              detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
+            FrontierSetsProjected { accepted: _, withheld: _ } => false
+          }
       }
   }
 }
