@@ -57,7 +57,7 @@ data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = 
 
     "A CONSEQUENCE FOR A NEIGHBOURING TYPE, RECORDED HERE SO THE NEXT LANE INHERITS IT RATHER THAN REDISCOVERING IT (this row does not author the change; `v2.workflow.floor_pure_producer_share` owns that type and a second lane editing it is how the conflict happens).",
 
-    "`ShareRefusalVerdict` today has three arms -- `MeasuredServeAboveRecompute`, `NoMeasuredEffectOverItsConsumers`, `SupersededBySingleAuthorityRepair` -- and all three answer a COST question: is serving cheaper than recomputing.",
+    "`ShareRefusalVerdict` CARRIED three arms when this row was written -- `MeasuredServeAboveRecompute`, `NoMeasuredEffectOverItsConsumers`, `SupersededBySingleAuthorityRepair` -- and all three answer a COST question: is serving cheaper than recomputing. IT NOW CARRIES FOUR (gunbc#11273): `KeyOmitsAnInputTheValueDependsOn` was added for a producer whose memo key does not cover an input its value depends on. That arm answers a SOUNDNESS question, not a cost one, so the observation this row rests on -- that every arm then present was a cost verdict -- is unchanged in substance and is restated here rather than left reading as a live census of the type.",
 
     "A `ByteBudgetExceeded` store refusal answers a CAPACITY question -- can this value be a shared value AT ALL -- and it is decided at publication, BEFORE any serving cost exists to compare.",
 
@@ -65,7 +65,7 @@ data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = 
 
     "Worse, `refused_row_carriers_transfer` treats `MeasuredServeAboveRecompute` as a measured cost that TRAVELS to other producers' consumers, so the fork would refuse unrelated candidates on a harm nobody observed.",
 
-    "So that type needs a fourth arm for capacity, and until it exists a candidate refused this way is left PENDING rather than filed under a verdict that does not fit it.",
+    "So that type needs a CAPACITY arm, and until it exists a candidate refused this way is left PENDING rather than filed under a verdict that does not fit it. AN EARLIER REVISION OF THIS SENTENCE CALLED IT THE FOURTH ARM AND THAT ORDINAL IS NOW WRONG (review 65811): gunbc#11273 landed a fourth arm that is NOT this one, so a later lane reading for an open fourth slot would file its capacity row against a slot already taken and conclude the obligation was met. The obligation is the CAPACITY arm by its subject, whatever its position in the coproduct.",
 
     "AND THE READING THAT MAKES THIS MORE THAN A LOGGING DEFECT: the specimen's refusal is the evidence that the value was never a sharing candidate.",
 
