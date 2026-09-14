@@ -323,6 +323,17 @@ pub mod std_workspace_artifact;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod test_claim_ownership_branch_read_witness_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod v1_compiler_annotation_bind;
 #[allow(
     unused_imports,
