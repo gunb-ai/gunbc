@@ -271,7 +271,7 @@ data vllm_d2d649e6_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
   final_base_image: "nvidia/cuda:13.0.2-base-ubuntu24.04" as NonEmptyStr,
   python_version: "3.12" as NonEmptyStr,
   torch_version: "2.13.0" as NonEmptyStr,
-  flashinfer_version: "0.6.18.post1" as NonEmptyStr,
+  flashinfer_version: flashinfer_0_6_18_post1_version,
   torch_cuda_arch_list: ["8.0" as NonEmptyStr, "8.7" as NonEmptyStr, "8.9" as NonEmptyStr, "9.0" as NonEmptyStr, "10.0" as NonEmptyStr, "11.0" as NonEmptyStr, "12.0" as NonEmptyStr],
   max_jobs: 16,
   nvcc_threads: 8,
