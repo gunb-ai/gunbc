@@ -66,15 +66,6 @@ fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -
   }
 }
 
-fn dcc_compile_report_arm(report: DccCompileReport) -> String {
-  match report {
-    SubjectGreen => "SubjectGreen"
-    SubjectRed => "SubjectRed"
-    OutputWriteRefused { cause: _ } => "OutputWriteRefused"
-    RefusedBeforeSubject { earlier_phase: p, cause: _ } => concat("RefusedBeforeSubject:", p)
-  }
-}
-
 fn dcc_host_refused_before_subject(cause: String) -> DccCompileReport {
   RefusedBeforeSubject { earlier_phase: dcc_instrument_earlier_phase, cause: cause }
 }
