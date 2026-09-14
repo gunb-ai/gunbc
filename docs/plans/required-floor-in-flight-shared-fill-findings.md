@@ -4,6 +4,26 @@ Status: characterization only. This record establishes the mechanism behind the
 `lens_registry_required_ids_resolve_holds` interruption. It does not propose or authorize a
 change to the required floor's cost model.
 
+> **HALF OF THIS DOCUMENT'S SUBJECT NO LONGER EXISTS (2026-09-12).** The required floor's claim
+> ceiling moved off the CPU clock onto eval steps and CPU became observed-only for every claim
+> (operator ruling via fierce-lark-661; `v2.workflow.required_floor`
+> `claim_eval_step_budget_for_identity` and `claim_cost_basis_standing`), and
+> `required_floor_claim_cpu_safety_limit_ms` is deleted. **Every sentence below about a 500ms CPU
+> deadline, about what crosses it, and about the merge-blocking comparison over marginal CPU is
+> superseded** — the 500 survives only as `required_floor_claim_work_envelope_ms`, a policy in
+> milliseconds of work that no clock enforces directly.
+>
+> **The shared-fill half is NOT superseded and is why this document is retained**: the ownership
+> boundary, the abandon path, and the marginal-vs-fill attribution are unchanged, are still the
+> basis of the wall deadline's derivation, and are what `required-floor-in-flight-shared-fill-design.md`
+> cites. The eval-step count is netted of fill exactly as CPU is, so the attribution argument
+> transfers to the new ceiling without restatement.
+>
+> Its registered dissolution trigger (`gunbc.doc_graph_roots` `hand_authored_doc_bind_incomings`)
+> has therefore FIRED ON ONE CONJUNCT AND NOT THE OTHER. That is disclosed here rather than
+> resolved silently in either direction: retiring the document would delete the live half, and
+> saying nothing would leave a reader deriving a deadline that no longer exists.
+
 ## Finding
 
 The required floor applies its 500ms CPU ceiling uniformly to a claim's **marginal** CPU. The
@@ -76,7 +96,7 @@ population authority. The comparison is also cross-head, so it cannot separate t
 machine, scheduling, or fill-order variance. This document therefore does not transcribe the
 derived distribution or promote either run's threshold membership into a roster. The two lines in
 the receipt remain distinct: `cost_line_ms` is diagnostic, while
-`required_floor_claim_cpu_safety_limit_ms` is the merge-blocking deadline over marginal CPU.
+`required_floor_claim_cpu_safety_limit_ms` WAS the merge-blocking deadline over marginal CPU, until the banner above superseded it.
 
 ## Ownership at the commit boundary
 

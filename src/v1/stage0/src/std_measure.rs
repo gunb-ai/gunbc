@@ -444,6 +444,8 @@ pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
+pub type EvalStepCount = Rc<Measure<Count, One, i64>>;
+
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, i64>>;
@@ -1205,6 +1207,17 @@ pub fn parameter_count_value(p: ParameterCount) -> Nat {
     measure_count(p.clone())
 }
 
+pub fn eval_step_count(count: Nat) -> EvalStepCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_step_count_value(s: EvalStepCount) -> Nat {
+    measure_count(s.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1304,6 +1317,19 @@ pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
 }
 
 pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type EvalStepsPerMillisecond = Rc<Measure<Frequency, Kilo, i64>>;
+
+pub fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
     measure_count(r.clone())
 }
 

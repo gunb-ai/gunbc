@@ -321,9 +321,23 @@ type SparkGrantInstallBasis
   = InstallBasisAbsent
   | OperatorAcceptedUnresolvedDisclosureRisk { actor: NonEmptyStr, decided_on: NonEmptyStr, accepted_for: SparkManagedGrant }
 
-// THE ROW AN OPERATOR DECISION EDITS. Absent until the operator decides to accept the risk or waits for
-// the reader.
-data spark_managed_grant_install_basis: SparkGrantInstallBasis = InstallBasisAbsent
+// THE ROW AN OPERATOR DECISION EDITS, AND THE DECISION THAT EDITED IT. On 2026-09-14 the operator
+// answered the escalation raised when the inspect grant landed withheld (#11326): APPROVE installing
+// InspectServingContainer for the pinned pair container, on the strength of a one-off read of the
+// base image's configuration taken outside this repository. That read is NOT transcribed here and
+// this row does NOT classify anything -- it is an attributable decision to proceed while the
+// disclosure stays unestablished, which is exactly what the accepted-risk arm means. The
+// obligation spark_inspect_grant_disclosure_unestablished_obligation remains outstanding and is
+// still owed by the image-configuration reader and by the live inspect classification; an admission
+// on this basis carries that obligation into the receipt rather than retiring it.
+//
+// The actor is the operator's fleet login, read from the account model rather than spelled here, so
+// the decision is attributed to the same principal every other operator act in this lane names.
+data spark_managed_grant_install_basis: SparkGrantInstallBasis = OperatorAcceptedUnresolvedDisclosureRisk {
+  actor: fleet_bootstrap_principal_login(),
+  decided_on: "2026-09-14" as NonEmptyStr,
+  accepted_for: InspectServingContainer { container: spark_pair_container_name },
+}
 
 // Whether a basis names this grant, joined on the derived sudoers command: two grants authorizing the
 // same words are the same authorization.
