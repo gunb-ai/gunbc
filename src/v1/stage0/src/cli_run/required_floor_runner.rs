@@ -4453,7 +4453,16 @@ pub(crate) fn install_pure_producer_share(
                     warm_observation,
                 ));
             }
-            Err(why) => {
+            Err(v1_interpreter::PureProducerWarmRefusal::DispatchedEffect { effects }) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmDispatchedEffect \
+                     producer={qualified} effects={effects} — the warm row reached the world, \
+                     so the value depends on an input its empty argument row cannot represent; \
+                     roster the read as a prepared effect input and the fold as a carried-input \
+                     warm row instead"
+                ));
+            }
+            Err(v1_interpreter::PureProducerWarmRefusal::Failed(why)) => {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
                      producer={qualified} — {why}"
@@ -9493,6 +9502,80 @@ mod pure_producer_share_tests {
         let _: u64 = observed.cpu_ms;
         let _: u64 = observed.wall_ms;
         let _: u64 = observed.rss_growth_bytes;
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE RED FOR THE CONTENT-BLIND WARM: a nullary row that performs one confirmed checkout
+    /// read, rostered as a PLAIN warm row. Before the guard the warm path stored it under the
+    /// empty argument row — `Stored`, no refusal — so a changed file would have been served the
+    /// old value by every later claim. The read is a real hermetic checkout-input dispatch (the
+    /// test's cwd is inside the checkout and `Cargo.toml` is committed), not a stubbed counter,
+    /// so the wall is exercised on the path the floor runs. The positive control is
+    /// `a_carried_roster_warms_and_stores_its_nullary_rows`: a pure nullary row still stores.
+    #[test]
+    fn a_plain_warm_row_that_dispatches_an_effect_stops_the_line() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             service Filesystem {\n\
+               operation Read {\n\
+                 input { path: String }\n\
+                 output {\n\
+                   content: String from \"content\"\n\
+                   success: Bool from \"read_success\"\n\
+                   error: String from \"error\"\n\
+                   error_kind: String from \"error_kind\"\n\
+                 }\n\
+                 readonly\n\
+                 transport file { path: \"{path}\" }\n\
+               }\n\
+             }\n\
+             fn reads_checkout() -> String {\n\
+               let read = Filesystem.Read(path: \"Cargo.toml\")\n\
+               read.content\n\
+             }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.reads_checkout\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             type CarriedInputDependence =\n\
+                 BoundParameter { parameter: String }\n\
+               | ImplicitAcquisition\n\
+             type PreparedEffectInput {\n\
+               acquisition: String\n\
+               checkout_input: String\n\
+               ground: String\n\
+               measurement: String\n\
+             }\n\
+             type CarriedInputWarmRow {\n\
+               producer: String\n\
+               carried_input: String\n\
+               dependence: CarriedInputDependence\n\
+               measurement: String\n\
+             }\n\
+             data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = []\n\
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("an effectful plain warm row must refuse, never store content-blind");
+        assert!(
+            err.contains("cause=PureProducerShareWarmDispatchedEffect")
+                && err.contains("producer=v2.workflow.floor_pure_producer_share.reads_checkout")
+                && err.contains("effects=1"),
+            "the refusal must name the cause, the row and the dispatch it saw: {err}"
+        );
+        let (stores, _) = v1_interpreter::cross_claim_pure_memo_counts();
+        assert_eq!(stores, 0, "nothing may be retained for the refused row");
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 

@@ -2299,6 +2299,14 @@ fn store_cross_claim_pure_memo(
     outcome
 }
 
+/// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
+/// dispatched effect is a roster defect with its own remedy, not an evaluation failure.
+#[derive(Debug)]
+pub enum PureProducerWarmRefusal {
+    DispatchedEffect { effects: u64 },
+    Failed(String),
+}
+
 /// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
 /// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
 /// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
@@ -2306,22 +2314,41 @@ fn store_cross_claim_pure_memo(
 pub fn warm_cross_claim_pure_producer(
     ctx: &InterpContext,
     qualified_fn: &str,
-) -> Result<CrossClaimStoreOutcome, String> {
+) -> Result<CrossClaimStoreOutcome, PureProducerWarmRefusal> {
     with_active_ctx(ctx, || {
         let fn_node = ctx
             .lookup_fn(qualified_fn)
-            .ok_or_else(|| format!("no declaration named '{qualified_fn}' in this frame"))?
+            .ok_or_else(|| {
+                PureProducerWarmRefusal::Failed(format!(
+                    "no declaration named '{qualified_fn}' in this frame"
+                ))
+            })?
             .clone();
         let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
         if !cross_claim_pure_admitted(&fn_node, bare) {
-            return Err(format!(
+            return Err(PureProducerWarmRefusal::Failed(format!(
                 "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
-            ));
+            )));
         }
         let guard = CrossClaimFillGuard::enter(bare);
         let env = Env::empty();
+        // THE SAME GUARD THE FOLD PATH HOLDS. The claim-time store refuses to publish a value
+        // whose evaluation dispatched an effect, because the key `(fn node, argument row)` cannot
+        // see what the effect read. The warm path stored without that guard, so an effectful
+        // nullary row rostered as a plain warm row was stored CONTENT-BLIND under the empty
+        // argument row — the key omitting an input the value depends on. A dispatch here is a
+        // roster defect (the row belongs in the prepared-effect-input rows, where the read is
+        // carried and keyed), so it stops the line rather than declining silently.
+        let effects_before = ctx.effect_dispatch_count.get();
         let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
-            .map_err(|e| format!("{qualified_fn}: {e}"))?;
+            .map_err(|e| PureProducerWarmRefusal::Failed(format!("{qualified_fn}: {e}")))?;
+        let effects = ctx
+            .effect_dispatch_count
+            .get()
+            .saturating_sub(effects_before);
+        if effects != 0 {
+            return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
+        }
         Ok(store_cross_claim_pure_memo(
             ctx,
             &fn_node,
