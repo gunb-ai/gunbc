@@ -108,7 +108,7 @@ while IFS= read -r path || [[ -n "$path" ]]; do
   set +e
   (
     cd "$ARM_ROOT"
-    systemd-run --user --scope --quiet --collect --wait \
+    systemd-run --user --scope --quiet --collect \
       -p "MemoryMax=${MEMORY_MAX}" \
       -p "RuntimeMaxSec=${RUNTIME_MAX}" \
       -- env \
@@ -118,7 +118,7 @@ while IFS= read -r path || [[ -n "$path" ]]; do
         bash -c '
           set +e
           if [ "$READBACK_FIRST" = 1 ]; then
-            echo "MEMORY_MAX_READBACK=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo UNREADABLE)"
+            echo "MEMORY_MAX_READBACK=$(cg=$(awk -F: '/^0::/{print $3}' /proc/self/cgroup); : ${cg:=/}; cat /sys/fs/cgroup${cg}/memory.max 2>/dev/null || echo UNREADABLE)"
           fi
           exec /usr/bin/time -v "$GUNBC" run \
             --source-root dag --source-root src/v2 \

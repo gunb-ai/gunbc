@@ -46,7 +46,10 @@ RUN A SLICE
   bash relay/arrow-census/run-slice.sh <arm-root> <file-list-slice> <out-dir>
   Each file: systemd-run --user --scope -p MemoryMax=16G -p RuntimeMaxSec=1200
              /usr/bin/time -v <per-file command>
-  First file in the slice reads /sys/fs/cgroup/memory.max inside the scope (written once to out-dir/memory.max.readback).
+  First file in the slice reads the SCOPE cgroup memory.max
+  (/sys/fs/cgroup/<0:: path>/memory.max, e.g. /sys/fs/cgroup//memory.max) — not the root
+  cgroup file, which prints max regardless of MemoryMax=. systemd 255: do not pass --wait
+  with --scope.
   Appends one TSV row per file to out-dir/runs.tsv
   Columns: path	reason	wall_sec	cpu_user_sec	cpu_sys_sec	max_rss_kb	status	tsv
   reason is one of: ok | suspect | timeout | oom | other
