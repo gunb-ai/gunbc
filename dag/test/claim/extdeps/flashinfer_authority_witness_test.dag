@@ -7,10 +7,10 @@ import extdeps.flashinfer.flashinfer {
   FlashInferWheel, FlashInferAcquisition, FlashInferPublishedRelease, FlashInferSourceRevision,
   FlashInferPyPi, FlashInferProjectStable, FlashInferProjectNightly,
   flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_version, flashinfer_0_6_18_post1_wheels,
-  flashinfer_published_version, flashinfer_wheel_for, flashinfer_wheel_platform_tag,
-  flashinfer_reachable_by_upstream_dockerfile,
+  flashinfer_published_version, flashinfer_wheel_platform_tag,
+  flashinfer_channel_is_referenced_by_upstream_dockerfile,
   FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused,
-  FlashInferWheelRefusal, FlashInferWheelDigestMalformed, FlashInferWheelFilenameNotForPackage,
+  FlashInferWheelRefusal, FlashInferWheelFilenameMalformed, FlashInferWheelDigestMalformed, FlashInferWheelFilenameNotForPackage,
   FlashInferWheelFilenameNotForVersion, FlashInferWheelAcquisitionUnpublished,
   admit_flashinfer_wheel,
 }
@@ -127,19 +127,60 @@ test fn an_unpublished_source_revision_refuses_a_wheel_pin_and_has_no_version() 
   })
 }
 
-// THE ARCHITECTURE AND CUDA BUILD ARE IN THE FILENAME AND ONLY THE JIT-CACHE CARRIES THEM.
+fn platform_tag_is(w: FlashInferWheel, tag: String) -> Bool {
+  match flashinfer_wheel_platform_tag(w: w) {
+    Present { value: t } => t == tag
+    Absent => false
+  }
+}
+
+fn rows_for(package: String) -> List<FlashInferWheel> {
+  filter(flashinfer_0_6_18_post1_wheels, w => (w.package as String) == package)
+}
+
+// THE ARCHITECTURE AND CUDA BUILD ARE IN THE FILENAME AND ONLY THE JIT-CACHE CARRIES THEM. Each package has
+// exactly one row in the pin set, asserted rather than assumed: FlashInfer publishes several platform and
+// CUDA variants per package and version, so a second jit-cache row would make "the jit-cache wheel" a
+// question row order cannot answer, and this goes red instead of reading whichever row came first.
 test fn only_the_jit_cache_wheel_is_cuda_and_architecture_specific() -> Bool {
-  let jit = flashinfer_wheel_for(wheels: flashinfer_0_6_18_post1_wheels, package: "flashinfer-jit-cache" as NonEmptyStr)
-  let python = flashinfer_wheel_for(wheels: flashinfer_0_6_18_post1_wheels, package: "flashinfer-python" as NonEmptyStr)
-  (match jit {
-    Present { value: w } =>
-      flashinfer_wheel_platform_tag(w: w) == "manylinux_2_28_aarch64"
-        && string_contains(s: w.filename as String, pattern: "+cu130-")
+  let jit = rows_for(package: "flashinfer-jit-cache")
+  let python = rows_for(package: "flashinfer-python")
+  count(jit) == 1
+    && all(jit, w => platform_tag_is(w: w, tag: "manylinux_2_28_aarch64") && string_contains(s: w.filename as String, pattern: "+cu130-"))
+    && count(python) == 1
+    && all(python, w => platform_tag_is(w: w, tag: "any"))
+}
+
+fn refuses_as_malformed(filename: NonEmptyStr) -> Bool {
+  match refusal_of(a: admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: filename,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+  )) {
+    Present { value: FlashInferWheelFilenameMalformed { filename: _ } } => true
+    Present { value: _ } => false
     Absent => false
-  }) && (match python {
-    Present { value: w } => flashinfer_wheel_platform_tag(w: w) == "any"
-    Absent => false
-  })
+  }
+}
+
+// A STRING THAT BEGINS WITH THE DISTRIBUTION AND VERSION IS NOT A WHEEL FILENAME. Each fixture carries the
+// right distribution and version prefix, so only completeness decides: no `.whl` suffix, too few fields, an
+// empty field, and a build tag that does not begin with a digit all refuse as malformed. The positive
+// control is a well-formed six-field filename with a numeric build tag, which admits -- so the refusals are
+// not a mint that has stopped accepting six fields.
+test fn an_incomplete_wheel_filename_refuses_as_malformed() -> Bool {
+  refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-garbage" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none.whl" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none-any" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3--any.whl" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-x1-py3-none-any.whl" as NonEmptyStr)
+    && admitted(a: admit_flashinfer_wheel(
+      acquisition: flashinfer_0_6_18_post1,
+      package: "flashinfer-python" as NonEmptyStr,
+      filename: "flashinfer_python-0.6.18.post1-1-py3-none-any.whl" as NonEmptyStr,
+      sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+    ))
 }
 
 // THE CONSUMER READS THE VERSION FROM THIS AUTHORITY: both cited vLLM recipes carry the same spelling the
@@ -153,10 +194,12 @@ test fn the_vllm_recipes_pin_the_authority_release_version() -> Bool {
     })
 }
 
-// A STABLE-INDEX RELEASE IS REACHABLE THROUGH UPSTREAM'S BUILD ARGUMENT; A NIGHTLY IS NOT.
-test fn a_stable_release_is_reachable_by_the_upstream_dockerfile_and_a_nightly_is_not() -> Bool {
-  flashinfer_reachable_by_upstream_dockerfile(a: flashinfer_0_6_18_post1)
-    && !flashinfer_reachable_by_upstream_dockerfile(a: FlashInferPublishedRelease {
+// THE STABLE CHANNEL IS ONE UPSTREAM'S DOCKERFILE NAMES; THE NIGHTLY CHANNEL IS NOT. This is channel
+// recognition only -- it asserts nothing about whether a version publishes the wheel population an image
+// needs.
+test fn the_stable_channel_is_referenced_by_the_upstream_dockerfile_and_the_nightly_is_not() -> Bool {
+  flashinfer_channel_is_referenced_by_upstream_dockerfile(a: flashinfer_0_6_18_post1)
+    && !flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferPublishedRelease {
       version: "0.7.0.dev20260910" as NonEmptyStr,
       channel: FlashInferProjectNightly,
       index: "flashinfer.ai/whl/nightly" as NonEmptyStr,

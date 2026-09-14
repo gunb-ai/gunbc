@@ -117,34 +117,87 @@ data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
   },
 ]
 
-// SELECTING ONE WHEEL BY PACKAGE, so a caller wanting the jit-cache does not index a list by position. A
-// package the pin set does not carry is Absent, a question worth being able to ask.
-fn flashinfer_wheel_for(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> FlashInferWheel? {
-  (filter(wheels, w => (w.package as String) == (package as String))).first()
+// THE FIELDS OF A COMPLETE WHEEL FILENAME (binary distribution format, PEP 427,
+// packaging.python.org/en/latest/specifications/binary-distribution-format/):
+// `{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl`. The version field keeps its local
+// label (`0.6.18.post1+cu130`), because that label is where the CUDA build lives; the optional build tag
+// is validated and not carried, since nothing in this module selects on it.
+type FlashInferWheelFilenameFields {
+  distribution: String
+  version: String
+  python: String
+  abi: String
+  platform: String
 }
 
-// THE PLATFORM TAG IS THE LAST DASH-SEPARATED FIELD BEFORE `.whl` (binary distribution format,
-// packaging.python.org/en/latest/specifications/binary-distribution-format/). `any` for the pure-python
-// wheels; `manylinux_2_28_aarch64` for the aarch64 jit-cache build.
-fn flashinfer_wheel_platform_tag(w: FlashInferWheel) -> String {
-  let stem = match get(xs: split(s: w.filename as String, separator: ".whl"), index: 0) {
-    Present { value: s } => s
-    Absent => ""
-  }
-  let fields = split(s: stem, separator: "-")
-  match get(xs: fields, index: count(fields) - 1) {
-    Present { value: last } => last
-    Absent => ""
+// A FILENAME IS COMPLETE ONLY WITH THE `.whl` SUFFIX, FIVE OR SIX NON-EMPTY DASH-SEPARATED FIELDS, AND A
+// BUILD TAG (the sixth-field case) THAT BEGINS WITH A DIGIT. Anything else is Absent: a string that merely
+// begins with a distribution and a version is not a wheel filename.
+fn flashinfer_wheel_filename_fields(filename: String) -> FlashInferWheelFilenameFields? {
+  if !ends_with(s: filename, suffix: ".whl") || string_length(s: filename) <= 4 {
+    none
+  } else {
+    let fields = split(s: substring(s: filename, start: 0, end: string_length(s: filename) - 4), separator: "-")
+    let n = count(fields)
+    if !(n == 5 || n == 6) || !all(fields, f => string_length(s: f) > 0) {
+      none
+    } else {
+      let offset = n - 5
+      let build_ok = if n == 6 {
+        match get(xs: fields, index: 2) {
+          Present { value: b } =>
+            code_point(substring(s: b, start: 0, end: 1)) >= 48 && code_point(substring(s: b, start: 0, end: 1)) <= 57
+          Absent => false
+        }
+      } else { true }
+      if !build_ok {
+        none
+      } else {
+        match get(xs: fields, index: 0) {
+          Absent => none
+          Present { value: distribution } => match get(xs: fields, index: 1) {
+            Absent => none
+            Present { value: version } => match get(xs: fields, index: 2 + offset) {
+              Absent => none
+              Present { value: python } => match get(xs: fields, index: 3 + offset) {
+                Absent => none
+                Present { value: abi } => match get(xs: fields, index: 4 + offset) {
+                  Absent => none
+                  Present { value: platform } => Present { value: FlashInferWheelFilenameFields {
+                    distribution: distribution,
+                    version: version,
+                    python: python,
+                    abi: abi,
+                    platform: platform,
+                  } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 
-// WHY A WHEEL ROW REFUSES, one reason per distinct repair. A digest that is not 64 lowercase hex digits
-// is a transcription error; a filename whose distribution segment is not the package's is a row pasted
+// THE PLATFORM TAG OF A WHEEL ROW: `any` for the pure-python wheels, `manylinux_2_28_aarch64` for the
+// aarch64 jit-cache build. Absent when the row's filename is not a complete wheel filename, rather than an
+// empty string standing in for a tag that was never read.
+fn flashinfer_wheel_platform_tag(w: FlashInferWheel) -> String? {
+  match flashinfer_wheel_filename_fields(filename: w.filename as String) {
+    Present { value: f } => Present { value: f.platform }
+    Absent => none
+  }
+}
+
+// WHY A WHEEL ROW REFUSES, one reason per distinct repair. A filename that is not a complete wheel filename
+// is not an artifact name at all; a digest that is not 64 lowercase hex digits is a transcription error; a filename whose distribution segment is not the package's is a row pasted
 // under the wrong package; a filename that does not carry the release version is a row from another
 // release; and a source revision has no published wheels at all, so pinning one against it is a category
 // error rather than a missing row.
 type FlashInferWheelRefusal
-  = FlashInferWheelDigestMalformed { digest: String }
+  = FlashInferWheelFilenameMalformed { filename: NonEmptyStr }
+  | FlashInferWheelDigestMalformed { digest: String }
   | FlashInferWheelFilenameNotForPackage { package: NonEmptyStr, filename: NonEmptyStr }
   | FlashInferWheelFilenameNotForVersion { version: NonEmptyStr, filename: NonEmptyStr }
   | FlashInferWheelAcquisitionUnpublished { revision: NonEmptyStr }
@@ -159,10 +212,10 @@ fn flashinfer_wheel_distribution_segment(package: NonEmptyStr) -> String {
   join(split(s: join(split(s: package as String, separator: "."), "_"), separator: "-"), "_")
 }
 
-// THE ONLY MINT FOR A WHEEL ROW FROM UNTRUSTED TEXT. The filename must begin with
-// `<distribution>-<version>` followed by the next field separator (`-`) or a local version label (`+`),
-// so `0.6.18` does not admit a `0.6.18.post1` file and `flashinfer-python` does not admit a
-// `flashinfer_python_extra` file.
+// THE ONLY MINT FOR A WHEEL ROW FROM UNTRUSTED TEXT. The filename must first parse as a complete wheel
+// filename; then its distribution field must equal the package's normalized segment, and its version field
+// must be the release version exactly or that version followed by a local label (`+`), so `0.6.18` does not
+// admit a `0.6.18.post1` file and `flashinfer-python` does not admit a `flashinfer_python_extra` file.
 fn admit_flashinfer_wheel(
   acquisition: FlashInferAcquisition,
   package: NonEmptyStr,
@@ -173,28 +226,32 @@ fn admit_flashinfer_wheel(
     FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
       FlashInferWheelRefused { refusal: FlashInferWheelAcquisitionUnpublished { revision: r } }
     FlashInferPublishedRelease { version: v, channel: _, index: _ } =>
-      if !starts_with(s: filename as String, prefix: join([flashinfer_wheel_distribution_segment(package: package), "-"], "")) {
-        FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForPackage { package: package, filename: filename } }
-      } else if !(starts_with(s: filename as String, prefix: join([flashinfer_wheel_distribution_segment(package: package), "-", v as String, "-"], ""))
-          || starts_with(s: filename as String, prefix: join([flashinfer_wheel_distribution_segment(package: package), "-", v as String, "+"], ""))) {
-        FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForVersion { version: v, filename: filename } }
-      } else {
-        match sha256_hex_digest(hex: sha256_hex) {
-          Absent => FlashInferWheelRefused { refusal: FlashInferWheelDigestMalformed { digest: sha256_hex } }
-          Present { value: d } =>
-            FlashInferWheelAdmitted { wheel: FlashInferWheel { package: package, filename: filename, sha256: d } }
-        }
+      match flashinfer_wheel_filename_fields(filename: filename as String) {
+        Absent => FlashInferWheelRefused { refusal: FlashInferWheelFilenameMalformed { filename: filename } }
+        Present { value: fields } =>
+          if fields.distribution != flashinfer_wheel_distribution_segment(package: package) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForPackage { package: package, filename: filename } }
+          } else if !(fields.version == (v as String) || starts_with(s: fields.version, prefix: join([v as String, "+"], ""))) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForVersion { version: v, filename: filename } }
+          } else {
+            match sha256_hex_digest(hex: sha256_hex) {
+              Absent => FlashInferWheelRefused { refusal: FlashInferWheelDigestMalformed { digest: sha256_hex } }
+              Present { value: d } =>
+                FlashInferWheelAdmitted { wheel: FlashInferWheel { package: package, filename: filename, sha256: d } }
+            }
+          }
       }
   }
 }
 
-// UPSTREAM vLLM's DOCKERFILE VARIES ONLY THE VERSION AGAINST HARDCODED INDEXES. At both vLLM revisions
+// UPSTREAM vLLM's DOCKERFILE REFERENCES ONLY THE PyPI AND STABLE-INDEX CHANNELS. At both vLLM revisions
 // cited above, docker/Dockerfile installs `flashinfer-jit-cache==${FLASHINFER_VERSION}` with
 // `--index-url https://flashinfer.ai/whl/cu<major><minor>` and requirements/cuda.txt uses
-// `--extra-index-url https://flashinfer.ai/whl/`. So a PyPI or stable-index release is reachable through
-// that argument, while a nightly -- a published release on an index the Dockerfile never names -- and a
-// source revision are not.
-fn flashinfer_reachable_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
+// `--extra-index-url https://flashinfer.ai/whl/`. This answers only whether an acquisition's CHANNEL is one
+// those files name: the nightly index and a source revision are not. It does not establish that a given
+// version publishes flashinfer-python, flashinfer-cubin and flashinfer-jit-cache in the variant an image
+// needs, so a true here is not reachability of the release.
+fn flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
   match a {
     FlashInferPublishedRelease { version: _, channel: c, index: _ } =>
       match c {
