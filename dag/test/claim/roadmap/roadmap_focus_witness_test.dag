@@ -9,11 +9,12 @@ import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import gunbc.roadmap_authority {
-  active_roadmap_nodes_for_accepted,
-  active_roadmap_edges_for_accepted,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
+  active_roadmap_nodes_projection,
+  ActiveRoadmapNodesProjected,
+  ActiveRoadmapNodesProjectionRefused,
+  active_roadmap_edges_projection,
+  ActiveRoadmapEdgesProjected,
+  ActiveRoadmapEdgesProjectionRefused,
   roadmap_focus_selection,
 }
 import gunbc.roadmap_focus {
@@ -47,18 +48,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // check and still look correct on the focused page.
 
 fn all_nodes() -> List<RoadmapNode> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted)
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+  match active_roadmap_nodes_projection() {
+    ActiveRoadmapNodesProjectionRefused { detail: _ } => []
+    ActiveRoadmapNodesProjected { nodes: nodes } => nodes
   }
 }
 
 fn active_roadmap_edges() -> List<RoadmapEdge> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_edges_for_accepted(accepted: accepted)
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+  match active_roadmap_edges_projection() {
+    ActiveRoadmapEdgesProjectionRefused { detail: _ } => []
+    ActiveRoadmapEdgesProjected { edges: edges } => edges
   }
 }
 
