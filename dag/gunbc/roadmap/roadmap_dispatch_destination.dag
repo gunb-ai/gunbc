@@ -343,13 +343,14 @@ type AttemptSubjectAdmission
 // identity and join through the same functions the consumers will import. This establishes
 // runtime refusal only, not private production consumption or an unforgeable record constructor.
 // The frontier covers the types above and the mint/field/identity/join functions below.
-data attempt_admission_subject_production_frontier: FrontierRow = frontier_row_decl(
+// census_closure_frontier_row_groups enrolls these rows for dissolution_census to fold.
+data attempt_admission_subject_frontier_rows: List<FrontierRow> = [frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.roadmap_dispatch_destination", decl_name: "AttemptAdmissionSubject"),
   reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads it; gunbc-private#60 consumes it only after its coordinated recut, not in this closure",
   dissolution: unbound_dissolution(
     description: "strategy.plan_item_dispatch on the private recut stores AttemptAdmissionSubject as its durable admitted subject, imports PublicRevisionStanding and public_revision_standing_text instead of defining them, derives contract identity from attempt_admission_subject_fields, and joins through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
   ),
-)
+)]
 
 fn admit_attempt_subject(
   node: RoadmapNodeIdentity,
