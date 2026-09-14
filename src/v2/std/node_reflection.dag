@@ -15,6 +15,7 @@ import v2.std.diagnostic {
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.decl_index {
   DeclFact,
+  TypeItem,
   decl_facts_at,
   logical_qualified_name_from_module,
   type_declarer_qualified_names
@@ -138,30 +139,61 @@ fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Di
 // the v2.std.network RECORD counting as a candidate -- so uniqueness alone was never the contract
 // the annotations claimed. No new authority: node_is_coproduct is v2.std.node_query's existing
 // predicate, read from the node the keyed fact already carries.
+//
+// IT READS AT THE GRAIN ITS CALLER MEASURED, which review 65885 caught it not doing. Both callers
+// establish multiplicity over a KIND-FILTERED census: type_declarer_qualified_names counts only
+// declarations whose kind is TypeItem. decl_facts_at filters on qualified name and NOTHING ELSE, so
+// taking its head would answer from whichever row the canonical order happened to put first
+// whenever a logical qualified name carries a type declaration AND a non-type one -- the uniqueness
+// would have been proven over one population and the answer taken from another, which is the
+// first-match-without-a-diagnostic shape this module exists to close, one filter down.
+//
+// The repair is construction rather than a check: narrow the keyed read to the same kind the guard
+// counted, and refuse unless exactly one row survives. There is no arm to test into existence
+// because there is no arm that picks.
+//
+// THE STATE IS CURRENTLY UNPOPULATED AND THAT IS NOT WHY IT IS FIXED. Two declarations share one
+// logical qualified name only when logical_qualified_name_from_module strips a leading `v2.` and
+// both `v2.X` and `X` declare the name; searched across those twelve colliding module pairs, ZERO
+// names are declared as a type on one side and a non-type on the other today. So no RED is
+// authorable from the live corpus, and writing a refusal claim against it would be a decoration
+// that greens by construction (DESIGN section 4b). The mismatch is removed at the read instead,
+// where it cannot be reintroduced by someone later adding the declaration that would populate it.
 fn accept_sole_declaration(
   pool_roots: List<String>,
   type_name: Symbol,
   sole_qualified_name: String
 ) -> Outcome<Node> {
-  match list_head(xs: decl_facts_at(pool_roots: pool_roots, qualified_name: sole_qualified_name)) {
-    HeadAbsent =>
-      outcome_rejected(
-        d: scoped_type_reflection_diagnostic(
-          type_name: type_name,
-          invariant: ^type_declaration_absent
-        )
+  let at_name = decl_facts_at(pool_roots: pool_roots, qualified_name: sole_qualified_name)
+  let type_rows = filter(xs: at_name, predicate: fn(fact) { fact.kind == TypeItem })
+  if length(xs: type_rows) > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_qualified_name_ambiguous
       )
-    HeadFound { value: sole } =>
-      if node_is_coproduct(node: sole.node) {
-        outcome_accepted(value: sole.node)
-      } else {
+    )
+  } else {
+    match list_head(xs: type_rows) {
+      HeadAbsent =>
         outcome_rejected(
           d: scoped_type_reflection_diagnostic(
             type_name: type_name,
-            invariant: ^type_spelling_is_not_a_closed_coproduct
+            invariant: ^type_declaration_absent
           )
         )
-      }
+      HeadFound { value: sole } =>
+        if node_is_coproduct(node: sole.node) {
+          outcome_accepted(value: sole.node)
+        } else {
+          outcome_rejected(
+            d: scoped_type_reflection_diagnostic(
+              type_name: type_name,
+              invariant: ^type_spelling_is_not_a_closed_coproduct
+            )
+          )
+        }
+    }
   }
 }
 
