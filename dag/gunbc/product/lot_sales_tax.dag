@@ -1,0 +1,252 @@
+module product.lot_sales_tax
+
+import std.types { Bool, List, Map, NonEmptyStr }
+import std.nat { Nat }
+import std.list { list_member, list_cover }
+import std.measure { PartsPerMillion }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
+import product.inventory { InventoryLotIdentity, InventoryLotRepetition, inventory_lot_identity_eq,
+  inventory_lot_identities_contain,
+  empty_lot_repetition_scan,
+  scan_lot_for_repetition,
+}
+
+// SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
+// census exists to carry: whether tax was collected, at which jurisdiction and rate, and
+// whether a New York use-tax residual remains. It is NOT a Bool and it is NOT an amount.
+// "Tax was included" without a jurisdiction cannot answer whether a residual is owed.
+//
+// Amounts stay private. Jurisdiction and rate are public. If a consumer needs a dollar
+// residual it must apply these rates to a privately held base; this module has no money field
+// and no reader that could publish one.
+//
+// Epistemic arms are the point. A rate transcribed from a named receipt line, a rate derived
+// by dividing a tax line by a base, an operator attestation with no tax line, an unverified
+// marketplace collection, and an unrecorded treatment are different states with different
+// next reads. Collapsing them is the defect this type exists to make unwritable as a Bool.
+
+// A JURISDICTION IS A CITED DECLARATION, NOT A STRING, and this corpus settled that before this
+// module existed. gunbc.product.fabric.provider_route carries jurisdiction: DeclarationRef and
+// says why in its own header: jurisdictions are open declaration references with deliberately no
+// central enum, because "Asia" is not a jurisdiction and adding Germany must be a row in a
+// population rather than an edit to a generic type. These rows minted a parallel stringly
+// authority beside that decision, which is the nickname DESIGN section 3 forbids - and a string
+// leaf hiding a named part is the anemic modeling section 2 names.
+//
+// The reference identifies the cited taxing authority. The collected rate remains a
+// separate receipt observation and may disagree with the published statutory rate.
+type CollectedTaxRateStanding
+  = RateTranscribedFromNamedReceiptLine {
+      jurisdiction: DeclarationRef
+      rate: PartsPerMillion
+      receipt_line_label: NonEmptyStr
+    }
+  | RateDerivedFromReceiptBaseAndTax {
+      jurisdiction: DeclarationRef
+      rate: PartsPerMillion
+    }
+
+// THE DESTINATION RATE IS STATUTORY AND CARRIES ITS VERSION; THE COLLECTED RATES ABOVE DO NOT,
+// AND THE ASYMMETRY IS DELIBERATE. A collected rate is an OBSERVATION of what a vendor charged on
+// a particular receipt - transcribed from its tax line or derived from its base - so an "effective
+// from" date is not a property it has. The destination rate is a PUBLISHED STATUTORY FIGURE that a
+// residual is measured AGAINST, so a superseded version would misstate every residual computed
+// from it, silently and uniformly. Only the second one needs the version, so only it carries it.
+// THE RESIDUAL CARRIES NO SEPARATE JURISDICTION FIELD, because the rate now carries the
+// jurisdiction ITSELF and the destination is PROJECTED out of it by residual_destination_jurisdiction
+// below. The distinction matters and the first attempt got it wrong: that attempt deleted the
+// sibling field while StatutoryRate still held only a figure and a version, on the premise that
+// evaluating a module's data row retains the module it came from. It does not - a record value
+// carries no trace of its declaration site - so the deletion would have erased the destination
+// rather than derived it. royal-koi-731 caught that before it landed; the repair was to put the
+// DeclarationRef inside StatutoryRate, which is what makes the premise true rather than assumed.
+// One fact, one place, and a second field beside it could no longer drift because there is none.
+type UseTaxResidualStanding
+  = ResidualUseTaxOwed {
+      destination_combined_rate: StatutoryRate
+    }
+  | ResidualUseTaxNone
+  | ResidualUseTaxUnread { read_obligation: NonEmptyStr }
+
+// AN ATTESTATION NAMES A JURISDICTION AT WHATEVER GRAIN THE ATTESTER USED, AND THAT GRAIN IS PART
+// OF THE FACT. "New York tax was paid" does not say New York State or New York City, and the
+// difference is not cosmetic: the state rate and the city combined rate are different figures, so
+// a state-only payment on goods used in the city leaves a residual that a city-grain reading would
+// report as settled. Citing the city rate for an attestation that said only "New York" asserts as
+// deduced what was merely inferred, which DESIGN section 4d forbids in the direction that loses
+// money quietly - the narrower claim is the comfortable one and it is the one with no evidence.
+//
+// This was authored wrong in 1f6c8653231, where both attested census rows cited
+// nyc_combined_sales_tax while their own attestation strings said "Operator attests New York tax
+// was paid" and went on to note that the NYC-rate figure in the private corpus is a PLANNING
+// number rather than a receipt tax line. royal-koi-731 caught the narrowing.
+//
+// The unread arm carries the name AS ATTESTED, so the attestation is not weakened either: what the
+// operator said is preserved verbatim, and what nobody has yet read is named as the obligation it
+// is. Section 4d is symmetric - under-asserting is not humility - so this records the attestation
+// as real evidence at the grain it actually has, rather than discarding it.
+// NO Bool PROJECTION OVER THESE ARMS. A predicate collapsing a standing to true/false is the shape
+// review 65038 removed from this branch, and a two-arm sum is not an exception to it: arm count
+// does not distinguish the case, and the payload is the part worth reading - "which jurisdiction"
+// and "named as what, pending which read" are the answers, not "is it cited". Consumers match the
+// arms directly and keep the payload (royal-koi-731, reviewing the first version of this carrier,
+// where I reintroduced exactly the shape that had just been taken out).
+type AttestedJurisdictionStanding
+  = AttestedAtCitedJurisdiction { jurisdiction: DeclarationRef }
+  | AttestedJurisdictionGrainUnread { named_as_attested: NonEmptyStr, read_obligation: NonEmptyStr }
+
+type LotSalesTaxStanding
+  = SalesTaxCollected {
+      collection: CollectedTaxRateStanding
+      residual: UseTaxResidualStanding
+    }
+  | SalesTaxAttestedIncluded {
+      jurisdiction: AttestedJurisdictionStanding
+      residual: UseTaxResidualStanding
+      attestation: NonEmptyStr
+    }
+  | SalesTaxIncludedJurisdictionUnread {
+      read_obligation: NonEmptyStr
+    }
+  | SalesTaxTreatmentUnrecorded {
+      read_obligation: NonEmptyStr
+    }
+
+type LotTaxEvidence {
+  lot: InventoryLotIdentity
+  standing: LotSalesTaxStanding
+}
+
+// THE CONSUMER OF StatutoryRate's jurisdiction field (DESIGN section 3c: a declaration nothing
+// consumes is the red one). This is the projection that replaced the deleted sibling field - a
+// caller asking where a residual is owed gets the answer FROM the rate, so the two can never
+// disagree. The unread and none arms have no destination to name, which is why the answer is an
+// arm rather than a bare reference.
+type ResidualDestinationReading
+  = DestinationCitedByRate { jurisdiction: DeclarationRef }
+  | DestinationNotApplicableNoResidual
+  | DestinationUnreadWithResidualStanding
+
+fn residual_destination_jurisdiction(residual: UseTaxResidualStanding) -> ResidualDestinationReading {
+  match residual {
+    ResidualUseTaxOwed { destination_combined_rate: r } =>
+      DestinationCitedByRate { jurisdiction: statutory_rate_jurisdiction(r: r) }
+    ResidualUseTaxNone => DestinationNotApplicableNoResidual
+    ResidualUseTaxUnread { read_obligation: _ } => DestinationUnreadWithResidualStanding
+  }
+}
+
+type LotTaxPopulation
+  = LotTaxPopulationComplete { rows: List<LotTaxEvidence> }
+  | LotTaxPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+// Keep only the first position for each identity. A refusal retains its original
+// ordinals; successful admission returns the input rows without rebuilding their list.
+// THE REPETITION SCAN IS product.inventory's, NOT A COPY OF IT. This fold used to re-author the
+// same first-occurrence-wins algorithm line for line while importing InventoryLotRepetition from
+// the module that already had the scan producing it - two sources for "is a lot repeated, and at
+// which two ordinals", each able to drift from the other without either going red. (review 65262)
+fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
+  let settled = fold(rows, init: empty_lot_repetition_scan(), f: fn(acc, row) {
+    scan_lot_for_repetition(acc: acc, lot: row.lot)
+  })
+  match settled.repetition {
+    Present { value: repeated } => LotTaxPopulationRepeatedLot {
+      lot: repeated.lot,
+      first_ordinal: repeated.first_ordinal,
+      ledger_ordinal: repeated.ledger_ordinal,
+    }
+    Absent => LotTaxPopulationComplete { rows: rows }
+  }
+}
+
+fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
+  inventory_lot_identity_eq(left: a, right: b)
+}
+
+fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
+  list_cover(held: held, expected: expected, eq: lot_eq)
+}
+
+// Project the requested identities directly; unread residual evidence yields no known debt.
+fn residual_owed_lot(residual: UseTaxResidualStanding, lot: InventoryLotIdentity) -> List<InventoryLotIdentity> {
+  match residual {
+    ResidualUseTaxOwed { destination_combined_rate: _ } => [lot]
+    ResidualUseTaxNone => []
+    ResidualUseTaxUnread { read_obligation: _ } => []
+  }
+}
+
+fn residual_owed_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  flat_map(rows, row => match row.standing {
+    SalesTaxCollected { collection: _, residual: r } => residual_owed_lot(residual: r, lot: row.lot)
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: r, attestation: _ } => residual_owed_lot(residual: r, lot: row.lot)
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => []
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => []
+  })
+}
+
+fn attested_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  flat_map(rows, row => match row.standing {
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => [row.lot]
+    SalesTaxCollected { collection: _, residual: _ } => []
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => []
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => []
+  })
+}
+
+fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  flat_map(rows, row => match row.standing {
+    SalesTaxCollected { collection: _, residual: _ } => []
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => []
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => [row.lot]
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => [row.lot]
+  })
+}
+
+fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
+  rows.any(row => lot_eq(a: row.lot, b: lot))
+}
+
+type LotTaxJoin
+  = LotTaxJoinCovered { rows: List<LotTaxEvidence> }
+  | LedgerMissingTax { lot: InventoryLotIdentity }
+  | TaxWithoutLedger { lot: InventoryLotIdentity }
+  | LotTaxJoinRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+fn first_uncovered_ledger(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(lots, init: none, f: fn(hit, id) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if tax_covers_lot(rows: tax, lot: id) { none } else { Present { value: id } }
+    }
+  })
+}
+
+fn first_orphaned_tax(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(tax, init: none, f: fn(hit, row) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if inventory_lot_identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
+    }
+  })
+}
+
+fn lot_tax_covers_ledgers(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> LotTaxJoin {
+  match admit_lot_tax_population(rows: tax) {
+    LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
+      LotTaxJoinRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
+    LotTaxPopulationComplete { rows: rows } =>
+      match first_uncovered_ledger(lots: lots, tax: rows) {
+        Present { value: lot } => LedgerMissingTax { lot: lot }
+        Absent =>
+          match first_orphaned_tax(lots: lots, tax: rows) {
+            Present { value: lot } => TaxWithoutLedger { lot: lot }
+            Absent => LotTaxJoinCovered { rows: rows }
+          }
+      }
+  }
+}
