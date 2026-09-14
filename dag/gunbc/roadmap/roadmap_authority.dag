@@ -1614,6 +1614,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       as_expected: true,
     )),
 
+    active_small(
+      identity: "rn_WFFTWNX4V60HN19BQ7YBYWWFQK",
+      id: "frontend-eval-training-program",
+      owner: "harness",
+      path: "dag/gunbc/frontend_eval/task.dag",
+      t: fields(
+        headline: "From the Demo 0 frontend eval to a training-worthy corpus: contrast set, disjoint corpus generator, carrier fold",
+        boundary: "gunbc#11330 landed the measured loop (20-task roster frozen as frontend-eval-v0, control instrument, cohort/treatment/attempt contract, syntax-projected card) and its side-chat ruling (2026-09-14): a useful evaluation and data-collection substrate, not yet a dataset or a result that says fine-tune. Three follow-ups, each its own PR: (1) a contrast roster whose answers turn on valid .dag composition and precedence -- `Bool && match`, nested match as an arm expression, pipeline precedence, record construction under boolean composition -- with minimally different invalid controls, held out beside v0; (2) a training-corpus generator applying the same mutation constructors to declarations OUTSIDE the four benchmark modules, split by declaration identity or later commit, targeting 500-1,000 SFT repairs and 100-300 preference pairs from real failed/recovered trajectories, every row carrying the cohort contract; (3) the JSON-to-EvalAttempt fold over the per-attempt carrier (or an independent verifier of context separation, tool events, patch scope, compiler verdict, tests and usage), so rows stop being driver-derived and trajectories become admissible labels. The terminal driver is the harness worker on a fleet host over an isolated closure (frontier declared in gunbc.frontend_eval.instrument).",
+        displaced_cost: "Reasoning tokens spent litigating the .dag frontend: max effort burned 33-46k tokens and ~2 h per cell on tasks low effort solved in tens of tokens; a fine-tune cannot be justified or refuted without a held-out set that exercises the disputed idiom and a corpus disjoint from it.",
+        first_slice: "The contrast roster with its control run green (RED authorable at parse or resolve, reference green on every test fn), consumed by the same control_run and report.",
+        red_control: "A contrast task whose valid form the frontend refuses, or whose invalid control it accepts, refuses the roster; a training row whose subject declaration is in frontend-eval-v0 refuses the corpus; a report over rows the carrier fold did not derive stays labeled driver-derived.",
+        out_of_scope: "No adapter training in this row; no GLM adapter path or student-vs-teacher decision -- that fork is the operator's after the matched tools-vs-card cohort is in.",
+        handback: "The contrast roster module, the generator and its split witness, the carrier fold with its standing change, each with executing controls; the decision packet for the post-D3 fork."
+      )
+    ),
+
     sign(    with_execution(active_small(
             identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
             id: "roadmap-verify-to-publish-phase",
