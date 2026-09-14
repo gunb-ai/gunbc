@@ -37,25 +37,24 @@ test fn witness_gitignore_gate_drift_receipt() -> Bool {
 // contains the word private must stay trackable.
 test fn witness_private_material_rows_are_derived() -> Bool {
   let eg = expected_gitignore()
-  string_contains(s: eg, pattern: "private_repo/")
-    && string_contains(s: eg, pattern: "private_overlay/")
-    && string_contains(s: eg, pattern: "base_overlay/")
-    && string_contains(s: eg, pattern: "wb62_overlay/")
-    && string_contains(s: eg, pattern: "privdag/")
+  string_contains(s: eg, pattern: "\n/private_repo\n")
+    && string_contains(s: eg, pattern: "\n/private_overlay\n")
+    && string_contains(s: eg, pattern: "\n/base_overlay\n")
+    && string_contains(s: eg, pattern: "\n/wb62_overlay\n")
+    && string_contains(s: eg, pattern: "\n/privdag\n")
     && string_contains(s: eg, pattern: "gunb-ai/gunbc-private is private — never tracked by this repository")
-    && string_contains(s: eg, pattern: "/private_overlay/")
 }
 
 data public_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
   source: gunbc_public_repository,
-  prefix: "public_overlay_probe/",
+  prefix: "public_overlay_probe",
   method: FileCopy,
   meaning: "a materialisation of the PUBLIC repository, which must derive no ignore row",
 }
 
 data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
   source: gunbc_private_repository,
-  prefix: "private_overlay_probe/",
+  prefix: "private_overlay_probe",
   method: FileCopy,
   meaning: "a materialisation of the PRIVATE repository, which must derive one ignore row",
 }
@@ -78,6 +77,8 @@ test fn witness_public_source_derives_no_ignore_row() -> Bool {
 // obviously. The pair is the discriminator: same spelling, two depths, opposite verdicts.
 test fn witness_materialisation_patterns_are_root_anchored() -> Bool {
   path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
+    && path_is_ignored(path: "private_repo")
+    && path_is_ignored(path: "privdag")
     && !path_is_ignored(path: "fixtures/private_overlay/example.dag")
     && !path_is_ignored(path: "dag/test/fixture/privdag/sample.dag")
     && !path_is_ignored(path: "vendor/private_repo/readme.md")

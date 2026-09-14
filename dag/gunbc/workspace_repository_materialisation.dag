@@ -34,12 +34,24 @@ import gunbc.repo_identity { gunbc_private_repository }
 // quick-owl-739 from an earlier recipe, since discontinued. It leaks a filesystem path rather than
 // private bytes, so it is less severe than the copy, and it is not dressed up as a leak.
 //
-// It needs no arm for the ignore wall to hold, and that is a property of the derivation rather
-// than an omission: gunbc.gitignore_emit derives its rows from the source repository's VISIBILITY
-// and this row's PREFIX and from nothing else -- the method below feeds only the human-readable
-// reason text -- so ONE PREFIX ROW COVERS EVERY STAGING BEHAVIOUR AT THAT PREFIX, including one
-// nobody has invented yet. An arm is owed when a LIVE recipe adopts a method, never on the strength
-// of a discontinued one, which would put a claim in the model that no current observation supports.
+// AN EARLIER VERSION OF THIS ANNOTATION CLAIMED THAT ONE PREFIX ROW COVERS EVERY STAGING BEHAVIOUR
+// AT THAT PREFIX. THAT WAS FALSE, AND IT IS RECORDED RATHER THAN QUIETLY REPLACED because the
+// reasoning was the seductive kind: the ignore rows ARE derived from visibility and prefix alone,
+// so the DERIVATION is method-agnostic -- but coverage is decided by the emitted PATTERN, and a
+// gitignore pattern with a trailing slash matches DIRECTORIES ONLY. Measured in a scratch
+// repository: with `/private_repo/` committed, a symlink named private_repo stages as 120000,
+// straight past the pattern. The derivation being method-agnostic did not make the pattern so.
+//
+// WHAT ACTUALLY CARRIES THE COVERAGE is the pattern form, which is why this field is a PATH PREFIX
+// with no trailing slash and gunbc.gitignore_emit owns the gitignore syntax. An anchored pattern
+// WITHOUT a trailing slash matches a file, a directory and a symlink at that path, all three
+// measured: the symlink is ignored, the directory is ignored, a plain file at the prefix is
+// ignored, and a nested same-named path is still spared. So one row does cover every staging
+// behaviour -- by the shape of the pattern it emits, not by the shape of the derivation, and the
+// distinction is the whole reason the first claim was wrong.
+//
+// The arm is still not owed: a method feeds only the human-readable reason text, and adding one for
+// a discontinued recipe would put a claim in the model that no current observation supports.
 type MaterialisationMethod
   = NestedClone
   | FileCopy
@@ -64,6 +76,10 @@ fn staged_shape_label(shape: StagedShape) -> String {
   }
 }
 
+// `prefix` is a PATH PREFIX at the workspace root -- `private_overlay`, not `private_overlay/` and
+// not `/private_overlay/`. Carrying gitignore punctuation here would put one consumer's grammar in
+// the model and silently decide a coverage question (trailing slash = directories only) that
+// belongs to the emitter.
 type WorkspaceMaterialisation {
   source: RepositoryVisibilityStanding
   prefix: String
@@ -80,31 +96,31 @@ fn workspace_materialisations() -> List<WorkspaceMaterialisation> {
   [
     WorkspaceMaterialisation {
       source: gunbc_private_repository,
-      prefix: "private_repo/",
+      prefix: "private_repo",
       method: NestedClone,
       meaning: "nested clone of the private repository beside the public checkout"
     },
     WorkspaceMaterialisation {
       source: gunbc_private_repository,
-      prefix: "private_overlay/",
+      prefix: "private_overlay",
       method: FileCopy,
       meaning: "overlay copy made by the private-witness step (cp -a of the private dag tree)"
     },
     WorkspaceMaterialisation {
       source: gunbc_private_repository,
-      prefix: "base_overlay/",
+      prefix: "base_overlay",
       method: FileCopy,
       meaning: "overlay copy under the first observed recipe argument"
     },
     WorkspaceMaterialisation {
       source: gunbc_private_repository,
-      prefix: "wb62_overlay/",
+      prefix: "wb62_overlay",
       method: FileCopy,
       meaning: "overlay copy under a third observed recipe argument, which is why this roster is a list of spellings"
     },
     WorkspaceMaterialisation {
       source: gunbc_private_repository,
-      prefix: "privdag/",
+      prefix: "privdag",
       method: FileCopy,
       meaning: "private .dag source root materialised beside the public one"
     }

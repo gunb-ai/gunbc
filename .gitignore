@@ -166,15 +166,15 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 
 # --- Material from a repository that is not world-readable (derived from gunbc.workspace_repository_materialisation and each source repository's visibility) ---
 # gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by gitlink (160000): a commit sha and a path, with a warning — nested clone of the private repository beside the public checkout
-/private_repo/
+/private_repo
 # gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy made by the private-witness step (cp -a of the private dag tree)
-/private_overlay/
+/private_overlay
 # gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under the first observed recipe argument
-/base_overlay/
+/base_overlay
 # gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — overlay copy under a third observed recipe argument, which is why this roster is a list of spellings
-/wb62_overlay/
+/wb62_overlay
 # gunb-ai/gunbc-private is private — never tracked by this repository; materialised here by full file content (100644), silently — private .dag source root materialised beside the public one
-/privdag/
+/privdag
 
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).

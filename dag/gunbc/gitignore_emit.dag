@@ -113,14 +113,26 @@ fn non_world_readable_materialisations() -> List<WorkspaceMaterialisation> {
   untracked_materialisations(all: workspace_materialisations())
 }
 
-// THE EMITTED PATTERN IS ANCHORED, and that is a fact about what the row MEANS rather than a
-// spelling preference. A materialisation row declares a prefix AT THE WORKSPACE ROOT -- the compose
-// step lands the repository there and nowhere else -- while git reads a pattern containing no
-// leading slash as matching at ANY DEPTH (git-scm.com/docs/gitignore, pattern format). So the
-// unanchored form says something the model does not: it would also ignore, say,
-// fixtures/private_overlay/example.dag, which no materialisation claims and which may be perfectly
-// public material. Anchoring emits exactly the declared scope and nothing wider. The
-// generated-artifact arm below anchors for the same reason and by the same concat.
+// THE EMITTED PATTERN IS ANCHORED AND CARRIES NO TRAILING SLASH, and both halves are facts about
+// what the row MEANS rather than spelling preferences. Git's pattern rules decide two independent
+// questions here (git-scm.com/docs/gitignore, pattern format), and each was got wrong once.
+//
+// THE LEADING SLASH -- WHAT DEPTH. A materialisation row declares a prefix AT THE WORKSPACE ROOT,
+// the compose step lands the repository there and nowhere else, while a pattern with no leading
+// slash matches at ANY DEPTH. The unanchored form therefore said something the model does not: it
+// also ignored fixtures/private_overlay/example.dag, which no materialisation claims and which may
+// be perfectly public.
+//
+// THE ABSENT TRAILING SLASH -- WHAT KIND OF THING. A pattern ending in `/` matches DIRECTORIES
+// ONLY, so `/private_repo/` sails straight past a SYMLINK named private_repo -- measured, it
+// stages as mode 120000. A symlink is one of the three observed staging behaviours, so a
+// directory-only pattern leaves a real one uncovered. Without the trailing slash the pattern
+// matches a file, a directory and a symlink at that path -- all three measured, with the nested
+// path still spared -- which is the coverage the row intends.
+//
+// The row hands over a bare path prefix and this function owns the punctuation, so neither
+// question is answerable from the model's side. The generated-artifact arm below anchors by the
+// same concat.
 fn materialisation_ignore_pattern(m: WorkspaceMaterialisation) -> String {
   concat("/", m.prefix)
 }
