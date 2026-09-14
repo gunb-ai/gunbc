@@ -536,6 +536,7 @@ jobs:
           if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
           if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
           if [ -e "docs/design-rung-drops.md" ]; then git add "docs/design-rung-drops.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-rung-drops.md"; fi
+          if [ -e "docs/onboarding.md" ]; then git add "docs/onboarding.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/onboarding.md"; fi
           if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
           if [ -e ".githooks/pre-commit" ]; then git add ".githooks/pre-commit"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-commit"; fi
           if [ -e ".githooks/generated-artifact-merge" ]; then git add ".githooks/generated-artifact-merge"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/generated-artifact-merge"; fi

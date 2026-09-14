@@ -79,9 +79,27 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // So the rule this type is obeying: a module that names another as the authority for a concept may
 // not declare a type whose SPELLING already belongs to that authority. Either consume it, or carry
 // a different name because it is a different contract. This is the second.
+// `CpuLowerBoundWithoutCeiling` IS NOT A DEGRADED `RightCensoredCpuReading`; it is a different
+// observation and it exists because the floor stopped producing the other one (gunbc#11195,
+// operator ruling 2026-09-12). The required floor now arms NO CPU deadline for any claim: its claim
+// ceiling gates on eval steps and CPU is observed-only. So a preempted row's CPU is still a LOWER
+// BOUND -- the claim was stopped before it finished -- but there is no CPU ceiling that stopped it,
+// because the thing that stopped it was the wall deadline.
+//
+// THE ALTERNATIVE WAS TO FABRICATE THE CEILING OR TO DROP THE ROW, and both are refused. Writing
+// the wall limit into a field named for a CPU one is the clock fusion `std.measure`
+// `measure_clock_basis_note` exists to forbid; dropping the row silently deletes a population this
+// module's own prose insists on carrying. An arm that says exactly what is known -- a bound, no
+// ceiling -- is the only reading that neither invents nor discards.
+//
+// IT ANSWERS `Absent` TO EVERY POINT QUESTION, like the censored arm, because a bound is not a
+// cost. Where it DIFFERS is any question about the ceiling: there is none to compare against, so a
+// consumer asking "how far under its limit did this run" has no answer here rather than a
+// misleading one.
 type ClaimCostReading
   = ObservedCpuReading { cpu_ms: Millisecond }
   | RightCensoredCpuReading { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
+  | CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: Millisecond }
 
 // The cost figure a derivation is ENTITLED to treat as a POINT, and `Absent` for a censored row.
 // Every consumer asking a POINT question goes through this, so a bound cannot reach a site that
@@ -99,6 +117,7 @@ fn observed_cpu_ms(reading: ClaimCostReading) -> Millisecond? {
   match reading {
     ObservedCpuReading { cpu_ms: c } => Present { value: c }
     RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => none
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: _ } => none
   }
 }
 
@@ -109,6 +128,7 @@ fn cpu_at_least_ms(reading: ClaimCostReading) -> Millisecond {
   match reading {
     ObservedCpuReading { cpu_ms: c } => c
     RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } => b
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } => b
   }
 }
 
@@ -116,6 +136,7 @@ fn reading_is_censored(reading: ClaimCostReading) -> Bool {
   match reading {
     ObservedCpuReading { cpu_ms: _ } => false
     RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: _ } => true
   }
 }
 
@@ -214,6 +235,17 @@ type RunCost {
 // perfectly sound cost artifact and only the crossing-population census is unavailable over it.
 // Making it required would retire the twelve sampled vintages the envelope derivation rests on,
 // which is a strictly larger loss than the one it would prevent.
+// `eval_steps_at_least` IS THE CENSORED ROW'S STEP BOUND, IN ITS OWN COLUMN, and it is OPTIONAL for
+// the same reason `censoring_cpu_limit_ms` is: an artifact written before the producer split the
+// column does not carry it, and refusing those vintages wholesale would retire this reader against
+// every run before gunbc#11195.
+//
+// THIS PARAGRAPH SITS ABOVE THE DECLARATION BECAUSE ANNOTATIONS ARE MODULE-ITEM GRAIN, and it was
+// written inside the record body first. The v2 native route refused it -- four
+// `AnnotationAttachmentRefusal::BodyGrainNotModeled` diagnostics at stage=emit -- while CI stayed
+// green, because no CI lane exercises that route. DESIGN section 4c is the rule and the refusal is
+// its enforcement; a field-grain note has nowhere to attach, so it belongs here or in a typed
+// carrier, never between two fields.
 type ClaimCostColumns {
   identity: Int
   module: Int
@@ -221,8 +253,9 @@ type ClaimCostColumns {
   cost_reading: Int
   observed_cpu_ms: Int
   cpu_at_least_ms: Int
-  censoring_cpu_limit_ms: Int
+  censoring_cpu_limit_ms: Int?
   eval_steps: Int
+  eval_steps_at_least: Int?
   preemption_reachability: Int?
 }
 
@@ -257,22 +290,20 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
             Absent => none
             Present { value: obs } => match claim_cost_column_index(header_fields: fields, name: "cpu_at_least_ms") {
               Absent => none
-              Present { value: bound } => match claim_cost_column_index(header_fields: fields, name: "censoring_cpu_limit_ms") {
+              Present { value: bound } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
                 Absent => none
-                Present { value: ceil } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
-                  Absent => none
-                  Present { value: steps } => Present {
-                    value: ClaimCostColumns {
-                      identity: id,
-                      module: md,
-                      verdict_reached: verdict,
-                      cost_reading: kind,
-                      observed_cpu_ms: obs,
-                      cpu_at_least_ms: bound,
-                      censoring_cpu_limit_ms: ceil,
-                      eval_steps: steps,
-                      preemption_reachability: claim_cost_column_index(header_fields: fields, name: "preemption_reachability")
-                    }
+                Present { value: steps } => Present {
+                  value: ClaimCostColumns {
+                    identity: id,
+                    module: md,
+                    verdict_reached: verdict,
+                    cost_reading: kind,
+                    observed_cpu_ms: obs,
+                    cpu_at_least_ms: bound,
+                    censoring_cpu_limit_ms: claim_cost_column_index(header_fields: fields, name: "censoring_cpu_limit_ms"),
+                    eval_steps: steps,
+                    eval_steps_at_least: claim_cost_column_index(header_fields: fields, name: "eval_steps_at_least"),
+                    preemption_reachability: claim_cost_column_index(header_fields: fields, name: "preemption_reachability")
                   }
                 }
               }
@@ -313,20 +344,65 @@ fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> Cla
   }
 }
 
-// BOTH COLUMNS OR NEITHER. A censored row without its ceiling cannot say what stopped it, and a
-// bound whose ceiling is unknown is not a reading this module can carry -- so a missing ceiling
-// refuses the row rather than yielding a bound with a fabricated limit.
+// THE CEILING COLUMN IS OPTIONAL SINCE gunbc#11195, AND THE INVARIANT IT PROTECTED IS UNCHANGED.
+// The rule used to be BOTH COLUMNS OR NEITHER: a bound whose ceiling is unknown is not a reading
+// this module can carry, so a missing ceiling refused the row rather than yielding a bound with a
+// fabricated limit. That is still exactly right, and it is why this reads an ARM rather than a
+// default.
+//
+// WHAT CHANGED IS THE PRODUCER, NOT THE DISCIPLINE. The required floor arms no CPU deadline for any
+// claim, so it no longer emits `censoring_cpu_limit_ms` at all -- there is no CPU ceiling to emit.
+// An artifact without the column is therefore a CURRENT-VINTAGE artifact rather than a truncated
+// one, and refusing it wholesale would retire the reader against every run from that change onward.
+// The column stays REQUIRED-IF-PRESENT in the sense that matters: when it is there it must parse,
+// and a row that carries a ceiling that will not parse still refuses.
+//
+// THE PRECEDENT IS THIS MODULE'S OWN `preemption_reachability`, optional for the same shape of
+// reason: it answers a question that is not the cost reading, so an artifact lacking it is still a
+// sound cost artifact and only the ceiling-relative question is unavailable over it.
 fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
   match parse_int(s: fields[columns.cpu_at_least_ms]) {
     Absent => none
-    Present { value: bound } => match parse_int(s: fields[columns.censoring_cpu_limit_ms]) {
-      Absent => none
-      Present { value: ceiling } => Present {
-        value: RightCensoredCpuReading {
-          cpu_lower_bound_ms: millisecond(count: bound),
-          censoring_ceiling_ms: millisecond(count: ceiling)
+    Present { value: bound } => match columns.censoring_cpu_limit_ms {
+      Absent => Present {
+        value: CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: millisecond(count: bound) }
+      }
+      Present { value: ceiling_ix } => match parse_int(s: fields[ceiling_ix]) {
+        Absent => none
+        Present { value: ceiling } => Present {
+          value: RightCensoredCpuReading {
+            cpu_lower_bound_ms: millisecond(count: bound),
+            censoring_ceiling_ms: millisecond(count: ceiling)
+          }
         }
       }
+    }
+  }
+}
+
+// THE STEP COUNT, READ FROM THE COLUMN THAT MATCHES THE ROW'S READING (gunbc#11195).
+//
+// A COMPLETED ROW PERFORMED ITS STEPS and carries them in `eval_steps`. A CENSORED ROW DID NOT: its
+// count is quantised by whatever stopped it, so the producer now writes it in `eval_steps_at_least`
+// and leaves `eval_steps` empty. Reading the bound out of the performed column is what let this
+// module pair a censored row with a completed one in its equal-work cohort -- the harm
+// `gunbc.guarantee_stall` `eval_steps_outside_the_reading_coproduct_stall` is on file for.
+//
+// THIS IS A HALF-STEP TOWARD THAT STALL'S TRIGGER AND IS NOT IT. The trigger asks for the count to
+// move INSIDE the `ClaimCostReading` arms so no fold can compare a bound with a performed count
+// without first matching which it holds; this only stops the two arriving through the same column.
+// A fold that reads `FloorCostRow.eval_steps` still cannot tell them apart from the field alone,
+// which is why the stall row stays standing and is not retired by this change.
+//
+// AN OLD-VINTAGE CENSORED ROW STILL READS ITS COUNT FROM `eval_steps`, because before the split
+// that is where the producer wrote it. Refusing those rows would retire the reader against every
+// run before the split, which is the same trade the optional ceiling column already makes.
+fn parse_row_eval_steps(fields: List<String>, columns: ClaimCostColumns) -> Int? {
+  match parse_int(s: fields[columns.eval_steps]) {
+    Present { value: performed } => Present { value: performed }
+    Absent => match columns.eval_steps_at_least {
+      Absent => none
+      Present { value: ix } => parse_int(s: fields[ix])
     }
   }
 }
@@ -379,9 +455,15 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
           a: max_int(a: max_int(a: columns.identity, b: columns.module), b: columns.verdict_reached),
           b: max_int(a: columns.cost_reading, b: columns.eval_steps)
         ),
-        b: max_int(a: max_int(a: columns.observed_cpu_ms, b: columns.cpu_at_least_ms), b: columns.censoring_cpu_limit_ms)
+        b: max_int(
+          a: max_int(a: columns.observed_cpu_ms, b: columns.cpu_at_least_ms),
+          b: match columns.censoring_cpu_limit_ms { Absent => 0 Present { value: c } => c }
+        )
       ),
-      b: match columns.preemption_reachability { Absent => 0 Present { value: r } => r }
+      b: max_int(
+        a: match columns.preemption_reachability { Absent => 0 Present { value: r } => r },
+        b: match columns.eval_steps_at_least { Absent => 0 Present { value: e } => e }
+      )
     )
     if count(fields) <= widest {
       none
@@ -390,7 +472,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     } else {
       match parse_claim_cost_reading(fields: fields, columns: columns) {
         Absent => none
-        Present { value: reading } => match parse_int(s: fields[columns.eval_steps]) {
+        Present { value: reading } => match parse_row_eval_steps(fields: fields, columns: columns) {
           Absent => none
           Present { value: steps } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
             Absent => none
@@ -474,7 +556,7 @@ type ArtifactRefusalCause
 // than reporting that something was.
 data claim_cost_required_columns: List<String> = [
   "identity", "module", "verdict_reached", "cost_reading",
-  "observed_cpu_ms", "cpu_at_least_ms", "censoring_cpu_limit_ms", "eval_steps"
+  "observed_cpu_ms", "cpu_at_least_ms", "eval_steps"
 ]
 
 fn missing_claim_cost_columns(header_line: String) -> List<String> {
@@ -636,7 +718,7 @@ fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
 // ASSERTS IT. A censored row is known only to have cost at least its own bound. Whether that
 // settles the question depends on how the bound compares to the line, and today it always does --
 // the CPU safety ceiling (`v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms`) sits well above the cost line the artifact records,
+// `required_floor_claim_work_envelope_ms`) sits well above the cost line the artifact records,
 // so every censored row genuinely did cross. That is a COINCIDENCE OF TWO CONSTANTS IN DIFFERENT
 // MODULES, not a property of the question: raise the cost line above the safety ceiling, or lower
 // the ceiling, and every censored row would be silently counted as a crossing it never made, with
@@ -667,6 +749,12 @@ fn row_crossing(row: FloorCostRow, ceiling_ms: Millisecond) -> RowCrossing {
   match row.cost {
     ObservedCpuReading { cpu_ms: c } =>
       if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) { RowCrossed } else { RowBelowLine }
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } =>
+      if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
+        RowCrossed
+      } else {
+        RowCrossingUndecidable
+      }
     RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
       if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
         RowCrossed

@@ -1,0 +1,28 @@
+module test.probe.durable_write_takes_the_value_probe
+
+// THIS MODULE MUST NOT RESOLVE -- AND TODAY IT DOES ON THE INTERPRETATION PATH, WHICH IS THE
+// POINT OF ENROLLING IT. The durable-origin write of job output takes a
+// DataEffectPermit<BuildOutput, FilePath>, never the file, and the tempting construction is the
+// one every caller wrote before this change: hand the write the path. A FilePath is a where-refined
+// alias of String, and the checker admits a refined-alias value at a declared record formal with
+// no diagnostic at all (gunbc.recurring_failure_mode
+// refined_alias_argument_exempt_from_declared_type_inhabitance), so this program compiles there and
+// would reach the effect with a String where a record is expected. The same call with a bare String
+// LITERAL refuses (DeclaredTypeNotInhabited at the permit argument); that literal form is the
+// refusing control one term away, enrolled beside this probe as
+// durable_write_literal_control_source in test.claim.data_class_refusal_probe_witness.
+//
+// ENROLLED AS AN EXPECTING-RED HOLE: the witness asserts the census carries NO blocking row at the
+// permit argument; when the exemption closes this program refuses, that assertion goes red, and
+// the row is rewritten to expect the refusal. It does not retire (DESIGN 4b, meta-obligation 4).
+// What IS structural regardless of this hole: the permit cannot be authored
+// (test.probe.data_effect_permit_forged_probe).
+
+import std.types { NonEmptyStr, FilePath }
+import std.resources { Network }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }
+
+fn write_the_path(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {
+  commit_object_to_origin(permit: "dag/test/fixture/fabric_m0_origin_readback/other_object.txt" as FilePath, key: "probe/never" as NonEmptyStr, token_source: token_source)
+}

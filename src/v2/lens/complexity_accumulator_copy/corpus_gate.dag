@@ -338,6 +338,87 @@ fn coverage_walk(discovered: List<String>, rows: List<CorpusFileRow>) -> Coverag
   }
 }
 
+// THE NEWLY-RED JOIN FOR THE ARROW-FORM REPAIR CENSUS. Two arms, same path list, same order:
+// origin/main vs the repaired tree. A process-exit count is not a number (it wraps). This join
+// is the receipt: identity lockstep, linear, no membership nest.
+//
+// NEWLY RED means the after arm is a scanned suspect AND the before arm is a scanned zero.
+// Unmeasured (not-established, timeout, OOM) is listed and is NOT red — a missing before-arm
+// must not mint a "the repair found this" claim. A file already red on main (fn-form the gate
+// always saw) is not newly red even if its suspect count rose.
+type NewlyRedWalk
+  = NewlyRedComplete { newly_red: List<String>, unmeasured: List<String> }
+  | NewlyRedPathMismatch { before_path: String, after_path: String }
+  | NewlyRedBeforeSurplus { path: String }
+  | NewlyRedAfterSurplus { path: String }
+
+fn newly_red_walk(
+  before: List<CorpusFileRow>,
+  after: List<CorpusFileRow>,
+  newly: List<String>,
+  unmeasured: List<String>
+) -> NewlyRedWalk {
+  match before {
+    Empty =>
+      match after {
+        Empty =>
+          NewlyRedComplete {
+            newly_red: list_reverse(xs: newly),
+            unmeasured: list_reverse(xs: unmeasured)
+          }
+        Cons { head: a, tail: _ } => NewlyRedAfterSurplus { path: a.path }
+      }
+    Cons { head: b, tail: bt } =>
+      match after {
+        Empty => NewlyRedBeforeSurplus { path: b.path }
+        Cons { head: a, tail: at } =>
+          if b.path != a.path {
+            NewlyRedPathMismatch { before_path: b.path, after_path: a.path }
+          } else {
+            match b.standing {
+              CorpusFileNotEstablished { cause: _ } =>
+                newly_red_walk(
+                  before: bt,
+                  after: at,
+                  newly: newly,
+                  unmeasured: Cons { head: b.path, tail: unmeasured }
+                )
+              CorpusFileScanned { suspects: bs, refusals: _, causes: _ } =>
+                match a.standing {
+                  CorpusFileNotEstablished { cause: _ } =>
+                    newly_red_walk(
+                      before: bt,
+                      after: at,
+                      newly: newly,
+                      unmeasured: Cons { head: a.path, tail: unmeasured }
+                    )
+                  CorpusFileScanned { suspects: as, refusals: _, causes: _ } =>
+                    if (as > 0) && (bs == 0) {
+                      newly_red_walk(
+                        before: bt,
+                        after: at,
+                        newly: Cons { head: a.path, tail: newly },
+                        unmeasured: unmeasured
+                      )
+                    } else {
+                      newly_red_walk(
+                        before: bt,
+                        after: at,
+                        newly: newly,
+                        unmeasured: unmeasured
+                      )
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn newly_red_difference(before: List<CorpusFileRow>, after: List<CorpusFileRow>) -> NewlyRedWalk {
+  newly_red_walk(before: before, after: after, newly: Empty, unmeasured: Empty)
+}
+
 type CorpusCoverage
   = CorpusCoverageComplete { covered: Int }
   | CorpusCoverageShort { discovered: Int, reported: Int, missing: List<String> }

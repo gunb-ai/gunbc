@@ -429,6 +429,7 @@ fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
       ],
     },
     accepted: [],
+    withheld: [],
   }
 }
 
