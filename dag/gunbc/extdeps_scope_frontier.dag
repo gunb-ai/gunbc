@@ -213,6 +213,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/pci/identity.dag",
   "dag/extdeps/network/dell_0r887v.dag",
   "dag/extdeps/network/ibm_01ft753.dag",
   "dag/extdeps/network/mcx4411a_acan.dag",
