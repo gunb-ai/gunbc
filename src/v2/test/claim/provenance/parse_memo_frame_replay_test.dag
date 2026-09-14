@@ -35,7 +35,8 @@ fn parse_memo_frame_replay_run(materialization: Materialization) -> Optional<Par
             PreparedModeled { modeled: modeled } =>
               parse_memo_frame_replay_run_modeled(
                 tokens: token_stream_remaining(stream: stream),
-                modeled: modeled,
+                validated: modeled.validated,
+                analysis: modeled.analysis,
                 materialization: materialization
               )
           }
@@ -45,13 +46,14 @@ fn parse_memo_frame_replay_run(materialization: Materialization) -> Optional<Par
 
 fn parse_memo_frame_replay_run_modeled(
   tokens: List<Token>,
-  modeled: PreparedModeledGrammar,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
   materialization: Materialization
 ) -> Optional<ParseMemoFrameReplayRun> {
-  let root = modeled.validated.root
+  let root = validated.root
   let base = parse_table_for_production_analyzed(
-    validated: modeled.validated,
-    analysis: modeled.analysis,
+    validated: validated,
+    analysis: analysis,
     all_tokens: tokens
   )
   let table = ParseTableRealization {
@@ -89,6 +91,15 @@ fn parse_memo_frame_replay_run_modeled(
           })
       }
   }
+}
+
+// THROUGH A TYPED PARAMETER, deliberately. Inside this module a field read on a variable bound by
+// `Present { value: r }` from an Optional of this module's own record type evaluates to an error type
+// under the seed interpreter's inference ("error type cascade" at the read), while the same read on a
+// declared parameter, or from any other module, types correctly. The defect is recorded on the PR
+// that added these witnesses; this accessor is the one spelling that reads the field here.
+fn parse_memo_frame_replay_hits(run: ParseMemoFrameReplayRun) -> Int {
+  run.hits
 }
 
 // Absent when any minted node has no span-index entry -- the fact a dropped replay breaks.
@@ -136,10 +147,128 @@ test fn parse_memo_hit_resolves_every_node_like_a_memo_free_parse() -> Bool {
               match parse_memo_frame_replay_loci(run: cold) {
                 Absent => false
                 Present { value: cold_loci } =>
-                  (warm.hits > 0)
-                    && (cold.hits == 0)
+                  (parse_memo_frame_replay_hits(run: warm) > 0)
+                    && (parse_memo_frame_replay_hits(run: cold) == 0)
                     && (length(xs: warm_loci) > 0)
                     && (warm_loci == cold_loci)
+              }
+          }
+      }
+  }
+}
+
+// THE ACCEPTED ARTIFACT CARRIES ONLY ACCEPTED-PATH PROVENANCE. A memo-free parse discards a failed
+// branch's provenance with the branch, so its index holds exactly the entries minted on the accepted
+// path. The stored index a memo hit used to merge whole also held entries the MISS path minted
+// before the memoized production started. Those only survive when the miss path minted more ids
+// before that production than the hit path did -- a shorter hit path re-mints the low ids itself,
+// and the base entry wins -- so the real .dag specimen above cannot show the difference, and this
+// hand grammar is built to:
+//
+//   S = R X z | a a X y      R = a a      X = b      tokens: a a b y
+//
+// Alternative one mints four ids before X (a, a, their conjunction, R's wrap), memoizes X at
+// position 2, and fails at z. Alternative two mints three ids before X and hits that memo entry,
+// whose stored index carries alternative one's fourth id. Replaying the memoized frame imports
+// nothing but X's own ids, so the memoized index holds exactly the memo-free index's entry count;
+// the whole-index merge held one more.
+fn abandoned_token(token_class: Symbol, offset: Int) -> Token {
+  Token { class: token_class, lexeme: std.algebra.Empty, file: ^abandoned_path_file, start: offset, end: offset + 1 }
+}
+
+fn abandoned_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn abandoned_path_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^abandoned_path_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^abandoned_path_s,
+        expression: Choice {
+          left: Sequence {
+            left: Nonterminal { production: ^abandoned_path_r },
+            right: Sequence {
+              left: Nonterminal { production: ^abandoned_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_z)
+            }
+          },
+          right: Sequence {
+            left: Sequence {
+              left: abandoned_terminal(token_class: ^abandoned_tok_a),
+              right: abandoned_terminal(token_class: ^abandoned_tok_a)
+            },
+            right: Sequence {
+              left: Nonterminal { production: ^abandoned_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_y)
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^abandoned_path_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^abandoned_path_r,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^abandoned_tok_a),
+          right: abandoned_terminal(token_class: ^abandoned_tok_a)
+        },
+        emitted: grammar_atom(identity: ^abandoned_path_r)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^abandoned_path_x,
+        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
+        emitted: grammar_atom(identity: ^abandoned_path_x)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn abandoned_path_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_b, offset: 2),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_y, offset: 3),
+  tail: std.algebra.Empty } } } }
+}
+
+fn abandoned_path_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
+  match grammar_validate_for_parse(root: abandoned_path_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_memo_frame_replay_run_modeled(
+        tokens: abandoned_path_tokens(),
+        validated: validated,
+        analysis: compute_grammar_first_analysis(root: validated.root),
+        materialization: materialization
+      )
+  }
+}
+
+fn parse_memo_frame_replay_entry_count(run: ParseMemoFrameReplayRun) -> Int {
+  length(xs: map_keys(run.index.entries))
+}
+
+test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
+  match abandoned_path_run(materialization: Memoize) {
+    Absent => false
+    Present { value: memo_run } =>
+      match abandoned_path_run(materialization: Recompute) {
+        Absent => false
+        Present { value: free_run } =>
+          match parse_memo_frame_replay_loci(run: memo_run) {
+            Absent => false
+            Present { value: memo_loci } =>
+              match parse_memo_frame_replay_loci(run: free_run) {
+                Absent => false
+                Present { value: free_loci } =>
+                  (parse_memo_frame_replay_hits(run: memo_run) > 0)
+                    && (parse_memo_frame_replay_hits(run: free_run) == 0)
+                    && (memo_loci == free_loci)
+                    && (parse_memo_frame_replay_entry_count(run: memo_run) == parse_memo_frame_replay_entry_count(run: free_run))
               }
           }
       }
