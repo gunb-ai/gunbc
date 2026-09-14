@@ -146,6 +146,26 @@ fn amb_marker_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
   )
 }
 
+// THE DISCRIMINATING RED HAS FIRED, AND THIS IS THE RECEIPT. §4b(1) requires the reported rung to
+// equal the rung established by EXECUTED evidence -- "a discriminating RED refused on the real
+// acceptance path plus an accepted positive control" -- and until this run the chain was argued in
+// prose rather than shown. Measured by building the seed twice against this same manifest, with
+// only the wall's own `if !ambiguous_reads.is_empty()` guard disabled between the two:
+//
+//   WALL REMOVED     bare_value_read_of_an_ambiguous_name_refuses            false
+//                    the_refusal_names_a_declaring_module                    false
+//                    a_field_label_sharing_an_ambiguous_name_does_not_refuse TRUE
+//   WALL RESTORED    all three                                               true
+//
+// So the subject row and the remedy row are keyed on the WALL and on nothing incidental -- they
+// flip with it and back -- while the negative control holds in both directions, which is what
+// separates a discriminating probe from one that merely reds when something is wrong. The
+// field-label row staying true with the wall gone is the load-bearing half: it shows the two rows
+// that moved did so because the refusal moved, not because the manifest or the fixture changed.
+//
+// The disabling edit is NOT in this branch and nothing re-derives it; this is a receipt about two
+// binaries, not a mechanism. Re-run it by negating that guard and running these three rows.
+
 // PINNED TO THE CAUSE, NOT TO "SOME REFUSAL". `claim_scope_was_refused` was the obvious reader
 // and is deliberately not used: gunbc#11143 deleted it as a dangling declaration, and restoring
 // it to satisfy this row would re-add a weaker predicate than the one that survived. The reader

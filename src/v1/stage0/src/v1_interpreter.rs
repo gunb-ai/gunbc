@@ -4386,6 +4386,17 @@ impl PreparedScopeIndexes {
         for name in self.ambiguous_bare_function_names.iter() {
             lines.push(format!("ambiguous\t{}", name));
         }
+        // THE VARIANT-ARM TIER IS PART OF "EVERY RESOLUTION THIS INDEX SET CAN ANSWER", so it
+        // belongs in the fingerprint the memo-equivalence witness compares. Without it the tier
+        // travelled the memo path with ZERO equivalence coverage, and a divergence there flows
+        // straight into `falls_through_to_shared_slot` -- i.e. into whether the wall fires. The
+        // fail-open direction (an arm tier wrongly resolving a genuinely ambiguous read) is §5's
+        // absorbing fallback, which is the one direction a silent divergence must not take.
+        for (arm, owners) in self.variant_arm_owners.iter() {
+            for (module, coproduct) in owners.iter() {
+                lines.push(format!("variant_arm\t{}\t{}\t{}", arm, module, coproduct));
+            }
+        }
         for (file, module) in self.file_module_paths.iter() {
             lines.push(format!("file_module\t{}\t{}", file, module));
         }
