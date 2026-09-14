@@ -81,7 +81,8 @@ fn sel_snapshot_summary(text: String) -> ObservationAttempt<NonEmptyStr, NonEmpt
 
 fn sel_read(text: String) -> ObservationAttempt<SelWatermark, NonEmptyStr> {
   let records = sel_lines(text: text)
-  let parsed: ObservationAttempt<List<SelWindowEvent>, NonEmptyStr> = fold(records, init: ObservationEstablished { observed: [] }, f: (acc, line) => match acc {
+  let initial: ObservationAttempt<List<SelWindowEvent>, NonEmptyStr> = ObservationEstablished { observed: [] }
+  let parsed = fold(records, init: initial, f: (acc, line) => match acc {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: events } => match sel_rendered_record(line: line) {
       ObservationRefused { cause } => ObservationRefused { cause: concat(cause as String, "; SEL row: ", line) as NonEmptyStr }
