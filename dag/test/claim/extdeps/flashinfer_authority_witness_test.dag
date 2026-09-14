@@ -1,0 +1,207 @@
+module test.claim.extdeps.flashinfer_authority_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel, FlashInferAcquisition, FlashInferPublishedRelease, FlashInferSourceRevision,
+  FlashInferPyPi, FlashInferProjectStable, FlashInferProjectNightly,
+  flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_version, flashinfer_0_6_18_post1_wheels,
+  flashinfer_published_version, flashinfer_wheel_platform_tag,
+  flashinfer_channel_is_referenced_by_upstream_dockerfile,
+  FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused,
+  FlashInferWheelRefusal, FlashInferWheelFilenameMalformed, FlashInferWheelDigestMalformed, FlashInferWheelFilenameNotForPackage,
+  FlashInferWheelFilenameNotForVersion, FlashInferWheelAcquisitionUnpublished,
+  admit_flashinfer_wheel,
+}
+import extdeps.vllm.source_build { vllm_07b75534_default_recipe, vllm_07b75534_aarch64_release_recipe }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn admitted(a: FlashInferWheelAdmission) -> Bool {
+  match a {
+    FlashInferWheelAdmitted { wheel: _ } => true
+    FlashInferWheelRefused { refusal: _ } => false
+  }
+}
+
+fn refusal_of(a: FlashInferWheelAdmission) -> FlashInferWheelRefusal? {
+  match a {
+    FlashInferWheelAdmitted { wheel: _ } => none
+    FlashInferWheelRefused { refusal: r } => Present { value: r }
+  }
+}
+
+// THE POSITIVE CONTROL, over the real cited rows rather than a fixture. Every 0.6.18.post1 wheel re-admits
+// through the mint against its own release, and there are exactly the three packages an aarch64 cu130
+// image installs. Without this, every refusal below would pass against a mint that refused everything.
+test fn every_cited_0_6_18_post1_wheel_readmits_through_the_mint() -> Bool {
+  count(flashinfer_0_6_18_post1_wheels) == 3
+    && all(flashinfer_0_6_18_post1_wheels, w => admitted(a: admit_flashinfer_wheel(
+      acquisition: flashinfer_0_6_18_post1,
+      package: w.package,
+      filename: w.filename,
+      sha256_hex: w.sha256.hex as String,
+    )))
+}
+
+// A MALFORMED DIGEST REFUSES AS A DIGEST DEFECT: uppercase hex is not the canonical form, and a digest one
+// character short is not a digest. The filename and package are the real ones, so only the digest decides.
+test fn a_malformed_sha256_refuses() -> Bool {
+  let upper = admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: "ADB6D2952B47131138E108BD2999B1FE18B71F1A4C0B2684F168753DB9563991",
+  )
+  let short = admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db956399",
+  )
+  (match refusal_of(a: upper) {
+    Present { value: FlashInferWheelDigestMalformed { digest: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }) && (match refusal_of(a: short) {
+    Present { value: FlashInferWheelDigestMalformed { digest: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  })
+}
+
+// A NEIGHBOURING VERSION'S FILE DOES NOT SATISFY A PIN. `0.6.18` is a prefix of `0.6.18.post1`, which is
+// exactly the case a prefix-without-separator test would admit.
+test fn a_wheel_from_a_neighbouring_version_refuses() -> Bool {
+  let bare_0_6_18 = FlashInferPublishedRelease {
+    version: "0.6.18" as NonEmptyStr,
+    channel: FlashInferProjectStable,
+    index: "flashinfer.ai/whl" as NonEmptyStr,
+  }
+  match refusal_of(a: admit_flashinfer_wheel(
+    acquisition: bare_0_6_18,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+  )) {
+    Present { value: FlashInferWheelFilenameNotForVersion { version: _, filename: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// A FILE PASTED UNDER THE WRONG PACKAGE REFUSES before its version is even read.
+test fn a_wheel_filed_under_another_package_refuses() -> Bool {
+  match refusal_of(a: admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+  )) {
+    Present { value: FlashInferWheelFilenameNotForPackage { package: _, filename: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// AN UNPUBLISHED ACQUISITION HAS NO WHEELS AND NO VERSION. A source revision refuses as a category error
+// even with an otherwise-valid row, and it cannot be spelled as a version-shaped argument.
+test fn an_unpublished_source_revision_refuses_a_wheel_pin_and_has_no_version() -> Bool {
+  let unpublished = FlashInferSourceRevision {
+    revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    reason_unreleased: "fixture: a revision with no published release" as NonEmptyStr,
+  }
+  (match refusal_of(a: admit_flashinfer_wheel(
+    acquisition: unpublished,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+  )) {
+    Present { value: FlashInferWheelAcquisitionUnpublished { revision: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }) && (match flashinfer_published_version(a: unpublished) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn platform_tag_is(w: FlashInferWheel, tag: String) -> Bool {
+  match flashinfer_wheel_platform_tag(w: w) {
+    Present { value: t } => t == tag
+    Absent => false
+  }
+}
+
+fn rows_for(package: String) -> List<FlashInferWheel> {
+  filter(flashinfer_0_6_18_post1_wheels, w => (w.package as String) == package)
+}
+
+// THE ARCHITECTURE AND CUDA BUILD ARE IN THE FILENAME AND ONLY THE JIT-CACHE CARRIES THEM. Each package has
+// exactly one row in the pin set, asserted rather than assumed: FlashInfer publishes several platform and
+// CUDA variants per package and version, so a second jit-cache row would make "the jit-cache wheel" a
+// question row order cannot answer, and this goes red instead of reading whichever row came first.
+test fn only_the_jit_cache_wheel_is_cuda_and_architecture_specific() -> Bool {
+  let jit = rows_for(package: "flashinfer-jit-cache")
+  let python = rows_for(package: "flashinfer-python")
+  count(jit) == 1
+    && all(jit, w => platform_tag_is(w: w, tag: "manylinux_2_28_aarch64") && string_contains(s: w.filename as String, pattern: "+cu130-"))
+    && count(python) == 1
+    && all(python, w => platform_tag_is(w: w, tag: "any"))
+}
+
+fn refuses_as_malformed(filename: NonEmptyStr) -> Bool {
+  match refusal_of(a: admit_flashinfer_wheel(
+    acquisition: flashinfer_0_6_18_post1,
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: filename,
+    sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+  )) {
+    Present { value: FlashInferWheelFilenameMalformed { filename: _ } } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// A STRING THAT BEGINS WITH THE DISTRIBUTION AND VERSION IS NOT A WHEEL FILENAME. Each fixture carries the
+// right distribution and version prefix, so only completeness decides: no `.whl` suffix, too few fields, an
+// empty field, and a build tag that does not begin with a digit all refuse as malformed. The positive
+// control is a well-formed six-field filename with a numeric build tag, which admits -- so the refusals are
+// not a mint that has stopped accepting six fields.
+test fn an_incomplete_wheel_filename_refuses_as_malformed() -> Bool {
+  refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-garbage" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none.whl" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none-any" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3--any.whl" as NonEmptyStr)
+    && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-x1-py3-none-any.whl" as NonEmptyStr)
+    && admitted(a: admit_flashinfer_wheel(
+      acquisition: flashinfer_0_6_18_post1,
+      package: "flashinfer-python" as NonEmptyStr,
+      filename: "flashinfer_python-0.6.18.post1-1-py3-none-any.whl" as NonEmptyStr,
+      sha256_hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991",
+    ))
+}
+
+// THE CONSUMER READS THE VERSION FROM THIS AUTHORITY: both cited vLLM recipes carry the same spelling the
+// acquisition row publishes, so the version exists once.
+test fn the_vllm_recipes_pin_the_authority_release_version() -> Bool {
+  (vllm_07b75534_default_recipe.flashinfer_version as String) == (flashinfer_0_6_18_post1_version as String)
+    && (vllm_07b75534_aarch64_release_recipe.flashinfer_version as String) == (flashinfer_0_6_18_post1_version as String)
+    && (match flashinfer_published_version(a: flashinfer_0_6_18_post1) {
+      Present { value: v } => (v as String) == (flashinfer_0_6_18_post1_version as String)
+      Absent => false
+    })
+}
+
+// THE STABLE CHANNEL IS ONE UPSTREAM'S DOCKERFILE NAMES; THE NIGHTLY CHANNEL IS NOT. This is channel
+// recognition only -- it asserts nothing about whether a version publishes the wheel population an image
+// needs.
+test fn the_stable_channel_is_referenced_by_the_upstream_dockerfile_and_the_nightly_is_not() -> Bool {
+  flashinfer_channel_is_referenced_by_upstream_dockerfile(a: flashinfer_0_6_18_post1)
+    && !flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferPublishedRelease {
+      version: "0.7.0.dev20260910" as NonEmptyStr,
+      channel: FlashInferProjectNightly,
+      index: "flashinfer.ai/whl/nightly" as NonEmptyStr,
+    })
+}
