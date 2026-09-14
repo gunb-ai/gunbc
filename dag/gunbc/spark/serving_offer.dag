@@ -34,7 +34,7 @@ import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
 import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
 import gunbc.serving.serving_availability {
-  ServingAvailability, ServingAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
 }
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
@@ -122,7 +122,7 @@ type SparkServingReadiness
 // work; an offer on a launch is ready exactly when that reading is available AND names that same
 // endpoint process. An available reading from another process refuses naming both, so an answer from
 // process A can never make an offer on process B ready.
-fn spark_serving_readiness_of(verdict: ServingAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> SparkServingReadiness {
+fn spark_serving_readiness_of(verdict: ServingFrontDoorAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> SparkServingReadiness {
   let availability = verdict.reading
   match availability {
     ServingAvailable { endpoint: _, launch: observed, observed_at: t, receipt: r } =>
@@ -483,7 +483,7 @@ fn bind_spark_serving_offer<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  availability: ServingAvailabilityVerdict,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: SparkServingRoute,
 ) -> SparkOfferBinding<P> {
   match route {
@@ -519,7 +519,7 @@ fn bind_spark_serving_offer_on_route<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  availability: ServingAvailabilityVerdict,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: ProviderRoute,
 ) -> SparkOfferBinding<P> {
   match spark_serving_readiness_of(verdict: availability, launch: launch) {

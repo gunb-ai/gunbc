@@ -24,7 +24,7 @@ import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.serving.serving_availability { ServingAvailabilityVerdict, serving_availability_after_launch_read }
+import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
 }
@@ -182,11 +182,12 @@ fn t_observed_route() -> ProviderRoute {
 
 // READINESS IS NOT A VALUE THIS TEST MAY WRITE. The binder accepts only a sealed availability verdict, so
 // the fixture obtains one the way production does: a launch read naming the offered launch.
-fn t_ready() -> ServingAvailabilityVerdict {
-  serving_availability_after_launch_read(
+fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(
     endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "10.0.0.1" as NonEmptyStr, port: 8000 },
-    expected: t_launch(),
-    observation: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    before: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    front_door: FrontDoorAnswered,
+    after: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
     now: "2026-09-09T00:00:00Z",
   )
 }

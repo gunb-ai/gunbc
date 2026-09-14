@@ -65,8 +65,9 @@ import gunbc.serving.turn_admission {
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
 import gunbc.serving.serving_availability {
-  ServingAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
+  ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
   FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
+  EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
   serving_availability_after_launch_read, serving_availability_text,
 }
 
@@ -502,7 +503,7 @@ fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, 
   )
 }
 
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -597,7 +598,7 @@ fn harness_add_serving_candidate(
   route: ServingRoute,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
-  availability: ServingAvailabilityVerdict,
+  availability: ServingFrontDoorAvailabilityVerdict,
   launch: VllmEndpointProcessLaunch,
   engine: HarnessEngineReading,
   readback: VllmModelsRouteReadbackStanding,
@@ -737,13 +738,11 @@ type HarnessAcquisition
 // could not give back is named in the reason.
 fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, partition: PartitionId, shape: HarnessWireShape, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
   match serving_availability_after_launch_read(endpoint: candidate.endpoint, expected: candidate.launch, observation: harness_observe_engine(endpoint: candidate.endpoint).launch, now: to_string(now)).reading {
-    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: o } => {
+    EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } => {
       let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine could not be identified after the seat was granted" as NonEmptyStr, now: now)
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join([o as String, " (seat ", harness_seat_release_wire(r: released), ")"], "")) }
     }
-    ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: _ }, receipt: _ } =>
-      harness_fence_refused_unavailable(candidate: candidate, layout: layout, partition: partition, grant: grant, now: now)
-    ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } =>
+    EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
         match release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
           HarnessSeatReleased { partition: _ } =>
             AcquisitionLost {
@@ -753,7 +752,7 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
           HarnessSeatReleaseRefused { detail: why } =>
             AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the engine was replaced between selection and acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why], "")) }
         }
-    ServingAvailable { endpoint: _, launch: _, observed_at: _, receipt: _ } =>
+    EndpointProcessUnchanged { endpoint: _, launch: _, observed_at: _, receipt: _ } =>
         AcquisitionGranted {
           binding: HarnessSeatBound {
             url: harness_backend_url_for_endpoint(shape: shape, endpoint: candidate.endpoint),
@@ -771,13 +770,6 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
   }
 }
 
-// A LAUNCH READ ONLY EVER YIELDS A REPLACED OR UNREAD EXPORTER, but availability is one type and the
-// fence is total over it, so the front-door cause a launch read cannot produce is refused here rather
-// than matched away with a wildcard that would silently inherit whichever remedy an arm happened to name.
-fn harness_fence_refused_unavailable(candidate: HarnessCandidate, layout: EventLogLayout, partition: PartitionId, grant: LeaseGrant, now: EpochSecs) -> HarnessAcquisition {
-  let released = release_retry(layout: layout, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the route was unavailable when the seat was fenced" as NonEmptyStr, now: now)
-  AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the route was unavailable when the seat was fenced (seat ", harness_seat_release_wire(r: released), ")"], "")) }
-}
 
 fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group, class: class) {

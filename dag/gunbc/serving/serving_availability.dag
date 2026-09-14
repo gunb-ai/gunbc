@@ -53,14 +53,40 @@ type ServingAvailability
       cause: NonEmptyStr
     }
 
-// THE EVALUATED VERDICT, SEALED. ServingAvailability is a coproduct a caller can write, and a
+// THE EVALUATED FRONT-DOOR VERDICT, SEALED. ServingAvailability is a coproduct a caller can write, and a
 // sole_constructor wall on coproduct variants is not enforced on the .dag path (DESIGN §4b), so the
-// verdict consumers accept is this record around it, which only this module's evaluators mint. A caller
-// that wants an offer must hold one of these, and can only get one by performing the reads below.
+// verdict an offer consumer accepts is this record around it, and only serving_availability_bracketing_read
+// mints one -- so holding it means a bounded front-door read happened between two launch reads. A caller
+// that wants an offer cannot substitute the cheaper launch-only read, which mints a different verdict.
 // Raw evidence -- FrontDoorRead, a launch observation -- stays freely constructible; it is input, not
 // a conclusion.
-type ServingAvailabilityVerdict sole_constructor {
+type ServingFrontDoorAvailabilityVerdict sole_constructor {
   reading: ServingAvailability
+}
+
+// THE OTHER EVALUATED RESULT, AND IT IS A DIFFERENT PROPOSITION. "the exporter process that answered
+// earlier is still the one answering" is not "the front door answered under one stable process": a seat
+// fence needs the first, an offer needs the second, and one sealed type carrying both would let the
+// cheaper read mint the verdict the expensive one is supposed to establish. So continuity has its own
+// carrier, its own verdict, and no path from it to the offer binder.
+type EndpointProcessContinuity
+  = EndpointProcessUnchanged { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EndpointProcessWasReplaced { endpoint: ServingRouteEndpoint, expected: VllmEndpointProcessLaunch, observed: VllmEndpointProcessLaunch, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EndpointProcessContinuityUnread { endpoint: ServingRouteEndpoint, attempted_at: Timestamp, cause: NonEmptyStr }
+
+type EndpointProcessContinuityVerdict sole_constructor {
+  reading: EndpointProcessContinuity
+}
+
+fn endpoint_process_continuity_text(c: EndpointProcessContinuity) -> String {
+  match c {
+    EndpointProcessUnchanged { endpoint: e, launch: l, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " still answered by endpoint process ", vllm_endpoint_process_launch_key(launch: l) as String, " at ", t], "")
+    EndpointProcessWasReplaced { endpoint: e, expected: x, observed: o, observed_at: t, receipt: _ } =>
+      join([serving_route_endpoint_wire(e: e) as String, " endpoint process was replaced by ", t, ": bound to ", vllm_endpoint_process_launch_key(launch: x) as String, ", now ", vllm_endpoint_process_launch_key(launch: o) as String], "")
+    EndpointProcessContinuityUnread { endpoint: e, attempted_at: t, cause: c2 } =>
+      join([serving_route_endpoint_wire(e: e) as String, " endpoint process unread at ", t, ": ", c2 as String], "")
+  }
 }
 
 // WHAT THE TRANSPORT ESTABLISHES, AND NOTHING STRONGER. A bounded GET reports one Bool, which cannot
@@ -109,20 +135,15 @@ fn serving_availability_after_launch_read(
   expected: VllmEndpointProcessLaunch,
   observation: VllmEndpointProcessLaunchObservation,
   now: Timestamp,
-) -> ServingAvailabilityVerdict {
-  ServingAvailabilityVerdict { reading: match observation {
+) -> EndpointProcessContinuityVerdict {
+  EndpointProcessContinuityVerdict { reading: match observation {
     LaunchUnobserved { group: _, obligation: o } =>
-      ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+      EndpointProcessContinuityUnread { endpoint: endpoint, attempted_at: now, cause: o }
     LaunchObserved { launch: current, receipt: r } =>
       if vllm_endpoint_process_launch_is(launch: current, other: expected) {
-        ServingAvailable { endpoint: endpoint, launch: current, observed_at: now, receipt: r }
+        EndpointProcessUnchanged { endpoint: endpoint, launch: current, observed_at: now, receipt: r }
       } else {
-        ServingUnavailable {
-          endpoint: endpoint,
-          observed_at: now,
-          cause: EndpointProcessReplaced { expected: expected, observed: current },
-          receipt: r,
-        }
+        EndpointProcessWasReplaced { endpoint: endpoint, expected: expected, observed: current, observed_at: now, receipt: r }
       }
   } }
 }
@@ -137,18 +158,25 @@ fn serving_availability_bracketing_read(
   front_door: FrontDoorRead,
   after: VllmEndpointProcessLaunchObservation,
   now: Timestamp,
-) -> ServingAvailabilityVerdict {
+) -> ServingFrontDoorAvailabilityVerdict {
   match front_door {
     FrontDoorDidNotAnswer { url: u, bound: b } =>
-      ServingAvailabilityVerdict { reading: ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b }, receipt: "gunbc.serving.front-door-read" as ObservationReceiptRef } }
+      ServingFrontDoorAvailabilityVerdict { reading: ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b }, receipt: "gunbc.serving.front-door-read" as ObservationReceiptRef } }
     FrontDoorAnswerUnreadable { cause: c } =>
-      ServingAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: c } }
+      ServingFrontDoorAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: c } }
     FrontDoorAnswered =>
       match before {
         LaunchUnobserved { group: _, obligation: o } =>
-          ServingAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o } }
+          ServingFrontDoorAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o } }
         LaunchObserved { launch: first, receipt: _ } =>
-          serving_availability_after_launch_read(endpoint: endpoint, expected: first, observation: after, now: now)
+          ServingFrontDoorAvailabilityVerdict { reading: match serving_availability_after_launch_read(endpoint: endpoint, expected: first, observation: after, now: now).reading {
+            EndpointProcessContinuityUnread { endpoint: _, attempted_at: _, cause: o } =>
+              ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+            EndpointProcessUnchanged { endpoint: _, launch: l, observed_at: _, receipt: r } =>
+              ServingAvailable { endpoint: endpoint, launch: l, observed_at: now, receipt: r }
+            EndpointProcessWasReplaced { endpoint: _, expected: x, observed: o2, observed_at: _, receipt: r } =>
+              ServingUnavailable { endpoint: endpoint, observed_at: now, cause: EndpointProcessReplaced { expected: x, observed: o2 }, receipt: r }
+          } }
       }
   }
 }
