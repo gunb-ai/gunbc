@@ -92,7 +92,7 @@ fn footprint_patterns(f: WorkspaceFootprint) -> List<String> {
 
 fn ignore_patterns() -> List<String> {
   let tool_patterns = fold(repo_workspace_footprints(), init: [], f: fn(acc, f) { concat(acc, footprint_patterns(f: f)) })
-  let with_private = concat(tool_patterns, map(non_world_readable_materialisations(), m => m.prefix))
+  let with_private = concat(tool_patterns, map(non_world_readable_materialisations(), m => materialisation_ignore_pattern(m: m)))
   concat(with_private, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 
@@ -113,10 +113,22 @@ fn non_world_readable_materialisations() -> List<WorkspaceMaterialisation> {
   untracked_materialisations(all: workspace_materialisations())
 }
 
+// THE EMITTED PATTERN IS ANCHORED, and that is a fact about what the row MEANS rather than a
+// spelling preference. A materialisation row declares a prefix AT THE WORKSPACE ROOT -- the compose
+// step lands the repository there and nowhere else -- while git reads a pattern containing no
+// leading slash as matching at ANY DEPTH (git-scm.com/docs/gitignore, pattern format). So the
+// unanchored form says something the model does not: it would also ignore, say,
+// fixtures/private_overlay/example.dag, which no materialisation claims and which may be perfectly
+// public material. Anchoring emits exactly the declared scope and nothing wider. The
+// generated-artifact arm below anchors for the same reason and by the same concat.
+fn materialisation_ignore_pattern(m: WorkspaceMaterialisation) -> String {
+  concat("/", m.prefix)
+}
+
 fn materialisation_doc(m: WorkspaceMaterialisation) -> Doc {
   doc_concat(parts: [
     gitignore_comment_line(text: materialisation_ignore_reason(m: m)),
-    doc_line_of(text: m.prefix)
+    doc_line_of(text: materialisation_ignore_pattern(m: m))
   ])
 }
 
@@ -144,6 +156,15 @@ fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
 }
 
+// A LEADING SLASH ON A DIRECTORY PATTERN BINDS IT TO THE ROOT. Without this arm the dir branch
+// below strips the slash and answers the unanchored question for every anchored pattern, so the
+// predicate would report a nested fixtures/private_overlay/... path as ignored while the emitted
+// .gitignore -- read by git, which honours the anchor -- does not ignore it. Two answers to one
+// question, and the wrong one is the one a witness would read.
+fn anchored_dir_matches(dir: String, path: String) -> Bool {
+  path == dir || starts_with(path, prefix: concat(dir, "/"))
+}
+
 fn dir_pattern_matches(dir: String, path: String) -> Bool {
   let anchored = concat(dir, "/")
   path == dir
@@ -158,7 +179,11 @@ fn strip_slashes(p: String) -> String {
 
 fn pattern_matches(pattern: String, path: String) -> Bool {
   if ends_with(s: pattern, suffix: "/") {
-    dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+    if starts_with(pattern, prefix: "/") {
+      anchored_dir_matches(dir: strip_slashes(p: pattern), path: path)
+    } else {
+      dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+    }
   } else if starts_with(pattern, prefix: "*.") {
     ends_with(s: path, suffix: without_prefix(s: pattern, prefix: "*"))
   } else if starts_with(pattern, prefix: "/") {

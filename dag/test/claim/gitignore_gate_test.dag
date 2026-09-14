@@ -43,6 +43,7 @@ test fn witness_private_material_rows_are_derived() -> Bool {
     && string_contains(s: eg, pattern: "wb62_overlay/")
     && string_contains(s: eg, pattern: "privdag/")
     && string_contains(s: eg, pattern: "gunb-ai/gunbc-private is private — never tracked by this repository")
+    && string_contains(s: eg, pattern: "/private_overlay/")
 }
 
 data public_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMaterialisation {
@@ -68,6 +69,18 @@ test fn witness_public_source_derives_no_ignore_row() -> Bool {
     && !materialisation_must_not_be_tracked(m: public_sourced_materialisation)
     && materialisation_must_not_be_tracked(m: private_sourced_materialisation)
     && !string_contains(s: expected_gitignore(), pattern: "public_overlay_probe/")
+}
+
+// THE ANCHOR IS THE SUBJECT OF ITS OWN WITNESS, because an unanchored pattern passes every
+// root-level check above while quietly ignoring material no row declares. A materialisation row
+// names a prefix AT THE WORKSPACE ROOT, so a same-named directory NESTED somewhere else is outside
+// the declared scope and must stay trackable — it may be ordinary public material, a fixture most
+// obviously. The pair is the discriminator: same spelling, two depths, opposite verdicts.
+test fn witness_materialisation_patterns_are_root_anchored() -> Bool {
+  path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
+    && !path_is_ignored(path: "fixtures/private_overlay/example.dag")
+    && !path_is_ignored(path: "dag/test/fixture/privdag/sample.dag")
+    && !path_is_ignored(path: "vendor/private_repo/readme.md")
 }
 
 test fn witness_private_material_paths_are_ignored() -> Bool {

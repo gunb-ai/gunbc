@@ -29,6 +29,17 @@ import gunbc.repo_identity { gunbc_private_repository }
 // so `git add -A` records a gitlink — a commit sha and a path, with a warning on stderr. A copy
 // carries no .git, so the same command records every file's full content, mode 100644, silently.
 // The silent arm is the dangerous one and it is the one the overlay recipe produces.
+// A THIRD BEHAVIOUR IS MEASURED AND DELIBERATELY CARRIES NO ARM. A SYMLINK at the prefix stages
+// mode 120000 whose blob body is the TARGET PATH, with no warning at all -- observed 2026-09-14 by
+// quick-owl-739 from an earlier recipe, since discontinued. It leaks a filesystem path rather than
+// private bytes, so it is less severe than the copy, and it is not dressed up as a leak.
+//
+// It needs no arm for the ignore wall to hold, and that is a property of the derivation rather
+// than an omission: gunbc.gitignore_emit derives its rows from the source repository's VISIBILITY
+// and this row's PREFIX and from nothing else -- the method below feeds only the human-readable
+// reason text -- so ONE PREFIX ROW COVERS EVERY STAGING BEHAVIOUR AT THAT PREFIX, including one
+// nobody has invented yet. An arm is owed when a LIVE recipe adopts a method, never on the strength
+// of a discontinued one, which would put a claim in the model that no current observation supports.
 type MaterialisationMethod
   = NestedClone
   | FileCopy
