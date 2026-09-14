@@ -3,7 +3,7 @@ module v2.test.lens_wiring_liveness.wiring_liveness_test
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node_reflection { resolve_type_node_checked }
+import v2.std.node_reflection { resolve_type_node }
 
 
 // READS THE LIVE TREE AS OF THE REFLECTION CUTOVER. The reflection read now names pool roots and
@@ -71,7 +71,7 @@ data wl_reflection_pool_roots: List<String> = ["dag", "src/v2"]
 // a confident false answer built on a question that was never settled. The refusal is surfaced as
 // an Outcome and the caller decides, rather than being flattened at the read.
 fn wl_reflected_dependency_kind() -> Outcome<Node> {
-  resolve_type_node_checked(
+  resolve_type_node(
     pool_roots: wl_reflection_pool_roots,
     type_name: ^DependencyKind
   )

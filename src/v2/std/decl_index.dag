@@ -44,7 +44,7 @@ fn decl_facts_at(pool_roots: List<String>, qualified_name: String) -> List<DeclF
 // picks a match. That boundary is the condition under which this seed arm was admitted at all.
 //
 // Consumer: `v2.std.node_reflection` type_declarer_names, the one reader of this seam, which both
-// guarded routes go through -- resolve_type_node_checked for a bare spelling and resolve_type_node_at
+// guarded routes go through -- resolve_type_node for a bare spelling and resolve_type_node_at
 // for a citation. Each establishes multiplicity from what this returns and shape from the keyed
 // declaration read, before accept_sole_declaration will hand back a node.
 fn type_declarer_qualified_names(pool_roots: List<String>, bare_name: String) -> List<String> {

@@ -31,13 +31,16 @@ import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 // because an inhabitant of an arbitrary T is not derivable from anything the caller hands
 // it -- the answer is a fact about the running compiler's own source index.
 //
-// resolve_type_node USED TO BE THE OTHER ONE, AND IS DELETED RATHER THAN RENAMED. It took a
+// A SECOND HOST SEAM USED TO SIT BESIDE IT AND IS DELETED RATHER THAN RENAMED. It carried the
+// spelling `resolve_type_node`, WHICH THE SCOPE-CARRYING FUNCTION BELOW NOW CARRIES -- the name
+// is reused across that deletion, so every sentence here about the SEAM is about the thing that
+// was removed and never about the function of the same name that replaced it. The seam took a
 // BARE type spelling, and its host arm answered by scanning the interpreter's loaded modules
 // and returning the FIRST item whose authored name matched -- so a spelling two modules
 // declare was answered from whichever load order reached first, with no diagnostic. That is
 // the DESIGN section 5 silent wrongness this module now exists to refuse.
 //
-// It is deleted because after the cutover nothing consumed it: the guarded route establishes
+// The seam is deleted because after the cutover nothing consumed it: the guarded route establishes
 // multiplicity and shape from the KEYED declaration read and returns the node that read
 // already carries, so it never needs the bare scan, and every other consumer was moved. A
 // rename would have kept a bare-spelling host route alive under a new name, which is exactly
@@ -70,14 +73,14 @@ fn coproduct_nullary_inhabitants<T>(
   )
 }
 
-// THE SCOPE-CARRYING ROUTE, AND WHY THE BARE ONE ABOVE CANNOT STAY THE ONLY ONE.
+// THE SCOPE-CARRYING ROUTE, AND THE DEFECT IT REPLACED.
 //
-// `resolve_type_node` keys on a BARE spelling. Its host arm (v4_bridge.resolve_type_node,
-// realized by v1.stage0.coproduct_reflection type_item_by_name) answers it by scanning the
+// THE DELETED SEAM of this name keyed on a BARE spelling. Its host arm (v4_bridge.resolve_type_node,
+// realized by v1.stage0.coproduct_reflection type_item_by_name) answered it by scanning the
 // interpreter's loaded modules in order and returning the FIRST item whose authored name
-// matches. When one spelling is declared as a closed coproduct in two modules, that scan
-// returns whichever module the load order reached first -- a different arm set, with no
-// diagnostic. It is DESIGN section 5 silent wrongness: not a refusal, a wrong answer that
+// matched. When one spelling is declared as a closed coproduct in two modules, that scan
+// returned whichever module the load order reached first -- a different arm set, with no
+// diagnostic. It was DESIGN section 5 silent wrongness: not a refusal, a wrong answer that
 // typechecks. The corpus inhabits the invalid state today, so this is a live class and not a
 // hypothetical one; the discriminating pair enrolled against it is in
 // `v2.test.manual.scoped_type_reflection_conformance`.
@@ -202,7 +205,7 @@ fn accept_sole_declaration(
 // (DESIGN section 5 -- a failure arm refuses, never widens). The single-row arm is the only one
 // that may reach the bare host seam, and it may do so precisely because uniqueness has been
 // established BEFORE the call rather than assumed by it.
-fn resolve_type_node_checked(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
+fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
   let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
   let n = length(xs: candidates)
   if n == 0 {
@@ -238,12 +241,12 @@ fn resolve_type_node_checked(pool_roots: List<String>, type_name: Symbol) -> Out
   }
 }
 
-fn coproduct_arm_keys_checked(
+fn coproduct_arm_keys(
   pool_roots: List<String>,
   type_name: Symbol
 ) -> Outcome<List<Symbol>> {
   bind_outcome(
-    o: resolve_type_node_checked(pool_roots: pool_roots, type_name: type_name),
+    o: resolve_type_node(pool_roots: pool_roots, type_name: type_name),
     f: fn(node) {
       outcome_accepted(value: coproduct_arm_key_list_from_node(node: node))
     }
@@ -252,7 +255,7 @@ fn coproduct_arm_keys_checked(
 
 // THE ARM-KEY READING OF THE CITATION ROUTE, declared because the spelling route has one and a
 // caller that cites its module needs the same answer shape. It binds over resolve_type_node_at
-// exactly as coproduct_arm_keys_checked binds over resolve_type_node_checked, so the two routes
+// exactly as coproduct_arm_keys binds over resolve_type_node, so the two routes
 // differ in how the declaration is NAMED and in nothing else -- no second arm-key law.
 // Consumer: the conformance claims in v2.test.manual.scoped_type_reflection_conformance that read
 // a forked spelling through each of its declaring modules.
@@ -269,7 +272,7 @@ fn coproduct_arm_keys_at(
 }
 
 // THE ROUTE THAT MAKES A CALLER SAY WHICH MODULE IT MEANT, and the one that can RESOLVE what the
-// spelling route can only refuse. `resolve_type_node_checked` refuses an ambiguous spelling because
+// spelling route can only refuse. `resolve_type_node` refuses an ambiguous spelling because
 // a bare name does not say which declaration was meant; a caller that legitimately means one of
 // several same-spelled types names it by citation instead, reusing `std.decl_ref` DeclarationRef --
 // the corpus's existing carrier for "this declaration, in this module" -- so no second spelling of a

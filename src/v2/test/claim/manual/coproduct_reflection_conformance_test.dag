@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_reflection {
   coproduct_arm_keys_at,
-  coproduct_arm_keys_checked,
+  coproduct_arm_keys,
   coproduct_nullary_inhabitants
 }
 import v2.test.fixture.coproduct_reflection_generic_wrapper {
@@ -99,7 +99,7 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
         xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
-        ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys_checked(pool_roots: reflection_conformance_pool_roots, type_name: reflect_imported_derive_trait_type)),
+        ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_imported_derive_trait_type)),
         eq: symbol_eq
       )
     Rejected { diagnostics: _ } => false
@@ -132,8 +132,8 @@ test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool 
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
-    xs: conformance_arm_keys_or_empty(o: coproduct_arm_keys_checked(pool_roots: reflection_conformance_pool_roots, type_name: reflect_connective_type)),
-    ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys_checked(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type)),
+    xs: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_connective_type)),
+    ys: conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type)),
     eq: symbol_eq
   )
 }
@@ -165,7 +165,7 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
     discriminant_of: behavior_discriminant
   ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
-      let keys = conformance_arm_keys_or_empty(o: coproduct_arm_keys_checked(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type))
+      let keys = conformance_arm_keys_or_empty(o: coproduct_arm_keys(pool_roots: reflection_conformance_pool_roots, type_name: reflect_behavior_type))
       bag_eq(
         xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
         ys: keys,

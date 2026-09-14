@@ -7,9 +7,9 @@ import v2.std.node { Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node_reflection {
   coproduct_arm_keys_at,
-  coproduct_arm_keys_checked,
+  coproduct_arm_keys,
   resolve_type_node_at,
-  resolve_type_node_checked
+  resolve_type_node
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -43,7 +43,7 @@ fn outcome_is_accepted<T>(o: Outcome<T>) -> Bool {
 // moment the guard is removed or widened to a first match.
 test fn ambiguous_type_spelling_refuses_rather_than_first_matching() -> Bool {
   outcome_is_rejected(
-    o: coproduct_arm_keys_checked(
+    o: coproduct_arm_keys(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Representation
     )
@@ -52,7 +52,7 @@ test fn ambiguous_type_spelling_refuses_rather_than_first_matching() -> Bool {
 
 test fn ambiguous_type_spelling_refuses_at_the_node_route_too() -> Bool {
   outcome_is_rejected(
-    o: resolve_type_node_checked(
+    o: resolve_type_node(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Representation
     )
@@ -84,7 +84,7 @@ fn outcome_arm_keys_are(o: Outcome<List<Symbol>>, expected: List<Symbol>) -> Boo
 
 test fn unique_type_spelling_still_resolves() -> Bool {
   outcome_arm_keys_are(
-    o: coproduct_arm_keys_checked(
+    o: coproduct_arm_keys(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Connective
     ),
@@ -96,7 +96,7 @@ test fn unique_type_spelling_still_resolves() -> Bool {
 // what makes the zero case a refusal and not a divergent host call.
 test fn absent_type_spelling_refuses() -> Bool {
   outcome_is_rejected(
-    o: resolve_type_node_checked(
+    o: resolve_type_node(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^NoSuchTypeIsDeclaredAnywhereInThisPool
     )
@@ -171,7 +171,7 @@ test fn cited_forked_spelling_resolves_to_the_other_module_named() -> Bool {
 // name a claim whose subject this same PR changed.
 test fn forked_spelling_refuses_when_guarded() -> Bool {
   outcome_is_rejected(
-    o: coproduct_arm_keys_checked(
+    o: coproduct_arm_keys(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^UriScheme
     )
@@ -187,7 +187,7 @@ test fn forked_spelling_refuses_when_guarded() -> Bool {
 // refuses on its own arm, which is the contract this module's annotation already asserted.
 test fn unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
   outcome_is_rejected(
-    o: coproduct_arm_keys_checked(
+    o: coproduct_arm_keys(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^DeclFact
     )
@@ -261,7 +261,7 @@ test fn cited_bool_resolves_to_the_logic_module_arms() -> Bool {
 
 test fn bare_bool_spelling_refuses_as_ambiguous() -> Bool {
   outcome_is_rejected(
-    o: coproduct_arm_keys_checked(
+    o: coproduct_arm_keys(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Bool
     )

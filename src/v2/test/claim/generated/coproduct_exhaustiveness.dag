@@ -13,7 +13,7 @@ import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.node_reflection { coproduct_arm_keys_checked }
+import v2.std.node_reflection { coproduct_arm_keys }
 import v2.std.verification {
   ClaimAnchorKey,
   DiagnosticClaim,
@@ -113,7 +113,7 @@ fn roster_covers_all_arms_of_roster(
   gens: List<Generator<TestgenConcept>>,
   coproduct_type: Symbol
 ) -> Bool {
-  match coproduct_arm_keys_checked(pool_roots: pool_roots, type_name: coproduct_type) {
+  match coproduct_arm_keys(pool_roots: pool_roots, type_name: coproduct_type) {
     Rejected { diagnostics: _ } => false
     Accepted { value: arms, diagnostics: _ } =>
       (length(xs: arms) > 0)

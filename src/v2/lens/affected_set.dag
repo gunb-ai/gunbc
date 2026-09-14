@@ -61,7 +61,7 @@ import v2.std.node {
   content_hash,
 }
 import v2.std.witness { Holds, Witness }
-import v2.std.node_reflection { coproduct_arm_keys_checked }
+import v2.std.node_reflection { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
 
 type Dag = Node
@@ -1302,7 +1302,7 @@ data affected_set_reflect_repo_process_kind_type: Symbol = ^RepoProcessKind
 // rather than a bare list. They read type declarations by BARE SPELLING, and a bare spelling that
 // two modules declare cannot say which was meant -- the seam used to answer such a spelling from
 // whichever module the interpreter's load order reached first, silently, and this lens consumed
-// that answer as the process universe. v2.std.node_reflection coproduct_arm_keys_checked refuses
+// that answer as the process universe. v2.std.node_reflection coproduct_arm_keys refuses
 // typed and located instead, so the refusal has to arrive somewhere, and RepoProcessUniverse
 // already owns the vocabulary for it: UniverseIncomplete carrying a FailClosedReason.
 fn reflected_processes(
@@ -1311,7 +1311,7 @@ fn reflected_processes(
   kind: RepoProcessKind
 ) -> Outcome<List<RepoProcess>> {
   bind_outcome(
-    o: coproduct_arm_keys_checked(pool_roots: pool_roots, type_name: type_name),
+    o: coproduct_arm_keys(pool_roots: pool_roots, type_name: type_name),
     f: fn(keys) {
       outcome_accepted(
         value: keys |> map(key => RepoProcess { kind: kind, identity: key })
@@ -1380,7 +1380,7 @@ fn repo_process_universe_from(
   pool_roots: List<String>,
   processes: List<RepoProcess>
 ) -> RepoProcessUniverse {
-  match coproduct_arm_keys_checked(
+  match coproduct_arm_keys(
     pool_roots: pool_roots,
     type_name: affected_set_reflect_repo_process_kind_type
   ) {
