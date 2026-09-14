@@ -101,10 +101,6 @@ pub fn native_driver_exclusive_rows(
     })
 }
 
-pub fn native_driver_exclusive_rows_zero() -> Rc<NativeDriverExclusiveRows> {
-    native_driver_exclusive_rows(|_k| crate::std_measure::nanosecond(0))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NativeDriverCostAccounting {
