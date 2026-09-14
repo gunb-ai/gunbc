@@ -57,9 +57,11 @@ data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 // THIS MODULE DECLARES NO IMPORTS AT ALL. Every name it uses -- dedupe_snoc, tokenize,
 // parse_module and the rest -- reaches its declaration through the shared name slot rather than
 // through anything this file wrote. Adding the single import line the collapse needs turns on the
-// listed-import requirement for the whole file, and those names stop resolving: measured at 6
-// blocking errors before and 10 after, the four new ones being dedupe_snoc, tokenize and
-// parse_module unresolved plus one downstream effect-summary refusal each.
+// listed-import requirement for the whole file, and those names stop resolving: the collapse was
+// attempted and the refusal set read off the compile, which gains exactly the unresolved names
+// dedupe_snoc, tokenize and parse_module, plus the downstream effect-summary refusal each of them
+// causes. The shape is stated rather than a count transcribed (section 6): re-derive it by adding
+// the import and compiling this module, which is the same act the trigger below closes on.
 //
 // So the honest collapse of this clone is the qualification of this module's whole surface --
 // naming v2.lens.coverage, v2.compiler.tokenize and v2.compiler.parse as the sources they already
