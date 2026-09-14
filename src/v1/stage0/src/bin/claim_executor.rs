@@ -1103,10 +1103,17 @@ fn run() -> Result<ExitCode, ExitCode> {
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW, the same way the
+            // wave-admission phase reads it: the match-bearing consumers of a coproduct whose
+            // arm set changed are derived from that index and its base-side reconstruction,
+            // never from a second corpus walk. `None` here means the parse refused (the line
+            // is already stopped) and the floor refuses the planning row rather than planning
+            // blind.
             match v1_compiler::cli_run::run_required_floor(
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
+                head_index.as_ref(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);
@@ -1520,10 +1527,13 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if required_floor_mode {
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        // The standalone floor entry runs no parse phase, so no declaration index exists to
+        // lend; on a CI commit the floor refuses its planning row rather than planning blind.
         return match v1_compiler::cli_run::run_required_floor(
             &source_roots,
             &commit,
             v1_compiler::cli_run::ShardStyle::single_shard(),
+            None,
         ) {
             Ok(outcome) => {
                 report_required_floor_outcome(&outcome);

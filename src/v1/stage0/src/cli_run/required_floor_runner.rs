@@ -1207,7 +1207,9 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
     index: &MultiEntryIndex,
-) -> Result<(Vec<String>, Vec<String>), String> {
+    source_roots: &[String],
+    planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
+) -> Result<FloorDiffProjections, String> {
     let diff_text = floor_git_diff_range()?;
     let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
     let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
@@ -1250,7 +1252,129 @@ fn changed_and_enrolled_witness_identities_with_index(
         &edits.enrolled_test_fns,
         &quarantined,
     )?;
-    Ok((changed, enrolled))
+    // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
+    // or type-decl edit lands in `touched_entry_files` and until this was consumed only by
+    // skip-before-resolve and module-grain affected proofs -- never by Strict preparation.
+    // That is `check_reachable_only_from_an_entry_point_the_context_never_calls`: check_match
+    // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
+    // resolved the file. Seeding the authored module pulls its both-closure into
+    // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    let (touched_modules, touched_outside_floor_roots) =
+        module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
+    // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
+    // module whose declaration the diff touched; this one seeds the untouched modules whose
+    // `match` over a coproduct went stale because its arm set changed in the touched one
+    // (gunbc#11194). Same diff window as every projection above -- the base is the floor's own
+    // resolved comparison, never a second baseline authority -- and the same Strict preparation
+    // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
+    let arm_set = arm_set_consumer_planning(planning_index)?;
+    Ok(FloorDiffProjections {
+        changed_witnesses: changed,
+        newly_enrolled_witnesses: enrolled,
+        compile_subject: CompileSubjectSeeds {
+            touched_modules,
+            touched_outside_floor_roots,
+            arm_set,
+        },
+    })
+}
+
+/// The projections of ONE diff observation, returned together so no two of them can describe
+/// different diffs (the join defect this floor keeps refusing elsewhere).
+pub(crate) struct FloorDiffProjections {
+    pub changed_witnesses: Vec<String>,
+    pub newly_enrolled_witnesses: Vec<String>,
+    pub compile_subject: CompileSubjectSeeds,
+}
+
+/// The modules the diff obliges Strict preparation to reach beyond the gate closure, in both
+/// directions of the stale-match class -- and, typed rather than counted, the touched files that
+/// could NOT seed anything because they live outside the floor's source roots.
+pub(crate) struct CompileSubjectSeeds {
+    /// `v2.workflow.floor_subject_seed` `SeedTouchedEntryModule`.
+    pub touched_modules: Vec<String>,
+    /// `v2.workflow.floor_subject_seed` `TouchedEntryOutsideFloorRoots { path, module_path }`:
+    /// a `src/v1` `.dag` mirror edit names a module the floor's roots do not index, so it is not
+    /// a seed -- and a reader must be able to see WHICH file seeded nothing and why, not a count.
+    pub touched_outside_floor_roots: Vec<(String, String)>,
+    pub arm_set: ArmSetConsumerPlanning,
+}
+
+/// `v2.workflow.floor_subject_seed` `SeedArmSetChangedMatchConsumer`, at the grain the seed list
+/// consumes: the selection, plus the window it was measured over so the receipt can name it.
+pub(crate) enum ArmSetConsumerPlanning {
+    /// No parse-phase index was lent to this process (the standalone `--required-floor`
+    /// entry), so this projection could not look. "Could not look" and "looked and found
+    /// nothing" are different states; on a CI commit the runner refuses this arm rather than
+    /// planning blind, and a local run prints it beside the other unevaluated sublanes.
+    NotEvaluated { reason: String },
+    /// The window's base is its head (a push whose baseline is itself): nothing changed, so no
+    /// coproduct's arm set did. Not a refusal and not ignorance -- `Selected` with no changes
+    /// would say the same thing with a base it never read.
+    NoSubject { head: String },
+    Selected {
+        base: String,
+        head: String,
+        selection: crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+    },
+}
+
+/// The dependents-direction seeds, derived from the parse phase's `DeclarationIndex` and its
+/// base-side reconstruction over the floor's OWN comparison window.
+///
+/// WHICH INDEX, AND WHY IT IS REACHABLE HERE. `v2.std.decl_index` `decl_facts_at` answers
+/// "what does the corpus declare under this name" and has no base side; it is the wrong
+/// question. The relation that answers "who binds this declaration" is the one
+/// `namespace_wave_admission` already computes from `ModuleDeclarationRecord`, and the parse
+/// phase builds that index in THIS lane before the floor runs (`RequiredCiPhase::Parse` and
+/// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
+/// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
+/// blind; a local run without a diff baseline never reaches here.
+fn arm_set_consumer_planning(
+    planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
+) -> Result<ArmSetConsumerPlanning, String> {
+    use crate::cli_run::namespace_wave_admission::{
+        arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
+    };
+    let Some(head_index) = planning_index else {
+        return Ok(ArmSetConsumerPlanning::NotEvaluated {
+            reason: "no parse-phase declaration index was lent to the floor, so the dependents \
+                     direction of the stale-match class cannot be planned"
+                .to_string(),
+        });
+    };
+    // THE FLOOR'S OWN WINDOW. A merge-base comparison reads the base tree at the merge base, a
+    // direct comparison at the base ref itself -- the same relation the affected-set diff was
+    // taken under, so the arm-set delta and the line-range attribution describe one change.
+    let workspace = process_workspace_root();
+    let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
+        FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
+        FreezeBaselineComparison::MergeBase { base, head, .. } => {
+            let merge_base = git_stdout(&workspace, &["merge-base", &base, &head])?;
+            (merge_base, head)
+        }
+    };
+    let base_commit = git_stdout(&workspace, &["rev-parse", &base_commit])?;
+    let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
+    match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
+        BaselineReconstruction::NoSubject { head } => {
+            Ok(ArmSetConsumerPlanning::NoSubject { head })
+        }
+        BaselineReconstruction::NotEvaluated { reason } => Err(format!(
+            "arm-set-changed consumer planning: the base side could not be reconstructed \
+             ({reason}); the planned set is NOT widened and NOT narrowed on an unobservable base"
+        )),
+        BaselineReconstruction::Reconstructed {
+            base,
+            head,
+            base_index,
+            ..
+        } => Ok(ArmSetConsumerPlanning::Selected {
+            base,
+            head,
+            selection: arm_set_changed_match_consumers(&base_index, head_index),
+        }),
+    }
 }
 
 /// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
@@ -1858,6 +1982,68 @@ pub(crate) fn changed_witness_identities_from_edited_test_fns(
     identities.sort();
     identities.dedup();
     Ok(identities)
+}
+
+/// Authored module names of `.dag` files whose non-data, non-test-fn declaration the diff
+/// touched. The spelling is the `module` header, the same key `assemble_prepared_subject_closure`
+/// matches with `starts_with`. A file with no module header refuses: dropping it would silently
+/// exempt the malformed case from the compile seed, which is the class this seed exists to close.
+///
+/// A touched file OUTSIDE THE FLOOR'S SOURCE ROOTS (a `src/v1` `.dag` mirror under the parse
+/// sweep but not under `--source-root dag --source-root src/v2`) names a module the prepared
+/// subject cannot contain, so it is not a seed. It is returned as its own typed row rather
+/// than dropped or counted: the reader sees which file seeded nothing and why.
+pub(crate) fn module_seeds_from_touched_entry_files(
+    base: &Path,
+    touched_entry_files: &std::collections::HashSet<String>,
+    source_roots: &[String],
+) -> Result<(Vec<String>, Vec<(String, String)>), String> {
+    let roots = floor_source_roots_workspace_relative(source_roots);
+    let mut modules: Vec<String> = Vec::new();
+    let mut outside: Vec<(String, String)> = Vec::new();
+    for file in touched_entry_files {
+        let content = std::fs::read_to_string(base.join(file))
+            .map_err(|e| format!("touched-entry compile-subject seed: read {file}: {e}"))?;
+        let module = extract_module_path(&content).ok_or_else(|| {
+            format!(
+                "touched-entry compile-subject seed: {file} has a non-data, non-test-fn \
+                 declaration edit but no module header, so it cannot be seeded into Strict \
+                 preparation"
+            )
+        })?;
+        let file_norm = normalize_repo_path(file);
+        if path_under_floor_roots(&file_norm, &roots) {
+            modules.push(module);
+        } else {
+            outside.push((file_norm, module));
+        }
+    }
+    modules.sort();
+    modules.dedup();
+    outside.sort();
+    Ok((modules, outside))
+}
+
+/// The floor's source roots as workspace-relative directory prefixes, the spelling a
+/// `DeclarationIndex` record's `rel_path` and a diff path share.
+fn floor_source_roots_workspace_relative(source_roots: &[String]) -> Vec<String> {
+    source_roots
+        .iter()
+        .map(|root| {
+            workspace_relative_repo_path(root)
+                .trim_end_matches('/')
+                .to_string()
+        })
+        .collect()
+}
+
+/// Whether a workspace-relative `.dag` path is indexed by the floor's prepared subject at all.
+/// A path outside every root names a module preparation cannot contain, whatever seeds it.
+fn path_under_floor_roots(rel_path: &str, roots: &[String]) -> bool {
+    let rel = normalize_repo_path(rel_path);
+    roots
+        .iter()
+        .any(|root| root == "." || root.is_empty() || rel.starts_with(&format!("{root}/")))
 }
 
 /// Is this identity's declared home under a root the tree declares NON-EXECUTING?
@@ -4360,7 +4546,8 @@ fn floor_decode_refused_share_candidates(
                 match name.as_str() {
                     "MeasuredServeAboveRecompute"
                     | "NoMeasuredEffectOverItsConsumers"
-                    | "SupersededBySingleAuthorityRepair" => name,
+                    | "SupersededBySingleAuthorityRepair"
+                    | "KeyOmitsAnInputTheValueDependsOn" => name,
                     other => {
                         return Err(format!(
                             "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
@@ -4495,6 +4682,10 @@ fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
                 "MeasuredServeAboveRecompute" => true,
                 "NoMeasuredEffectOverItsConsumers" => false,
                 "SupersededBySingleAuthorityRepair" => false,
+                // A key objection is a fact about ONE producer's key, not about a shape other
+                // producers share, so it has nothing for a later identity to inherit. Transferring
+                // it would refuse unrelated candidates on an objection that does not apply to them.
+                "KeyOmitsAnInputTheValueDependsOn" => false,
                 other => {
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
@@ -4696,10 +4887,16 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+///
+/// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
+/// floor's planning row derives the match-bearing consumers of a changed coproduct from it
+/// (`arm_set_consumer_planning`). `None` is "no such index in this process" -- the standalone
+/// `--required-floor` entry -- and on a CI commit that is a refusal, not a blind plan.
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
     style: ShardStyle,
+    planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
 ) -> Result<RequiredFloorOutcome, String> {
     // HONEST SCOPE (review 53487): the caller marker below is a self-attested string, not
     // authentication — any caller able to set `_ONLY` can set `_ONLY_CALLER` too. What it
@@ -4740,13 +4937,22 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
-    // ONE DERIVATION, CONSUMED TWICE. #9717's changed-witness identity producer supplies both
-    // the closure seeds that make these modules executable and the tail projection that judges
-    // their terminal rows. Re-observing the diff after execution would create two authorities
+    // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
+    // identities, newly enrolled identities, the compile-subject modules of
+    // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
+    // that diff changed. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses) =
-        match changed_and_enrolled_witness_identities_with_index(&gate_entry_index) {
-            Ok((changed, enrolled)) => (Some(changed), Some(enrolled)),
+    let (changed_witnesses, newly_enrolled_witnesses, compile_subject) =
+        match changed_and_enrolled_witness_identities_with_index(
+            &gate_entry_index,
+            source_roots,
+            planning_index,
+        ) {
+            Ok(projections) => (
+                Some(projections.changed_witnesses),
+                Some(projections.newly_enrolled_witnesses),
+                Some(projections.compile_subject),
+            ),
             Err(e) if commit != "local" && !commit.is_empty() => {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
@@ -4757,11 +4963,11 @@ pub fn run_required_floor(
                 eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-                // BOTH PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+                // ALL FOUR PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
                 // `None` here is "this run could not look", which is a different fact from "this run
                 // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
                 // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None)
+                (None, None, None)
             }
         };
     let changed_witness_set: HashSet<String> = changed_witnesses
@@ -4791,7 +4997,7 @@ pub fn run_required_floor(
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
             &floor_prepared_subject_exclusions(),
-            Some((&gate_entry_index, &policy_seed)),
+            Some((&gate_entry_index, &[], &policy_seed)),
         )?;
         let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
         let policy_frame = evaluation_frame(
@@ -4821,15 +5027,127 @@ pub fn run_required_floor(
     // "no declaration named 'resolve_channel_policy' in this execution's loaded index").
     // Making the dependency a declared seed is the honest form; a module evaluated by name
     // and absent from this list refuses loudly at its own call site, never silently.
-    let closure_seeds: Vec<String> = required_gate_prefixes
+    //
+    // TWO SEED LISTS, ONE RULE EACH (`v2.workflow.floor_subject_seed` `PreparedSubjectSeedGround`):
+    // the gate roster is textual prefixes, read exactly as site disposition reads it; everything
+    // else here is an AUTHORED MODULE NAME and is matched at segment boundaries, so `a.b` seeds
+    // `a.b` and `a.b.c` and never `a.bc`.
+    let closure_prefix_seeds: Vec<String> = required_gate_prefixes.clone();
+    let mut arm_set_consumer_seeds: Vec<String> = Vec::new();
+    let mut arm_set_consumers_outside_floor_roots: Vec<(String, String)> = Vec::new();
+    if let Some(subject) = &compile_subject {
+        // THE RECEIPT NAMES EACH SEED BY ITS GROUND, so the planned-set delta is attributable
+        // per merge: which consumers were added, by which changed declaration, and which
+        // touched files or consumers could seed nothing because they sit outside the roots.
+        eprintln!(
+            "[floor-phase] phase=touched-entry-compile-subject seeds={} modules={:?}",
+            subject.touched_modules.len(),
+            subject.touched_modules
+        );
+        for (path, module) in &subject.touched_outside_floor_roots {
+            eprintln!(
+                "[floor-plan] TouchedEntryOutsideFloorRoots path={path} module_path={module} \
+                 -- not a seed: the floor's source roots do not index it"
+            );
+        }
+        match &subject.arm_set {
+            ArmSetConsumerPlanning::NotEvaluated { reason } => {
+                if commit != "local" && !commit.is_empty() {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=ArmSetConsumerPlanningUnavailable {reason} \
+                         — a CI floor may not plan the prepared subject without the dependents \
+                         direction of the stale-match class"
+                    ));
+                }
+                eprintln!(
+                    "[floor-phase] phase=arm-set-changed-consumers state=not-evaluated \
+                     reason={reason:?}"
+                );
+            }
+            ArmSetConsumerPlanning::NoSubject { head } => {
+                eprintln!(
+                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                     changed_declarations=0 consumers_added=0 base={head} head={head} \
+                     (no subject: the window's base is its head)"
+                );
+            }
+            ArmSetConsumerPlanning::Selected {
+                base,
+                head,
+                selection,
+            } => {
+                use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+                let floor_roots = floor_source_roots_workspace_relative(source_roots);
+                let mut flat_channel = 0usize;
+                for change in &selection.changes {
+                    let mut resolved: Vec<String> = Vec::new();
+                    let mut flat: Vec<String> = Vec::new();
+                    for consumer in selection.consumers.iter().filter(|c| {
+                        c.changed_module_path == change.module_path
+                            && c.changed_declaration == change.declaration
+                    }) {
+                        let name = &consumer.consumer_module_path;
+                        if !path_under_floor_roots(&consumer.consumer_rel_path, &floor_roots) {
+                            arm_set_consumers_outside_floor_roots
+                                .push((consumer.consumer_rel_path.clone(), name.clone()));
+                            continue;
+                        }
+                        match consumer.binding {
+                            ArmConsumerBinding::BoundToDeclaringModule => {
+                                resolved.push(name.clone())
+                            }
+                            ArmConsumerBinding::BoundThroughFlatBareChannel => {
+                                flat_channel += 1;
+                                flat.push(name.clone())
+                            }
+                        }
+                        arm_set_consumer_seeds.push(name.clone());
+                    }
+                    eprintln!(
+                        "[floor-plan] SeedArmSetChangedMatchConsumer declaration={}.{} \
+                         arms_added={:?} arms_removed={:?} consumers_added={:?} \
+                         flat_channel_consumers={:?}",
+                        change.module_path,
+                        change.declaration,
+                        change.arms_added,
+                        change.arms_removed,
+                        resolved,
+                        flat
+                    );
+                }
+                arm_set_consumer_seeds.sort();
+                arm_set_consumer_seeds.dedup();
+                arm_set_consumers_outside_floor_roots.sort();
+                arm_set_consumers_outside_floor_roots.dedup();
+                for (path, module) in &arm_set_consumers_outside_floor_roots {
+                    eprintln!(
+                        "[floor-plan] ArmSetConsumerOutsideFloorRoots path={path} \
+                         module_path={module} -- planned but not a seed: the floor's source \
+                         roots do not index it, so its stale match is NOT checked here"
+                    );
+                }
+                eprintln!(
+                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                     changed_declarations={} consumers_added={} flat_channel_consumers={} \
+                     outside_floor_roots={} base={base} head={head}",
+                    selection.changes.len(),
+                    arm_set_consumer_seeds.len(),
+                    flat_channel,
+                    arm_set_consumers_outside_floor_roots.len()
+                );
+            }
+        }
+    }
+    let closure_module_seeds: Vec<String> = REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
         .iter()
-        .cloned()
-        .chain(
-            REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
-                .iter()
-                .map(|m| m.to_string()),
-        )
+        .map(|m| m.to_string())
         .chain(changed_module_seeds.iter().cloned())
+        .chain(
+            compile_subject
+                .iter()
+                .flat_map(|subject| subject.touched_modules.iter().cloned()),
+        )
+        .chain(arm_set_consumer_seeds.iter().cloned())
         .chain(
             local_repo_wet_schedule_rows
                 .iter()
@@ -4839,7 +5157,11 @@ pub fn run_required_floor(
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
-        Some((&gate_entry_index, &closure_seeds)),
+        Some((
+            &gate_entry_index,
+            &closure_prefix_seeds,
+            &closure_module_seeds,
+        )),
     )?;
     drop(gate_entry_index);
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
@@ -9826,6 +10148,389 @@ mod changed_witness_projection_tests {
             vec!["fixture.changed_witness_spelling.added_holds".to_string()]
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A helper-fn file with a module header becomes a Strict-prepare seed. This is the
+    /// invocation hole: `touched_entry_files` was populated and unused as a compile subject.
+    #[test]
+    fn helper_fn_file_seeds_its_authored_module() {
+        let dir = std::env::temp_dir().join(format!(
+            "touched_entry_compile_seed_test_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("consumer.dag"),
+            "module exhaust.consumer\n\nfn accepted_of(c: Bool) -> Bool { c }\n",
+        )
+        .expect("fixture write");
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("consumer.dag".to_string());
+        let (seeds, outside) =
+            module_seeds_from_touched_entry_files(&dir, &touched, &[".".to_string()])
+                .expect("seeds");
+        assert_eq!(seeds, vec!["exhaust.consumer".to_string()]);
+        assert!(
+            outside.is_empty(),
+            "a file under the roots is a seed, got {outside:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A touched file OUTSIDE the floor's source roots is a TYPED disposition, not a seed and
+    /// not a count: the reader sees which file seeded nothing and the module it named.
+    #[test]
+    fn helper_fn_file_outside_floor_roots_is_a_typed_disposition_not_a_seed() {
+        let dir = std::env::temp_dir().join(format!(
+            "touched_entry_compile_seed_outside_roots_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/mirror")).expect("fixture dir");
+        std::fs::write(
+            dir.join("src/v1/mirror/consumer.dag"),
+            "module exhaust.mirror_consumer\n\nfn accepted_of(c: Bool) -> Bool { c }\n",
+        )
+        .expect("fixture write");
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("src/v1/mirror/consumer.dag".to_string());
+        let (seeds, outside) = module_seeds_from_touched_entry_files(
+            &dir,
+            &touched,
+            &["dag".to_string(), "src/v2".to_string()],
+        )
+        .expect("seeds");
+        assert!(
+            seeds.is_empty(),
+            "an out-of-root file must not seed, got {seeds:?}"
+        );
+        assert_eq!(
+            outside,
+            vec![(
+                "src/v1/mirror/consumer.dag".to_string(),
+                "exhaust.mirror_consumer".to_string()
+            )]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn helper_fn_file_without_module_header_refuses_rather_than_skipping() {
+        let dir = std::env::temp_dir().join(format!(
+            "touched_entry_compile_seed_no_module_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("consumer.dag"),
+            "fn accepted_of(c: Bool) -> Bool { c }\n",
+        )
+        .expect("fixture write");
+        let mut touched = std::collections::HashSet::new();
+        touched.insert("consumer.dag".to_string());
+        let err = module_seeds_from_touched_entry_files(&dir, &touched, &[".".to_string()])
+            .expect_err("missing module header must refuse");
+        assert!(
+            err.contains("no module header"),
+            "refusal must name the missing header, got {err}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── THE #11194 SHAPE, EXECUTED END TO END ──────────────────────────────────────────────
+    //
+    // A fixture coproduct in module X gains an arm; an UNTOUCHED exhaustive match over it in
+    // module Y. The planned set must gain Y (the selector), and Y Strict-prepared through the
+    // floor's one preparation path must REFUSE with `NonExhaustiveMatch` (the invocation). Both
+    // halves in one test because the class has two halves and neither closes it alone: a
+    // planned module nobody prepares is a planning change with no executed check behind it.
+    //
+    // The fixture lives UNDER THE WORKSPACE (`target/`, gitignored): preparation resolves
+    // workspace-relative paths, and an out-of-tree root would test the path re-anchoring rather
+    // than the subject.
+
+    const ARM_X_BASE: &str = "module armset.x\n\ntype Signal\n  = Red\n  | Green\n";
+    const ARM_X_HEAD: &str = "module armset.x\n\ntype Signal\n  = Red\n  | Green\n  | Amber\n";
+    /// Y is byte-identical on both sides: it is the empty-diff match site.
+    const ARM_Y: &str = "module armset.y\n\nimport armset.x { Signal, Red, Green }\n\n\
+fn stop_of(s: Signal) -> Bool {\n  match s {\n    Red => true\n    Green => false\n  }\n}\n";
+    /// A consumer whose match carries a wildcard: it names an arm, so it IS a consumer and is
+    /// planned; it stays exhaustive under growth, so preparation accepts it.
+    const ARM_W: &str = "module armset.w\n\nimport armset.x { Signal, Red }\n\n\
+fn is_red(s: Signal) -> Bool {\n  match s {\n    Red => true\n    _ => false\n  }\n}\n";
+    /// A module naming a SAME-SPELLED arm of its OWN coproduct: bound to another declarer,
+    /// not a consumer of `armset.x.Signal`.
+    const ARM_Z: &str = "module armset.z\n\ntype Light\n  = Red\n  | Off\n\n\
+fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\n}\n";
+    /// A type change with NO match consumers: the record shape grows a field.
+    const REC_BASE: &str = "module armset.rec\n\ntype Box {\n  width: Int\n}\n";
+    const REC_HEAD: &str = "module armset.rec\n\ntype Box {\n  width: Int\n  height: Int\n}\n";
+    const REC_USER: &str =
+        "module armset.rec_user\n\nimport armset.rec { Box }\n\nfn w(b: Box) -> Int {\n  b.width\n}\n";
+
+    /// Preparation resolves the index's workspace-relative entry paths against the PROCESS
+    /// CWD (`entry_source_from_index_or_disk`), which is the workspace root in production and
+    /// the crate directory under `cargo test`. A test enters the workspace root for one
+    /// preparation and leaves again, serialized because the working directory is process-global.
+    /// Free functions rather than a guard type: an `impl Drop` is an uncitable item under
+    /// `gunbc.seed_growth_admission` (`seed_growth_uncitable_item_keys`).
+    static WORKSPACE_CWD: Mutex<()> = Mutex::new(());
+
+    fn enter_workspace_cwd() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
+        let lock = WORKSPACE_CWD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::current_dir().expect("test working directory");
+        std::env::set_current_dir(process_workspace_root()).expect("enter workspace root");
+        (lock, previous)
+    }
+
+    fn leave_workspace_cwd(previous: &Path) {
+        let _ = std::env::set_current_dir(previous);
+    }
+
+    /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
+    /// made it; a panicking test leaves it for the next run of the same name to replace.
+    fn arm_set_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root = process_workspace_root().join(format!(
+            "target/arm_set_red_{name}_{}/{side}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("fixture root");
+        for (file, source) in files {
+            std::fs::write(root.join(file), source).expect("fixture source");
+        }
+        root
+    }
+
+    fn arm_set_index(fixture: &Path) -> crate::cli_run::declaration_index::DeclarationIndex {
+        let rel = fixture
+            .strip_prefix(process_workspace_root())
+            .expect("fixture is under the workspace")
+            .to_string_lossy()
+            .into_owned();
+        match crate::cli_run::run_dag_parse_sweep(&process_workspace_root(), &[rel.as_str()]) {
+            Ok(sweep) => sweep.index,
+            Err(errors) => panic!("fixture must parse; sweep refused: {errors:?}"),
+        }
+    }
+
+    fn arm_set_selection(
+        name: &str,
+        base: &[(&str, &str)],
+        head: &[(&str, &str)],
+    ) -> (
+        crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+        PathBuf,
+    ) {
+        let base_fx = arm_set_fixture(name, "base", base);
+        let head_fx = arm_set_fixture(name, "head", head);
+        let base_index = arm_set_index(&base_fx);
+        let head_index = arm_set_index(&head_fx);
+        let _ = std::fs::remove_dir_all(&base_fx);
+        assert!(
+            crate::cli_run::declaration_index::index_population(&base_index).modules > 0
+                && crate::cli_run::declaration_index::index_population(&head_index).modules > 0,
+            "PLANT MALFORMED: a side indexed no modules"
+        );
+        (
+            crate::cli_run::namespace_wave_admission::arm_set_changed_match_consumers(
+                &base_index,
+                &head_index,
+            ),
+            head_fx,
+        )
+    }
+
+    fn consumers_of(
+        selection: &crate::cli_run::namespace_wave_admission::ArmSetConsumerSelection,
+    ) -> Vec<&str> {
+        let mut out: Vec<&str> = selection
+            .consumers
+            .iter()
+            .map(|c| c.consumer_module_path.as_str())
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// THE RED. Arm added in X; Y untouched; Y is selected; Y prepared under the floor's own
+    /// Strict path refuses naming the missing arm. W is selected too and does not refuse alone
+    /// -- see the positive control below, which prepares W without Y.
+    #[test]
+    fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
+        use crate::cli_run::namespace_wave_admission::ArmConsumerBinding;
+        let (selection, head_fx) = arm_set_selection(
+            "red",
+            &[
+                ("x.dag", ARM_X_BASE),
+                ("y.dag", ARM_Y),
+                ("w.dag", ARM_W),
+                ("z.dag", ARM_Z),
+            ],
+            &[
+                ("x.dag", ARM_X_HEAD),
+                ("y.dag", ARM_Y),
+                ("w.dag", ARM_W),
+                ("z.dag", ARM_Z),
+            ],
+        );
+        assert_eq!(selection.changes.len(), 1, "{:?}", selection.changes);
+        let change = &selection.changes[0];
+        assert_eq!(
+            (change.module_path.as_str(), change.declaration.as_str()),
+            ("armset.x", "Signal")
+        );
+        assert_eq!(change.arms_added, vec!["Amber".to_string()]);
+        assert!(change.arms_removed.is_empty());
+        // Y and W are consumers bound to the declarer; Z names `Red` but binds to its own
+        // coproduct and is NOT selected; X itself is never selected here (the dependency
+        // direction seeds it from the diff).
+        assert_eq!(consumers_of(&selection), vec!["armset.w", "armset.y"]);
+        assert!(selection
+            .consumers
+            .iter()
+            .all(|c| c.binding == ArmConsumerBinding::BoundToDeclaringModule));
+        let y = selection
+            .consumers
+            .iter()
+            .find(|c| c.consumer_module_path == "armset.y")
+            .expect("y selected");
+        assert_eq!(y.in_declarations, vec!["stop_of".to_string()]);
+
+        // THE INVOCATION HALF: seed Y into the SAME preparation the floor runs, and read the
+        // refusal. The seed is a module name matched at segment boundaries; the prefix roster
+        // is empty, exactly as a diff-only seed list would be.
+        let root = head_fx.to_string_lossy().into_owned();
+        let roots = [root.clone()];
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let seeds = ["armset.y".to_string()];
+        let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)))
+            .err()
+            .expect("Strict preparation of the stale consumer must refuse");
+        leave_workspace_cwd(&previous);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            refusal.contains("non-exhaustive match") && refusal.contains("Amber"),
+            "the refusal must be NonExhaustiveMatch naming the grown arm, got:\n{refusal}"
+        );
+    }
+
+    /// POSITIVE CONTROL, same fixture, one seed swapped: W's wildcard match is selected as a
+    /// consumer and prepares CLEAN. This is what keeps the red above from being a fixture that
+    /// refuses whatever is seeded.
+    #[test]
+    fn arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean() {
+        let (selection, head_fx) = arm_set_selection(
+            "wildcard",
+            &[("x.dag", ARM_X_BASE), ("w.dag", ARM_W)],
+            &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)],
+        );
+        assert_eq!(consumers_of(&selection), vec!["armset.w"]);
+        let root = head_fx.to_string_lossy().into_owned();
+        let roots = [root.clone()];
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let seeds = ["armset.w".to_string()];
+        let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let (prepared, _) = prepared.expect("a wildcard match stays exhaustive under growth");
+        assert!(prepared.modules_resolved >= 2, "x and w prepared");
+    }
+
+    /// CONTROL: a type change with no match consumers plans nothing extra. The record type grows
+    /// a field; its user projects a field and matches nothing.
+    #[test]
+    fn a_type_change_with_no_match_consumers_plans_nothing_extra() {
+        let (selection, fx) = arm_set_selection(
+            "record",
+            &[("rec.dag", REC_BASE), ("rec_user.dag", REC_USER)],
+            &[("rec.dag", REC_HEAD), ("rec_user.dag", REC_USER)],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// SECOND CONTROL: a diff with no type change selects exactly nothing -- the planned set is
+    /// what it is today. Y's match site is edited (a helper renamed) and X is untouched.
+    #[test]
+    fn a_diff_with_no_arm_set_change_plans_nothing_extra() {
+        let y_edited = ARM_Y.replace("stop_of", "halts");
+        let (selection, fx) = arm_set_selection(
+            "notype",
+            &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
+            &[("x.dag", ARM_X_BASE), ("y.dag", y_edited.as_str())],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty());
+        assert!(selection.consumers.is_empty());
+    }
+
+    /// An arm REMOVED elsewhere is the same class in the other direction: Y's match names an
+    /// arm that no longer exists, and only the base side can bind that spelling to X.
+    #[test]
+    fn arm_removal_selects_the_consumer_that_still_names_the_arm() {
+        let (selection, fx) = arm_set_selection(
+            "removal",
+            &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y)],
+            &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
+        );
+        assert_eq!(selection.changes.len(), 1);
+        assert_eq!(selection.changes[0].arms_removed, vec!["Amber".to_string()]);
+        // Y names Red and Green, both still present: it is a consumer of the changed coproduct.
+        assert_eq!(consumers_of(&selection), vec!["armset.y"]);
+        let _ = std::fs::remove_dir_all(&fx);
+        let (selection, fx) = arm_set_selection(
+            "removal_named",
+            &[
+                ("x.dag", ARM_X_HEAD),
+                (
+                    "y.dag",
+                    ARM_Y.replace("Green => false", "Amber => false").as_str(),
+                ),
+            ],
+            &[
+                ("x.dag", ARM_X_BASE),
+                (
+                    "y.dag",
+                    ARM_Y.replace("Green => false", "Amber => false").as_str(),
+                ),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert_eq!(consumers_of(&selection), vec!["armset.y"]);
+    }
+
+    /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
+    /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
+    #[test]
+    fn a_module_seed_is_segment_bounded() {
+        let yz = "module armset.yz\n\nfn nothing() -> Bool {\n  true\n}\n";
+        let fx = arm_set_fixture(
+            "segment",
+            "head",
+            &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y), ("yz.dag", yz)],
+        );
+        let root = fx.to_string_lossy().into_owned();
+        let roots = [root.clone()];
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let seeds = ["armset.yz".to_string()];
+        let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        let _ = std::fs::remove_dir_all(&fx);
+        let (prepared, views) =
+            prepared.expect("yz alone prepares clean: it never reaches the stale match in y");
+        let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
+        assert!(modules.contains(&"armset.yz"), "{modules:?}");
+        assert!(
+            !modules.contains(&"armset.y"),
+            "yz must not pull y: {modules:?}"
+        );
+        assert_eq!(prepared.modules_resolved, views.len());
     }
 
     // THE FOUR CONTROLS ON QUARANTINE-KEYED SELECTION, and (a) is deliberately written first
