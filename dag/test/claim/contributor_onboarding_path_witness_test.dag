@@ -221,8 +221,9 @@ test fn an_artifact_with_no_producer_is_refused() -> Bool {
 //
 // THE RED IS AUTHORABLE ONLY BECAUSE THE VERDICT READS A PROJECTION. Both halves of the
 // contradiction are total functions of the registry variant, so no live variant can carry the
-// forbidden combination and no population of variants could make this red. The rows below author
-// the combination directly, which is the whole reason the verdict does not take artifacts.
+// forbidden combination and no population of variants could make this red. These arms author the
+// combination as `DocsArtifactPlacement` rows, which is the whole reason the verdict does not
+// take artifacts.
 test fn a_producer_for_an_artifact_outside_docs_is_refused() -> Bool {
   match docs_placement_verdict_over(placements: [
     DocsArtifactPlacement { path: "src/v1/stage0/src/generated.rs", directory: "src", has_producer: true }
