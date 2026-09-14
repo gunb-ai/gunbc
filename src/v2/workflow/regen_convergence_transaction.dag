@@ -243,6 +243,12 @@ fn regen_dependency_closure_ids(disposition: RegenDependencyClosureDisposition) 
 
 // One typed classification surface. Planning consumes the arm and retains its reason; no Bool
 // predicate aliases the coproduct membership or walks the same row again for deferral.
+// Generation role answers whether a surface produces the NEXT emit, not whether rustc can
+// compile the file without its sibling. A coherent candidate that changes both an emitter
+// mirror and a std mirror it re-exports is one cargo rebuild. Deferring the subject until
+// after that rebuild installs a SPLIT pair (specimens ZPOD7I/odPcpu/D42vz4: E0432 unresolved
+// import of a symbol only the deferred mirror introduced). InstallSeedCompatibilityCut
+// therefore plans GenerationInput and BootstrapSourceMirror with the seed-embedded subjects.
 fn regen_surface_stage_disposition(
   row: RegenChangedSurface,
   kind: RegenStageKind
@@ -255,11 +261,6 @@ fn regen_surface_stage_disposition(
       NonSeedGeneratedOutput => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
       UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
     }
-    // Generation role answers "does this surface produce the NEXT emit", not "can rustc
-    // compile this file without its sibling". A coherent candidate that changes both an
-    // emitter mirror and a std mirror it re-exports is one cargo rebuild. Deferring the
-    // subject until after that rebuild installs a SPLIT pair (specimens ZPOD7I/odPcpu/D42vz4:
-    // E0432 unresolved import of a symbol only the deferred mirror introduced).
     InstallSeedCompatibilityCut => match row.generation_role {
       GenerationInput => SurfacePlannedForStage
       BootstrapSourceMirror => SurfacePlannedForStage
@@ -507,6 +508,9 @@ type RegenNextStageNeed
   | NextStageNeedsSeedCompatibility
   | NextStageNeedsPublish
 
+// A producer-role mirror plus a seed-embedded subject is one cargo rebuild, not
+// Promote-then-subject. Promote remains the input-only cut; mixed sets drop to
+// InstallSeedCompatibilityCut, which plans every seed-embedded changed mirror.
 fn regen_plan_next_stage(
   ordinal: Int,
   producer_generation_id: String,
@@ -518,9 +522,6 @@ fn regen_plan_next_stage(
 ) -> RegenStagePlanOutcome {
   let need = fold(changed, init: NextStageNeedsPublish, f: fn(acc, row) {
     match acc {
-      // A producer-role mirror plus a seed-embedded subject is one cargo rebuild, not
-      // Promote-then-subject. Promote remains the input-only cut; mixed sets drop to
-      // InstallSeedCompatibilityCut, which plans every seed-embedded changed mirror.
       NextStageNeedsProducer => match row.generation_role {
         GenerationInput => NextStageNeedsProducer
         BootstrapSourceMirror => NextStageNeedsProducer

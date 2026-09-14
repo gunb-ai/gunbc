@@ -173,6 +173,10 @@ test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool
   }
 }
 
+// g0 is producer-only. A mixed producer+subject generation is the other RED:
+// mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild. This fixture
+// still covers Promote then Install when the first generation has no seed-embedded
+// subject sibling.
 test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool {
   let producer = fixture_surface(
     module: "compiler.transport",
@@ -192,10 +196,6 @@ test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool {
     role: GenerationSubject,
     seed: SeedEmbedded
   )
-  // g0 is producer-only. A mixed producer+subject generation is the other RED:
-  // mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild. This fixture
-  // still covers Promote then Install when the first generation has no seed-embedded
-  // subject sibling.
   match regen_execute_convergence_fixture(fixture: RegenConvergenceFixture {
     g0_changed: [producer],
     producer_stage_build: RegenStageBuildPassed,
