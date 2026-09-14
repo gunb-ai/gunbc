@@ -4881,12 +4881,7 @@ fn body_lower_after_fold_loop_absent(shell: Node, captured: Node, fold_diagnosti
 
 fn body_lower_call_preserving_core(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_try_fold_loop(node: captured) {
-    Rejected { diagnostics: _ } =>
-      body_lower_after_fold_loop_absent(
-        shell: shell,
-        captured: captured,
-        fold_diagnostics: None
-      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: fold_result, diagnostics: fd } =>
       match fold_result {
         Present { value: loop_node } =>
