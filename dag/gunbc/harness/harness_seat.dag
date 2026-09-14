@@ -113,17 +113,26 @@ import product.fabric.work { Work }
 //
 // THE ASYMMETRY THAT IS REAL, AND IT IS WEAKER. The quality ceiling is a row in THIS module, three
 // lines from the suffix it invalidates. The tolerant ceiling is derived from rows in OTHER modules --
-// gunbc.serving.serving_enrollment's declared allocation for group A, gunbc.spark.glm_canary_converge's
-// arm for group B -- so the author who moves it is editing a file that never mentions this partition
-// and has no reason to think about its version. That is an argument about attention, not about
-// reachability, and it is enough: the cost of deriving the suffix is a longer name, and the cost of a
-// missed hand-bump is a pool whose history is reinterpreted against a root it was not written under.
+// gunbc.serving.serving_enrollment's declared allocation for group A, and for group B the launch
+// profile the native four-rank arm was started with -- so the author who moves it is editing a file
+// that never mentions this partition and has no reason to think about its version. That is an
+// argument about attention, not about reachability, and it is enough: the cost of deriving the suffix
+// is a longer name, and the cost of a missed hand-bump is a pool whose history is reinterpreted
+// against a root it was not written under.
 //
-// AND ONE FUTURE STATE MAKES IT UNREACHABLE BY HAND. serving_canary_route_ceiling's other arm,
-// CeilingFromRouteLaunch, carries a count read off the launch that is running. Nothing produces that
-// arm today. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
-// author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
-// having it already in place is what stops that landing from silently reinterpreting live history.
+// THE FUTURE STATE THIS PARAGRAPH WAS WAITING FOR HAS ARRIVED, and the paragraph is corrected rather
+// than deleted because the arrival is the whole point. It read that CeilingFromRouteLaunch -- a count
+// read off the launch that is running -- was produced by nothing today, and that WHEN something
+// produced it the ceiling would move without an author and a derived suffix would be the only
+// mechanism that could hold. Group B's ceiling is now exactly that arm: serving_native_route_ceiling
+// returns CeilingFromRouteLaunch over the native profile's max_num_seqs. So the derived suffix is
+// load-bearing NOW rather than in anticipation, and the citation it rested on --
+// serving_canary_route_ceiling -- no longer exists, having been deleted with the retired canary route.
+//
+// WHAT IS STILL NOT TRUE, said plainly so the arrival is not overread: the count is read off a
+// DECLARED profile, not off the running container. Nothing observes the engine's actual bound, so an
+// author still edits a row to move it. The mechanism the paragraph anticipated is in place; the
+// observation that would make it automatic is not, and that gap is the trigger to read this again.
 fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
   match class {
     InteractiveQualitySensitive =>
