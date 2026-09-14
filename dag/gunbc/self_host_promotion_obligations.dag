@@ -1,35 +1,60 @@
 module gunbc.self_host_promotion_obligations
 
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution {
   DissolutionCondition,
   bound_dissolution,
   dissolution_description,
-  dissolution_is_bound
+  dissolution_is_bound,
+  unbound_dissolution
 }
 import std.types { Bool, List, NonEmptyStr, String }
 
-// THIS IS ACKNOWLEDGED PREEXISTING DEBT, NOT A NEW SCAFFOLD (DESIGN §5). The
-// frontier numerator's inability to distinguish producers is a property of the
-// disposition carrier as it already stands. It is registered here so that
-// documenting previously hidden debt never reads as creating it.
+// THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (DESIGN §5). Neither
+// obligation was created by the change that registers it: the artifact-axis
+// incompleteness was DISCOVERED by measurement on gunbc#8181, and the frontier
+// numerator's inability to distinguish producers is a property of the
+// disposition carrier as it already stands. They are registered here so that documenting
+// previously hidden debt never reads as creating it.
 //
-// It is registered rather than left in a session ledger because an archived
-// session takes its unregistered obligations with it, and this one survives the
-// lane that found it.
+// They are registered rather than left in a session ledger because an archived
+// session takes its unregistered obligations with it, and both of these survive
+// the lane that found them.
 //
-// It is not on the critical path to the first frontier flip. The producer-provenance
+// Neither is on the critical path to the first frontier flip. The producer-provenance
 // obligation gates DECLARING n/27, not producing it, and the numerator is 0 with
 // nothing currently able to promote.
 //
-// artifact_axis_omits_build_path DISSOLVED (review 65547): genesis remaps the build
-// path out of the emitted artifact and NamedBuildConfiguration hashes BuildPathTreatment
-// into the build-configuration axis. Both dissolve-on arms of that row fired; the row
-// is deleted rather than left pending under a condition that has already landed.
+// artifact_axis_omits_build_path WAS DELETED after review 65547 because genesis
+// passes --remap-path-prefix and NamedBuildConfiguration hashes BuildPathTreatment.
+// review 65873 restored it: those are the declared remedies, not executed evidence
+// that remapped bytes agree across directories. build_path_treatment_digest hashes
+// remap_prefix_to and not remap_prefix_from, so two hosts now AGREE on
+// build_configuration while bytes may still embed distinct paths — false agreement,
+// the unsafe direction of the original claim_at_risk. The row stays until a
+// two-directory remapped control observes identical bytes.
 type PromotionObligation {
   subject: DeclarationRef
   claim_at_risk: NonEmptyStr
   condition: DissolutionCondition
+}
+
+// THE SIX DECLARED AXES PLUS A NAMED TREATMENT STILL DO NOT DETERMINE THE ARTIFACT
+// BY EXECUTED EVIDENCE. A Rust debug binary embeds its build directory (measured
+// gunbc#8181). Genesis passes --remap-path-prefix and the build-configuration axis
+// hashes BuildPathTreatment; that names the treatment, it does not prove the bytes.
+// The remapped digest omits remap_prefix_from, so two hosts with the same canonical
+// prefix agree on GenerationIdentity even if remap left path in the artifact.
+data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
+  subject: decl_field_ref(
+    module_path: "v2.compiler.self_host.generation",
+    decl_name: "GenerationIdentity",
+    field_name: "build_configuration"
+  ),
+  claim_at_risk: "Two generations agreeing on the declared axes including BuildPathRemapped { remap_prefix_to } may still produce different artifact bytes if remap does not strip every path occurrence, so artifact-digest equality across hosts is not a reproducibility oracle. The previous gap was fail-closed (false invalidation); hashing only remap_prefix_to is fail-open until remapped two-directory bytes match." as NonEmptyStr,
+  condition: unbound_dissolution(
+    description: "dissolve-on: an executed two-directory control — same source, two build directories, --remap-path-prefix to one canonical prefix — observes identical artifact bytes, and a discriminating RED fails when remap is omitted. Unbound: the trigger is that pair executing. NOT satisfied by naming BuildPathTreatment on NamedBuildConfiguration, by passing the cargo flag, by hashing remap_prefix_to, or by deleting this row. The obligation stays until that control, asserting otherwise is rung inflation (DESIGN section 4b meta-obligation 1, review 65873)." as NonEmptyStr
+  ),
 }
 
 // THE FRONTIER NUMERATOR CAN COUNT SEED EVIDENCE. The promoted disposition is generic
@@ -90,6 +115,7 @@ data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObl
 }
 
 data self_host_promotion_obligations: List<PromotionObligation> = [
+  artifact_axis_omits_build_path,
   frontier_numerator_admits_seed_evidence,
 ]
 

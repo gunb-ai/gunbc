@@ -1011,7 +1011,7 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     };
     let build = EmittedBuildObserved {
         cargo_argv: invocation.argv,
-        rustflags: super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS.to_string(),
+        rustflags: spawn_rustflags,
         compiler_path: invocation.compiler_path,
         rustc_identity: rustc,
         exit_status,

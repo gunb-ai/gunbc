@@ -95,12 +95,15 @@ type GeneratedArtifactIdentity
   = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
-// BUILD PATH IS NAMED ON THE BUILD-CONFIGURATION AXIS. A Rust debug binary embeds its
-// build directory (measured gunbc#8181); genesis remaps that path out of the artifact
-// and NamedBuildConfiguration hashes BuildPathTreatment, so two hosts that remap to the
-// same prefix agree on this axis. Papering over path divergence inside a comparison is
-// still unavailable. gunbc.self_host_promotion_obligations `artifact_axis_omits_build_path`
-// dissolved when both remedies landed (review 65547).
+// BUILD PATH IS NAMED ON THE AXIS; BYTES ARE NOT PROVEN IDENTICAL ACROSS HOSTS.
+// A Rust debug binary embeds its build directory (gunbc#8181). Genesis passes
+// --remap-path-prefix and NamedBuildConfiguration hashes BuildPathTreatment, so
+// two hosts that name the same remap_prefix_to AGREE on this axis even when their
+// host directories differ. That agreement is not evidence the remap stripped every
+// path occurrence. Papering over path divergence inside a comparison is still
+// unavailable. The obligation is gunbc.self_host_promotion_obligations
+// artifact_axis_omits_build_path until a two-directory remapped control observes
+// identical bytes (review 65873).
 type GenerationIdentity {
   producer_compiler: Hash
   source_closure: Hash

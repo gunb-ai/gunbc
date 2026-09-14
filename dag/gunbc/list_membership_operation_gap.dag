@@ -10,34 +10,45 @@ import std.decl_ref {
   decl_ref,
 }
 
-// A CALL SHAPE NO DECLARATION SERVES. MEASURED, NOT PROPOSED.
+// HISTORICAL CALL-SHAPE MEASUREMENT, NOT AN ABSENT MEMBERSHIP OPERATION.
 //
-// Ten call sites perform two-argument membership of an item in a list. No declaration anywhere
-// provides that operation. They resolve instead to the host substring primitive v1_rt::contains,
-// whose declared shape is (String, String) -> Bool, so each site passes a List where a String is
-// declared. The resulting type error is attributed to the CALL rather than to the absent
-// declaration, which is why the class was invisible: it presents as ordinary argument-type noise
-// distributed across unrelated modules.
+// The recorded sites supplied no equality capability and resolved to the host
+// substring primitive. That does not establish that list membership is undeclared:
+// v2.std.algebra.contains(xs, item, eq) already declares it, and std.types.List is
+// FreeMonoid. The attempted std.list.list_cover cutover reached the seed builtin
+// before module-function lookup; free_call.contains ignored the supplied equality.
+// w_list_cover_consumes_caller_equality executed red at 84fbb95b968 in CI run
+// 34742296746. This is a receipt for that route, not a prediction about a later head.
 //
-// The module is named for the gap because that is what was measured. The name is not a proposal
-// that the gap be filled by adding an operation — see the next block, which is load-bearing.
+// DEFERRED CONSOLIDATION, AND ITS APPROVAL DOES NOT YET EXIST. std.list retains list_member
+// using predicate any, and list_cover calls it with explicit equality. An earlier revision of
+// this carrier said "the parent authorized restoring this working realization". That sentence
+// was an IN-DIFF APPROVAL ROW, which DESIGN section 5 forbids in one sentence and gives the
+// reason: approval is external to the diff because an author who can write a scaffold can
+// equally write a row claiming it was approved. A parent lane inside the same work is not
+// external; it can pick a technical route and it cannot grant this. (review 65388)
 //
-// WHAT THIS CARRIER DOES AND DOES NOT ASSERT.
+// THE DECISION IS OPEN WITH THE OPERATOR as escalation msg_6e8b272a-1600-4f0b-a26a-0c9438dcd5dc,
+// which carries three options: narrow the v1 builtin contains arm from [xs, target, ..] to
+// exactly [xs, target] so three-argument calls fall through to the declaration and this duplicate
+// dissolves entirely; approve list_member as admitted debt under the retirement trigger below;
+// or block this PR until the seed is repaired. THAT ESCALATION IS ALSO THE NAMED BINDING FOR THE
+// SEED REPAIR - an earlier revision said only "the seed repair remains with its owning lane",
+// which names nothing and cannot be checked. Until an option is chosen this row records admitted
+// debt WITHOUT its admission, which is the honest state rather than a formality: nothing here
+// should read as though the scaffold has been cleared to land.
 //
-// It records a measured gap and the evidence that the gap is felt by authors. It does NOT assert
-// that the remedy is to supply a two-argument list-membership operation. Ten call sites wanting
-// an operation is demand, not specification, and reading demand as specification is how an
-// unmodeled convenience acquires a declaration. The remedy may instead be that an existing
-// declared operation covers these sites and its equality capability can be derived, binding them
-// to it; or that no such operation should exist and these sites must REFUSE at resolution with a
-// located missing-capability cause. Which of those is right is part of the held ruling on whether
-// one surface spelling may denote several operations, across both the type and function sides of
-// the kernel/std seam.
+// The unchanged caller-equality witness tests its contract; a green on this route does not prove
+// algebra.contains executes. No claim is made that the duplicate authority is retired.
+// RETIREMENT TRIGGER: the declared algebra.contains route honors supplied equality,
+// demonstrated by the existing equality witness passing after cutover and failing
+// when that declaration's body is mutated to false. Then delete list_member and
+// restore the single-authority call. The seed repair is bound to the escalation named above.
 //
-// Recorded separately from the seventeen arity-falsified sites of the three-argument form, and
-// kept separate deliberately: that class is a FALSE REALIZATION CLAIM by an existing roster row,
-// this one is an ABSENT OPERATION. A single repair spanning both would blur the distinction the
-// measurement established.
+// These rows retain the measured call shapes and citation obligations. They do not
+// claim those sites have migrated, or resolve the held ruling about overloaded
+// surface spelling or deriving omitted equality. Explicitly importing the existing
+// three-argument operation does not supply the missing two-argument capability.
 
 type ListMembershipGapSite {
   collection_producer: DeclarationRef
