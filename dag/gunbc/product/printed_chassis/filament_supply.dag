@@ -8,12 +8,11 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import product.inventory {
-  AdmittedInventoryLedger,
-  InventoryEvent,
-  InventoryLedgerAdmission,
+  InventoryLotEvidence,
+  AllLedgersAdmitted,
+  LedgerEvidenceRefused,
+  admit_ledger_evidence,
   InventoryLotIdentity,
-  LedgerAdmitted,
-  LedgerAdmissionRefused,
   LedgerRefusalCause,
   ProcurementLot,
   CatalogRowExact,
@@ -22,7 +21,6 @@ import product.inventory {
   AssetSourceLotResolved,
   AssetSourceLotEvidenceDuplicate,
   AssetSourceLotConflict,
-  admit_inventory_ledger,
   asset_source_lot_standing,
 }
 
@@ -47,15 +45,6 @@ import product.inventory {
 // assess_filament_supply therefore takes RAW lot-and-event evidence, admits every ledger itself, and
 // derives the standing inside the same call that returns the candidate assessment.
 //
-// THE UNADMITTED PAIR THE CALLER SUPPLIES. It is deliberately NOT AdmittedInventoryLedger: if the
-// caller could only pass admitted ledgers, the refused-evidence case would be unreachable here and
-// the caller would be the one deciding what counts as history -- which is precisely the judgment
-// this module must not delegate. The admission happens inside.
-type InventoryLotEvidence {
-  lot: ProcurementLot
-  events: List<InventoryEvent>
-}
-
 // TWO EVIDENCE ROUTES TO ONE PHYSICAL IDENTITY, EACH NAMING ITS SUBJECT, AND NEITHER ONE DERIVING
 // IT. The spool's identity is its PhysicalAssetIdentity; an RFID read and an operator's label are
 // OBSERVATIONS that the physical object in hand is that asset. Both may be present, and for day one
@@ -175,38 +164,6 @@ type FilamentSupplyAssessment
       observed_subject: PhysicalAssetIdentity,
     }
   | FilamentSupplyIdentifierConflict { requested: PhysicalAssetIdentity, distinct_values: Nat }
-
-// --- ledger admission over the whole evidence population ------------------------------------------
-// THE FIRST REFUSAL WINS AND THE REST ARE NOT CONSULTED, which is the fail-closed reading rather
-// than a shortcut: once one ledger is inadmissible the caller's evidence set is not history, and
-// reporting a second refusal beside it would suggest the first was survivable.
-type LedgerEvidenceAdmission
-  = AllLedgersAdmitted { ledgers: List<AdmittedInventoryLedger> }
-  | LedgerEvidenceRefused {
-      lot: InventoryLotIdentity,
-      cause: LedgerRefusalCause,
-      event_ordinal: Nat,
-      event_label: NonEmptyStr,
-    }
-
-fn admit_one_more_ledger(acc: LedgerEvidenceAdmission, row: InventoryLotEvidence) -> LedgerEvidenceAdmission {
-  match acc {
-    LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
-      LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
-    AllLedgersAdmitted { ledgers: so_far } =>
-      match admit_inventory_ledger(lot: row.lot, events: row.events) {
-        LedgerAdmitted { admitted: a } => AllLedgersAdmitted { ledgers: concat(so_far, [a]) }
-        LedgerAdmissionRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
-          LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
-      }
-  }
-}
-
-fn admit_ledger_evidence(evidence: List<InventoryLotEvidence>) -> LedgerEvidenceAdmission {
-  fold(evidence, init: AllLedgersAdmitted { ledgers: [] }, f: fn(acc, row) {
-    admit_one_more_ledger(acc: acc, row: row)
-  })
-}
 
 // --- assessments: ordinary verdicts, never actuator-capable ------------------------------------------
 // NONE OF THE FUNCTIONS BELOW RETURNS A CAPABILITY, AND THAT IS THE WHOLE SHAPE OF THIS MODULE. An

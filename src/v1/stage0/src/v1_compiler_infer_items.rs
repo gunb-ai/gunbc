@@ -51,7 +51,6 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum ItemKind {
     FnItem,
-    FuncItem,
     TypeItem,
     DataItem,
     ServiceItem,
@@ -245,25 +244,19 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
                 ItemKind::ServiceItem
             } else {
                 if ((item.body.clone() != std::option::Option::None)
-                    && ((item.uses.clone().len() as i64) > 0))
+                    && ((item.params.clone().len() as i64) > 0))
                 {
-                    ItemKind::FuncItem
+                    ItemKind::FnItem
                 } else {
                     if ((item.body.clone() != std::option::Option::None)
-                        && ((item.params.clone().len() as i64) > 0))
+                        && (item.type_annotation.clone() != std::option::Option::None))
                     {
-                        ItemKind::FnItem
+                        ItemKind::DataItem
                     } else {
-                        if ((item.body.clone() != std::option::Option::None)
-                            && (item.type_annotation.clone() != std::option::Option::None))
-                        {
-                            ItemKind::DataItem
+                        if (item.body.clone() != std::option::Option::None) {
+                            ItemKind::FnItem
                         } else {
-                            if (item.body.clone() != std::option::Option::None) {
-                                ItemKind::FnItem
-                            } else {
-                                ItemKind::OtherItem
-                            }
+                            ItemKind::OtherItem
                         }
                     }
                 }
@@ -312,8 +305,6 @@ pub fn leaf_owner_modules_from_registry(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FnItem;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FuncItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
