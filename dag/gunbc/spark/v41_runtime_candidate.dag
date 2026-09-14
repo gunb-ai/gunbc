@@ -1,0 +1,435 @@
+module gunbc.spark.v41_runtime_candidate
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
+import std.measure { hardware_thread_count_value }
+import v2.std.optional { Present, Absent }
+import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.source_build {
+  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting,
+}
+import extdeps.flashinfer.flashinfer {
+  FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
+  flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels,
+}
+import extdeps.safetensors.format { SafetensorsEntry }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14,
+}
+import gunbc.spark.vllm_runtime_image_build {
+  vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
+}
+import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
+import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
+import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
+
+// ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
+//
+// WHAT THIS MODULE IS FOR. The published V4.1 image has no storage-backed Engram path and its source
+// is unrecoverable, so the only four-Spark route left is a first-party build whose Engram embedding
+// tables are read from storage (gunbc.fabric.engram_materialization routes B or D). Before anything
+// is built, this module fixes WHAT that candidate is, so that no evidence gathered later -- a build
+// receipt, a probe, a launch -- can be attributed to a different set of bytes than the one it ran.
+// Nothing here builds, pulls, or touches a host.
+//
+// FIVE IDENTITIES, NOT ONE HASH, because they are different grains and conflating them lets evidence
+// transfer where it must not, or refuses to transfer where it should:
+//   - the RUNTIME ARTIFACT: the vLLM source and build recipe, the kernel wheels, the patch population;
+//   - the MODEL SOURCE: the checkpoint revision, the weight manifest, the tokenizer manifest;
+//   - the ENGRAM REALIZATION: which tensors are storage-backed, how the row store is encoded, route B or D;
+//   - the EXECUTION PROFILE: runtime artifact + model source + topology + device;
+//   - the CANDIDATE: execution profile + Engram realization.
+// Route B versus D does not change a byte of the image, so it is not in the runtime key; the same
+// image can run under either. The checkpoint and TP4 are not properties of the runtime either.
+//
+// NO KEY IS MINTED FOR AN UNESTABLISHED AXIS. An identity with a hole in it would be a hash of
+// "whatever we have not decided yet", which two different future candidates would share.
+
+// ── THE RUNTIME ARTIFACT ────────────────────────────────────────────────────────────────────────
+
+// A PATCH IS ITS BYTES. The path says where it applies and the purpose says why; the digest is the
+// identity, and the revision it applies to is carried so a patch written against one tree cannot be
+// silently applied to another.
+type V41EnginePatch sole_constructor {
+  path: NonEmptyStr
+  applies_to: VllmSourceRevision
+  sha256: Sha256Digest
+  purpose: NonEmptyStr
+}
+
+fn v41_engine_patch(path: NonEmptyStr, applies_to: VllmSourceRevision, sha256_hex: String, purpose: NonEmptyStr) -> V41EnginePatch? {
+  match sha256_hex_digest(hex: sha256_hex) {
+    Absent => none
+    Present { value: d } => Present { value: V41EnginePatch { path: path, applies_to: applies_to, sha256: d, purpose: purpose } }
+  }
+}
+
+// WHO DECIDES WHICH ENGRAM TENSORS ARE STORAGE-BACKED. If the patch hard-codes the split, the split is
+// part of the runtime's bytes and belongs in the runtime key; if the runtime takes it as validated
+// configuration, it belongs in the Engram realization instead. The patch author decides which, so the
+// answer is carried with the observed patch population rather than assumed here.
+type V41EngramPartitionAuthority
+  = PartitionFixedByPatch
+  | PartitionByLaunchConfiguration
+
+// ABSENT-BY-OBSERVATION AND UNESTABLISHED ARE DIFFERENT. The first is a known empty population (an
+// unpatched upstream build) and has an identity; the second is "not written yet" and has none.
+type V41PatchPopulation
+  = V41PatchesObserved { patches: List<V41EnginePatch>, partition: V41EngramPartitionAuthority }
+  | V41PatchesAbsentByObservation
+  | V41PatchesUnestablished { obligation: NonEmptyStr }
+
+type V41RuntimeArtifactInputs {
+  recipe: VllmContainerBuildRecipe
+  kernel_acquisition: FlashInferAcquisition
+  kernel_wheels: List<FlashInferWheel>
+  patches: V41PatchPopulation
+}
+
+type V41IdentityStanding
+  = V41IdentityKeyed { key: ContentHash }
+  | V41IdentityUnestablished { obligations: List<NonEmptyStr> }
+  | V41IdentityRefused { defects: List<NonEmptyStr> }
+
+fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
+  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
+}
+
+// THE KERNELS THE KEY NAMES MUST BE THE KERNELS THE RECIPE INSTALLS. main already carries one defect
+// of this shape -- a flashinfer version keyed and never passed to the build -- so a candidate whose
+// acquisition names a version other than the recipe's refuses rather than keying a pin nothing honours.
+fn v41_kernel_defects(i: V41RuntimeArtifactInputs) -> List<NonEmptyStr> {
+  match flashinfer_published_version(a: i.kernel_acquisition) {
+    Absent => ["the kernel acquisition is a source revision with no published wheels, so no wheel digest can pin it" as NonEmptyStr]
+    Present { value: v } =>
+      if (v as String) != (i.recipe.flashinfer_version as String) {
+        [join(["the kernel acquisition pins flashinfer ", v as String, " but the recipe installs ", i.recipe.flashinfer_version as String], "") as NonEmptyStr]
+      } else if length(i.kernel_wheels) == 0 {
+        ["the kernel acquisition names no wheel digests" as NonEmptyStr]
+      } else {
+        [] as List<NonEmptyStr>
+      }
+  }
+}
+
+fn v41_patch_inputs(patches: List<V41EnginePatch>) -> List<ArtifactRealizationInput> {
+  map(enumerate(patches), p => v41_input(
+    identity: join(["patch.", to_string(p.first)], ""),
+    value: join([p.second.path as String, "@", p.second.applies_to.full_revision as String, "#", p.second.sha256.hex as String], ""),
+  ))
+}
+
+fn v41_partition_authority_wire(a: V41EngramPartitionAuthority) -> String {
+  match a {
+    PartitionFixedByPatch => "fixed-by-patch"
+    PartitionByLaunchConfiguration => "launch-configuration"
+  }
+}
+
+// THE RUNTIME ARTIFACT KEY. The recipe contributes exactly the inputs vllm_image_build_key already
+// keys (so parallelism stays out, by the same law), then the kernel acquisition and every wheel digest,
+// then the patches in application order, then -- only when the patch fixes it -- the Engram partition.
+fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramResidencyPartition) -> V41IdentityStanding {
+  let kernel_defects = v41_kernel_defects(i: i)
+  if length(kernel_defects) != 0 {
+    V41IdentityRefused { defects: kernel_defects }
+  } else {
+    let base = concat(concat(
+      vllm_image_build_key_inputs(r: i.recipe),
+      [v41_input(identity: "kernel_acquisition", value: flashinfer_acquisition_key(a: i.kernel_acquisition))],
+    ), map(i.kernel_wheels, w => v41_input(identity: join(["kernel_wheel.", w.package as String], ""), value: join([w.filename as String, "#", w.sha256.hex as String], ""))))
+    match i.patches {
+      V41PatchesUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+      V41PatchesAbsentByObservation =>
+        V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(base, [v41_input(identity: "patches", value: "none-by-observation")])) }
+      V41PatchesObserved { patches: ps, partition: authority } => {
+        let with_patches = concat(concat(base, v41_patch_inputs(patches: ps)), [v41_input(identity: "partition_authority", value: v41_partition_authority_wire(a: authority))])
+        match authority {
+          PartitionByLaunchConfiguration => V41IdentityKeyed { key: artifact_realization_digest(inputs: with_patches) }
+          PartitionFixedByPatch => V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(with_patches, v41_partition_inputs(p: partition))) }
+        }
+      }
+    }
+  }
+}
+
+// ── THE ENGRAM RESIDENCY PARTITION ──────────────────────────────────────────────────────────────
+
+// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT. Admitted against the
+// cited population in extdeps.deepseek.deepseek_v4_1_flash: the two sets must be disjoint and together
+// name every tensor exactly once, and nothing outside the population. The storage-backed byte total is
+// DERIVED from the cited spans, never written down.
+type V41EngramResidencyPartition {
+  storage_backed: List<NonEmptyStr>
+  resident: List<NonEmptyStr>
+}
+
+type V41PartitionAdmission
+  = V41PartitionAdmitted { partition: V41EngramResidencyPartition, storage_backed_bytes: Nat }
+  | V41PartitionRefused { defects: List<NonEmptyStr> }
+
+fn v41_engram_population() -> List<SafetensorsEntry> {
+  concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14)
+}
+
+fn v41_count_named(names: List<NonEmptyStr>, name: NonEmptyStr) -> Int {
+  length(filter(names, n => (n as String) == (name as String)))
+}
+
+fn v41_admit_partition(p: V41EngramResidencyPartition) -> V41PartitionAdmission {
+  let population = v41_engram_population()
+  let assigned = concat(p.storage_backed, p.resident)
+  let unassigned = map(filter(population, e => v41_count_named(names: assigned, name: e.name) == 0), e => join(["tensor ", e.name as String, " is neither storage-backed nor resident"], "") as NonEmptyStr)
+  let twice = map(filter(population, e => v41_count_named(names: assigned, name: e.name) > 1), e => join(["tensor ", e.name as String, " is assigned more than once"], "") as NonEmptyStr)
+  let foreign = map(filter(assigned, n => length(filter(population, e => (e.name as String) == (n as String))) == 0), n => join(["tensor ", n as String, " is not in the cited Engram population"], "") as NonEmptyStr)
+  let defects = concat(concat(unassigned, twice), foreign)
+  if length(defects) != 0 {
+    V41PartitionRefused { defects: defects }
+  } else {
+    V41PartitionAdmitted {
+      partition: p,
+      storage_backed_bytes: fold(filter(population, e => v41_count_named(names: p.storage_backed, name: e.name) == 1), init: 0, f: (acc, e) => acc + (e.end_offset - e.begin_offset)),
+    }
+  }
+}
+
+fn v41_partition_inputs(p: V41EngramResidencyPartition) -> List<ArtifactRealizationInput> {
+  concat(
+    map(enumerate(p.storage_backed), n => v41_input(identity: join(["storage_backed.", to_string(n.first)], ""), value: n.second as String)),
+    map(enumerate(p.resident), n => v41_input(identity: join(["resident.", to_string(n.first)], ""), value: n.second as String)),
+  )
+}
+
+// ── THE MODEL SOURCE ────────────────────────────────────────────────────────────────────────────
+
+// A MANIFEST IS OBSERVED AS ONE DIGEST OVER ITS FILE POPULATION, OR IT IS NOT YET AN IDENTITY. The
+// checkpoint revision alone is an upstream name, not bytes this repository has read.
+type V41ManifestStanding
+  = V41ManifestObserved { digest: Sha256Digest }
+  | V41ManifestUnestablished { obligation: NonEmptyStr }
+
+type V41ModelSourceInputs {
+  checkpoint_revision: NonEmptyStr
+  weights: V41ManifestStanding
+  tokenizer: V41ManifestStanding
+}
+
+fn v41_manifest_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
+  match m {
+    V41ManifestObserved { digest: _ } => [] as List<NonEmptyStr>
+    V41ManifestUnestablished { obligation: o } => [o]
+  }
+}
+
+fn v41_manifest_value(m: V41ManifestStanding) -> String {
+  match m {
+    V41ManifestObserved { digest: d } => d.hex as String
+    V41ManifestUnestablished { obligation: _ } => ""
+  }
+}
+
+fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
+  let obligations = concat(v41_manifest_obligations(m: s.weights), v41_manifest_obligations(m: s.tokenizer))
+  if length(obligations) != 0 {
+    V41IdentityUnestablished { obligations: obligations }
+  } else {
+    V41IdentityKeyed { key: artifact_realization_digest(inputs: [
+      v41_input(identity: "checkpoint_revision", value: s.checkpoint_revision as String),
+      v41_input(identity: "weight_manifest", value: v41_manifest_value(m: s.weights)),
+      v41_input(identity: "tokenizer_manifest", value: v41_manifest_value(m: s.tokenizer)),
+    ]) }
+  }
+}
+
+// ── THE ENGRAM REALIZATION ──────────────────────────────────────────────────────────────────────
+
+type V41EngramRealizationInputs {
+  partition: V41EngramResidencyPartition
+  row_store_encoding: V41ManifestStanding
+  route: DeclarationRef
+}
+
+// ONLY THE TWO ROUTES WHOSE TOKEN-TIME READ STAYS ON THE HOST. Route A is resident (the shape this
+// candidate exists to avoid) and route C reads NFS on every gather; both are refused here by name.
+fn v41_route_admitted(route: DeclarationRef) -> Bool {
+  (route.decl_name as String) == (engram_route_b_identity.decl_name as String)
+    || (route.decl_name as String) == (engram_route_d_identity.decl_name as String)
+}
+
+fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
+  match v41_admit_partition(p: e.partition) {
+    V41PartitionRefused { defects: d } => V41IdentityRefused { defects: d }
+    V41PartitionAdmitted { partition: p, storage_backed_bytes: _ } =>
+      if !v41_route_admitted(route: e.route) {
+        V41IdentityRefused { defects: [join(["route ", e.route.decl_name as String, " is not a storage-backed token-time route this candidate admits (B or D)"], "") as NonEmptyStr] }
+      } else {
+        match e.row_store_encoding {
+          V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+          V41ManifestObserved { digest: d } =>
+            V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
+              v41_input(identity: "row_store_encoding", value: d.hex as String),
+              v41_input(identity: "route", value: join([e.route.module_path as String, ".", e.route.decl_name as String], "")),
+            ])) }
+        }
+      }
+  }
+}
+
+// ── THE EXECUTION PROFILE AND THE CANDIDATE ─────────────────────────────────────────────────────
+
+type V41CandidateInputs {
+  runtime: V41RuntimeArtifactInputs
+  model_source: V41ModelSourceInputs
+  engram: V41EngramRealizationInputs
+  topology: TopologyShape
+  device: GpuComputeCapability
+}
+
+type V41CandidateStanding
+  = V41CandidateKeyed {
+      runtime_artifact: ContentHash
+      model_source: ContentHash
+      engram_realization: ContentHash
+      execution_profile: ContentHash
+      candidate: ContentHash
+      authorization_obligation: NonEmptyStr
+    }
+  | V41CandidateUnestablished { obligations: List<NonEmptyStr> }
+  | V41CandidateRefused { defects: List<NonEmptyStr> }
+
+// A KEYED CANDIDATE IS STILL NOT AUTHORIZED TO RUN. gunbc.spark.serving_deployment_selection
+// authorized_v4_1_runtime_holds admits exactly the published arm64 digest, so every first-party artifact
+// fails that constraint by construction. This module records the conflict and does not widen the
+// comparison: running a candidate needs an exact, bounded experiment authorization for its key.
+data v41_first_party_authorization_obligation: NonEmptyStr = "gunbc.spark.serving_deployment_selection authorized_v4_1_runtime_holds admits only the published arm64 digest; a first-party candidate needs an exact, time-bounded experiment authorization for its candidate key before any host runs it" as NonEmptyStr
+
+fn v41_shape_defects(c: V41CandidateInputs) -> List<NonEmptyStr> {
+  concat(
+    if c.topology.tensor_parallel_degree == 4 && c.topology.replica_count == 1 { [] as List<NonEmptyStr> } else {
+      [join(["topology tp", to_string(c.topology.tensor_parallel_degree), " x ", to_string(c.topology.replica_count), " is not the four-Spark TP4 single replica this candidate is for"], "") as NonEmptyStr]
+    },
+    if c.device.major == gb10_observed_compute_capability.major && c.device.minor == gb10_observed_compute_capability.minor { [] as List<NonEmptyStr> } else {
+      [join(["device capability ", to_string(c.device.major), ".", to_string(c.device.minor), " is not the GB10's 12.1"], "") as NonEmptyStr]
+    },
+  )
+}
+
+fn v41_standing_defects(s: V41IdentityStanding) -> List<NonEmptyStr> {
+  match s {
+    V41IdentityRefused { defects: d } => d
+    V41IdentityKeyed { key: _ } => [] as List<NonEmptyStr>
+    V41IdentityUnestablished { obligations: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+fn v41_standing_obligations(s: V41IdentityStanding) -> List<NonEmptyStr> {
+  match s {
+    V41IdentityUnestablished { obligations: o } => o
+    V41IdentityKeyed { key: _ } => [] as List<NonEmptyStr>
+    V41IdentityRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// REFUSALS DOMINATE OBLIGATIONS. A candidate that is both malformed and incomplete reports what is
+// wrong, because finishing it would not make it right.
+fn v41_candidate_standing(c: V41CandidateInputs) -> V41CandidateStanding {
+  let runtime = v41_runtime_artifact_key(i: c.runtime, partition: c.engram.partition)
+  let source = v41_model_source_key(s: c.model_source)
+  let engram = v41_engram_realization_key(e: c.engram)
+  let defects = concat(concat(concat(v41_shape_defects(c: c), v41_standing_defects(s: runtime)), v41_standing_defects(s: source)), v41_standing_defects(s: engram))
+  let obligations = concat(concat(v41_standing_obligations(s: runtime), v41_standing_obligations(s: source)), v41_standing_obligations(s: engram))
+  if length(defects) != 0 {
+    V41CandidateRefused { defects: defects }
+  } else if length(obligations) != 0 {
+    V41CandidateUnestablished { obligations: obligations }
+  } else {
+    match runtime {
+      V41IdentityKeyed { key: rk } => match source {
+        V41IdentityKeyed { key: sk } => match engram {
+          V41IdentityKeyed { key: ek } => {
+            let execution = artifact_realization_digest(inputs: [
+              v41_input(identity: "runtime_artifact", value: serialize_content_hash(hash: rk) as String),
+              v41_input(identity: "model_source", value: serialize_content_hash(hash: sk) as String),
+              v41_input(identity: "topology", value: join(["tp", to_string(c.topology.tensor_parallel_degree), "x", to_string(c.topology.replica_count)], "")),
+              v41_input(identity: "device", value: join([to_string(c.device.major), ".", to_string(c.device.minor)], "")),
+            ])
+            V41CandidateKeyed {
+              runtime_artifact: rk,
+              model_source: sk,
+              engram_realization: ek,
+              execution_profile: execution,
+              candidate: artifact_realization_digest(inputs: [
+                v41_input(identity: "execution_profile", value: serialize_content_hash(hash: execution) as String),
+                v41_input(identity: "engram_realization", value: serialize_content_hash(hash: ek) as String),
+              ]),
+              authorization_obligation: v41_first_party_authorization_obligation,
+            }
+          }
+          V41IdentityUnestablished { obligations: o } => V41CandidateUnestablished { obligations: o }
+          V41IdentityRefused { defects: d } => V41CandidateRefused { defects: d }
+        }
+        V41IdentityUnestablished { obligations: o } => V41CandidateUnestablished { obligations: o }
+        V41IdentityRefused { defects: d } => V41CandidateRefused { defects: d }
+      }
+      V41IdentityUnestablished { obligations: o } => V41CandidateUnestablished { obligations: o }
+      V41IdentityRefused { defects: d } => V41CandidateRefused { defects: d }
+    }
+  }
+}
+
+// ── THE CANDIDATE AS IT STANDS TODAY ────────────────────────────────────────────────────────────
+
+// UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED OVERRIDES: the 12.1 arch list
+// the GB10 needs and the build parallelism gunbc.spark.vllm_runtime_image_build already chose.
+fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
+  vllm_recipe_targeting(
+    base: vllm_d2d649e6_aarch64_release_recipe,
+    torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    max_jobs: v41_build_max_jobs,
+    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+  )
+}
+
+// THE SPLIT THE FOUR-SPARK ARITHMETIC NEEDS: the two sparse embedding tables per Engram layer (weight and
+// its ue8m0 scale) from storage, the attention projections resident.
+data v41_candidate_partition: V41EngramResidencyPartition = V41EngramResidencyPartition {
+  storage_backed: [
+    "layers.1.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr,
+    "layers.14.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.scale" as NonEmptyStr,
+  ],
+  resident: [
+    "layers.1.engram.q_weight" as NonEmptyStr, "layers.1.engram.k_weight" as NonEmptyStr,
+    "layers.1.engram.wkv.weight" as NonEmptyStr, "layers.1.engram.wkv.scale" as NonEmptyStr,
+    "layers.14.engram.q_weight" as NonEmptyStr, "layers.14.engram.k_weight" as NonEmptyStr,
+    "layers.14.engram.wkv.weight" as NonEmptyStr, "layers.14.engram.wkv.scale" as NonEmptyStr,
+  ],
+}
+
+data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
+  runtime: V41RuntimeArtifactInputs {
+    recipe: v41_candidate_recipe(),
+    kernel_acquisition: flashinfer_0_6_18_post1,
+    kernel_wheels: flashinfer_0_6_18_post1_wheels,
+    patches: V41PatchesUnestablished { obligation: "no Engram storage-backed lookup patch has been written against vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8; its population and application order are the runtime's remaining identity" as NonEmptyStr },
+  },
+  model_source: V41ModelSourceInputs {
+    checkpoint_revision: deepseek_v4_1_flash_revision,
+    weights: V41ManifestUnestablished { obligation: "the weight manifest at dba1be0a is not read: extdeps.deepseek.deepseek_v4_1_flash carries sha256 for the two Engram shards only, not the other 46" as NonEmptyStr },
+    tokenizer: V41ManifestUnestablished { obligation: "the tokenizer file population and digests at dba1be0a are not read" as NonEmptyStr },
+  },
+  engram: V41EngramRealizationInputs {
+    partition: v41_candidate_partition,
+    row_store_encoding: V41ManifestUnestablished { obligation: "no rank-local Engram row-store encoding exists yet, so the materialized artifact has no identity" as NonEmptyStr },
+    route: engram_route_b_identity,
+  },
+  topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+  device: gb10_observed_compute_capability,
+}
+
+fn v41_candidate() -> V41CandidateStanding {
+  v41_candidate_standing(c: v41_candidate_inputs)
+}
