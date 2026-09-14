@@ -1637,27 +1637,40 @@ test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Boo
 // can. So: the live input's field is the live candidate field BY IDENTITY, its population is non-empty,
 // and every candidate names the real V4.1 artifact -- and NO DECISION IS RUN here, which is the whole
 // point of splitting it out.
-// WHY candidate_component_budget MAY READ GROUP A FOR EVERY CANDIDATE TODAY, AS A CONTROL RATHER THAN
-// AS A PROMISE. That fold screens any candidate it is handed and reaches for FabricGroupA's idle-free
-// reading, which the frontier row on it admits is WRONG the moment the candidates it screens span
-// hosts whose figures differ. Review 66293 is right that the row justifies the missing READING and not
-// the substituted one, so the substitution needs its own guard.
+// WHY candidate_component_budget MAY READ GROUP A FOR EVERY CANDIDATE TODAY, DERIVED OVER THE
+// POPULATION THAT CAN ACTUALLY REACH IT RATHER THAN OVER NAMED ARTIFACTS.
 //
-// THE GUARD IS THE PRECONDITION THAT MAKES IT SAFE: the fold is reached only through
-// `c.artifact.components`, and EXACTLY ONE artifact in this module has a non-empty component list --
-// the V4.1 native checkpoint, whose subject holds one fabric group. Every other artifact carries
-// `legacy_undecomposed_artifact`, which is empty, so no candidate on another group can reach the fold
-// at all. That is why the reading is correct today and unjustified in general.
+// THE PREVIOUS SHAPE OF THIS GUARD WAS THE CLASS THIS PR ITSELF FILES. It hand-enumerated four
+// artifact declarations and was named "only one artifact is decomposed", while what executed was
+// "these four named ones are not" -- so a FIFTH decomposed artifact, precisely the change the guard
+// exists to intercept, would have left it green. A hand-picked fixture frozen against the population
+// that existed when it was chosen, which is `a_designed_narrowing_stops_inhabiting_the_subject_it_
+// narrowed`, and a name claiming more than the execution, which is section 4b rung honesty. Review
+// 66350 found it in the guard written to answer review 66293 -- the repair reintroduced the class it
+// was repairing.
 //
-// DECOMPOSE A SECOND ARTIFACT AND THIS CLAIM REDS, which is the point: it fails BEFORE the wrong
-// reading can be served to a candidate the substitution was never true for, and it names the fix --
-// key the budget by the candidate's group, which is part two of the row's trigger.
-test fn only_one_artifact_is_decomposed_so_the_group_a_budget_reading_is_reachable_only_by_it() -> Bool {
+// WHAT IS DERIVED NOW: the fold reaches an artifact ONLY through a candidate in a field, so the
+// candidates of the live fields are the population, not the artifacts. Every candidate in all three
+// live fields whose artifact carries components must be the V4.1 artifact. Add a decomposed artifact
+// to any of these fields and this reds, however it is declared and whatever it is called.
+//
+// THE RESIDUAL LIMIT, STATED RATHER THAN NAMED AWAY: this enumerates the three live FIELDS. A fourth
+// field would sit outside it. That is one level up from where the defect was and it is not derivable
+// without a field roster this module does not have -- so it is named here as the limit, and the claim
+// is named for what it executes.
+test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> Bool {
+  let live = concat(
+    concat(deepseek_v4_1_candidate_field.candidates, glm_candidate_field.candidates),
+    deepseek_candidate_field.candidates)
   count(legacy_undecomposed_artifact) == 0
-    && count(artifact_deepseek_v4_1_flash_native.components) > 0
-    && count(artifact_glm_53_flash_native.components) == 0
-    && count(artifact_glm_53_flash_2bit.components) == 0
-    && count(artifact_deepseek_v4_flash_native.components) == 0
+    && count(live) > 0
+    && any(live, k => count(k.artifact.components) > 0)
+    && all(live, k =>
+         if count(k.artifact.components) > 0 {
+           declaration_ref_eq(a: k.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity)
+         } else {
+           true
+         })
 }
 
 test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
