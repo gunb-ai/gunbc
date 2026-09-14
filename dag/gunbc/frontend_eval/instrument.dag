@@ -5,8 +5,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.frontend_eval.task { frontend_eval_tasks_json }
 import gunbc.frontend_eval.card { frontend_language_card }
-import gunbc.frontend_eval.attempt { frontend_eval_report }
-import gunbc.frontend_eval.attempt_rows { attempt_rows }
 
 // THE ENTRY POINTS A DRIVER CALLS. Each writes one projection of an in-repo authority to a path the
 // driver names, so the driver never re-types a task row or a card line: it consumes bytes this
@@ -40,8 +38,11 @@ fn write_card(path: String) -> ProcessExit {
   write_projection(path: path, content: frontend_language_card())
 }
 
-// THE REPORT IS COMPUTED HERE, IN THE INTERPRETER, FROM THE COMMITTED TYPED ROWS -- the instrument a
-// reader names to re-derive the table (DESIGN section 6), never a table pasted into prose.
-fn write_report(path: String) -> ProcessExit {
-  write_projection(path: path, content: frontend_eval_report(attempts: attempt_rows()))
-}
+// THE REPORT: gunbc.frontend_eval.attempt frontend_eval_report is the fold; its rows are NOT in
+// this tree. A run's attempt records are the driver's output and stay beside the run (a generated
+// entry under target/ folds them through the same fn), because committing measured numbers as
+// source would be the transcription DESIGN section 6 forbids, and excusing that with a drop
+// declared inside the module it excuses would be the self-authorization section 5 forbids. The
+// numbers reach a reader through the PR that ran them, cited to the driver and the identities each
+// row binds; they enter the tree only when an in-tree instrument produces them (same trigger as
+// the frontier above).

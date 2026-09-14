@@ -137,14 +137,25 @@ fn run_entry(gunbc_program: String, workspace: String, entry: String, function: 
   FrontendRun { accepted: r.exit_code == 0, text: join([r.stdout, r.stderr], "") }
 }
 
-// THE STAGE IS READ FROM THE REFUSAL'S OWN VOCABULARY. Parse-stage refusals carry the parser's
-// lexemes; everything else that refuses is resolution. This is the same classification the
-// witness fixtures for the frontier probes use, and it is deliberately a closed list.
-fn refusal_stage(text: String) -> EvalFrontendStage {
+// THE STAGE IS READ FROM THE REFUSAL'S OWN VOCABULARY, AND A TEXT THAT CARRIES NEITHER STAGE'S
+// VOCABULARY IS UNCLASSIFIED, NOT RESOLUTION. Parse-stage refusals carry the parser's lexemes;
+// resolution refusals are wrapped by the interpreter's `resolve failed for` line. A transport
+// failure, a missing binary, a panic -- none carries either, and an absorbing else would have
+// filed them as a resolve-stage refusal that could then match the expected lexeme (the mutated
+// source is echoed in diagnostics). DESIGN section 5: a failure arm must refuse, never widen.
+type RefusalStageRead
+  = StageRead { stage: EvalFrontendStage }
+  | StageUnclassified
+
+fn refusal_stage(text: String) -> RefusalStageRead {
   if contains(text, ", found ") || contains(text, "heads-only parse") || contains(text, "expected item declaration") {
-    RefusedAtParse
+    StageRead { stage: RefusedAtParse }
   } else {
-    RefusedAtResolve
+    if contains(text, "resolve failed for") {
+      StageRead { stage: RefusedAtResolve }
+    } else {
+      StageUnclassified
+    }
   }
 }
 
@@ -192,7 +203,9 @@ fn control_task(gunbc_program: String, workspace_root: String, task: EvalTask) -
               if red.accepted {
                 ControlRefused { task: task.id, detail: "mutated workspace was ACCEPTED: the RED is not authorable" }
               } else {
-                let stage = refusal_stage(text: red.text)
+                match refusal_stage(text: red.text) {
+                  StageUnclassified => ControlRefused { task: task.id, detail: join(["frontend run carried neither stage's vocabulary: ", red.text], "") }
+                  StageRead { stage } =>
                 if stage_eq(a: stage, b: task.expected_stage) == false {
                   ControlRefused { task: task.id, detail: join(["refused at ", frontend_stage_key(stage: stage), ", expected ", frontend_stage_key(stage: task.expected_stage)], "") }
                 } else {
@@ -211,6 +224,7 @@ fn control_task(gunbc_program: String, workspace_root: String, task: EvalTask) -
                       }
                     }
                   }
+                }
                 }
               }
             }

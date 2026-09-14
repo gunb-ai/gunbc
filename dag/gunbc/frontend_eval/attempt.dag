@@ -1,9 +1,9 @@
 module gunbc.frontend_eval.attempt
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.measure { Millisecond, TokenCount, token_count_value }
+import std.measure { Millisecond, TokenCount, token_count, token_count_value, measure_add }
 import extdeps.vllm.sampling_params { SamplingTemperature }
-import gunbc.frontend_eval.task { FrontendMutationClass, mutation_class_scored_separately, mutation_class_key }
+import gunbc.frontend_eval.task { EvalTask, FrontendMutationClass, mutation_class_scored_separately, mutation_class_key, frontend_eval_tasks }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
 // identity a reader would need to re-run it: the model as served, the compiler program that judged
@@ -87,82 +87,109 @@ type EvalAttempt {
   wall: Millisecond
 }
 
-// THE PER-ARM FOLD. Accepted counts are split into the four language classes and the sentinel,
-// because the ruling that admitted this demo scores them apart: a sentinel success is evidence
-// about tool routing, not about the language prior.
+// THE PER-ARM FOLD, JOINED AGAINST THE ROSTER BY TASK IDENTITY (DESIGN section 5: completeness is an
+// identity join, not a count equality). Denominators are the roster's tasks, never the rows
+// present, so an arm with rows for eleven of sixteen language tasks renders as 11/16 with five
+// named as not run -- a partial population must not print as a complete rate. Accepted counts are
+// split into the four language classes and the sentinel, because the ruling that admitted this
+// demo scores them apart: a sentinel success is evidence about tool routing, not the language prior.
 type ArmSummary {
   arm: EvalArm
   attempts: Int
-  language_attempts: Int
+  language_tasks: Int
+  language_run: Int
   language_accepted: Int
-  sentinel_attempts: Int
+  sentinel_tasks: Int
+  sentinel_run: Int
   sentinel_accepted: Int
-  reasoning_tokens_over_accepted: Int
-  completion_tokens_over_accepted: Int
+  reasoning_tokens_over_accepted: TokenCount
+  completion_tokens_over_accepted: TokenCount
   cycles_over_accepted: Int
   tool_calls_over_accepted: Int
-}
-
-fn empty_summary(arm: EvalArm) -> ArmSummary {
-  ArmSummary {
-    arm: arm, attempts: 0, language_attempts: 0, language_accepted: 0,
-    sentinel_attempts: 0, sentinel_accepted: 0,
-    reasoning_tokens_over_accepted: 0, completion_tokens_over_accepted: 0,
-    cycles_over_accepted: 0, tool_calls_over_accepted: 0,
-  }
-}
-
-fn tokens_int(t: TokenCount) -> Int {
-  token_count_value(t: t)
 }
 
 fn bit(b: Bool) -> Int {
   if b { 1 } else { 0 }
 }
 
-fn add_attempt(acc: ArmSummary, a: EvalAttempt) -> ArmSummary {
-  let accepted = eval_outcome_accepted(outcome: a.outcome)
-  let sentinel = mutation_class_scored_separately(class: a.class)
-  ArmSummary {
-    arm: acc.arm,
-    attempts: acc.attempts + 1,
-    language_attempts: acc.language_attempts + bit(b: sentinel == false),
-    language_accepted: acc.language_accepted + bit(b: sentinel == false && accepted),
-    sentinel_attempts: acc.sentinel_attempts + bit(b: sentinel),
-    sentinel_accepted: acc.sentinel_accepted + bit(b: sentinel && accepted),
-    reasoning_tokens_over_accepted: acc.reasoning_tokens_over_accepted + (if accepted { tokens_int(t: a.usage.reasoning_tokens) } else { 0 }),
-    completion_tokens_over_accepted: acc.completion_tokens_over_accepted + (if accepted { tokens_int(t: a.usage.completion_tokens) } else { 0 }),
-    cycles_over_accepted: acc.cycles_over_accepted + (if accepted { a.cycles } else { 0 }),
-    tool_calls_over_accepted: acc.tool_calls_over_accepted + (if accepted { a.tool_calls } else { 0 }),
-  }
+fn tokens_if(on: Bool, t: TokenCount) -> TokenCount {
+  if on { t } else { token_count(count: 0) }
+}
+
+fn tokens_int(t: TokenCount) -> Int {
+  token_count_value(t: t)
+}
+
+fn rows_for(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> List<EvalAttempt> {
+  attempts |> filter(a => a.arm == arm && a.task_id == task.id)
+}
+
+fn task_ran(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> Bool {
+  count(rows_for(attempts: attempts, arm: arm, task: task)) > 0
+}
+
+fn task_accepted(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> Bool {
+  count(rows_for(attempts: attempts, arm: arm, task: task) |> filter(a => eval_outcome_accepted(outcome: a.outcome))) > 0
+}
+
+fn language_tasks() -> List<EvalTask> {
+  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class) == false)
+}
+
+fn sentinel_tasks() -> List<EvalTask> {
+  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class))
+}
+
+fn accepted_rows(attempts: List<EvalAttempt>, arm: EvalArm) -> List<EvalAttempt> {
+  attempts |> filter(a => a.arm == arm && eval_outcome_accepted(outcome: a.outcome))
 }
 
 fn arm_summary(attempts: List<EvalAttempt>, arm: EvalArm) -> ArmSummary {
-  fold(attempts |> filter(a => a.arm == arm), init: empty_summary(arm: arm), f: (acc, a) => add_attempt(acc: acc, a: a))
+  let accepted = accepted_rows(attempts: attempts, arm: arm)
+  ArmSummary {
+    arm: arm,
+    attempts: count(attempts |> filter(a => a.arm == arm)),
+    language_tasks: count(language_tasks()),
+    language_run: count(language_tasks() |> filter(t => task_ran(attempts: attempts, arm: arm, task: t))),
+    language_accepted: count(language_tasks() |> filter(t => task_accepted(attempts: attempts, arm: arm, task: t))),
+    sentinel_tasks: count(sentinel_tasks()),
+    sentinel_run: count(sentinel_tasks() |> filter(t => task_ran(attempts: attempts, arm: arm, task: t))),
+    sentinel_accepted: count(sentinel_tasks() |> filter(t => task_accepted(attempts: attempts, arm: arm, task: t))),
+    reasoning_tokens_over_accepted: fold(accepted, init: token_count(count: 0), f: (acc, a) => measure_add(a: acc, b: a.usage.reasoning_tokens)),
+    completion_tokens_over_accepted: fold(accepted, init: token_count(count: 0), f: (acc, a) => measure_add(a: acc, b: a.usage.completion_tokens)),
+    cycles_over_accepted: fold(accepted, init: 0, f: (acc, a) => acc + a.cycles),
+    tool_calls_over_accepted: fold(accepted, init: 0, f: (acc, a) => acc + a.tool_calls),
+  }
 }
 
-fn ratio_text(num: Int, den: Int) -> String {
-  join([to_string(value: num), "/", to_string(value: den)], "")
+fn coverage_text(accepted: Int, run: Int, tasks: Int) -> String {
+  if run == 0 {
+    "not run"
+  } else {
+    if run == tasks {
+      join([to_string(value: accepted), "/", to_string(value: tasks)], "")
+    } else {
+      join([to_string(value: accepted), "/", to_string(value: tasks), " (", to_string(value: tasks - run), " not run)"], "")
+    }
+  }
 }
 
 fn mean_text(total: Int, n: Int) -> String {
   if n == 0 { "-" } else { to_string(value: total / n) }
 }
 
-// AN ARM WITH NO ATTEMPTS IS "not run", NEVER A SCORED ROW: a zero-denominator row printed as
-// `0/0` reads as a measurement (DESIGN section 4d: do not assert as deduced what is only inferred).
 fn arm_summary_line(s: ArmSummary) -> String {
   let accepted = s.language_accepted + s.sentinel_accepted
-  if s.attempts == 0 { join(["| ", eval_arm_key(arm: s.arm), " | not run | not run | - | - | - | - |"], "") } else { join([
+  join([
     "| ", eval_arm_key(arm: s.arm),
-    " | ", ratio_text(num: s.language_accepted, den: s.language_attempts),
-    " | ", ratio_text(num: s.sentinel_accepted, den: s.sentinel_attempts),
-    " | ", mean_text(total: s.reasoning_tokens_over_accepted, n: accepted),
-    " | ", mean_text(total: s.completion_tokens_over_accepted, n: accepted),
+    " | ", coverage_text(accepted: s.language_accepted, run: s.language_run, tasks: s.language_tasks),
+    " | ", coverage_text(accepted: s.sentinel_accepted, run: s.sentinel_run, tasks: s.sentinel_tasks),
+    " | ", mean_text(total: tokens_int(t: s.reasoning_tokens_over_accepted), n: accepted),
+    " | ", mean_text(total: tokens_int(t: s.completion_tokens_over_accepted), n: accepted),
     " | ", mean_text(total: s.cycles_over_accepted, n: accepted),
     " | ", mean_text(total: s.tool_calls_over_accepted, n: accepted),
     " |",
-  ], "") }
+  ], "")
 }
 
 // THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
