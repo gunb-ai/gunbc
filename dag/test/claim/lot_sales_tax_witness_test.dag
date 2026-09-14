@@ -1,10 +1,6 @@
 module test.claim.lot_sales_tax_witness
 
 import std.types { Bool, List, NonEmptyStr }
-<<<<<<< HEAD
-import std.list { index_first_occurrences, list_cover }
-=======
->>>>>>> origin/main
 import product.inventory {
   InventoryLotAllocator,
   InventoryLotIdentity,
@@ -78,11 +74,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
-<<<<<<< HEAD
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
-=======
         jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
->>>>>>> origin/main
         rate: statutory_rate_value(r: nj_statewide_sales_tax),
       },
       residual: nyc_residual,
@@ -92,11 +84,7 @@ data fixture_population: List<LotTaxEvidence> = [
     lot: lot_spark_uez,
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
-<<<<<<< HEAD
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_uez_reduced_sales_tax"),
-=======
         jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
->>>>>>> origin/main
         rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
@@ -196,8 +184,6 @@ test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
 // conjunct reds, because the projection follows the rate. Under the deleted-field premise there
 // would have been nothing left to red. The second and third conjuncts hold the arms apart so a
 // projection that answered DestinationCitedByRate for every residual cannot pass.
-<<<<<<< HEAD
-=======
 // ORIGIN AND DESTINATION ACTUALLY JOIN, which is the property the meaning fork destroyed and the
 // reason it mattered rather than being untidy. Before this repair, StatutoryRate.jurisdiction
 // pointed at an ExternalAuthority row while every authored collection put a StatutoryRate row in
@@ -237,7 +223,6 @@ test fn w_collected_origin_joins_projected_destination() -> Bool {
   }
 }
 
->>>>>>> origin/main
 test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
   match residual_destination_jurisdiction(residual: nyc_residual) {
     DestinationCitedByRate { jurisdiction: j } =>
@@ -245,11 +230,7 @@ test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
         a: j,
         b: decl_ref(
           module_path: "extdeps.tax.new_york_city_sales_and_use",
-<<<<<<< HEAD
-          decl_name: "nyc_pub718_authority",
-=======
           decl_name: "new_york_city",
->>>>>>> origin/main
         ),
       )
     DestinationNotApplicableNoResidual => false
@@ -339,11 +320,7 @@ test fn w_unread_residual_is_not_a_known_owe() -> Bool {
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
-<<<<<<< HEAD
-        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "nj_statewide_sales_tax"),
-=======
         jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
->>>>>>> origin/main
         rate: parts_per_million(count: 1),
         receipt_line_label: "tax" as NonEmptyStr,
       },
@@ -376,82 +353,3 @@ test fn w_equal_length_is_not_tax_coverage() -> Bool {
       LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
     }
 }
-<<<<<<< HEAD
-
-// Coverage is order-independent, but the returned tax evidence keeps its input order.
-test fn w_indexed_tax_join_covers_reordered_and_empty_ledgers() -> Bool {
-  match lot_tax_covers_ledgers(
-    lots: [lot_unrecorded, lot_attested_ny, lot_marketplace, lot_spark_uez, lot_mt_collins],
-    tax: fixture_population,
-  ) {
-    LotTaxJoinCovered { rows: rows } => rows.length() == 5 && match rows.first() {
-      Absent => false
-      Present { value: row } => inventory_lot_identity_eq(left: row.lot, right: lot_mt_collins)
-    }
-    LedgerMissingTax { lot: _ } => false
-    TaxWithoutLedger { lot: _ } => false
-    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-  }
-  && match lot_tax_covers_ledgers(lots: [], tax: []) {
-    LotTaxJoinCovered { rows: rows } => rows.length() == 0
-    LedgerMissingTax { lot: _ } => false
-    TaxWithoutLedger { lot: _ } => false
-    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-  }
-}
-
-// Missing-ledger evidence takes precedence over orphan tax evidence; within each
-// refusal class the first identity comes from the input order, not map ordering.
-test fn w_indexed_tax_join_preserves_missing_and_orphan_order() -> Bool {
-  match lot_tax_covers_ledgers(
-    lots: [lot_unrecorded, lot_attested_ny],
-    tax: fixture_population.take(n: 3),
-  ) {
-    LedgerMissingTax { lot: l } => inventory_lot_identity_eq(left: l, right: lot_unrecorded)
-    LotTaxJoinCovered { rows: _ } => false
-    TaxWithoutLedger { lot: _ } => false
-    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-  }
-  && match lot_tax_covers_ledgers(lots: [lot_unrecorded], tax: fixture_population) {
-    TaxWithoutLedger { lot: l } => inventory_lot_identity_eq(left: l, right: lot_mt_collins)
-    LotTaxJoinCovered { rows: _ } => false
-    LedgerMissingTax { lot: _ } => false
-    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-  }
-}
-
-test fn w_indexed_tax_join_retains_duplicate_priority_and_ordinals() -> Bool {
-  match lot_tax_covers_ledgers(lots: [], tax: concat(fixture_population, [
-    LotTaxEvidence {
-      lot: lot_spark_uez,
-      standing: SalesTaxTreatmentUnrecorded { read_obligation: "duplicate before coverage" as NonEmptyStr },
-    },
-  ])) {
-    LotTaxJoinRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: later } =>
-      inventory_lot_identity_eq(left: l, right: lot_spark_uez) && first == 1 && later == 5
-    LotTaxJoinCovered { rows: _ } => false
-    LedgerMissingTax { lot: _ } => false
-    TaxWithoutLedger { lot: _ } => false
-  }
-}
-
-// A later new key must retain its input ordinal, not the number of distinct keys.
-// Repetitions do not truncate the coverage index or replace the first diagnostic.
-test fn w_first_occurrence_index_retains_suffix_and_input_ordinals() -> Bool {
-  let indexed = index_first_occurrences(xs: [7, 4, 7, 9, 4], key: value => value)
-  (match indexed.repetition {
-    Present { value: r } => r.key == 7 && r.first_ordinal == 0 && r.repeated_ordinal == 2
-    Absent => false
-  }) && (match lookup(indexed.positions, 9) {
-    Present { value: ordinal } => ordinal == 3
-    Absent => false
-  }) && indexed.positions.length() == 3 && indexed.next_ordinal == 5
-}
-
-// Membership must honor caller equality, including when it disagrees with value equality.
-test fn w_list_cover_consumes_caller_equality() -> Bool {
-  list_cover(held: [1], expected: [2], eq: fn(a, b) { a + 1 == b || b + 1 == a })
-    && !list_cover(held: [1], expected: [1], eq: fn(a, b) { a + 1 == b || b + 1 == a })
-}
-=======
->>>>>>> origin/main

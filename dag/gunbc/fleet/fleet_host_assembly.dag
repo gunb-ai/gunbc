@@ -1,11 +1,7 @@
 module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
-<<<<<<< HEAD
-import std.list { list_cover, index_first_occurrences }
-=======
 import std.list { list_cover }
->>>>>>> origin/main
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -24,10 +20,7 @@ import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
   inventory_lot_identity_eq,
-<<<<<<< HEAD
-=======
   inventory_lot_identities_contain,
->>>>>>> origin/main
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_intent_network {
@@ -44,14 +37,6 @@ import gunbc.fleet_asset_identity {
   cooler_srv3,
   cooler_srv4,
 }
-<<<<<<< HEAD
-import gunbc.fleet_physical_inventory { installed_cooler_containments }
-import gunbc.fleet_acquisition_census {
-  fleet_ledger_identities,
-  altrad8ud_catalog_ref,
-  cooler_catalog_ref,
-  altrad8ud_board_lot_identity,
-=======
 // THE CATALOG REFERENCES COME FROM THE CENSUS, THEY ARE NOT MINTED AGAIN HERE. This module used to
 // declare altrad8ud_catalog_ref and cooler_catalog_ref naming the exact declarations
 // that gunbc.fleet_acquisition_census already names as altrad8ud_catalog_ref and
@@ -69,7 +54,6 @@ import gunbc.fleet_acquisition_census {
   fleet_ledger_identities,
   altrad8ud_catalog_ref,
   cooler_catalog_ref,
->>>>>>> origin/main
   cooler_srv3_lot_identity,
   cooler_srv4_lot_identity,
 }
@@ -244,12 +228,8 @@ data srv_assembly_components: List<AssembledComponent> = [
 ]
 
 // Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet_physical_inventory
-<<<<<<< HEAD
-// installed_cooler_containments. Consume those same edges in the assembly join.
-=======
 // installed_cooler_containments. CONSUME those same edges here rather than merely noting they
 // exist elsewhere, so the join actually checks the cooler rows against the authority owning them.
->>>>>>> origin/main
 data srv_assembly_containments: List<PhysicalContainment> = concat([
   ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv1 },
   ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
@@ -277,16 +257,6 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
   HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
 ], installed_cooler_containments)
 
-<<<<<<< HEAD
-// Admission membership follows the census ledger population, not a component-lot roster.
-fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
-  let census = index_first_occurrences(xs: fleet_ledger_identities(), key: id => id)
-  rows.all(row => match row.acquisition {
-    ComponentAcquiredFromLot { lot: lot } => match lookup(census.positions, lot) {
-      Present { value: _ } => true
-      Absent => false
-    }
-=======
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
 // gunbc.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
@@ -303,7 +273,6 @@ fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
 fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
   rows.all(row => match row.acquisition {
     ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
->>>>>>> origin/main
     ComponentAcquisitionUnrecorded { read_obligation: _ } => true
   })
 }
@@ -381,9 +350,6 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // ASSERTED SOMETHING FALSE, that the host contains its own enclosure. So the fold now accepts
 // EITHER direction, and a chassis discharges through the edge it actually has.
 //
-<<<<<<< HEAD
-// Coolers use the existing HostContainsComponent edges just like other installed components.
-=======
 // THE COOLER EXEMPTION IS GONE BECAUSE ITS STATED REASON HAD BECOME FALSE. It read "a cooler is
 // exempt because no containment edge is modeled for it at all", and gunbc.fleet_physical_inventory
 // installed_cooler_containments models exactly those edges - HostContainsComponent for the srv3
@@ -395,7 +361,6 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // wrong host discharged without its edge ever being read. The edges are now in the join and
 // coolers pass through it like every other component. (review 65292 raised this as non-blocking;
 // the expired reason is why it is fixed rather than left.)
->>>>>>> origin/main
 fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
   containment_has_chassis(containments: containments, chassis: chassis_srv1, host: operator_host_srv1)
     && containment_has_chassis(containments: containments, chassis: chassis_srv2, host: operator_host_srv2)

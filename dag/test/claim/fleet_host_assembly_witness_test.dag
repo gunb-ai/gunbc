@@ -1,11 +1,6 @@
 module test.claim.fleet_host_assembly_witness
 
 import std.types { Bool, String }
-<<<<<<< HEAD
-import product.inventory { mint_inventory_lot_identity }
-import gunbc.fleet_acquisition_census { q80_lot_identity, alloc_after_cooler_srv3 }
-=======
->>>>>>> origin/main
 import product.placement_supply {
   ChassisContainsHost,
   HostContainsComponent,
@@ -16,11 +11,6 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import gunbc.fleet_host_assembly {
-<<<<<<< HEAD
-  AssembledComponent,
-  cooler_srv3,
-=======
->>>>>>> origin/main
   chassis_srv1,
   chassis_srv2,
   srv_assembly_components,
@@ -35,11 +25,7 @@ import gunbc.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
-<<<<<<< HEAD
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-=======
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
->>>>>>> origin/main
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -110,9 +96,6 @@ test fn w_boards_and_processors_are_present() -> Bool {
     })
 }
 
-<<<<<<< HEAD
-// Change only the cooler's assembly host, retaining its identity, catalog and lot.
-=======
 // COOLERS ARE CHECKED LIKE EVERY OTHER COMPONENT, and until this commit nothing on this branch
 // asserted that. assembly_containments_join exempted them outright - is_cooler_asset was the first
 // disjunct of the row fold, so it short-circuited - under a stated reason that had become false:
@@ -124,7 +107,6 @@ test fn w_boards_and_processors_are_present() -> Bool {
 // Move ONLY the cooler's assembly host, retaining its identity, catalog and lot. The unmoved graph
 // must still join, so the refusal is attributable to the host and not to a graph broken by the
 // edit - which is the difference between this and deleting the edges wholesale.
->>>>>>> origin/main
 test fn w_cooler_host_must_match_installed_containment() -> Bool {
   let moved = map(srv_assembly_components, row =>
     if physical_asset_identity_eq(a: row.component, b: cooler_srv3) {
@@ -140,12 +122,8 @@ test fn w_cooler_host_must_match_installed_containment() -> Bool {
     && !assembly_containments_join(rows: moved, containments: srv_assembly_containments)
 }
 
-<<<<<<< HEAD
-// Keep the assembly unchanged and remove only its installed cooler edge.
-=======
 // Keep the assembly unchanged and remove only the installed cooler edge. Under the old exemption
 // this passed vacuously, because a cooler needed no edge to discharge.
->>>>>>> origin/main
 test fn w_missing_installed_cooler_edge_refuses() -> Bool {
   let missing = srv_assembly_containments.filter(c => match c {
     HostContainsComponent { host: _, component: comp } => !physical_asset_identity_eq(a: comp, b: cooler_srv3)
@@ -157,23 +135,3 @@ test fn w_missing_installed_cooler_edge_refuses() -> Bool {
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && !assembly_containments_join(rows: srv_assembly_components, containments: missing)
 }
-<<<<<<< HEAD
-
-// The Q80 acquisition is in the census but outside the former three-lot whitelist.
-// This checks only acquisition membership, not the board/catalog compatibility relation.
-test fn w_component_lot_membership_reads_the_census() -> Bool {
-  let from_census = map(srv_assembly_components, row => AssembledComponent {
-    host: row.host, component: row.component, catalog: row.catalog,
-    acquisition: ComponentAcquiredFromLot { lot: q80_lot_identity },
-  })
-  let after_last_lot = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv3).alloc
-  let absent_lot = mint_inventory_lot_identity(alloc: after_last_lot).id
-  let outside_census = map(srv_assembly_components, row => AssembledComponent {
-    host: row.host, component: row.component, catalog: row.catalog,
-    acquisition: ComponentAcquiredFromLot { lot: absent_lot },
-  })
-  every_recorded_component_lot_is_admitted(rows: from_census)
-    && !every_recorded_component_lot_is_admitted(rows: outside_census)
-}
-=======
->>>>>>> origin/main

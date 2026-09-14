@@ -2,15 +2,9 @@ module extdeps.tax.new_jersey_sales_and_use
 
 import std.measure { PartsPerMillion, parts_per_million }
 import extdeps.publication { SpecificationDocumentDate }
-<<<<<<< HEAD
-import extdeps.tax.statutory_rate { StatutoryRate, EffectiveFrom, EffectiveDateUnread, statutory_rate_value }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-=======
 import extdeps.tax.statutory_rate { StatutoryRate, TaxJurisdiction, EffectiveFrom, EffectiveDateUnread, statutory_rate_value }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
->>>>>>> origin/main
 import extdeps.uri { Uri, Https }
 
 // New Jersey Sales and Use Tax Act rates as the Division of Taxation publishes them.
@@ -32,8 +26,6 @@ data nj_uez_rate_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-<<<<<<< HEAD
-=======
 // THE JURISDICTION, declared once and cited by both rates below. The statewide rate and the Urban
 // Enterprise Zone rate are two rates OF THIS ONE JURISDICTION, which is exactly why the jurisdiction
 // cannot be a rate row: citing nj_uez_reduced_sales_tax as a jurisdiction would make a UEZ purchase
@@ -44,7 +36,6 @@ data new_jersey: TaxJurisdiction = TaxJurisdiction {
   authority: extdeps_external_authority_anchor,
 }
 
->>>>>>> origin/main
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -66,15 +57,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // that the qualifier describes a version rather than the present. New Jersey has changed this
 // rate before - 7 percent preceded it - so the date is the discriminator and not decoration.
 data nj_statewide_sales_tax: StatutoryRate = StatutoryRate {
-<<<<<<< HEAD
-  jurisdiction: DeclarationRef {
-    module_path: "extdeps.tax.new_jersey_sales_and_use",
-    decl_name: "extdeps_external_authority_anchor",
-    field: WholeDeclaration
-  },
-=======
   jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
->>>>>>> origin/main
   rate: parts_per_million(count: 66250),
   effective: EffectiveFrom {
     date: SpecificationDocumentDate { year: 2018, month: 1, day: 1 },
@@ -90,15 +73,7 @@ data nj_statewide_sales_tax: StatutoryRate = StatutoryRate {
 // when that moves - but the transcription did not record from which date the current figure
 // applies, and half of a dated rate is not itself dated by inference.
 data nj_uez_reduced_sales_tax: StatutoryRate = StatutoryRate {
-<<<<<<< HEAD
-  jurisdiction: DeclarationRef {
-    module_path: "extdeps.tax.new_jersey_sales_and_use",
-    decl_name: "nj_uez_rate_authority",
-    field: WholeDeclaration
-  },
-=======
   jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
->>>>>>> origin/main
   rate: parts_per_million(count: 33125),
   effective: EffectiveDateUnread {
     obligation: "Read the date from which the 3.3125 percent Urban Enterprise Zone rate applies. N.J.S.A. 52:27H-80 fixes it as half the statewide rate, so it presumptively tracks the statewide 2018-01-01 change, but presumptively is not read - the Division's UEZ publication states it." as NonEmptyStr,

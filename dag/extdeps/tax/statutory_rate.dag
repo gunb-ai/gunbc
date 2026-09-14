@@ -3,10 +3,7 @@ module extdeps.tax.statutory_rate
 import std.types { NonEmptyStr }
 import std.measure { PartsPerMillion }
 import extdeps.publication { SpecificationDocumentDate }
-<<<<<<< HEAD
-=======
 import extdeps.external_authority { ExternalAuthority }
->>>>>>> origin/main
 import std.decl_ref { DeclarationRef }
 
 // THE SHARED SHAPE OF A PUBLISHED STATUTORY TAX RATE, and nothing about any jurisdiction.
@@ -29,8 +26,6 @@ import std.decl_ref { DeclarationRef }
 // state and it is not the same as a rate known to be current; DESIGN section 4d forbids asserting
 // as deduced what is only inferred, so the unread arm carries what would ground it.
 
-<<<<<<< HEAD
-=======
 // A JURISDICTION IS NOT A RATE AND NOT A PUBLICATION, and this type exists because the first
 // version of this model tried to make it both at once. StatutoryRate.jurisdiction pointed at an
 // ExternalAuthority row (a URI where a figure was published) while every authored collection and
@@ -51,7 +46,6 @@ type TaxJurisdiction {
   authority: ExternalAuthority
 }
 
->>>>>>> origin/main
 type StatutoryRateEffectiveVersion
   = EffectiveFrom { date: SpecificationDocumentDate, instrument: NonEmptyStr }
   | EffectiveDateUnread { obligation: NonEmptyStr }
