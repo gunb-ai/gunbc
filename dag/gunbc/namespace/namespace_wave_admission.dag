@@ -263,7 +263,77 @@ data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification
     },
     DeclarationRef {
       module_path: "v1_compiler.namespace_wave_admission",
-      decl_name: "NAMESPACE_TRANSITION_ADMISSIONS",
+      decl_name: "load_transition_admissions",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "load_transition_admissions_from_dir",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "admission_roster_path_touched",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "ROW_MODULE_PREFIX",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_transition_admission_row",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_transition_admission_expr",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "expr_u32",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_deletion_follow_up",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_admission_subject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_disposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_decl_ref",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "parse_decl_ref_list",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "peel_expr",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "expr_string",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "expr_leaf_name",
       field: WholeDeclaration
     },
     DeclarationRef {
@@ -546,9 +616,7 @@ data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification
 
 THE STANDING GAP THIS RECORDED HAD ALSO DECAYED IN THE OTHER DIRECTION, AND gunbc#10856 RAN THE JOIN BY HAND RATHER THAN REPEATING THE CLAIM. EXIT_OK_REHOME_LABEL was never enumerated while it lived, and neither was SCM_REPOSITORY_BUILDER_REHOME_LABEL before it, so the sentence above -- that every declaration in the module is enumerated here -- had been false for two lanes running without anyone being at fault. It was false again at this change`s own head, in BOTH directions at once: membership_supported was enumerated here after the declaration had been renamed away (the module`s membership arm is membership_declared over membership_bound_through), and eight declarations were enumerated nowhere -- KERNEL_DECLARATION_IDENTITY, ADMISSION_ROSTER_REL_PATH, diff_sides, admission_satisfied_at, membership_declared, membership_bound_through, locally_authored_claim_added and wave_admission_refusal. All nine are repaired here, and the enumeration now stands in EXACT BIJECTION with the module`s declarations, joined at NAME rather than at count. That bijection is a MEASUREMENT OF ONE HEAD, not a mechanism: nothing in the repository performs this join, so it will decay again the moment a lane adds a declaration without adding a row. The mechanical repair is unchanged and is precisely the per-module declaration record gunbc.declaration_index_seed_growth owes, which this roster`s CLASS A already waits on.
 
-THE BASE-ENVIRONMENT LOADER (gunbc#10970) ADDS TWENTY DECLARATIONS, AND THEY ARE HAND RUST FOR ONE REASON, NOT TWENTY. The gate must read the BASE revision under the base revision's own grammar (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change), which means acquiring another revision's bytes from the git object store and re-entering the interpreter over them. Both halves are host boundaries the seed already crosses in Rust -- git invocation stands at 32 sites across 8 seed files, this module among them, and interpreter re-entry is v1_interpreter's own surface -- so the loader inhabits an existing boundary rather than minting one. What it does NOT do is re-invent modeled capability: the grammar it loads is std.syntax ParseEnvironment, declared in .dag and threaded by #10948; the decode is value_to_wire_json plus the emitter-derived serde attributes, one authority at both ends; the closure is asked of the repository's own module index and resolver, never re-scanned. The five consts name the environment module, item, path, source root and kernel file; the two types are the refusal coproduct and the agreement verdict; the thirteen functions are the acquisition (one route, shared with the witnesses), the decode, the loader in its resolving and closure-carrying forms, the agreement check, the kernel guard, the refusal's operator-facing text, and run_wave_admission_between -- the adjudication over an explicit repository and revision pair, the seam the grammar-differs witness drives and the production entry wraps -- a free function rather than a Display impl, because an impl block is the one item this roster cannot cite, and the sentence above that this module carries no impl block stays true. They dissolve with the same lane as the rest of this module: when the wave phase is .dag, a revision-relative read is an ordinary fold over a ParseEnvironment value and none of this remains.
-
-THREE DECLARATIONS ADDED FOR THE MERGE-QUEUE OWNER CHARGE (lane ruling C, fierce-lark-661, 2026-09-13), AND WHAT THE REQUEST BOUGHT BACK. DeletionFollowUp and AdjudicationEvent are types the pure fold and wave_admission_refusal read, so they are CLASS A and move with it; adjudication_event_from_name is the one host-boundary parse of GITHUB_EVENT_NAME and is CLASS B, beside run_required_wave_admission. They are not avoidable by respelling: the verdict needs the event as an input (the queue moved the required verdict off the only base-equals-head run) and the row needs its owner-authored follow-up, and neither was expressible in the existing types. WHAT WAS AVOIDED: a follow-up rendering helper was authored and then INLINED at its single call site before landing rather than enumerated, and no second follow-up ledger was authored beside the roster -- the follow-up is a field on the row it belongs to. KNOWN §3 RESIDUE, stated rather than hidden: AdjudicationEvent re-spells five GitHub event names that extdeps.github.actions already carries as github_event_name_* rows; the seed cannot consume those rows at this layer, which is the same CLASS B acquisition boundary, and the enum dissolves with it. ONE MORE FOR RULING X (review 65313): ConsumedRowReceipt is CLASS A (a value the pure fold produces and the executor prints), added because the ruling requires the owned-row receipt to be typed -- row, owner, follow-up -- rather than a rendered string; TransitionAdmission gained owner_pull_request for the same reason, since the label's gunbc#N prefix is a convention nothing enforces.",
+THE BASE-ENVIRONMENT LOADER (gunbc#10970) ADDS TWENTY DECLARATIONS, AND THEY ARE HAND RUST FOR ONE REASON, NOT TWENTY. The gate must read the BASE revision under the base revision's own grammar (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change), which means acquiring another revision's bytes from the git object store and re-entering the interpreter over them. Both halves are host boundaries the seed already crosses in Rust -- git invocation stands at 32 sites across 8 seed files, this module among them, and interpreter re-entry is v1_interpreter's own surface -- so the loader inhabits an existing boundary rather than minting one. What it does NOT do is re-invent modeled capability: the grammar it loads is std.syntax ParseEnvironment, declared in .dag and threaded by #10948; the decode is value_to_wire_json plus the emitter-derived serde attributes, one authority at both ends; the closure is asked of the repository's own module index and resolver, never re-scanned. The five consts name the environment module, item, path, source root and kernel file; the two types are the refusal coproduct and the agreement verdict; the thirteen functions are the acquisition (one route, shared with the witnesses), the decode, the loader in its resolving and closure-carrying forms, the agreement check, the kernel guard, the refusal's operator-facing text, and run_wave_admission_between -- the adjudication over an explicit repository and revision pair, the seam the grammar-differs witness drives and the production entry wraps -- a free function rather than a Display impl, because an impl block is the one item this roster cannot cite, and the sentence above that this module carries no impl block stays true. They dissolve with the same lane as the rest of this module: when the wave phase is .dag, a revision-relative read is an ordinary fold over a ParseEnvironment value and none of this remains. THE DIRECTORY ROSTER LOADER ADDS THE PARSE HELPERS enumerated beside load_transition_admissions: they fold one authored file's initializer into the seed TransitionAdmission the wall already adjudicates. Routing that fold through evaluate_environment_in / resolve_entry_with_index is the same seam, and it panics HostBudgetUnreadable in the fixture harness that has no cgroup (cli_run.entry_resolve). Production typecheck of those files remains the parse sweep. The helpers are enumerated so this row's bijection sentence is not false at this head. THREE DECLARATIONS ADDED FOR THE MERGE-QUEUE OWNER CHARGE (lane ruling C, fierce-lark-661, 2026-09-13), AND WHAT THE REQUEST BOUGHT BACK. DeletionFollowUp and AdjudicationEvent are types the pure fold and wave_admission_refusal read, so they are CLASS A and move with it; adjudication_event_from_name is the one host-boundary parse of GITHUB_EVENT_NAME and is CLASS B, beside run_required_wave_admission. They are not avoidable by respelling: the verdict needs the event as an input (the queue moved the required verdict off the only base-equals-head run) and the row needs its owner-authored follow-up, and neither was expressible in the existing types. WHAT WAS AVOIDED: a follow-up rendering helper was authored and then INLINED at its single call site before landing rather than enumerated, and no second follow-up ledger was authored beside the roster -- the follow-up is a field on the row it belongs to. KNOWN §3 RESIDUE, stated rather than hidden: AdjudicationEvent re-spells five GitHub event names that extdeps.github.actions already carries as github_event_name_* rows; the seed cannot consume those rows at this layer, which is the same CLASS B acquisition boundary, and the enum dissolves with it. ONE MORE FOR RULING X (review 65313): ConsumedRowReceipt is CLASS A (a value the pure fold produces and the executor prints), added because the ruling requires the owned-row receipt to be typed -- row, owner, follow-up -- rather than a rendered string; TransitionAdmission gained owner_pull_request for the same reason, since the label's gunbc#N prefix is a convention nothing enforces.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete these in THREE steps, one per class below, and a PARTIAL migration is the expected shape rather than a failure. Class A follows gunbc.declaration_index_seed_growth`s first step: the moment a per-module declaration record is a .dag carrier, every one of the CLASS A declarations moves with it, because they are pure folds over it and nothing else. Class B follows the scm lane: when a typed repository-read transport can supply a file`s text at a ref. adjudicate, binding_disposition, declaring_candidates, declarer_of, closure_of, membership_map, direct_membership, module_prefix_of, membership_declared, membership_bound_through and blast_radius are pure functions of two indexes and move to .dag the moment the per-module record derivation does -- they need no host effect at all, so they follow gunbc.declaration_index_seed_growth's first step rather than waiting for its second. git_stdout, in_sweep_scope, base_records and run_required_wave_admission stay behind until a typed repository-read transport can supply a file's text at a ref, which is the scm lane's subject. A PARTIAL migration is the expected shape. What does NOT dissolve them is the phase moving to another host entry point, and what does NOT dissolve them is a hermetic witness over a fabricated pair of indexes -- the fixture suite already does that, and it is the evidence rather than the dissolution. CLASS C IS THE BASE-ENVIRONMENT LOADER COHORT (gunbc#10970): EnvironmentLoadRefusal, EnvironmentAgreement, the five environment consts, git_capture, blob_id_at, materialize_revision_paths, materialize_environment_closure_at, decode_environment_value, evaluate_environment_in, load_parse_environment_at, load_parse_environment_with_closure, environment_closure_paths, environment_agreement, kernel_set_serves_both, environment_load_refusal_text and run_wave_admission_between. THE CAPABILITY THAT RETIRES THEM is the wave phase itself expressed in .dag over a ParseEnvironment VALUE: a revision-relative read is then an ordinary fold that takes the base's environment as an argument, and there is no head-built module index in the read path to bootstrap around. That is a capability and not an artifact -- a .dag wave phase that still reached a Rust loader to obtain the environment would leave every one of these standing -- and it is SUFFICIENT FOR retiring Class C only when the two host effects the cohort exists to cross are themselves modeled reads: the scm lane's typed repository-read transport (a file's text and a path's object identity at a ref, which is the same transport Class B waits on) and interpreter re-entry as a modeled evaluation rather than a host call. Class C is therefore ordered AFTER Class B: it cannot go before the transport it reads through. What does NOT dissolve Class C is any consumer of the loader moving elsewhere; the loader retires when nothing needs to load, and nothing needs to load when the phase takes the environment as a value.",
   current_boundary: "src/v1/stage0/src/namespace_wave_admission.rs; src/v1/stage0/src/declaration_index.rs dotted_chain and ModuleDeclarationRecord.referenced; src/v1/stage0/src/bin/claim_executor.rs phase namespace-wave-admission; src/v1/stage0/tests/namespace_wave_admission.rs; dag/gunbc/namespace/namespace_wave_admission.dag"
