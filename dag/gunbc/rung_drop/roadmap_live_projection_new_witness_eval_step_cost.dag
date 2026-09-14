@@ -54,19 +54,10 @@ data roadmap_live_projection_new_witness_eval_step_measurements: List<RoadmapLiv
 ]
 
 // The gate consumes this; it is a projection of the list above, never a second list.
-data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> =
-  roadmap_live_projection_new_witness_eval_step_measurements |> map(m => m.identity)
+data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> = roadmap_live_projection_new_witness_eval_step_measurements |> map(m => m.identity)
 
 // The population field consumes this; also a projection of the same list.
-data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> =
-  roadmap_live_projection_new_witness_eval_step_measurements
-    |> map(m => concat(
-      concat(m.identity, ": "),
-      concat(
-        m.eval_steps,
-        " eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
-      ),
-    ))
+data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> = roadmap_live_projection_new_witness_eval_step_measurements |> map(m => concat(concat(m.identity, ": "), concat(m.eval_steps, " eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR")))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
