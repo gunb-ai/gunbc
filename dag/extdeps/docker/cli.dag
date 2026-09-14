@@ -86,14 +86,17 @@ fn docker_mount_flag(m: DockerMount) -> List<String> {
   }
 }
 
-fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+// THE VERB IS THE ONLY DIFFERENCE BETWEEN CREATING AND RUNNING, so it is the only thing the two
+// renderings do not share. A second flag list for `run` would be the fork this module exists to avoid:
+// a device or a ulimit added to one spelling and not the other is a container that differs from the
+// one the plan describes, decided by which verb a caller happened to use.
+fn docker_container_flags(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
       concat(
         concat(
           concat(
             [
-              "create",
               "--name", spec.name as String,
               "--network", docker_namespace_mode_wire(m: spec.network) as String,
               "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
@@ -116,6 +119,19 @@ fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
     ),
     concat([spec.image as String], spec.command),
   )
+}
+
+fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(["create"], docker_container_flags(spec: spec))
+}
+
+// A DETACHED RUN IS ONE COMMAND WHERE CREATE-THEN-START IS TWO, and an actuator that reaches a host
+// over one privileged leg per step has a reason to prefer it. Same fields, same order, same container.
+// It renders ARGUMENTS and not an ArgvCommand: its caller carries the words over a privileged stdin
+// rather than executing a program locally, so wrapping them would mint a command nothing runs and
+// widen extdeps.exec.command's admission roster for it.
+fn docker_run_detached_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(["run", "-d"], docker_container_flags(spec: spec))
 }
 
 fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {

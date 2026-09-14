@@ -11,7 +11,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, vllm_endpoint_process_launch_is, vllm_endpoint_process_launch_key,
 }
 import gunbc.spark.native_deployment_readback { RankObservation, rank_observation, NcclIbTransport }
-import gunbc.spark.serving_arm_launch { fabric_rail_interface_name }
+
 import gunbc.serving.incarnation_provenance {
   CoordinateObserved, CoordinateUnestablished, CoordinateAbsentByObservation,
   serving_execution_source_ref, serving_execution_runtime_ref,
@@ -28,7 +28,7 @@ import test.claim.spark.native_incarnation_fixture {
   IncarnationWorld, InstalledSnapshot, world_of, faithful_world, world_port,
   fixture_launch, fixture_start, fixture_ranks, fixture_installed_everywhere, fixture_revision, fixture_repo,
   fixture_snapshot_names, fixture_snapshot_directory, fixture_runtime_image, fixture_image_reference,
-  fixture_engine_argv, fixture_model_path, fixture_rail_hca,
+  fixture_engine_argv, fixture_model_path, fixture_rail_hca, fixture_rail_netdev,
 }
 import product.fabric.work {
   ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
@@ -150,7 +150,7 @@ test fn a_diverged_deployment_binds_nothing() -> Bool {
     host: operator_host_srv12, node_rank: 2,
     image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
     model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
-    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
   )
   let ranks = map(fixture_ranks(), r => if r.node_rank == 2 { wrong_image_rank } else { r })
   refused_naming(
@@ -172,7 +172,7 @@ test fn a_diverged_deployment_is_not_asked_about_its_source() -> Bool {
     host: operator_host_srv12, node_rank: 2,
     image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
     model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
-    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
   )
   let o = observe(w: world_of(
     launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),

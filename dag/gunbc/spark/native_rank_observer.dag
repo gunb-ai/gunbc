@@ -10,7 +10,7 @@ import gunbc.spark.remote_execution {
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
-  glm_native_container_name, fabric_rail_interface_name,
+  glm_native_container_name,
   utilization_basis_points_in_argv, glm_native_serve_port,
 }
 import extdeps.docker.container_inspect { go_template_action }

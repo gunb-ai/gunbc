@@ -5,7 +5,7 @@ import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
-import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, fabric_rail_interface_name }
+import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused }
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan, glm_native_device_memory_policy,
 }
@@ -66,6 +66,10 @@ data fixture_model_path: NonEmptyStr = "/weights/models--zai-org--GLM-5.3-Flash/
 data fixture_endpoint: String = "192.168.1.236:30000"
 data fixture_rail_hca: NonEmptyStr = "rocep1s0f1" as NonEmptyStr
 
+// THE NETDEV A RANK REPORTS BOOTSTRAPPING OVER, authored as an observed value rather than read back
+// from the plan the observation is compared against.
+data fixture_rail_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+
 // THE MEASURED LAYOUT OF THE MOUNTED REVISION, as the transaction's listing reader would return it.
 data fixture_snapshot_names: List<String> = [
   "LICENSE", "README.md", "chat_template.jinja", "config.json", "generation_config.json",
@@ -120,7 +124,7 @@ fn fixture_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     image_digest: fixture_image_reference(),
     model_path: fixture_model_path,
     argv: fixture_engine_argv(rank: rank),
-    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
   )
 }
 

@@ -6,8 +6,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
-  fabric_rail_interface_name,
 }
+
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
   glm_native_device_memory_policy,
@@ -21,6 +21,11 @@ import gunbc.spark.native_deployment_readback {
 }
 
 data subject: NonEmptyStr = "the native four-rank deployment on fabric cage 2" as NonEmptyStr
+
+// THE NETDEV IS AUTHORED HERE AS AN OBSERVED VALUE, not imported from the launcher. A fixture that read
+// the plan's own netdev back would agree with the plan by construction; what a rank REPORTS is a reading
+// of the world, and this is the string this fleet's engines print.
+data t_rail_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
 // THIS IS THE STOCK RUNTIME, AND IT IS NOW THE WRONG-IMAGE VALUE RATHER THAN THE FAITHFUL ONE. Every
 // fixture below used to report it as the image a healthy rank is running, while the plan pins the runtime
 // this fleet derived -- so each of them silently varied the image DIMENSION as well as the one its name
@@ -91,7 +96,7 @@ fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     image_digest: planned_image_for(rank: rank),
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: rank),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   )
 }
 
@@ -140,7 +145,7 @@ data one_rank_wrong_digest: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 2),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
   faithful_rank(host: operator_host_srv11, rank: 3),
 ]
@@ -163,7 +168,7 @@ data one_rank_wrong_revision: List<RankObservation> = [
     image_digest: planned_image_for(rank: 1),
     model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
     argv: planned_argv_for(rank: 1),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -289,7 +294,7 @@ data one_word_changed_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0, image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: argv_with_one_word_changed(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -318,7 +323,7 @@ data reordered_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv10, node_rank: 1, image_digest: planned_image_for(rank: 1), model_path: pinned_model_path,
     argv: argv_reversed(rank: 1),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -361,7 +366,7 @@ data rank_zero_twice: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -395,7 +400,7 @@ data an_unexpected_fifth_rank: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
   ),
 ]
 
@@ -405,5 +410,69 @@ test fn an_unexpected_extra_rank_is_rejected() -> Bool {
     DeploymentUnverified { unknowns: _ } => false
     DeploymentUnverifiable { cause: _ } => false
     DeploymentRejected { deviations: ds } => count(ds) != 0
+  }
+}
+
+
+// ── THE TRANSPORT IS COMPARED AGAINST THE PLAN, NOT AGAINST THE OBSERVER'S OWN OPINION ────────
+//
+// THE ARM REQUIRES VERBS OVER ITS LANE'S DEVICE. These rows are the discriminations the previous
+// comparison could not make: it asked only whether the observation was NcclIbTransport, so a rank on
+// any HCA, bootstrapping over any interface, passed -- and the misparse that reported `verbs over ;`
+// passed with them.
+fn one_rank_transport(transport: NcclTransportObservation) -> List<RankObservation> {
+  [
+    rank_observation(
+      host: operator_host_srv9, node_rank: 0,
+      image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
+      argv: planned_argv_for(rank: 0), selected_transport: transport,
+    ),
+    faithful_rank(host: operator_host_srv10, rank: 1),
+    faithful_rank(host: operator_host_srv12, rank: 2),
+    faithful_rank(host: operator_host_srv11, rank: 3),
+  ]
+}
+
+test fn verbs_over_another_hca_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: "roceP2p1s0f0" as NonEmptyStr, oob_netdev: Present { value: t_rail_netdev } }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+test fn verbs_bootstrapping_over_another_interface_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: "wlP9s9" as NonEmptyStr } }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// A VERBS SELECTION THAT NAMED NO BOOTSTRAP INTERFACE IS UNVERIFIED RATHER THAN ACCEPTED. The payload
+// path is established and the path the ranks found each other on is not, and acceptance promises both.
+test fn verbs_without_an_out_of_band_interface_is_unverified() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: none }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentUnverified { unknowns: us } => count(us) == 1
+    _ => false
+  }
+}
+
+// AND THE DEPLOYMENT THIS FLEET IS ACTUALLY RUNNING IS REJECTED, which is the whole subject: sockets
+// over the correct rail are still not the transport a four-node tensor-parallel arm was planned on.
+test fn sockets_over_the_planned_rail_are_still_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclSocketTransport { netdev: t_rail_netdev }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
   }
 }
