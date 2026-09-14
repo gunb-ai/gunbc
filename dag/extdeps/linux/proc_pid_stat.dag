@@ -1,6 +1,7 @@
 module extdeps.linux.proc_pid_stat
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr }
+import std.string_type { String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

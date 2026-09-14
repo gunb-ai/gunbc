@@ -1,6 +1,7 @@
 module extdeps.procps.pgrep
 
-import std.types { String, Int, List, Bool, NonEmptyStr, Unit }
+import std.types { Int, List, Bool, NonEmptyStr, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 
 // pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this

@@ -1,6 +1,7 @@
 module extdeps.docker.cgroup
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.string_type { String }
 import std.content_hash { content_hash_validate_lower_hex_syntax, content_hash_validate_lower_hex_length }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
