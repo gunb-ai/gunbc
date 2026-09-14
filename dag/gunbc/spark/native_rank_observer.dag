@@ -1,7 +1,7 @@
 module gunbc.spark.native_rank_observer
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.remote_execution {
@@ -71,49 +71,183 @@ fn rank_running_argv() -> List<String> {
 // NCCL PRINTS THE IB LINE AS "NET/IB : Using [0]<hca>:1/RoCE ... ; OOB <netdev>:<ip>", so the backend,
 // the device and the out-of-band socket are separable. One line is emitted per selection; the first is
 // taken and a rank that printed neither is unread rather than assumed.
+// EVERY TRANSPORT LINE IS READ, NOT THE FIRST ONE, AND THAT IS THE WHOLE REPAIR. Measured on this
+// fleet 2026-09-14, NCCL 2.30.7 prints FOUR lines on a socket deployment:
+//
+//   NET/IB : No device found.
+//   NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>
+//   NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>
+//   NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'
+//
+// The IB plugin prints its `Using [RO]; OOB ...` banner EVEN AFTER FINDING NO DEVICE -- that line
+// describes the relaxed-ordering flag and the out-of-band socket, not a selected HCA. The previous
+// reader grepped for the first `NET/x : Using` line and took whatever followed the bracket, so it read
+// `[RO];` as a device name and reported NcclIbTransport { hca: ";" } for a deployment that had no
+// /dev/infiniband node at all. The readback admits any IB observation, so four socket ranks were
+// ACCEPTED as an RDMA deployment and an incarnation was minted over them.
+//
+// SO A SELECTION MUST NAME A DEVICE. The device token is `[<ordinal>]<name>...` where the ordinal is
+// digits; `[RO]` is not an ordinal and therefore not a selection. A backend that printed no device
+// selection did not select; a backend that did is the transport, and two of them claiming a selection
+// is a contradiction this reader refuses rather than resolving by line order.
 fn rank_nccl_transport_argv() -> List<String> {
   ["sh", "-c", join([
     "L=$(docker logs ", glm_native_container_name as String, " 2>&1",
-    " | grep -oE 'NET/(IB|Socket) : Using [^ ]+' | head -1)",
-    "; if [ -z \"$L\" ]; then echo UNREAD; else echo \"$L\"; fi",
+    " | grep -E 'NET/(IB|Socket) : ' | head -8)",
+    "; if [ -z \"$L\" ]; then echo ", nccl_transport_unread_wire, "; else echo \"$L\"; fi",
   ], "")]
 }
 
 data nccl_transport_unread_wire: String = "UNREAD"
 
-// THE PARSE IS TOTAL AND ITS UNRECOGNISED ARM IS UNREAD, NOT A BACKEND. A line this reader cannot
-// classify is a statement about the reader, and answering "socket" for it would be the fabricated
-// plausible output: it would report the very fallback the deployment is meant to refuse.
-fn nccl_transport_of_line(raw: String) -> NcclTransportObservation {
-  if raw == nccl_transport_unread_wire {
-    NcclTransportUnread { cause: "the engine log printed no NCCL transport selection line" as NonEmptyStr }
+type NcclSelectionLine
+  = SelectionNamesDevice { backend: NcclBackendName, device: NonEmptyStr, oob_netdev: NonEmptyStr? }
+  | SelectionWithoutDevice { backend: NcclBackendName }
+  | BackendFoundNoDevice { backend: NcclBackendName }
+  | LineIsNotASelection
+
+type NcclBackendName = NcclIbBackend | NcclSocketBackend
+
+fn nccl_backend_of_line(raw: String) -> NcclBackendName? {
+  if string_contains(s: raw, pattern: "NET/IB : ") {
+    Present { value: NcclIbBackend }
+  } else if string_contains(s: raw, pattern: "NET/Socket : ") {
+    Present { value: NcclSocketBackend }
   } else {
-    if string_contains(s: raw, pattern: "NET/IB") {
-      NcclIbTransport { hca: nccl_device_token(raw: raw), oob_netdev: none }
-    } else {
-      if string_contains(s: raw, pattern: "NET/Socket") {
-        NcclSocketTransport { netdev: nccl_device_token(raw: raw) }
-      } else {
-        NcclTransportUnread {
-          cause: join(["the engine printed a transport line this reader cannot classify: ", raw], "") as NonEmptyStr,
-        }
-      }
-    }
+    none
   }
 }
 
-// THE DEVICE TOKEN IS WHAT FOLLOWS THE BRACKETED ORDINAL, and it is taken without assuming its shape:
-// a socket netdev and a RoCE HCA render differently and neither is validated here, because a reader
-// that rejected an unfamiliar device name would refuse a correct deployment on an unfamiliar NIC.
-fn nccl_device_token(raw: String) -> NonEmptyStr {
-  let after = split(s: raw, delimiter: "]")
-  match after.skip(n: 1).first() {
-    Absent => raw as NonEmptyStr
+fn nccl_text_after(raw: String, marker: String) -> String? {
+  let parts = split(s: raw, delimiter: marker)
+  if count(parts) < 2 { none } else { parts.skip(n: 1).first() }
+}
+
+fn nccl_all_digits(s: String) -> Bool {
+  if string_length(s: s) == 0 {
+    false
+  } else {
+    all(nat_range_inclusive(lo: 1, hi: string_length(s: s)), i =>
+      code_point(substring(s: s, start: i - 1, end: i)) >= 48
+        && code_point(substring(s: s, start: i - 1, end: i)) <= 57)
+  }
+}
+
+// THE OUT-OF-BAND INTERFACE IS ITS OWN FACT, and on an IB selection it is the socket NCCL bootstraps
+// over while the payload rides verbs. It is read from the same line rather than inferred.
+fn nccl_oob_netdev(raw: String) -> NonEmptyStr? {
+  match nccl_text_after(raw: raw, marker: "OOB ") {
+    Absent => none
     Present { value: tail } =>
       match split(s: tail, delimiter: ":").first() {
-        Absent => tail as NonEmptyStr
-        Present { value: dev } => if dev == "" { tail as NonEmptyStr } else { dev as NonEmptyStr }
+        Absent => none
+        Present { value: dev } => if dev == "" { none } else { Present { value: dev as NonEmptyStr } }
       }
+  }
+}
+
+fn nccl_selection_of_line(raw: String) -> NcclSelectionLine {
+  match nccl_backend_of_line(raw: raw) {
+    Absent => LineIsNotASelection
+    Present { value: backend } =>
+      if string_contains(s: raw, pattern: "No device found") {
+        BackendFoundNoDevice { backend: backend }
+      } else {
+        match nccl_text_after(raw: raw, marker: " : Using [") {
+          Absent => LineIsNotASelection
+          Present { value: tail } =>
+            match split(s: tail, delimiter: "]").first() {
+              Absent => SelectionWithoutDevice { backend: backend }
+              Present { value: ordinal } =>
+                if !nccl_all_digits(s: ordinal) {
+                  SelectionWithoutDevice { backend: backend }
+                } else {
+                  match nccl_text_after(raw: tail, marker: "]") {
+                    Absent => SelectionWithoutDevice { backend: backend }
+                    Present { value: rest } =>
+                      match split(s: rest, delimiter: ":").first() {
+                        Absent => SelectionWithoutDevice { backend: backend }
+                        Present { value: device } =>
+                          if device == "" {
+                            SelectionWithoutDevice { backend: backend }
+                          } else {
+                            SelectionNamesDevice {
+                              backend: backend,
+                              device: device as NonEmptyStr,
+                              oob_netdev: nccl_oob_netdev(raw: raw),
+                            }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn nccl_selection_is(line: NcclSelectionLine, backend: NcclBackendName) -> Bool {
+  match line {
+    SelectionNamesDevice { backend: b, device: _, oob_netdev: _ } => nccl_backend_eq(left: b, right: backend)
+    SelectionWithoutDevice { backend: _ } => false
+    BackendFoundNoDevice { backend: _ } => false
+    LineIsNotASelection => false
+  }
+}
+
+fn nccl_backend_eq(left: NcclBackendName, right: NcclBackendName) -> Bool {
+  match left {
+    NcclIbBackend => match right { NcclIbBackend => true  NcclSocketBackend => false }
+    NcclSocketBackend => match right { NcclIbBackend => false  NcclSocketBackend => true }
+  }
+}
+
+fn nccl_transport_of_selection(line: NcclSelectionLine) -> NcclTransportObservation {
+  match line {
+    SelectionNamesDevice { backend: b, device: d, oob_netdev: oob } =>
+      match b {
+        NcclIbBackend => NcclIbTransport { hca: d, oob_netdev: oob }
+        NcclSocketBackend => NcclSocketTransport { netdev: d }
+      }
+    SelectionWithoutDevice { backend: _ } =>
+      NcclTransportUnread { cause: "a transport line named a backend and no device" as NonEmptyStr }
+    BackendFoundNoDevice { backend: _ } =>
+      NcclTransportUnread { cause: "a backend reported no device" as NonEmptyStr }
+    LineIsNotASelection =>
+      NcclTransportUnread { cause: "the line is not a transport selection" as NonEmptyStr }
+  }
+}
+
+// THE POPULATION DECIDES, AND ITS EVIDENCE TRAVELS IN THE REFUSAL. One backend naming a device is the
+// transport; none is unread, and both is a contradiction -- never the first line in log order, which
+// is what admitted the banner over the selection.
+fn nccl_transport_of_lines(raw: String) -> NcclTransportObservation {
+  if raw == nccl_transport_unread_wire {
+    NcclTransportUnread { cause: "the engine log printed no NCCL transport line" as NonEmptyStr }
+  } else {
+    let lines = filter(split(s: raw, delimiter: "\n"), l => l != "")
+    let selections = map(lines, l => nccl_selection_of_line(raw: l))
+    let ib = filter(selections, sel => nccl_selection_is(line: sel, backend: NcclIbBackend))
+    let socket = filter(selections, sel => nccl_selection_is(line: sel, backend: NcclSocketBackend))
+    if count(ib) != 0 && count(socket) != 0 {
+      NcclTransportUnread {
+        cause: join(["both NCCL backends report a device selection, which one engine does not do: ", raw], "") as NonEmptyStr,
+      }
+    } else if count(ib) != 0 {
+      match ib.first() {
+        Absent => NcclTransportUnread { cause: "a selection vanished between two readings of one list" as NonEmptyStr }
+        Present { value: sel } => nccl_transport_of_selection(line: sel)
+      }
+    } else if count(socket) != 0 {
+      match socket.first() {
+        Absent => NcclTransportUnread { cause: "a selection vanished between two readings of one list" as NonEmptyStr }
+        Present { value: sel } => nccl_transport_of_selection(line: sel)
+      }
+    } else {
+      NcclTransportUnread {
+        cause: join(["no NCCL transport line names a selected device: ", raw], "") as NonEmptyStr,
+      }
+    }
   }
 }
 
@@ -250,7 +384,7 @@ func observed_transport(r: SparkRemoteRun) -> NcclTransportObservation {
   if !remote_run_succeeded(r: r) {
     NcclTransportUnread { cause: "the engine log could not be read for a transport line" as NonEmptyStr }
   } else {
-    nccl_transport_of_line(raw: remote_run_stdout(r: r))
+    nccl_transport_of_lines(raw: remote_run_stdout(r: r))
   }
 }
 
