@@ -153,7 +153,9 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "sm12_designed")) {
-      NoFeasibleServingDeployment { causes: cs } => causes_name_axis(cs: cs, axis: ax_component_route)
+      NoFeasibleServingDeployment { causes: cs } =>
+        causes_name_axis(cs: cs, axis: ax_component_route)
+          && !causes_name_axis(cs: cs, axis: ax_host_fit)
       _ => false
     }
     && decision_snapshot_key(input: deepseek_v4_1_decision_input)
@@ -184,11 +186,29 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
 // set shrank at the same time, so the field is smaller than the twenty measured above, and by how much is
 // not something to arithmetic here. If it lands over the ceiling again, the narrowing gets redesigned
 // with shapes that FIT the admissible set, established by execution and not by inspection.
+// THE DESIGNED FIELD, REBUILT TO INHABIT THE ADMISSIBLE SET RATHER THAN TO IGNORE IT. Both shapes
+// consume AT MOST the four ranks the subject's admissible host set holds, so neither can be excluded
+// on host fit -- which is the failure the previous hand-picked pair had, both consuming eight.
+//
+// tp4 x 1 is the shape CLOSEST TO FEASIBLE: it is the only topology whose per-rank Engram share comes
+// within 2 GiB of the budget, so a claim over it exercises the real margin and reds if the memory
+// screen ever stops excluding. tp2 x 1 is comfortably infeasible, so the assertion is not resting on
+// a single candidate. Two topologies against the eight the admissible enumeration yields.
+//
+// WHAT THIS IS NOT: a return to hand-picked topologies. The lesson of the falsified pair was that a
+// designed narrowing must INHABIT its subject, not that narrowing is forbidden -- and inhabitance here
+// is checked by execution, because each consuming claim must still reach its verdict through the
+// mechanism it exists to exercise rather than through host fit.
+data v4_1_designed_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+  topology_shape(tensor_parallel_degree: 2, replica_count: 1),
+]
+
 fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
   let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
   let domain = serving_deployment_domain_over_standings(
     artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot),
+    topologies: v4_1_designed_topologies,
     standings: standings,
   )
   serving_decision_input(
@@ -226,6 +246,7 @@ test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
       NoFeasibleServingDeployment { causes: cs } =>
         causes_name_axis(cs: cs, axis: ax_component_route)
           && !causes_name_axis(cs: cs, axis: ax_authorized_runtime)
+          && !causes_name_axis(cs: cs, axis: ax_host_fit)
       _ => false
     }
     && match v4_1_runtime_published_arm64.vllm_source {
