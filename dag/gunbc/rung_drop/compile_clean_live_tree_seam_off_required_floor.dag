@@ -1,0 +1,26 @@
+module gunbc.rung_drop.compile_clean_live_tree_seam_off_required_floor
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+data compile_clean_live_tree_seam_off_required_floor: RungDrop = RungDrop {
+  identity: "compile_clean_live_tree_seam_off_required_floor" as NonEmptyStr,
+
+  subject: "required-floor execution of the live-tree cross-shard seam standing",
+
+  declared: "2026-09-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "the deleted tools.dag_compile_clean_seam cross_shard_seam_preservation_standing and its probe run_cross_shard_seam_probe",
+      "the former test.claim.dag_compile_clean_seam_witness cross_shard_seam_preservation_holds_on_live_tree",
+    ],
+    restoration_trigger: "the compile CLI carries earlier_phase machine-readably (generated structured disposition, not a stderr parse) AND whole-corpus admission is readable on the runner class that would execute this identity, SUFFICIENT FOR the live-tree seam standing to be a required-floor identity whose monolith arm is a subject verdict (SubjectRed/SubjectGreen), not RefusedBeforeSubject. Restoring ExpectedToHold while the monolith is still NotExecuted does not retire this row. The per-PR algebra identity cross_shard_seam_algebra_holds is not this subject and does not restore it",
+  }
+}

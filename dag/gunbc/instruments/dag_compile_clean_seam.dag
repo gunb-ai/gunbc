@@ -5,13 +5,10 @@ import tools.dag_compile_clean_partition {
   compose_compile_clean_shard_verdicts
 }
 import tools.dag_compile_clean_seam_transport {
-  CrossShardSeamProbeResult,
-  run_cross_shard_seam_probe,
-  cross_shard_seam_class_marker,
   cross_shard_seam_importer_entry_path,
   cross_shard_seam_importee_entry_path
 }
-import std.types { String, Bool }
+import std.types { Bool }
 
 type CrossShardSeamReceipt {
   probe_ran: Bool
@@ -21,18 +18,6 @@ type CrossShardSeamReceipt {
   y_names_class: Bool
   x_names_class: Bool
   m_names_class: Bool
-}
-
-fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
-  CrossShardSeamReceipt {
-    probe_ran: probe.probe_ran,
-    y_reds: !probe.y_exit_zero,
-    x_reds: !probe.x_exit_zero,
-    m_reds: !probe.m_exit_zero,
-    y_names_class: string_contains(s: probe.y_output, pattern: cross_shard_seam_class_marker),
-    x_names_class: string_contains(s: probe.x_output, pattern: cross_shard_seam_class_marker),
-    m_names_class: string_contains(s: probe.m_output, pattern: cross_shard_seam_class_marker)
-  }
 }
 
 fn shard_y_reds(receipt: CrossShardSeamReceipt) -> Bool {
@@ -74,12 +59,6 @@ fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamRecei
     && shard_x_reds_with_seam_attribution(receipt: receipt)
     && composed_verdict_reds_and_names_cause(receipt: receipt)
     && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
-}
-
-fn witness_cross_shard_seam_preservation_holds() -> Bool {
-  witness_cross_shard_seam_preservation_holds_from(
-    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
-  )
 }
 
 fn synthetic_seam_receipt(y_reds: Bool, x_reds: Bool, m_reds: Bool, y_names: Bool, x_names: Bool, m_names: Bool) -> CrossShardSeamReceipt {

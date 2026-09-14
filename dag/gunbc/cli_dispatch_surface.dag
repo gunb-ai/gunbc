@@ -4,6 +4,8 @@ import std.measure { Millisecond, millisecond_count }
 import std.types { Bool, CommitSha, Int, List, Port, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.process.posix_exit { exit_code_success, exit_code_general_error }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
 
 // One-consumer realization helper: only the generated dispatch emitter consumes this spelling,
 // and the spelling never enters CLI identity, build identity, receipts, cache keys, or product
@@ -305,6 +307,20 @@ fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
 fn gunbc_cli_binary_name() -> String {
   "gunbc"
 }
+
+// Compile verb process status — the CLI surface of CompileDisposition plus the
+// host write that follows a Completed emit. Each meaning has one status; the
+// machine consumer is WitnessBin.Run.exit_code.
+//   0  compile_cli_exit_completed — subject reached and emit succeeded
+//   1  compile_cli_exit_refused — subject reached and the compiler refused
+//   2  compile_cli_exit_usage — argv/usage refusal; the compiler never reached the subject
+//   3  compile_cli_exit_output_write_refused — emit succeeded; the disk would not take the tree
+//   4  compile_cli_exit_not_executed — admission/NotExecuted; the compiler never reached the subject
+data compile_cli_exit_completed: Int = exit_code_success
+data compile_cli_exit_refused: Int = exit_code_general_error
+data compile_cli_exit_usage: Int = exit_code_misuse
+data compile_cli_exit_output_write_refused: Int = 3
+data compile_cli_exit_not_executed: Int = 4
 
 fn gunbc_cli_about() -> String {
   "A causal compiler: write .dag, get Rust/Python/Go."

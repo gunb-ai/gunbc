@@ -81,6 +81,17 @@ pub mod extdeps_languages_rust_derive_contracts;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod extdeps_process_posix_exit;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod extdeps_version;
 #[allow(
     unused_imports,

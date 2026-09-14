@@ -4,39 +4,80 @@ import extdeps.shell
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
 import std.logic { Bool }
 import tools.dag_compile_clean_transport {
+  DccCompileReport,
+  SubjectGreen,
+  SubjectRed,
+  RefusedBeforeSubject,
+  dcc_compile_report_from_bin,
+  dcc_ensure_workspace_target,
   dcc_fixture_only_compile_args,
   dcc_gunbc_path,
-  dcc_gunbc_ready
+  dcc_gunbc_ready,
+  dcc_host_refused_before_subject,
+  dcc_staged_under_workspace,
+  dcc_stage_template_suffix
 }
 
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 
-fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
+fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let stage = shell.Mktemp.Dir()
+  if dcc_gunbc_ready(root: root.path) && dcc_ensure_workspace_target(root: root.path) {
+    let stage = shell.Mktemp.DirWithTemplate(
+      template: concat(root.path, dcc_stage_template_suffix)
+    )
     if stage.success {
       let staged = shell.Copy.File(
         source: concat(root.path, concat("/", entry_rel_path)),
         destination: stage.path
       )
-      let compile = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_fixture_only_compile_args(tmp: stage.path)
-      )
-      let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
-      staged.success && compile.success && cleaned_stage.success
+      if staged.success {
+        if !dcc_staged_under_workspace(root: root.path, staged: stage.path) {
+          let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+          if cleaned_stage.success {
+            dcc_host_refused_before_subject(cause: concat(
+              "shard primary source root is outside the workspace root (instrument admission, compiler not invoked): ",
+              stage.path
+            ))
+          } else {
+            dcc_host_refused_before_subject(cause: "shard primary source root is outside the workspace root, and stage cleanup failed")
+          }
+        } else {
+        let compile = gunbc.WitnessBin.Run(
+          workdir: root.path,
+          bin_path: dcc_gunbc_path(root: root.path),
+          args: dcc_fixture_only_compile_args(
+            tmp: stage.path,
+            module_file: fold(split(s: entry_rel_path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+          ),
+          expect: OutcomeIsData
+        )
+        let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+        if cleaned_stage.success {
+          dcc_compile_report_from_bin(
+            exit_code: compile.exit_code,
+            stdout: compile.stdout,
+            stderr: compile.stderr
+          )
+        } else {
+          dcc_host_refused_before_subject(cause: "shard stage cleanup failed")
+        }
+        }
+      } else {
+        let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
+        if cleaned_stage.success {
+          dcc_host_refused_before_subject(cause: "shard exemplar copy failed")
+        } else {
+          dcc_host_refused_before_subject(cause: "shard exemplar copy failed, and stage cleanup failed")
+        }
+      }
     } else {
-      false
+      dcc_host_refused_before_subject(cause: "workspace-root shard stage mktemp failed")
     }
   } else {
-    false
+    dcc_host_refused_before_subject(cause: "gunbc binary not ready")
   }
-}
-
-fn run_shard_a_exemplar_compile() -> Bool {
-  single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path)
 }

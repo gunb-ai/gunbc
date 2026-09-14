@@ -1,6 +1,18 @@
 module test.claim.dag_compile_clean_perturb_receipts
 
 import tools.dag_compile_clean_transport {
+  SubjectGreen,
+  SubjectRed,
+  OutputWriteRefused,
+  RefusedBeforeSubject,
+  dcc_cli_not_executed_phase,
+  dcc_compile_staged_outside_workspace_root,
+  dcc_fixture_perturb_compile_report,
+  dcc_outside_workspace_root_precheck,
+  dcc_root_admission_precheck_phase,
+  dcc_staged_under_workspace,
+  dcc_subject_expectation_holds,
+  perturb_fixture_green_module_source,
   run_perturb_optional_skew_fixture_red_receipt,
   run_perturb_unresolved_import_fixture_red_receipt,
   run_perturb_fixture_green_receipt,
@@ -10,7 +22,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Class C decomposition: per-PR mechanism RED arms on a fixture-only compile closure
-// (dcc_fixture_only_compile_args — one module, no compile_clean_source_roots).
+// (dcc_fixture_only_compile_args — one module via --entry, so whole-corpus admission is not asked).
 // perturb_fixture_green_holds is the discriminating GREEN control — a no-import valid module must
 // compile on the same path, proving the fixture transport is not always-fail. Corpus-grain legs
 // re-homed to falsifier_rehomed_bin_wet_rows via
@@ -26,4 +38,46 @@ test fn perturb_unresolved_import_fixture_red_holds() -> Bool {
 
 test fn perturb_fixture_green_holds() -> Bool {
   run_perturb_fixture_green_receipt()
+}
+
+// Primary RED: position_under outside, compiler not invoked. Host faults are instrument-phase
+// and cannot satisfy this. The invoke agreement control is
+// outside_workspace_root_invoke_is_cli_not_executed (NotExecuted only; earlier_phase is not
+// machine-readable on the CLI).
+
+test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
+  match dcc_outside_workspace_root_precheck() {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_root_admission_precheck_phase
+    SubjectGreen => false
+    SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
+  }
+}
+
+test fn outside_workspace_root_does_not_satisfy_expected_failure() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_outside_workspace_root_precheck(),
+    expect_success: false
+  )
+}
+
+test fn outside_workspace_root_invoke_is_cli_not_executed() -> Bool {
+  match dcc_compile_staged_outside_workspace_root() {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
+    SubjectGreen => false
+    SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
+  }
+}
+
+test fn under_workspace_root_green_fixture_reaches_subject() -> Bool {
+  match dcc_fixture_perturb_compile_report(
+    module_file: "_perturb_compile_clean_fixture_green.dag",
+    source: perturb_fixture_green_module_source
+  ) {
+    SubjectGreen => true
+    SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
 }

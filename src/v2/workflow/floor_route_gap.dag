@@ -141,16 +141,6 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.dag_collect_fingerprint_witness_test.dag_collect_fingerprint_witness_keystone_holds",
       tail: Cons {
-      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_fixture_green_holds",
-      tail: Cons {
-      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_optional_skew_fixture_red_holds",
-      tail: Cons {
-      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_unresolved_import_fixture_red_holds",
-      tail: Cons {
-      head: "test.claim.dag_compile_clean_seam_witness.cross_shard_seam_preservation_holds_on_live_tree",
-      tail: Cons {
-      head: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green",
-      tail:  Cons {
       head: "test.claim.diagnostics_test.diagnostics_constructor_owner_walls_hold",
       tail: Cons {
       head: "test.claim.diagnostics_test.diagnostics_empty_list_context_holds",
@@ -183,11 +173,6 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_substituted_identity_by_real_execution",
       tail: Empty {}
-    }
-    }
-    }
-    }
-    }
     }
     }
     }
@@ -989,8 +974,40 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// Fixture compile-clean perturb receipts and the shard-A exemplar compile: hermetic
+// first gap is Mktemp DirWithTemplate (Dir for the enrolled outside-root RED).
+// Enrolled as the same triple as chunk_09: this expectation, WetScheduledClaim
+// rows, LocalRepoWetLane exclusion.
+fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.perturb_optional_skew_fixture_red_holds", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.perturb_unresolved_import_fixture_red_holds", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.perturb_fixture_green_holds", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.under_workspace_root_green_fixture_reaches_subject", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_staging_is_refused_before_subject", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_does_not_satisfy_expected_failure", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_invoke_is_cli_not_executed", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Empty {} } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Empty {} } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

@@ -11,6 +11,7 @@ use self::CliOptionArity::*;
 use self::CliOptionValue::*;
 use self::CliSurfaceEmission::*;
 use self::CliVersionIdentity::*;
+pub use crate::extdeps_process_posix_exit::{exit_code_general_error, exit_code_success};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::unbound_dissolution;
@@ -292,6 +293,26 @@ pub fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
 
 pub fn gunbc_cli_binary_name() -> String {
     "gunbc".to_string()
+}
+
+pub fn compile_cli_exit_completed() -> i64 {
+    exit_code_success()
+}
+
+pub fn compile_cli_exit_refused() -> i64 {
+    exit_code_general_error()
+}
+
+pub fn compile_cli_exit_usage() -> i64 {
+    2
+}
+
+pub fn compile_cli_exit_output_write_refused() -> i64 {
+    3
+}
+
+pub fn compile_cli_exit_not_executed() -> i64 {
+    4
 }
 
 pub fn gunbc_cli_about() -> String {

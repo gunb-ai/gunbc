@@ -131,18 +131,6 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
     aliased_causes: "an expect-refusal arm; harness failure satisfies it"
   },
   AliasedPredicateSite {
-    module_path: "tools.dag_compile_clean_shard_transport",
-    symbol: "single_module_shard_compile_typed",
-    proposition: "a single-module shard compiles clean",
-    aliased_causes: "the module was unclean; the compile never ran"
-  },
-  AliasedPredicateSite {
-    module_path: "tools.dag_compile_clean_transport",
-    symbol: "dcc_perturb_compile_with_args",
-    proposition: "a perturbed compile refuses",
-    aliased_causes: "an expect-refusal arm; harness failure satisfies it"
-  },
-  AliasedPredicateSite {
     module_path: "tools.direct_rust_door_transport",
     symbol: "run_direct_rust_door_emit_write_compile_smoke",
     proposition: "the emitted artifact writes and compiles",

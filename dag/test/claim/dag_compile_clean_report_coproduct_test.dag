@@ -1,0 +1,162 @@
+module test.claim.dag_compile_clean_report_coproduct
+
+import tools.dag_compile_clean_transport {
+  SubjectGreen,
+  SubjectRed,
+  OutputWriteRefused,
+  RefusedBeforeSubject,
+  dcc_cli_not_executed_phase,
+  dcc_cli_usage_phase,
+  dcc_compile_report_from_bin,
+  dcc_instrument_earlier_phase,
+  dcc_root_admission_precheck_phase,
+  dcc_staged_under_workspace,
+  dcc_subject_expectation_holds,
+}
+import gunbc.cli_dispatch_surface {
+  compile_cli_exit_completed,
+  compile_cli_exit_not_executed,
+  compile_cli_exit_output_write_refused,
+  compile_cli_exit_refused,
+  compile_cli_exit_usage
+}
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Hermetic classification on compile_cli_exit_* (not stderr templates, not an earlier_phase allowlist).
+
+test fn staged_tmp_is_not_under_workspace_root() -> Bool {
+  !dcc_staged_under_workspace(root: "/home/repo", staged: "/tmp/dcc_stage")
+}
+
+test fn staged_under_target_is_under_workspace_root() -> Bool {
+  dcc_staged_under_workspace(root: "/home/repo", staged: "/home/repo/target/dcc_stage")
+}
+
+test fn sibling_prefix_is_not_under_workspace_root() -> Bool {
+  !dcc_staged_under_workspace(root: "/home/repo", staged: "/home/repo-other/target")
+}
+
+test fn dcc_report_classifies_refused_exit_as_subject_red() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_refused,
+    stdout: "",
+    stderr: "gunbc compile: refused at typecheck: subject diagnostic"
+  ) {
+    SubjectRed => true
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+test fn dcc_report_classifies_not_executed_exit_as_refused_before_subject() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_not_executed,
+    stdout: "",
+    stderr: "gunbc compile: root-admission: not the subject"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
+    SubjectRed => false
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+  }
+}
+
+test fn expected_failure_does_not_hold_on_refused_before_subject() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_compile_report_from_bin(
+      exit_code: compile_cli_exit_not_executed,
+      stdout: "",
+      stderr: "gunbc compile: root-admission: not the subject"
+    ),
+    expect_success: false
+  )
+}
+
+test fn refused_exit_is_subject_red_even_when_cause_names_workspace_root() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_refused,
+    stdout: "",
+    stderr: "gunbc compile: refused at typecheck: outside the workspace root is not this arm"
+  ) {
+    SubjectRed => true
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+test fn unknown_nonzero_exit_is_refused_before_subject() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: 99,
+    stdout: "",
+    stderr: "gunbc compile: refused at typecheck: would be a false green if classified as SubjectRed"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_instrument_earlier_phase
+    SubjectRed => false
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+  }
+}
+
+test fn completed_exit_is_subject_green() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_completed,
+    stdout: "",
+    stderr: ""
+  ) {
+    SubjectGreen => true
+    SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+test fn output_write_refused_exit_is_its_own_arm() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_output_write_refused,
+    stdout: "",
+    stderr: "gunbc compile: output write refused: could not write /tmp/out/src/a.rs: Permission denied"
+  ) {
+    OutputWriteRefused { cause: _ } => true
+    SubjectRed => false
+    SubjectGreen => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
+  }
+}
+
+test fn expected_failure_does_not_hold_on_output_write_refused() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_compile_report_from_bin(
+      exit_code: compile_cli_exit_output_write_refused,
+      stdout: "",
+      stderr: "gunbc compile: output write refused: disk"
+    ),
+    expect_success: false
+  )
+}
+
+test fn usage_exit_is_refused_before_subject_not_subject_red() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_usage,
+    stdout: "",
+    stderr: "unknown target: zig. supported: rust, python, go, dag, rust+dag"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_usage_phase
+    SubjectRed => false
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+  }
+}
+
+test fn not_executed_status_is_not_output_write_status() -> Bool {
+  !(compile_cli_exit_not_executed == compile_cli_exit_output_write_refused)
+}
+
+test fn root_admission_precheck_phase_is_not_cli_not_executed() -> Bool {
+  !(dcc_root_admission_precheck_phase == dcc_cli_not_executed_phase)
+    && !(dcc_root_admission_precheck_phase == dcc_instrument_earlier_phase)
+}
