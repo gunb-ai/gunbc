@@ -1806,32 +1806,9 @@ pub struct TransitionAdmission {
 /// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
 /// identity - so these seven still admit a real delta and deleting them would refuse a live
 /// transition rather than discharge a dead one.
-/// ONE ROW, gunbc#11193: the `extdeps_external_authority_anchor` leaf in
-/// `extdeps.realization.artifact_store_fs` narrows from two candidates to that module's own.
-///
-/// WHAT PRODUCED THE DELTA. The `AmbiguousBareNameRead` wall refused `Filesystem` read bare by that
-/// module, and prescribed naming the authority: `import extdeps.filesystem.filesystem_io
-/// { Filesystem }`. The import had been BRACE-LESS, which binds nothing for the refused name and
-/// widens every leaf in the module's candidate sets -- so naming it also removed `filesystem_io`'s
-/// own `extdeps_external_authority_anchor` from that leaf's candidates. The anchor motion is a
-/// consequence of the prescribed repair, not a second change riding along with it.
-///
-/// WHY THIS DOES NOT CHANGE WHICH DECLARATION THE SPELLING DENOTES, which is the claim the comment
-/// above makes of every row here and the reason this one belongs under it. The spelling occurs
-/// EXACTLY ONCE in that module -- line 22, its own `data` declaration -- and nothing reads it:
-/// neither of the module's two importers (`test.claim.artifact_store_fs_witness`,
-/// `v2.test.claim.manual.emit_source_store_test`) imports the anchor, and the only other corpus
-/// references to that leaf are a `decl_name` STRING in `std.citation` and a different module's
-/// anchor imported by `test.claim.ilm4926_designation_witness` from
-/// `extdeps.cpu_attachment.ilm4926`. So the base two-candidate set sat at a DECLARATION SITE WITH
-/// NO REFERENCE anywhere in the closure: there was no denotation to move, only a candidate count
-/// that a brace-less import had inflated.
-///
-/// I DID NOT ESTABLISH WHICH CANDIDATE THE BASE RESOLUTION PICKED, and this row does not need it.
-/// The two declarations differ materially -- this module's anchor cites the repository's own
-/// `dag/extdeps/realization` tree, `filesystem_io`'s cites the POSIX `write` specification -- so had
-/// anything referenced the leaf the question would have mattered and would have needed the resolver
-/// run rather than reasoned about. Nothing references it, so the question does not arise.
+/// RETIRED (2026-09-14): required floor run 34820233317 measured the #11193
+/// artifact_store_fs anchor candidate-set transition as CONSUMED at its base.
+/// This roster touch deletes that spent permission; its source repair and witnesses remain.
 // gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
 // to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
 // these two TargetChanged bindings. Remove these permissions once consumed at the base;
@@ -1858,16 +1835,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
-TransitionAdmission {
-    label: "gunbc#11193 artifact_store_fs anchor leaf narrows to its own declaration",
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.realization.artifact_store_fs",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        expected_candidates: &["extdeps.realization.artifact_store_fs"],
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
