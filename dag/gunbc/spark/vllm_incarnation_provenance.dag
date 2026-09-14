@@ -26,6 +26,7 @@ import gunbc.serving.incarnation_provenance { ServingTurnExecutionClosure }
 import product.fabric.demand { ObservationReceiptRef }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.spark.fabric_reach {
   ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach,
@@ -64,11 +65,20 @@ data vllm_incarnation_receipt: ObservationReceiptRef = "gunbc.spark.vllm_incarna
 // sha256sum IS THE MEMBER'S OWN CONTENT IDENTITY AND IS NOT THE MANIFEST REFERENCE. The reference is
 // a structural identity over the canonical axis material; these digests are what make the members
 // verifiable, and they are cryptographic where the reference is not.
-fn snapshot_member_digest_argv(snapshot_dir: NonEmptyStr, member: NonEmptyStr) -> List<String> {
+// THE LOCUS IS A WHOLE PATH, NOT A SNAPSHOT-RELATIVE NAME. A launch may select a template that is not
+// inside the snapshot at all -- the annotation on the origin type says so -- and the previous reader
+// prepended the snapshot directory unconditionally, so an absolute override would have been hashed at
+// a path that does not exist and reported ABSENT. Callers that do want a snapshot member join the two
+// themselves, which keeps the joining visible rather than implied by a parameter name.
+fn path_digest_argv(path: NonEmptyStr) -> List<String> {
   ["sh", "-c", join([
-    "P=", snapshot_dir as String, "/", member as String,
+    "P=", path as String,
     "; if [ -e \"$P\" ]; then sha256sum -b \"$P\" | cut -c1-64; else echo ABSENT; fi",
   ], "")]
+}
+
+fn snapshot_member_path(snapshot_dir: NonEmptyStr, member: NonEmptyStr) -> NonEmptyStr {
+  join([snapshot_dir as String, "/", member as String], "") as NonEmptyStr
 }
 
 data snapshot_member_absent_wire: String = "ABSENT"
@@ -97,7 +107,7 @@ func observe_snapshot_member(
 ) -> ServingCoordinateReading
   uses net: Network
 {
-  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_member_digest_argv(snapshot_dir: snapshot_dir, member: member))
+  let r = spark_exec(ctx: ctx, host: host, argv: path_digest_argv(path: snapshot_member_path(snapshot_dir: snapshot_dir, member: member)))
   if !remote_run_succeeded(r: r) {
     CoordinateUnestablished {
       obligation: join([
@@ -106,6 +116,24 @@ func observe_snapshot_member(
     }
   } else {
     snapshot_member_reading(raw: remote_run_stdout(r: r), member: member)
+  }
+}
+
+
+// THE OVERRIDE IS READ AT ITS OWN PATH. This exists so observe_effective_chat_template can hash a
+// template the launch named wherever it lives, rather than forcing every reading through the snapshot.
+func observe_path_digest(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, path: NonEmptyStr,
+) -> ServingCoordinateReading
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: path_digest_argv(path: path))
+  if !remote_run_succeeded(r: r) {
+    CoordinateUnestablished {
+      obligation: join(["the path ", path as String, " could not be read on ", host as String], "") as NonEmptyStr,
+    }
+  } else {
+    snapshot_member_reading(raw: remote_run_stdout(r: r), member: path)
   }
 }
 
@@ -161,9 +189,21 @@ func observe_model_side_code(
 // upstream revision was materialised, verified by the Hub client's own per-file integrity check at
 // acquisition time rather than by a manifest retained here. gunbc.spark.model_snapshot_acquisition
 // declares that weakening and names the tree API that would close it.
+// THE MATERIAL IS FRAMED, BECAUSE "@" BETWEEN TWO FREE STRINGS IS THE COLLISION THIS BRANCH JUST
+// FIXED ONE COMMIT EARLIER FOR LAUNCH IDENTITY. repo "a@b" with revision "c" and repo "a" with
+// revision "b@c" join identically, so two different upstream subjects would share one checkpoint
+// coordinate -- the same defect, reintroduced in the same stack, three declarations away from its
+// own annotation. Field tags and a record separator make it injective over this domain.
+fn checkpoint_revision_material(repo: NonEmptyStr, revision: NonEmptyStr) -> NonEmptyStr {
+  join([
+    join(["repo", "\u{1f}", repo as String], ""),
+    join(["revision", "\u{1f}", revision as String], ""),
+  ], "\u{1e}") as NonEmptyStr
+}
+
 fn checkpoint_revision_reading(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingCoordinateReading {
   CoordinateObserved {
-    hash: content_hash_of_value(value: join([repo as String, "@", revision as String], "") as NonEmptyStr),
+    hash: content_hash_of_value(value: checkpoint_revision_material(repo: repo, revision: revision)),
   }
 }
 
@@ -262,6 +302,18 @@ data glm_native_container: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 // duplicate a name, it addresses a machine the trust policy cannot vouch for.
 data glm_native_provenance_host: HostIdentity = operator_host_srv9
 
+// ── A SUCCESSFUL OBSERVATION MUST NOT LEAVE THROUGH THE FAILURE ARM ───────────────────────────
+//
+// THIS ENTRY REPORTED EVERY RESULT AS exit_failure, INCLUDING THE ONES THAT WORKED. It was written to
+// print the derived references, and exit_failure was the arm that printed -- so every live receipt this
+// producer has produced so far arrived through a terminal that says the run failed, and a reader
+// consulting the exit status would have concluded the opposite of what happened. It is the same
+// asymmetry gunbc.spark.native_cutover_wet carried, where only refusals spoke.
+//
+// THE RECEIPT IS WRITTEN RATHER THAN PRINTED for the same reason it is there: a provenance producer
+// whose output exists only in a log line cannot be consumed by anything.
+data incarnation_receipt_path: String = "target/spark-incarnation-provenance-receipt.txt"
+
 func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
   uses net: Network
 {
@@ -278,12 +330,15 @@ func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
       exit_failure(reason: join([
         "INCARNATION UNESTABLISHED: ", join(map(os, o => o as String), "; "),
       ], ""))
-    ExecutionClosureResolved { closure: c } =>
-      exit_failure(reason: join([
+    ExecutionClosureResolved { closure: c } => {
+      let body = join([
         "INCARNATION OBSERVED -- source=", serving_execution_source_ref(c: c) as String,
         " runtime=", serving_execution_runtime_ref(c: c) as String,
         " rung=", serving_source_rung_wire(rung: c.source.rung) as String,
-      ], ""))
+      ], "")
+      let w = Filesystem.Write(path: incarnation_receipt_path, content: body)
+      if w.success { ExitSuccess } else { exit_failure(reason: body) }
+    }
   }
 }
 
@@ -439,10 +494,30 @@ fn incarnation_applies_to(p: VllmServingIncarnationProvenance, launch: VllmEndpo
   vllm_endpoint_process_launch_is(launch: p.launch, other: launch)
 }
 
+// ── A LOOKUP THAT RESOLVES AMBIGUITY BY LIST ORDER IS NOT A LOOKUP ────────────────────────────
+//
+// TWO PROVENANCE ROWS FOR ONE LAUNCH IS A CONTRADICTION, NOT A CHOICE. The previous body filtered and
+// took the first, so two rows disagreeing about source or runtime would silently elect whichever the
+// caller happened to hold first -- and the disagreement is exactly the condition under which a turn
+// must not be placed at all. Absence and contradiction are different answers with different remedies:
+// one says nobody observed this launch, the other says two observations of it do not agree.
+type IncarnationLookup
+  = IncarnationFound { provenance: VllmServingIncarnationProvenance }
+  | IncarnationMissing
+  | IncarnationAmbiguous { matches: Nat }
+
 fn incarnation_for_launch(
   candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
-) -> VllmServingIncarnationProvenance? {
-  filter(candidates, p => incarnation_applies_to(p: p, launch: launch)).first()
+) -> IncarnationLookup {
+  let matches = filter(candidates, p => incarnation_applies_to(p: p, launch: launch))
+  if count(matches) > 1 {
+    IncarnationAmbiguous { matches: count(matches) }
+  } else {
+    match matches.first() {
+      Absent => IncarnationMissing
+      Present { value: p } => IncarnationFound { provenance: p }
+    }
+  }
 }
 
 
@@ -492,16 +567,53 @@ fn launch_chat_template_override_argv(container: NonEmptyStr) -> List<String> {
   ], "")]
 }
 
+// A COUNT OF ZERO IS AN ANSWER, AND grep EXITS NONZERO WHEN IT FINDS NOTHING. Measured: `ls | grep -ci
+// template` over a directory with no match prints "0" and exits 1, which this observer read as "the
+// population could not be counted" -- so the zero arm below, and the whole inherited-template branch it
+// guards, were UNREACHABLE. A production path that cannot be entered is the same defect class as a test
+// that cannot go red, and it was introduced by an idiom that looks like it reports a number.
+//
+// `|| true` IS NOT THE FIX EITHER, because it would also swallow a real failure to list the directory.
+// The listing and the counting are separated: ls decides whether the read happened, wc -l counts, and
+// grep's exit status is never consulted.
 fn snapshot_template_candidates_argv(snapshot_dir: NonEmptyStr) -> List<String> {
   ["sh", "-c", join([
-    "ls ", snapshot_dir as String, " 2>/dev/null | grep -ci template",
+    "ls ", snapshot_dir as String, " | grep -i template | wc -l",
   ], "")]
 }
 
+// grep -c ALREADY PRINTS ZERO, so the `|| echo 0` this used to carry emitted a SECOND line: measured
+// output was "0\n0", which equals neither "0" nor anything else the caller tested, and a no-match could
+// therefore be read as an inline template. The redirection stays for the missing-file case and the
+// count is taken once.
 fn tokenizer_config_carries_template_argv(snapshot_dir: NonEmptyStr) -> List<String> {
   ["sh", "-c", join([
-    "grep -c '\"chat_template\"' ", snapshot_dir as String, "/tokenizer_config.json 2>/dev/null || echo 0",
+    "grep -c '\"chat_template\"' ", snapshot_dir as String, "/tokenizer_config.json 2>/dev/null | head -1",
   ], "")]
+}
+
+
+// ONE TEMPLATE-SHAPED FILE IS NOT THE SAME AS THAT FILE BEING THE ONE WE NAME. The previous selection
+// counted names containing "template" and, on a count of one, returned the fixed path
+// chat_template.jinja -- so a repository carrying only foo_template.json selected a file that is not
+// there, and the coordinate would have read ABSENT for a model that does have a template. The name is
+// read rather than assumed.
+fn snapshot_template_name_argv(snapshot_dir: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "ls ", snapshot_dir as String, " | grep -i template | head -1",
+  ], "")]
+}
+
+func observe_named_template(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr,
+) -> NonEmptyStr?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_template_name_argv(snapshot_dir: snapshot_dir))
+  if !remote_run_succeeded(r: r) { none }
+  else {
+    if remote_run_stdout(r: r) == "" { none } else { Present { value: remote_run_stdout(r: r) as NonEmptyStr } }
+  }
 }
 
 func observe_chat_template_origin(
@@ -521,7 +633,12 @@ func observe_chat_template_origin(
         TemplateOriginUnestablished { cause: "the snapshot's template population could not be counted" as NonEmptyStr }
       } else {
         if remote_run_stdout(r: candidates) == "1" {
-          TemplateFromRepositoryFile { path: snapshot_member_chat_template }
+          match observe_named_template(ctx: ctx, host: host, snapshot_dir: snapshot_dir) {
+            Absent => TemplateOriginUnestablished {
+              cause: "one template-shaped file was counted and its name could not be read" as NonEmptyStr,
+            }
+            Present { value: name } => TemplateFromRepositoryFile { path: snapshot_member_path(snapshot_dir: snapshot_dir, member: name) }
+          }
         } else {
           if remote_run_stdout(r: candidates) == "0" {
             let inherited = spark_exec(ctx: ctx, host: host, argv: tokenizer_config_carries_template_argv(snapshot_dir: snapshot_dir))
@@ -553,10 +670,8 @@ func observe_effective_chat_template(
   uses net: Network
 {
   match origin {
-    TemplateFromLaunchOverride { path: p } =>
-      observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: p)
-    TemplateFromRepositoryFile { path: p } =>
-      observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: p)
+    TemplateFromLaunchOverride { path: p } => observe_path_digest(ctx: ctx, host: host, path: p)
+    TemplateFromRepositoryFile { path: p } => observe_path_digest(ctx: ctx, host: host, path: p)
     TemplateInheritedFromTokenizerConfig => CoordinateAbsentByObservation
     TemplateSelectionAmbiguous { candidates: n } =>
       CoordinateUnestablished {

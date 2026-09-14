@@ -21,6 +21,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
 import gunbc.spark.vllm_incarnation_provenance {
   VllmIncarnationOutcome, IncarnationBound, IncarnationUnestablished,
   bind_incarnation, incarnation_applies_to, incarnation_for_launch,
+  IncarnationFound, IncarnationMissing, IncarnationAmbiguous,
 }
 import gunbc.serving.incarnation_provenance {
   ServingSourceResolution, ServingRuntimeResolution,
@@ -514,11 +515,13 @@ test fn provenance_for_one_launch_does_not_bind_another() -> Bool {
     IncarnationUnestablished { obligations: _ } => false
     IncarnationBound { provenance: p } =>
       match incarnation_for_launch(candidates: [p], launch: other) {
-        Present { value: _ } => false
-        Absent =>
+        IncarnationFound { provenance: _ } => false
+        IncarnationAmbiguous { matches: _ } => false
+        IncarnationMissing =>
           match incarnation_for_launch(candidates: [p], launch: mine) {
-            Absent => false
-            Present { value: _ } => true
+            IncarnationMissing => false
+            IncarnationAmbiguous { matches: _ } => false
+            IncarnationFound { provenance: _ } => true
           }
       }
   }
