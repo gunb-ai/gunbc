@@ -2399,6 +2399,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_7KDQW2NFXB5RJM3HTPYV60ZC48",
+      id: "fleet-slot-retirement-wet-proof",
+      owner: "fleet",
+      path: "docs/plans/floor-memory-envelope-2026-09-12.md",
+      t: fields(
+        headline: "Prove on a real machine that a retired job slot is actually finished",
+        boundary: "The whole retirement transaction is built and checked without touching a machine: it decides which slots must go from a written-down prior width, checks the operator has permitted interrupting those exact ones, stops and pins them so they cannot come back, and then reads the machine again -- separately -- to decide whether the work under them really ended. None of that has ever run on a host. This is the first real one: interrupt the permitted slots on one machine, watch the independent read-back say they are finished, let the raised ceiling follow from that, read the ceiling back off the machine, and run the whole thing a second time to see it do nothing.",
+        displaced_cost: "Every claim about this path is currently a claim about a model of the machine. The specific thing nobody has watched is the part that matters: stopping a slot is not the same as its work having stopped, and the check that separates those two has never been asked a real question.",
+        first_slice: "One machine, the slots an operator has already named, and a second pass that must be a no-op.",
+        red_control: "A slot whose leftover work is still running must not read as finished, and must not let the ceiling move. Reading the machine unsuccessfully must not read as nothing-running. The second pass doing work is a failure, not a retry.",
+        out_of_scope: "Not the other machines, not the wider capacity change, and not any cleanup of the directories left behind -- those follow a proven single-machine run rather than riding along with it.",
+        handback: "The receipts from one machine: what was interrupted, what the separate read-back saw, the ceiling read back off the host, and a second pass that changed nothing."
+      )
+    ),
+    active_small(
       identity: "rn_6MKXC1TZGB8QWN4RDVPJ0HY735",
       id: "fleet-runner-broker-recovery",
       owner: "fleet",
