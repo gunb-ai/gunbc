@@ -1,0 +1,140 @@
+module gunbc.spark.serving_subject
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.serving_arm_placement { glm_canary_host_claim }
+
+// WHO CAN HOLD A DGX SPARK UNIT FOR SERVING, AND WHAT A RULING HAS RESERVED FOR WHOM.
+//
+// WHY A SUBJECT IDENTITY IS NEEDED AT ALL. gunbc.spark.host_commitment answers which units are spoken
+// for; the question serving selection asks is narrower and relative: which units are available TO A
+// PARTICULAR DEPLOYMENT. Those differ exactly where it matters -- the four hosts of FabricGroupA are
+// unavailable to anything new, and they are precisely where the DeepSeek deployment that V4.1 will
+// take over already runs. A subject's own commitment is availability to that subject and
+// unavailability to everyone else, so "held by whom" needs a value that names a serving deployment.
+//
+// NOTHING IS MINTED: BOTH IDENTITIES ALREADY EXIST, AND THEY ARE HETEROGENEOUS. The corpus carries two
+// kinds of serving deployment and neither has a spare identity to lend the other.
+//   - gunbc.spark.pair_serving_desired's SparkPairServingUnit carries `group: FabricGroup` as its ONLY
+//     key, and spark_pair_serving_desired is a map over spark_pair_serving_groups. The pair deployment
+//     on group A has NO identity distinct from the group it claims: the group stands in for it.
+//   - gunbc.spark.serving_arm_placement's ServingArmHostClaim carries `arm: DeclarationRef`, a real
+//     per-arm identity (gunbc.spark.glm_canary_converge glm_canary_arm). The pair claim on group B was
+//     WITHDRAWN (gunbc.serving.serving_enrollment records why), so GLM holds srv9 as an ARM and not as
+//     group B. Keying both subjects by FabricGroup would therefore be WRONG for GLM, not merely a
+//     nickname.
+// So the subject is the coproduct of the two identities the corpus already has. The two neighbours
+// that were checked and are not the home: gunbc.spark.first_party_serving's SparkRealizationIdentity
+// is a readback-match verdict, and gunbc.spark.dgx_procurement's DgxSparkDeployment is procurement.
+//
+// THE PAIR VARIANT IS WHERE A GROUP STANDS IN FOR A DEPLOYMENT WITH NO IDENTITY OF ITS OWN, and that
+// is stated as the limit it is. TRIGGER FOR SEPARATING THEM: a second deployment on one group, or one
+// deployment spanning two groups, needs a deployment identity SparkPairServingUnit does not carry --
+// at which point the pair variant takes that identity and the group becomes a fact ABOUT the subject
+// rather than its name. Until then the same spelling across a declared version transition (DESIGN
+// section 3: legitimate reuse) is exactly how "the pair unit on group A" survives V4 Flash becoming
+// V4.1 Flash -- the serving selection module carries that dated transition beside the artifacts.
+type ServingSubject
+  = PairServingUnitOn { group: FabricGroup }
+  | PlacedServingArm { arm: DeclarationRef }
+
+// EQUALITY READS THE CANONICAL PROJECTION, which is the idiom gunbc.spark.cell_role and
+// gunbc.spark.serving_membership already use: one place knows the variants, and the wire is that
+// place. The arm's display key is the declaration reference's own canonical rendering.
+fn serving_subject_wire(s: ServingSubject) -> NonEmptyStr {
+  match s {
+    PairServingUnitOn { group: g } => join(["pair-unit@", fabric_group_wire(g: g) as String], "") as NonEmptyStr
+    PlacedServingArm { arm: a } => join(["arm@", declaration_ref_display_key(ref: a)], "") as NonEmptyStr
+  }
+}
+
+fn serving_subject_eq(a: ServingSubject, b: ServingSubject) -> Bool {
+  (serving_subject_wire(s: a) as String) == (serving_subject_wire(s: b) as String)
+}
+
+// THE GLM CANARY'S SUBJECT, NAMED ONCE. Its identity is the arm the placement claim already names;
+// spelling `glm_canary_arm` a second time here would be a second citation of one declaration.
+data glm_canary_serving_subject: ServingSubject = PlacedServingArm { arm: glm_canary_host_claim.arm }
+
+// ── A RULING IS A CITED FACT, AND IT IS TYPED SO IT CAN NEVER BE READ AS A STANDING ON A HOST ─
+//
+// A commitment authored from an operator ruling is not the same KIND of fact as a serving arm
+// placed on a host, a group a convergence root claims, or a reservation a receipt discharges: those
+// are standings an owning authority holds ON the machine and a fleet-side event ends. Both kinds
+// would fit in one cause list, and that is the danger: a reader six months from now could not tell
+// "the canary arm holds srv9" from "a human said group B is GLM's", and the second would be read as
+// the first. A policy that looks like a standing is the expensive meaning fork (DESIGN section 3),
+// so the citation is a value with the three fields a reader needs to ask the question that is
+// meaningless of a standing and essential of a ruling: is this still policy, and does the person
+// who set it still want it? gunbc.spark.host_commitment carries the type-level split
+// (authority-held versus ruling-derived) that makes the question answerable by a fold.
+type ServingRulingCitation {
+  decider: NonEmptyStr
+  ruled_on: NonEmptyStr
+  ruled: NonEmptyStr
+}
+
+// THE OPERATOR'S 2026-09-12 RULING HAS TWO HALVES, AND THE CORPUS HAD ENCODED ONE. "Group B is being
+// used for GLM Flash 5.3" and "use the existing DeepSeek deployment for 4.1 Flash". The second half
+// is a version transition on the pair unit and lives with the artifacts it names, in serving
+// selection. The first half is this row. Without it the fleet records GLM's hold on group B only as
+// the srv9 canary arm -- because the pair claim on B was withdrawn -- so srv10-srv12 read as free,
+// become admissible to the V4.1 subject, and five-to-seven-rank V4.1 shapes survive host
+// admissibility: a field-wide answer wrong in the direction of permitting what the operator excluded.
+// An operator ruling with two halves of which the corpus encodes one is the two-part-ruling failure:
+// the executing half masks the inert one.
+data serving_ruling_2026_09_12_group_b_is_glm: ServingRulingCitation = ServingRulingCitation {
+  decider: "operator" as NonEmptyStr,
+  ruled_on: "2026-09-12" as NonEmptyStr,
+  ruled: "group B is being used for GLM Flash 5.3" as NonEmptyStr,
+}
+
+// THE SECOND HALF, CITED HERE BESIDE THE FIRST SO ONE RULING HAS ONE HOME, and consumed by
+// gunbc.spark.serving_deployment_selection's dated served-artifact transition on the pair unit --
+// the row that lets the V4.1 subject resolve to the group A deployment it takes over.
+data serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment: ServingRulingCitation = ServingRulingCitation {
+  decider: "operator" as NonEmptyStr,
+  ruled_on: "2026-09-12" as NonEmptyStr,
+  ruled: "use the existing DeepSeek deployment for 4.1 Flash" as NonEmptyStr,
+}
+
+// A RESERVATION IS A SUBJECT HOLDING HOSTS ON THE STRENGTH OF A RULING. The hosts are DERIVED from
+// the group the ruling names, never listed: a cage's membership is gunbc.spark.fabric_switch_observed's
+// fact, and this row says only which subject the ruling gives that cage to for serving.
+//
+// SCOPE: SERVING SUBJECTS ONLY, AND THAT IS NOT FAIL-OPEN. A reservation that group B serves GLM says
+// nothing about whether a container build may run there; widening it to every use would refuse the
+// build and probe lanes for a reason the ruling never gave. gunbc.spark.host_commitment therefore
+// consumes this row for admissibility TO A SERVING SUBJECT and not for the new-placement question
+// the build and probe lanes ask. The corpus already carries cause-specific semantics -- an
+// undischarged RPC reservation is held by nobody -- so a cause with a scope inhabits that shape.
+//
+// THE ACCEPTED RESIDUAL, WRITTEN DOWN SO IT IS A DECISION RATHER THAN A SURPRISE: under serving scope
+// a build or probe lane may still place work on srv10-srv12, and if that work exhausts a host,
+// GLM's future rollout onto it could fail. That is the same exposure every host nothing has placed on
+// already carries -- an eligibility read is not a lease, as host_commitment's admission seam says --
+// and it is not what this cause exists to prevent.
+//
+// HOW THIS ROW ENDS, WHICH IS UNLIKE ANY AUTHORITY-HELD CAUSE. An arm claim ends when the arm goes away and
+// a reservation ends with a release receipt: the fleet signals both. A policy reservation ends when
+// the POLICY changes, and nothing in the fleet will signal that. So this row is withdrawn only by a
+// later ruling superseding the one it cites, recorded the same way, and a reader who finds the cited
+// decider no longer wants it has found the row's dissolution, not a stale observation.
+type SparkServingReservation {
+  subject: ServingSubject
+  hosts: List<HostIdentity>
+  basis: ServingRulingCitation
+}
+
+data glm_group_b_serving_reservation: SparkServingReservation = SparkServingReservation {
+  subject: glm_canary_serving_subject,
+  hosts: fabric_group_hosts(g: FabricGroupB),
+  basis: serving_ruling_2026_09_12_group_b_is_glm,
+}
+
+// THE ROSTER, WHICH THE COMMITMENT CENSUS READS AND NEVER AN INDIVIDUAL ROW.
+data spark_serving_reservations: List<SparkServingReservation> = [
+  glm_group_b_serving_reservation,
+]
