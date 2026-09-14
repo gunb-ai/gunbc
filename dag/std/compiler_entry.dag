@@ -155,11 +155,27 @@ type CompilerEntryDriver
 // is DESIGN section 2's horizontal case -- one axis modelled as N declarations -- and section 5
 // asks for construction over validation, which is what this is.
 //
-// WHY ABSENCE IS NOW UNREPRESENTABLE RATHER THAN CHECKED. The collection is never enumerated by
-// hand: native_driver_exclusive_rows maps the CLOSED key roster and asks the caller's total
-// function for each key, so a value built through it carries every key by construction and there
-// is no partial state to validate. Adding a row is one variant plus one roster entry; every
-// consumer folds and none of them changes.
+// WHAT THIS CLOSES, AND WHAT IT DOES NOT -- CORRECTED, BECAUSE THE FIRST VERSION OF THIS PARAGRAPH
+// CLAIMED A RUNG IT DOES NOT HOLD. It said absence was now unrepresentable. That is FALSE, and
+// review 66333 was right to refuse it. What the constructor removes is the fourteen-site partial
+// record: no caller enumerates fields, so no caller can omit one. What it does NOT remove is the
+// roster itself. native_driver_exclusive_row_keys below is a hand-authored list, and dropping a
+// variant from it still typechecks -- native_driver_exclusive_row_name and every measure match
+// stay exhaustive because they are matches over the KEY TYPE and never see the missing key. So the
+// hole did not close; it MOVED, from fourteen construction sites to one roster, and calling that
+// structural would be the rung inflation DESIGN section 4b(1) names.
+//
+// RUNG HELD: 3, mechanically preventable, and the mechanism is a discriminating witness rather
+// than construction. test.claim.native_driver_cost_partition exclusive_sum_is_every_row_the_law_folds
+// folds the constructed collection and compares against a fixture-grounded total, so a key missing
+// from the roster shortens the sum and fails it -- PROVIDED that key's fixture value is non-zero,
+// which is why that fixture now carries a distinct non-zero for every key. Three of them read 0
+// until review 66333, and for those three the roster hole was live.
+//
+// NEXT-RUNG TRIGGER, at capability grain: a way to enumerate a coproduct's variants in .dag. With
+// that, the roster is derived from the key rather than authored beside it, the two cannot drift,
+// and absence becomes genuinely unrepresentable. Without it no check written here can do better
+// than a witness, because nothing in the language can see that a variant exists and is unlisted.
 //
 // THE CEILING, STATED HONESTLY. This is rung 3 and not 4: .dag has no module-private declaration
 // boundary, so the record literal stays writable and a caller could still author a partial
@@ -177,9 +193,11 @@ type NativeDriverExclusiveRowKey
   | ExclusiveModuleRelease
   | ExclusiveRelayEmit
 
-// THE ROSTER IS THE ONE PLACE A ROW IS ADDED. A key absent here is absent from every constructed
-// collection, from the sum and from the serialized partition line at once, so the roster and the
-// coproduct above cannot drift apart without the exhaustive matches below refusing.
+// THE ROSTER IS THE ONE PLACE A ROW IS ADDED, and it is the residual this reshape does not close.
+// A key absent here is absent from every constructed collection, from the sum and from the
+// serialized partition line at once -- silently, because the matches below are over the key TYPE
+// and stay exhaustive without it. The witness named above is what catches that; this list is
+// diligence, not structure.
 fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
   [
     ExclusiveLoad,
