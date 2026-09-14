@@ -13,7 +13,6 @@ import extdeps.github.actions_runner {
 }
 import gunbc.runner_host_deploy {
   srv1_runner_host_deploy,
-  srv2_runner_host_deploy,
   srv3_runner_host_deploy,
   srv4_runner_host_deploy,
   runner_host_deploy_for,
@@ -79,7 +78,7 @@ import gunbc.runner_slot_retirement {
   CgroupAbsent,
   CgroupUnobserved,
 }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.fleet_intent_network { operator_host_srv4 }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
@@ -320,17 +319,44 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
   }
 }
 
-// EVERY ENROLLED HOST RESOLVES TO A DEPLOY ROW, which is the gap this change closed. Before it,
-// srv1 and srv2 had no row at all, so the width authority could say twenty-one and nothing could
-// act on it.
-test fn every_enrolled_host_has_a_deploy_row() -> Bool {
+// EVERY ENROLLED HOST RESOLVES, AND NONE IS UNMODELED. That is the law this row has always carried:
+// before it, srv1 and srv2 had no row at all, so the width authority could say twenty-one and nothing
+// could act on it.
+//
+// WHAT CHANGED IS THE VOCABULARY, NOT THE LAW. Resolution now has three outcomes, and a typed REFUSAL
+// is a resolution -- srv2 is modeled precisely enough to know its width cannot be derived. The row
+// previously demanded `Found` for all four, which would force a zero-width operational deploy back
+// into existence to stay green: the control demanding the encoding the source just removed.
+//
+// SO IT IS SPLIT PER HOST AND IS STRICTLY STRONGER THAN BEFORE. Unmodeled is refused for every
+// enrolled host, srv2 must REFUSE rather than produce a row, and the other three must produce a row
+// whose label is their own. An implementation that quietly gave srv2 a deploy again fails here, and so
+// does one that lets a deployable host slip into refusal.
+test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match runner_host_deploy_for(host: h) {
       RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
+      RunnerHostDeployRefused { host: rh, cause: c } => (rh as String) == (h as String) && c != ""
       RunnerHostDeployUnmodeled { host: _ } => false
     }
   )
+}
+
+// srv2 IS THE REFUSED ONE, NAMED. Without this the row above is satisfied by an implementation that
+// refuses every host, which would be a fleet that deploys nothing.
+test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
+  match runner_host_deploy_for(host: operator_host_srv2) {
+    RunnerHostDeployRefused { host: _, cause: _ } =>
+      all([operator_host_srv1, operator_host_srv3, operator_host_srv4],
+        h => match runner_host_deploy_for(host: h) {
+          RunnerHostDeployFound { deploy: d } => d.runner_count > 0
+          RunnerHostDeployRefused { host: _, cause: _ } => false
+          RunnerHostDeployUnmodeled { host: _ } => false
+        })
+    RunnerHostDeployFound { deploy: _ } => false
+    RunnerHostDeployUnmodeled { host: _ } => false
+  }
 }
 
 // AND AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW -- the arm that stops a
@@ -338,6 +364,7 @@ test fn every_enrolled_host_has_a_deploy_row() -> Bool {
 test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
   match runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
+    RunnerHostDeployRefused { host: _, cause: _ } => false
     RunnerHostDeployFound { deploy: _ } => false
   }
 }
@@ -580,6 +607,7 @@ fn srv4_deploy() -> RunnerHostDeploy {
   match runner_host_deploy_for(host: operator_host_srv4) {
     RunnerHostDeployFound { deploy: d } => d
     RunnerHostDeployUnmodeled { host: _ } => fixture_five_slot_deploy()
+    RunnerHostDeployRefused { host: _, cause: _ } => fixture_five_slot_deploy()
   }
 }
 

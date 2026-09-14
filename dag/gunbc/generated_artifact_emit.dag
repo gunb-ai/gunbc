@@ -146,6 +146,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
             unmodeled as String
           )
         }
+      RunnerHostDeployRefused { host: refused, cause: why } =>
+        ArtifactGenerationRefused {
+          reason: concat(concat("runner host refused: ", refused as String), concat(" -- ", why)),
+        }
     }
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
   }

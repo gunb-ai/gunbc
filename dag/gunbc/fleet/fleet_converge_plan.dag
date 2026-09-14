@@ -844,13 +844,9 @@ fn fleet_converge_slot_family(
 ) -> FleetConvergeSlotFamily {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
+    RunnerHostDeployRefused { host: h, cause: c } => SlotFamilyHostRefused { host: h, cause: c }
     RunnerHostDeployFound { deploy: d } =>
-      if d.runner_count == 0 {
-        SlotFamilyHostRefused {
-          host: host as HostIdentity,
-          cause: "this host's admitted runner width is zero, which is a REFUSAL to derive a population rather than a request for no slots; reconciling an empty desired set against a populated host would propose removing every slot on it",
-        }
-      } else {
+      {
         match actions_runner_binary_artifact_for_arch(
           binary_release: actions_runner_release_2_336_0,
           arch: altra_max_m12830_catalog.architecture,
@@ -1169,6 +1165,7 @@ fn fleet_converge_activation_plans(
 ) -> List<RunnerTransitionPlan> {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployRefused { host: _, cause: _ } => []
     RunnerHostDeployFound { deploy: d } =>
       runner_activation_plans_for_deploy(
         host_admission: admit_runner_host(deploy: d),
@@ -2466,6 +2463,7 @@ fn fabric_cell_apply_executable_lines(
 ) -> List<String> {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployRefused { host: _, cause: _ } => []
     RunnerHostDeployFound { deploy: d } => {
       concat(
         [fabric_cell_apply_effects_header],
@@ -2597,6 +2595,7 @@ fn fleet_converge_allocation_store_plan_artifact(
   let planned_generation = prior_generation + 1
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployFound { deploy: deploy } => {
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),

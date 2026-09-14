@@ -444,6 +444,10 @@ fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvid
       SlotRetirementEvidenceAbsent {
         cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
       }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+      }
     RunnerHostDeployFound { deploy: _ } =>
       match transition_retirement_admission(
         host: host as HostIdentity,
@@ -495,6 +499,10 @@ fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " is refused as a runner host (", c, "), so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
     RunnerHostDeployUnmodeled { host: h } =>
       UnitStandingsUnobserved {
         reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,
