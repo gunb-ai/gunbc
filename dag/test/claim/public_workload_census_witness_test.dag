@@ -8,6 +8,7 @@ import extdeps.toolchain.types { X86_64 }
 import extdeps.github.workflow_runs {
   WorkflowJobRun, Completed, Success,
 }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_label_resolution {
   resolve_runner_label,
@@ -33,7 +34,7 @@ import gunbc.public_workload_census {
   inspected_yaml_job_name_join, inspected_yaml_job_names, InspectedYamlJobName, AuthoredName,
   YamlJobNameBound, YamlJobNameUninspected,
   inspected_leg_binding, InspectedLegBound, InspectedLegUninspected, InspectedLegNameMismatch,
-  InspectedLegAxisMismatch,
+  InspectedLegAxisMismatch, JobsNamePrefixOnly, JobsNameMatrixParenthetical,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   WorkloadCandidate, MatrixCombination, MatrixAxisAssignment, DeclaredLabel,
   JobRunObserved, TestsExecuted, ReplayAdmitted, SpendUnobserved,
@@ -862,6 +863,24 @@ test fn witness_admitted_same_revision_and_blob_equivalent_hold() -> Bool {
       BaselineRefused { cause } => true
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
+    && match inspected_leg_binding(
+      job_name: "build dnsdist (asan+ubsan, full, -arm)",
+      job_key: candidate_pdns_dnsdist_arm.job_key,
+      matrix: candidate_pdns_dnsdist_arm.matrix_selector,
+      repository: candidate_pdns_dnsdist_arm.repository,
+      workflow_path: candidate_pdns_dnsdist_arm.workflow_path,
+    ) {
+      InspectedLegBound { jobs_name_join } => match jobs_name_join {
+        JobsNameMatrixParenthetical { standing } => match standing {
+          TranscribedUncited { read_obligation } => true
+          CitedToAuthority { authority } => false
+        }
+        JobsNamePrefixOnly => false
+      }
+      InspectedLegNameMismatch => false
+      InspectedLegAxisMismatch => false
+      InspectedLegUninspected { cause } => false
+    }
 }
 
 test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
@@ -890,7 +909,7 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
         workflow_path: candidate_biome_job_key_mismatch_control.workflow_path,
       ) {
         InspectedLegUninspected { cause } => true
-        InspectedLegBound => false
+        InspectedLegBound { jobs_name_join } => false
         InspectedLegNameMismatch => false
         InspectedLegAxisMismatch => false
       }
@@ -952,7 +971,7 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
         workflow_path: candidate_biome_matrix_selector_mismatch_control.workflow_path,
       ) {
         InspectedLegNameMismatch => true
-        InspectedLegBound => false
+        InspectedLegBound { jobs_name_join } => false
         InspectedLegUninspected { cause } => false
         InspectedLegAxisMismatch => false
       }
@@ -982,7 +1001,7 @@ test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match
         workflow_path: candidate_pdns_axis_name_mismatch_control.workflow_path,
       ) {
         InspectedLegAxisMismatch => true
-        InspectedLegBound => false
+        InspectedLegBound { jobs_name_join } => false
         InspectedLegNameMismatch => false
         InspectedLegUninspected { cause } => false
       }
@@ -1012,7 +1031,7 @@ test fn witness_swapped_axis_names_are_refused_when_value_order_matches_the_obse
         workflow_path: candidate_pdns_axis_name_swap_control.workflow_path,
       ) {
         InspectedLegNameMismatch => true
-        InspectedLegBound => false
+        InspectedLegBound { jobs_name_join } => false
         InspectedLegAxisMismatch => false
         InspectedLegUninspected { cause } => false
       }
@@ -1085,7 +1104,7 @@ test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
     InspectedLegNameMismatch => false
-    InspectedLegBound => false
+    InspectedLegBound { jobs_name_join } => false
     InspectedLegUninspected { cause } => false
   }
 }

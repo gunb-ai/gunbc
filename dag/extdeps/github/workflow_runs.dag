@@ -45,14 +45,6 @@ type WorkflowRunConclusion
   | ActionRequired
   | StartupFailure
 
-data workflow_job_name_matrix_parenthetical_standing_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "workflow_job_name_matrix_parenthetical_standing"),
-    reason: "the census identity join uses workflow_job_name_matrix_value_parenthetical as observed Jobs API name rendering. The standing row records that encoding as TranscribedUncited. No production fold reads the standing, because branching identity on CitedToAuthority would refuse every matrix leg the day the encoding is cited. The named later consumer is an identity or admission path that carries the standing beside the bind without treating uncited as deduced REST",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a production fold outside test.claim matches workflow_job_name_matrix_parenthetical_standing beside a Jobs-name bind, or GitHub's Jobs docs state the encoding and the standing becomes CitedToAuthority with a cited matcher. SUFFICIENT FOR deleting this row. NOT satisfied by a witness that only matches the standing row"),
-  ),
-]
-
 data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),

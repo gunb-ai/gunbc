@@ -1,6 +1,7 @@
 module gunbc.public_workload_census
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { CitedFigureStanding }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { Architecture }
@@ -17,6 +18,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
   workflow_job_name_matrix_value_parenthetical,
+  workflow_job_name_matrix_parenthetical_standing,
 }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -576,8 +578,12 @@ fn matrix_values_in_declared_axis_order(
   }
 }
 
+type InspectedJobsNameJoin
+  = JobsNamePrefixOnly
+  | JobsNameMatrixParenthetical { standing: CitedFigureStanding }
+
 type InspectedLegBinding
-  = InspectedLegBound
+  = InspectedLegBound { jobs_name_join: InspectedJobsNameJoin }
   | InspectedLegUninspected { cause: NonEmptyStr }
   | InspectedLegAxisMismatch
   | InspectedLegNameMismatch
@@ -614,7 +620,7 @@ fn inspected_leg_binding(
               match matrix {
                 NoMatrix =>
                   if job_name == prefix {
-                    InspectedLegBound
+                    InspectedLegBound { jobs_name_join: JobsNamePrefixOnly }
                   } else {
                     InspectedLegNameMismatch
                   }
@@ -625,7 +631,11 @@ fn inspected_leg_binding(
                     prefix,
                     workflow_job_name_matrix_value_parenthetical(values: values),
                   ) {
-                    InspectedLegBound
+                    InspectedLegBound {
+                      jobs_name_join: JobsNameMatrixParenthetical {
+                        standing: workflow_job_name_matrix_parenthetical_standing,
+                      },
+                    }
                   } else {
                     InspectedLegNameMismatch
                   }
@@ -847,7 +857,7 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
             RunIdentityMismatched {
               cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
             }
-          InspectedLegBound =>
+          InspectedLegBound { jobs_name_join: _ } =>
             if c.inspected_commit == head_sha {
               ObservedAtInspectedRevision {
                 repository: c.repository,
