@@ -236,8 +236,8 @@ fn jurisdiction_drop_enrolled(
 // remedies apart. Filling the slot without that fold reaching admit_provider_use would be the
 // gunbc#11194 shape under another name.
 //
-// Later-change inhabitant of nonempty consulted:
-// product.supplier.hetzner_path_reading hetzner_path_reading_frontier_rows.
+// Production nonempty consulted: product.supplier.hetzner nine-path closures. Each unread
+// path cites only the readings that closure actually consulted; never-looked stays [].
 type ProviderPathStanding
   = ProviderPathLocated {
       operator: DeclarationRef,

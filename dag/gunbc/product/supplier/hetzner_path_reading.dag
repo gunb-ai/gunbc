@@ -1,9 +1,6 @@
 module product.supplier.hetzner_path_reading
 
 import std.types { Bool, List, NonEmptyStr }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cloud.hetzner {
   hetzner_technical_organizational_measures_page,
@@ -12,19 +9,23 @@ import extdeps.cloud.hetzner {
 
 // WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
 // REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
-// nine-path questions. DESIGN section 3: observations produced by this repository are
-// receipts in the observing product layer, never Unobserved properties authored inside the
-// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on
-// and the silence coproduct live here. A statement blob would either duplicate the
-// silences or sit unread (DESIGN section 4c).
+// nine-path questions and recording TYPED SILENCES. DESIGN section 3: observations produced
+// by this repository are receipts in the observing product layer, never Unobserved
+// properties authored inside the upstream module.
 //
-// The silences are OUR questions, not Hetzner vocabulary. FinlandOrHelsinkiUnmentioned is
-// a path-closure question, not a vendor concept. Matching a silence is how a later reader
-// tells researched-and-unanswered from never-looked without grepping prose. Consuming these
-// rows as ProviderPathLocated.evidence would invent an answer they explicitly do not give.
+// THE TWO CARRIERS ARE NOT TWO NAMES FOR ONE CONCEPT. HetznerPublishedReading in
+// extdeps.cloud.hetzner transcribes a sentence upstream DID publish -- those rows are
+// Located.evidence and contract_terms, vendor facts with a dated statement.
+// HetznerPathDocumentReading records that a page was read against a path question and
+// DID NOT ANSWER it; the silences are OUR questions (FinlandOrHelsinkiUnmentioned is
+// not Hetzner vocabulary). consulted lists may cite both because a document that
+// answered another path can fail to answer this one; that is one DeclarationRef
+// vocabulary, not a merged type. A statement blob on THIS carrier would either
+// duplicate the silences or sit unread (DESIGN section 4c). Consuming these rows as
+// ProviderPathLocated.evidence would invent an answer they explicitly do not give.
 //
-// Later-change consumption of these readings as unread consulted citations is
-// hetzner_path_reading_frontier_rows, not this annotation.
+// Production consumption of these readings as unread consulted citations is
+// product.supplier.hetzner nine-path closures, not this annotation.
 
 type HetznerPathDocumentSilence
   = LogSystemCountryUnstated
@@ -90,27 +91,3 @@ fn hetzner_path_document_silence_eq(a: HetznerPathDocumentSilence, b: HetznerPat
 fn hetzner_reading_records_silence(r: HetznerPathDocumentReading, silence: HetznerPathDocumentSilence) -> Bool {
   count(filter(r.silences, s => hetzner_path_document_silence_eq(a: s, b: silence))) == 1
 }
-
-data hetzner_path_reading_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.fabric.provider_route", decl_name: "ProviderPathStanding"),
-    reason: "named consumer: product.supplier.hetzner nine-path closures; nonempty consulted is constructible here and has no production inhabitant in this tree",
-    dissolution: unbound_dissolution(
-      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with decl_refs to hetzner_technical_organizational_measures_reading and hetzner_data_protection_overview_reading, and drops its duplicate copies of those rows. SUFFICIENT FOR: a production rented-route ProviderDataPathClosure inhabits nonempty consulted citing those declarations."
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading"),
-    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
-    dissolution: unbound_dissolution(
-      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading"),
-    reason: "named consumer: product.supplier.hetzner nine-path closures; this reading is not yet a production unread consulted citation",
-    dissolution: unbound_dissolution(
-      description: "TRIGGER: gunbc#11188 lands after this carrier, fills consulted on those unread paths with a decl_ref to this row, and drops its duplicate copy. SUFFICIENT FOR: a production unread consulted list identity-joins this declaration."
-    )
-  ),
-]
