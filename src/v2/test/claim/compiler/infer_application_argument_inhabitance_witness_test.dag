@@ -208,13 +208,13 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   }
 }
 
-test fn infer_optional_carrier_is_counted_frontier_holds() -> Bool {
+test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
   match infer(tree: inhabitance_optional_formal_tree()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_optional_carrier
+        d: Some { diagnostics: nds },
+        reason: ^cardinality_descent_not_proven
       )
   }
 }

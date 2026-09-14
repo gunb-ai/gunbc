@@ -672,25 +672,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, tree: Node) -> Outcome<Inferr
     Accepted { value: _, diagnostics: cd } =>
       match infer_descent_witness_for_node(n: n) {
         Violates { diagnostic: d } =>
-          match n.kind {
-            TypeNode { connective: Cardinality } =>
-              inferred_facts_not_derived(
-                node: n,
-                descent: Violates { diagnostic: d }
-              )
-            TypeNode { connective: Atom { identity: _ } } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-            TypeNode { connective: Conj } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-            TypeNode { connective: Disj } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-            TypeNode { connective: Arrow } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-            TypeNode { connective: Instantiation } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-            ComputationNode { behavior: _ } =>
-              Rejected { diagnostics: diagnostics_singleton(d: d) }
-          }
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
           match dag_canonical_literal_from_node(node: n) {
             Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } =>
