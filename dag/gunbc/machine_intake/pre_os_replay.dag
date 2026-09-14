@@ -1,21 +1,24 @@
 module gunbc.machine_intake_pre_os_replay
 
 import gunbc.machine_intake_pre_os_refusal { PreOsSourceChanged, PreOsRefusal, PreOsOwnershipRefusal, PreOsSubjectRefusal, PreOsCommitRefusal, PreOsContinuityRefusal, PreOsSourceRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, Map, NonEmptyStr, String }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.content_hash { ContentHashEqual, compare_content_hash }
+import std.content_hash { ContentHash }
 import std.decl_ref { declaration_ref_eq }
 import gunbc.fleet_observation_observation_envelope {
+  SourceMachineBinding, SourceGenerationStanding, NativeRecordCursor, ProducerTimestamp, ReceiveObservation,
   SubjectAgreement, subject_agreement, EvidenceNamesOneSubject, CollectorSessionDisagrees, EnrolledMachineDisagrees, OwnershipGenerationDisagrees, BindingMachineDisagrees, ChunkStreamDisagrees, ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, NoNativeCursor,
 }
 import gunbc.fleet_observation_capture_chunk {
-  chunk_occurrence_eq, range_end, ContinuityCoverage, ContinuityCoversRange, continuity_covers, commit_attests_chunk, CommitAttestsThisChunk, CommitAttestsOtherPayload, CommitBindingIncomparable, CommitNoReceipt, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable,
+  ChunkOccurrence, SourceStreamRange, LocalCommitStanding, DownstreamAcceptanceStanding, StreamContinuity,
+  range_end, ContinuityCoverage, ContinuityCoversRange, continuity_covers, commit_attests_chunk, CommitAttestsThisChunk, CommitAttestsOtherPayload, CommitBindingIncomparable, CommitNoReceipt, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable,
 }
 import gunbc.machine_intake_sel_stimulus_listener {
   SelWatermark, SelDelta, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
 }
 import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent }
-import gunbc.fleet_observation_collector_ownership { recording_owner, RecordingOwner, NotTheRecordingOwner }
+import gunbc.fleet_observation_collector_ownership { EndpointOwnership, recording_owner, RecordingOwner, NotTheRecordingOwner }
 
 // A cursor binds the rendered prefix to the actual source generation. It never
 // binds a SEL event to a console attempt, an actuation, or a kernel boot.
@@ -160,38 +163,75 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal>,
   }
 }
 
-// Idempotent application uses occurrence identity, never payload identity. A
-// repeated occurrence whose binding/content changed is a conflict, not a retry.
-// Its caller retains the conflicting envelopes and withholds their assessments.
-fn pre_os_same_occurrence_content(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
-  chunk_occurrence_eq(a: a.chunk.occurrence, b: b.chunk.occurrence)
-    && pre_os_same_source(a: a, b: b)
-    && a.source_generation == b.source_generation
-    && a.native_cursor == b.native_cursor
-    && a.chunk.range == b.chunk.range
-    && a.chunk.artifact_ref == b.chunk.artifact_ref
-    && match compare_content_hash(left: a.chunk.payload_digest, right: b.chunk.payload_digest) { ContentHashEqual => true _ => false }
+// Index keys carry precisely the fields compared by the replay identity relation.
+// They are structural values, not display strings or payload hashes. Chunk source
+// agreement is checked independently by pre_os_bound_envelope, as before.
+type PreOsOccurrenceContentKey {
+  occurrence: ChunkOccurrence
+  binding: SourceMachineBinding
+  generation: SourceGenerationStanding
+  cursor: NativeRecordCursor
+  range: SourceStreamRange
+  artifact: NonEmptyStr
+  digest: ContentHash
+}
+
+type PreOsEnvelopeKey {
+  content: PreOsOccurrenceContentKey
+  ownership: EndpointOwnership
+  producer_timestamp: ProducerTimestamp
+  received: ReceiveObservation
+  local_commit: LocalCommitStanding
+  downstream: DownstreamAcceptanceStanding
+  continuity: StreamContinuity
+}
+
+fn pre_os_occurrence_content_key(envelope: ObservationEnvelope) -> PreOsOccurrenceContentKey {
+  PreOsOccurrenceContentKey { occurrence: envelope.chunk.occurrence, binding: envelope.binding,
+    generation: envelope.source_generation, cursor: envelope.native_cursor, range: envelope.chunk.range,
+    artifact: envelope.chunk.artifact_ref, digest: envelope.chunk.payload_digest }
+}
+
+fn pre_os_envelope_key(envelope: ObservationEnvelope) -> PreOsEnvelopeKey {
+  PreOsEnvelopeKey { content: pre_os_occurrence_content_key(envelope: envelope), ownership: envelope.ownership,
+    producer_timestamp: envelope.producer_timestamp, received: envelope.received, local_commit: envelope.local_commit,
+    downstream: envelope.downstream, continuity: envelope.continuity }
+}
+
+// Conflict is an identity disagreement, not an assessment/refusal projection.
+// Remember the first content and an absorbing conflict bit per occurrence; every
+// later row can inspect the complete input's standing with one indexed lookup.
+type PreOsOccurrenceContents { first: PreOsOccurrenceContentKey, conflicting: Bool }
+
+fn pre_os_occurrence_index(envelopes: List<ObservationEnvelope>) -> Map<ChunkOccurrence, PreOsOccurrenceContents> {
+  let initial: Map<ChunkOccurrence, PreOsOccurrenceContents> = empty_map()
+  fold(envelopes, init: initial, f: (acc, envelope) => {
+    let content = pre_os_occurrence_content_key(envelope: envelope)
+    let standing = match map_lookup(m: acc, key: envelope.chunk.occurrence) {
+      Absent => PreOsOccurrenceContents { first: content, conflicting: false }
+      Present { value: previous } => PreOsOccurrenceContents { first: previous.first,
+        conflicting: previous.conflicting || previous.first != content }
+    }
+    map_insert(m: acc, key: envelope.chunk.occurrence, value: standing)
+  })
 }
 
 fn pre_os_occurrence_conflicts(envelopes: List<ObservationEnvelope>, subject: ObservationEnvelope) -> Bool {
-  any(envelopes, e => chunk_occurrence_eq(a: e.chunk.occurrence, b: subject.chunk.occurrence)
-    && !pre_os_same_occurrence_content(a: e, b: subject))
+  match map_lookup(m: pre_os_occurrence_index(envelopes: envelopes), key: subject.chunk.occurrence) {
+    Absent => false
+    Present { value: contents } => contents.conflicting || contents.first != pre_os_occurrence_content_key(envelope: subject)
+  }
 }
 
-// Delivery and continuity receipts can advance for the same occurrence. Keep
-// those observations visible; only an unchanged envelope is an idempotent retry.
-fn pre_os_same_envelope(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
-  pre_os_same_occurrence_content(a: a, b: b)
-    && a.ownership == b.ownership
-    && a.producer_timestamp == b.producer_timestamp
-    && a.received == b.received
-    && a.local_commit == b.local_commit
-    && a.downstream == b.downstream
-    && a.continuity == b.continuity
-}
+type PreOsUniqueEnvelopes { seen: Map<PreOsEnvelopeKey, Bool>, reversed: List<ObservationEnvelope> }
 
 fn pre_os_unique_occurrences(envelopes: List<ObservationEnvelope>) -> List<ObservationEnvelope> {
-  fold(envelopes, init: [], f: (retained, e) =>
-    if any(retained, before => pre_os_same_envelope(a: before, b: e)) { retained }
-    else { concat(retained, [e]) })
+  let retained = fold(envelopes, init: PreOsUniqueEnvelopes { seen: empty_map(), reversed: [] }, f: (acc, envelope) => {
+    let key = pre_os_envelope_key(envelope: envelope)
+    match map_lookup(m: acc.seen, key: key) {
+      Present { value: _ } => acc
+      Absent => PreOsUniqueEnvelopes { seen: map_insert(m: acc.seen, key: key, value: true), reversed: concat([envelope], acc.reversed) }
+    }
+  })
+  reverse(retained.reversed)
 }

@@ -3,7 +3,8 @@ module gunbc.machine_intake_pre_os_timeline
 import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
 import gunbc.machine_intake_pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, Map, NonEmptyStr, String }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 import gunbc.guarantee_rung { GuaranteeRung }
 import gunbc.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
@@ -13,9 +14,9 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, RetentionExposure, retention_exposure, source_byte_fact }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceMachineBinding, RetentionExposure, retention_exposure, source_byte_fact }
 import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
-import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_unique_occurrences, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, PreOsEnvelopeKey, pre_os_envelope_key, pre_os_occurrence_index, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
 // Parser selection is an observation request, not a success goal. A platform
@@ -153,9 +154,9 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List
           milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
           firmware_selection: pre_os_firmware_boot_selection(text: part, host_mac: host_mac),
         }
-        PreOsCycleScan { next_offset: position_advanced_by(p: position_advanced_by(p: acc.next_offset, extent: pre_os_utf8_size(text: marker)), extent: pre_os_utf8_size(text: part)), cycles: concat(acc.cycles, [cycle]) }
+        PreOsCycleScan { next_offset: position_advanced_by(p: position_advanced_by(p: acc.next_offset, extent: pre_os_utf8_size(text: marker)), extent: pre_os_utf8_size(text: part)), cycles: concat([cycle], acc.cycles) }
       })
-      scanned.cycles
+      reverse(scanned.cycles)
     }
   }
 }
@@ -173,28 +174,36 @@ type PreOsTimelineRow {
   present_admission: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, PreOsRefusal>
 }
 
-type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCursor>, console_spans: List<PreOsConsoleSpan> }
+type PreOsTimelineFold { seen: Map<PreOsEnvelopeKey, Bool>, rows: List<PreOsTimelineRow>, cursors: Map<SourceMachineBinding, PreOsSelCursor?>, console_spans: Map<SourceMachineBinding, PreOsConsoleSpan?> }
 
+// Output rows prepend and reverse once. Occurrence and source indexes avoid
+// searching the input or all active sources again for each row. An absent active
+// cursor/span clears only reusable state; its refusal remains in the output row.
 // No clock is read. A SEL observation remains unassociated with console cycles,
 // even if its receive timestamp is very close. Input order is replay order, not
 // a claimed total chronology across source clock domains.
 fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let envelopes = map(observations, o => o.envelope)
-  let result = fold(pre_os_unique_occurrences(envelopes: envelopes), init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, envelope) => {
-    match filter(observations, candidate => pre_os_same_envelope(a: candidate.envelope, b: envelope)).first() {
-    Absent => acc
-    Present { value: o } => {
+  let occurrences = pre_os_occurrence_index(envelopes: envelopes)
+  let result = fold(observations, init: PreOsTimelineFold { seen: empty_map(), rows: [], cursors: empty_map(), console_spans: empty_map() }, f: (acc, o) => {
+    let key = pre_os_envelope_key(envelope: o.envelope)
+    match map_lookup(m: acc.seen, key: key) {
+    Present { value: _ } => acc
+    Absent => {
     let association: ObservationAttempt<ObservationEnvelope, PreOsRefusal> = if o.envelope.binding.enrolled_machine != machine {
       ObservationRefused { cause: PreOsRefusal { location: ["timeline machine"], detail: PreOsMachineDisagrees { expected: machine, observed: o.envelope.binding.enrolled_machine } } }
-    } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {
-      ObservationRefused { cause: PreOsRefusal { location: ["timeline occurrence"], detail: PreOsOccurrenceConflict { subject: o.envelope } } }
-    } else { match o.payload {
+    } else { match map_lookup(m: occurrences, key: o.envelope.chunk.occurrence) {
+      Absent => ObservationRefused { cause: pre_os_text_refusal(text: "timeline occurrence missing from input index") }
+      Present { value: contents } => if contents.conflicting {
+        ObservationRefused { cause: PreOsRefusal { location: ["timeline occurrence"], detail: PreOsOccurrenceConflict { subject: o.envelope } } }
+      } else { match o.payload {
       ObservationRefused { cause } => ObservationRefused { cause: pre_os_text_refusal(text: cause) }
       ObservationEstablished { observed: _ } => pre_os_bound_envelope(envelope: o.envelope)
     } }
-    let previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal> = match filter(acc.cursors, c => pre_os_same_source(a: c.envelope, b: o.envelope)).first() {
-      Absent => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
-      Present { value: c } => ObservationEstablished { observed: c }
+    } }
+    let previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal> = match map_lookup(m: acc.cursors, key: o.envelope.binding) {
+      Present { value: Present { value: c } } => ObservationEstablished { observed: c }
+      _ => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
     }
     let sel: ObservationAttempt<PreOsSelIngestion, PreOsRefusal> = match o.format {
       PreOsConsoleText => ObservationRefused { cause: pre_os_text_refusal(text: "console source is not a SEL snapshot") }
@@ -206,28 +215,33 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
         }
       }
     }
-    let remaining = filter(acc.cursors, c => !pre_os_same_source(a: c.envelope, b: o.envelope))
     let cursors = match o.format {
       PreOsConsoleText => acc.cursors
-      PreOsSelSnapshot => match sel {
-        ObservationEstablished { observed: reading } => match reading.cursor {
-          ObservationEstablished { observed: cursor } => concat([cursor], remaining)
-          ObservationRefused { cause: _ } => remaining
+      PreOsSelSnapshot => {
+        let current: PreOsSelCursor? = match sel {
+          ObservationEstablished { observed: reading } => match reading.cursor {
+            ObservationEstablished { observed: cursor } => Present { value: cursor }
+            ObservationRefused { cause: _ } => none
+          }
+          ObservationRefused { cause: _ } => none
         }
-        ObservationRefused { cause: _ } => remaining
+        map_insert(m: acc.cursors, key: o.envelope.binding, value: current)
       }
     }
-    let previous_span = filter(acc.console_spans, span => match span.chunks.first() {
-      Absent => false
-      Present { value: first } => pre_os_same_source(a: first.envelope, b: o.envelope)
-    }).first()
+    let previous_span: PreOsConsoleSpan? = match map_lookup(m: acc.console_spans, key: o.envelope.binding) {
+      Absent => none
+      Present { value: previous } => previous
+    }
     let span = pre_os_console_span(previous: previous_span, current: o)
     let console_spans = match o.format {
       PreOsSelSnapshot => acc.console_spans
-      PreOsConsoleText => concat(match association { ObservationEstablished { observed: _ } => [span] _ => [] }, filter(acc.console_spans, old => match old.chunks.first() {
-        Absent => false
-        Present { value: first } => !pre_os_same_source(a: first.envelope, b: o.envelope)
-      }))
+      PreOsConsoleText => {
+        let current: PreOsConsoleSpan? = match association {
+          ObservationEstablished { observed: _ } => Present { value: span }
+          ObservationRefused { cause: _ } => none
+        }
+        map_insert(m: acc.console_spans, key: o.envelope.binding, value: current)
+      }
     }
     let console: ObservationAttempt<String, PreOsRefusal> = match association {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
@@ -270,11 +284,11 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       },
       present_admission: GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "historical milestones are not present fleet admission evidence", tail: Empty } },
     }
-    PreOsTimelineFold { rows: concat(acc.rows, [row]), cursors: cursors, console_spans: console_spans }
+    PreOsTimelineFold { seen: map_insert(m: acc.seen, key: key, value: true), rows: concat([row], acc.rows), cursors: cursors, console_spans: console_spans }
     }
     }
   })
-  result.rows
+  reverse(result.rows)
 }
 
 // The published view is derived, never a second handwritten ledger authority.

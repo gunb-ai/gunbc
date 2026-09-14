@@ -87,12 +87,13 @@ fn sel_read(text: String) -> ObservationAttempt<SelWatermark, NonEmptyStr> {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: events } => match sel_rendered_record(line: line) {
       ObservationRefused { cause } => ObservationRefused { cause: concat(cause as String, "; SEL row: ", line) as NonEmptyStr }
-      ObservationEstablished { observed: event } => ObservationEstablished { observed: concat(events, [event]) }
+      ObservationEstablished { observed: event } => ObservationEstablished { observed: concat([event], events) }
     }
   })
   match parsed {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
-    ObservationEstablished { observed: events } => {
+    ObservationEstablished { observed: reversed_events } => {
+      let events = reverse(reversed_events)
       let ids = map(events, event => event.record_id)
       if fold(ids, init: -1, f: (previous, id) => if previous == -2 || id <= previous { -2 } else { id }) == -2 {
         ObservationRefused { cause: "SEL snapshot has duplicate or non-increasing record ids" }

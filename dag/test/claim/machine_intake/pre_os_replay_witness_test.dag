@@ -2,7 +2,7 @@ module test.claim.pre_os_replay_witness
 
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
-import gunbc.machine_intake_pre_os_refusal { pre_os_text_refusal, PreOsMachineDisagrees, PreOsTextRefusal, PreOsSourceRefusal, PreOsContinuityRefusal, PreOsCommitRefusal, PreOsOwnershipRefusal }
+import gunbc.machine_intake_pre_os_refusal { pre_os_text_refusal, PreOsOccurrenceConflict, PreOsMachineDisagrees, PreOsTextRefusal, PreOsSourceRefusal, PreOsContinuityRefusal, PreOsCommitRefusal, PreOsOwnershipRefusal }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
@@ -311,4 +311,23 @@ test fn w_sel_baseline_retains_prior_cursor_refusal() -> Bool {
     ObservationRefused { cause } => cause.detail == prior.detail && count(cause.location) == count(prior.location) + 1
     _ => false
   }
+}
+
+// A late conflict must refuse the first occurrence too. The input-order list
+// remains independent of index traversal, and an exact retry keeps its first row.
+test fn w_indexed_timeline_preserves_order_and_late_conflicts() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "console-a", record: "685")
+  let b = replay_fixture(seq: 2, generation: "console-a", record: "685")
+  let changed = replay_fixture(seq: 1, generation: "console-b", record: "685")
+  let observations = map([a, b, a, changed], envelope => PreOsReplayObservation {
+    envelope: envelope, format: PreOsConsoleText, payload: ObservationEstablished { observed: "ordinary console" } })
+  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: observations,
+    host_mac: mtcollins1_host_nic_mac, inventory_question: ObservationRefused { cause: "no inventory question" })
+  map(rows, row => row.observation.envelope.chunk.occurrence.receive_sequence) == [1, 2, 1]
+    && all(rows, row => if row.observation.envelope.chunk.occurrence.receive_sequence == 1 {
+      match row.association {
+        ObservationRefused { cause } => match cause.detail { PreOsOccurrenceConflict { subject: _ } => true _ => false }
+        _ => false
+      }
+    } else { match row.association { ObservationEstablished { observed: _ } => true _ => false } })
 }

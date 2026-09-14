@@ -25,7 +25,7 @@ review map, not proof of structural enforcement or a live collection receipt.
 
 Remaining reductions inspected: occurrence equality is an identity relation;
 conflict predicates become located refusals carrying the envelope. Removing a
-failed cursor from the fold's active cursor list does not remove its timeline
+failed cursor from the fold's active source index does not remove its timeline
 row. `new_records`/`cycles` empty lists are projections beside retained typed
 continuity/assessment refusals; no production absence claim consumes these lists
 alone. Source-line string/optional parsers are checked at their enclosing parser
