@@ -1019,13 +1019,6 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
   ])
 }
 
-fn verification_validation_operation_json(
-  validation: ValidationOperation,
-) -> JsonValue {
-  validation_operation_identity_json(validation: validation)
-}
-
-fn verification_modeled_command_json(
   command: ModeledValidationCommand,
 ) -> JsonValue {
   json_object(members: [
@@ -1044,7 +1037,7 @@ fn verification_validation_execution_json(
   json_object(members: [
     json_kv(
       key: "validation",
-      value: verification_validation_operation_json(
+      value: validation_operation_identity_json(
         validation: execution.validation,
       ),
     ),
