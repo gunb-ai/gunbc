@@ -607,7 +607,15 @@ fn select_shapes(g: MemoryChannelGeometry, policy: ChannelPopulationPolicy) -> S
   }
 }
 
-// ONE ADMISSIBLE POPULATION.
+// HOMOGENEOUS CANDIDATE ENUMERATION, before connector selection.
+// PopulationOption is frozen for installed/proposed-host answers: no new
+// host rows or consumers may use its aggregate count as an assessed population.
+// derive_populations remains candidate enumeration, not a second authority for
+// MemoryConfiguration.population. The surviving node_power_envelope path is
+// frozen until its per-connector load/coverage model consumes that population;
+// then its PopulationOption input is deleted in the same cutover. The missing
+// power-model capability and trigger are returned by memory_change_consumer_frontiers.
+// ONE ADMISSIBLE HOMOGENEOUS CANDIDATE.
 //
 // margin_bytes NAMES THE OVERSHOOT. Slot geometry and per-DIMM capacities are
 // both coarse, so a population that meets a target almost always exceeds it;
