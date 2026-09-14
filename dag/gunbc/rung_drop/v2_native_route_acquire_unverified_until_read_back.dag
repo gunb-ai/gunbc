@@ -1,0 +1,44 @@
+module gunbc.rung_drop.v2_native_route_acquire_unverified_until_read_back
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-13 (review 65498). Distinct from v2_native_route_off_the_merge_path, which
+// dropped EXECUTION ON THE ACCEPTANCE PATH (the required CI job) while leaving the operator
+// instrument able to mint a receipt. This row drops that operator instrument's executed GREEN:
+// prepare_emitted_compiler now acquires, native_generation_from_store constructs
+// ReadBackUnperformed, read_back_agrees refuses, and every stored generation including the one
+// genesis just wrote is NativeAncestorUnverified. Fail-closed (typed Unverified), not fail-open.
+//
+// PREVIOUS EXECUTED EVIDENCE was a full NativeRouteReceipt after compile_entry_emission on the
+// miss path. §4b(4): the discriminating RED stays enrolled (empty-store NativeAncestorMissing,
+// ReadBackUnperformed mint refusal in ancestry_witness). What left is the positive control of a
+// green --v2-native-route. A DissolutionCondition on ancestry.dag names the mint stall (§4b(2));
+// it is not this authority and does not carry previous/temporary rung or population.
+
+data v2_native_route_acquire_unverified_until_read_back_population: List<String> = [
+  "claim_executor --v2-native-route / v1_compiler.cli_run.native_lane_runner prepare_emitted_compiler",
+  "v1_compiler.cli_run.native_lane_runner acquire_native_compiler",
+  "every stored NativeGeneration including genesis 0 until ReadBackReported",
+]
+
+data v2_native_route_acquire_unverified_until_read_back: RungDrop = RungDrop {
+  identity: "v2_native_route_acquire_unverified_until_read_back" as NonEmptyStr,
+
+  subject: "operator-invoked native route producing an admitted NativeRouteReceipt after genesis",
+
+  declared: "2026-09-13",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "acquire of a stored NativeGeneration whose read_back is ReadBackReported by the artifact, then native_route_admission over that compiler"
+    },
+    population: v2_native_route_acquire_unverified_until_read_back_population,
+    restoration_trigger: "THE ARTIFACT REPORTS ITS OWN IDENTITY after cargo and native_generation_from_store / native_generation_mint_admission observe ReadBackReported, so acquire_native_ancestor returns NativeAncestorAcquired and claim_executor --v2-native-route mints an admitted NativeRouteReceipt. SUFFICIENT FOR: a genesis then route pair on one host producing that receipt with no compile_entry_emission on the miss path. Host sha512 of store bytes does not retire this row (review 65238). native_generation_read_back_self_report_frontier is the mint stall, a different subject. Re-adding compile_entry_emission on acquire does not retire this row",
+  }
+}

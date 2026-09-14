@@ -82,7 +82,8 @@ type ReadBackReceipt
 // BuildPathTreatment lives on v2.compiler.self_host.generation (one coproduct for the
 // identity axis and this field). Mint admission still owns which arms genesis vs
 // succession may inhabit: genesis admits Pinned, the recurring step does not, neither
-// admits Unresolved.
+// admits Unresolved. GenerationIdentity.required_lens_contract is a separate axis
+// (gunbc#11175); it is not a seventh BuildPathTreatment arm.
 
 type NativeGeneration {
   generation: Int
@@ -374,6 +375,18 @@ data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolut
 // run_native_genesis is the only store writer (generation 0 / GenesisFromSeed).
 data native_generation_succession_host_writer_frontier: DissolutionCondition = unbound_dissolution(
   description: "host writer of SucceedsNative store rows (generation N+1, parent_artifact, produced_by_execution_of) from an executed V2EmitterNative(N) emit, not a fixture and not genesis rewriting generation 0. Unbound: the trigger is that write executing." as NonEmptyStr
+)
+
+// READ-BACK STALL (review 65337, DESIGN §4b(2)). native_generation_from_store constructs
+// ReadBackUnperformed at its only site. read_back_agrees refuses that arm
+// (ancestry_read_back_unperformed), so acquire_native_ancestor is NativeAncestorUnverified
+// for every stored generation including the one genesis just wrote. Fail-closed: the route
+// does not mint. Below ceiling: ReadBackReported is modeled and mint can climb when the
+// ARTIFACT reports its own identity. Host sha512 of store bytes is copy integrity, not that
+// report (review 65238). Distinct from native_generation_succession_host_writer_frontier
+// (N+1 write) and genesis_migration_deletion_trigger (deleting GenesisFromSeed).
+data native_generation_read_back_self_report_frontier: DissolutionCondition = unbound_dissolution(
+  description: "production ReadBackReported on a stored NativeGeneration: the built artifact reports its own identity after cargo, and native_generation_from_store / native_generation_mint_admission observe that report. Unbound: the trigger is that self-report executing, not a host hash of the store file and not a fixture minting ReadBackReported. Until then every acquire from store is NativeAncestorUnverified via ancestry_read_back_unperformed. The loss of --v2-native-route's executed green is gunbc.rung_drop v2_native_route_acquire_unverified_until_read_back, not this row." as NonEmptyStr
 )
 
 // ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. See native_route_acquisition_frontier.

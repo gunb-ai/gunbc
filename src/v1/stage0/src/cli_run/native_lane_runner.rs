@@ -6,6 +6,8 @@
 //! path; the route survives as an operator-invoked instrument under the declared drop
 //! `gunbc.rung_drop` `v2_native_route_off_the_merge_path`, whose restoration trigger is a required
 //! native-route job designed against an operator-agreed contract rather than this one re-added.
+//! The operator instrument's executed green after genesis is a separate drop:
+//! `gunbc.rung_drop` `v2_native_route_acquire_unverified_until_read_back`.
 //!
 //! WHAT THIS ROUTE CLAIMS. Native universe derivation, evaluation, receipt construction and
 //! admission over an ACQUIRED native compiler artifact. `prepare_emitted_compiler` evaluates
@@ -49,6 +51,12 @@ use crate::v1_interpreter::{self, str_value, Value};
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
 const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+
+/// Owner of `rust_target_model` / `rust_source_text_authority`. Hashed with
+/// `TARGET_MODEL_AUTHORITY_ENTRY` so `GenerationIdentity.target_model` tracks the
+/// target-model closure rather than the language nickname (review 65507).
+const RUST_TARGET_MODEL_ENTRY: &str = "src/v2/extdeps/languages/rust.dag";
+const TARGET_MODEL_AUTHORITY_ENTRY: &str = "src/v2/std/compilers/target_model.dag";
 
 /// Canonical rustc remap prefix so artifact bytes are not bound to the host crate path.
 const NATIVE_BUILD_CANONICAL_PREFIX: &str = "/gunbc/remap/build";
@@ -380,6 +388,27 @@ fn acquisition_refusal(cause: &str, expected_generation: i64, detail: &str) -> S
     format!("V2-NATIVE REFUSAL cause={cause} expected_generation={expected_generation} — {detail}")
 }
 
+fn observed_symbol_lexeme(
+    ctx: &v1_interpreter::InterpContext,
+    value: &Value,
+) -> Result<String, String> {
+    match value {
+        Value::Str(s) => Ok(s.to_string()),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Symbol") || ctx.sym_eq(*variant_name, "Atom") => {
+            match record_field(ctx, fields, "identity")? {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err("Symbol.identity is not a string".to_string()),
+            }
+        }
+        Value::Variant { variant_name, .. } => Ok(ctx.resolve(*variant_name)),
+        _ => Err("cause is not a Symbol".to_string()),
+    }
+}
+
 fn interpret_acquisition(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
@@ -412,10 +441,15 @@ fn interpret_acquisition(
             Value::Int(n) => *n,
             _ => ANCESTRY_GENERATION_ZERO as i64,
         };
+        let cause = match record_field(ctx, fields, "cause") {
+            Ok(value) => observed_symbol_lexeme(ctx, value)
+                .unwrap_or_else(|e| format!("NativeAncestorUnverified.cause unreadable: {e}")),
+            Err(_) => "NativeAncestorUnverified.cause was not present".to_string(),
+        };
         return Err(acquisition_refusal(
             "NativeAncestorUnverified",
             expected,
-            "native_generation_mint_admission refused the stored ancestor",
+            &cause,
         ));
     }
     if !ctx.sym_eq(*variant_name, "NativeAncestorAcquired") {
@@ -570,8 +604,42 @@ fn named_build_configuration_hash(
     )
 }
 
+fn observed_target_model_axis_hash(
+    ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
+) -> Result<Value, String> {
+    let rust_ctx = eval_entry_context(source_roots, RUST_TARGET_MODEL_ENTRY)?;
+    let authority = eval_named(
+        &rust_ctx,
+        "v2.extdeps.languages.rust.rust_source_text_authority",
+        &[],
+    )?;
+    let Value::Str(authority_text) = authority else {
+        return Err(
+            "rust_source_text_authority did not return a string — target_model axis unobserved"
+                .to_string(),
+        );
+    };
+    let workspace = super::process_workspace_root();
+    let rust_dag = workspace.join(RUST_TARGET_MODEL_ENTRY);
+    let target_model_dag = workspace.join(TARGET_MODEL_AUTHORITY_ENTRY);
+    let mut observed = String::from("v2.extdeps.languages.rust.rust_target_model\n");
+    observed.push_str(authority_text.as_str());
+    observed.push('\n');
+    observed.push_str(TARGET_MODEL_AUTHORITY_ENTRY);
+    observed.push(':');
+    observed.push_str(&sha512_file(&target_model_dag)?);
+    observed.push('\n');
+    observed.push_str(RUST_TARGET_MODEL_ENTRY);
+    observed.push(':');
+    observed.push_str(&sha512_file(&rust_dag)?);
+    observed.push('\n');
+    hash_of_observed_string(ctx, &observed)
+}
+
 fn native_generation_from_store(
     ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     workspace: &Path,
     generation: i64,
     binary_path: &Path,
@@ -655,40 +723,58 @@ fn native_generation_from_store(
             parent_hex,
         )
     };
-    let identity = eval_named(
-        ctx,
-        "v2.compiler.self_host.generation.compiler_artifact_identity",
-        &[
+    let required_lens_contract = {
+        // GenerationIdentity.required_lens_contract is the compile-door roster
+        // digest (v2.compiler.compile required_lens_roster_digest, gunbc#11175).
+        let compile_ctx = eval_entry_context(source_roots, NATIVE_COMPILE_ENTRY)?;
+        let roster = eval_named(
+            &compile_ctx,
+            "v2.compiler.compile.required_lens_roster_digest",
+            &[],
+        )?;
+        let Value::Str(text) = roster else {
+            return Err(unverified(
+                "required_lens_roster_digest did not return a string",
+            ));
+        };
+        hash_of_observed_string(ctx, text.as_str())?
+    };
+    let identity = Value::Record {
+        type_name: ctx.sym("GenerationIdentity"),
+        fields: Rc::new(vec![
             (
-                Some("producer_compiler".to_string()),
+                ctx.sym("producer_compiler"),
                 hash_of_observed_string(ctx, &producer_hex)?,
             ),
             (
-                Some("source_closure".to_string()),
+                ctx.sym("source_closure"),
                 hash_of_observed_string(ctx, &closure_identity)?,
             ),
             (
-                Some("target_model".to_string()),
-                hash_of_observed_string(ctx, "Rust")?,
+                ctx.sym("target_model"),
+                observed_target_model_axis_hash(ctx, source_roots).map_err(|detail| {
+                    unverified(&format!("target_model axis unobserved: {detail}"))
+                })?,
             ),
             (
-                Some("toolchain".to_string()),
+                ctx.sym("toolchain"),
                 hash_of_observed_string(ctx, &rustc_identity)?,
             ),
             (
-                Some("build_configuration".to_string()),
+                ctx.sym("build_configuration"),
                 named_build_configuration_hash(ctx, &cargo_profile, &remap_from, &remap_to)?,
             ),
+            (ctx.sym("required_lens_contract"), required_lens_contract),
             (
-                Some("materialized_artifact".to_string()),
+                ctx.sym("materialized_artifact"),
                 Value::Variant {
                     type_name: ctx.sym("GeneratedArtifactIdentity"),
                     variant_name: ctx.sym("ArtifactMaterialized"),
                     fields: Rc::new(vec![(ctx.sym("digest"), observed_live)]),
                 },
             ),
-        ],
-    )?;
+        ]),
+    };
     Ok(Value::Record {
         type_name: ctx.sym("NativeGeneration"),
         fields: Rc::new(vec![
@@ -702,7 +788,8 @@ fn native_generation_from_store(
             (
                 ctx.sym("read_back"),
                 // Host file hashes are copy integrity, not the artifact reporting itself
-                // (ancestry.dag ReadBackReceipt; review 65238).
+                // (ancestry.dag ReadBackReceipt; review 65238). Climb is
+                // `native_generation_read_back_self_report_frontier`.
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
                     variant_name: ctx.sym("ReadBackUnperformed"),
@@ -736,6 +823,7 @@ fn parse_stored_generation(generation_path: &Path) -> Result<i64, String> {
 
 fn available_generation(
     ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     workspace: &Path,
 ) -> Result<(Value, Option<PathBuf>, String, String, i64), String> {
     let generation_path = ancestry_generation_path(workspace);
@@ -768,7 +856,8 @@ fn available_generation(
             )
         })?;
     let binary_identity = sha256_file(&binary_path)?;
-    let native = native_generation_from_store(ctx, workspace, generation, &binary_path)?;
+    let native =
+        native_generation_from_store(ctx, source_roots, workspace, generation, &binary_path)?;
     Ok((
         optional_present(ctx, native),
         Some(binary_path),
@@ -781,15 +870,17 @@ fn available_generation(
 /// PREPARATION ACQUIRES THE STORED NATIVE GENERATION. expected_generation is the number the
 /// store wrote, not a hardcoded zero: a SucceedsNative row would otherwise be unverified as
 /// "not the generation expected". The host writer of N+1 is
-/// `native_generation_succession_host_writer_frontier`. `compile_entry_emission` is not
-/// reachable from this function.
+/// `native_generation_succession_host_writer_frontier`. Read-back stays Unperformed until
+/// `native_generation_read_back_self_report_frontier`. The loss of this route's executed green
+/// is `gunbc.rung_drop` `v2_native_route_acquire_unverified_until_read_back`.
+/// `compile_entry_emission` is not reachable from this function.
 fn acquire_native_compiler(
     workspace: &Path,
     source_roots: &[String],
 ) -> Result<EmittedPreparation, String> {
     let ctx = eval_entry_context(source_roots, ANCESTRY_AUTHORITY_ENTRY)?;
     let (available, binary_path, closure_identity, binary_identity, expected_generation) =
-        available_generation(&ctx, workspace)?;
+        available_generation(&ctx, source_roots, workspace)?;
     let acquisition = eval_named(
         &ctx,
         "v2.compiler.self_host.ancestry.acquire_native_ancestor",
@@ -856,7 +947,18 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )
     .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
+    // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
+    // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
+    // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
+    // process. Measured: the lane's first run held ~15GiB RSS into the build and was SIGKILLed
+    // (rc=137, no diagnostic). Drop, trim, and report in the same motion — the floor runner's
+    // full-inventory release is the pattern, and a trim that cannot release live memory doubles
+    // as the measurement that nothing here is still held. Genesis is in that population: it
+    // is the same emit-then-cargo sequence that produced the measurement.
     drop(run);
+    let rss_before_kb = super::current_rss_bytes().map(|b| b / 1024);
+    let trim_reclaimed_kb = super::trim_retained_heap();
+    let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
     let remap_flag = format!(
         "--remap-path-prefix={}={}",
         crate_dir.display(),
@@ -865,7 +967,9 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     let spawn_rustflags =
         super::emitted_closure_compile_host::rustflags_with_remap_prefix(&remap_flag);
     eprintln!(
-        "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); cargo build with path remap",
+        "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); \
+         emission arena released (rss_kb_before={rss_before_kb:?} trim_reclaimed_kb={trim_reclaimed_kb:?} \
+         rss_kb_after={rss_after_kb:?}); cargo build with path remap",
         crate_dir.display()
     );
     // The invocation resolves and binds the one compiler the build runs under and takes its
