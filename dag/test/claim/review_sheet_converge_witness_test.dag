@@ -1522,10 +1522,14 @@ test fn buyer_review_sheet_schema_is_listing_identity_and_operator_entered_witho
   (schema.identity_column as String) == (buyer_review_identity_column as String)
     && (buyer_review_identity_column as String) == "Listing"
     && (operator_column_names(schema: schema) |> count) == 4
-    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Decision")
-    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Units to buy")
-    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Accepted on judgement")
-    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Note")
+    && (operator_column_names(schema: schema)
+      |> filter(n => (n as String) == "Decision") |> count) == 1
+    && (operator_column_names(schema: schema)
+      |> filter(n => (n as String) == "Units to buy") |> count) == 1
+    && (operator_column_names(schema: schema)
+      |> filter(n => (n as String) == "Accepted on judgement") |> count) == 1
+    && (operator_column_names(schema: schema)
+      |> filter(n => (n as String) == "Note") |> count) == 1
     && (buyer_review_operator_columns |> count) == 4
     && match schema.columns |> filter(c => match c.kind {
       ListingStanding => true
