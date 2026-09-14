@@ -28,7 +28,6 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, File }
 import gunbc.runner_host_file_converge {
@@ -101,7 +100,6 @@ import gunbc.runner_host_file_converge {
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
   runner_host_file_write_admission,
-  run_runner_host_files,
 }
 
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
@@ -549,43 +547,6 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
 }
 
-// ── The route, over the hermetic ssh fixture ─────────────────────────────────────────────────────
-
-// THE WHOLE APPLY ROUTE RUNS: privilege, content and metadata observation for both files, the slot
-// listing and show, the reload decision. The mock answers every leg with exit 0 and a stdout that
-// names no path and no unit, so find certifies no ancestor as root-only -- both files are REFUSED
-// before any write -- and no slot unit has a block of its own -- every desired unit reads as UNREAD.
-// Nothing is written or reloaded, and the run ends refused. A route that reported success here would
-// be certifying ownership and a teardown that no host reported.
-test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
-  match witness_subject() {
-    Absent => false
-    Present { value: s } =>
-      match fleet_ssh_execution_context_hermetic_witness_fixture() {
-        Absent => false
-        Present { value: context } =>
-          match srv1_desired_population() {
-            RunnerHostFilesDesiredRefused { cause: _ } => false
-            RunnerHostFilesDesired { files: fs, withheld: _ } => {
-              let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
-              let privileged = match run.privilege { AdministratorPrivilegeAvailable => true AdministratorPrivilegeRefused { reason: _ } => false }
-              let refused_before_write = all(run.results, r => is_refused(a: r.planned.action) && match r.outcome {
-                HostFileNotAttempted { reason: _ } => true
-                HostFileLeftInPlace => false
-                HostFileNotAppliedObserveOnly => false
-                HostFileWriteRefused { step: _, reason: _ } => false
-                HostFileConvergedByWrite { converged: _ } => false
-              })
-              let not_reloaded = match run.reload { ManagerReloadNotOwed => true ManagerReloaded => false ManagerReloadRefused { reason: _ } => false ManagerReloadOwedNotAttempted { reason: _ } => false }
-              let every_desired_unread = match run.slots {
-                SlotPopulationUnobservable { reason: _ } => false
-                SlotPopulationObserved { units: us } =>
-                  length(us) == length(s.desired_units) && all(us, r => standing_wire_of(st: r.standing) == "unread")
-              }
-              privileged && length(run.results) == 4 && refused_before_write && not_reloaded && every_desired_unread
-                && !runner_host_file_run_succeeded(run: run)
-            }
-          }
-      }
-  }
-}
+// run_runner_host_files is not driven here. The floor classifies that call as reaching
+// shell.PosixCommandV.Check (no mock_response). Privilege, unread slots, and ancestor refusal are
+// already the evidence; re-enroll the integration when Check has a hermetic arm.
