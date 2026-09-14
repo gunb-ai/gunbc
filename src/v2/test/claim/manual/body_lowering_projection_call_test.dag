@@ -30,9 +30,7 @@ import v2.std.node {
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
 
-data filing_ident_call_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
-
-data filing_nested_call_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
+data filing_ident_and_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn ident_caller() -> Int { g(x: 1) }\n\nfn nested_caller() -> Int { g(x: h(y: 5)) }\n"
 
 fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
@@ -138,32 +136,60 @@ fn normalize_source_root(src: String, file: Symbol) -> Optional<Node> {
   }
 }
 
+fn count_calls_named(root: Node, callee: Symbol) -> Int {
+  let here = if node_is_call(node: root) {
+    match call_callee_target(node: root) {
+      Accepted { value: c, diagnostics: _ } =>
+        match node_atom_identity_optional(node: c) {
+          Present { value: id } => if id == callee { 1 } else { 0 }
+          Absent => 0
+        }
+      Rejected { diagnostics: _ } => 0
+    }
+  } else {
+    0
+  }
+  here + fold(root.children, init: 0, f: fn(acc, e) {
+    acc + count_calls_named(root: e.target, callee: callee)
+  })
+}
+
 fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
-  match search_call_named(root: root, callee: outer) {
-    Absent => false
-    Present { value: call } =>
-      match list_at_optional(xs: call_argument_targets(node: call), index: 0) {
-        Absent => false
-        Present { value: arg0 } =>
-          match search_call_named(root: arg0, callee: inner) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
+  let here = if node_is_call(node: root) {
+    match call_callee_target(node: root) {
+      Accepted { value: c, diagnostics: _ } =>
+        match node_atom_identity_optional(node: c) {
+          Present { value: id } =>
+            if id == outer {
+              match list_at_optional(xs: call_argument_targets(node: root), index: 0) {
+                Absent => false
+                Present { value: arg0 } =>
+                  match search_call_named(root: arg0, callee: inner) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+              }
+            } else {
+              false
+            }
+          Absent => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    false
   }
+  here || fold(root.children, init: false, f: fn(acc, e) {
+    acc || nested_arg_is_call(root: e.target, outer: outer, inner: inner)
+  })
 }
 
-fn filing_ident_call_preserved() -> Bool {
-  match normalize_source_root(src: filing_ident_call_source, file: ^filing_ident_call) {
+fn filing_ident_and_nested_preserved() -> Bool {
+  match normalize_source_root(src: filing_ident_and_nested_source, file: ^filing_ident_nested) {
     Absent => false
-    Present { value: root } => call_named_arity(root: root, callee: ^g) == 1
-  }
-}
-
-fn filing_nested_call_preserved() -> Bool {
-  match normalize_source_root(src: filing_nested_call_source, file: ^filing_nested_call) {
-    Absent => false
-    Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+    Present { value: root } =>
+      (count_calls_named(root: root, callee: ^g) == 2)
+        && nested_arg_is_call(root: root, outer: ^g, inner: ^h)
   }
 }
 
@@ -241,16 +267,9 @@ test fn body_lowering_normalize_accepts_projection_module() -> Bool {
             Accepted { value: normalized, diagnostics: _ } =>
               (call_named_arity(root: normalized.root, callee: ^step) == 2)
                 && !tree_has_punct_call_operator(root: normalized.root, punct: ^dag_token_lbrace)
+                && filing_ident_and_nested_preserved()
           }
       }
   }
-}
-
-test fn filing_ident_call_keeps_callee_g_at_arity_one() -> Bool {
-  filing_ident_call_preserved()
-}
-
-test fn filing_nested_call_keeps_inner_h_under_outer_g() -> Bool {
-  filing_nested_call_preserved()
 }
 
