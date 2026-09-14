@@ -8,8 +8,9 @@ import gunbc.machine_intake_pre_os_refusal { PreOsSourceRefusal }
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate, GoalDiverged, GoalAssessmentRefused }
+import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_first_own_image_boot }
 import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment, pre_os_host_archive_assessment, pre_os_archive_inventory_question }
+import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment, replay_pre_os_host_archive, pre_os_archive_inventory_question }
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment, pre_os_firmware_boot_selection }
 import std.content_hash { content_hash_of_value }
@@ -86,17 +87,19 @@ fn quiet_archive_regression() -> Bool {
 
 test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
   quiet_archive_regression() && firmware_selection_regression() &&
-  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log", expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
+  match replay_pre_os_host_archive() {
     ObservationRefused { cause: _ } => false
-    ObservationEstablished { observed: payload } => {
-      let assessed = pre_os_host_archive_assessment(payload: payload, host_mac: mtcollins1_host_nic_mac)
-      let milestones = assessed.milestones
-      let truncated = split(s: payload, delimiter: "marker-end=gunbc-runner-host-boot").first()
-      contains(payload, "DMI: Memory slots populated: 16/32")
-        && match assessed.population_statement { ObservationEstablished { observed: statement } => contains(statement as String, "16/32") _ => false }
-        && milestones.boot == BootReachedOperatingSystem
-        && match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => true _ => false }
-        && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false } Absent => false }
+    ObservationEstablished { observed: assessed } => match read_verified_memory_capture(path: mtcollins1_first_own_image_boot.capture_artifact, expected_sha256: mtcollins1_first_own_image_boot.capture_sha256) {
+      ObservationRefused { cause: _ } => false
+      ObservationEstablished { observed: payload } => {
+        let milestones = assessed.milestones
+        let truncated = split(s: payload, delimiter: "marker-end=gunbc-runner-host-boot").first()
+        contains(payload, "DMI: Memory slots populated: 16/32")
+          && match assessed.population_statement { ObservationEstablished { observed: statement } => contains(statement as String, "16/32") _ => false }
+          && milestones.boot == BootReachedOperatingSystem
+          && match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => true _ => false }
+          && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false } Absent => false }
+      }
     }
   }
 }

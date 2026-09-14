@@ -12,7 +12,8 @@ import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule 
 import gunbc.memory_observation {
   MemoryCaptureCycles, memory_cycle_coverage_refusal, memory_inventory_in_capture, read_verified_memory_capture,
 }
-import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
+import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_first_own_image_boot }
+import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_capture_path, mtcollins_3ds_capture_sha256, mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
 import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
 import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement, pre_os_firmware_boot_selection }
 import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
@@ -107,7 +108,7 @@ fn pre_os_archive_specs() -> ObservationAttempt<List<PreOsArchiveSpec>, NonEmpty
               identity: samsung.identity, alternatives: samsung.alternatives, origin: samsung.origin } } else { dimm }) }
           let socket0 = MemoryConfiguration { platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) }
           ObservationEstablished { observed: [
-            PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-3ds-mixture-refusal-2026-09-12.txt", sha256: "de1af941fee140e0280b77722b68c338111441c567fff570ce9065f6a72258d8", configuration: mixture, required_cycles: 2, completion: "ERROR:   Non-identical DIMM mixture NOT supported!" },
+            PreOsArchiveSpec { path: mtcollins_3ds_capture_path, sha256: mtcollins_3ds_capture_sha256, configuration: mixture, required_cycles: 2, completion: "ERROR:   Non-identical DIMM mixture NOT supported!" },
             PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-uniform-per-socket-ddr-init-failure-2026-09-12.txt", sha256: "1f8146273ee6e2152ca40991cc49d48d7758e94c3be46e5d1ebb961d3b094cb3", configuration: uniform, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
             PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-socket0-only-ddr-init-failure-2026-09-12.txt", sha256: "1fe93980e77ab7c1e38864332dfb803dd42a3624b3540d5bd2cf7088701d126f", configuration: socket0, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
             PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-socket0-reseated-ddr-init-failure-2026-09-12.txt", sha256: "2baa7637d7fb328d20fb625bf801d90c89fb91dc337baf22f27b01425f0d18ca", configuration: socket0, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
@@ -134,8 +135,8 @@ type PreOsFirmwareSelectionArchiveAssessment {
 }
 
 fn replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessment, NonEmptyStr> {
-  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log",
-    expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
+  match read_verified_memory_capture(path: mtcollins1_first_own_image_boot.capture_artifact,
+    expected_sha256: mtcollins1_first_own_image_boot.capture_sha256) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_host_archive_assessment(payload: payload, host_mac: mtcollins1_host_nic_mac) }
   }
