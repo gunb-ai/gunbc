@@ -15,6 +15,8 @@ import extdeps.vllm.source_build {
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
   vllm_torch_cuda_arch_entry,
   vllm_07b75534_registry_maps_deepseek_v4_1, vllm_07b75534_registry_answers_for,
+  vllm_d2d649e6_registry_answers_for, vllm_d2d649e6_engram_storage_realizations,
+  vllm_engram_storage_realization_is_memory_backed,
   vllm_clone_url,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
@@ -322,6 +324,26 @@ test fn the_in_image_registry_and_the_source_registry_agree_that_v41_is_unmapped
     && v41_probed_sibling_architecture_present
     && vllm_07b75534_registry_answers_for(architecture: v41_probed_sibling_architecture)
     && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
+}
+
+// THE SAME TWO QUESTIONS ASKED OF THE PINNED REVISION, AND THE ANSWERS ARE WHY IT IS THE PIN. The
+// negative above is about 07b75534; on its own it says a build from that tree cannot answer for the
+// checkpoint's architecture, and says nothing about which tree can. This is the other half of the pair,
+// and it is the whole justification for moving the runtime subject to d2d649e6 -- so it is asserted here
+// rather than left as a row a reader is trusted to have read.
+//
+// THE SECOND CONJUNCT IS THE PATCH'S PREMISE. gunbc.spark.v41_runtime_candidate carries a patch obligation
+// whose reason is that this tree offers no storage-backed Engram path; that reason is a claim about
+// vllm/config/engram.py and the nvidia realization at this revision, and an exhaustive match over
+// VllmEngramStorageRealization is where it is decided. Adding a storage-backed arm to that type forces the
+// match to answer for it, so this conjunct goes red exactly when the premise stops holding -- which is what
+// makes it evidence rather than a restatement of the annotation beside the rows.
+test fn the_pinned_revision_answers_for_the_checkpoint_and_stores_engram_only_in_memory() -> Bool {
+  vllm_d2d649e6_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
+    && !vllm_d2d649e6_registry_answers_for(architecture: v41_probed_sibling_architecture)
+    && !vllm_07b75534_registry_answers_for(architecture: deepseek_v4_1_flash_architecture_class)
+    && length(vllm_d2d649e6_engram_storage_realizations) == 3
+    && all(vllm_d2d649e6_engram_storage_realizations, r => vllm_engram_storage_realization_is_memory_backed(r: r))
 }
 
 // TWO READINGS, JOINED, AND NEITHER OF THEM IS A STATEMENT ABOUT WHERE THE PUBLISHED IMAGE CAME FROM.
