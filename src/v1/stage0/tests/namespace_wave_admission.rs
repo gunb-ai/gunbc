@@ -886,8 +886,8 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
 
     // THIS ASSERTION MOVED RATHER THAN DIED, AND WHERE IT MOVED TO IS THE POINT. It used to read
     // "a non-`.dag` path enters neither side", because `diff_sides` applied the parser's scope
-    // itself -- which is exactly what made `roster_touched` unreachable, since the roster is a
-    // `.rs` file. `diff_sides` now reports what the diff touched, unfiltered, and the parser's
+    // itself -- which made `roster_touched` unreachable while the roster was a `.rs` file.
+    // `diff_sides` now reports what the diff touched, unfiltered, and the parser's
     // question is asked by `in_sweep_scope` at the point of use. Both halves are asserted here:
     // the diff carries the paths, and the parser's scope still refuses them.
     let (head, base) = diff_sides("M\0src/v1/stage0/src/lib.rs\0R100\0README.md\0LICENSE\0");
@@ -917,10 +917,10 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
 }
 
 /// THE PRODUCER RED FOR THE DEAD ARM. `roster_touched` asks whether this run's diff touches the
-/// admission roster's own source file, and the roster is a `.rs` file. While `diff_sides` filtered
-/// its own answer to the parser's `.dag` question, this path could not appear in the list the
-/// predicate reads, so the predicate was FALSE ON EVERY PRODUCTION RUN and the consumed-row
-/// deletion obligation it gates could never come due.
+/// admission roster prefix (`dag/gunbc/namespace/transition_admission/`). While `diff_sides`
+/// filtered its own answer to the parser's `.dag` question, a `.rs` roster path could not appear
+/// in the list the predicate reads. Row files are now `.dag` and in sweep; the unfiltered list
+/// remains the authority because prefix match is not that predicate.
 ///
 /// This is the discriminating RED: against the previous implementation the returned head side is
 /// empty and this assertion fails. It is authored on the production path -- `diff_sides` is the

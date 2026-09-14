@@ -2017,7 +2017,8 @@ pub fn in_sweep_scope(rel: &str) -> bool {
 /// THE SIDES ARE UNFILTERED, WHICH IS WHAT MAKES THIS ONE AUTHORITY FOR WHAT THE DIFF TOUCHED.
 /// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff, and two
 /// consumers downstream ask different ones — the base-index reconstruction wants the parser's
-/// `in_sweep_scope`, and `roster_touched` wants a `.rs` path that predicate can never admit.
+/// `in_sweep_scope`; `roster_touched` matches the roster prefix, including a directory path
+/// that predicate would drop.
 /// A rename may still cross a scope boundary either way, so each consumer applies its own scope
 /// PER SIDE at its call site.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
@@ -2244,7 +2245,7 @@ pub(crate) fn reconstruct_base_index(
     // reconstruction may read. Filtering per side rather than once is not redundancy: a rename may
     // cross the sweep boundary in either direction, which is why `diff_sides` splits the sides in
     // the first place. Everything below that asks a DIFFERENT question — `roster_touched` — reads
-    // the unfiltered list, because its subject is a `.rs` path this predicate cannot admit.
+    // the unfiltered list, because prefix match is not the parse-sweep predicate.
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
@@ -2476,10 +2477,8 @@ pub fn run_wave_admission_between(
             } => (base, head, base_index, head_touched),
         };
 
-    // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
-    // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
-    // predicate was false on every production run and the consumed-row deletion obligation it
-    // gates could never come due.
+    // READ FROM THE UNFILTERED HEAD SIDE. `roster_touched` matches the roster directory prefix,
+    // not `in_sweep_scope`; row files are `.dag` and in sweep, but a directory path is not.
     let roster_touched = head_touched
         .iter()
         .any(|p| admission_roster_path_touched(p));
