@@ -145,6 +145,7 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
     && witness_unreplayable_history_refuses_receipts_projection()
     && witness_replayable_empty_live_set_still_projects_affirmatively()
+    && witness_fixture_history_has_a_nonempty_live_receipt_set()
 }
 
 test fn witness_deleted_history_event_refuses() -> Bool {
@@ -393,18 +394,18 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
     }
 }
 
-// Turning a refusal into an empty list is the exact shape of the defect this change removes at
-// the producer, so this helper needs its reason stated rather than assumed. It preserves, for the
-// pre-existing call sites below, the behaviour they already had before this change: they read a
-// bare list and could not distinguish a refusal from an empty result. Every one of those call
-// sites is a NEGATIVE assertion ("this node is not accepted", "this receipt is not live"), which
-// an empty list satisfies vacuously.
-// THIS IS NOT ASSERTED TO BE SAFE, and an executing probe says it currently is not: the histories
-// these witnesses build derive from a carrier fixture that does not load, so the projected list is
-// empty and those assertions pass vacuously today. That is a pre-existing condition of the fixture
-// which this change neither introduces nor repairs, and it is reported separately rather than
-// widened into this one. Do not lift this helper out of test scope, and do not add a new caller:
-// a new assertion written against it would be vacuous for the same reason.
+// The only collapse of this projection back to a bare list in the corpus, scoped to this module's
+// fixture histories. The four call sites that read the REAL carrier live in
+// test.claim.roadmap_authority and thread the refusal arm through explicitly, returning false, so
+// a real acceptance history that stops replaying reds those witnesses instead of quietly greening
+// them.
+// Here the argument is always fixture_history(), whose carrier loads and whose live receipt set is
+// non-empty, so these witnesses assert over a real population. That is measured, not assumed:
+// witness_fixture_history_has_a_nonempty_live_receipt_set below is the positive denominator, and
+// without it every negative assertion in this module ("this node is not accepted", "this receipt
+// is not live") would be satisfied vacuously by an empty list.
+// Do not add a caller whose history is not fixture-derived: thread the arm instead, as the real
+// carrier sites do.
 fn replayed_live_or_empty(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
   match project_live_acceptance_receipts(history: history) {
     LiveAcceptanceReceiptsReplayed { live: live } => live
@@ -474,3 +475,18 @@ test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool
         }
   }
 }
+
+// THE POSITIVE DENOMINATOR for every negative assertion in this module. Those assertions -- "this
+// node is not accepted", "this receipt is not live" -- are all satisfied by an empty receipt list,
+// so without an executing witness that the list is non-empty none of them discriminates anything.
+// That is the whole of its justification and it does not depend on how the list could become empty.
+// It is ALSO, for as long as fixture_history routes a refused load to [], the only thing that would
+// red if that latent arm ever fired; when that arm is removed this witness keeps its first reason
+// and simply stops having the second.
+test fn witness_fixture_history_has_a_nonempty_live_receipt_set() -> Bool {
+  match project_live_acceptance_receipts(history: fixture_history()) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => count(live) > 0
+  }
+}
+

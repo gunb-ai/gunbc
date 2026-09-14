@@ -416,25 +416,34 @@ test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool 
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
   let prior = live_acceptance_event_history()
-  let receipt = first(
-    replayed_live_or_empty(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
-  let reopened = concat(prior, [
-    AcceptanceRevoked {
-      exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier {},
-      reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
-      revoked_by: "operator" as NonEmptyStr,
-      revoked_on: "2026-09-13" as NonEmptyStr,
-    },
-  ])
-  let accepted = declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: replayed_live_or_empty(history: reopened), rn: n))
-    |> map(n => n.node)
-  let withheld = node_ids_held_off_active_frontier(history: reopened)
-  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
-    |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
+      let receipt = first(
+        live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+      )
+      let reopened = concat(prior, [
+        AcceptanceRevoked {
+          exact_prior_receipt: receipt,
+          disposition: AcceptanceNodeReopensActiveFrontier {},
+          reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
+          revoked_by: "operator" as NonEmptyStr,
+          revoked_on: "2026-09-13" as NonEmptyStr,
+        },
+      ])
+      match project_live_acceptance_receipts(history: reopened) {
+        LiveAcceptanceReceiptsReplayRefused => false
+        LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
+          let accepted = declared_roadmap_nodes()
+            |> filter(n => node_accepted(receipts: reopened_live, rn: n))
+            |> map(n => n.node)
+          let withheld = node_ids_held_off_active_frontier(history: reopened)
+          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+            |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+        }
+      }
+    }
+  }
 }
 
 test fn witness_revocation_frontier_disposition_discriminates() -> Bool {
@@ -467,9 +476,11 @@ test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> B
 test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
   let victims = declared_node(id: "namespace-occurrence-transport")
   let prior = live_acceptance_event_history()
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
   let receipt = first(
-    replayed_live_or_empty(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   count(victims) == 1
     && all(victims, n =>
@@ -499,6 +510,8 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
       RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
     }
+    }
+  }
 }
 
 test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
@@ -655,9 +668,11 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   let prior = live_acceptance_event_history()
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
   let receipt = first(
-    replayed_live_or_empty(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   let current = concat(prior, [
     AcceptanceRevoked {
@@ -673,6 +688,8 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
       history: current,
       prior_history: prior,
     )
+    }
+  }
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
@@ -1156,23 +1173,3 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
       }
   }
 }
-
-// Turning a refusal into an empty list is the exact shape of the defect this change removes at
-// the producer, so this helper needs its reason stated rather than assumed. It preserves, for the
-// pre-existing call sites below, the behaviour they already had before this change: they read a
-// bare list and could not distinguish a refusal from an empty result. Every one of those call
-// sites is a NEGATIVE assertion ("this node is not accepted", "this receipt is not live"), which
-// an empty list satisfies vacuously.
-// THIS IS NOT ASSERTED TO BE SAFE, and an executing probe says it currently is not: the histories
-// these witnesses build derive from a carrier fixture that does not load, so the projected list is
-// empty and those assertions pass vacuously today. That is a pre-existing condition of the fixture
-// which this change neither introduces nor repairs, and it is reported separately rather than
-// widened into this one. Do not lift this helper out of test scope, and do not add a new caller:
-// a new assertion written against it would be vacuous for the same reason.
-fn replayed_live_or_empty(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
-  match project_live_acceptance_receipts(history: history) {
-    LiveAcceptanceReceiptsReplayed { live: live } => live
-    LiveAcceptanceReceiptsReplayRefused => []
-  }
-}
-
