@@ -1,0 +1,1058 @@
+Running as unit: run-r6ae01845eadd45ee997dd1c3dc37d8b3.scope; invocation ID: 627d19d959e2497bbc881a5ffdb21f7c
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.9
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling typenum v1.20.1
+   Compiling cfg-if v1.0.4
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling serde v1.0.228
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde_derive v1.0.228
+   Compiling yoke v0.8.2
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.149
+   Compiling ar_archive_writer v0.5.1
+   Compiling tinystr v0.8.3
+   Compiling bitmaps v2.1.0
+   Compiling psm v0.1.31
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling rand_core v0.6.4
+   Compiling itoa v1.0.18
+   Compiling writeable v0.6.3
+   Compiling litemap v0.8.2
+   Compiling icu_locale_core v2.2.0
+   Compiling rand_xoshiro v0.6.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling unicode-properties v0.1.4
+   Compiling zeroize v1.8.2
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_runtime)
+   Compiling smallvec v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling utf8parse v0.2.2
+   Compiling untrusted v0.9.0
+   Compiling crc32fast v1.5.0
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling equivalent v1.0.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling simd-adler32 v0.3.9
+   Compiling hashbrown v0.17.1
+   Compiling percent-encoding v2.3.2
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.14
+   Compiling rustls v0.23.40
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling anstream v1.0.0
+   Compiling form_urlencoded v1.2.2
+   Compiling indexmap v2.14.0
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling rustls-webpki v0.103.13
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_extdeps_languages)
+   Compiling webpki-roots v1.0.7
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling once_cell v1.21.4
+   Compiling toml_write v0.1.2
+   Compiling clap_lex v1.1.0
+   Compiling log v0.4.29
+   Compiling winnow v0.7.15
+   Compiling strsim v0.11.1
+   Compiling heck v0.5.0
+   Compiling clap_derive v4.6.1
+   Compiling clap_builder v4.6.0
+   Compiling toml_edit v0.22.27
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0)
+   Compiling base64 v0.22.1
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/stage0_v1_infer)
+   Compiling toml v0.8.23
+   Compiling clap v4.6.1
+   Compiling hmac v0.12.1
+   Compiling hex v0.4.3
+   Compiling lazy_static v1.5.0
+    Finished `release` profile [optimized] target(s) in 11m 46s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 6 minutes
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 24 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 49 seconds
+✓ compile.normalize done in 1 seconds
+✓ compile.reconcile done in 62 seconds
+✓ compile.analyses done in 755ms
+◐ started compile.emit
+✓ compile.emit done in 7 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 33 seconds
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 16ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 138ms
+◐ started regen.digest
+✓ regen.digest done in 30 seconds
+required-regen: elapsed_ms=686142 first_generation_equal=false planned=155 executed=155 adjudicated=155 declared_divergent=1 [main.rs]
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 7 minutes
+✓ round.install done in 7 minutes
+regen-round-cost: producer=claim_executor --regen-round-cost host=srv1 tree=07adbc48dc8b832d695a6f7eeabef10b73a81f08 tree_dirty=false seed_build_compiled_crates=1 rebuild_compiled_crates=1 rustfmt_spawns=622
+regen-round-cost: phase=seed_build wall_ms=367634 cpu_ms=632040
+regen-round-cost: phase=corpus_load wall_ms=24465 cpu_ms=24290
+regen-round-cost: phase=compile.frontend wall_ms=49573 cpu_ms=49230
+regen-round-cost: phase=compile.normalize wall_ms=1255 cpu_ms=1250
+regen-round-cost: phase=compile.reconcile wall_ms=62440 cpu_ms=61930
+regen-round-cost: phase=compile.analyses wall_ms=755 cpu_ms=750
+regen-round-cost: phase=compile.emit wall_ms=448204 cpu_ms=444710
+regen-round-cost: phase=mirror_write wall_ms=33142 cpu_ms=33320
+regen-round-cost: phase=candidate_verify wall_ms=0 cpu_ms=0
+regen-round-cost: phase=adjudicate wall_ms=16 cpu_ms=20
+regen-round-cost: phase=hand_verify wall_ms=138 cpu_ms=130
+regen-round-cost: phase=digest wall_ms=30918 cpu_ms=31090
+regen-round-cost: phase=rebuild_from_installed wall_ms=439863 cpu_ms=746150
+regen-round-cost: phase=install wall_ms=477541 cpu_ms=782870
+regen-round-cost: total wall_ms=1935944 cpu_ms=2807780
+regen-round-cost: changed_paths=1 [src/v1/stage0/src/v1_compiler_emit_rust.rs]
+regen-round-cost: convergence_stages=1 [stage-1]
+partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[v1_compiler_emit_rust.rs] owning_packages=[v1-compiler] package_closure=[v1-compiler] executable_assembly=assembled package=v1-compiler bin=claim_executor
+regen-round-cost: execution-identity rebuild_packages=1 [v1-compiler] executable_digest=fnv1a64:45cad550761116ae second_generation_candidate=fnv1a64:9608e8aa5e19fd82
+regen-round-cost: receipt=/home/briansrls/eager-raven-113/regen.NV6x1C/repo/target/stage0-regen-round-cost.txt
+memory-cgroup-bind: not requested
+◐ started compile.frontend
+✓ compile.frontend done in 37 seconds
+✓ compile.normalize done in 713ms
+✓ compile.reconcile done in 57 seconds
+✓ compile.analyses done in 732ms
+◐ started compile.emit
+✓ compile.emit done in 6 minutes
+required-regen-fixed-point: fixed_point_equal=true referenced_first_generation_equal=true referenced_at=07adbc48dc8b832d695a6f7eeabef10b73a81f08
+   Compiling v1-compiler-tests v0.1.0 (/home/briansrls/eager-raven-113/regen.NV6x1C/repo/src/v1/tests)
+    Finished `release` profile [optimized] target(s) in 10.88s
+     Running unittests src/lib.rs (target/release/deps/v1_compiler_tests-f915ab3212d3fe28)
+
+running 7 tests
+test native_driver_cost_refusal_test::a_child_that_has_not_exited_is_pending_not_unobserved ... ok
+test native_driver_cost_refusal_test::a_completed_capture_with_no_cost_rows_is_unobserved ... ok
+test native_driver_cost_refusal_test::a_planted_partition_line_is_observed ... ok
+test native_driver_cost_refusal_test::emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process ... FAILED
+test native_driver_cost_refusal_test::planted_over_attribution_is_over_attributed_not_clamped ... ok
+test native_driver_cost_refusal_test::reconciled_parent_passes ... ok
+test native_driver_cost_refusal_test::the_preparation_span_closes_before_any_declaration_is_evaluated ... ok
+
+failures:
+
+---- native_driver_cost_refusal_test::emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process stdout ----
+
+thread 'native_driver_cost_refusal_test::emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process' (476443) panicked at src/v1/tests/src/native_driver_cost_refusal_test.rs:95:5:
+remainder is the fold residual — not a second subtraction that can clamp or fork OverAttributed; emitted:
+// Generated by v1 compiler -- do not edit.
+
+#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
+
+use std::rc::Rc;
+use std::time::Instant;
+
+use v1_compiled::extdeps_communication_medium::{DecodeFidelity, Medium};
+use v1_compiled::gunbc_witness_v2_native_route::{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl};
+use v1_compiled::v2_compiler_compile::{
+    native_lane_controls, native_lane_file_refusal_index, native_lane_identity_row,
+    native_lane_module_inference,
+    native_lane_module_resolution,
+    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,
+    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,
+    native_lane_source_facts, native_lane_universe, native_test_context_from_ingest,
+    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,
+    NativeRouteMemberRow,
+};
+use v1_compiled::gunbc_witness_v2_native_route::{
+    native_route_admission, native_route_admission_summary, native_route_admitted,
+    native_route_file_refusal_tally,
+};
+use v1_compiled::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};
+use v1_compiled::v2_std_artifact::{Artifact, ArtifactKind};
+use v1_compiled::v2_std_diagnostic::Outcome;
+use v1_compiled::std_compiler_entry::{
+    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
+    native_driver_exclusive_sum, NativeDriverCostAccounting, NativeDriverExclusiveRows,
+};
+use v1_compiled::std_measure::{nanosecond, nanosecond_count};
+
+fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(cause) => return Err(format!("could not walk source root {}: {cause}", dir.display())),
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(cause) => return Err(format!("could not read entry under {}: {cause}", dir.display())),
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_paths(&path, out)?;
+        } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+            out.push(path.to_string_lossy().into_owned());
+        }
+    }
+    Ok(())
+}
+
+fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {
+    if source_roots.is_empty() {
+        eprintln!("REFUSED: no source roots given");
+        std::process::exit(2);
+    }
+    let mut paths: Vec<String> = Vec::new();
+    for root in source_roots {
+        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {
+            eprintln!("REFUSED: {cause}");
+            std::process::exit(2);
+        }
+    }
+    paths.sort();
+    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();
+    for path in &paths {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(cause) => {
+                eprintln!("REFUSED: could not read {path}: {cause}");
+                std::process::exit(2);
+            }
+        };
+        reads.push(Rc::new(DagSourceReadWitness {
+            source: Rc::new(Medium {
+                carried: text,
+                fidelity: DecodeFidelity::Lossless,
+                _phantom: std::marker::PhantomData,
+            }),
+            artifact: Rc::new(Artifact {
+                kind: ArtifactKind::SourceFile,
+                id: path.clone(),
+                file_path: path.clone(),
+            }),
+            compilation_unit: path.clone(),
+            source_root: source_root_for_storage_path(path.clone()),
+        }));
+    }
+    reads
+}
+
+fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String {
+    match facts.get(key) {
+        Some(value) => value.clone(),
+        None => {
+            eprintln!("REFUSED: host facts file carries no {key} row");
+            std::process::exit(2);
+        }
+    }
+}
+
+fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 {
+    let value = host_fact(facts, key);
+    match value.parse::<i64>() {
+        Ok(parsed) => parsed,
+        Err(cause) => {
+            eprintln!("REFUSED: host fact {key} is not an integer: {value:?} ({cause})");
+            std::process::exit(2);
+        }
+    }
+}
+
+fn read_host_facts(path: &str) -> NativeLaneHostFacts {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(cause) => {
+            eprintln!("REFUSED: could not read host facts file {path}: {cause}");
+            std::process::exit(2);
+        }
+    };
+    let mut facts: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for line in text.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        match line.split_once('\t') {
+            Some((key, value)) if !key.is_empty() => {
+                if facts.insert(key.to_string(), value.to_string()).is_some() {
+                    eprintln!("REFUSED: duplicate host fact row: {key}");
+                    std::process::exit(2);
+                }
+            }
+            _ => {
+                eprintln!("REFUSED: malformed host fact line (expected key<TAB>value): {line}");
+                std::process::exit(2);
+            }
+        }
+    }
+    let malformed_path = host_fact(&facts, "malformed_control_path");
+    let malformed_reason = host_fact(&facts, "malformed_control_reason");
+    let malformed_control = if malformed_path.is_empty() {
+        NativeRouteMalformedControl::MalformedSpecimenAccepted
+    } else {
+        NativeRouteMalformedControl::MalformedSpecimenRefused {
+            path: malformed_path,
+            reason: malformed_reason,
+        }
+    };
+    let old_route_disposition = host_fact(&facts, "old_route_disposition");
+    let old_route_executable = host_fact(&facts, "old_route_executable");
+    let old_route_control = match old_route_disposition.as_str() {
+        "withdrawn" => NativeRouteOldRouteControl::OldRouteWithdrawn {
+            withdrawn_executable: old_route_executable,
+        },
+        "not_present_at_window" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow {
+            expected_executable: old_route_executable,
+        },
+        other => {
+            eprintln!("REFUSED: old_route_disposition names no control this route can record: {other} -- expected withdrawn or not_present_at_window");
+            std::process::exit(2);
+        }
+    };
+    // The emitted build is the host's observation of the cargo spawn this binary is the
+    // product of: six rows, the argv as one row per word under a length row. A count that
+    // does not parse, or an index row it promises that is missing, refuses like any other
+    // missing fact; nothing is defaulted.
+    let cargo_argv_len = host_fact_int(&facts, "cargo_argv_len");
+    let mut cargo_argv: Vec<String> = Vec::new();
+    for index in 0..cargo_argv_len {
+        cargo_argv.push(host_fact(&facts, &format!("cargo_argv_{index}")));
+    }
+    let emitted_build = NativeRouteEmittedBuild {
+        cargo_argv: Rc::new(cargo_argv.into()),
+        rustflags: host_fact(&facts, "rustflags"),
+        compiler_path: host_fact(&facts, "compiler_path"),
+        rustc_identity: host_fact(&facts, "rustc_identity"),
+        exit_status: host_fact_int(&facts, "exit_status"),
+        warning_count: host_fact_int(&facts, "warning_count"),
+    };
+    NativeLaneHostFacts {
+        tested_tree: host_fact(&facts, "tested_tree"),
+        preparation_seed_identity: host_fact(&facts, "preparation_seed_identity"),
+        emitted_closure_identity: host_fact(&facts, "emitted_closure_identity"),
+        executable_path: host_fact(&facts, "executable_path"),
+        executable_identity: host_fact(&facts, "executable_identity"),
+        old_route_control: Rc::new(old_route_control),
+        malformed_control: Rc::new(malformed_control),
+        emitted_build: Rc::new(emitted_build),
+    }
+}
+
+fn run_census(source_roots: &[String]) {
+    let reads = read_ingest(source_roots);
+    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {
+        Outcome::Accepted { value, .. } => value.clone(),
+        Outcome::Rejected { diagnostics } => {
+            eprintln!("CONTEXT-REFUSED: {diagnostics:#?}");
+            std::process::exit(1);
+        }
+    };
+    for refusal in context.file_refusals.iter() {
+        println!("{}", serde_json::json!({ "file_refusal": refusal }));
+    }
+    println!("{}", serde_json::json!({ "_terminal": "complete", "mode": "census", "file_refusals": context.file_refusals.len() }));
+}
+
+fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {
+    if sorted.is_empty() { return 0; }
+    let idx = (sorted.len() - 1) * numer / denom;
+    sorted[idx]
+}
+
+// A SPAN IS READ ONCE, THROUGH A READER THAT REFUSES A CLOCK THAT WENT BACKWARDS.
+// Instant::elapsed is Instant::now().duration_since(earlier), and duration_since SATURATES:
+// a monotonic clock that is not actually monotonic -- which happens on some virtualised and
+// migrated hosts -- yields Duration::ZERO rather than an error. That is the fabricated zero
+// this receipt forbids, arriving by a quieter route than the saturating_sub it replaced: a
+// phase would report as having taken no time and the partition would balance for the wrong
+// reason. checked_duration_since returns None instead, so the impossible reading is
+// REPRESENTABLE and can be refused.
+//
+// AN EARLIER REVISION OF THIS FILE CLAIMED THE CLASS WAS STRUCTURALLY IMPOSSIBLE ONCE THE
+// subtraction was gone. That was wrong and is corrected rather than softened: deleting the
+// explicit subtraction removed the visible clamp, not the saturation underneath it. The
+// honest rung is MITIGATED BY A TYPED REFUSAL at a declared boundary -- the host clock is
+// external reality, which DESIGN section 4b keeps off the ladder rather than on its top rung.
+fn span_nanos(started: Instant) -> u128 {
+    match Instant::now().checked_duration_since(started) {
+        Some(d) => d.as_nanos(),
+        None => {
+            eprintln!("REFUSED: the monotonic clock went backwards between two reads, so no span is measurable");
+            std::process::exit(2);
+        }
+    }
+}
+
+// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was
+// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a
+// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the
+// invented number is a zero that reports a phase as instant or a maximum that reports it as
+// three centuries. The saturating arm also chose the direction that hides best: i64::MAX would
+// push the exclusive sum past the parent and surface as NativeDriverCostOverAttributed, a cost
+// verdict naming the wrong cause.
+//
+// ON REACHABILITY, STATED RATHER THAN LEFT AS AN IMPLIED CLAIM: i64 nanoseconds is about 292
+// years, so no span this driver measures reaches it, and the refusal below is not expected to
+// fire. It is written because the alternative is not silence but a LIE -- the arm has to answer
+// something, and the only honest answers are a real number or a refusal.
+fn native_cost_i64(n: u128) -> i64 {
+    match i64::try_from(n) {
+        Ok(v) => v,
+        Err(cause) => {
+            eprintln!("REFUSED: a measured span does not fit the cost carrier, so no partition can be reported: {n} ({cause})");
+            std::process::exit(2);
+        }
+    }
+}
+
+// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as
+// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with
+// the key renamed, reported a process using no memory. Absence is carried as None and rendered
+// as JSON null, so the receipt says it does not know instead of inventing a figure. This is
+// telemetry on no receipt field, so it is the one place an Absent is carried rather than
+// refused: the run is still a valid observation of everything else.
+fn proc_status_kib(key: &str) -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/self/status").ok()?;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix(key) {
+            return rest
+                .trim_start_matches(':')
+                .trim()
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<u64>().ok());
+        }
+    }
+    None
+}
+
+// ONE CLOCK, AND IT IS THE MONOTONIC ONE (review 64474). Every exclusive phase span and the
+// parent span are read from Instant, so the partition compares readings from a single source.
+// They were split before this: the parent came from Instant while the phase spans came from
+// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator
+// adjustment. A step between two phase reads could then push the exclusive sum past a parent
+// span that never moved, and the driver would refuse with NativeDriverCostOverAttributed --
+// a cost refusal whose real cause was the clock. That is a fabricated attribution: the numbers
+// would be wrong while the receipt read as a measurement.
+//
+// THE SUBTRACTION IS GONE RATHER THAN GUARDED, which is the point. A span used to be an
+// explicit saturating_sub of two readings, so a backwards step clamped the difference to zero
+// and reported a phase as having taken NO TIME -- the exact state the annotation beside it
+// forbade, reached by the arm meant to prevent it. Instant::elapsed cannot return a negative
+// duration, so there is no difference to clamp and no clamp to review: DESIGN section 5
+// construction over validation, and the class climbs from mitigated to structurally
+// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,
+// because the hazard it named cannot arise on this clock -- production handling dissolves on
+// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.
+fn run_adjudication(facts_path: &str, source_roots: &[String]) {
+    let driver_start = Instant::now();
+    // A MISSING GITHUB_SHA IS ABSENT, NOT "local" (review 64181). The receipt line carries this
+    // as the tree the measurement describes; the literal "local" is a plausible identity that
+    // no reader can distinguish from a tree actually named local.
+    let head: Option<String> = std::env::var("GITHUB_SHA").ok();
+    let facts = read_host_facts(facts_path);
+
+    // the load row: reading the declared roots off disk. Its own exclusive row rather than a
+    // field on another phase, so the IO is never mixed into a fold's number.
+    let load_started = Instant::now();
+    let reads = read_ingest(source_roots);
+    let corpus_reads = reads.len();
+    let ingest = Rc::new(im::vector::Vector::from(reads));
+    let load_nanos = span_nanos(load_started);
+
+    // universe_derivation: the floor's own per-file discovery fold plus the module-header and
+    // import scans, over EVERY read -- discovery is a corpus-wide question -- and then the
+    // import closure of the universe's modules, which is all the front end is given.
+    let universe_started = Instant::now();
+    let source_facts = native_lane_source_facts(ingest.clone());
+    let universe = match &*native_lane_universe(ingest.clone()) {
+        Outcome::Accepted { value, .. } => value.clone(),
+        Outcome::Rejected { diagnostics } => {
+            eprintln!("DERIVATION-REFUSED: {diagnostics:#?}");
+            std::process::exit(1);
+        }
+    };
+    // The walk's budget exhausting is a refusal of the whole derivation, never a truncated
+    // closure: a narrowed ingest would surface only as unexplained resolve refusals later.
+    let closure = match &*native_lane_closure_modules(
+        source_facts.clone(),
+        universe.clone(),
+        native_lane_closure_round_budget(),
+    ) {
+        Outcome::Accepted { value, .. } => value.clone(),
+        Outcome::Rejected { diagnostics } => {
+            eprintln!("CLOSURE-REFUSED: {diagnostics:#?}");
+            std::process::exit(1);
+        }
+    };
+    let closure_ingest = native_lane_closure_ingest(ingest.clone(), source_facts.clone(), closure.clone());
+    let closure_reads = closure_ingest.len();
+    // The ingest receipt's identity join, asked by the route: every ingested source declares a
+    // closure module and every closure module some source declares was ingested. A miss is the
+    // hidden prepass (or a hidden narrowing) this receipt exists to refuse.
+    let ingest_receipt = native_lane_ingest_receipt(source_facts.clone(), closure.clone(), closure_ingest.clone());
+    // The join answers a typed refusal naming the offending identity, so the counts below are
+    // context for it rather than the whole diagnostic: a reader gets the module and the path,
+    // not a pair of totals to re-derive the offender from.
+    match &*native_lane_ingest_matches_closure(source_facts.clone(), ingest_receipt.clone(), closure_ingest.clone()) {
+        Outcome::Accepted { .. } => {}
+        Outcome::Rejected { diagnostics } => {
+            eprintln!(
+                "INGEST-CLOSURE-REFUSED: {:#?} (scanned={} ingested={} closure_modules={})",
+                diagnostics,
+                ingest_receipt.scanned_paths.len(),
+                ingest_receipt.ingested_paths.len(),
+                ingest_receipt.closure_modules.len(),
+            );
+            std::process::exit(1);
+        }
+    }
+    let universe_nanos = span_nanos(universe_started);
+
+    // the context row: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.
+    let context_started = Instant::now();
+    let context = match &*native_test_context_from_ingest(closure_ingest) {
+        Outcome::Accepted { value, .. } => value.clone(),
+        Outcome::Rejected { diagnostics } => {
+            eprintln!("CONTEXT-REFUSED: {diagnostics:#?}");
+            std::process::exit(1);
+        }
+    };
+    let context_nanos = span_nanos(context_started);
+
+    // the prepare and eval rows, entered separately per module so the number the profile
+    // lane prices -- the eval row -- is the sum of native_lane_identity_row
+    // and nothing else: not ingest, not resolve, not infer.
+    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();
+    let mut prepare_total_nanos: u128 = 0;
+    let mut evaluate_total_nanos: u128 = 0;
+    let mut prepare_samples: Vec<u128> = Vec::new();
+    let mut eval_samples: Vec<u128> = Vec::new();
+    let mut prepare_ok: u64 = 0;
+    let mut prepare_refused: u64 = 0;
+    let mut module_release_nanos: u128 = 0;
+    let mut relay_emit_nanos: u128 = 0;
+    let mut bisect_row_accumulation_nanos: u128 = 0;
+    let mut bisect_loop_setup_nanos: u128 = 0;
+    let mut bisect_arm_exit_nanos: u128 = 0;
+    let mut bisect_driver_tail_nanos: u128 = 0;
+    // THE CPU METER IS /proc/self/schedstat, std-only, AND ITS RESOLUTION DECIDED THE SHAPE.
+    // Field 1 is nanoseconds ON CPU, field 2 is nanoseconds waiting on the runqueue -- two
+    // independently sourced numbers at ns resolution. The alternative, /proc/self/stat utime
+    // and stime, is the only std source that SPLITS user from system, and it reports in clock
+    // ticks: CLK_TCK is 100 on this host, so its granularity is 10 ms. A module costing tens of
+    // microseconds reads 0/0 there, so a per-module user/sys split is not available at a useful
+    // resolution from std at all. What schedstat answers instead is the question the residual
+    // actually poses -- was this module RUNNING or WAITING -- and wall minus on_cpu is off-CPU
+    // time with the runqueue share of it named separately. The user/sys split is read ONCE per
+    // run at process granularity and reported on the summary line, where 10 ms ticks are fine.
+    //
+    // IT REFUSES RATHER THAN DEFAULTING. An unreadable or unparseable schedstat returns None and
+    // the diagnostic receipt is refused for the run; reporting 0 would be a fabricated
+    // measurement and would make every residual look CPU-bound.
+    fn native_read_schedstat() -> Option<(u128, u128)> {
+        let text = std::fs::read_to_string("/proc/self/schedstat").ok()?;
+        let mut fields = text.split_whitespace();
+        let on_cpu = fields.next()?.parse::<u128>().ok()?;
+        let runqueue = fields.next()?.parse::<u128>().ok()?;
+        Some((on_cpu, runqueue))
+    }
+    let native_shard_index: u64 = std::env::var("NATIVE_SHARD_INDEX")
+        .ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    // THE PREPARE PARENT BRACKETS THE WHOLE PHASE, so 714 explained modules cannot hide a
+    // global remainder: prepare_parent = fixed work + sum of module parents + prepare residual,
+    // and the fixed work is what happens in this phase OUTSIDE any module -- the refusal index,
+    // the loop scaffolding, the iterator advance between modules.
+    let prepare_parent_started = Instant::now();
+    let mut module_parent_total_nanos: u128 = 0;
+    let mut terminal_bytes_by_module: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut module_ordinal: u64 = 0;
+    let mut module_diagnostics: Vec<serde_json::Value> = Vec::new();
+    let mut diagnostic_refusals: Vec<String> = Vec::new();
+    let mut bisect_iteration_head = Instant::now();
+    // The per-path refusal index is built ONCE here rather than per module: this loop is the
+    // only place that knows a loop is about to happen, and the join it feeds was O(modules x
+    // refusals) when each module scanned the refusal list for itself.
+    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());
+    for entry in universe.modules.iter() {
+        bisect_loop_setup_nanos += span_nanos(bisect_iteration_head);
+        // PER-MODULE RESIDUAL. iteration_started brackets the WHOLE body; the measured spans
+        // inside it are subtracted at the end, so what remains is this module's own
+        // unattributed slice. It is reported on the per-module line rather than added as an
+        // exclusive row on purpose: the row set is an authority with fourteen construction
+        // sites, and this is a diagnostic that names a module, not a phase of the partition.
+        let mut this_meter_nanos: u128 = 0;
+        let meter_open = Instant::now();
+        let sched_open = native_read_schedstat();
+        this_meter_nanos += span_nanos(meter_open);
+        let iteration_started = Instant::now();
+        let mut this_acc_nanos: u128 = 0;
+        let mut this_release_nanos: u128 = 0;
+        let mut this_arm_exit_nanos: u128 = 0;
+        let prepare_started = Instant::now();
+        let mut identities: usize = 0;
+        let mut module_evaluate_nanos: u128 = 0;
+        let mut module_infer_nanos: u128 = 0;
+        // THE PREPARATION SPAN CLOSES WHEN THE PREPARATION OUTCOME IS ESTABLISHED, BEFORE ANY
+        // DECLARATION IS EVALUATED. prepare and eval are exclusive rows of one partition, so a
+        // prepare interval that contained its module's eval intervals would count that work
+        // twice and inflate the sum against the parent.
+        //
+        // THE CLOSE IS THE ARM'S VALUE, NOT AN ASSIGNMENT INSIDE IT. Assigning an outer binding
+        // from each arm left its initialiser dead, and a dead store is an ERROR in the emitted
+        // crate (RUSTFLAGS="-D warnings"); silencing it with an allow would be the escape hatch
+        // DESIGN section 5 forbids. Each arm yields its own span instead, so there is one binding
+        // site, nothing to overwrite, and the order control has a single spelling to assert on.
+        let resolve_started = Instant::now();
+        let resolution = native_lane_module_resolution(context.clone(), refusal_index.clone(), entry.clone());
+        let module_resolve_nanos = span_nanos(resolve_started);
+        let (outcome_label, module_prepare_nanos) = match &*resolution {
+            NativeLaneModuleResolution::NativeLaneModuleContextRowsDecided { rows } => {
+                let this_prepare = span_nanos(prepare_started);
+                prepare_refused += 1;
+                let acc_started = Instant::now();
+                for row in rows.iter() {
+                    population.push(row.clone());
+                    identities += 1;
+                }
+                { let d = span_nanos(acc_started); bisect_row_accumulation_nanos += d; this_acc_nanos += d; }
+                ("context_refused", this_prepare)
+            }
+            NativeLaneModuleResolution::NativeLaneModuleResolveRowsDecided { rows } => {
+                let this_prepare = span_nanos(prepare_started);
+                prepare_refused += 1;
+                let acc_started = Instant::now();
+                for row in rows.iter() {
+                    population.push(row.clone());
+                    identities += 1;
+                }
+                { let d = span_nanos(acc_started); bisect_row_accumulation_nanos += d; this_acc_nanos += d; }
+                ("resolve_refused", this_prepare)
+            }
+            NativeLaneModuleResolution::NativeLaneModuleResolved { resolved } => {
+                let infer_started = Instant::now();
+                let preparation = native_lane_module_inference(entry.clone(), resolved.clone());
+                module_infer_nanos = span_nanos(infer_started);
+                let this_prepare = span_nanos(prepare_started);
+                match &*preparation {
+                    NativeLaneModulePreparation::NativeLaneModuleRowsDecided { rows } => {
+                        prepare_refused += 1;
+                        let acc_started = Instant::now();
+                        for row in rows.iter() {
+                            population.push(row.clone());
+                            identities += 1;
+                        }
+                        { let d = span_nanos(acc_started); bisect_row_accumulation_nanos += d; this_acc_nanos += d; }
+                        ("infer_refused", this_prepare)
+                    }
+                    NativeLaneModulePreparation::NativeLaneModulePrepared { prepared } => {
+                        prepare_ok += 1;
+                        for declaration in entry.declarations.iter() {
+                            let evaluate_started = Instant::now();
+                            let row = native_lane_identity_row(
+                                prepared.clone(),
+                                entry.module.clone(),
+                                declaration.clone(),
+                            );
+                            let this_eval = span_nanos(evaluate_started);
+                            module_evaluate_nanos += this_eval;
+                            let acc_started = Instant::now();
+                            eval_samples.push(this_eval);
+                            population.push(row);
+                            identities += 1;
+                            { let d = span_nanos(acc_started); bisect_row_accumulation_nanos += d; this_acc_nanos += d; }
+                        }
+                        ("accepted", this_prepare)
+                    }
+                }
+            }
+        };
+        let arm_exit_started = Instant::now();
+        prepare_total_nanos += module_prepare_nanos;
+        evaluate_total_nanos += module_evaluate_nanos;
+        prepare_samples.push(module_prepare_nanos);
+        // RELEASE IS MEASURED, NOT LEFT TO SCOPE EXIT. The resolved tree this module built is
+        // dropped HERE, inside a span, because dropping it at the end of the iteration paid real
+        // time that no exclusive row covered -- the residual that refused the full corpus at
+        // RemainderExceedsTolerance. An explicit drop makes the cost nameable; scope exit hides it.
+        { let d = span_nanos(arm_exit_started); bisect_arm_exit_nanos += d; this_arm_exit_nanos += d; }
+        let release_started = Instant::now();
+        drop(resolution);
+        { let d = span_nanos(release_started); module_release_nanos += d; this_release_nanos += d; }
+        // THE RELAY LINE IS MEASURED. This is one stderr write per unique module to a pipe the
+        // host runner drains, and it sat outside every exclusive row while being paid inside
+        // parent_span. Three full-corpus folds put the unattributed remainder at ~334 us per
+        // unique module, which is what a line this size costs through a drained pipe.
+        let iteration_total_nanos = span_nanos(iteration_started);
+        let meter_close = Instant::now();
+        let sched_close = native_read_schedstat();
+        this_meter_nanos += span_nanos(meter_close);
+        // CHECKED, NOT SATURATING. Every subtrahend below is a span nested inside the module
+        // parent, so children exceeding the parent means one of them is NOT nested and the
+        // partition is wrong. The earlier revision saturated, which reported 0 and HID exactly
+        // that error. resolve and infer are retained but NOT subtracted: they are nested inside
+        // prepare and subtracting them would double-count.
+        let named_children_nanos = module_prepare_nanos
+            + module_evaluate_nanos
+            + this_acc_nanos
+            + this_arm_exit_nanos
+            + this_release_nanos
+            + this_meter_nanos;
+        let checked_residual = iteration_total_nanos.checked_sub(named_children_nanos);
+        let module_cpu = match (sched_open, sched_close) {
+            (Some((a0, w0)), Some((a1, w1))) => Some((a1.saturating_sub(a0), w1.saturating_sub(w0))),
+            _ => None,
+        };
+        match (checked_residual, module_cpu) {
+            (Some(residual_nanos), Some((on_cpu_nanos, runqueue_nanos))) => {
+                module_diagnostics.push(serde_json::json!({
+                    "identity": entry.module.clone(),
+                    "ordinal": module_ordinal,
+                    "worker": native_shard_index,
+                    "outcome": outcome_label,
+                    "parent_wall_nanos": iteration_total_nanos,
+                    "parent_on_cpu_nanos": on_cpu_nanos,
+                    "parent_runqueue_nanos": runqueue_nanos,
+                    "resolve_nanos": module_resolve_nanos,
+                    "infer_nanos": module_infer_nanos,
+                    "prepare_nanos": module_prepare_nanos,
+                    "eval_nanos": module_evaluate_nanos,
+                    "row_accumulation_nanos": this_acc_nanos,
+                    "arm_exit_nanos": this_arm_exit_nanos,
+                    "release_nanos": this_release_nanos,
+                    "meter_nanos": this_meter_nanos,
+                    "residual_nanos": residual_nanos,
+                    "terminal_rows": identities,
+                }));
+            }
+            (None, _) => diagnostic_refusals.push(format!(
+                "module={} named children {} exceed parent {}: a child is not nested",
+                entry.module, named_children_nanos, iteration_total_nanos)),
+            (_, None) => diagnostic_refusals.push(format!(
+                "module={}: /proc/self/schedstat unreadable; CPU not measured", entry.module)),
+        }
+        let relay_started = Instant::now();
+        eprintln!("[native-prepare-split] module={} resolve_nanos={module_resolve_nanos} infer_nanos={module_infer_nanos} prepare_nanos={module_prepare_nanos} decls={} outcome={outcome_label}", entry.module, identities);
+        relay_emit_nanos += span_nanos(relay_started);
+        module_parent_total_nanos += iteration_total_nanos;
+        module_ordinal += 1;
+        bisect_iteration_head = Instant::now();
+    }
+
+    // receipt_admission: minting the receipt and evaluating the authority's admission and summary
+    // over it. The controls are executed here because they are receipt inputs, not universe members.
+    let prepare_parent_nanos = span_nanos(prepare_parent_started);
+    let admission_started = Instant::now();
+    let receipt = native_lane_receipt(
+        context.clone(),
+        universe.clone(),
+        Rc::new(population.clone().into()),
+        native_lane_controls(context.clone()),
+        Rc::new(facts),
+    );
+    let admission = native_route_admission(receipt.clone());
+    let summary = native_route_admission_summary(admission.clone());
+    let file_refusal_tally: Vec<serde_json::Value> = native_route_file_refusal_tally(receipt.clone())
+        .iter()
+        .map(|row| serde_json::json!(row))
+        .collect();
+    let admitted = native_route_admitted(admission.clone());
+    let admission_nanos = span_nanos(admission_started);
+
+
+    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review
+    // 64181 named this span; #11105 made leaving it unattributed fatal). Every row the
+    // population carries is turned into JSON here and written to stdout, which is real work
+    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never
+    // derived as parent minus the others: a row defined as the remainder would force the
+    // residual to zero and make the tolerance arm unfireable by construction.
+    let serialization_started = Instant::now();
+    for refusal in receipt.file_refusals.iter() {
+        println!("{}", serde_json::json!({ "file_refusal": refusal }));
+    }
+    for row in population.iter() {
+        // BYTES ARE ATTRIBUTED HERE, in the phase that already serializes, and joined on
+        // identity.module. Computing them in the module loop would serialize every row twice
+        // and charge the duplicate to the subject being measured.
+        let encoded = serde_json::to_string(row).unwrap();
+        *terminal_bytes_by_module
+            .entry(row.identity.module.to_string())
+            .or_insert(0) += encoded.len();
+        println!("{}", encoded);
+    }
+    let row_serialization_nanos = span_nanos(serialization_started);
+    // THE PREPARE PARENT RECONCILES OR THE RECEIPT REFUSES. Explaining 714 modules is not the
+    // same as explaining the phase: fixed work between and around them is real, so the parent is
+    // stated as fixed + sum of module parents + residual and checked. bisect_loop_setup is the
+    // fixed term -- it spans one iteration's end to the next one's start, and because
+    // bisect_iteration_head is set before the refusal index is built, the pre-loop fixed work is
+    // inside it too.
+    let prepare_accounted_nanos = bisect_loop_setup_nanos + module_parent_total_nanos;
+    let prepare_residual = prepare_parent_nanos.checked_sub(prepare_accounted_nanos);
+    if prepare_residual.is_none() {
+        diagnostic_refusals.push(format!(
+            "prepare parent {} is less than fixed {} plus module parents {}: not nested",
+            prepare_parent_nanos, bisect_loop_setup_nanos, module_parent_total_nanos));
+    }
+    // THE DIAGNOSTIC RECEIPT IS EMITTED AFTER THE LOOP, not per iteration, so the emission is
+    // outside every module parent it reports -- a line cannot be inside the interval it measures.
+    // The run-level user/sys split is read here rather than per module: /proc/self/stat reports in
+    // clock ticks (CLK_TCK=100, so 10 ms), which is useless at module grain and adequate once per
+    // run. It is reported as ticks, named as ticks, and never divided into a per-module figure.
+    let run_user_sys = std::fs::read_to_string("/proc/self/stat").ok().and_then(|st| {
+        let fields: Vec<&str> = st.split_whitespace().collect();
+        match (fields.get(13), fields.get(14)) {
+            (Some(u), Some(sy)) => match (u.parse::<u64>(), sy.parse::<u64>()) {
+                (Ok(u), Ok(sy)) => Some((u, sy)),
+                _ => None,
+            },
+            _ => None,
+        }
+    });
+    if diagnostic_refusals.is_empty() {
+        eprintln!("[native-module-residual] {}", serde_json::json!({
+            "worker": native_shard_index,
+            "modules": module_diagnostics.len(),
+            "cpu_source": "/proc/self/schedstat",
+            "user_sys_source": "/proc/self/stat utime,stime in CLK_TCK=100 ticks, run granularity",
+            "run_user_ticks": run_user_sys.map(|p| p.0),
+            "run_sys_ticks": run_user_sys.map(|p| p.1),
+            "prepare_parent_nanos": prepare_parent_nanos,
+            "prepare_fixed_nanos": bisect_loop_setup_nanos,
+            "prepare_module_parents_nanos": module_parent_total_nanos,
+            "prepare_residual_nanos": prepare_residual,
+            "rows": module_diagnostics.iter().map(|r| {
+                let mut row = r.clone();
+                let module = row.get("identity").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert(
+                        "terminal_bytes".to_string(),
+                        serde_json::json!(terminal_bytes_by_module.get(&module).copied().unwrap_or(0)),
+                    );
+                }
+                row
+            }).collect::<Vec<serde_json::Value>>(),
+        }));
+    } else {
+        // REFUSED, NOT DEGRADED. A single unnested child or an unreadable meter invalidates the
+        // arithmetic for the whole receipt, so no partial table is printed -- a partial one would
+        // be read as complete.
+        eprintln!("[native-module-residual] REFUSED {} of {} modules: {}",
+            diagnostic_refusals.len(), module_ordinal, diagnostic_refusals.join("; "));
+    }
+    let driver_tail_started = Instant::now();
+
+    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and
+    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows
+    // this route pays that a driver handed a universe file does not (universe_derivation,
+    // receipt_admission) are members of the same exclusive sum, so an over-attribution through
+    // either is caught here rather than by a check of its own.
+    prepare_samples.sort_unstable();
+    eval_samples.sort_unstable();
+    bisect_driver_tail_nanos += span_nanos(driver_tail_started);
+    let parent_span_nanos = span_nanos(driver_start);
+    let exclusive = Rc::new(NativeDriverExclusiveRows {
+        load: nanosecond(native_cost_i64(load_nanos)),
+        universe_derivation: nanosecond(native_cost_i64(universe_nanos)),
+        context: nanosecond(native_cost_i64(context_nanos)),
+        prepare: nanosecond(native_cost_i64(prepare_total_nanos)),
+        eval: nanosecond(native_cost_i64(evaluate_total_nanos)),
+        receipt_admission: nanosecond(native_cost_i64(admission_nanos)),
+        row_serialization: nanosecond(native_cost_i64(row_serialization_nanos)),
+        module_release: nanosecond(native_cost_i64(module_release_nanos)),
+        relay_emit: nanosecond(native_cost_i64(relay_emit_nanos)),
+        bisect_row_accumulation: nanosecond(native_cost_i64(bisect_row_accumulation_nanos)),
+        bisect_loop_setup: nanosecond(native_cost_i64(bisect_loop_setup_nanos)),
+        bisect_arm_exit: nanosecond(native_cost_i64(bisect_arm_exit_nanos)),
+        bisect_driver_tail: nanosecond(native_cost_i64(bisect_driver_tail_nanos)),
+    });
+    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;
+    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;
+    let accounting = native_driver_cost_account(
+        nanosecond(native_cost_i64(parent_span_nanos)),
+        exclusive.clone(),
+        native_driver_cost_remainder_tolerance_nanos(),
+    );
+    // The remainder is the residual the accounting itself returns, never parent minus sum: on
+    // over-attributed arm there IS no remainder, and a clamped zero there would be a
+    // plausible number standing where the measurement is incoherent.
+    let (verdict, remainder_nanos) = match accounting.as_ref() {
+        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } =>
+            (r#"NativeDriverCostOverAttributed"#, serde_json::Value::Null),
+        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } =>
+            (r#"NativeDriverCostRemainderExceedsTolerance"#, serde_json::json!(nanosecond_count(residual.clone()))),
+        NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } =>
+            (r#"NativeDriverCostReconciled"#, serde_json::json!(nanosecond_count(residual.clone()))),
+    };
+    let identities = universe.identities.len() as u64;
+    let eval_mean = if eval_samples.is_empty() { 0 } else { evaluate_total_nanos / eval_samples.len() as u128 };
+    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_total_nanos / prepare_samples.len() as u128 };
+    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The field names
+    // were written once to build NativeDriverExclusiveRows and again to render it, which is the
+    // second spelling this file warns about for prose, applied to the emitted object: a driver
+    // gaining a phase would have updated the struct and left the receipt short. Serializing the
+    // value carries the row set from the type, so the JSON cannot disagree with the fold. The
+    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the
+    // unit travels with the number, which is the point of the type.
+    // A NON-RECONCILED ARM IS A PROCESS REFUSAL (#11105, review 63891). The receipt is
+    // printed first so the numbers that caused the refusal are on the wire, and THEN the
+    // line stops: a verdict string with exit 0 is the inert lens DESIGN section 6 names.
+    // The full-N run of this route refused here on 158600186 ns against a 50000000 ns
+    // tolerance before row_serialization was a measured row, which is what put that row on
+    // the type rather than a wider tolerance on this arm.
+    eprintln!("[native-cost-partition] {}", serde_json::json!({
+        "basis": "native_driver_wall",
+        "basis_note": "single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos",
+        "producer": "std.compiler_entry.SourceRootEvalDriver",
+        "head": head,
+        "mode": "adjudicate",
+        "verdict": verdict,
+        "tolerance_nanos": tolerance_nanos,
+        "parent_span_nanos": parent_span_nanos,
+        "exclusive": exclusive,
+        "sum_exclusive_nanos": exclusive_sum,
+        "remainder_nanos": remainder_nanos,
+        "corpus_reads": corpus_reads,
+        "closure_reads": closure_reads,
+        "scanned_paths": ingest_receipt.scanned_paths.len(),
+        "ingested_paths": ingest_receipt.ingested_paths.len(),
+        "closure_modules": closure.len(),
+        "identities": identities,
+        "unique_modules": universe.modules.len(),
+        "file_refusals": receipt.file_refusals.len(),
+        "prepare_ok": prepare_ok,
+        "prepare_refused": prepare_refused,
+        "prepare_mean_nanos": prepare_mean,
+        "prepare_p50_nanos": native_cost_quantile_nanos(&prepare_samples, 1, 2),
+        "prepare_p95_nanos": native_cost_quantile_nanos(&prepare_samples, 19, 20),
+        "prepare_max_nanos": prepare_samples.last().copied().unwrap_or(0),
+        "eval_mean_nanos": eval_mean,
+        "eval_p50_nanos": native_cost_quantile_nanos(&eval_samples, 1, 2),
+        "eval_p95_nanos": native_cost_quantile_nanos(&eval_samples, 19, 20),
+        "eval_max_nanos": eval_samples.last().copied().unwrap_or(0),
+        "peak_rss_bytes": proc_status_kib("VmHWM").map(|kib| kib * 1024),
+        "rss_bytes": proc_status_kib("VmRSS").map(|kib| kib * 1024),
+    }));
+    match accounting.as_ref() {
+        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}
+        NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => {
+            eprintln!(
+                "REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}",
+                nanosecond_count(sum_exclusive.clone()) as u128,
+                nanosecond_count(parent_span.clone()) as u128
+            );
+            std::process::exit(1);
+        }
+        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => {
+            eprintln!(
+                "REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }} -- unattributed driver work; name the span, do not widen the tolerance",
+                nanosecond_count(residual.clone()) as u128,
+                nanosecond_count(tolerance.clone()) as u128
+            );
+            std::process::exit(1);
+        }
+    }
+    println!(
+        "{}",
+        serde_json::json!({
+            "_terminal": "complete",
+            "mode": "adjudicate",
+            "rows": population.len(),
+            "universe": universe.identities.len(),
+            "file_refusals": receipt.file_refusals.len(),
+            "file_refusal_tally": file_refusal_tally,
+            "admitted": admitted,
+            "summary": summary,
+        })
+    );
+    if admitted {
+        std::process::exit(0);
+    }
+    std::process::exit(1);
+}
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let mode = match args.next() {
+        Some(mode) => mode,
+        None => {
+            eprintln!("REFUSED: no mode given -- usage: v1_compiled adjudicate <host-facts.tsv> <source-root>... | v1_compiled census <source-root>...");
+            std::process::exit(2);
+        }
+    };
+    if mode == "census" {
+        let source_roots: Vec<String> = args.collect();
+        run_census(&source_roots);
+        return;
+    }
+    if mode == "adjudicate" {
+        let facts_path = match args.next() {
+            Some(path) => path,
+            None => {
+                eprintln!("REFUSED: adjudicate takes a host facts file before the source roots");
+                std::process::exit(2);
+            }
+        };
+        let source_roots: Vec<String> = args.collect();
+        run_adjudication(&facts_path, &source_roots);
+        return;
+    }
+    eprintln!("REFUSED: unknown mode {mode} -- expected adjudicate or census");
+    std::process::exit(2);
+}
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    native_driver_cost_refusal_test::emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 44 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p v1-compiler-tests --lib`
