@@ -14,8 +14,9 @@ type BodyProducerForwardRow {
 // body_lower_transform_call). fold_call_lowering still reads parse sequence-left and must keep
 // that seam or switch onto call_callee_target — do not invert try-fold-loop vs primary-ident-call
 // without that switch (#11314/#11315; crisp-carp decline-shape freeze on this fold).
-// Evidence for postfix-call preservation is v2.test.manual.body_lowering_projection_call
-// body_lowering_projection_lowers_to_transform (callee step, arity 2), not a DeclarationRef roster.
+// Evidence for unprepared parse_module → body_lower_try_postfix_projection is
+// v2.test.manual.body_lowering_projection_call body_lowering_projection_lowers_to_transform
+// (callee step, arity 2). That identity is not prepare_grammar, not normalize.
 
 data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
   surface_identity: ^dag_surface_fn_decl
