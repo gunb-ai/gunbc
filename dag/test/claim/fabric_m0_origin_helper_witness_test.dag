@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet_posix_accounts { SudoRunAsAny, SudoRunAsLogin, sudo_run_as_sudoers_spec }
+import extdeps.sudo.run_as { SudoRunAsAny, SudoRunAsLogin, sudo_run_as_sudoers_spec }
 import gunbc.fabric_m0_origin_readback {
   OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
@@ -18,7 +18,7 @@ import gunbc.fabric_m0_origin_helper {
   fabric_origin_helper_sudo_grant, fabric_origin_helper_argv, fabric_origin_helper_path,
   HandoffName, FabricOriginHelperOperation, HelperPutFromHandoff, HelperStageForFetch,
   HelperOperationAdmission, HelperOperationAdmitted, HelperOperationRefused, admit_helper_operation,
-  HelperPutOutcome, HelperIngressRefusal, HelperIngressUnreadable, HelperIngressDigestMismatch, HelperIngressRefused, HelperPutPerformed, helper_put_from_handoff,
+  HelperPutOutcome, HelperIngressRefusal, HelperIngressUnreadable, HelperIngressNotShared, HelperIngressDigestMismatch, HelperIngressRefused, HelperPutPerformed, helper_put_from_handoff,
   FabricOriginHelperRun, HelperRunRefused, HelperRanPut, HelperRanStage, run_fabric_origin_helper,
   FabricOriginHelperExit, HelperExitDone, HelperExitObjectAbsent, HelperExitRefused, HelperExitIndeterminate,
   fabric_origin_helper_exit_code, fabric_origin_helper_exit_of_code, fabric_origin_helper_run_argv,
@@ -48,6 +48,25 @@ fn base() -> String {
     && shell.Mkdir.Parents(path: join([b, "/handoff/incoming"], "") as FilePath).success
     && shell.Mkdir.Parents(path: join([b, "/handoff/outgoing"], "") as FilePath).success
   if made { b } else { "" }
+}
+
+// The group the throwaway tree's files carry, read back from the tree rather than assumed. Absent when
+// stat cannot answer, and every test that needs it then answers false.
+fn group_of(path: String) -> NonEmptyStr? {
+  let observed = shell.Stat.ModeAndGroupOf(path: path as FilePath)
+  let parts = split(s: trim(observed.stdout), delimiter: ":")
+  if observed.success && count(parts) == 2 {
+    match parts |> skip(n: 1) |> first {
+      Present { value: g } => if g == "" { none } else { Present { value: g as NonEmptyStr } }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn shared_handoff(path: String, content: String) -> Bool {
+  Filesystem.Write(path: path, content: content).success && shell.Chmod.GroupReadableFile(path: path as FilePath).success
 }
 
 fn root_of(b: String) -> FilesystemOriginRoot { FilesystemOriginRoot { root: join([b, "/root"], "") as FilePath } }
@@ -93,72 +112,128 @@ test fn the_argv_carries_only_the_admitted_words() -> Bool {
 test fn a_handoff_whose_bytes_differ_from_the_named_digest_never_reaches_the_origin_by_real_execution() -> Bool {
   let b = base()
   let good = join([b, "/good.txt"], "")
-  let w1 = Filesystem.Write(path: good, content: "the bytes the caller meant\n")
-  let w2 = Filesystem.Write(path: join([incoming(b: b) as String, "/attempt-1.blob"], ""), content: "different bytes on the wire\n")
+  let blob = join([incoming(b: b) as String, "/attempt-1.blob"], "")
+  let written = Filesystem.Write(path: good, content: "the bytes the caller meant\n").success
+    && shared_handoff(path: blob, content: "different bytes on the wire\n")
   let verdict = match digest_of(path: good as FilePath) {
     Absent => false
-    Present { value: d } =>
-      match helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), handoff: HandoffName { name: "attempt-1.blob" }, expected: d) {
-        HelperIngressRefused { refusal } => match refusal {
-          HelperIngressDigestMismatch { expected: _, observed: _ } => {
-            let objects = Filesystem.List(path: join([b, "/root/objects/sha256"], ""))
-            let staging = Filesystem.List(path: join([b, "/root/staging"], ""))
-            objects.success && trim(objects.entries) == "" && staging.success && trim(staging.entries) == ""
+    Present { value: d } => match group_of(path: blob) {
+      Absent => false
+      Present { value: g } =>
+        match helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), group: g, handoff: HandoffName { name: "attempt-1.blob" }, expected: d) {
+          HelperIngressRefused { refusal } => match refusal {
+            HelperIngressDigestMismatch { expected: _, observed: _ } => {
+              let objects = Filesystem.List(path: join([b, "/root/objects/sha256"], ""))
+              let staging = Filesystem.List(path: join([b, "/root/staging"], ""))
+              objects.success && trim(objects.entries) == "" && staging.success && trim(staging.entries) == ""
+            }
+            HelperIngressNotShared { observed: _ } => false
+            HelperIngressUnreadable { cause: _ } => false
           }
-          HelperIngressUnreadable { cause: _ } => false
+          HelperPutPerformed { outcome: _ } => false
         }
-        HelperPutPerformed { outcome: _ } => false
-      }
-  }
-  let removed = shell.Remove.RecursiveForce(path: b)
-  b != "" && verdict && removed.success
-}
-
-test fn a_matching_handoff_is_put_and_then_staged_for_export_by_real_execution() -> Bool {
-  let b = base()
-  let blob = join([incoming(b: b) as String, "/attempt-1.blob"], "")
-  let w = Filesystem.Write(path: blob, content: "workflow bytes\n")
-  let verdict = match digest_of(path: blob as FilePath) {
-    Absent => false
-    Present { value: d } => {
-      let put = helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), handoff: HandoffName { name: "attempt-1.blob" }, expected: d)
-      let staged = helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), expected: d, export: HandoffName { name: "attempt-1.export" })
-      let put_ok = match put {
-        HelperPutPerformed { outcome } => match outcome {
-          OriginObjectStored { key: _ } => true
-          OriginObjectAlreadyPresent { key: _ } => false
-          OriginPutRefused { key: _, cause: _ } => false
-          OriginPutOutcomeUnknown { key: _, cause: _ } => false
-        }
-        HelperIngressRefused { refusal: _ } => false
-      }
-      let export_ok = match staged {
-        HelperStagedForExport { export_path, fetch: _ } => match digest_of(path: export_path as FilePath) {
-          Present { value: e } => (e.hex as String) == (d.hex as String)
-          Absent => false
-        }
-        HelperNothingToExport { fetch: _ } => false
-        HelperExportFailed { fetch: _, cause: _ } => false
-      }
-      put_ok && export_ok
     }
   }
   let removed = shell.Remove.RecursiveForce(path: b)
-  b != "" && verdict && removed.success
+  b != "" && written && verdict && removed.success
+}
+
+// THE POSITIVE FIRST: the same bytes at 0640 are put. Then 0600 - readable here because the tester owns
+// it, and still refused, because the helper consumes a handoff only after observing the sharing a peer
+// needs - and nothing reaches the origin.
+test fn a_handoff_not_set_to_0640_is_refused_before_any_origin_effect_by_real_execution() -> Bool {
+  let b = base()
+  let blob = join([incoming(b: b) as String, "/attempt-1.blob"], "")
+  let written = shared_handoff(path: blob, content: "workflow bytes\n")
+  let verdict = match digest_of(path: blob as FilePath) {
+    Absent => false
+    Present { value: d } => match group_of(path: blob) {
+      Absent => false
+      Present { value: g } => {
+        let tightened = shell.Chmod.OwnerReadWriteFile(path: blob as FilePath).success
+        let refused = match helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), group: g, handoff: HandoffName { name: "attempt-1.blob" }, expected: d) {
+          HelperIngressRefused { refusal } => match refusal {
+            HelperIngressNotShared { observed } => observed != ""
+            HelperIngressDigestMismatch { expected: _, observed: _ } => false
+            HelperIngressUnreadable { cause: _ } => false
+          }
+          HelperPutPerformed { outcome: _ } => false
+        }
+        let objects = Filesystem.List(path: join([b, "/root/objects/sha256"], ""))
+        let untouched = objects.success && trim(objects.entries) == ""
+        let loosened = shell.Chmod.GroupReadableFile(path: blob as FilePath).success
+        let stored = match helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), group: g, handoff: HandoffName { name: "attempt-1.blob" }, expected: d) {
+          HelperPutPerformed { outcome } => match outcome {
+            OriginObjectStored { key: _ } => true
+            OriginObjectAlreadyPresent { key: _ } => false
+            OriginPutRefused { key: _, cause: _ } => false
+            OriginPutOutcomeUnknown { key: _, cause: _ } => false
+          }
+          HelperIngressRefused { refusal: _ } => false
+        }
+        tightened && refused && untouched && loosened && stored
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: b)
+  b != "" && written && verdict && removed.success
+}
+
+test fn a_matching_handoff_is_put_and_then_staged_for_export_at_0640_by_real_execution() -> Bool {
+  let b = base()
+  let blob = join([incoming(b: b) as String, "/attempt-1.blob"], "")
+  let written = shared_handoff(path: blob, content: "workflow bytes\n")
+  let verdict = match digest_of(path: blob as FilePath) {
+    Absent => false
+    Present { value: d } => match group_of(path: blob) {
+      Absent => false
+      Present { value: g } => {
+        let put = helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), group: g, handoff: HandoffName { name: "attempt-1.blob" }, expected: d)
+        let staged = helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), group: g, expected: d, export: HandoffName { name: "attempt-1.export" })
+        let put_ok = match put {
+          HelperPutPerformed { outcome } => match outcome {
+            OriginObjectStored { key: _ } => true
+            OriginObjectAlreadyPresent { key: _ } => false
+            OriginPutRefused { key: _, cause: _ } => false
+            OriginPutOutcomeUnknown { key: _, cause: _ } => false
+          }
+          HelperIngressRefused { refusal: _ } => false
+        }
+        let export_ok = match staged {
+          HelperStagedForExport { export_path, fetch: _ } => {
+            let mode = shell.Stat.ModeAndGroupOf(path: export_path as FilePath)
+            let same = match digest_of(path: export_path as FilePath) {
+              Present { value: e } => (e.hex as String) == (d.hex as String)
+              Absent => false
+            }
+            same && mode.success && trim(mode.stdout) == join(["640:", g as String], "")
+          }
+          HelperNothingToExport { fetch: _ } => false
+          HelperExportFailed { fetch: _, cause: _ } => false
+        }
+        put_ok && export_ok
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: b)
+  b != "" && written && verdict && removed.success
 }
 
 test fn staging_an_object_the_origin_does_not_hold_exports_nothing_by_real_execution() -> Bool {
   let b = base()
   let arm = match sha256_hex_digest(hex: hex) {
     Absent => "no_digest"
-    Present { value: d } => match helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), expected: d, export: HandoffName { name: "attempt-1.export" }) {
-      HelperNothingToExport { fetch } => match fetch {
-        OriginObjectAbsent { key: _ } => "absent"
-        OriginFetchUnavailable { key: _, cause: _ } => "unavailable"
-        OriginObjectStaged { key: _, reading: _ } => "staged"
+    Present { value: d } => match group_of(path: outgoing(b: b) as String) {
+      Absent => "no_group"
+      Present { value: g } => match helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), group: g, expected: d, export: HandoffName { name: "attempt-1.export" }) {
+        HelperNothingToExport { fetch } => match fetch {
+          OriginObjectAbsent { key: _ } => "absent"
+          OriginFetchUnavailable { key: _, cause: _ } => "unavailable"
+          OriginObjectStaged { key: _, reading: _ } => "staged"
+        }
+        HelperStagedForExport { export_path: _, fetch: _ } => "exported"
+        HelperExportFailed { fetch: _, cause: _ } => "export_failed"
       }
-      HelperStagedForExport { export_path: _, fetch: _ } => "exported"
-      HelperExportFailed { fetch: _, cause: _ } => "export_failed"
     }
   }
   let exported = Filesystem.List(path: outgoing(b: b) as String)

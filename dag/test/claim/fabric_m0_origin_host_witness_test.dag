@@ -2,9 +2,11 @@ module test.claim.fabric_m0_origin_host_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.placement_supply { HostIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSystemAccount, RemoveDirectoryTree, SystemdDaemonReload,
   SystemdEnableUnit, SystemdStartUnit, SystemdSetUnitProperty, SystemdReloadUnit, EnsureSupplementaryGroupMembership, InstallFile,
+  EnsureSystemGroup, SyncDirectory, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line,
 }
 import gunbc.fleet_posix_accounts {
   FleetAccountFabricOrigin, fleet_principal_intent, HumanAccessOnly, KeyOnlyAutomation, NoLoginServiceIdentity, LegacyHostAccount,
@@ -16,49 +18,91 @@ import gunbc.fabric_m0_origin_pair { OriginPrimary, OriginReplica, FabricOriginP
 import gunbc.fabric_m0_origin_host {
   fabric_origin_primary_placement, fabric_origin_replica_placement,
   fabric_origin_root, fabric_origin_root_path, fabric_origin_principal_name,
-  FabricOriginConvergeStep, FabricOriginPrivileged, FabricOriginSyncDirectory, fabric_origin_converge_plan,
+  fabric_origin_handoff_group, fabric_origin_handoff_root, fabric_origin_handoff_incoming_path, fabric_origin_handoff_outgoing_path,
+  FabricOriginHostPlan, FabricOriginHostPlanned, FabricOriginHostPlanRefused, fabric_origin_converge_plan,
+  FabricOriginAutomationLogin, FabricOriginAutomationGrounded, FabricOriginAutomationUnallocated, fabric_origin_automation_login,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // HERMETIC CONTROLS FOR THE ORIGIN'S HOST INTENT: one normalized root, one primary and one replica on
-// distinct hosts, a persistent no-login principal with no sudo grants, and a converge plan in which
-// every directory is owned by the principal, created after its parent, and followed by an fsync of its
-// parent. What these do NOT establish is that any host was converged; no step here runs.
+// distinct hosts, a persistent no-login principal with no sudo grants, an automation login read from the
+// grounded allocation, a handoff shared through one explicit group, and a plan in which every step -
+// every directory fsync included - is a privileged operation. What these do NOT establish is that any
+// host was converged; no step here runs.
 
-fn step_path(s: FabricOriginConvergeStep) -> String {
-  match s {
-    FabricOriginSyncDirectory { path } => path as String
-    FabricOriginPrivileged { operation } => match operation {
-      EnsureOwnedDirectory { path, owner: _, group: _, mode: _ } => path as String
-      EnsureSystemAccount { login: _, shell: _ } => ""
-      RemoveDirectoryTree { path: _ } => ""
-      SystemdDaemonReload => ""
-      SystemdEnableUnit { unit: _ } => ""
-      SystemdStartUnit { unit: _ } => ""
-      SystemdSetUnitProperty { unit: _, assignment: _ } => ""
-      SystemdReloadUnit { unit: _ } => ""
-      EnsureSupplementaryGroupMembership { login: _, group: _ } => ""
-      InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => ""
-    }
+fn operations(placement: FabricOriginPlacement) -> List<ExecutorPrivilegedOperation> {
+  match fabric_origin_converge_plan(placement: placement) {
+    FabricOriginHostPlanned { placement: _, operations } => operations
+    FabricOriginHostPlanRefused { placement: _, cause: _ } => []
   }
 }
 
-fn is_created_directory(s: FabricOriginConvergeStep) -> Bool {
-  match s {
-    FabricOriginSyncDirectory { path: _ } => false
-    FabricOriginPrivileged { operation } => match operation {
-      EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => true
-      EnsureSystemAccount { login: _, shell: _ } => false
-      RemoveDirectoryTree { path: _ } => false
-      SystemdDaemonReload => false
-      SystemdEnableUnit { unit: _ } => false
-      SystemdStartUnit { unit: _ } => false
-      SystemdSetUnitProperty { unit: _, assignment: _ } => false
-      SystemdReloadUnit { unit: _ } => false
-      EnsureSupplementaryGroupMembership { login: _, group: _ } => false
-      InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => false
-    }
+fn created_path(op: ExecutorPrivilegedOperation) -> String {
+  match op {
+    EnsureOwnedDirectory { path, owner: _, group: _, mode: _ } => path as String
+    EnsureSystemAccount { login: _, shell: _ } => ""
+    EnsureSystemGroup { group: _ } => ""
+    SyncDirectory { path: _ } => ""
+    RemoveDirectoryTree { path: _ } => ""
+    SystemdDaemonReload => ""
+    SystemdEnableUnit { unit: _ } => ""
+    SystemdStartUnit { unit: _ } => ""
+    SystemdSetUnitProperty { unit: _, assignment: _ } => ""
+    SystemdReloadUnit { unit: _ } => ""
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => ""
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => ""
+  }
+}
+
+fn synced_path(op: ExecutorPrivilegedOperation) -> String {
+  match op {
+    SyncDirectory { path } => path as String
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => ""
+    EnsureSystemAccount { login: _, shell: _ } => ""
+    EnsureSystemGroup { group: _ } => ""
+    RemoveDirectoryTree { path: _ } => ""
+    SystemdDaemonReload => ""
+    SystemdEnableUnit { unit: _ } => ""
+    SystemdStartUnit { unit: _ } => ""
+    SystemdSetUnitProperty { unit: _, assignment: _ } => ""
+    SystemdReloadUnit { unit: _ } => ""
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => ""
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => ""
+  }
+}
+
+fn directory_row(op: ExecutorPrivilegedOperation) -> String {
+  match op {
+    EnsureOwnedDirectory { path, owner, group, mode } => join([path as String, owner as String, group as String, mode as String], " ")
+    EnsureSystemAccount { login: _, shell: _ } => ""
+    EnsureSystemGroup { group: _ } => ""
+    SyncDirectory { path: _ } => ""
+    RemoveDirectoryTree { path: _ } => ""
+    SystemdDaemonReload => ""
+    SystemdEnableUnit { unit: _ } => ""
+    SystemdStartUnit { unit: _ } => ""
+    SystemdSetUnitProperty { unit: _, assignment: _ } => ""
+    SystemdReloadUnit { unit: _ } => ""
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => ""
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => ""
+  }
+}
+
+fn membership_row(op: ExecutorPrivilegedOperation) -> String {
+  match op {
+    EnsureSupplementaryGroupMembership { login, group } => join([login as String, group as String], " ")
+    EnsureSystemGroup { group } => join(["group", group as String], " ")
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => ""
+    EnsureSystemAccount { login: _, shell: _ } => ""
+    SyncDirectory { path: _ } => ""
+    RemoveDirectoryTree { path: _ } => ""
+    SystemdDaemonReload => ""
+    SystemdEnableUnit { unit: _ } => ""
+    SystemdStartUnit { unit: _ } => ""
+    SystemdSetUnitProperty { unit: _, assignment: _ } => ""
+    SystemdReloadUnit { unit: _ } => ""
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => ""
   }
 }
 
@@ -107,40 +151,63 @@ test fn the_principal_is_a_persistent_no_login_service_with_no_grants() -> Bool 
   no_login && count(intent.sudo_grants) == 0 && persistent_unallocated
 }
 
-test fn every_created_directory_is_owned_by_the_principal_with_mode_0700() -> Bool {
-  all(fabric_origin_converge_plan(placement: fabric_origin_primary_placement), s => match s {
-    FabricOriginSyncDirectory { path: _ } => true
-    FabricOriginPrivileged { operation } => match operation {
-      EnsureOwnedDirectory { path: _, owner, group, mode } => owner == fabric_origin_principal_name && group == fabric_origin_principal_name && (mode as String) == "0700"
-      EnsureSystemAccount { login, shell: _ } => login == fabric_origin_principal_name
-      RemoveDirectoryTree { path: _ } => false
-      SystemdDaemonReload => false
-      SystemdEnableUnit { unit: _ } => false
-      SystemdStartUnit { unit: _ } => false
-      SystemdSetUnitProperty { unit: _, assignment: _ } => false
-      SystemdReloadUnit { unit: _ } => false
-      EnsureSupplementaryGroupMembership { login: _, group: _ } => false
-      InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => false
-    }
-  })
+test fn the_automation_login_is_the_grounded_allocation_and_an_unallocated_host_has_no_plan() -> Bool {
+  let srv1 = match fabric_origin_automation_login(placement: fabric_origin_primary_placement) {
+    FabricOriginAutomationGrounded { placement: _, login } => (login as String) == "gunbc-fleet"
+    FabricOriginAutomationUnallocated { placement: _, cause: _ } => false
+  }
+  let srv3 = FabricOriginPlacement { host: "srv3" as HostIdentity, role: OriginReplica }
+  let srv3_refused = match fabric_origin_converge_plan(placement: srv3) {
+    FabricOriginHostPlanRefused { placement: _, cause: _ } => true
+    FabricOriginHostPlanned { placement: _, operations: _ } => false
+  }
+  let unknown_refused = match fabric_origin_converge_plan(placement: FabricOriginPlacement { host: "srv99" as HostIdentity, role: OriginReplica }) {
+    FabricOriginHostPlanRefused { placement: _, cause: _ } => true
+    FabricOriginHostPlanned { placement: _, operations: _ } => false
+  }
+  srv1 && srv3_refused && unknown_refused
 }
 
-// Each created directory's parent is either the root's fixed parent or a directory created EARLIER in
-// the plan, and the step immediately after each creation fsyncs that parent.
-test fn each_directory_follows_its_parent_and_is_followed_by_a_sync_of_the_parent() -> Bool {
-  let plan = fabric_origin_converge_plan(placement: fabric_origin_primary_placement)
-  let indexed = enumerate(plan)
-  let created = filter(indexed, p => is_created_directory(s: p.second))
-  let expected_dirs = [fabric_origin_root_path as String, join([fabric_origin_root_path as String, "/objects"], ""), join([fabric_origin_root_path as String, "/objects/sha256"], ""), join([fabric_origin_root_path as String, "/staging"], "")]
-  count(created) == 4
-    && all(expected_dirs, d => any(created, p => step_path(s: p.second) == d))
+test fn origin_directories_are_the_principal_s_at_0700_and_handoff_directories_their_writer_s_at_2750() -> Bool {
+  let rows = map(operations(placement: fabric_origin_primary_placement), op => directory_row(op: op))
+  let origin = fabric_origin_principal_name as String
+  let handoff = fabric_origin_handoff_group as String
+  count(rows) > 0
+    && any(rows, r => r == join([fabric_origin_root_path as String, origin, origin, "0700"], " "))
+    && any(rows, r => r == join([fabric_origin_root_path as String, "/objects/sha256 ", origin, " ", origin, " 0700"], ""))
+    && any(rows, r => r == join([fabric_origin_root_path as String, "/staging ", origin, " ", origin, " 0700"], ""))
+    && any(rows, r => r == join([fabric_origin_handoff_incoming_path() as String, "gunbc-fleet", handoff, "2750"], " "))
+    && any(rows, r => r == join([fabric_origin_handoff_outgoing_path() as String, origin, handoff, "2750"], " "))
+}
+
+test fn both_principals_are_enrolled_in_the_explicit_handoff_group_before_any_handoff_directory() -> Bool {
+  let indexed = enumerate(operations(placement: fabric_origin_primary_placement))
+  let handoff = fabric_origin_handoff_group as String
+  let group = filter(indexed, p => membership_row(op: p.second) == join(["group", handoff], " "))
+  let origin = filter(indexed, p => membership_row(op: p.second) == join([fabric_origin_principal_name as String, handoff], " "))
+  let fleet = filter(indexed, p => membership_row(op: p.second) == join(["gunbc-fleet", handoff], " "))
+  let incoming = filter(indexed, p => created_path(op: p.second) == (fabric_origin_handoff_incoming_path() as String))
+  count(group) == 1 && count(origin) == 1 && count(fleet) == 1 && count(incoming) == 1
+    && all(group, g => all(origin, o => g.first < o.first) && all(fleet, f => g.first < f.first))
+    && all(incoming, i => all(origin, o => o.first < i.first) && all(fleet, f => f.first < i.first))
+}
+
+// Each created directory's parent is either a fixed pre-existing directory or a directory created EARLIER
+// in the plan, and the step immediately after each creation is the privileged fsync of that parent.
+test fn each_directory_follows_its_parent_and_is_followed_by_a_privileged_sync_of_the_parent() -> Bool {
+  let indexed = enumerate(operations(placement: fabric_origin_primary_placement))
+  let created = filter(indexed, p => created_path(op: p.second) != "")
+  count(created) == 7
     && all(created, p => {
-      let parent = parent_of(path: step_path(s: p.second))
-      let parent_ready = parent == "/var/lib" || any(created, q => q.first < p.first && step_path(s: q.second) == parent)
-      let synced_next = any(indexed, q => q.first == p.first + 1 && match q.second {
-        FabricOriginSyncDirectory { path } => (path as String) == parent
-        FabricOriginPrivileged { operation: _ } => false
-      })
+      let parent = parent_of(path: created_path(op: p.second))
+      let parent_ready = parent == "/var/lib" || any(created, q => q.first < p.first && created_path(op: q.second) == parent)
+      let synced_next = any(indexed, q => q.first == p.first + 1 && synced_path(op: q.second) == parent)
       parent_ready && synced_next
     })
+}
+
+test fn a_directory_sync_is_one_pinned_path_under_the_privileged_executor() -> Bool {
+  let op = SyncDirectory { path: fabric_origin_root_path }
+  join(map(executor_privileged_operation_argv(op: op), w => w as String), " ") == join(["/usr/bin/sync --", fabric_origin_root_path as String], " ")
+    && (executor_privileged_operation_sudoers_line(grantee: "ghrunner", op: op) as String) == join(["ghrunner ALL=(root) NOPASSWD: /usr/bin/sync --", fabric_origin_root_path as String], " ")
 }

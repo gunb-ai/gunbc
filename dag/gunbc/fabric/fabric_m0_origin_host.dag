@@ -3,9 +3,13 @@ module gunbc.fabric_m0_origin_host
 import std.types { Bool, FilePath, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_posix_accounts { FleetAccountFabricOrigin, fleet_posix_nologin_shell_path }
+import gunbc.fleet_posix_accounts {
+  FleetAccountFabricOrigin, fleet_posix_nologin_shell_path,
+  FleetAutomationAllocationStanding, AutomationAllocationApplied, AutomationAllocationPending, fleet_automation_allocations,
+}
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSystemAccount,
+  ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSystemAccount, EnsureSystemGroup,
+  EnsureSupplementaryGroupMembership, SyncDirectory,
 }
 import gunbc.fabric_m0_origin_filesystem { FilesystemOriginRoot }
 import gunbc.fabric_m0_origin_pair { OriginPairRole, OriginPrimary, OriginReplica, FabricOriginPlacement }
@@ -28,7 +32,24 @@ import gunbc.fabric_m0_origin_pair { OriginPairRole, OriginPrimary, OriginReplic
 // DIRECTORIES ARE CREATED OUTERMOST FIRST, AND EACH CREATION IS FOLLOWED BY AN FSYNC OF ITS PARENT. A
 // directory whose name was never synced in its parent can vanish in a crash with everything beneath it,
 // so creating objects/sha256/ without syncing objects/ would make every later object install durable
-// inside a directory that is not. The plan is data; nothing here runs it.
+// inside a directory that is not. Every step, the syncs included, is a privileged operation: once the
+// root is 0700 no login principal can open it, so the only actor that can fsync a directory beneath it
+// is the privileged executor, and SyncDirectory pins the one path it may sync. The plan is data;
+// nothing here runs it.
+//
+// THE HANDOFF IS WHERE THE TWO PRINCIPALS MEET, AND IT IS SHARED THROUGH ONE EXPLICIT GROUP. The login
+// principal writes incoming/ and reads outgoing/; the origin principal reads incoming/ and writes
+// outgoing/. Each directory is owned by its one writer, and both carry the group
+// gunbc-fabric-handoff, which both principals are explicitly enrolled in, with mode 2750: the setgid
+// bit makes every new entry inherit that group rather than its creator's primary group, and group
+// permissions are read and search only, so each direction stays writable by exactly one side. A file
+// is not readable by the peer because of a umask - a umask can remove bits, never add them - so every
+// completed handoff file is set to 0640 by its writer and its mode and group are observed before the
+// peer consumes it (gunbc.fabric_m0_origin_helper, gunbc.fabric_m0_origin_remote).
+//
+// THE LOGIN PRINCIPAL IS THE HOST'S GROUNDED AUTOMATION ALLOCATION, NEVER A DEFAULT NAME. It is read
+// from gunbc.fleet_posix_accounts fleet_automation_allocations for the placement's host; a host whose
+// allocation is pending or absent has no plan and no transport.
 //
 // M0 PLACEMENT: srv1 is the primary and sole admitted writer; srv2 is the synchronous replica. There is
 // no promotion or failover in this module, and the pair durability judgement
@@ -58,40 +79,77 @@ fn fabric_origin_staging_path() -> NonEmptyStr {
   join([fabric_origin_root_path as String, "/staging"], "") as NonEmptyStr
 }
 
-// ONE STEP OF HOST CONVERGENCE. A privileged operation reuses gunbc.executor_privileged_operation's
-// closed vocabulary and its argv, precondition and sudoers projections; a directory fsync is its own
-// step because it needs no privilege - fsync on a directory needs only that it can be opened for reading
-// - and so it is not a sudo grant.
-type FabricOriginConvergeStep
-  = FabricOriginPrivileged { operation: ExecutorPrivilegedOperation }
-  | FabricOriginSyncDirectory { path: NonEmptyStr }
+data fabric_origin_handoff_group: NonEmptyStr = "gunbc-fabric-handoff"
+data fabric_origin_handoff_root: NonEmptyStr = "/var/lib/gunbc-fabric-handoff"
+data fabric_origin_handoff_directory_mode: NonEmptyStr = "2750"
+data fabric_origin_handoff_file_mode: NonEmptyStr = "0640"
 
-fn owned_directory(path: NonEmptyStr) -> FabricOriginConvergeStep {
-  FabricOriginPrivileged {
-    operation: EnsureOwnedDirectory {
-      path: path,
-      owner: fabric_origin_principal_name,
-      group: fabric_origin_principal_name,
-      mode: fabric_origin_directory_mode,
-    },
+fn fabric_origin_handoff_incoming_path() -> NonEmptyStr {
+  join([fabric_origin_handoff_root as String, "/incoming"], "") as NonEmptyStr
+}
+
+fn fabric_origin_handoff_outgoing_path() -> NonEmptyStr {
+  join([fabric_origin_handoff_root as String, "/outgoing"], "") as NonEmptyStr
+}
+
+type FabricOriginAutomationLogin
+  = FabricOriginAutomationGrounded { placement: FabricOriginPlacement, login: NonEmptyStr }
+  | FabricOriginAutomationUnallocated { placement: FabricOriginPlacement, cause: NonEmptyStr }
+
+fn fabric_origin_automation_login(placement: FabricOriginPlacement) -> FabricOriginAutomationLogin {
+  fold(fleet_automation_allocations(), init: FabricOriginAutomationUnallocated {
+    placement: placement,
+    cause: join(["no FleetAccountAutomation allocation is recorded for ", placement.host as String], "") as NonEmptyStr,
+  }, f: (acc, a) => match a {
+    AutomationAllocationApplied { host, user, source: _ } =>
+      if (host as String) == (placement.host as String) { FabricOriginAutomationGrounded { placement: placement, login: user.name as NonEmptyStr } } else { acc }
+    AutomationAllocationPending { host, cause } =>
+      if (host as String) == (placement.host as String) { FabricOriginAutomationUnallocated { placement: placement, cause: join(["the FleetAccountAutomation allocation for ", host as String, " is pending: ", cause as String], "") as NonEmptyStr } } else { acc }
+  })
+}
+
+type FabricOriginHostPlan
+  = FabricOriginHostPlanned { placement: FabricOriginPlacement, operations: List<ExecutorPrivilegedOperation> }
+  | FabricOriginHostPlanRefused { placement: FabricOriginPlacement, cause: NonEmptyStr }
+
+fn owned_directory(path: NonEmptyStr) -> ExecutorPrivilegedOperation {
+  EnsureOwnedDirectory {
+    path: path,
+    owner: fabric_origin_principal_name,
+    group: fabric_origin_principal_name,
+    mode: fabric_origin_directory_mode,
   }
 }
 
-fn fabric_origin_converge_plan(placement: FabricOriginPlacement) -> List<FabricOriginConvergeStep> {
-  [
-    FabricOriginPrivileged { operation: EnsureSystemAccount { login: fabric_origin_principal_name, shell: fleet_posix_nologin_shell_path } },
-    owned_directory(path: fabric_origin_root_path),
-    FabricOriginSyncDirectory { path: fabric_origin_root_parent_path },
-    owned_directory(path: fabric_origin_objects_path()),
-    FabricOriginSyncDirectory { path: fabric_origin_root_path },
-    owned_directory(path: fabric_origin_content_path()),
-    FabricOriginSyncDirectory { path: fabric_origin_objects_path() },
-    owned_directory(path: fabric_origin_staging_path()),
-    FabricOriginSyncDirectory { path: fabric_origin_root_path },
-  ]
+fn fabric_origin_handoff_directory(path: NonEmptyStr, writer: NonEmptyStr) -> ExecutorPrivilegedOperation {
+  EnsureOwnedDirectory { path: path, owner: writer, group: fabric_origin_handoff_group, mode: fabric_origin_handoff_directory_mode }
 }
 
-// The argv a sync step runs, the same command extdeps.shell shell.Sync.Path models.
-fn fabric_origin_sync_argv(path: NonEmptyStr) -> List<NonEmptyStr> {
-  ["sync" as NonEmptyStr, "--" as NonEmptyStr, path]
+fn fabric_origin_converge_plan(placement: FabricOriginPlacement) -> FabricOriginHostPlan {
+  match fabric_origin_automation_login(placement: placement) {
+    FabricOriginAutomationUnallocated { placement: p, cause } => FabricOriginHostPlanRefused { placement: p, cause: cause }
+    FabricOriginAutomationGrounded { placement: p, login } => FabricOriginHostPlanned {
+      placement: p,
+      operations: [
+        EnsureSystemAccount { login: fabric_origin_principal_name, shell: fleet_posix_nologin_shell_path },
+        EnsureSystemGroup { group: fabric_origin_handoff_group },
+        EnsureSupplementaryGroupMembership { login: fabric_origin_principal_name, group: fabric_origin_handoff_group },
+        EnsureSupplementaryGroupMembership { login: login, group: fabric_origin_handoff_group },
+        owned_directory(path: fabric_origin_root_path),
+        SyncDirectory { path: fabric_origin_root_parent_path },
+        owned_directory(path: fabric_origin_objects_path()),
+        SyncDirectory { path: fabric_origin_root_path },
+        owned_directory(path: fabric_origin_content_path()),
+        SyncDirectory { path: fabric_origin_objects_path() },
+        owned_directory(path: fabric_origin_staging_path()),
+        SyncDirectory { path: fabric_origin_root_path },
+        EnsureOwnedDirectory { path: fabric_origin_handoff_root, owner: "root", group: "root", mode: "0755" },
+        SyncDirectory { path: fabric_origin_root_parent_path },
+        fabric_origin_handoff_directory(path: fabric_origin_handoff_incoming_path(), writer: login),
+        SyncDirectory { path: fabric_origin_handoff_root },
+        fabric_origin_handoff_directory(path: fabric_origin_handoff_outgoing_path(), writer: fabric_origin_principal_name),
+        SyncDirectory { path: fabric_origin_handoff_root },
+      ],
+    }
+  }
 }

@@ -2,26 +2,39 @@ module test.claim.fabric_m0_origin_remote_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
+import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, FleetSshAttemptIdentity, SshTarget, fleet_ssh_attempt_identity }
+import gunbc.fleet_scp {
+  FleetScpCopyTo, FleetScpCopyFrom, FleetScpCopyNotAttempted, FleetScpCopyRanAndReportedSuccess, FleetScpCopyRanAndFailed,
+  fleet_scp_local_path, fleet_scp_remote_path,
+}
+import gunbc.fabric_m0_origin_readback { OriginReadingTaken, OriginReadingUnavailable, read_origin_staged_file, origin_reading_digest, origin_reading_path }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
-import gunbc.fabric_m0_origin_host { fabric_origin_primary_placement }
+import gunbc.fabric_m0_origin_pair { OriginReplica, FabricOriginPlacement }
+import gunbc.fabric_m0_origin_host { fabric_origin_primary_placement, fabric_origin_replica_placement }
 import gunbc.fabric_m0_origin_helper {
   HandoffName, HelperPutFromHandoff, FabricOriginHelperExit, HelperExitDone, HelperExitObjectAbsent, HelperExitRefused, HelperExitIndeterminate,
 }
 import gunbc.fabric_m0_origin_remote {
-  HostOriginPutOutcome, HostPutNotAttempted, HostPutCopyFailed, HostPutHelperUnreached, HostPutHelperExited,
+  FabricOriginHostTarget, FabricOriginTargetGrounded, FabricOriginTargetRefused, fabric_origin_host_target,
+  HostOriginPutOutcome, HostPutNotAttempted, HostPutCopyFailed, HostPutHandoffNotShared, HostPutHelperUnreached, HostPutHelperExited,
   HelperLeg, HelperLegUnreached, HelperLegExited,
   fabric_origin_helper_sudo_argv, fabric_origin_remote_put, staged_readback_without_copy, host_origin_put_completed,
+  copy_back_receipt_binds,
+  PrimaryPutDecision, PrimaryAlreadyHoldsObject, PrimaryPutFromSource, PrimaryStop, primary_put_decision,
+  ReplicaSourceDecision, ReplicaFromPrimaryCopy, ReplicaWithheld, replica_source_decision,
 }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 
 // CONTROLS FOR THE CONTROLLER'S HOST LEGS, hermetic and pure only. What a hermetic run can NOT show is the
-// readback's copy-back path: the crypto mock prints one digest for any path, present or not, so a
-// copied-back export that never arrived would read as confirmed under it. That arm's evidence is a run
-// against an installed helper, which is not authorized; nothing here stands in for it.
+// copy-back path end to end: the crypto mock prints one digest for any path, present or not, and the
+// fresh-directory creation has no hermetic arm, so that route's evidence is a run against an installed
+// helper, which is not authorized. These establish the decisions around it: where the target comes from,
+// which copy-back receipts bind, and which bytes the replica is written from.
 
 data zeros: String = "0000000000000000000000000000000000000000000000000000000000000000"
+data fixture_object: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
 
 fn context() -> FleetSshExecutionContext? {
   fleet_ssh_execution_context_hermetic_witness_fixture()
@@ -33,7 +46,7 @@ fn exec_result(code: Int) -> SshSessionExecResult {
 
 fn readback_arm(r: OriginReadback?) -> String {
   match r {
-    Absent => "needs_copy_back"
+    Absent => "proceeds"
     Present { value: v } => match v {
       ReadbackConfirmed { reading: _ } => "confirmed"
       ReadbackAbsent => "absent"
@@ -42,21 +55,151 @@ fn readback_arm(r: OriginReadback?) -> String {
   }
 }
 
+fn confirmed_fixture() -> OriginReadback {
+  match read_origin_staged_file(staged_path: fixture_object) {
+    OriginReadingTaken { reading } => ReadbackConfirmed { reading: reading }
+    OriginReadingUnavailable { staged_path: _, cause } => ReadbackUnknown { cause: cause }
+  }
+}
+
+fn fixture_digest() -> Sha256Digest? {
+  match read_origin_staged_file(staged_path: fixture_object) {
+    OriginReadingTaken { reading } => Present { value: origin_reading_digest(reading: reading) }
+    OriginReadingUnavailable { staged_path: _, cause: _ } => Absent
+  }
+}
+
+test fn the_ssh_principal_is_the_grounded_automation_allocation_and_an_unallocated_host_is_refused() -> Bool {
+  let srv1 = match fabric_origin_host_target(placement: fabric_origin_primary_placement) {
+    FabricOriginTargetGrounded { placement: _, target } => (target.principal as String) == "gunbc-fleet" && (target.endpoint as String) == "srv1"
+    FabricOriginTargetRefused { placement: _, cause: _ } => false
+  }
+  let srv3 = FabricOriginPlacement { host: "srv3" as HostIdentity, role: OriginReplica }
+  let refused = match fabric_origin_host_target(placement: srv3) {
+    FabricOriginTargetRefused { placement: _, cause: _ } => true
+    FabricOriginTargetGrounded { placement: _, target: _ } => false
+  }
+  let put_refused = match context() {
+    Absent => false
+    Present { value: c } => match fixture_digest() {
+      Absent => false
+      Present { value: d } => match fabric_origin_remote_put(context: c, placement: srv3, local_object: fixture_object, expected: d) {
+        HostPutNotAttempted { placement: _, cause: _ } => true
+        HostPutCopyFailed { placement: _, exit_code: _, stderr: _ } => false
+        HostPutHandoffNotShared { placement: _, cause: _ } => false
+        HostPutHelperUnreached { placement: _, cause: _ } => false
+        HostPutHelperExited { placement: _, helper_exit: _ } => false
+      }
+    }
+  }
+  srv1 && refused && put_refused
+}
+
 test fn the_helper_is_reached_only_through_sudo_to_the_fabric_origin_account() -> Bool {
   match sha256_hex_digest(hex: zeros) {
     Absent => false
     Present { value: d } =>
       join(fabric_origin_helper_sudo_argv(operation: HelperPutFromHandoff { handoff: HandoffName { name: "x.blob" }, expected: d }), " ")
-        == join(["sudo -n -u gunbc-fabric-origin /opt/gunbc/bin/gunbc-fabric-origin put x.blob", zeros], " ")
+        == join(["/usr/bin/sudo -n -u gunbc-fabric-origin /opt/gunbc/bin/gunbc-fabric-origin put x.blob", zeros], " ")
   }
 }
 
 test fn only_a_stage_the_helper_reported_done_goes_on_to_a_copy_back() -> Bool {
-  readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitDone, result: exec_result(code: 0) })) == "needs_copy_back"
+  readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitDone, result: exec_result(code: 0) })) == "proceeds"
     && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitObjectAbsent, result: exec_result(code: 10) })) == "absent"
     && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitRefused, result: exec_result(code: 11) })) == "unknown"
     && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitIndeterminate, result: exec_result(code: 255) })) == "unknown"
     && readback_arm(r: staged_readback_without_copy(leg: HelperLegUnreached { cause: "not portable" })) == "unknown"
+}
+
+test fn a_copy_back_receipt_binds_only_when_it_names_this_target_and_this_attempt() -> Bool {
+  let srv1 = SshTarget { endpoint: "srv1" as NonEmptyStr, principal: "gunbc-fleet" as NonEmptyStr }
+  let srv2 = SshTarget { endpoint: "srv2" as NonEmptyStr, principal: "gunbc-fleet" as NonEmptyStr }
+  match fleet_ssh_attempt_identity(raw: "attempt-a") {
+    Absent => false
+    Present { value: a } => match fleet_ssh_attempt_identity(raw: "attempt-b") {
+      Absent => false
+      Present { value: other } => match fleet_scp_local_path(raw: "/tmp/copy-back/attempt-a/replica-srv2/x.export") {
+        Absent => false
+        Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/gunbc-fabric-handoff/outgoing/x.export") {
+          Absent => false
+          Present { value: r } =>
+            readback_arm(r: copy_back_receipt_binds(outcome: FleetScpCopyRanAndReportedSuccess { direction: FleetScpCopyFrom, target: srv1, attempt: a, local: l, remote: r }, target: srv1, attempt: a)) == "proceeds"
+              && readback_arm(r: copy_back_receipt_binds(outcome: FleetScpCopyRanAndReportedSuccess { direction: FleetScpCopyFrom, target: srv2, attempt: a, local: l, remote: r }, target: srv1, attempt: a)) == "unknown"
+              && readback_arm(r: copy_back_receipt_binds(outcome: FleetScpCopyRanAndReportedSuccess { direction: FleetScpCopyFrom, target: srv1, attempt: other, local: l, remote: r }, target: srv1, attempt: a)) == "unknown"
+              && readback_arm(r: copy_back_receipt_binds(outcome: FleetScpCopyRanAndFailed { direction: FleetScpCopyFrom, exit_code: 1, stderr: "no such file" }, target: srv1, attempt: a)) == "unknown"
+              && readback_arm(r: copy_back_receipt_binds(outcome: FleetScpCopyNotAttempted { cause: "not attempted" }, target: srv1, attempt: a)) == "unknown"
+        }
+      }
+    }
+  }
+}
+
+// THE RETRY CASE: the producer's file is gone, the primary already holds the object, the replica does not.
+// The primary is not put again, and the replica is written from the primary's fresh controller copy.
+test fn with_the_source_gone_a_confirmed_primary_is_the_replica_s_source() -> Bool {
+  match fixture_digest() {
+    Absent => false
+    Present { value: d } => {
+      let primary = confirmed_fixture()
+      let no_put = match primary_put_decision(initial: primary, expected: d, source: Absent) {
+        PrimaryAlreadyHoldsObject => true
+        PrimaryPutFromSource { source: _ } => false
+        PrimaryStop { cause: _ } => false
+      }
+      let from_primary = match replica_source_decision(primary: primary, expected: d) {
+        ReplicaFromPrimaryCopy { copy } => (copy as String) == (fixture_object as String)
+        ReplicaWithheld { cause: _ } => false
+      }
+      no_put && from_primary
+    }
+  }
+}
+
+test fn an_absent_primary_is_put_from_the_source_only_when_one_remains_and_an_unobservable_one_stops() -> Bool {
+  match fixture_digest() {
+    Absent => false
+    Present { value: d } => {
+      let with_source = match primary_put_decision(initial: ReadbackAbsent, expected: d, source: Present { value: "/tmp/producer/object" }) {
+        PrimaryPutFromSource { source } => (source as String) == "/tmp/producer/object"
+        PrimaryAlreadyHoldsObject => false
+        PrimaryStop { cause: _ } => false
+      }
+      let without_source = match primary_put_decision(initial: ReadbackAbsent, expected: d, source: Absent) {
+        PrimaryStop { cause: _ } => true
+        PrimaryAlreadyHoldsObject => false
+        PrimaryPutFromSource { source: _ } => false
+      }
+      let unobservable = match primary_put_decision(initial: ReadbackUnknown { cause: "srv1 unreachable" }, expected: d, source: Present { value: "/tmp/producer/object" }) {
+        PrimaryStop { cause: _ } => true
+        PrimaryAlreadyHoldsObject => false
+        PrimaryPutFromSource { source: _ } => false
+      }
+      let replica_withheld = match replica_source_decision(primary: ReadbackUnknown { cause: "srv1 unreachable" }, expected: d) {
+        ReplicaWithheld { cause: _ } => true
+        ReplicaFromPrimaryCopy { copy: _ } => false
+      }
+      with_source && without_source && unobservable && replica_withheld
+    }
+  }
+}
+
+test fn a_primary_holding_other_bytes_stops_and_licenses_no_replica() -> Bool {
+  match sha256_hex_digest(hex: zeros) {
+    Absent => false
+    Present { value: other } => {
+      let stops = match primary_put_decision(initial: confirmed_fixture(), expected: other, source: Present { value: "/tmp/producer/object" }) {
+        PrimaryStop { cause: _ } => true
+        PrimaryAlreadyHoldsObject => false
+        PrimaryPutFromSource { source: _ } => false
+      }
+      let withheld = match replica_source_decision(primary: confirmed_fixture(), expected: other) {
+        ReplicaWithheld { cause: _ } => true
+        ReplicaFromPrimaryCopy { copy: _ } => false
+      }
+      stops && withheld
+    }
+  }
 }
 
 test fn a_local_object_that_is_not_the_expected_digest_is_never_sent() -> Bool {
@@ -64,9 +207,10 @@ test fn a_local_object_that_is_not_the_expected_digest_is_never_sent() -> Bool {
     Absent => false
     Present { value: c } => match sha256_hex_digest(hex: zeros) {
       Absent => false
-      Present { value: d } => match fabric_origin_remote_put(context: c, placement: fabric_origin_primary_placement, local_object: "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt", expected: d) {
+      Present { value: d } => match fabric_origin_remote_put(context: c, placement: fabric_origin_primary_placement, local_object: fixture_object, expected: d) {
         HostPutNotAttempted { placement: _, cause: _ } => true
         HostPutCopyFailed { placement: _, exit_code: _, stderr: _ } => false
+        HostPutHandoffNotShared { placement: _, cause: _ } => false
         HostPutHelperUnreached { placement: _, cause: _ } => false
         HostPutHelperExited { placement: _, helper_exit: _ } => false
       }
@@ -78,5 +222,6 @@ test fn only_a_helper_that_reported_the_object_stored_completes_a_put() -> Bool 
   host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitDone })
     && !host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitIndeterminate })
     && !host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitRefused })
+    && !host_origin_put_completed(o: HostPutHandoffNotShared { placement: fabric_origin_primary_placement, cause: "chmod failed" })
     && !host_origin_put_completed(o: HostPutCopyFailed { placement: fabric_origin_primary_placement, exit_code: 1, stderr: "" })
 }

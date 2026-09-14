@@ -325,6 +325,9 @@ service shell.Mktemp {
   }
 }
 
+// Mkdir.Fresh: WITHOUT -p, mkdir(1) fails when the path already exists (POSIX mkdir: "the directory shall
+// not already exist"), so a zero exit is the observation that this invocation created it. That is what
+// makes a directory FRESH: nothing written into it before this call can be found there afterwards.
 service shell.Mkdir {
   operation Parents {
     input { path: FilePath }
@@ -333,6 +336,16 @@ service shell.Mkdir {
     exit {
       0 => Unit
       nonzero => String "mkdir -p failed"
+    }
+  }
+
+  operation Fresh {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "--", "{path}"] }
+    exit {
+      0 => Unit "the directory did not exist and this invocation created it"
+      nonzero => String "mkdir failed: the path exists, or its parent does not"
     }
   }
 }
@@ -420,6 +433,10 @@ service shell.Remove {
 // WHY IT IS `readonly` AND WHY THAT IS TRUE. It opens nothing for write and creates nothing; unlike
 // git.Inspect.ReadTreeIntoIndex, which was declared readonly while writing the file GIT_INDEX_FILE
 // names, this one genuinely only reads inode metadata.
+//
+// Stat.ModeAndGroupOf: GNU stat -c, where %a is the access rights in octal as stat prints them (no
+// leading zero, so 0640 prints as 640) and %G the group name of the owner group, separated by a colon,
+// which neither field contains.
 service shell.Stat {
   operation OwnerOf {
     input { path: FilePath }
@@ -432,6 +449,21 @@ service shell.Stat {
     transport shell { argv: ["stat", "-c", "%U", "--", "{path}"] }
     exit {
       0 => Unit "the path exists and its owning principal is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
+  operation ModeAndGroupOf {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%a:%G", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and <octal mode>:<group> is on stdout"
       nonzero => String "stat could not read the path"
     }
   }
@@ -459,6 +491,11 @@ service shell.Move {
   }
 }
 
+// Chmod.GroupReadableFile sets 0640: the owner reads and writes, the group reads, nobody else. Set
+// explicitly because a umask can remove permission bits and never add one, so a peer's group read is
+// never a creation default. stat -c %a prints that mode as this value.
+data shell_group_readable_file_mode_as_stat_prints: String = "640"
+
 service shell.Chmod {
   operation OwnerOnlyDirectory {
     input { path: FilePath }
@@ -467,6 +504,16 @@ service shell.Chmod {
     exit {
       0 => Unit
       nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation GroupReadableFile {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0640", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0640 failed"
     }
   }
 

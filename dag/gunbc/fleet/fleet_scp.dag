@@ -3,7 +3,7 @@ module gunbc.fleet_scp
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.ssh.scp { shape_scp_operands, scp_remote_operand, scp_copy_portable_words, ScpCopyResult }
 import gunbc.fleet_known_hosts_anchor {
-  FleetSshExecutionContext, SshTarget, PortableRemoteWord, portable_remote_word, fleet_ssh_key_session_client_words,
+  FleetSshExecutionContext, FleetSshAttemptIdentity, SshTarget, PortableRemoteWord, portable_remote_word, fleet_ssh_key_session_client_words,
 }
 import gunbc.fleet_bootstrap_principal_session {
   FleetSshPrincipalSession, FleetSshKeySession, FleetSshPasswordSession, fleet_ssh_session_for_principal,
@@ -22,7 +22,8 @@ import gunbc.fleet_bootstrap_principal_session {
 //
 // A COPY THAT RAN IS NOT A COPY THAT ARRIVED. The outcome distinguishes a copy never attempted, a copy
 // whose client exited zero, and a copy whose client failed - and the middle arm is named for what it is,
-// the client's report. Whether the far side holds the intended bytes is decided only by a digest taken
+// the client's report. It carries the exact target and the attempt identity of the context it ran under,
+// so a consumer can bind what it reads next to the leg that produced it. Whether the far side holds the intended bytes is decided only by a digest taken
 // there, never by this exit status.
 //
 // PATHS ARE ADMITTED, NOT QUOTED. The remote path is read by the far side (a shell under the legacy
@@ -44,7 +45,7 @@ type FleetScpRemotePath sole_constructor {
 
 type FleetScpCopyOutcome
   = FleetScpCopyNotAttempted { cause: NonEmptyStr }
-  | FleetScpCopyRanAndReportedSuccess { direction: FleetScpDirection, local: FleetScpLocalPath, remote: FleetScpRemotePath }
+  | FleetScpCopyRanAndReportedSuccess { direction: FleetScpDirection, target: SshTarget, attempt: FleetSshAttemptIdentity, local: FleetScpLocalPath, remote: FleetScpRemotePath }
   | FleetScpCopyRanAndFailed { direction: FleetScpDirection, exit_code: Int, stderr: String }
 
 fn fleet_scp_local_path(raw: String) -> FleetScpLocalPath? {
@@ -102,9 +103,9 @@ fn fleet_scp_refusal(target: SshTarget) -> NonEmptyStr? {
   }
 }
 
-fn fleet_scp_copy_outcome(direction: FleetScpDirection, local: FleetScpLocalPath, remote: FleetScpRemotePath, result: ScpCopyResult) -> FleetScpCopyOutcome {
+fn fleet_scp_copy_outcome(direction: FleetScpDirection, target: SshTarget, attempt: FleetSshAttemptIdentity, local: FleetScpLocalPath, remote: FleetScpRemotePath, result: ScpCopyResult) -> FleetScpCopyOutcome {
   if result.success && result.exit_code == 0 {
-    FleetScpCopyRanAndReportedSuccess { direction: direction, local: local, remote: remote }
+    FleetScpCopyRanAndReportedSuccess { direction: direction, target: target, attempt: attempt, local: local, remote: remote }
   } else {
     FleetScpCopyRanAndFailed { direction: direction, exit_code: result.exit_code, stderr: result.stderr }
   }
@@ -124,7 +125,7 @@ fn fleet_scp_copy(
       Present { value: l } => match fleet_scp_remote_path(raw: remote) {
         Absent => FleetScpCopyNotAttempted { cause: join(["the copy was NOT attempted: remote path '", remote, "' is not an absolute portable remote word"], "") as NonEmptyStr }
         Present { value: r } => fleet_scp_copy_outcome(
-          direction: direction, local: l, remote: r,
+          direction: direction, target: target, attempt: context.attempt, local: l, remote: r,
           result: scp_copy_portable_words(client_args: shape_fleet_scp_copy(context: context, target: target, direction: direction, local: l, remote: r)),
         )
       }

@@ -4,8 +4,10 @@ import std.types { Bool, FilePath, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import std.algebra { trim }
 import extdeps.shell
+import extdeps.shell { shell_group_readable_file_mode_as_stat_prints }
 import extdeps.filesystem.filesystem_io { FilesystemEntryNameAdmitted, FilesystemEntryNameRefused, admit_filesystem_entry_name }
-import gunbc.fleet_posix_accounts { PosixSudoGrant, SudoRunAsLogin, NopasswdGrantListCheck }
+import gunbc.fleet_posix_accounts { PosixSudoGrant, NopasswdGrantListCheck }
+import extdeps.sudo.run_as { SudoRunAsLogin }
 import gunbc.fabric_m0_origin_readback {
   OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
   OriginFetchOutcome, OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
@@ -15,9 +17,10 @@ import gunbc.fabric_m0_origin_readback {
 import gunbc.fabric_m0_origin_filesystem {
   FilesystemOriginRoot, content_addressed_origin_key, origin_staging_directory, put_filesystem_origin_object, fetch_filesystem_origin_object,
 }
-import gunbc.fabric_m0_origin_host { fabric_origin_principal_name, fabric_origin_root_path, FabricOriginConvergeStep, FabricOriginPrivileged, FabricOriginSyncDirectory }
-import gunbc.executor_privileged_operation { EnsureOwnedDirectory }
-import gunbc.fleet_ssh_locus { fleet_automation_principal_login }
+import gunbc.fabric_m0_origin_host {
+  fabric_origin_principal_name, fabric_origin_root_path, fabric_origin_handoff_group,
+  fabric_origin_handoff_incoming_path, fabric_origin_handoff_outgoing_path,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_invoke { InvocationArgument, invocation_argument_name, gunbc_run_transport_argv }
 
@@ -30,9 +33,14 @@ import gunbc.cli_invoke { InvocationArgument, invocation_argument_name, gunbc_ru
 // name - it cannot delete, overwrite, list, or read an arbitrary path - so the grant confers exactly that
 // set and no identity beyond it.
 //
-// BYTES CROSS OUTSIDE THE TREE. A transfer lands in handoff/incoming/ under the helper root, never in
-// the origin's staging/, and a fetch exports into handoff/outgoing/; both are named by an admitted entry
-// name, so no argument can name a path. The origin tree stays at 0700 and is never made group-writable.
+// BYTES CROSS OUTSIDE THE TREE. A transfer lands in handoff/incoming/, never in the origin's staging/,
+// and a fetch exports into handoff/outgoing/; both are named by an admitted entry name, so no argument
+// can name a path. The origin tree stays at 0700 and is never made group-writable.
+//
+// A HANDOFF FILE IS CONSUMED ONLY AFTER ITS SHARING IS OBSERVED. The writer sets 0640 explicitly (a
+// umask can remove a bit, never add one) and the setgid handoff directory gives it the handoff group;
+// the helper stats the incoming file and refuses unless it reads exactly that mode and group, and it
+// sets and then stats the same on every export before reporting it staged.
 //
 // THE DIGEST DECIDES, NOT THE TRANSFER. A put names the SHA-256 it expects; the helper takes its own
 // reading of a private copy of the handoff through the sole reading mint and refuses before any origin
@@ -45,32 +53,6 @@ import gunbc.cli_invoke { InvocationArgument, invocation_argument_name, gunbc_ru
 // authored, and nothing here installs or runs it on a host.
 
 data fabric_origin_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-fabric-origin"
-data fabric_origin_handoff_root: NonEmptyStr = "/var/lib/gunbc-fabric-handoff"
-
-fn fabric_origin_handoff_incoming_path() -> NonEmptyStr {
-  join([fabric_origin_handoff_root as String, "/incoming"], "") as NonEmptyStr
-}
-
-fn fabric_origin_handoff_outgoing_path() -> NonEmptyStr {
-  join([fabric_origin_handoff_root as String, "/outgoing"], "") as NonEmptyStr
-}
-
-// THE HANDOFF DIRECTORIES, AS HOST INTENT. Each direction is writable by exactly one side and readable by
-// the other through its group: incoming/ belongs to the automation login with the fabric-origin group,
-// outgoing/ to the fabric-origin account with the automation group, both 0750, beneath a root-owned
-// 0755 parent. Neither is inside the origin tree, and the origin tree's own 0700 is untouched. The plan is
-// data; nothing here runs it, and a file created by either side is readable through the group only
-// under a umask that leaves group read, which the helper's installation must fix.
-fn fabric_origin_handoff_converge_plan() -> List<FabricOriginConvergeStep> {
-  [
-    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_root, owner: "root", group: "root", mode: "0755" } },
-    FabricOriginSyncDirectory { path: "/var/lib" },
-    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_incoming_path(), owner: fleet_automation_principal_login, group: fabric_origin_principal_name, mode: "0750" } },
-    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_outgoing_path(), owner: fabric_origin_principal_name, group: fleet_automation_principal_login, mode: "0750" } },
-    FabricOriginSyncDirectory { path: fabric_origin_handoff_root },
-  ]
-}
-
 // THE GRANT a login principal needs, and nothing wider: this helper path, as the fabric-origin account.
 fn fabric_origin_helper_sudo_grant() -> PosixSudoGrant {
   PosixSudoGrant {
@@ -163,11 +145,33 @@ fn fabric_origin_helper_argv(operation: FabricOriginHelperOperation) -> List<Str
 
 type HelperIngressRefusal
   = HelperIngressUnreadable { cause: NonEmptyStr }
+  | HelperIngressNotShared { observed: String }
   | HelperIngressDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
 
 type HelperPutOutcome
   = HelperIngressRefused { refusal: HelperIngressRefusal }
   | HelperPutPerformed { outcome: OriginPutOutcome }
+
+// WHAT A HANDOFF FILE'S MODE AND GROUP READ AS, against the one sharing the handoff admits.
+type HandoffSharing
+  = HandoffShared
+  | HandoffNotShared { observed: String }
+  | HandoffSharingUnobserved { cause: NonEmptyStr }
+
+fn handoff_sharing_of(stat_success: Bool, stdout: String, group: NonEmptyStr) -> HandoffSharing {
+  if !stat_success {
+    HandoffSharingUnobserved { cause: "stat could not read the handoff file" }
+  } else if trim(stdout) == join([shell_group_readable_file_mode_as_stat_prints, ":", group as String], "") {
+    HandoffShared
+  } else {
+    HandoffNotShared { observed: trim(stdout) }
+  }
+}
+
+fn observe_handoff_sharing(path: String, group: NonEmptyStr) -> HandoffSharing {
+  let observed = shell.Stat.ModeAndGroupOf(path: path as FilePath)
+  handoff_sharing_of(stat_success: observed.success, stdout: observed.stdout, group: group)
+}
 
 // PURE: whether the ingress reading licenses the origin put at all. A mismatch or an unreadable handoff
 // never reaches the origin; Absent is the one answer that lets the put run.
@@ -188,23 +192,29 @@ fn helper_ingress_refusal(reading: OriginReadingOutcome, expected: Sha256Digest)
 // copies the handoff into a private file under the origin's 0700 staging directory, hashes that, and
 // puts from that - so the bytes judged are the bytes installed. The private copy is removed afterwards,
 // the same way the filesystem put removes its own staged file.
-fn helper_put_from_handoff(root: FilesystemOriginRoot, incoming: NonEmptyStr, handoff: HandoffName, expected: Sha256Digest) -> HelperPutOutcome {
+fn helper_put_from_handoff(root: FilesystemOriginRoot, incoming: NonEmptyStr, group: NonEmptyStr, handoff: HandoffName, expected: Sha256Digest) -> HelperPutOutcome {
   let handoff_path = join([incoming as String, "/", handoff.name as String], "")
-  let private = shell.Mktemp.FileInDirectory(dir: origin_staging_directory(root: root) as FilePath)
-  if !private.success {
-    HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["no private ingress copy could be created under ", origin_staging_directory(root: root)], "") as NonEmptyStr } }
-  } else {
-    let copy_path = trim(private.path as String)
-    let outcome = if !shell.Copy.File(source: handoff_path as FilePath, destination: copy_path as FilePath).success {
-      HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["the handoff at ", handoff_path, " could not be copied into staging"], "") as NonEmptyStr } }
-    } else {
-      match helper_ingress_refusal(reading: read_origin_staged_file(staged_path: copy_path as NonEmptyStr), expected: expected) {
-        Present { value: refusal } => HelperIngressRefused { refusal: refusal }
-        Absent => HelperPutPerformed { outcome: put_filesystem_origin_object(root: root, local_path: copy_path as FilePath, key: content_addressed_origin_key(digest: expected)) }
+  match observe_handoff_sharing(path: handoff_path, group: group) {
+    HandoffSharingUnobserved { cause } => HelperIngressRefused { refusal: HelperIngressUnreadable { cause: cause } }
+    HandoffNotShared { observed } => HelperIngressRefused { refusal: HelperIngressNotShared { observed: observed } }
+    HandoffShared => {
+      let private = shell.Mktemp.FileInDirectory(dir: origin_staging_directory(root: root) as FilePath)
+      if !private.success {
+        HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["no private ingress copy could be created under ", origin_staging_directory(root: root)], "") as NonEmptyStr } }
+      } else {
+        let copy_path = trim(private.path as String)
+        let outcome = if !shell.Copy.File(source: handoff_path as FilePath, destination: copy_path as FilePath).success {
+          HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["the handoff at ", handoff_path, " could not be copied into staging"], "") as NonEmptyStr } }
+        } else {
+          match helper_ingress_refusal(reading: read_origin_staged_file(staged_path: copy_path as NonEmptyStr), expected: expected) {
+            Present { value: refusal } => HelperIngressRefused { refusal: refusal }
+            Absent => HelperPutPerformed { outcome: put_filesystem_origin_object(root: root, local_path: copy_path as FilePath, key: content_addressed_origin_key(digest: expected)) }
+          }
+        }
+        let removed = shell.Remove.FileForce(path: copy_path)
+        outcome
       }
     }
-    let removed = shell.Remove.FileForce(path: copy_path)
-    outcome
   }
 }
 
@@ -214,9 +224,10 @@ type HelperStageOutcome
   | HelperExportFailed { fetch: OriginFetchOutcome, cause: NonEmptyStr }
 
 // A stage fetches through the filesystem origin - which stabilizes the object and reads its own copy -
-// and then places that copy in the outgoing handoff for a login principal to transfer. The export is
-// fsynced so a transfer never reads a name whose bytes were not yet written.
-fn helper_stage_for_fetch(root: FilesystemOriginRoot, outgoing: NonEmptyStr, expected: Sha256Digest, export: HandoffName) -> HelperStageOutcome {
+// and then places that copy in the outgoing handoff for a login principal to transfer. The export is set
+// to 0640, fsynced, and its mode and group observed, so a transfer never reads a name whose bytes were
+// not yet written or that its reader cannot open.
+fn helper_stage_for_fetch(root: FilesystemOriginRoot, outgoing: NonEmptyStr, group: NonEmptyStr, expected: Sha256Digest, export: HandoffName) -> HelperStageOutcome {
   let fetch = fetch_filesystem_origin_object(root: root, key: content_addressed_origin_key(digest: expected))
   match fetch {
     OriginObjectAbsent { key: _ } => HelperNothingToExport { fetch: fetch }
@@ -225,10 +236,16 @@ fn helper_stage_for_fetch(root: FilesystemOriginRoot, outgoing: NonEmptyStr, exp
       let export_path = join([outgoing as String, "/", export.name as String], "")
       if !shell.Copy.File(source: origin_reading_path(reading: reading) as FilePath, destination: export_path as FilePath).success {
         HelperExportFailed { fetch: fetch, cause: join(["the staged object could not be copied to ", export_path], "") as NonEmptyStr }
+      } else if !shell.Chmod.GroupReadableFile(path: export_path as FilePath).success {
+        HelperExportFailed { fetch: fetch, cause: join(["the export at ", export_path, " could not be set to 0640"], "") as NonEmptyStr }
       } else if !shell.Sync.Path(path: export_path as FilePath).success {
         HelperExportFailed { fetch: fetch, cause: join(["the export at ", export_path, " could not be fsynced"], "") as NonEmptyStr }
       } else {
-        HelperStagedForExport { export_path: export_path as NonEmptyStr, fetch: fetch }
+        match observe_handoff_sharing(path: export_path, group: group) {
+          HandoffShared => HelperStagedForExport { export_path: export_path as NonEmptyStr, fetch: fetch }
+          HandoffNotShared { observed } => HelperExportFailed { fetch: fetch, cause: join(["the export at ", export_path, " reads ", observed, ", not the handoff's 0640 and group"], "") as NonEmptyStr }
+          HandoffSharingUnobserved { cause } => HelperExportFailed { fetch: fetch, cause: cause }
+        }
       }
     }
   }
@@ -251,9 +268,9 @@ fn run_fabric_origin_helper(words: List<String>) -> FabricOriginHelperRun {
     HelperOperationRefused { cause } => HelperRunRefused { cause: cause }
     HelperOperationAdmitted { operation } => match operation {
       HelperPutFromHandoff { handoff, expected } =>
-        HelperRanPut { outcome: helper_put_from_handoff(root: root, incoming: fabric_origin_handoff_incoming_path(), handoff: handoff, expected: expected) }
+        HelperRanPut { outcome: helper_put_from_handoff(root: root, incoming: fabric_origin_handoff_incoming_path(), group: fabric_origin_handoff_group, handoff: handoff, expected: expected) }
       HelperStageForFetch { expected, export } =>
-        HelperRanStage { outcome: helper_stage_for_fetch(root: root, outgoing: fabric_origin_handoff_outgoing_path(), expected: expected, export: export) }
+        HelperRanStage { outcome: helper_stage_for_fetch(root: root, outgoing: fabric_origin_handoff_outgoing_path(), group: fabric_origin_handoff_group, expected: expected, export: export) }
     }
   }
 }
@@ -296,6 +313,7 @@ fn fabric_origin_helper_exit(run: FabricOriginHelperRun) -> FabricOriginHelperEx
     HelperRanPut { outcome } => match outcome {
       HelperIngressRefused { refusal } => match refusal {
         HelperIngressDigestMismatch { expected: _, observed: _ } => HelperExitRefused
+        HelperIngressNotShared { observed: _ } => HelperExitRefused
         HelperIngressUnreadable { cause: _ } => HelperExitIndeterminate
       }
       HelperPutPerformed { outcome: put } => match put {
@@ -324,6 +342,7 @@ fn fabric_origin_helper_run_reason(run: FabricOriginHelperRun) -> String {
       HelperIngressRefused { refusal } => match refusal {
         HelperIngressDigestMismatch { expected, observed } => join(["the handoff is ", observed.hex as String, ", not the named ", expected.hex as String, "; the origin was not touched"], "")
         HelperIngressUnreadable { cause } => join(["the handoff could not be read: ", cause as String], "")
+        HelperIngressNotShared { observed } => join(["the handoff reads ", observed, ", not the handoff's 0640 and group; the origin was not touched"], "")
       }
       HelperPutPerformed { outcome: put } => match put {
         OriginObjectStored { key } => join(["stored ", key as String], "")

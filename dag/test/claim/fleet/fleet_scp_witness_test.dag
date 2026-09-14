@@ -3,7 +3,7 @@ module test.claim.fleet_scp_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.ssh.scp { ScpCopyResult }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, portable_remote_words, shape_fleet_ssh_exec }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, portable_remote_words, shape_fleet_ssh_exec, fleet_ssh_attempt_identity }
 import gunbc.fleet_scp {
   FleetScpDirection, FleetScpCopyTo, FleetScpCopyFrom,
   FleetScpCopyOutcome, FleetScpCopyNotAttempted, FleetScpCopyRanAndReportedSuccess, FleetScpCopyRanAndFailed,
@@ -27,7 +27,7 @@ fn automation() -> SshTarget {
 fn arm(o: FleetScpCopyOutcome) -> String {
   match o {
     FleetScpCopyNotAttempted { cause: _ } => "not_attempted"
-    FleetScpCopyRanAndReportedSuccess { direction: _, local: _, remote: _ } => "reported_success"
+    FleetScpCopyRanAndReportedSuccess { direction: _, target: _, attempt: _, local: _, remote: _ } => "reported_success"
     FleetScpCopyRanAndFailed { direction: _, exit_code: _, stderr: _ } => "failed"
   }
 }
@@ -97,13 +97,21 @@ test fn an_admitted_copy_reaches_the_transport_under_the_hermetic_mock() -> Bool
 }
 
 test fn a_nonzero_client_exit_is_a_failed_copy_not_a_report_of_success() -> Bool {
-  match fleet_scp_local_path(raw: "/tmp/object") {
+  match fleet_ssh_attempt_identity(raw: "scp-witness") {
     Absent => false
-    Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/x") {
+    Present { value: a } => match fleet_scp_local_path(raw: "/tmp/object") {
       Absent => false
-      Present { value: r } =>
-        arm(o: fleet_scp_copy_outcome(direction: FleetScpCopyTo, local: l, remote: r, result: ScpCopyResult { exit_code: 1, success: false, stderr: "scp: /var/lib/x: Permission denied" })) == "failed"
-          && arm(o: fleet_scp_copy_outcome(direction: FleetScpCopyTo, local: l, remote: r, result: ScpCopyResult { exit_code: 0, success: true, stderr: "" })) == "reported_success"
+      Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/x") {
+        Absent => false
+        Present { value: r } =>
+          arm(o: fleet_scp_copy_outcome(direction: FleetScpCopyTo, target: automation(), attempt: a, local: l, remote: r, result: ScpCopyResult { exit_code: 1, success: false, stderr: "scp: /var/lib/x: Permission denied" })) == "failed"
+            && match fleet_scp_copy_outcome(direction: FleetScpCopyTo, target: automation(), attempt: a, local: l, remote: r, result: ScpCopyResult { exit_code: 0, success: true, stderr: "" }) {
+              FleetScpCopyRanAndReportedSuccess { direction: _, target, attempt, local: _, remote: _ } =>
+                (target.endpoint as String) == "srv1" && (target.principal as String) == "gunbc-automation" && (attempt as String) == "scp-witness"
+              FleetScpCopyNotAttempted { cause: _ } => false
+              FleetScpCopyRanAndFailed { direction: _, exit_code: _, stderr: _ } => false
+            }
+      }
     }
   }
 }
