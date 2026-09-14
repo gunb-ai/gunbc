@@ -2,34 +2,20 @@ module gunbc.frontend_eval.attempt
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { Millisecond, TokenCount, token_count, token_count_value, measure_add }
-import extdeps.vllm.sampling_params { SamplingTemperature }
-import gunbc.frontend_eval.task { EvalTask, FrontendMutationClass, mutation_class_scored_separately, frontend_eval_tasks }
+import gunbc.frontend_eval.task { EvalTask, mutation_class_scored_separately, frontend_eval_tasks }
+import gunbc.frontend_eval.attempt_arm { EvalArm, eval_arm_key, eval_arms }
+import gunbc.frontend_eval.experiment { EvalExperiment, experiment_for }
 
-// AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
-// identity a reader would need to re-run it: the model as served, the compiler program that judged
-// it, the card and tool schema it saw, and the decode configuration. A row missing any of those
-// would compare two arms that were not the same experiment.
-type EvalArm
-  = LowEffortBare
-  | MaxEffortBare
-  | LowEffortTools
-  | LowEffortToolsCard
-
-fn eval_arm_key(arm: EvalArm) -> String {
-  match arm {
-    LowEffortBare => "low_bare"
-    MaxEffortBare => "max_bare"
-    LowEffortTools => "low_tools"
-    LowEffortToolsCard => "low_tools_card"
-  }
-}
-
-data eval_arms: List<EvalArm> = [LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard]
-
+// AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM. It names the experiment
+// manifest it ran under (every identity a re-run must match lives there, once), the content hash
+// of the per-attempt carrier the driver wrote (request context as the model saw it, raw response
+// usage, tool events, applied patch, check results) from which these fields were derived, and the
+// hash of the exact model-visible context. It does NOT carry the task's class: that is the roster's
+// fact and is joined by task identity, so a row cannot disagree with the roster about it.
+//
 // CORRECTNESS IS LEXICOGRAPHIC. Only AcceptedRepair counts; the other arms say WHICH gate refused,
 // so a red is attributable rather than a bare failure. ScopeExceeded is the evaluator-modification
-// wall: any byte changed outside the subject module -- the entry, a neighbour -- refuses the attempt
-// regardless of whether the tests then pass.
+// wall: any byte changed outside the subject module refuses the attempt regardless of tests.
 type EvalOutcome
   = AcceptedRepair
   | FrontendStillRed
@@ -57,17 +43,19 @@ type EvalUsage {
   reasoning_tokens: TokenCount
 }
 
+// THE MODEL-VISIBLE CONTEXT IS HASHED OR DECLARED UNRECORDED, never invented: a driver that predates
+// the split projection cannot say what the model saw, and a row from it says so (DESIGN section 4d,
+// a typed bet consumed as a bet).
+type ModelContextIdentity
+  = ModelContextHashed { sha256: NonEmptyStr }
+  | ModelContextUnrecorded
+
 type EvalAttempt {
   task_id: NonEmptyStr
-  class: FrontendMutationClass
   arm: EvalArm
-  model_id: String
-  model_snapshot: String
-  compiler_program_sha256: String
-  card_sha256: String
-  tool_schema_sha256: String
-  temperature: SamplingTemperature
-  max_tokens: TokenCount
+  experiment: NonEmptyStr
+  record_sha256: NonEmptyStr
+  model_context: ModelContextIdentity
   usage: EvalUsage
   cycles: Int
   tool_calls: Int
@@ -76,58 +64,12 @@ type EvalAttempt {
   wall: Millisecond
 }
 
-// THE PER-ARM FOLD, JOINED AGAINST THE ROSTER BY TASK IDENTITY (DESIGN section 5: completeness is an
-// identity join, not a count equality). Denominators are the roster's tasks, never the rows
-// present, so an arm with rows for eleven of sixteen language tasks renders as 11/16 with five
-// named as not run -- a partial population must not print as a complete rate. Accepted counts are
-// split into the four language classes and the sentinel, because the ruling that admitted this
-// demo scores them apart: a sentinel success is evidence about tool routing, not the language prior.
-type ArmSummary {
-  arm: EvalArm
-  attempts: Int
-  language_tasks: Int
-  language_run: Int
-  language_accepted: Int
-  sentinel_tasks: Int
-  sentinel_run: Int
-  sentinel_accepted: Int
-  reasoning_tokens_over_accepted: TokenCount
-  completion_tokens_over_accepted: TokenCount
-  cycles_over_accepted: Int
-  tool_calls_over_accepted: Int
-}
-
-fn tokens_int(t: TokenCount) -> Int {
-  token_count_value(t: t)
-}
-
-fn rows_for(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> List<EvalAttempt> {
-  attempts |> filter(a => a.arm == arm && a.task_id == task.id)
-}
-
-fn task_ran(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> Bool {
-  count(rows_for(attempts: attempts, arm: arm, task: task)) > 0
-}
-
-fn task_accepted(attempts: List<EvalAttempt>, arm: EvalArm, task: EvalTask) -> Bool {
-  count(rows_for(attempts: attempts, arm: arm, task: task) |> filter(a => eval_outcome_accepted(outcome: a.outcome))) > 0
-}
-
-fn language_tasks() -> List<EvalTask> {
-  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class) == false)
-}
-
-fn sentinel_tasks() -> List<EvalTask> {
-  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class))
-}
-
-fn accepted_rows(attempts: List<EvalAttempt>, arm: EvalArm) -> List<EvalAttempt> {
-  attempts |> filter(a => a.arm == arm && eval_outcome_accepted(outcome: a.outcome))
-}
-
-// THE POPULATION IS ADMITTED BEFORE ANYTHING IS SUMMED: exactly one row per (task, arm) and every
-// row's task in the roster. Without this, a duplicated task doubles a numerator its denominator
-// counts once, and an unknown id adds cost with no task behind it -- a fabricated mean (review 65900).
+// THE POPULATION IS ADMITTED BEFORE ANYTHING IS SUMMED: every row's task in the roster, exactly one
+// row per (task, arm), and for each arm exactly one experiment manifest named by all of its rows
+// and present in the manifests handed in. Without the first two, a duplicated task doubles a
+// numerator its denominator counts once and an unknown id adds cost with no task behind it; without
+// the third, one table would compare rows that ran under different models, programs, cards or
+// wire settings as if they were one experiment.
 type ReportAdmission
   = ReportAdmitted { attempts: List<EvalAttempt> }
   | ReportRefused { detail: String }
@@ -140,18 +82,11 @@ fn duplicate_cell(attempts: List<EvalAttempt>, a: EvalAttempt) -> Bool {
   count(attempts |> filter(b => b.arm == a.arm && b.task_id == a.task_id)) > 1
 }
 
-fn admit_report_population(attempts: List<EvalAttempt>) -> ReportAdmission {
-  let unknown = attempts |> filter(a => task_known(a: a) == false)
-  let duplicated = attempts |> filter(a => duplicate_cell(attempts: attempts, a: a))
-  if count(unknown) > 0 {
-    ReportRefused { detail: join(["attempt names a task not in the roster: ", first_task_id(rows: unknown)], "") }
-  } else {
-    if count(duplicated) > 0 {
-      ReportRefused { detail: join(["more than one attempt for one (task, arm) cell: ", first_task_id(rows: duplicated)], "") }
-    } else {
-      ReportAdmitted { attempts: attempts }
-    }
-  }
+fn manifest_disagrees(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>, a: EvalAttempt) -> Bool {
+  let named = experiment_for(experiments: experiments, identity: a.experiment)
+  count(named) != 1
+    || count(named |> filter(e => e.arm == a.arm)) != 1
+    || count(attempts |> filter(b => b.arm == a.arm && b.experiment != a.experiment)) > 0
 }
 
 fn first_task_id(rows: List<EvalAttempt>) -> String {
@@ -161,23 +96,90 @@ fn first_task_id(rows: List<EvalAttempt>) -> String {
   }
 }
 
-// Over an ADMITTED population: accepted rows and accepted tasks are the same set, so the sums and
-// the denominator below describe one population.
+fn admit_report_population(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportAdmission {
+  let unknown = attempts |> filter(a => task_known(a: a) == false)
+  let duplicated = attempts |> filter(a => duplicate_cell(attempts: attempts, a: a))
+  let mixed = attempts |> filter(a => manifest_disagrees(experiments: experiments, attempts: attempts, a: a))
+  if count(unknown) > 0 {
+    ReportRefused { detail: join(["attempt names a task not in the roster: ", first_task_id(rows: unknown)], "") }
+  } else {
+    if count(duplicated) > 0 {
+      ReportRefused { detail: join(["more than one attempt for one (task, arm) cell: ", first_task_id(rows: duplicated)], "") }
+    } else {
+      if count(mixed) > 0 {
+        ReportRefused { detail: join(["attempt names a manifest that is absent, of another arm, or not the arm's single manifest: ", first_task_id(rows: mixed)], "") }
+      } else {
+        ReportAdmitted { attempts: attempts }
+      }
+    }
+  }
+}
+
+// THE PER-ARM FOLD, JOINED AGAINST THE ROSTER BY TASK IDENTITY (DESIGN section 5: completeness is an
+// identity join, not a count equality). Denominators are the roster's tasks, never the rows
+// present. COSTS ARE OVER EVERY ATTEMPTED ROW, not the accepted ones: an attempt that spent 40k
+// reasoning tokens and stayed red is exactly the waste this experiment exists to measure, and a
+// mean over accepted rows alone deletes it. Language tasks and sentinels are folded apart on every
+// axis, because the ruling that admitted this demo scores them apart.
+type PopulationSummary {
+  tasks: Int
+  run: Int
+  accepted: Int
+  first_attempt_green: Int
+  reasoning_tokens: TokenCount
+  reasoning_tokens_accepted: TokenCount
+  completion_tokens: TokenCount
+  cycles: Int
+  tool_calls: Int
+}
+
+type ArmSummary {
+  arm: EvalArm
+  language: PopulationSummary
+  sentinel: PopulationSummary
+}
+
+fn tokens_int(t: TokenCount) -> Int {
+  token_count_value(t: t)
+}
+
+fn rows_for(attempts: List<EvalAttempt>, arm: EvalArm, tasks: List<EvalTask>) -> List<EvalAttempt> {
+  attempts |> filter(a => a.arm == arm && count(tasks |> filter(t => t.id == a.task_id)) > 0)
+}
+
+fn sum_tokens(rows: List<EvalAttempt>, pick: fn(EvalAttempt) -> TokenCount) -> TokenCount {
+  fold(rows, init: token_count(count: 0), f: (acc, a) => measure_add(a: acc, b: pick(a)))
+}
+
+fn eval_population_summary(attempts: List<EvalAttempt>, arm: EvalArm, tasks: List<EvalTask>) -> PopulationSummary {
+  let rows = rows_for(attempts: attempts, arm: arm, tasks: tasks)
+  let accepted = rows |> filter(a => eval_outcome_accepted(outcome: a.outcome))
+  PopulationSummary {
+    tasks: count(tasks),
+    run: count(rows),
+    accepted: count(accepted),
+    first_attempt_green: count(accepted |> filter(a => a.cycles == 1)),
+    reasoning_tokens: sum_tokens(rows: rows, pick: a => a.usage.reasoning_tokens),
+    reasoning_tokens_accepted: sum_tokens(rows: accepted, pick: a => a.usage.reasoning_tokens),
+    completion_tokens: sum_tokens(rows: rows, pick: a => a.usage.completion_tokens),
+    cycles: fold(rows, init: 0, f: (acc, a) => acc + a.cycles),
+    tool_calls: fold(rows, init: 0, f: (acc, a) => acc + a.tool_calls),
+  }
+}
+
+fn language_tasks() -> List<EvalTask> {
+  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class) == false)
+}
+
+fn sentinel_tasks() -> List<EvalTask> {
+  frontend_eval_tasks |> filter(t => mutation_class_scored_separately(class: t.class))
+}
+
 fn arm_summary(attempts: List<EvalAttempt>, arm: EvalArm) -> ArmSummary {
-  let accepted = accepted_rows(attempts: attempts, arm: arm)
   ArmSummary {
     arm: arm,
-    attempts: count(attempts |> filter(a => a.arm == arm)),
-    language_tasks: count(language_tasks()),
-    language_run: count(language_tasks() |> filter(t => task_ran(attempts: attempts, arm: arm, task: t))),
-    language_accepted: count(language_tasks() |> filter(t => task_accepted(attempts: attempts, arm: arm, task: t))),
-    sentinel_tasks: count(sentinel_tasks()),
-    sentinel_run: count(sentinel_tasks() |> filter(t => task_ran(attempts: attempts, arm: arm, task: t))),
-    sentinel_accepted: count(sentinel_tasks() |> filter(t => task_accepted(attempts: attempts, arm: arm, task: t))),
-    reasoning_tokens_over_accepted: fold(accepted, init: token_count(count: 0), f: (acc, a) => measure_add(a: acc, b: a.usage.reasoning_tokens)),
-    completion_tokens_over_accepted: fold(accepted, init: token_count(count: 0), f: (acc, a) => measure_add(a: acc, b: a.usage.completion_tokens)),
-    cycles_over_accepted: fold(accepted, init: 0, f: (acc, a) => acc + a.cycles),
-    tool_calls_over_accepted: fold(accepted, init: 0, f: (acc, a) => acc + a.tool_calls),
+    language: eval_population_summary(attempts: attempts, arm: arm, tasks: language_tasks()),
+    sentinel: eval_population_summary(attempts: attempts, arm: arm, tasks: sentinel_tasks()),
   }
 }
 
@@ -197,36 +199,34 @@ fn mean_text(total: Int, n: Int) -> String {
   if n == 0 { "-" } else { to_string(value: total / n) }
 }
 
-fn arm_summary_line(s: ArmSummary, accepted: Int) -> String {
+fn population_cells(p: PopulationSummary) -> String {
   join([
-    "| ", eval_arm_key(arm: s.arm),
-    " | ", coverage_text(accepted: s.language_accepted, run: s.language_run, tasks: s.language_tasks),
-    " | ", coverage_text(accepted: s.sentinel_accepted, run: s.sentinel_run, tasks: s.sentinel_tasks),
-    " | ", mean_text(total: tokens_int(t: s.reasoning_tokens_over_accepted), n: accepted),
-    " | ", mean_text(total: tokens_int(t: s.completion_tokens_over_accepted), n: accepted),
-    " | ", mean_text(total: s.cycles_over_accepted, n: accepted),
-    " | ", mean_text(total: s.tool_calls_over_accepted, n: accepted),
-    " |",
+    coverage_text(accepted: p.accepted, run: p.run, tasks: p.tasks),
+    " | ", if p.run == 0 { "-" } else { to_string(value: p.first_attempt_green) },
+    " | ", mean_text(total: tokens_int(t: p.reasoning_tokens), n: p.run),
+    " | ", mean_text(total: tokens_int(t: p.reasoning_tokens_accepted), n: p.accepted),
+    " | ", mean_text(total: p.cycles, n: p.run),
+    " | ", mean_text(total: p.tool_calls, n: p.run),
   ], "")
 }
 
-// THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
-// instrument). Means are over ACCEPTED attempts only, because correctness is lexicographically
-// prior: a cheap wrong answer is not a cheaper answer.
-fn arm_line(attempts: List<EvalAttempt>, arm: EvalArm) -> String {
-  arm_summary_line(s: arm_summary(attempts: attempts, arm: arm), accepted: count(accepted_rows(attempts: attempts, arm: arm)))
+fn arm_summary_line(s: ArmSummary) -> String {
+  join(["| ", eval_arm_key(arm: s.arm), " | ", population_cells(p: s.language), " | ", population_cells(p: s.sentinel), " |"], "")
 }
+
+data report_header: String = "| arm | language accepted | lang first-try green | lang mean reasoning tok (all) | lang mean reasoning tok (accepted) | lang mean cycles (all) | lang mean tool calls (all) | sentinel accepted | sent first-try green | sent mean reasoning tok (all) | sent mean reasoning tok (accepted) | sent mean cycles (all) | sent mean tool calls (all) |"
+data report_rule: String = "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 type ReportRead
   = ReportRendered { text: String }
   | ReportNotRendered { detail: String }
 
-fn frontend_eval_report(attempts: List<EvalAttempt>) -> ReportRead {
-  match admit_report_population(attempts: attempts) {
+// THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
+// instrument), over a population admitted first.
+fn frontend_eval_report(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportRead {
+  match admit_report_population(experiments: experiments, attempts: attempts) {
     ReportRefused { detail } => ReportNotRendered { detail: detail }
-    ReportAdmitted { attempts: admitted } => ReportRendered { text: join(concat([
-      "| arm | language accepted | sentinel accepted | mean reasoning tok (accepted) | mean completion tok (accepted) | mean cycles (accepted) | mean tool calls (accepted) |",
-      "|---|---|---|---|---|---|---|",
-    ], eval_arms |> map(arm => arm_line(attempts: admitted, arm: arm))), "\n") }
+    ReportAdmitted { attempts: admitted } => ReportRendered { text: join(concat([report_header, report_rule],
+      eval_arms |> map(arm => arm_summary_line(s: arm_summary(attempts: admitted, arm: arm)))), "\n") }
   }
 }

@@ -32,8 +32,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // THE BOUND IS READ AT ONE VLLM REVISION, the same pin the sibling carriers observe against, and the
-// constructor consumes it: a later upstream that admits a negative temperature is a change to this
-// row, not a silent drift.
+// constructor consumes BOTH fields: the minimum decides admission and the revision is stamped into
+// every admitted value, so a temperature admitted under one upstream reading is distinguishable
+// from one admitted under another, and a change to this row changes every value it admits.
 type SamplingTemperatureBound {
   minimum: Float
   observed_at_revision: VllmSourceRevision
@@ -46,13 +47,14 @@ data sampling_temperature_bound: SamplingTemperatureBound = SamplingTemperatureB
 
 type SamplingTemperature sole_constructor {
   value: Float
+  admitted_at_revision: VllmSourceRevision
 }
 
 fn sampling_temperature(value: Float) -> SamplingTemperature? {
   if value < sampling_temperature_bound.minimum {
     none
   } else {
-    Present { value: SamplingTemperature { value: value } }
+    Present { value: SamplingTemperature { value: value, admitted_at_revision: sampling_temperature_bound.observed_at_revision } }
   }
 }
 

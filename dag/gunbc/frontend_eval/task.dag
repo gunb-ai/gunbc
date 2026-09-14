@@ -15,18 +15,25 @@ import extdeps.languages.json.emit {
 //
 // FOUR STABLE FRONTEND CLASSES AND ONE SENTINEL, scored apart. The four classes are properties of
 // the language: expression nesting, labeled-position shape, coproduct identity, match coverage. The
-// sentinel (a callee misnamed into another module) is a property of repository topology: it tests
-// whether the agent consults the workspace for who declares a name rather than recalling it, so its
-// score is evidence about tool routing and never about whether language facts belong in weights.
-// The sentinel was first authored as a dropped import member and the control run PASSED all four:
-// this frontend resolves a name whether or not its module imported it, so that mutation has no
-// authorable RED (DESIGN section 4b) and was replaced rather than kept as a decoration.
+// sentinel (a name misspelled into another module's declaration) is a property of repository
+// topology: it tests whether the agent consults the workspace for who declares a name rather than
+// recalling it, so its score is evidence about tool routing and never about whether language facts
+// belong in weights. The sentinel was first authored as a dropped import member and the control run
+// PASSED all four: this frontend resolves a name whether or not its module imported it, so that
+// mutation has no authorable RED (DESIGN section 4b) and was replaced rather than kept as a
+// decoration -- which is why the class is named for what its live specimens are, not for imports.
+//
+// SCOPE OF THE NESTING CLASS, stated so the table is not over-read: its four specimens are
+// delimiter and `else` structure at parse level. They do not exercise a valid-but-subtle
+// composition such as a `d == Failed && match ...` arm, which is the idiom the operator's trace
+// litigated; a contrast set whose answer turns on composition or precedence is a separate roster
+// and a precondition for concluding anything about a language-prior tune from these rows.
 type FrontendMutationClass
   = ExpressionNesting
   | LabeledPositionShape
   | CoproductIdentity
   | MatchArmCoverage
-  | ImportTopologySentinel
+  | CrossModuleNameSentinel
 
 fn mutation_class_scored_separately(class: FrontendMutationClass) -> Bool {
   match class {
@@ -34,7 +41,7 @@ fn mutation_class_scored_separately(class: FrontendMutationClass) -> Bool {
     LabeledPositionShape => false
     CoproductIdentity => false
     MatchArmCoverage => false
-    ImportTopologySentinel => true
+    CrossModuleNameSentinel => true
   }
 }
 
@@ -44,7 +51,7 @@ fn mutation_class_key(class: FrontendMutationClass) -> String {
     LabeledPositionShape => "labeled_position_shape"
     CoproductIdentity => "coproduct_identity"
     MatchArmCoverage => "match_arm_coverage"
-    ImportTopologySentinel => "import_topology_sentinel"
+    CrossModuleNameSentinel => "cross_module_name_sentinel"
   }
 }
 
@@ -119,7 +126,7 @@ data frontend_eval_tasks: List<EvalTask> = [
     expected_stage: RefusedAtResolve, expected_lexeme: "Equal",
   },
   EvalTask {
-    id: "pareto.sentinel" as NonEmptyStr, class: ImportTopologySentinel,
+    id: "pareto.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
     subject: decl_ref(module_path: "std.pareto", decl_name: "intervals_are_equal_points"),
     subject_path: pareto_path, entry_path: pareto_entry,
     mutation: TextMutation { old: "interval_low(interval: a) == interval_high(interval: a)\n", new: "interval_lower(interval: a) == interval_high(interval: a)\n" },
@@ -154,7 +161,7 @@ data frontend_eval_tasks: List<EvalTask> = [
     expected_stage: RefusedAtResolve, expected_lexeme: "LifecycleByConvention",
   },
   EvalTask {
-    id: "frame_boundary.sentinel" as NonEmptyStr, class: ImportTopologySentinel,
+    id: "frame_boundary.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
     subject: decl_ref(module_path: "std.frame_boundary", decl_name: "tree_coverage"),
     subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
     mutation: TextMutation { old: "namespace_tree_eq(a: c.tree, b: tree)", new: "namespace_tree_equal(a: c.tree, b: tree)" },
@@ -189,7 +196,7 @@ data frontend_eval_tasks: List<EvalTask> = [
     expected_stage: RefusedAtResolve, expected_lexeme: "MonotonicWall",
   },
   EvalTask {
-    id: "evaluation_budget.sentinel" as NonEmptyStr, class: ImportTopologySentinel,
+    id: "evaluation_budget.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
     subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_limit_nanos"),
     subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
     mutation: TextMutation { old: "positive_millisecond_count(m: limit)", new: "positive_milliseconds(m: limit)" },
@@ -224,7 +231,7 @@ data frontend_eval_tasks: List<EvalTask> = [
     expected_stage: RefusedAtResolve, expected_lexeme: "Empty",
   },
   EvalTask {
-    id: "goal_assessment.sentinel" as NonEmptyStr, class: ImportTopologySentinel,
+    id: "goal_assessment.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
     subject: decl_ref(module_path: "std.goal_assessment", decl_name: "assess_by_deviations"),
     subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
     mutation: TextMutation { old: "    Cons { head: first, tail: rest } => GoalDiverged {\n      deviations: FreeSemigroup {", new: "    Cons { head: first, tail: rest } => GoalDiverged {\n      deviations: FreeSemigroupOf {" },
@@ -232,7 +239,12 @@ data frontend_eval_tasks: List<EvalTask> = [
   },
 ]
 
-fn task_json(task: EvalTask) -> JsonValue {
+// TWO PROJECTIONS, BECAUSE THE DRIVER IS ALSO THE BOUNDARY THAT DECIDES WHAT THE MODEL SEES. The
+// model-visible task names the subject and the entry and nothing else; the judge specification
+// carries the reference repair (`old`), the mutation, the expected stage and lexeme, and is read
+// only by the judge and the control. One projection carrying both would leave nothing to establish
+// that the answer stayed on the judge's side of the boundary.
+fn model_task_json(task: EvalTask) -> JsonValue {
   json_object([
     json_kv(key: "id", value: json_string(s: task.id as String)),
     json_kv(key: "class", value: json_string(s: mutation_class_key(class: task.class))),
@@ -240,6 +252,12 @@ fn task_json(task: EvalTask) -> JsonValue {
     json_kv(key: "subject_decl", value: json_string(s: task.subject.decl_name as String)),
     json_kv(key: "subject_path", value: json_string(s: task.subject_path)),
     json_kv(key: "entry_path", value: json_string(s: task.entry_path)),
+  ])
+}
+
+fn judge_spec_json(task: EvalTask) -> JsonValue {
+  json_object([
+    json_kv(key: "id", value: json_string(s: task.id as String)),
     json_kv(key: "old", value: json_string(s: task.mutation.old)),
     json_kv(key: "new", value: json_string(s: task.mutation.new)),
     json_kv(key: "expected_stage", value: json_string(s: frontend_stage_key(stage: task.expected_stage))),
@@ -247,11 +265,12 @@ fn task_json(task: EvalTask) -> JsonValue {
   ])
 }
 
-// THE PROJECTION A DRIVER CONSUMES. The roster above is the single authority; a driver that
-// re-typed these rows in its own language would be the second representation DESIGN section 3
-// forbids, so it reads this output instead.
-fn frontend_eval_tasks_json() -> String {
-  serialize_json(v: json_array(elements: frontend_eval_tasks |> map(t => task_json(task: t))))
+fn frontend_eval_model_tasks_json() -> String {
+  serialize_json(v: json_array(elements: frontend_eval_tasks |> map(t => model_task_json(task: t))))
+}
+
+fn frontend_eval_judge_spec_json() -> String {
+  serialize_json(v: json_array(elements: frontend_eval_tasks |> map(t => judge_spec_json(task: t))))
 }
 
 fn frontend_eval_task_count() -> Int {

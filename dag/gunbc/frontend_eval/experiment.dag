@@ -1,0 +1,41 @@
+module gunbc.frontend_eval.experiment
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.measure { TokenCount }
+import extdeps.vllm.sampling_params { SamplingTemperature }
+import gunbc.frontend_eval.attempt_arm { EvalArm }
+
+// ONE EXPERIMENT IS ONE MANIFEST, AND A TABLE MAY NOT SPAN TWO. An arm name such as LowEffortTools
+// is a policy label; what went over the wire, which program judged, which bytes drove the loop
+// and which card and tools the model saw are facts, and each is an identity here. A report over
+// rows that disagree on any of them would compare two experiments as one, so every attempt names
+// its manifest by content hash and the report refuses a population whose rows name more than one
+// manifest per arm or a manifest not in the roster it was handed.
+type CardIdentity
+  = CardAbsent
+  | CardPresent { sha256: NonEmptyStr }
+
+type ToolSurfaceIdentity
+  = ToolsAbsent
+  | ToolsPresent { schema_sha256: NonEmptyStr, implementation_sha256: NonEmptyStr }
+
+type EvalExperiment {
+  identity: NonEmptyStr
+  arm: EvalArm
+  model_id: NonEmptyStr
+  model_snapshot: NonEmptyStr
+  compiler_program_sha256: NonEmptyStr
+  driver_sha256: NonEmptyStr
+  task_set_sha256: NonEmptyStr
+  prompt_template_sha256: NonEmptyStr
+  card: CardIdentity
+  tools: ToolSurfaceIdentity
+  reasoning_effort_wire: NonEmptyStr
+  clear_thinking: Bool
+  temperature: SamplingTemperature
+  max_tokens: TokenCount
+}
+
+fn experiment_for(experiments: List<EvalExperiment>, identity: NonEmptyStr) -> List<EvalExperiment> {
+  experiments |> filter(e => e.identity == identity)
+}

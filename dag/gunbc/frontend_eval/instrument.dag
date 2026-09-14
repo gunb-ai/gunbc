@@ -3,7 +3,7 @@ module gunbc.frontend_eval.instrument
 import std.types { String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.frontend_eval.task { frontend_eval_tasks_json }
+import gunbc.frontend_eval.task { frontend_eval_model_tasks_json, frontend_eval_judge_spec_json }
 import gunbc.frontend_eval.card { frontend_language_card }
 
 // THE ENTRY POINTS A DRIVER CALLS. Each writes one projection of an in-repo authority to a path the
@@ -13,7 +13,7 @@ import gunbc.frontend_eval.card { frontend_language_card }
 // through gunbc.frontend_eval.attempt.frontend_eval_report, so the table is computed in the
 // interpreter from typed rows rather than in the driver.
 //
-// CONSUMPTION, CLASSIFIED (DESIGN section 3c). Today's consumer of write_tasks and write_card is the
+// CONSUMPTION, CLASSIFIED (DESIGN section 3c). Today's consumer of write_model_tasks, write_judge_spec and write_card is the
 // Demo 0 driver, which is local tooling outside the substrate by the repo_workspace rule that no
 // Python is committed; it is therefore a DECLARED FRONTIER, not an executing in-tree consumer. The
 // named terminal consumer is the harness worker (gunbc.harness.harness_cli harness_worker_cli)
@@ -30,8 +30,12 @@ fn write_projection(path: String, content: String) -> ProcessExit {
   }
 }
 
-fn write_tasks(path: String) -> ProcessExit {
-  write_projection(path: path, content: frontend_eval_tasks_json())
+fn write_model_tasks(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_model_tasks_json())
+}
+
+fn write_judge_spec(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_eval_judge_spec_json())
 }
 
 // THE REPORT: gunbc.frontend_eval.attempt frontend_eval_report is the fold; its rows are NOT in

@@ -12,7 +12,7 @@ import extdeps.gunbc
 import extdeps.shell
 import std.decl_ref { decl_ref }
 import gunbc.frontend_eval.task {
-  EvalTask, EvalFrontendStage, TextMutation, ImportTopologySentinel, RefusedAtParse, RefusedAtResolve,
+  EvalTask, EvalFrontendStage, TextMutation, CrossModuleNameSentinel, RefusedAtParse, RefusedAtResolve,
   frontend_eval_tasks, frontend_stage_key, pareto_path, pareto_entry,
 }
 
@@ -143,6 +143,23 @@ fn refusal_stage(text: String) -> RefusalStageRead {
   }
 }
 
+// THE LEXEME IS LOOKED FOR IN THE DIAGNOSTIC MESSAGES, NOT THE WHOLE TRANSCRIPT. A refusal line is
+// `<path>:<line>:<col>: error: <message>`; only the text after `error:` is the frontend naming
+// something. Matching the concatenated stdout/stderr instead would let an echoed source excerpt
+// that happens to contain the lexeme satisfy the control (side-chat review, 2026-09-14).
+fn diagnostic_messages(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+    |> filter(line => contains(line, " error: "))
+    |> map(line => match split(s: line, delimiter: " error: ") |> last {
+      Present { value: m } => m
+      Absent => ""
+    })
+}
+
+fn refusal_names(text: String, lexeme: String) -> Bool {
+  count(diagnostic_messages(text: text) |> filter(m => contains(m, lexeme))) > 0
+}
+
 fn stage_eq(a: EvalFrontendStage, b: EvalFrontendStage) -> Bool {
   frontend_stage_key(stage: a) == frontend_stage_key(stage: b)
 }
@@ -159,8 +176,15 @@ fn all_tests_pass(gunbc_program: String, workspace: String, entry: String, fns: 
   count(fns |> filter(f => run_entry(gunbc_program: gunbc_program, workspace: workspace, entry: entry, function: f).accepted == false))
 }
 
+// THE WORKSPACE IS FRESH FOR EVERY SPECIMEN. A directory reused from an earlier run keeps files a
+// later closure no longer contains, and on this frontend pool membership can decide a binding, so
+// a stale neighbour could turn a specimen's verdict. Removal is explicit and its failure refuses.
 fn control_task(gunbc_program: String, workspace_root: String, facts: ControlModuleGraphFacts, task: EvalTask) -> TaskControl {
   let workspace = join([workspace_root, "/", task.id as String], "")
+  let cleared = shell.Remove.RecursiveForce(path: workspace as FilePath)
+  if cleared.success == false {
+    ControlRefused { task: task.id, detail: join(["could not clear workspace ", workspace], "") }
+  } else {
   match copy_closure(workspace: workspace, entry_path: task.entry_path, facts: facts) {
     ClosureRefused { detail } => ControlRefused { task: task.id, detail: detail }
     ClosureCopied { modules: _ } => {
@@ -192,7 +216,7 @@ fn control_task(gunbc_program: String, workspace_root: String, facts: ControlMod
                 if stage_eq(a: stage, b: task.expected_stage) == false {
                   ControlRefused { task: task.id, detail: join(["refused at ", frontend_stage_key(stage: stage), ", expected ", frontend_stage_key(stage: task.expected_stage)], "") }
                 } else {
-                  if task.expected_lexeme != "" && contains(red.text, task.expected_lexeme) == false {
+                  if task.expected_lexeme != "" && refusal_names(text: red.text, lexeme: task.expected_lexeme) == false {
                     ControlRefused { task: task.id, detail: join(["refusal does not name ", task.expected_lexeme], "") }
                   } else {
                     let restored = Filesystem.Write(path: subject_path, content: subject.content)
@@ -216,6 +240,7 @@ fn control_task(gunbc_program: String, workspace_root: String, facts: ControlMod
       }
     }
   }
+}
 }
 
 fn control_line(c: TaskControl) -> String {
@@ -260,7 +285,7 @@ fn control_run(gunbc_program: String, workspace_root: String, receipt_path: Stri
 // frontend refuses a dropped import, this probe goes red, which is the signal to retire the receipt
 // and re-admit the dropped-import sentinel.
 data dropped_import_specimen: EvalTask = EvalTask {
-  id: "pareto.dropped_import" as NonEmptyStr, class: ImportTopologySentinel,
+  id: "pareto.dropped_import" as NonEmptyStr, class: CrossModuleNameSentinel,
   subject: decl_ref(module_path: "std.pareto", decl_name: "oriented_ordering"),
   subject_path: pareto_path, entry_path: pareto_entry,
   mutation: TextMutation { old: "import std.algebra { Ordering }\n", new: "" },

@@ -3,19 +3,20 @@ module test.claim.frontend_eval_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import gunbc.frontend_eval.task {
   EvalTask, FrontendMutationClass, TextMutation,
-  ExpressionNesting, LabeledPositionShape, CoproductIdentity, MatchArmCoverage, ImportTopologySentinel,
+  ExpressionNesting, LabeledPositionShape, CoproductIdentity, MatchArmCoverage, CrossModuleNameSentinel,
   RefusedAtParse, RefusedAtResolve,
   frontend_eval_tasks, frontend_eval_task_count, mutation_class_scored_separately, mutation_class_key,
-  frontend_eval_tasks_json, frontend_stage_key,
+  frontend_eval_model_tasks_json, frontend_eval_judge_spec_json, frontend_stage_key,
 }
 import gunbc.frontend_eval.attempt {
-  EvalAttempt, EvalUsage, EvalArm, EvalOutcome, ArmSummary,
-  LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard,
+  EvalAttempt, EvalUsage, EvalOutcome, ArmSummary, ModelContextUnrecorded,
   AcceptedRepair, FrontendStillRed, TestsRed, ScopeExceeded, BudgetExhausted, TransportFailed,
-  eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
+  arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
 }
+import gunbc.frontend_eval.attempt_arm { EvalArm, LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard, eval_arms }
+import gunbc.frontend_eval.experiment { EvalExperiment, CardAbsent, ToolsAbsent }
 import gunbc.frontend_eval.card { frontend_language_card }
-import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, mutation_site_occurrences, test_fns }
+import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
 import std.measure { millisecond, token_count, token_count_value }
 import extdeps.vllm.sampling_params { sampling_temperature, SamplingTemperature }
 
@@ -31,7 +32,7 @@ test fn roster_is_four_per_class_over_five_classes() -> Bool {
     && tasks_in_class(class: LabeledPositionShape) == 4
     && tasks_in_class(class: CoproductIdentity) == 4
     && tasks_in_class(class: MatchArmCoverage) == 4
-    && tasks_in_class(class: ImportTopologySentinel) == 4
+    && tasks_in_class(class: CrossModuleNameSentinel) == 4
 }
 
 fn id_occurs(id: NonEmptyStr) -> Int {
@@ -58,55 +59,73 @@ test fn parse_stage_is_exactly_the_nesting_class() -> Bool {
 }
 
 test fn only_the_sentinel_is_scored_separately() -> Bool {
-  mutation_class_scored_separately(class: ImportTopologySentinel)
+  mutation_class_scored_separately(class: CrossModuleNameSentinel)
     && mutation_class_scored_separately(class: ExpressionNesting) == false
     && mutation_class_scored_separately(class: LabeledPositionShape) == false
     && mutation_class_scored_separately(class: CoproductIdentity) == false
     && mutation_class_scored_separately(class: MatchArmCoverage) == false
 }
 
-test fn task_projection_carries_every_row_id() -> Bool {
-  let json = frontend_eval_tasks_json()
-  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc && contains(json, join(["\"id\": \"", t.id as String, "\""], "")))
+// THE MODEL-VISIBLE PROJECTION NAMES EVERY TASK AND CARRIES NO REFERENCE REPAIR; the judge
+// specification carries the repair. The boundary between them is what keeps the answer private.
+test fn model_projection_names_tasks_and_hides_the_repair() -> Bool {
+  let visible = frontend_eval_model_tasks_json()
+  let judge = frontend_eval_judge_spec_json()
+  fold(frontend_eval_tasks, init: true, f: (acc, t) => acc
+    && contains(visible, join(["\"id\": \"", t.id as String, "\""], ""))
+    && contains(visible, "\"old\"") == false
+    && contains(visible, "expected_lexeme") == false
+    && contains(judge, join(["\"id\": \"", t.id as String, "\""], ""))
+    && (t.expected_lexeme == "" || contains(judge, t.expected_lexeme)))
 }
 
-fn fixture_attempt(t: SamplingTemperature, id: String, class: FrontendMutationClass, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
-  EvalAttempt {
-    task_id: id as NonEmptyStr, class: class, arm: arm,
-    model_id: "m", model_snapshot: "s", compiler_program_sha256: "c", card_sha256: "k", tool_schema_sha256: "t",
+fn fixture_experiment(t: SamplingTemperature, arm: EvalArm, identity: String) -> EvalExperiment {
+  EvalExperiment {
+    identity: identity as NonEmptyStr, arm: arm,
+    model_id: "m" as NonEmptyStr, model_snapshot: "s" as NonEmptyStr, compiler_program_sha256: "c" as NonEmptyStr,
+    driver_sha256: "d" as NonEmptyStr, task_set_sha256: "r" as NonEmptyStr, prompt_template_sha256: "p" as NonEmptyStr,
+    card: CardAbsent, tools: ToolsAbsent, reasoning_effort_wire: "low" as NonEmptyStr, clear_thinking: false,
     temperature: t, max_tokens: token_count(count: 1),
+  }
+}
+
+fn fixture_attempt(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  EvalAttempt {
+    task_id: id as NonEmptyStr, arm: arm, experiment: experiment as NonEmptyStr,
+    record_sha256: "rec" as NonEmptyStr, model_context: ModelContextUnrecorded,
     usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: reasoning * 2), reasoning_tokens: token_count(count: reasoning) },
     cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall: millisecond(count: 0),
   }
 }
 
-// THE FIXTURE IS BUILT THROUGH THE TEMPERATURE'S OWN CONSTRUCTOR (a refused temperature would empty
-// the fixture, and the summary witness would then fail on `attempts == 3`, not pass vacuously).
-fn frontend_eval_fixture_rows() -> List<EvalAttempt> {
+fn fixture_experiments() -> List<EvalExperiment> {
   match sampling_temperature(value: 0.0) {
     Absent => []
-    Present { value: t } => [
-      fixture_attempt(t: t, id: "pareto.nesting", class: ExpressionNesting, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 10, cycles: 1),
-      fixture_attempt(t: t, id: "pareto.arm", class: MatchArmCoverage, arm: LowEffortBare, outcome: FrontendStillRed, reasoning: 1000, cycles: 6),
-      fixture_attempt(t: t, id: "pareto.sentinel", class: ImportTopologySentinel, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 30, cycles: 3),
-      fixture_attempt(t: t, id: "pareto.nesting", class: ExpressionNesting, arm: LowEffortTools, outcome: ScopeExceeded, reasoning: 5, cycles: 1),
-    ]
+    Present { value: t } => [fixture_experiment(t: t, arm: LowEffortBare, identity: "exp-bare"), fixture_experiment(t: t, arm: LowEffortTools, identity: "exp-tools")]
   }
 }
 
-data fixture_attempts: List<EvalAttempt> = frontend_eval_fixture_rows()
+// THE FIXTURE IS BUILT THROUGH THE TEMPERATURE'S OWN CONSTRUCTOR (a refused temperature would empty
+// the fixture, and the summary witness would then fail on `attempts == 3`, not pass vacuously).
+data fixture_attempts: List<EvalAttempt> = [
+  fixture_attempt(experiment: "exp-bare", id: "pareto.nesting", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 10, cycles: 1),
+  fixture_attempt(experiment: "exp-bare", id: "pareto.arm", arm: LowEffortBare, outcome: FrontendStillRed, reasoning: 1000, cycles: 6),
+  fixture_attempt(experiment: "exp-bare", id: "pareto.sentinel", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 30, cycles: 3),
+  fixture_attempt(experiment: "exp-tools", id: "pareto.nesting", arm: LowEffortTools, outcome: ScopeExceeded, reasoning: 5, cycles: 1),
+]
 
-// SENTINELS ARE COUNTED APART, DENOMINATORS ARE THE ROSTER, AND A RED CONTRIBUTES NOTHING TO THE
-// MEANS: the 1000-token failure on pareto.arm must not move the accepted mean, pareto.sentinel must
-// land in the sentinel column, and the fourteen language tasks with no row must count as not run
-// rather than vanish from the ratio.
-test fn arm_summary_splits_sentinel_and_excludes_reds_from_means() -> Bool {
+// SENTINELS ARE FOLDED APART, DENOMINATORS ARE THE ROSTER, AND A RED'S COST IS COUNTED: the
+// 1000-token failure on pareto.arm is in the language population's reasoning total (1010 over 2
+// run) and absent from its accepted total (10 over 1); pareto.sentinel lands in the sentinel fold;
+// the fourteen language tasks with no row count as not run rather than vanish from the ratio.
+test fn arm_summary_folds_sentinel_apart_and_counts_red_cost() -> Bool {
   let s = arm_summary(attempts: fixture_attempts, arm: LowEffortBare)
-  s.attempts == 3
-    && s.language_tasks == 16 && s.language_run == 2 && s.language_accepted == 1
-    && s.sentinel_tasks == 4 && s.sentinel_run == 1 && s.sentinel_accepted == 1
-    && token_count_value(t: s.reasoning_tokens_over_accepted) == 40
-    && s.cycles_over_accepted == 4
+  s.language.tasks == 16 && s.language.run == 2 && s.language.accepted == 1 && s.language.first_attempt_green == 1
+    && token_count_value(t: s.language.reasoning_tokens) == 1010
+    && token_count_value(t: s.language.reasoning_tokens_accepted) == 10
+    && s.language.cycles == 7
+    && s.sentinel.tasks == 4 && s.sentinel.run == 1 && s.sentinel.accepted == 1 && s.sentinel.first_attempt_green == 0
+    && token_count_value(t: s.sentinel.reasoning_tokens) == 30
 }
 
 // SCOPE EXCEEDED IS NOT ACCEPTED, however green the tests were: the evaluator-modification wall.
@@ -114,22 +133,24 @@ test fn scope_exceeded_is_not_an_accepted_repair() -> Bool {
   eval_outcome_accepted(outcome: ScopeExceeded) == false
     && eval_outcome_accepted(outcome: TestsRed) == false
     && eval_outcome_accepted(outcome: AcceptedRepair)
-    && arm_summary(attempts: fixture_attempts, arm: LowEffortTools).language_accepted == 0
+    && arm_summary(attempts: fixture_attempts, arm: LowEffortTools).language.accepted == 0
 }
 
-// A PARTIAL POPULATION PRINTS AS PARTIAL: 1/16 with 14 not run, never 1/2.
 fn rendered(attempts: List<EvalAttempt>) -> String {
-  match frontend_eval_report(attempts: attempts) {
+  match frontend_eval_report(experiments: fixture_experiments(), attempts: attempts) {
     ReportRendered { text } => text
     ReportNotRendered { detail: _ } => ""
   }
 }
 
+// A PARTIAL POPULATION PRINTS AS PARTIAL (1/16 with 14 not run, never 1/2), costs are means over
+// every attempted row (505 = (10 + 1000) / 2) with the accepted-only mean beside them (10), and a
+// never-run population prints as not run with no numbers.
 test fn report_renders_one_line_per_arm_from_rows() -> Bool {
   let r = rendered(attempts: fixture_attempts)
-  contains(r, "| low_bare | 1/16 (14 not run) | 1/4 (3 not run) | 20 | 40 | 2 | 0 |")
-    && contains(r, "| low_tools | 0/16 (15 not run) | not run | - | - | - | - |")
-    && contains(r, "| max_bare | not run | not run | - | - | - | - |")
+  contains(r, "| low_bare | 1/16 (14 not run) | 1 | 505 | 10 | 3 | 0 | 1/4 (3 not run) | 0 | 30 | 30 | 3 | 0 |")
+    && contains(r, "| low_tools | 0/16 (15 not run) | 0 | 5 | - | 1 | 0 | not run | - | - | - | - | - |")
+    && contains(r, "| max_bare | not run | - | - | - | - | - | not run | - | - | - | - | - |")
     && contains(r, "1/2") == false
     && count(eval_arms) == 4
 }
@@ -192,15 +213,35 @@ test fn negative_sampling_temperature_has_no_constructor() -> Bool {
 // cost with no task behind it. Both refuse by name instead of rendering (review 65900).
 test fn report_refuses_duplicate_cells_and_unknown_tasks() -> Bool {
   let dup = concat(fixture_attempts, fixture_attempts)
-  let unknown = match sampling_temperature(value: 0.0) {
-    Absent => []
-    Present { value: t } => [fixture_attempt(t: t, id: "nowhere.task", class: ExpressionNesting, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
-  }
-  match frontend_eval_report(attempts: dup) {
+  let unknown = [fixture_attempt(experiment: "exp-bare", id: "nowhere.task", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
+  match frontend_eval_report(experiments: fixture_experiments(), attempts: dup) {
     ReportRendered { text: _ } => false
     ReportNotRendered { detail: d } => contains(d, "more than one attempt") && contains(d, "pareto.nesting")
-  } && match frontend_eval_report(attempts: unknown) {
+  } && match frontend_eval_report(experiments: fixture_experiments(), attempts: unknown) {
     ReportRendered { text: _ } => false
     ReportNotRendered { detail: d } => contains(d, "not in the roster") && contains(d, "nowhere.task")
   }
+}
+
+// ONE MANIFEST PER ARM, AND IT MUST BE THE ARM'S: a row naming an unknown manifest, a manifest of
+// another arm, or a second manifest beside the arm's first all refuse -- the table never spans
+// two experiments.
+test fn report_refuses_a_population_spanning_two_manifests() -> Bool {
+  let foreign = concat(fixture_attempts, [fixture_attempt(experiment: "exp-other", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)])
+  let crossed = [fixture_attempt(experiment: "exp-tools", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
+  match frontend_eval_report(experiments: fixture_experiments(), attempts: foreign) {
+    ReportRendered { text: _ } => false
+    ReportNotRendered { detail: d } => contains(d, "manifest")
+  } && match frontend_eval_report(experiments: fixture_experiments(), attempts: crossed) {
+    ReportRendered { text: _ } => false
+    ReportNotRendered { detail: d } => contains(d, "manifest")
+  }
+}
+
+// THE LEXEME MUST BE NAMED BY A DIAGNOSTIC MESSAGE, not merely present in the transcript: an echoed
+// source line containing `Equals` does not satisfy the control; an `error:` line naming it does.
+test fn control_lexeme_must_appear_in_a_diagnostic_message() -> Bool {
+  refusal_names(text: "      Equals => Equal\n", lexeme: "Equals") == false
+    && refusal_names(text: "x.dag:234:1: error: variant 'Equals' not found in type 'Ordering'", lexeme: "Equals")
+    && refusal_names(text: "error: resolve failed for x.dag\n  cause: x.dag:1:1: error: undefined function 'interval_lower'\n", lexeme: "interval_lower")
 }
