@@ -303,8 +303,12 @@ pub fn compile_cli_exit_refused() -> i64 {
     exit_code_general_error()
 }
 
-pub fn compile_cli_exit_not_executed() -> i64 {
+pub fn compile_cli_exit_output_write_refused() -> i64 {
     3
+}
+
+pub fn compile_cli_exit_not_executed() -> i64 {
+    4
 }
 
 pub fn gunbc_cli_about() -> String {

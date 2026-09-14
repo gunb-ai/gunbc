@@ -288,12 +288,13 @@ impl std::fmt::Display for OutputWriteRefusal {
 impl OutputWriteRefusal {
     /// THE BOUNDARY TRANSLATION, so no call site decides a status of its own.
     ///
-    /// `1` already means "the compile refused, or the arguments were bad". Reusing it would
-    /// re-fuse at the exit status -- what a machine consumer reads -- exactly what the typed
-    /// refusal above splits at the message. So the writer gets its own, `3`, chosen here only.
+    /// Status comes from `gunbc_cli_dispatch_surface::compile_cli_exit_output_write_refused`.
+    /// Reusing `compile_cli_exit_refused` would re-fuse writer and compiler at the exit
+    /// status. Reusing `compile_cli_exit_not_executed` would report a successful emit whose
+    /// disk write failed as "the compiler never reached the subject".
     fn verdict(self) -> Verdict {
         Verdict {
-            status: 3,
+            status: gunbc_cli_dispatch_surface::compile_cli_exit_output_write_refused() as i32,
             message: Some(self.to_string()),
         }
     }
@@ -1307,6 +1308,15 @@ mod exit_status_tests {
                 "a writer refusal must not exit as a compile refusal"
             );
             assert_ne!(verdict.status, 0, "a writer refusal must never exit 0");
+            assert_ne!(
+                verdict.status,
+                gunbc_cli_dispatch_surface::compile_cli_exit_not_executed() as i32,
+                "a writer refusal must not exit as not-executed"
+            );
+            assert_eq!(
+                verdict.status,
+                gunbc_cli_dispatch_surface::compile_cli_exit_output_write_refused() as i32
+            );
         }
     }
 

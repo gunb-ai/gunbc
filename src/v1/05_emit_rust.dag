@@ -18126,7 +18126,7 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "impl OutputWriteRefusal {\n",
     "    fn exit(self) -> ! {\n",
     "        eprintln!(\"{}\", self);\n",
-    "        std::process::exit(3);\n",
+    "        std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_output_write_refused() as i32);\n",
     "    }\n",
     "}\n",
     "\n",

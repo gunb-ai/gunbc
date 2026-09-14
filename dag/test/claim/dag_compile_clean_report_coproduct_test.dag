@@ -14,6 +14,7 @@ import tools.dag_compile_clean_transport {
 import gunbc.cli_dispatch_surface {
   compile_cli_exit_completed,
   compile_cli_exit_not_executed,
+  compile_cli_exit_output_write_refused,
   compile_cli_exit_refused
 }
 import std.logic { Bool }
@@ -104,6 +105,23 @@ test fn completed_exit_is_subject_green() -> Bool {
     SubjectRed => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
+}
+
+test fn output_write_refused_exit_is_not_cli_not_executed() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_output_write_refused,
+    stdout: "",
+    stderr: "gunbc compile: output write refused: could not write /tmp/out/src/a.rs: Permission denied"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } =>
+      !(p == dcc_cli_not_executed_phase) && p == dcc_instrument_earlier_phase
+    SubjectRed => false
+    SubjectGreen => false
+  }
+}
+
+test fn not_executed_status_is_not_output_write_status() -> Bool {
+  !(compile_cli_exit_not_executed == compile_cli_exit_output_write_refused)
 }
 
 test fn root_admission_precheck_phase_is_not_cli_not_executed() -> Bool {

@@ -307,14 +307,18 @@ fn gunbc_cli_binary_name() -> String {
   "gunbc"
 }
 
-// Compile verb process status — the CLI surface of CompileDisposition. Completed is POSIX
-// success. Refused is POSIX general error (the compiler reached the subject). NotExecuted is a
-// distinct implementation-defined status in the POSIX 1–125 band so a transport that reads
-// WitnessBin.Run.exit_code cannot collapse admission with a subject verdict. Do not share
-// status 2 (usage / gnu_bash_exit exit_code_misuse).
+// Compile verb process status — the CLI surface of CompileDisposition plus the
+// host write that follows a Completed emit. Each meaning has one status; the
+// machine consumer is WitnessBin.Run.exit_code.
+//   0  compile_cli_exit_completed — subject reached and emit succeeded
+//   1  compile_cli_exit_refused — subject reached and the compiler refused
+//   2  reserved (usage / gnu_bash_exit exit_code_misuse)
+//   3  compile_cli_exit_output_write_refused — emit succeeded; the disk would not take the tree
+//   4  compile_cli_exit_not_executed — the compiler never reached the subject
 data compile_cli_exit_completed: Int = exit_code_success
 data compile_cli_exit_refused: Int = exit_code_general_error
-data compile_cli_exit_not_executed: Int = 3
+data compile_cli_exit_output_write_refused: Int = 3
+data compile_cli_exit_not_executed: Int = 4
 
 fn gunbc_cli_about() -> String {
   "A causal compiler: write .dag, get Rust/Python/Go."
