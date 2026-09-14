@@ -134,13 +134,6 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
   }
 }
 
-test fn the_real_deepseek_v4_1_subject_returns_an_empty_field_rather_than_a_topology() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    NoFeasibleServingDeployment { causes: cs } => count(cs) > 0
-    _ => false
-  }
-}
-
 test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
   match v4_1_gb10_kv_layout {
     Sm12KvLayoutAdmitted { policy: k } =>
@@ -1185,9 +1178,31 @@ test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool
   }
 }
 
-test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
-  let empty_admit: List<NonEmptyStr> = []
+// ONE WITNESS PER PLANTED WIRE, BECAUSE THREE FIELD CONSTRUCTIONS IN ONE CLAIM IS THREE CLAIMS
+// WEARING A CONJUNCTION. Each of these drives `v4_1_candidate_field_from_sm12` once, and the previous
+// single claim drove it three times for 110,408 eval steps against a 72,300 new-witness budget. The
+// split loses no coverage -- every conjunct survives, attached to the wire it is about -- which is the
+// difference between splitting and dropping a case. Operator ruling 2026-09-14: a witness
+// discriminates at ONE interface, not over cases.
+test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
   let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
+    && match kv_layout_policy_matching_wire(wire: unadmitted) {
+      Present { value: k } =>
+        match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      Absent => false
+    }
+    && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+      Sm12KvLayoutAdmitted { policy: _ } => false
+    }
+}
+
+// A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
+// and policy matching are two joins, and a wire can pass the first and fail the second.
+test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
   let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
     match kv_layout_policy_matching_wire(wire: d) {
       Absent => true
@@ -1197,40 +1212,37 @@ test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> 
     Absent => false
     Present { value: nomatch } =>
       v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
-        && !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
-        && match kv_layout_policy_matching_wire(wire: unadmitted) {
-          Present { value: k } =>
-            match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-          Absent => false
-        }
         && match kv_layout_policy_matching_wire(wire: nomatch) {
           Absent => true
           Present { value: _ } => false
         }
-        && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
         && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
-        && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
         && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
-        && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
-          Sm12KvLayoutAdmitted { policy: _ } => false
-        }
         && match sm12_kv_layout_standing(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
           Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
           Sm12KvLayoutAdmitted { policy: _ } => false
         }
-        && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
-          ServingFieldEstablished => true
-          ServingFieldUnestablished { causes: _ } => false
-        }
-        && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-          Sm12KvLayoutAdmitted { policy: k } =>
-            match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
-        }
   }
+}
+
+// AN EMPTY ADMITTED ROSTER FAILS THE JOIN FOR A WIRE THAT IS OTHERWISE THE REAL ONE, which is what
+// separates "this wire is wrong" from "there is nothing to join against". The positive controls ride
+// here because they are about the same real wire: the live field IS established, and the real wire
+// against the real roster IS admitted as fp8_ds_mla -- so the three negatives above are failing for
+// the planted reason rather than because this join never succeeds.
+test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+      ServingFieldEstablished => true
+      ServingFieldUnestablished { causes: _ } => false
+    }
+    && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Sm12KvLayoutAdmitted { policy: k } =>
+        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+    }
 }
 
 // THE ASSERTION IS AN IDENTITY JOIN, NOT A CARDINALITY. A first cut asserted `count(built) == 3`
@@ -1579,18 +1591,42 @@ fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteS
 // EVERY candidate identity to appear among the causes, which keeps a shrinking field from passing
 // silently -- but the typed standings are genuinely not checked on this path, and the row's trigger
 // is what restores them.
-test fn the_live_v4_1_serving_decision_is_emptied_by_the_component_route() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+test fn the_v4_1_aggregation_returns_no_feasible_naming_every_candidate() -> Bool {
+  let input = v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "aggregation_behaviour")
+  match select_serving_deployment(input: input) {
     NoFeasibleServingDeployment { causes: cs } =>
       count(cs) > 0
         && causes_name_axis(cs: cs, axis: ax_component_route)
-        && all(deepseek_v4_1_candidate_field.candidates,
-             k => causes_name_axis(cs: cs, axis: k.identity))
+        && !causes_name_axis(cs: cs, axis: ax_host_fit)
+        && all(input.field.candidates, k => causes_name_axis(cs: cs, axis: k.identity))
     ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
     ServingDeploymentSelected { selected: _ } => false
     ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
     ServingDeploymentSelectionRefused { defects: _ } => false
   }
+}
+
+// THE INHABITANCE HALF, AND IT IS NOT OPTIONAL. Supplying a claim's inputs at an interface is only
+// honest while something establishes that the REAL producer emits that shape; without this the pair
+// above is a fast green suite testing a fixture, which is DESIGN section 5's
+// specification-without-execution at layer granularity rather than at function granularity.
+//
+// THE FAILURE THIS CATCHES IS ONE THIS FILE ALREADY SUFFERED. An earlier designed field carried two
+// topologies that both consumed EIGHT ranks against a four-host admissible set, so every candidate was
+// excluded on HOST FIT and the claim reached its expected verdict through a mechanism it was not about.
+// The behaviour claim could not see that; only a statement about what the live input actually contains
+// can. So: the live input's field is the live candidate field BY IDENTITY, its population is non-empty,
+// and every candidate names the real V4.1 artifact -- and NO DECISION IS RUN here, which is the whole
+// point of splitting it out.
+test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
+  let f = deepseek_v4_1_decision_input.field
+  declaration_ref_eq(a: f.identity, b: deepseek_v4_1_candidate_field.identity)
+    && count(f.candidates) > 0
+    && count(f.candidates) == count(deepseek_v4_1_candidate_field.candidates)
+    && all(f.candidates, k =>
+         declaration_ref_eq(a: k.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity))
+    && all(f.candidates, k => k.topology.tensor_parallel_degree * k.topology.replica_count
+         <= count(pair_unit_a_fleet_snapshot.admissible_hosts))
 }
 
 // ── THE MEMORY SCREEN IS PER-CANDIDATE, AND THE DISCRIMINATING PAIR PROVES IT ──────────────────
