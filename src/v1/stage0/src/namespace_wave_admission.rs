@@ -1806,12 +1806,6 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
-/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
-/// not because the array was being emptied. #11156 is at base; the inventory evidence
-/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
-/// identity - so these seven still admit a real delta and deleting them would refuse a live
-/// transition rather than discharge a dead one.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
