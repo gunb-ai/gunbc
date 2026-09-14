@@ -13,7 +13,6 @@ use v1_compiler::std_compiler_entry::{
     native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,
     native_driver_cost_row_standing, native_driver_exclusive_rows, NativeDriverChildStanding,
     NativeDriverCostAccounting, NativeDriverCostRowStanding, NativeDriverExclusiveRowKey,
-    NativeDriverExclusiveRows,
 };
 use v1_compiler::std_measure::nanosecond;
 use v1_compiler::v1_compiler_emit_rust::emit_source_root_eval_driver_main_rs;
@@ -111,6 +110,10 @@ fn emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_pro
     assert!(
         main_rs.contains("[native-prepare-split]") && main_rs.contains("decls={}"),
         "the split line must carry decls=; emitted:\n{main_rs}"
+    );
+    assert!(
+        main_rs.contains("ExclusivePrepareShardMerge") && main_rs.contains("[prepare_shard_merge]"),
+        "named merge span must be in the emitted driver; emitted:\n{main_rs}"
     );
 }
 
