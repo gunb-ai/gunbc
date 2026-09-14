@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.function_typed_argument_mismatch_accepted
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data function_typed_argument_mismatch_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "function_typed_argument_mismatch_accepted" as NonEmptyStr,
+
+  receipts: [
+    "**a value that does not inhabit a function type is accepted where one is declared, and a function value is accepted where a nominal type is declared** (the v1 seed's direct-call argument checks and record-field checks in `v1.compiler.infer` use `type_node_is_callable` to EXEMPT callables from nominal brand and declared-type-obligation judgment, and no callable-specific judgment runs in their place.)",
+
+    "INVALID STATE: an Accepted program binding an argument or record field whose produced type does not inhabit its declared type, where either side is a function type.",
+
+    "HARM: silent wrongness, outside the ladder -- the application does not bind in bijection of types, and nothing refuses.",
+
+    "SPECIMENS, each compiled with `gunbc compile --source-dir` by the seed at main `ddeb5503994` and by the seed carrying gunbc#11325, locally, ZERO DIAGNOSTICS on both, at BOTH arities (`fn() -> Int` and `fn(Int) -> Int`): `fn apply(pick: fn() -> Int) -> Int { 0 }` called as `apply(pick: 7)`; the same formal given a `fn() -> String`; the same formal given a record `Token`; `fn apply(t: Token) -> Int { 0 }` given a function value; and `type Cfg { cb: fn() -> Int }` constructed as `Cfg { cb: 7 }`. Control that the check itself runs: `apply(t: n)` with `n: String` refuses on both seeds with TypeMismatch and the declared-type inhabitance diagnostic.",
+
+    "DISTINGUISHING FACTS. (1) Found while measuring whether gunbc#11325's widening of `type_node_is_callable` to nullary arrows loosened any exemption site: it could not, because the unary arity -- exempted before and after -- was already unchecked, and the nullary arity, not exempted on the old seed, was accepted there too. (2) The exemption is a hole only because it is not paired with a callable judgment: exempting a function type from NOMINAL checks is right; accepting it without any check is not.",
+
+    "RUNG FOUND AT: below the ladder (silent wrongness).",
+
+    "CEILING: 3, structurally guaranteed -- arrow inhabitance (parameter count, parameter and return types) is decidable from the modeled types.",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a declared-type judgment for function types at every site `type_node_is_callable` exempts, sufficient that each specimen above refuses located, with a passed function of matching arrow type as its accepted positive control.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "type_node_is_callable", field: WholeDeclaration },
+  ],
+}
