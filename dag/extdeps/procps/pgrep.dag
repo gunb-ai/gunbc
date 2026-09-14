@@ -1,6 +1,7 @@
 module extdeps.procps.pgrep
 
-import std.types { String, Int }
+import std.types { String, Int, List, Bool, NonEmptyStr, Unit }
+import std.algebra { trim }
 
 // pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this
 // repository reads are modelled.
@@ -14,3 +15,66 @@ import std.types { String, Int }
 // server had stopped. Only 1 is minted: the other three are documented here because they are the
 // reason this row is narrow, not because anything consumes them.
 data pgrep_exit_no_match: Int = 1
+
+// THE SCAN AS A MODELED OPERATION, so a host-effect executor can carry it over a remote transport
+// (DESIGN 3: the transport binds to this shape). `-f` matches the pattern against the FULL command
+// line; the operation prints one pid per line and NOTHING of the command lines it matched. That
+// property is why a fleet observer that must locate a process without reading its argv asks pgrep
+// rather than reading /proc/<pid>/cmdline: a command line can carry a token or key as an argument,
+// and the only thing that leaves the host here is the pid.
+//
+// EXIT 1 IS AN ANSWER. Per the EXIT STATUS row above, 1 means no process matched -- a successful
+// observation of absence -- so it maps to Unit with that sentence, and 2 and 3 are the refusal arms.
+service procps.Pgrep {
+  operation MatchFullCommandLine {
+    input { pattern: NonEmptyStr }
+    output {
+      pids: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["pgrep", "-f", "{pattern}"] }
+    exit {
+      0 => Unit
+      1 => Unit "no process matched"
+      nonzero => String "pgrep failed before answering"
+    }
+    mock_response {
+      0 => { pids: "4242\n", success: true } "hermetic procps.Pgrep.MatchFullCommandLine"
+    }
+  }
+}
+
+type PgrepPidListing
+  = PgrepPidsRead { pids: List<Int> }
+  | PgrepPidLineUnparseable { line: String }
+
+type PgrepPidScan {
+  pids: List<Int>
+  bad: String?
+}
+
+// One pid per line; blank lines (the trailing newline) are skipped; anything that is not an integer
+// refuses the whole listing rather than dropping the line, because a listing with a hole in it
+// would silently understate the population the caller is about to disambiguate.
+fn pgrep_pid_listing(stdout: String) -> PgrepPidListing {
+  let scan = fold(split(s: stdout, delimiter: "\n"), init: PgrepPidScan { pids: [], bad: none }, f: (acc, raw) => {
+    let line = trim(s: raw)
+    match acc.bad {
+      Present { value: _ } => acc
+      Absent =>
+        if line == "" {
+          acc
+        } else {
+          match parse_int(s: line) {
+            Present { value: pid } => PgrepPidScan { pids: append(acc.pids, pid), bad: none }
+            Absent => PgrepPidScan { pids: acc.pids, bad: Present { value: line } }
+          }
+        }
+    }
+  })
+  match scan.bad {
+    Present { value: line } => PgrepPidLineUnparseable { line: line }
+    Absent => PgrepPidsRead { pids: scan.pids }
+  }
+}
