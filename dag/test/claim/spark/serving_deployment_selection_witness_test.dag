@@ -190,18 +190,28 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
 // consume AT MOST the four ranks the subject's admissible host set holds, so neither can be excluded
 // on host fit -- which is the failure the previous hand-picked pair had, both consuming eight.
 //
-// tp4 x 1 is the shape CLOSEST TO FEASIBLE: it is the only topology whose per-rank Engram share comes
-// within 2 GiB of the budget, so a claim over it exercises the real margin and reds if the memory
-// screen ever stops excluding. tp2 x 1 is comfortably infeasible, so the assertion is not resting on
-// a single candidate. Two topologies against the eight the admissible enumeration yields.
+// tp4 x 1 IS THE SHAPE CLOSEST TO FEASIBLE, and that is why it is the one kept: it is the only
+// topology whose per-rank Engram share comes within 2 GiB of the budget, so a claim over it
+// exercises the real margin and reds if the memory screen ever stops excluding. A field of
+// comfortably-infeasible shapes would be excluded by a wider margin and would say less.
+//
+// ONE TOPOLOGY, NOT TWO, AND THE SECOND ONE'S REASON DID NOT SURVIVE MEASUREMENT. A tp2 x 1 shape
+// was carried alongside so the assertion would not rest on a single candidate. That rationale is
+// sound where the FIELD is the claim's subject -- and it is not, for either consumer here: their
+// subjects are runtime admission and the extdeps roster, and the field is incidental to both. It
+// cost 14,000-odd eval steps per topology to assert nothing either claim is about, which put
+// `unauthorized_v4_1_runtime_is_excluded_before_unread_axes` 7.5% over the new-witness budget at
+// 77,755 against 72,300. Measured, not estimated: 163,305 steps over eight topologies, 77,755 over
+// two.
 //
 // WHAT THIS IS NOT: a return to hand-picked topologies. The lesson of the falsified pair was that a
-// designed narrowing must INHABIT its subject, not that narrowing is forbidden -- and inhabitance here
-// is checked by execution, because each consuming claim must still reach its verdict through the
-// mechanism it exists to exercise rather than through host fit.
+// designed narrowing must INHABIT its subject, not that narrowing is forbidden -- and inhabitance
+// here is CHECKED BY EXECUTION rather than asserted, because each consuming claim must still reach
+// its verdict through the mechanism it exists to exercise rather than through host fit. That check
+// is the `ax_host_fit` conjunct in both consumers, and it is a standing control rather than
+// something an author did once.
 data v4_1_designed_topologies: List<TopologyShape> = [
   topology_shape(tensor_parallel_degree: 4, replica_count: 1),
-  topology_shape(tensor_parallel_degree: 2, replica_count: 1),
 ]
 
 fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
