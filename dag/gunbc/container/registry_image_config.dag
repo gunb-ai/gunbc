@@ -37,14 +37,17 @@ import extdeps.languages.json.parse {
   parse_json_document,
 }
 import extdeps.tools.sha256sum
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.resources { Network }
+
+type RegistryBytesSha256
+  = RegistryBytesSha256 { hex: NonEmptyStr }
+  | RegistryBytesSha256Unreadable { subject: NonEmptyStr, cause: String }
 
 type RegistryBytesDigestCheck
   = RegistryBytesDigestMatched { hex: NonEmptyStr }
   | RegistryBytesDigestMismatched { subject: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
-  | RegistryBytesDigestUnreadable { subject: NonEmptyStr, cause: String }
 
 type RegistryHttpBody
   = RegistryHttpBody { body: String }
@@ -84,19 +87,19 @@ fn registry_authorization_header_line(token: NonEmptyStr) -> String {
   join(["Authorization: Bearer ", token as String, "\n"], "")
 }
 
-fn sha256_hex_of_content(content: String, subject: NonEmptyStr) -> RegistryBytesDigestCheck {
+fn sha256_hex_of_content(content: String, subject: NonEmptyStr) -> RegistryBytesSha256 {
   let observed = sha256sum.Sha256.DigestStdin(content: content)
   if observed.success == false {
-    RegistryBytesDigestUnreadable { subject: subject, cause: "sha256sum could not digest the bytes" }
+    RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum could not digest the bytes" }
   } else {
     match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
       Absent =>
-        RegistryBytesDigestUnreadable { subject: subject, cause: "sha256sum printed no digest field" }
+        RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum printed no digest field" }
       Present { value: hex } =>
         if hex.length() == 0 {
-          RegistryBytesDigestUnreadable { subject: subject, cause: "sha256sum printed an empty digest field" }
+          RegistryBytesSha256Unreadable { subject: subject, cause: "sha256sum printed an empty digest field" }
         } else {
-          RegistryBytesDigestMatched { hex: hex as NonEmptyStr }
+          RegistryBytesSha256 { hex: hex as NonEmptyStr }
         }
     }
   }
@@ -343,23 +346,11 @@ fn read_docker_hub_image_config_at_digest(
             }
             RegistryHttpBody { body: manifest_body } =>
               match sha256_hex_of_content(content: manifest_body, subject: "manifest" as NonEmptyStr) {
-                RegistryBytesDigestUnreadable { subject: s, cause: c } => {
+                RegistryBytesSha256Unreadable { subject: s, cause: c } => {
                   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                   PinnedRegistryImageConfigRefused { cause: join([s as String, ": ", c], "") }
                 }
-                RegistryBytesDigestMismatched { subject: s, expected: e, observed: o } => {
-                  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                  PinnedRegistryImageConfigRefused {
-                    cause: join([
-                      s as String,
-                      " digest mismatch: expected ",
-                      e as String,
-                      " observed ",
-                      o as String,
-                    ], ""),
-                  }
-                }
-                RegistryBytesDigestMatched { hex: manifest_hex } =>
+                RegistryBytesSha256 { hex: manifest_hex } =>
                   match check_sha256_hex(
                     subject: "manifest" as NonEmptyStr,
                     expected: digest_sha256_hex,
@@ -376,10 +367,6 @@ fn read_docker_hub_image_config_at_digest(
                           o as String,
                         ], ""),
                       }
-                    }
-                    RegistryBytesDigestUnreadable { subject: s, cause: c } => {
-                      let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                      PinnedRegistryImageConfigRefused { cause: join([s as String, ": ", c], "") }
                     }
                     RegistryBytesDigestMatched { hex: _ } =>
                       match manifest_config_digest_wire(manifest_json: manifest_body) {
@@ -413,25 +400,13 @@ fn read_docker_hub_image_config_at_digest(
                                     content: config_body,
                                     subject: "config" as NonEmptyStr,
                                   ) {
-                                    RegistryBytesDigestUnreadable { subject: s, cause: c } => {
+                                    RegistryBytesSha256Unreadable { subject: s, cause: c } => {
                                       let cleaned = shell.Remove.RecursiveForce(path: dir.path)
                                       PinnedRegistryImageConfigRefused {
                                         cause: join([s as String, ": ", c], ""),
                                       }
                                     }
-                                    RegistryBytesDigestMismatched { subject: s, expected: e, observed: o } => {
-                                      let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                                      PinnedRegistryImageConfigRefused {
-                                        cause: join([
-                                          s as String,
-                                          " digest mismatch: expected ",
-                                          e as String,
-                                          " observed ",
-                                          o as String,
-                                        ], ""),
-                                      }
-                                    }
-                                    RegistryBytesDigestMatched { hex: config_observed } =>
+                                    RegistryBytesSha256 { hex: config_observed } =>
                                       match check_sha256_hex(
                                         subject: "config" as NonEmptyStr,
                                         expected: config_hex,
@@ -447,12 +422,6 @@ fn read_docker_hub_image_config_at_digest(
                                               " observed ",
                                               o as String,
                                             ], ""),
-                                          }
-                                        }
-                                        RegistryBytesDigestUnreadable { subject: s, cause: c } => {
-                                          let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-                                          PinnedRegistryImageConfigRefused {
-                                            cause: join([s as String, ": ", c], ""),
                                           }
                                         }
                                         RegistryBytesDigestMatched { hex: _ } =>

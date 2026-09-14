@@ -17,13 +17,6 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.pinned_base_env_classification {
-  PinnedBaseImageEnvClassification,
-  PinnedBaseEnvRead,
-  PinnedBaseEnvReadClassified,
-  PinnedBaseEnvReadRefused,
-}
-
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -299,13 +292,12 @@ type SparkManagedGrant
 // knowledge wall came down when only the decision to proceed was taken.
 
 // THE EPISTEMIC AXIS. A grant that returns no host data has nothing to classify.
-// PinnedBaseImageEnvClassified is the reader's receipt for the pinned BASE image config only
-// (sparkrun_vllm_ds4_gb10_pinned_reference). It does not classify the live serving container.
-// spark_managed_grant_disclosure_standing never returns that arm for InspectServingContainer.
+// A pinned-base image Env classification lives on PinnedBaseEnvRead, not on this coproduct:
+// classifying a digest-pinned image is not a disclosure standing for any grant, including
+// InspectServingContainer (live object, unpinned tag).
 type SparkGrantDisclosureStanding
   = GrantReturnsNoHostData
   | GrantDisclosureUnestablished { obligation: NonEmptyStr }
-  | PinnedBaseImageEnvClassified { classification: PinnedBaseImageEnvClassification }
 
 data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that object. Two facts are missing and neither implies the other: the environment the pinned base image bakes (extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference), and whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure_standing to leave GrantDisclosureUnestablished for InspectServingContainer" as NonEmptyStr
 
@@ -315,20 +307,6 @@ fn spark_managed_grant_disclosure_standing(grant: SparkManagedGrant) -> SparkGra
     RebootThisHost => GrantReturnsNoHostData
     InspectServingContainer { container: _ } =>
       GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
-  }
-}
-
-fn spark_pinned_base_env_disclosure_standing(
-  classification: PinnedBaseImageEnvClassification,
-) -> SparkGrantDisclosureStanding {
-  PinnedBaseImageEnvClassified { classification: classification }
-}
-
-fn spark_pinned_base_env_disclosure(read: PinnedBaseEnvRead) -> SparkGrantDisclosureStanding? {
-  match read {
-    PinnedBaseEnvReadRefused { cause: _ } => none
-    PinnedBaseEnvReadClassified { classification: c } =>
-      Present { value: spark_pinned_base_env_disclosure_standing(classification: c) }
   }
 }
 
