@@ -35,10 +35,6 @@ import v2.std.node {
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
-// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
-// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
-// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
-// consumer, trigger = that producer landing in v2.compiler.infer.
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
@@ -62,24 +58,15 @@ type InhabitanceUndecidableReason
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
 
-// InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as
-// v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact
-// lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation).
-// It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND
-// find_witness over the declared singleton refusing, and for decidable positional arity mismatch
-// (exact bijection of formals and positional arguments). The v2 arm of the #11277 class (an
-// argument/type obligation can be absent while the route still advances) retires when the
-// frontier count over reached applications is zero on both routes; the count is the census.
-// RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a
-// decidable incompatible argument refuses; unjudgeable applications are counted. That is the
-// claim, not "every reached application is judged". Native emission is a declared frontier: it
-// is unclaimed until v2.std.inhabitance is in the native 04_infer closure AND the same RED (Bool
-// at an Int formal) refuses on the emitted binary.
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
+// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
+// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
+// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
+// consumer, trigger = that producer landing in v2.compiler.infer.
 fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
 }
@@ -135,6 +122,14 @@ fn inhabitance_pair_undecidable_reason(
 // declared formal (UniqueOnly over the singleton {declared}). Routing through coercion_fold would nickname
 // target-selection as typechecking. Application refusal maps find_witness_reason_no_candidate to
 // application_argument_does_not_inhabit, not CoercionMismatchKind.NoTargetCandidate.
+// InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as
+// v2.compiler.infer infer_grounding_not_derived. Rejected is both-sides-derived find_witness refuse
+// and decidable positional arity mismatch. The v2 arm of the #11277 class (an argument/type
+// obligation can be absent while the route still advances) retires when the frontier count over
+// reached applications is zero on both routes. RUNG: source→interpretation is a decidable
+// incompatible argument refuses; unjudgeable applications are counted. Native emission is unclaimed
+// until v2.std.inhabitance is in the native 04_infer closure AND the Bool-at-Int RED refuses on
+// the emitted binary.
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
@@ -214,18 +209,24 @@ fn application_positional_deficit_reason() -> Symbol {
   ^application_positional_deficit
 }
 
+fn application_positional_arity_reason(formal_count: Int, argument_count: Int) -> Symbol {
+  if argument_count > formal_count {
+    application_positional_surplus_reason()
+  } else {
+    application_positional_deficit_reason()
+  }
+}
+
 fn application_positional_arity_mismatch_diagnostic(
   application: Node,
   formal_count: Int,
   argument_count: Int
 ) -> Diagnostic {
   Diagnostic {
-    reason:
-      if argument_count > formal_count {
-        application_positional_surplus_reason()
-      } else {
-        application_positional_deficit_reason()
-      },
+    reason: application_positional_arity_reason(
+      formal_count: formal_count,
+      argument_count: argument_count
+    ),
     at: node_locus(node: application),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
