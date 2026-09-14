@@ -180,6 +180,13 @@ test fn a_process_one_tick_off_does_not_match_the_exported_instant() -> Bool {
   }
 }
 
+// A HUGE POSITIVE CLK_TCK WOULD WRAP boot*ticks in the RHS intermediate; the checked chain returns
+// false (not a match) rather than comparing against a wrapped value, so a wrapped equality cannot
+// fabricate a match (review 66389).
+test fn a_wrapping_tick_rate_is_not_a_match() -> Bool {
+  !exported_start_equals_process_start(exported: ExactDecimal { units: 1, fraction_digits: 0 }, boot_epoch_seconds: 9000000000000000000, ticks_per_second: 9000000000000000000, start_ticks: 0)
+}
+
 test fn the_process_start_epoch_floors_to_whole_seconds() -> Bool {
   process_start_epoch_seconds(boot_epoch_seconds: 1788630958, ticks_per_second: 100, start_ticks: 71392591) == 1789344883
 }
