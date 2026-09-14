@@ -105,12 +105,19 @@ fn declared_architecture_standing(
 ) -> DeclaredArchitectureStanding {
   match spec {
     DeclaredLabel { label } =>
-      match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
-        ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
-        NotArmConfirmed { label, architecture, snapshot } =>
-          DeclaredNotArm { via: spec, architecture: architecture }
-        ArmUndetermined { label, cause } =>
-          DeclaredArchitectureUnresolved { via: spec, cause: cause }
+      if label == "" {
+        DeclaredArchitectureUnresolved {
+          via: spec,
+          cause: "declared runs-on is an empty string; emptiness is not a catalog label",
+        }
+      } else {
+        match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+          ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
+          NotArmConfirmed { label, architecture, snapshot } =>
+            DeclaredNotArm { via: spec, architecture: architecture }
+          ArmUndetermined { label, cause } =>
+            DeclaredArchitectureUnresolved { via: spec, cause: cause }
+        }
       }
     DeclaredExpression { expression, alternatives } =>
       let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
@@ -199,11 +206,18 @@ fn declared_provider_standing(
 ) -> DeclaredProviderStanding {
   match spec {
     DeclaredLabel { label } =>
-      match provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at)) {
-        ProviderFromCatalog { provider, label, snapshot } =>
-          DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
-        ProviderUnresolved { label, cause } =>
-          DeclaredProviderUnresolved { via: spec, cause: cause }
+      if label == "" {
+        DeclaredProviderUnresolved {
+          via: spec,
+          cause: "declared runs-on is an empty string; emptiness is not a catalog label",
+        }
+      } else {
+        match provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+          ProviderFromCatalog { provider, label, snapshot } =>
+            DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+          ProviderUnresolved { label, cause } =>
+            DeclaredProviderUnresolved { via: spec, cause: cause }
+        }
       }
     DeclaredExpression { expression, alternatives } =>
       let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
@@ -393,6 +407,18 @@ data inspected_yaml_job_names: List<InspectedYamlJobName> = [
     job_key: "build_pr_image_summary",
     name: NameUnset,
   },
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupA" },
+  },
+  InspectedYamlJobName {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "yaml-dup",
+    name: AuthoredName { prefix: "DupB" },
+  },
 ]
 
 type YamlJobNameJoin
@@ -446,12 +472,16 @@ fn observed_name_matches_inspected_prefix(
   match matrix {
     NoMatrix => job_name == prefix
     MatrixCombination { axes } =>
-      job_name == concat(
-        prefix,
-        workflow_job_name_matrix_value_parenthetical(
-          values: matrix_combination_values(axes: axes),
-        ),
-      )
+      if count(axes) == 0 {
+        false
+      } else {
+        job_name == concat(
+          prefix,
+          workflow_job_name_matrix_value_parenthetical(
+            values: matrix_combination_values(axes: axes),
+          ),
+        )
+      }
   }
 }
 
@@ -732,7 +762,13 @@ fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission
         Absent => BaselineRefused {
           cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
         }
-        Present { value: conclusion } => match conclusion {
+        Present { value: conclusion } =>
+          if job.run_attempt < 1 {
+            BaselineRefused {
+              cause: "the job resource did not carry a positive run attempt; zero is not attempt 1",
+            }
+          } else {
+            match conclusion {
           Success => match correctness {
             TestsExecuted { step } => match observed_label_standing(o: c.observed) {
               ObservedLabel { label } => BaselineAdmitted {
@@ -780,7 +816,8 @@ fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission
           StartupFailure => BaselineRefused {
             cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
           }
-        }
+            }
+          }
       }
   }
 }
