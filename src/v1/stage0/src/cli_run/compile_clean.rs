@@ -1067,6 +1067,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         DataReferenceVisibilityBudgetExceeded { name: s(), span: no_span() },
         ParameterDefaultFormNotAdmitted { parameter: s(), admitted: istrings(), span: no_span() },
         AmbiguousAnonymousRecordLiteral { candidates: istrings(), span: no_span() },
+        EffectfulSelfRecursionUnrealized { name: s(), span: no_span() },
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
         EffectSummaryIncompleteAtFunctionValue { caller: s(), span: no_span() },
         EffectSummaryIncompleteAtLocalBinding { caller: s(), name: s(), span: no_span() },
@@ -1547,6 +1548,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
+        CompilerDiagnostic::EffectfulSelfRecursionUnrealized { .. } => {
+            "EffectfulSelfRecursionUnrealized"
+        }
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
@@ -1646,6 +1650,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
+        CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),

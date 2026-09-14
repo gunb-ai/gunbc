@@ -10,9 +10,18 @@ import extdeps.cloud.ubicloud {
 import extdeps.currency.currency { Usd }
 import std.measure { MoneyPerMinute, money_amount_micro }
 import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ci_runner.types {
+  ArmSiliconCitedSku,
+  ArmSiliconStanding,
+  ArmUsdPerMinute,
+  ArmListPriceStanding,
+  CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -91,4 +100,24 @@ fn ubicloud_runner_price_catalog() -> List<UbicloudRunnerPriceRow> {
     ubicloud_arm_standard_2_price,
     ubicloud_arm_standard_16_price,
   ]
+}
+
+data ubicloud_q8030_sku_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere",
+  decl_name: "altra_q8030_catalog",
+  field: WholeDeclaration,
+}
+
+data ubicloud_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku {
+  cpu: ubicloud_q8030_sku_ref,
+  cited_surface: "ubicloud.com/docs/github-actions-integration/runner-types.md: arm64 runners run on Ampere Altra Q80-30 (read 2026-09-13).",
+}
+
+data ubicloud_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: ubicloud_arm_standard_2_price.per_minute,
+  priced_label: "ubicloud-standard-2-arm",
+}
+
+data ubicloud_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "ubicloud.com/docs/github-actions-integration sign-up and billing-credit path (read 2026-09-13).",
 }
