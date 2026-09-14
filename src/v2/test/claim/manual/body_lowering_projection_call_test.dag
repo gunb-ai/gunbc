@@ -11,6 +11,8 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_emitted_identity_optional
 }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node_query { call_argument_targets, call_callee_target, node_is_call }
 import v2.std.optional {
   Absent,
   Optional,
@@ -21,6 +23,7 @@ import v2.std.logic { Bool }
 import v2.std.node {
   ComputationNode,
   Node,
+  Symbol,
   Transform
 }
 
@@ -92,6 +95,55 @@ test fn body_lowering_projection_lowers_to_transform() -> Bool {
   }
 }
 
+fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
+  match node_is_call(node: root) {
+    false => search_call_named_children(root: root, callee: callee)
+    true =>
+      match call_callee_target(node: root) {
+        Accepted { value: c, diagnostics: _ } =>
+          match node_atom_identity_optional(node: c) {
+            Present { value: id } =>
+              match id == callee {
+                true => Present { value: root }
+                false => search_call_named_children(root: root, callee: callee)
+              }
+            Absent => search_call_named_children(root: root, callee: callee)
+          }
+        Rejected { diagnostics: _ } => search_call_named_children(root: root, callee: callee)
+      }
+  }
+}
+
+fn search_call_named_children(root: Node, callee: Symbol) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => search_call_named(root: e.target, callee: callee)
+    }
+  })
+}
+
+fn call_named_arity(root: Node, callee: Symbol) -> Int {
+  match search_call_named(root: root, callee: callee) {
+    Absent => 0
+    Present { value: call } => count(call_argument_targets(node: call))
+  }
+}
+
+fn tree_has_punct_call_operator(root: Node, punct: Symbol) -> Bool {
+  let here = match call_callee_target(node: root) {
+    Accepted { value: c, diagnostics: _ } =>
+      match node_atom_identity_optional(node: c) {
+        Present { value: id } => id == punct
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+  here || fold(root.children, init: false, f: fn(acc, e) {
+    acc || tree_has_punct_call_operator(root: e.target, punct: punct)
+  })
+}
+
 data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> Int { x.field }\n"
 
 test fn body_lowering_field_access_postfix_rejects() -> Bool {
@@ -136,7 +188,9 @@ test fn body_lowering_normalize_accepts_projection_module() -> Bool {
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: _ } => false
-            Accepted { value: _, diagnostics: _ } => true
+            Accepted { value: normalized, diagnostics: _ } =>
+              (call_named_arity(root: normalized.root, callee: ^step) == 2)
+                && !tree_has_punct_call_operator(root: normalized.root, punct: ^dag_token_lbrace)
           }
       }
   }

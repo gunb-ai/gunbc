@@ -122,11 +122,6 @@ fn first_refusal_reason(source: String) -> Symbol {
 }
 
 test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
-  first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
-}
-
-// Silent resolve-accept of undefined_callee_zzz is a failing must-refuse, not a dated measurement.
-test fn staged_front_end_undeclared_callee_refuses_at_resolve_with_unbound_reason() -> Bool {
-  rejected_at_index(source: candidate_dies_at_resolve_undeclared_callee_source, index: 4)
+  (first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol)
     && (first_refusal_reason(source: candidate_dies_at_resolve_undeclared_callee_source) == ^resolve_reason_unbound_symbol)
 }
