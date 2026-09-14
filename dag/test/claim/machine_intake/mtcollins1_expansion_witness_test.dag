@@ -171,10 +171,12 @@ test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
 // declaration nobody updated. This asserts the live unit's own answer and the two counts, so the
 // report has to actually be in the carrier for the witness to pass.
 //
-// ONE FITTED PCIe POSITION, NOT TWO. The operator reported one riser cage with a PCIe slot and one
-// blanking plate across the two rear positions. The platform permits two; this chassis offers one.
-// If that reading is corrected to two, this control reds and says so rather than the count moving
-// silently underneath a consumer that already priced a card against it.
+// TWO FITTED PCIe POSITIONS, AND THIS CONTROL IS THE RECEIPT FOR HOW THAT NUMBER WAS FIXED. It first
+// read one, from a reading of the operator's sentence rather than from the operator; he corrected it to
+// two on direct inspection the same day. The count is asserted here rather than left to the evidence
+// string because a consumer prices a card against it: two fitted positions is the platform's full upper
+// bound, so this chassis reaches it rather than falling one short. The OCP count stays 1 - that fold
+// offers a single mezzanine bay and is a different question from the rear positions.
 test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
   match expansion_evidence_for_unit(unit: observed_unit) {
     NoExpansionObservationForUnit { requested_unit: _ } => false
@@ -183,7 +185,7 @@ test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
         AttachmentPointOffered { positions: pcie_positions, basis: _ } =>
           match ocp {
             AttachmentPointOffered { positions: ocp_positions, basis: _ } =>
-              pcie_positions == 1 && ocp_positions == 1
+              pcie_positions == 2 && ocp_positions == 1
             AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
             AttachmentPointOccupied { basis: _ } => false
             AttachmentPointAbsent { basis: _ } => false
