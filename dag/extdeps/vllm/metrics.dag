@@ -103,6 +103,7 @@ type ServingQuestion
   | HowLargeAreArrivingPrompts
   | IsThePrefixCacheEffective
   | IsTheEngineThrashing
+  | IsTheEngineCoreProgressing
 
 // A THIRD ARM, BECAUSE A METRIC THAT SILENTLY READS ZERO WHEN DISABLED IS ITS OWN TRAP.
 // The step counter below exists on every launch and reads 0.0 forever unless the engine was
@@ -143,6 +144,8 @@ fn kv_usage_verdict(q: ServingQuestion) -> MetricVerdict {
       MetricRefuses { because: "it carries no duration" as NonEmptyStr }
     HowLargeAreArrivingPrompts =>
       MetricRefuses { because: "it is a ratio of blocks held, with no per-request grain" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "a warm engine sits near 1.0 with nothing running, and a stalled one sits there too; the ratio does not move when work stops" as NonEmptyStr }
   }
 }
 
@@ -164,6 +167,8 @@ fn iteration_tokens_verdict(q: ServingQuestion) -> MetricVerdict {
       MetricRefuses { because: "cached prompt tokens are inside the booked total, so a fully cached prompt still books its whole length here; the prefix-cache counters answer this" as NonEmptyStr }
     IsTheEngineThrashing =>
       MetricRefuses { because: "it carries no eviction or retention information" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "its count advances once per output-carrying batch, so a prefill-only workload that IS progressing does not advance it; absence of movement here is not absence of work" as NonEmptyStr }
   }
 }
 
@@ -208,6 +213,11 @@ fn estimated_flops_verdict(q: ServingQuestion) -> MetricVerdict {
       MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
     IsTheEngineThrashing =>
       MetricRefuses { because: "it carries no eviction information" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricAnswersOnlyUnder {
+        precondition: "the launch carries --enable-mfu-metrics; without it this counter reads 0.0 for the life of the engine, so a motionless reading is indistinguishable from a stalled engine (measured 2026-09-14: 0.0 on both enrolled group heads)" as NonEmptyStr,
+        note: "under the precondition it advances once per engine step whether or not that step emitted a token, which is the closest thing the engine exports to a heartbeat" as NonEmptyStr,
+      }
   }
 }
 
@@ -237,6 +247,8 @@ fn inter_token_latency_verdict(q: ServingQuestion) -> MetricVerdict {
       MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
     IsTheEngineThrashing =>
       MetricRefuses { because: "a long interval has many causes and eviction is not distinguishable here" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "it observes intervals that COMPLETED; a step that never finishes contributes no observation at all, so the histogram of a stalled engine is the histogram of the moment before it stalled" as NonEmptyStr }
   }
 }
 
@@ -252,6 +264,8 @@ fn running_verdict(q: ServingQuestion) -> MetricVerdict {
     HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
     IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
     IsTheEngineThrashing => MetricRefuses { because: "it carries no eviction information" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricAnswers { note: "read beside a work counter, it is the half that separates a motionless counter on an IDLE engine from a motionless counter with requests admitted and being served, which is the only shape that can be a stall; alone it says nothing about progress" as NonEmptyStr }
   }
 }
 
@@ -267,6 +281,8 @@ fn waiting_verdict(q: ServingQuestion) -> MetricVerdict {
     HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
     IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
     IsTheEngineThrashing => MetricRefuses { because: "a queue has many causes and eviction is not distinguishable here" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "a queue forms behind a stalled engine and behind a merely busy one; the gauge cannot tell them apart" as NonEmptyStr }
   }
 }
 
@@ -297,6 +313,8 @@ fn waiting_by_reason_verdict(q: ServingQuestion) -> MetricVerdict {
     IsThePrefixCacheEffective => MetricRefuses { because: "it carries no cache information" as NonEmptyStr }
     IsTheEngineThrashing =>
       MetricRefuses { because: "waiting for capacity is admission pressure, not eviction of a running sequence; num_preemptions_total is the thrash signal" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "the reason labels name scheduling causes, and no label reports that the engine stopped stepping" as NonEmptyStr }
   }
 }
 
@@ -321,6 +339,8 @@ fn cumulative_token_verdict(q: ServingQuestion) -> MetricVerdict {
     IsThePrefixCacheEffective =>
       MetricRefuses { because: "prompt_tokens_total includes cached tokens, so it overstates computed work; the prefix-cache counters answer this" as NonEmptyStr }
     IsTheEngineThrashing => MetricRefuses { because: "it carries no eviction information" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricAnswers { note: "across TWO readings of one launch it advances only when a step produced output, so an increase is work done; equality is NOT stall on its own -- it is no output in this window, and becomes a stall only with requests running and an interval longer than the longest uninterruptible step, which gunbc.serving.engine_progress requires structurally rather than by note" as NonEmptyStr }
   }
 }
 
@@ -336,6 +356,8 @@ fn prefix_cache_verdict(q: ServingQuestion) -> MetricVerdict {
     HowBusyIsThisReplica => MetricRefuses { because: "cumulative over the launch" as NonEmptyStr }
     IsThisReplicaSaturated => MetricRefuses { because: "cache effectiveness is orthogonal to admission" as NonEmptyStr }
     HowLargeAreArrivingPrompts => MetricRefuses { because: "queries count tokens looked up, not prompts" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "queries and hits advance on cache lookups, which a stalled engine performs none of and an idle one performs none of either" as NonEmptyStr }
   }
 }
 
@@ -351,6 +373,8 @@ fn preemptions_verdict(q: ServingQuestion) -> MetricVerdict {
     HowBusyIsThisReplica => MetricRefuses { because: "an engine can be fully busy and never preempt" as NonEmptyStr }
     HowLargeAreArrivingPrompts => MetricRefuses { because: "it carries no prompt grain" as NonEmptyStr }
     IsThePrefixCacheEffective => MetricRefuses { because: "preemption is about running sequences, not cached prefixes" as NonEmptyStr }
+    IsTheEngineCoreProgressing =>
+      MetricRefuses { because: "a preemption is a scheduling event, not a step; an engine that preempts nothing may be progressing or stopped" as NonEmptyStr }
   }
 }
 
