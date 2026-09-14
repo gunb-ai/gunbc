@@ -14,6 +14,30 @@ import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 // There is no committed list: a list would re-create the single-file collision this
 // module exists to delete. Recurring_failure_mode's derived roster.dag exists because
 // other modules import a List; this fold does not.
+//
+// EMPTY IS THE RESTING STATE, AND EMPTY IS NOT PERMISSIVE. A missing or empty sibling
+// directory admits no extra delta: a run with no unadjudicated motion passes, a real
+// TargetChanged without a file refuses. That sentence used to live above a Rust const
+// and went stale whenever a dissolution PR edited the array but not the paragraph
+// (#11274 left prose asserting seven #11182 rows still stood). THIS MODULE is the
+// home for what remains: membership is the directory. Git history of the deleted
+// const is quarry for past shrinks (53, 314, …). Do not transcribe a census of
+// retired labels here — that is how the paragraph rotted.
+//
+// INHERITANCE FROM IN-FLIGHT CONST PRs. #11306 (vivid-stag-90) may land first with
+// six TargetChanged rows, label "repository visibility unifies onto its resource
+// module (gunbc#11306)", expected declarer extdeps.github.repository, at:
+//   extdeps.github.actions_token :: ActionsRepositoryPolicyObservation  RepositoryVisibility
+//   extdeps.github.actions_token :: fork_write_tokens_reachable         PrivateRepository
+//   extdeps.github.actions_token :: fork_write_tokens_reachable         PublicRepository
+//   test.claim.actions_job_grant_witness :: fork_policy_allows          PrivateRepository
+//   test.claim.actions_job_grant_witness :: fork_policy_denies          PrivateRepository
+//   test.claim.actions_job_grant_witness :: public_fork_policy_allows   PublicRepository
+// Those become six sibling files (stem = module_declaration_spelling). They are
+// consumed by that merge; #11316 deletes them as files. If this cut merges after
+// that pair, the directory is empty again — the designed resting state. Do not
+// author those six files onto an unlanded #11345: they would refuse against a
+// main that does not yet carry the relocation.
 
 type AdmissionSubject
   = Binding {

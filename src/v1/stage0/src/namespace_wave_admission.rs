@@ -361,7 +361,10 @@ pub struct TransitionAdmission {
 /// The rows are enumerated by exact identity, never by a pattern over the renamed modules,
 /// because a pattern would admit a genuine rebind that happened to land in the same module pair.
 
-/// EMPTY IS THE RESTING STATE between transitions.
+/// EMPTY IS THE RESTING STATE between transitions. The standing record of what the
+/// roster currently is — empty or not, and that empty is not permissive — lives on
+/// `gunbc.namespace.transition_admission`, not beside a deleted const. Past shrinks
+/// remain in git history of this file as quarry.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
 /// required floor against the merge base after the namespace wall landed. That subject landed
@@ -1815,6 +1818,8 @@ pub struct TransitionAdmission {
 /// transition rather than discharge a dead one.
 ///
 /// THE CONST ROSTER IS DELETED. Production permission is the directory fold
+/// `load_transition_admissions`. Empty directory (or a missing directory) is this resting
+/// state. What remains is stated on `gunbc.namespace.transition_admission`.
 /// `load_transition_admissions`. Empty directory (or a missing directory) is this resting state.
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
