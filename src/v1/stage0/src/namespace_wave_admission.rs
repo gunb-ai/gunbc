@@ -1763,8 +1763,16 @@ pub struct TransitionAdmission {
 /// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
 /// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
 /// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
-/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
-/// rows after this deletion and carries only this change's own two.
+/// Main's roster held exactly these 181 rows and nothing else, so the array was empty of inherited
+/// rows after that deletion.
+///
+/// THE #11156 PAIR IS ALSO GONE, and the same trigger discharged it. Those two rows named their own
+/// retirement condition -- "these rows go when #11156 merges" -- #11156 merged, and the required
+/// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
+/// header paragraph went with them rather than being left describing an empty subject, which is the
+/// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
+/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
+/// relocation set alone.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
@@ -1792,6 +1800,12 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
+/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
+/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
+/// not because the array was being emptied. #11156 is at base; the inventory evidence
+/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
+/// identity - so these seven still admit a real delta and deleting them would refuse a live
+/// transition rather than discharge a dead one.
 // gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
 // to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
 // these two TargetChanged bindings. Remove these permissions once consumed at the base;

@@ -3133,29 +3133,21 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
-/// DECLARED FRONTIER (DESIGN §3c), named rather than gestured at. Every consumer of this type in
-/// THIS change is a row that witnesses the instrument itself; the consumer it was built for -- the
-/// bare-name-ambiguity refusal in `claim_scope_for` -- is not in this diff. §3c admits that state
-/// in exactly one form, "a named consumer that lands in a named later change, admissible only
-/// with the trigger stated beside it", so both are stated here:
-///
-///   CONSUMER: the `AmbiguousBareNameRead` refusal and its controls, on branch
-///   `session/witty-moth-510-wall2` (gunbc#11166), which uses `claim_scope_fixture` and
-///   `claim_scope_refusal_names` to author the refusal's discriminating RED.
-///
-///   TRIGGER: that refusal cannot land until the census population it governs reaches zero, which
-///   needs the qualification batches merged AND the variant-arm resolution tier that stops the
-///   census over-counting five correctly-written sites. Until then this type's only consumers are
-///   its own witness rows, and that is the state this frontier declares.
-///
-/// If that refusal is abandoned, this instrument has no remaining consumer and should be deleted
-/// rather than retained -- a declaration nothing consumes is §2's redundant work, and saying so
-/// here is what keeps the frontier from becoming a permanent resting state.
+/// THE §3c FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
+/// declared it is replaced rather than left standing. gunbc#11143 admitted this type with its
+/// only consumers being its own witness rows, naming the consumer that would arrive (the
+/// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
+/// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
+/// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
+/// describing a state that no longer holds.
 ///
 /// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
 /// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
 /// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
-/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
+/// of the same `ambiguous_reads` vector -- which the wall refuses on and which no census
+/// prints, because this climb deleted the read census that used to. A second computation here, even
 /// an identical one, would be the second authority the census exists to avoid and would be free
 /// to drift.
 ///
@@ -3178,15 +3170,21 @@ pub enum ClaimScopeFixtureOutcome {
     /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
     ScopeRefused { cause: String },
     /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
-    /// the scope builder currently raises applied.
+    /// the scope builder raises applied.
     ///
-    /// ACCEPTANCE IS SILENT ABOUT AMBIGUITY, and that is not a temporary wording choice. The
-    /// scope builder COLLECTS `ambiguous_bare_reads` and returns them on the accepted scope; it
-    /// does not refuse on them. So this arm is compatible with any number of ambiguous bare
-    /// reads, and a control asserting it establishes nothing about that class. The refusal that
-    /// would make acceptance mean something stronger lands separately, with its own controls; a
-    /// reader who needs "no ambiguous read" must consult `ambiguous_bare_reads` rather than
-    /// infer it from this arm.
+    /// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. On gunbc#11143 this arm was
+    /// deliberately SILENT about ambiguity: the scope builder collected the ambiguous reads (in a field this climb has since deleted)
+    /// and returned them on the accepted scope without refusing, so acceptance was compatible
+    /// with any number of ambiguous bare reads and a control asserting it established nothing
+    /// about that class. This change adds the refusal, so acceptance now DOES exclude them --
+    /// which is the whole point of the wall and is what lets the negative controls in
+    /// `bare_name_ambiguity_wall_witness_test` assert through this arm.
+    ///
+    /// The scope of that is worth stating exactly, because "no ambiguous read" is a narrower
+    /// claim than it sounds: it means no VALUE-POSITION read of a name two transitively-reached
+    /// modules declare, over the population the census measures. Type-position collisions are
+    /// explicitly outside it -- see the wall's own annotation, which names that as the adjacent
+    /// class it does not cover.
     ScopeAccepted { module_count: i64 },
 }
 
@@ -40471,13 +40469,9 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: Vec<AmbiguousBareName>,
-    /// THE READS, which is the population a refusal is affordable against — see
-    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
-    /// the two whose members are defects rather than declarations.
-    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
     /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
-    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
-    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// with the module that answered it. A pair that no longer refuses proves only that
+    /// the wall stopped firing on it; this says what the reference resolves TO, which is the whole content of a
     /// qualification. `(name, referring module, resolved module)`.
     pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
@@ -41268,11 +41262,112 @@ fn claim_scope_for_with_memos(
         qualified_reads.sort();
         qualified_reads.dedup();
     }
+    // THE WALL. Every row left in `ambiguous_reads` is a bare value reference reaching the shared
+    // name slot with two transitively-reached declarations spelling it and nothing the author
+    // wrote ranking them. Until now the slot settled it silently by scope precedence -- a
+    // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
+    // rather than in an output. The line stops here instead, typed and located.
+    //
+    // KEYED ON THE SAME VALUE THE READ CENSUS USED TO PUBLISH, and that census is DELETED by this
+    // climb rather than left beside it. `ambiguous_reads` is the single binding. An earlier draft
+    // of this comment said "the census lines in `required_floor_runner` read this same vector, so
+    // the refusal and the count cannot drift apart" -- which this diff falsifies: the refusal
+    // returns Err before a scope exists, the runner reaches `built` only through
+    // `claim_scope_for(..)?`, so the read census could not agree with the refusal either. It could
+    // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
+    // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
+    // read lines are gone and the fixture rows in
+    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    //
+    // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
+    // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
+    // so they keep carrying information. Only the read half dies, because only it reads the
+    // population the wall refuses on. A wall keyed on the RAW free-reference set
+    // would over-approximate -- that set unions type annotations, record-literal type names,
+    // field labels and variant constructors -- and would refuse `Foo { observation: o }` the day
+    // a second `observation` is declared. The value-position projection plus the three resolution
+    // tiers behind `falls_through_to_shared_slot` are what make this population precise enough to
+    // refuse on.
+    //
+    // THE REFUSAL CARRIES ITS REMEDY, AND THE REMEDY NAMES DECLARING MODULES. This wall lands into
+    // a corpus that is still moving: a site authored next week reds someone who never heard of
+    // this campaign, in a module they may not own, over a name they did not know was contested. A
+    // message that only says "this read is ambiguous" hands that person a dead remedy, and the
+    // cheapest way out is to copy whatever import an adjacent file has -- which is how a
+    // re-exporting module gets named instead of a declaring one, and how `import std.types
+    // { String }` came to appear in ~1951 modules while binding nothing. So each row prints its
+    // claimants WITH the module that declares each, and an import line to paste.
+    //
+    // THE MECHANISM ANYONE NARROWING AN IMPORT NEEDS, recorded here because a PR body is not
+    // readable from the code: A BARE `import some.module` RE-EXPORTS THAT MODULE'S OWN IMPORTED
+    // BINDINGS, not merely its declarations. `extdeps.clock` imports `v2.std.optional { Present }`
+    // and `extdeps.filesystem.filesystem_io` imports `std.types { ... List ... }`, so files that
+    // bare-imported those were receiving `Present` and `List` through them. Narrowing a bare
+    // import to a name list therefore STRANDS names belonging to modules the file never mentions,
+    // and a check that joins the file against the NARROWED module's declarations cannot find them
+    // -- the lost names are declared elsewhere. Measured on gunbc#11156: six such names across
+    // four modules, surfaced by this phase's own `NewUnresolvedness` deltas after a hand sweep
+    // missed them.
+    //
+    // WHAT THIS WALL DOES NOT COVER, stated so that zero rows is never later cited as "no
+    // ambiguity in the corpus":
+    //
+    //   - TYPE-POSITION name collisions. `String`, `Int`, `List`, `Bool` and `WireContract` are
+    //     each declared by both `std.*` and its `v2.std.*` self-host copy. That double is a real
+    //     ambiguity in a different channel, owned by the v2 self-host replacement migration, and
+    //     it ends by ending the double -- not by a rename this wall could ask for. The census line
+    //     `channel=value_position_only not_covered=type_position_name_collisions
+    //     owner=v2_self_host_replacement_migration` is what says so.
+    //   - A VARIANT ARM reachable only through an ALIAS right-hand side naming a coproduct in
+    //     another module. The arm tier is node-local (`fragment_coproduct_disj_node`) and does not
+    //     follow such an alias, so a read of that arm stays in this population and refuses. That
+    //     is the conservative direction -- a false REFUSAL, never a false pass -- and the
+    //     next-rung trigger is a scope-wide arm index built after resolution.
+    //   - PATHS OTHER THAN CLAIM-SCOPE CONSTRUCTION. This refuses where the census measures, so
+    //     the two cannot disagree. Per §4b(1) a class's rung is the MINIMUM across its in-scope
+    //     paths: the honest report is mechanically-preventable on the claim-scope path, with
+    //     extension to the general interpreter entry as the named next-rung trigger.
+    if !ambiguous_reads.is_empty() {
+        let sites = ambiguous_reads
+            .iter()
+            .map(|row| {
+                let claimants = row
+                    .claimants
+                    .iter()
+                    .map(|(module, kind)| format!("{module} (declares it as {kind})"))
+                    .collect::<Vec<String>>()
+                    .join(" and ");
+                let remedy = row
+                    .claimants
+                    .iter()
+                    .map(|(module, _)| format!("import {module} {{ {} }}", row.name))
+                    .collect::<Vec<String>>()
+                    .join("   OR   ");
+                format!(
+                    "  `{}` is read bare by {}, and is declared by {}.\n                          Add ONE of these to {}, choosing the authority that module means:\n       {}",
+                    row.name, row.referring_module, claimants, row.referring_module, remedy
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=AmbiguousBareNameRead scope={entry_module_path} \
+             sites={}\n{}\n\
+             Each names a value two transitively-reached modules both declare, where the \
+             referring module neither declares it nor names a source for it -- so the shared name \
+             slot would pick one by scope precedence, which is a resolution nothing in the source \
+             authorizes.\n\
+             THE IMPORT MUST NAME THE MODULE THAT DECLARES THE NAME. An import naming a module \
+             that merely re-exports or mentions it binds nothing and leaves this refusal standing \
+             -- copying an adjacent file's import line is the common way to get that wrong.",
+            ambiguous_reads.len(),
+            sites
+        ));
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_reads: ambiguous_reads,
         qualified_bare_reads: qualified_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()
@@ -41906,9 +42001,9 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
-    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
-    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
-    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
+    // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
+    // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
