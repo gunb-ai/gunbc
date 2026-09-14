@@ -3,14 +3,16 @@ module gunbc.frontend_eval.experiment
 import std.types { String, Bool, NonEmptyStr, List }
 import std.measure { TokenCount }
 import extdeps.vllm.sampling_params { SamplingTemperature }
-import gunbc.frontend_eval.attempt_arm { EvalArm }
+import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire }
+import gunbc.frontend_eval.attempt_arm { EvalArm, LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard, eval_arm_key }
 
-// ONE EXPERIMENT IS ONE MANIFEST, AND A TABLE MAY NOT SPAN TWO. An arm name such as LowEffortTools
-// is a policy label; what went over the wire, which program judged, which bytes drove the loop
-// and which card and tools the model saw are facts, and each is an identity here. A report over
-// rows that disagree on any of them would compare two experiments as one, so every attempt names
-// its manifest by content hash and the report refuses a population whose rows name more than one
-// manifest per arm or a manifest not in the roster it was handed.
+// ONE COHORT, FOUR TREATMENTS. Everything the arms SHARE -- which model, which snapshot, which
+// compiler judged, which driver bytes ran the loop, which task set, which prompt template, the
+// decode configuration -- is one cohort identity; what an arm VARIES -- reasoning effort, tools,
+// card -- is its treatment. A table may fold rows from one cohort only, and each arm's treatment
+// must be the treatment its name promises: an arm called LowEffortTools whose manifest carries
+// ToolsAbsent is a label contradicting its facts, and the admission below refuses it rather than
+// rendering a green table over it (side-chat review, 2026-09-14).
 type CardIdentity
   = CardAbsent
   | CardPresent { sha256: NonEmptyStr }
@@ -19,21 +21,105 @@ type ToolSurfaceIdentity
   = ToolsAbsent
   | ToolsPresent { schema_sha256: NonEmptyStr, implementation_sha256: NonEmptyStr }
 
-type EvalExperiment {
+type EvalCohort {
   identity: NonEmptyStr
-  arm: EvalArm
   model_id: NonEmptyStr
   model_snapshot: NonEmptyStr
   compiler_program_sha256: NonEmptyStr
   driver_sha256: NonEmptyStr
   task_set_sha256: NonEmptyStr
   prompt_template_sha256: NonEmptyStr
-  card: CardIdentity
-  tools: ToolSurfaceIdentity
-  reasoning_effort_wire: NonEmptyStr
   clear_thinking: Bool
   temperature: SamplingTemperature
   max_tokens: TokenCount
+}
+
+// THE EFFORT IS THE GLM AUTHORITY'S OWN VALUE, never a string: on this model an unrecognised
+// effort resolves to max silently, so a free-text field would make the most expensive typo the
+// one nothing could see. The wire value is DERIVED from it where a driver needs it.
+type EvalTreatment {
+  arm: EvalArm
+  effort: GlmReasoningEffort
+  tools: ToolSurfaceIdentity
+  card: CardIdentity
+}
+
+fn treatment_effort_wire(t: EvalTreatment) -> NonEmptyStr {
+  glm_5_3_flash_reasoning_effort_wire(effort: t.effort)
+}
+
+type EvalExperiment {
+  identity: NonEmptyStr
+  cohort: NonEmptyStr
+  treatment: EvalTreatment
+}
+
+fn tools_present(t: ToolSurfaceIdentity) -> Bool {
+  match t {
+    ToolsAbsent => false
+    ToolsPresent { schema_sha256: _, implementation_sha256: _ } => true
+  }
+}
+
+fn card_present(c: CardIdentity) -> Bool {
+  match c {
+    CardAbsent => false
+    CardPresent { sha256: _ } => true
+  }
+}
+
+fn effort_is(e: GlmReasoningEffort, expected: GlmReasoningEffort) -> Bool {
+  glm_5_3_flash_reasoning_effort_wire(effort: e) == glm_5_3_flash_reasoning_effort_wire(effort: expected)
+}
+
+// THE FOUR ADMITTED TREATMENTS, as laws over the manifest rather than as names.
+fn treatment_matches_arm(t: EvalTreatment) -> Bool {
+  match t.arm {
+    LowEffortBare => effort_is(e: t.effort, expected: GlmEffortLow) && tools_present(t: t.tools) == false && card_present(c: t.card) == false
+    MaxEffortBare => effort_is(e: t.effort, expected: GlmEffortMax) && tools_present(t: t.tools) == false && card_present(c: t.card) == false
+    LowEffortTools => effort_is(e: t.effort, expected: GlmEffortLow) && tools_present(t: t.tools) && card_present(c: t.card) == false
+    LowEffortToolsCard => effort_is(e: t.effort, expected: GlmEffortLow) && tools_present(t: t.tools) && card_present(c: t.card)
+  }
+}
+
+fn tools_eq(a: ToolSurfaceIdentity, b: ToolSurfaceIdentity) -> Bool {
+  match a {
+    ToolsAbsent => tools_present(t: b) == false
+    ToolsPresent { schema_sha256: sa, implementation_sha256: ia } => match b {
+      ToolsAbsent => false
+      ToolsPresent { schema_sha256: sb, implementation_sha256: ib } => sa == sb && ia == ib
+    }
+  }
+}
+
+// THE CARD ARM MUST CARRY THE SAME TOOLS AS THE TOOLS ARM, or the decisive comparison (tools vs
+// tools plus card) varies two things at once.
+fn card_arm_shares_tools(experiments: List<EvalExperiment>) -> Bool {
+  let tools_arm = experiments |> filter(e => eval_arm_key(arm: e.treatment.arm) == eval_arm_key(arm: LowEffortTools))
+  let card_arm = experiments |> filter(e => eval_arm_key(arm: e.treatment.arm) == eval_arm_key(arm: LowEffortToolsCard))
+  fold(card_arm, init: true, f: (acc, c) => acc && fold(tools_arm, init: true, f: (acc2, t) => acc2 && tools_eq(a: c.treatment.tools, b: t.treatment.tools)))
+}
+
+type ExperimentAdmission
+  = ExperimentsAdmitted
+  | ExperimentsRefused { detail: String }
+
+fn admit_experiments(cohort: EvalCohort, experiments: List<EvalExperiment>) -> ExperimentAdmission {
+  let foreign = experiments |> filter(e => e.cohort != cohort.identity)
+  let mislabeled = experiments |> filter(e => treatment_matches_arm(t: e.treatment) == false)
+  if count(foreign) > 0 {
+    ExperimentsRefused { detail: "an experiment names a cohort other than the one handed in" }
+  } else {
+    if count(mislabeled) > 0 {
+      ExperimentsRefused { detail: join(["an arm's treatment contradicts its name: ", fold(mislabeled, init: "", f: (acc, e) => eval_arm_key(arm: e.treatment.arm))], "") }
+    } else {
+      if card_arm_shares_tools(experiments: experiments) == false {
+        ExperimentsRefused { detail: "the card arm does not carry the tools arm's tool surface" }
+      } else {
+        ExperimentsAdmitted
+      }
+    }
+  }
 }
 
 fn experiment_for(experiments: List<EvalExperiment>, identity: NonEmptyStr) -> List<EvalExperiment> {

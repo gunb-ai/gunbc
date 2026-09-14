@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { Millisecond, TokenCount, token_count, token_count_value, measure_add }
 import gunbc.frontend_eval.task { EvalTask, mutation_class_scored_separately, frontend_eval_tasks }
 import gunbc.frontend_eval.attempt_arm { EvalArm, eval_arm_key, eval_arms }
-import gunbc.frontend_eval.experiment { EvalExperiment, experiment_for }
+import gunbc.frontend_eval.experiment { EvalCohort, EvalExperiment, ExperimentsAdmitted, ExperimentsRefused, admit_experiments, experiment_for }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM. It names the experiment
 // manifest it ran under (every identity a re-run must match lives there, once), the content hash
@@ -37,6 +37,10 @@ fn eval_outcome_accepted(outcome: EvalOutcome) -> Bool {
 
 // USAGE IS WIRE-OBSERVED, NOT MODEL-REPORTED: the counts come from the serving engine's usage
 // block on each response, summed over the attempt's cycles, carried as std.measure token counts.
+// The reasoning count is the engine's own `usage.completion_tokens_details.reasoning_tokens`
+// (extdeps.llm.openai OpenAiChatCompletion200CompletionTokenDetails), which vLLM counts
+// server-side for this model; a driver over a server that does not report it must refuse the
+// row, never tokenize the returned reasoning text itself.
 type EvalUsage {
   prompt_tokens: TokenCount
   completion_tokens: TokenCount
@@ -85,7 +89,7 @@ fn duplicate_cell(attempts: List<EvalAttempt>, a: EvalAttempt) -> Bool {
 fn manifest_disagrees(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>, a: EvalAttempt) -> Bool {
   let named = experiment_for(experiments: experiments, identity: a.experiment)
   count(named) != 1
-    || count(named |> filter(e => e.arm == a.arm)) != 1
+    || count(named |> filter(e => e.treatment.arm == a.arm)) != 1
     || count(attempts |> filter(b => b.arm == a.arm && b.experiment != a.experiment)) > 0
 }
 
@@ -96,7 +100,14 @@ fn first_task_id(rows: List<EvalAttempt>) -> String {
   }
 }
 
-fn admit_report_population(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportAdmission {
+fn admit_report_population(cohort: EvalCohort, experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportAdmission {
+  match admit_experiments(cohort: cohort, experiments: experiments) {
+    ExperimentsRefused { detail } => ReportRefused { detail: detail }
+    ExperimentsAdmitted => admit_rows(experiments: experiments, attempts: attempts)
+  }
+}
+
+fn admit_rows(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportAdmission {
   let unknown = attempts |> filter(a => task_known(a: a) == false)
   let duplicated = attempts |> filter(a => duplicate_cell(attempts: attempts, a: a))
   let mixed = attempts |> filter(a => manifest_disagrees(experiments: experiments, attempts: attempts, a: a))
@@ -115,6 +126,11 @@ fn admit_report_population(experiments: List<EvalExperiment>, attempts: List<Eva
   }
 }
 
+// `accepted_in_one_cycle` COUNTS ACCEPTANCE AFTER ONE MODEL TURN AND IS NOT FIRST-ATTEMPT REPAIR
+// QUALITY: a tools arm always spends its first turn on a check, so the column is comparable within
+// a protocol shape and not across bare and tools arms. First-repair-check-green needs the ordered
+// edit/check events of the per-attempt carrier, which no in-tree fold reads yet.
+//
 // THE PER-ARM FOLD, JOINED AGAINST THE ROSTER BY TASK IDENTITY (DESIGN section 5: completeness is an
 // identity join, not a count equality). Denominators are the roster's tasks, never the rows
 // present. COSTS ARE OVER EVERY ATTEMPTED ROW, not the accepted ones: an attempt that spent 40k
@@ -125,7 +141,7 @@ type PopulationSummary {
   tasks: Int
   run: Int
   accepted: Int
-  first_attempt_green: Int
+  accepted_in_one_cycle: Int
   reasoning_tokens: TokenCount
   reasoning_tokens_accepted: TokenCount
   completion_tokens: TokenCount
@@ -158,7 +174,7 @@ fn eval_population_summary(attempts: List<EvalAttempt>, arm: EvalArm, tasks: Lis
     tasks: count(tasks),
     run: count(rows),
     accepted: count(accepted),
-    first_attempt_green: count(accepted |> filter(a => a.cycles == 1)),
+    accepted_in_one_cycle: count(accepted |> filter(a => a.cycles == 1)),
     reasoning_tokens: sum_tokens(rows: rows, pick: a => a.usage.reasoning_tokens),
     reasoning_tokens_accepted: sum_tokens(rows: accepted, pick: a => a.usage.reasoning_tokens),
     completion_tokens: sum_tokens(rows: rows, pick: a => a.usage.completion_tokens),
@@ -202,7 +218,7 @@ fn mean_text(total: Int, n: Int) -> String {
 fn population_cells(p: PopulationSummary) -> String {
   join([
     coverage_text(accepted: p.accepted, run: p.run, tasks: p.tasks),
-    " | ", if p.run == 0 { "-" } else { to_string(value: p.first_attempt_green) },
+    " | ", if p.run == 0 { "-" } else { to_string(value: p.accepted_in_one_cycle) },
     " | ", mean_text(total: tokens_int(t: p.reasoning_tokens), n: p.run),
     " | ", mean_text(total: tokens_int(t: p.reasoning_tokens_accepted), n: p.accepted),
     " | ", mean_text(total: p.cycles, n: p.run),
@@ -214,19 +230,49 @@ fn arm_summary_line(s: ArmSummary) -> String {
   join(["| ", eval_arm_key(arm: s.arm), " | ", population_cells(p: s.language), " | ", population_cells(p: s.sentinel), " |"], "")
 }
 
-data report_header: String = "| arm | language accepted | lang first-try green | lang mean reasoning tok (all) | lang mean reasoning tok (accepted) | lang mean cycles (all) | lang mean tool calls (all) | sentinel accepted | sent first-try green | sent mean reasoning tok (all) | sent mean reasoning tok (accepted) | sent mean cycles (all) | sent mean tool calls (all) |"
+data report_header: String = "| arm | language accepted | lang accepted in one cycle | lang mean reasoning tok (all) | lang mean reasoning tok (accepted) | lang mean cycles (all) | lang mean tool calls (all) | sentinel accepted | sent accepted in one cycle | sent mean reasoning tok (all) | sent mean reasoning tok (accepted) | sent mean cycles (all) | sent mean tool calls (all) |"
 data report_rule: String = "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 
+// THE REPORT'S STANDING IS STRUCTURAL. Every row is derived by the driver from its own carrier
+// (no in-tree fold reads the carrier yet), so a rendered report is at most DRIVER-DERIVED; and a
+// row whose model context is unrecorded cannot establish that judge-only data stayed outside the
+// model's context. A report over any such row is PROVISIONAL and says so in its first line: it may
+// show the numbers, and it may not carry the decisive card-versus-no-card conclusion.
+type ReportStanding
+  = ReportDriverDerived
+  | ReportProvisional { unrecorded_contexts: Int }
+
 type ReportRead
-  = ReportRendered { text: String }
+  = ReportRendered { text: String, standing: ReportStanding }
   | ReportNotRendered { detail: String }
+
+fn context_unrecorded(a: EvalAttempt) -> Bool {
+  match a.model_context {
+    ModelContextHashed { sha256: _ } => false
+    ModelContextUnrecorded => true
+  }
+}
+
+fn report_standing_line(standing: ReportStanding) -> String {
+  match standing {
+    ReportDriverDerived => "standing: driver-derived rows (no in-tree carrier readback yet); every model context hashed"
+    ReportProvisional { unrecorded_contexts } => join(["standing: PROVISIONAL -- ", to_string(value: unrecorded_contexts), " row(s) carry no model-context hash and cannot support the card-versus-no-card conclusion; all rows driver-derived"], "")
+  }
+}
 
 // THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
 // instrument), over a population admitted first.
-fn frontend_eval_report(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportRead {
-  match admit_report_population(experiments: experiments, attempts: attempts) {
+fn frontend_eval_report(cohort: EvalCohort, experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportRead {
+  match admit_report_population(cohort: cohort, experiments: experiments, attempts: attempts) {
     ReportRefused { detail } => ReportNotRendered { detail: detail }
-    ReportAdmitted { attempts: admitted } => ReportRendered { text: join(concat([report_header, report_rule],
-      eval_arms |> map(arm => arm_summary_line(s: arm_summary(attempts: admitted, arm: arm)))), "\n") }
+    ReportAdmitted { attempts: admitted } => {
+      let unrecorded = count(admitted |> filter(a => context_unrecorded(a: a)))
+      let standing = if unrecorded == 0 { ReportDriverDerived } else { ReportProvisional { unrecorded_contexts: unrecorded } }
+      ReportRendered {
+        text: join(concat([report_standing_line(standing: standing), "", report_header, report_rule],
+          eval_arms |> map(arm => arm_summary_line(s: arm_summary(attempts: admitted, arm: arm)))), "\n"),
+        standing: standing,
+      }
+    }
   }
 }

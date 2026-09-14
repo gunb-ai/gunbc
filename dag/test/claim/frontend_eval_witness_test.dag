@@ -9,12 +9,17 @@ import gunbc.frontend_eval.task {
   frontend_eval_model_tasks_json, frontend_eval_judge_spec_json, frontend_stage_key,
 }
 import gunbc.frontend_eval.attempt {
-  EvalAttempt, EvalUsage, EvalOutcome, ArmSummary, ModelContextUnrecorded,
+  EvalAttempt, EvalUsage, EvalOutcome, ArmSummary, ModelContextIdentity, ModelContextHashed, ModelContextUnrecorded,
   AcceptedRepair, FrontendStillRed, TestsRed, ScopeExceeded, BudgetExhausted, TransportFailed,
   arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
+  ReportStanding, ReportDriverDerived, ReportProvisional,
 }
 import gunbc.frontend_eval.attempt_arm { EvalArm, LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard, eval_arms }
-import gunbc.frontend_eval.experiment { EvalExperiment, CardAbsent, ToolsAbsent }
+import gunbc.frontend_eval.experiment {
+  EvalCohort, EvalExperiment, EvalTreatment, CardIdentity, CardAbsent, CardPresent, ToolSurfaceIdentity, ToolsAbsent, ToolsPresent,
+  treatment_effort_wire,
+}
+import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortMax }
 import gunbc.frontend_eval.card { frontend_language_card }
 import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
 import std.measure { millisecond, token_count, token_count_value }
@@ -79,34 +84,48 @@ test fn model_projection_names_tasks_and_hides_the_repair() -> Bool {
     && (t.expected_lexeme == "" || contains(judge, t.expected_lexeme)))
 }
 
-fn fixture_experiment(t: SamplingTemperature, arm: EvalArm, identity: String) -> EvalExperiment {
-  EvalExperiment {
-    identity: identity as NonEmptyStr, arm: arm,
+fn fixture_cohort(t: SamplingTemperature, identity: String) -> EvalCohort {
+  EvalCohort {
+    identity: identity as NonEmptyStr,
     model_id: "m" as NonEmptyStr, model_snapshot: "s" as NonEmptyStr, compiler_program_sha256: "c" as NonEmptyStr,
     driver_sha256: "d" as NonEmptyStr, task_set_sha256: "r" as NonEmptyStr, prompt_template_sha256: "p" as NonEmptyStr,
-    card: CardAbsent, tools: ToolsAbsent, reasoning_effort_wire: "low" as NonEmptyStr, clear_thinking: false,
-    temperature: t, max_tokens: token_count(count: 1),
+    clear_thinking: false, temperature: t, max_tokens: token_count(count: 1),
   }
 }
 
-fn fixture_attempt(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+fn fixture_experiment(cohort: String, identity: String, arm: EvalArm, effort: GlmReasoningEffort, tools: ToolSurfaceIdentity, card: CardIdentity) -> EvalExperiment {
+  EvalExperiment { identity: identity as NonEmptyStr, cohort: cohort as NonEmptyStr, treatment: EvalTreatment { arm: arm, effort: effort, tools: tools, card: card } }
+}
+
+data fixture_tools: ToolSurfaceIdentity = ToolsPresent { schema_sha256: "ts" as NonEmptyStr, implementation_sha256: "ti" as NonEmptyStr }
+
+fn fixture_experiments() -> List<EvalExperiment> {
+  [
+    fixture_experiment(cohort: "cohort-1", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent),
+    fixture_experiment(cohort: "cohort-1", identity: "exp-tools", arm: LowEffortTools, effort: GlmEffortLow, tools: fixture_tools, card: CardAbsent),
+    fixture_experiment(cohort: "cohort-1", identity: "exp-card", arm: LowEffortToolsCard, effort: GlmEffortLow, tools: fixture_tools, card: CardPresent { sha256: "k" as NonEmptyStr }),
+  ]
+}
+
+fn fixture_attempt_with(context: ModelContextIdentity, experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
   EvalAttempt {
     task_id: id as NonEmptyStr, arm: arm, experiment: experiment as NonEmptyStr,
-    record_sha256: "rec" as NonEmptyStr, model_context: ModelContextUnrecorded,
+    record_sha256: "rec" as NonEmptyStr, model_context: context,
     usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: reasoning * 2), reasoning_tokens: token_count(count: reasoning) },
     cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall: millisecond(count: 0),
   }
 }
 
-fn fixture_experiments() -> List<EvalExperiment> {
-  match sampling_temperature(value: 0.0) {
-    Absent => []
-    Present { value: t } => [fixture_experiment(t: t, arm: LowEffortBare, identity: "exp-bare"), fixture_experiment(t: t, arm: LowEffortTools, identity: "exp-tools")]
-  }
-}
-
 // THE FIXTURE IS BUILT THROUGH THE TEMPERATURE'S OWN CONSTRUCTOR (a refused temperature would empty
 // the fixture, and the summary witness would then fail on `attempts == 3`, not pass vacuously).
+fn fixture_attempt(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  fixture_attempt_with(context: ModelContextUnrecorded, experiment: experiment, id: id, arm: arm, outcome: outcome, reasoning: reasoning, cycles: cycles)
+}
+
+fn fixture_attempt_hashed(experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
+  fixture_attempt_with(context: ModelContextHashed { sha256: "ctx" as NonEmptyStr }, experiment: experiment, id: id, arm: arm, outcome: outcome, reasoning: reasoning, cycles: cycles)
+}
+
 data fixture_attempts: List<EvalAttempt> = [
   fixture_attempt(experiment: "exp-bare", id: "pareto.nesting", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 10, cycles: 1),
   fixture_attempt(experiment: "exp-bare", id: "pareto.arm", arm: LowEffortBare, outcome: FrontendStillRed, reasoning: 1000, cycles: 6),
@@ -120,11 +139,11 @@ data fixture_attempts: List<EvalAttempt> = [
 // the fourteen language tasks with no row count as not run rather than vanish from the ratio.
 test fn arm_summary_folds_sentinel_apart_and_counts_red_cost() -> Bool {
   let s = arm_summary(attempts: fixture_attempts, arm: LowEffortBare)
-  s.language.tasks == 16 && s.language.run == 2 && s.language.accepted == 1 && s.language.first_attempt_green == 1
+  s.language.tasks == 16 && s.language.run == 2 && s.language.accepted == 1 && s.language.accepted_in_one_cycle == 1
     && token_count_value(t: s.language.reasoning_tokens) == 1010
     && token_count_value(t: s.language.reasoning_tokens_accepted) == 10
     && s.language.cycles == 7
-    && s.sentinel.tasks == 4 && s.sentinel.run == 1 && s.sentinel.accepted == 1 && s.sentinel.first_attempt_green == 0
+    && s.sentinel.tasks == 4 && s.sentinel.run == 1 && s.sentinel.accepted == 1 && s.sentinel.accepted_in_one_cycle == 0
     && token_count_value(t: s.sentinel.reasoning_tokens) == 30
 }
 
@@ -136,10 +155,24 @@ test fn scope_exceeded_is_not_an_accepted_repair() -> Bool {
     && arm_summary(attempts: fixture_attempts, arm: LowEffortTools).language.accepted == 0
 }
 
+fn report_with(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportRead {
+  match sampling_temperature(value: 0.0) {
+    Absent => ReportNotRendered { detail: "fixture temperature refused" }
+    Present { value: t } => frontend_eval_report(cohort: fixture_cohort(t: t, identity: "cohort-1"), experiments: experiments, attempts: attempts)
+  }
+}
+
 fn rendered(attempts: List<EvalAttempt>) -> String {
-  match frontend_eval_report(experiments: fixture_experiments(), attempts: attempts) {
-    ReportRendered { text } => text
+  match report_with(experiments: fixture_experiments(), attempts: attempts) {
+    ReportRendered { text, standing: _ } => text
     ReportNotRendered { detail: _ } => ""
+  }
+}
+
+fn refused_with(experiments: List<EvalExperiment>, attempts: List<EvalAttempt>, lexeme: String) -> Bool {
+  match report_with(experiments: experiments, attempts: attempts) {
+    ReportRendered { text: _, standing: _ } => false
+    ReportNotRendered { detail } => contains(detail, lexeme)
   }
 }
 
@@ -148,7 +181,8 @@ fn rendered(attempts: List<EvalAttempt>) -> String {
 // never-run population prints as not run with no numbers.
 test fn report_renders_one_line_per_arm_from_rows() -> Bool {
   let r = rendered(attempts: fixture_attempts)
-  contains(r, "| low_bare | 1/16 (14 not run) | 1 | 505 | 10 | 3 | 0 | 1/4 (3 not run) | 0 | 30 | 30 | 3 | 0 |")
+  contains(r, "standing: PROVISIONAL -- 4 row(s)")
+    && contains(r, "| low_bare | 1/16 (14 not run) | 1 | 505 | 10 | 3 | 0 | 1/4 (3 not run) | 0 | 30 | 30 | 3 | 0 |")
     && contains(r, "| low_tools | 0/16 (15 not run) | 0 | 5 | - | 1 | 0 | not run | - | - | - | - | - |")
     && contains(r, "| max_bare | not run | - | - | - | - | - | not run | - | - | - | - | - |")
     && contains(r, "1/2") == false
@@ -214,13 +248,8 @@ test fn negative_sampling_temperature_has_no_constructor() -> Bool {
 test fn report_refuses_duplicate_cells_and_unknown_tasks() -> Bool {
   let dup = concat(fixture_attempts, fixture_attempts)
   let unknown = [fixture_attempt(experiment: "exp-bare", id: "nowhere.task", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
-  match frontend_eval_report(experiments: fixture_experiments(), attempts: dup) {
-    ReportRendered { text: _ } => false
-    ReportNotRendered { detail: d } => contains(d, "more than one attempt") && contains(d, "pareto.nesting")
-  } && match frontend_eval_report(experiments: fixture_experiments(), attempts: unknown) {
-    ReportRendered { text: _ } => false
-    ReportNotRendered { detail: d } => contains(d, "not in the roster") && contains(d, "nowhere.task")
-  }
+  refused_with(experiments: fixture_experiments(), attempts: dup, lexeme: "more than one attempt")
+    && refused_with(experiments: fixture_experiments(), attempts: unknown, lexeme: "nowhere.task")
 }
 
 // ONE MANIFEST PER ARM, AND IT MUST BE THE ARM'S: a row naming an unknown manifest, a manifest of
@@ -229,12 +258,44 @@ test fn report_refuses_duplicate_cells_and_unknown_tasks() -> Bool {
 test fn report_refuses_a_population_spanning_two_manifests() -> Bool {
   let foreign = concat(fixture_attempts, [fixture_attempt(experiment: "exp-other", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)])
   let crossed = [fixture_attempt(experiment: "exp-tools", id: "pareto.labeled", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
-  match frontend_eval_report(experiments: fixture_experiments(), attempts: foreign) {
-    ReportRendered { text: _ } => false
-    ReportNotRendered { detail: d } => contains(d, "manifest")
-  } && match frontend_eval_report(experiments: fixture_experiments(), attempts: crossed) {
-    ReportRendered { text: _ } => false
-    ReportNotRendered { detail: d } => contains(d, "manifest")
+  refused_with(experiments: fixture_experiments(), attempts: foreign, lexeme: "manifest")
+    && refused_with(experiments: fixture_experiments(), attempts: crossed, lexeme: "manifest")
+}
+
+// THE COHORT AND THE TREATMENTS ARE LAWS, NOT LABELS: an experiment from another cohort, an arm
+// whose treatment contradicts its name (LowEffortTools with no tools; LowEffortBare at max), and a
+// card arm carrying different tools than the tools arm all refuse before any row is folded.
+test fn report_refuses_foreign_cohort_and_mislabeled_treatments() -> Bool {
+  let other_cohort = [fixture_experiment(cohort: "cohort-2", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent)]
+  let toolless_tools_arm = [fixture_experiment(cohort: "cohort-1", identity: "exp-tools", arm: LowEffortTools, effort: GlmEffortLow, tools: ToolsAbsent, card: CardAbsent)]
+  let max_bare_named_low = [fixture_experiment(cohort: "cohort-1", identity: "exp-bare", arm: LowEffortBare, effort: GlmEffortMax, tools: ToolsAbsent, card: CardAbsent)]
+  let card_with_other_tools = concat(fixture_experiments() |> filter(e => e.identity != "exp-card" as NonEmptyStr),
+    [fixture_experiment(cohort: "cohort-1", identity: "exp-card", arm: LowEffortToolsCard, effort: GlmEffortLow, tools: ToolsPresent { schema_sha256: "other" as NonEmptyStr, implementation_sha256: "ti" as NonEmptyStr }, card: CardPresent { sha256: "k" as NonEmptyStr })])
+  refused_with(experiments: other_cohort, attempts: fixture_attempts, lexeme: "cohort")
+    && refused_with(experiments: toolless_tools_arm, attempts: fixture_attempts, lexeme: "low_tools")
+    && refused_with(experiments: max_bare_named_low, attempts: fixture_attempts, lexeme: "low_bare")
+    && refused_with(experiments: card_with_other_tools, attempts: fixture_attempts, lexeme: "tool surface")
+    && treatment_effort_wire(t: EvalTreatment { arm: MaxEffortBare, effort: GlmEffortMax, tools: ToolsAbsent, card: CardAbsent }) == "max" as NonEmptyStr
+}
+
+// STANDING IS STRUCTURAL: rows with hashed contexts render driver-derived; one unrecorded context
+// makes the whole report provisional, with the count in the standing.
+test fn report_standing_is_provisional_on_any_unrecorded_context() -> Bool {
+  let hashed = [
+    fixture_attempt_hashed(experiment: "exp-bare", id: "pareto.nesting", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1),
+  ]
+  match report_with(experiments: fixture_experiments(), attempts: hashed) {
+    ReportNotRendered { detail: _ } => false
+    ReportRendered { text, standing } => contains(text, "standing: driver-derived") && match standing {
+      ReportDriverDerived => true
+      ReportProvisional { unrecorded_contexts: _ } => false
+    }
+  } && match report_with(experiments: fixture_experiments(), attempts: concat(hashed, [fixture_attempt(experiment: "exp-bare", id: "pareto.arm", arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)])) {
+    ReportNotRendered { detail: _ } => false
+    ReportRendered { text: _, standing } => match standing {
+      ReportDriverDerived => false
+      ReportProvisional { unrecorded_contexts } => unrecorded_contexts == 1
+    }
   }
 }
 
