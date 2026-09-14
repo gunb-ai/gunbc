@@ -5,7 +5,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
   GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
-  DesignFailureModesArtifact, DesignRungDropsArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
@@ -111,6 +111,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
         identity: (d.identity as String),
         body: rung_drop_declaration_message(d: d)
       })
+    ContributorOnboardingArtifact => []
     WitnessFloorYamlArtifact => []
     FleetConvergeYamlArtifact => []
     FleetDesiredAdmissionYamlArtifact => []

@@ -5,7 +5,7 @@ import v2.workflow.floor_pure_producer_share {
   ShareRefusalVerdict,
   MeasuredServeAboveRecompute,
   NoMeasuredEffectOverItsConsumers,
-  SupersededBySingleAuthorityRepair,
+  SupersededBySingleAuthorityRepair, KeyOmitsAnInputTheValueDependsOn,
   floor_cross_claim_refused_candidates,
   floor_cross_claim_admitted_producers,
   refused_share_producers,
@@ -132,6 +132,9 @@ test fn the_refused_roster_carries_identities() -> Bool {
 test fn only_a_measured_cost_verdict_transfers_through_its_carriers() -> Bool {
   refused_row_carriers_transfer(verdict: MeasuredServeAboveRecompute)
     && (refused_row_carriers_transfer(verdict: NoMeasuredEffectOverItsConsumers) == false)
+    && (refused_row_carriers_transfer(
+          verdict: KeyOmitsAnInputTheValueDependsOn { undeclared_input: "an authored fixture" }
+        ) == false)
 }
 
 // A SECTION 3 SUPERSESSION IS ABOUT ONE SPELLING. The repair takes the receipt series as an
