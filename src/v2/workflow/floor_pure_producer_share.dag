@@ -972,7 +972,22 @@ fn share_roster_pending_collisions(
 // respected in the direction the text writes it: the demand graph is MINIMIZED FIRST — the
 // repetition has a shared-state least common ancestor, so it is authored duplication whose repair
 // is to CARRY the first value, and the tier is merely where the carried value is held. The typed
-// conformance rows and the fold that decides them live in
+// THE FOUR OBLIGATIONS, EACH AS A TYPED VALUE DERIVED FROM THE ROW, and deliberately NOT as four
+// more String fields beside it. A row already carries its computation identity — the resolved
+// declaration in `acquisition` / `producer` — and the other three are properties of the provider,
+// not of the row, so copying them per row would be one fact in two places (section 3) and the
+// transcription section 6 forbids. They are derived and named here instead:
+//   computation identity -> the row's own `acquisition` / `producer`, consumed as the ladder
+//     demand's `identity` by `floor_prepared_effect_input_ladder.acquisition_demand` and
+//     `producer_demand`;
+//   declared inputs      -> the carried content digest, which IS the stored key's argument row;
+//     stated to the ladder as `MemoTier { keying: ContentKeyed }` and printed per run on the
+//     `phase=prepared-effect-input-acquire` line as `content_digest=`;
+//   provider scope       -> `floor_prepared_effect_input_ladder.floor_preparation_frame`, the
+//     obligation LCA of the consuming claims;
+//   retention            -> `floor_prepared_effect_input_ladder.cross_claim_tier_retention`,
+//     released at the provider's scope exit with the tier's exact byte ceiling.
+// The conformance rows and the fold that decides them live in
 // `v2.workflow.floor_prepared_effect_input_ladder`, one module out, because THIS module is a
 // declared closure seed of the required floor (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`) and
 // every import it grows widens the subject every required run must frame.
@@ -1011,7 +1026,7 @@ type PreparedEffectInput {
 
 type CarriedInputWarmRow {
   producer: String
-  input: String
+  carried_input: String
   dependence: CarriedInputDependence
   measurement: String
 }
@@ -1028,7 +1043,7 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
 data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
   CarriedInputWarmRow {
     producer: "gunbc.roadmap_authority.roadmap_authority_projection",
-    input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
+    carried_input: "gunbc.roadmap_authority.roadmap_acceptance_event_history_load",
     dependence: ImplicitAcquisition,
     measurement: "The same sha-pinned present-vs-absent pair as its input row, normalised on claims in no consumer module of any enrolled key. Admitted only on serve-below-recompute at identity grain; a row that does not clear it is withdrawn into floor_cross_claim_refused_candidates rather than defended by a family aggregate. ImplicitAcquisition is the shape on main today: gunbc#11303 moves the live callers to the explicit-history spelling, at which point this row becomes BoundParameter and the producer's own nullary wrapper stops existing — the migration is a row edit, not a mechanism change."
   }
@@ -1059,7 +1074,7 @@ fn carried_input_rows_without_a_prepared_input(
 ) -> List<String> {
   let prepared = prepared_effect_input_acquisitions(inputs: inputs)
   reverse(fold(rows, init: [], f: fn(acc, row) {
-    if any(xs: prepared, predicate: fn(p) { p == row.input }) {
+    if any(xs: prepared, predicate: fn(p) { p == row.carried_input }) {
       acc
     } else {
       concat([row.producer], acc)

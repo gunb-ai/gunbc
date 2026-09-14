@@ -4278,10 +4278,10 @@ pub(crate) fn install_pure_producer_share(
         ));
     }
     for row in &carried_rows {
-        let acquisition_node = acquisition_nodes.get(&row.input).ok_or_else(|| {
+        let acquisition_node = acquisition_nodes.get(&row.carried_input).ok_or_else(|| {
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown producer={} input={} — the row declares a dependence on an input no floor_cross_claim_prepared_effect_inputs row prepares, so the value it names would never be bound",
-                row.producer, row.input
+                row.producer, row.carried_input
             )
         })?;
         let module = match row.producer.rsplit_once('.') {
@@ -4306,7 +4306,7 @@ pub(crate) fn install_pure_producer_share(
                     format!(
                         "REQUIRED-FLOOR REFUSAL cause=CarriedInputWarmRowInputUnknown \
                          producer={} input={} — {why}",
-                        row.producer, row.input
+                        row.producer, row.carried_input
                     )
                 })?;
         }
@@ -4315,7 +4315,7 @@ pub(crate) fn install_pure_producer_share(
                 v1_interpreter::warm_cross_claim_carried_input_producer(
                     frame,
                     &row.producer,
-                    &row.input,
+                    &row.carried_input,
                     row.bound_parameter.as_deref(),
                 )
             });
@@ -4343,7 +4343,7 @@ pub(crate) fn install_pure_producer_share(
                 eprintln!(
                     "[floor-phase] phase=prepared-effect-input-warm state=completed producer={} input={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
                     row.producer,
-                    row.input,
+                    row.carried_input,
                     outcome.cause(),
                     warm_observation.cpu_ms,
                     warm_observation.wall_ms,
@@ -4511,7 +4511,7 @@ pub(crate) struct PreparedEffectInputRow {
 #[derive(Clone)]
 pub(crate) struct CarriedInputWarmRowDecoded {
     producer: String,
-    input: String,
+    carried_input: String,
     bound_parameter: Option<String>,
 }
 
@@ -4621,7 +4621,7 @@ fn floor_decode_carried_input_warm_rows(
         };
         out.push(CarriedInputWarmRowDecoded {
             producer: field_str("producer")?,
-            input: field_str("input")?,
+            carried_input: field_str("carried_input")?,
             bound_parameter,
         });
     }
@@ -9448,7 +9448,7 @@ mod pure_producer_share_tests {
              }\n\
              type CarriedInputWarmRow {\n\
                producer: String\n\
-               input: String\n\
+               carried_input: String\n\
                dependence: CarriedInputDependence\n\
                measurement: String\n\
              }\n\
@@ -9532,7 +9532,7 @@ mod pure_producer_share_tests {
              }\n\
              type CarriedInputWarmRow {\n\
                producer: String\n\
-               input: String\n\
+               carried_input: String\n\
                dependence: CarriedInputDependence\n\
                measurement: String\n\
              }\n\
@@ -9582,6 +9582,7 @@ mod pure_producer_share_tests {
                  fn carrier_a() -> String {{ \"content-A\" }}\n\
                  fn carrier_b() -> String {{ \"content-B\" }}\n\
                  fn projection() -> String {{ concat(\"projected:\", carrier_a()) }}\n\
+                 fn consumer() -> String {{ projection() }}\n\
                  data floor_cross_claim_pure_producers_warm: List<String> = []\n\
                  data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
                  type CarriedInputDependence =\n\
@@ -9595,7 +9596,7 @@ mod pure_producer_share_tests {
                  }}\n\
                  type CarriedInputWarmRow {{\n\
                    producer: String\n\
-                   input: String\n\
+                   carried_input: String\n\
                    dependence: CarriedInputDependence\n\
                    measurement: String\n\
                  }}\n\
@@ -9610,7 +9611,7 @@ mod pure_producer_share_tests {
                  data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [\n\
                    CarriedInputWarmRow {{\n\
                      producer: \"v2.workflow.floor_pure_producer_share.projection\",\n\
-                     input: \"{dependence_input}\",\n\
+                     carried_input: \"{dependence_input}\",\n\
                      dependence: {dependence},\n\
                      measurement: \"fixture\"\n\
                    }}\n\
@@ -9630,6 +9631,31 @@ mod pure_producer_share_tests {
                 dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
             ),
         )])
+    }
+
+    /// Evaluate an entry and return its value beside the producer names the cross-claim tier
+    /// SERVED while it ran. The hit list is what separates "the right value" from "the value was
+    /// served": a recompute produces the same string, so a control that read only the value could
+    /// not tell a working share from a dead one.
+    fn evaluate_counting_hits(
+        frame: &v1_interpreter::InterpContext,
+        entry: &str,
+    ) -> (v1_interpreter::Value, Vec<String>) {
+        let hits: std::rc::Rc<std::cell::RefCell<Vec<String>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let sink = hits.clone();
+        v1_interpreter::install_cross_claim_share_observer(Some(
+            v1_interpreter::CrossClaimShareObserver {
+                on_fill_begin: Box::new(|| {}),
+                on_fill: Box::new(|_, _, _| {}),
+                on_fill_abandon: Box::new(|| {}),
+                on_hit: Box::new(move |name| sink.borrow_mut().push(name.to_string())),
+            },
+        ));
+        let value =
+            v1_interpreter::run_in_context(frame, entry, false).expect("the entry evaluates");
+        let observed = hits.borrow().clone();
+        (value, observed)
     }
 
     /// POSITIVE CONTROL: the input is acquired ONCE at preparation, the producer is warmed over
@@ -9658,16 +9684,22 @@ mod pure_producer_share_tests {
         );
         let frame = floor_authority_frame(&prepared, "v2.workflow.floor_pure_producer_share")
             .expect("fixture frame");
-        let served = v1_interpreter::run_in_context(
-            &frame,
-            "v2.workflow.floor_pure_producer_share.projection",
-            false,
-        )
-        .expect("the producer evaluates");
+        // EVALUATE THROUGH A CALL SITE, not through `run_in_context` on the producer itself:
+        // `run_in_context` calls `call_function` DIRECTLY, so it reaches neither the cross-claim
+        // tier nor the prepared-input binding. A control that evaluated the producer that way
+        // would assert a value RECOMPUTE also produces — measuring nothing, in the shape DESIGN
+        // section 4b calls a decoration. `consumer()` is an ordinary call site, so its inner
+        // call goes through the same path every claim's call takes.
+        let (served, hits) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
         match &served {
             v1_interpreter::Value::Str(s) => assert_eq!(&**s, "projected:content-A"),
             other => panic!("unexpected value: {other:?}"),
         }
+        assert!(
+            hits.iter().any(|h| h == "projection"),
+            "the producer must be SERVED from the warm, not recomputed: {hits:?}"
+        );
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
@@ -9709,12 +9741,12 @@ mod pure_producer_share_tests {
         );
         v1_interpreter::install_prepared_effect_input(&acquisition_node, changed);
 
-        let served = v1_interpreter::run_in_context(
-            &frame,
-            "v2.workflow.floor_pure_producer_share.projection",
-            false,
-        )
-        .expect("the producer evaluates");
+        let (served, hits) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
+        assert!(
+            !hits.iter().any(|h| h == "projection"),
+            "the producer must not be SERVED under a changed carrier: {hits:?}"
+        );
         match &served {
             v1_interpreter::Value::Str(s) => assert_eq!(
                 &**s, "projected:content-B",
@@ -9751,12 +9783,8 @@ mod pure_producer_share_tests {
             "the binding must be cleared with the tier"
         );
         // And the producer still answers, for itself, with nothing carried.
-        let recomputed = v1_interpreter::run_in_context(
-            &frame,
-            "v2.workflow.floor_pure_producer_share.projection",
-            false,
-        )
-        .expect("the producer evaluates");
+        let (recomputed, _) =
+            evaluate_counting_hits(&frame, "v2.workflow.floor_pure_producer_share.consumer");
         match &recomputed {
             v1_interpreter::Value::Str(s) => assert_eq!(&**s, "projected:content-A"),
             other => panic!("unexpected value: {other:?}"),
@@ -9786,7 +9814,7 @@ mod pure_producer_share_tests {
              }\n\
              type CarriedInputWarmRow {\n\
                producer: String\n\
-               input: String\n\
+               carried_input: String\n\
                dependence: CarriedInputDependence\n\
                measurement: String\n\
              }\n\
@@ -9794,11 +9822,22 @@ mod pure_producer_share_tests {
              data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [\n\
                CarriedInputWarmRow {\n\
                  producer: \"v2.workflow.floor_pure_producer_share.projection\",\n\
-                 input: \"v2.workflow.floor_pure_producer_share.carrier_a\",\n\
+                 carried_input: \"v2.workflow.floor_pure_producer_share.carrier_a\",\n\
                  dependence: ImplicitAcquisition,\n\
                  measurement: \"fixture\"\n\
                }\n\
-             ]\n",
+             ]\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
         let err = install_pure_producer_share(&prepared)
             .expect_err("a row naming an unprepared input must stop the line");
@@ -9832,7 +9871,7 @@ mod pure_producer_share_tests {
              }\n\
              type CarriedInputWarmRow {\n\
                producer: String\n\
-               input: String\n\
+               carried_input: String\n\
                dependence: CarriedInputDependence\n\
                measurement: String\n\
              }\n\
@@ -9844,7 +9883,18 @@ mod pure_producer_share_tests {
                  measurement: \"fixture\"\n\
                }\n\
              ]\n\
-             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n",
+             data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
         )]);
         let err = install_pure_producer_share(&prepared)
             .expect_err("a non-nullary acquisition must stop the line");
@@ -9875,7 +9925,7 @@ mod pure_producer_share_tests {
              }\n\
              type CarriedInputWarmRow {\n\
                producer: String\n\
-               input: String\n\
+               carried_input: String\n\
                dependence: CarriedInputDependence\n\
                measurement: String\n\
              }\n\
