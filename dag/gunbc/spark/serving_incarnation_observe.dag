@@ -222,7 +222,7 @@ fn host_read_failure_text(stderr: String?) -> String {
 // the carrier cannot be the start instant of a real process), it is `false`, never a wrapped equality
 // that fabricates one. The prometheus reader already bounds exported.fraction_digits to the i64-safe
 // pow10 range, so decimal_pow10 here does not itself wrap.
-fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: Int, ticks_per_second: Int, start_ticks: Int) -> Bool {
+fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Int, start_ticks: Int) -> Bool {
   match checked_int_multiply(a: exported.units, b: ticks_per_second) {
     CheckedIntOverflow { cause: _ } => false
     CheckedIntReady { value: lhs } =>
@@ -273,7 +273,7 @@ fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, 
 // VllmServingLaunch.started_at carries. The sub-second part is exactly what the exported field and
 // the tick equality above keep; this field is the launch's coarse instant for readers that order
 // launches, not its identity.
-fn process_start_epoch_seconds(boot_epoch_seconds: Int, ticks_per_second: Int, start_ticks: Int) -> Int {
+fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Int, start_ticks: Int) -> Int {
   boot_epoch_seconds + (start_ticks / ticks_per_second)
 }
 
