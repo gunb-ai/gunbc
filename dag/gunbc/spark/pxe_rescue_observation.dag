@@ -1,5 +1,7 @@
 module gunbc.spark.pxe_rescue_observation
 
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
+
 import std.types { NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.measure { Second, second }
@@ -9,8 +11,6 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
 }
 import extdeps.os.ubuntu_kernel_nic_coverage {
-  PciVendorId,
-  PciDeviceId,
 }
 import gunbc.spark.dgx_pxe_boot {
   PxeNetworkIsolation,
