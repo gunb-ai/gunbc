@@ -5,6 +5,8 @@ use self::CompilerEntryDriver::*;
 use self::NativeDriverChildStanding::*;
 use self::NativeDriverCostAccounting::*;
 use self::NativeDriverCostRowStanding::*;
+pub use crate::std_decl_ref::decl_ref;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_measure::Nanosecond;
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
@@ -27,6 +29,22 @@ pub enum CompilerEntryDriver {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeDriverProducerCount {
+    pub declaration: Rc<DeclarationRef>,
+    pub executions: i64,
+    pub nanos: Nanosecond,
+}
+
+pub fn native_driver_producer_roster() -> Rc<Vec<Rc<DeclarationRef>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
+            Rc::new(vec![crate::std_decl_ref::decl_ref("v2.extdeps.languages.dag".to_string(), "dag_language_model".to_string()), crate::std_decl_ref::decl_ref("v2.compiler.name_resolve".to_string(), "validate_module_roots".to_string()), crate::std_decl_ref::decl_ref("v2.compiler.symbol_index_fill".to_string(), "symbol_index_fill_module_roots".to_string()), crate::std_decl_ref::decl_ref("v2.compiler.compile".to_string(), "native_test_resolve_module".to_string()), crate::std_decl_ref::decl_ref("v2.compiler.compile".to_string(), "native_test_infer_resolved".to_string())])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeDriverExclusiveRows {
     pub load: Nanosecond,
     pub universe_derivation: Nanosecond,
@@ -36,6 +54,7 @@ pub struct NativeDriverExclusiveRows {
     pub receipt_admission: Nanosecond,
     pub row_serialization: Nanosecond,
     pub module_release: Nanosecond,
+    pub relay_emit: Nanosecond,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -66,14 +85,15 @@ pub fn native_driver_cost_remainder_tolerance_nanos() -> Nanosecond {
 
 pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanosecond {
     crate::std_measure::nanosecond(
-        (((((((crate::std_measure::nanosecond_count(rows.load.clone())
+        ((((((((crate::std_measure::nanosecond_count(rows.load.clone())
             + crate::std_measure::nanosecond_count(rows.universe_derivation.clone()))
             + crate::std_measure::nanosecond_count(rows.context.clone()))
             + crate::std_measure::nanosecond_count(rows.prepare.clone()))
             + crate::std_measure::nanosecond_count(rows.eval.clone()))
             + crate::std_measure::nanosecond_count(rows.receipt_admission.clone()))
             + crate::std_measure::nanosecond_count(rows.row_serialization.clone()))
-            + crate::std_measure::nanosecond_count(rows.module_release.clone())),
+            + crate::std_measure::nanosecond_count(rows.module_release.clone()))
+            + crate::std_measure::nanosecond_count(rows.relay_emit.clone())),
     )
 }
 
