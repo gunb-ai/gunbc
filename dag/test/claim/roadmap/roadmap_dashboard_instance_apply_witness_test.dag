@@ -211,7 +211,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       working_dir: lab.repo_root as String,
       inner_argv: concat(
         [lab.serve_binary as String],
-        dashboard_instance_serve_argv(instance: lab),
+        dashboard_instance_serve_argv(instance: lab, release_revision: "0123abcd"),
       ),
     ) == [
       "-L",
@@ -236,6 +236,8 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "0.0.0.0",
       "--port",
       "18081",
+      "--release-revision",
+      "0123abcd",
     ]
 }
 

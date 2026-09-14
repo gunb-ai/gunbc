@@ -712,8 +712,21 @@ fn dashboard_ensure_service(
   } else {
     dashboard_exec_ok(stdout: "service session absent")
   }
+  let head = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_rev_parse_argv(
+      repo: instance.repo_root,
+      target: "HEAD" as GitRef,
+    ),
+  )
   if !stopped.success {
     stopped
+  } else if !head.success || trim(head.stdout) == "" {
+    dashboard_exec_refused(detail: join([
+      "serve release revision unreadable: git rev-parse HEAD refused: ",
+      head.stderr,
+    ], ""))
   } else {
     dashboard_target_exec(
       instance: instance,
@@ -724,7 +737,10 @@ fn dashboard_ensure_service(
         working_dir: instance.repo_root as String,
         inner_argv: concat(
           [instance.serve_binary as String],
-          dashboard_instance_serve_argv(instance: instance),
+          dashboard_instance_serve_argv(
+            instance: instance,
+            release_revision: trim(head.stdout),
+          ),
         ),
       ),
     )
