@@ -1,0 +1,53 @@
+memory-cgroup-bind: not requested
+[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms=40259 wall_ms=40396 rss_growth_bytes=741838848 source_files=5696 bare_eligible=631 provenance=built-by-preparation
+claim_batch: 1 entry group(s), 3 witness(es) total; building module index...
+[floor-phase] phase=module-index state=completed wall_ms=110 modules=4317
+[floor-phase] phase=declarer-discovery state=completed wall_ms=181 declarers=18
+[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms=26474
+[floor-phase] phase=declarer-closure state=completed wall_ms=5 sources=19
+◐ started compile.frontend
+✓ compile.frontend done in 17ms
+✓ compile.normalize done in 3ms
+✓ compile.reconcile done in 39ms
+✓ compile.analyses done in 1ms
+[floor-phase] phase=closure-strict-resolve state=completed wall_ms=62 sources=19
+◷ post-mock-precompute-rss — 6.8 GiB
+◷ post-mock-precompute-children-max-rss — 0.0 GiB
+claim_batch: whole-tree published mock corpus — 91 operation key(s)
+claim_batch: resolving dag/test/claim/optional_representation_witness_test.dag once (3 witness(es))
+[resolve] dag/test/claim/optional_representation_witness_test.dag: 628ms  (9 modules, 227 resolved items in closure)
+◷ post-first-entry-resolve-rss — 6.8 GiB
+claim_batch: resolved dag/test/claim/optional_representation_witness_test.dag; running 3 witness(es)
+◐ started compile.frontend
+✓ compile.frontend done in 65ms
+✓ compile.normalize done in 8ms
+✓ compile.reconcile done in 103ms
+✓ compile.analyses done in 3ms
+◐ started compile.emit
+✓ compile.emit done in 343ms
+FAIL optional_method_none_join (cpu budget 500ms EXCEEDED; cost=619ms CEILING — the witness ran to completion and was then reclassified on cost, so its cost is known to within a millisecond and this figure is that cost rounded UP, never a point measurement)
+[witness] optional_method_none_join: cpu=618ms wall=620ms subject=4dd9ebb914be7d97 eval_self=0.000ms
+◐ started compile.frontend
+✓ compile.frontend done in 65ms
+✓ compile.normalize done in 8ms
+✓ compile.reconcile done in 102ms
+✓ compile.analyses done in 3ms
+◐ started compile.emit
+✓ compile.emit done in 339ms
+FAIL optional_method_present_join (cpu budget 500ms EXCEEDED; cost=546ms CEILING — the witness ran to completion and was then reclassified on cost, so its cost is known to within a millisecond and this figure is that cost rounded UP, never a point measurement)
+[witness] optional_method_present_join: cpu=545ms wall=547ms subject=4357032672f72c2a eval_self=0.000ms
+◐ started compile.frontend
+✓ compile.frontend done in 66ms
+✓ compile.normalize done in 8ms
+✓ compile.reconcile done in 103ms
+✓ compile.analyses done in 3ms
+◐ started compile.emit
+✓ compile.emit done in 340ms
+FAIL inferred_optional_pattern_preserves_argument (cpu budget 500ms EXCEEDED; cost=548ms CEILING — the witness ran to completion and was then reclassified on cost, so its cost is known to within a millisecond and this figure is that cost rounded UP, never a point measurement)
+[witness] inferred_optional_pattern_preserves_argument: cpu=547ms wall=549ms subject=1c250e91e98dd521 eval_self=0.000ms
+[resolve-summary] 1 resolve(s) in 628ms wall; 3 witness(es) in 1716ms wall
+[resolve-split] load=112.4ms parse=1081.8ms resolve=28.4ms normalize=80.6ms typecheck=2287.7ms parent_envs=0.4ms reconcile_assembly=20.0ms ownership=71.1ms
+[assembly-split] schedule=0.3ms probe=0.0ms graph=0.2ms symbol_index=276.4ms pool_fill=4099.4ms symbol_index_merge=88.4ms variant_base=15.4ms root_symbol_index=49.8ms root_variant_base=1021.3ms environment=82.8ms diagnostics=0.5ms registry=1.2ms services=24.3ms rewire_type_env=103.3ms rewire_import_str=141.1ms rewire_func_env=7.5ms emit_info=97.4ms other=20.0ms rewire_total_observation=251.9ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":9777135093,"spans":2,"nested_spans":0,"exclusive":{"load":112425432,"parse":1081767698,"resolve_modules":28381119,"normalize":80554578,"typecheck_compute":2287741396,"parent_envs":447883,"assembly_schedule":337401,"assembly_probe":47400,"assembly_graph":156162,"assembly_symbol_index":276414680,"assembly_pool_fill":4099376476,"pool_parse":6489477492,"assembly_symbol_index_merge":88371451,"assembly_variant_base":15387824,"assembly_root_symbol_index":49824290,"assembly_root_variant_base":1021345804,"assembly_environment":82750184,"assembly_diagnostics":484362,"assembly_registry":1150005,"assembly_services":24306702,"assembly_rewire_type_env":103287913,"assembly_rewire_import_str":141121272,"assembly_rewire_func_env":7488191,"assembly_emit_info":97410129,"reconcile_assembly":19969526,"ownership":71069738},"sum_exclusive_nanos":16181095108,"remainder_nanos":0,"inclusive":{"load_reference_scan":{"nanos":4760861,"contained_in":"load"},"load_import_closure":{"nanos":44020865,"contained_in":"load"},"load_bare_reference_closure":{"nanos":19900804,"contained_in":"load"},"load_pool_reference_closure":{"nanos":19912083,"contained_in":"load"},"load_bare_edge_index":{"nanos":56520,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":14456742,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":1188324,"contained_in":"load_bare_reference_closure"},"edge_index_ref_half":{"nanos":2375401898,"contained_in":"load_bare_edge_index"},"edge_index_bare_half":{"nanos":1229128667,"contained_in":"load_bare_edge_index"},"edge_index_closure_expand":{"nanos":1611854057,"contained_in":"edge_index_ref_half"},"edge_index_tree_census":{"nanos":6675374993,"contained_in":"edge_index_bare_half"},"edge_index_tree_census_miss_nanos":{"nanos":17581541383,"contained_in":"edge_index_tree_census"},"edge_index_bare_candidates":{"nanos":101047207,"contained_in":"edge_index_bare_half"},"edge_index_bare_name_universe":{"nanos":16242512,"contained_in":"edge_index_bare_half"},"edge_index_bare_resolve_loop":{"nanos":7083636966,"contained_in":"edge_index_bare_half"},"edge_index_publish":{"nanos":9096673,"contained_in":"load_bare_edge_index"}},"edge_index_construction":{"builds":1,"source_files":5696,"bare_eligible":631,"closure_expand_calls":37970,"tree_census_calls":1262,"tree_census_misses":2},"pool_parse":{"builds":1,"modules":5696},"load_reference_scan_volume":{"bytes":863020,"calls":61,"fixpoint_rounds":2},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Refused","cause":{"kind":"OverAttributed","sum_exclusive_nanos":16181095108,"parent_span_nanos":9777135093,"excess_nanos":6403960015},"shares_quotable":false},"span_nanos_by_entry":[{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":9148565976,"exclusive":{"load":73499029,"parse":1071179253,"resolve_modules":25904909,"normalize":79718494,"typecheck_compute":2240592359,"parent_envs":431323,"reconcile_assembly":18737841,"ownership":70428575}},{"entry":"dag/test/claim/optional_representation_witness_test.dag","spans":1,"nanos":628569117,"exclusive":{"load":38926403,"parse":10588445,"resolve_modules":2476210,"normalize":836084,"typecheck_compute":47149037,"parent_envs":16560,"reconcile_assembly":1231685,"ownership":641163}}],"observations":{"witness_entry_resolve_wall_nanos":628000000,"witness_eval_wall_nanos":1716000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+◷ per-shard-peak-rss — 6.8 GiB
+◷ children-max-rss — 0.0 GiB
