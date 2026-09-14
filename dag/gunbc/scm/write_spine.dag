@@ -60,7 +60,7 @@ import gunbc.scm.staging {
 // the same about the snapshot.
 //
 // THERE IS NO DUPLICATE-PATH ARM. An earlier revision carried one and argued for keeping it on the
-// ground that `store_corpus_manifest` owns that decision. That reasoning is what the carry_mint class
+// ground that `store_corpus_manifest` owns that decision. That reasoning is what the `callee_arm_carried_past_its_exclusion` class
 // looks like from the inside: this verb cannot produce a duplicate, so carrying the generic authority's
 // arm described the CALLEE's domain in this operation's signature. The route now ends at
 // `store_path_unique_manifest`, whose outcome has no such arm -- see `stage_source_at_path`.
@@ -211,12 +211,12 @@ fn stage_into(
 // freeze, the parent has been FOUND, and `StageWithNoBase` is the arm where there is no parent to
 // find. Both arms now carry the `AdmittedCommitBasis` that establishes it, and this verb mints through
 // `mint_ancestral_commit`, whose admission does not ask. An earlier revision carried the generic
-// mint's parent-missing arm here and could not have produced it; that is the same `carry_mint` shape
+// mint's parent-missing arm here and could not have produced it; that is the same `callee_arm_carried_past_its_exclusion` shape
 // as the integration arm below, found by external review one layer later than the last time.
 //
 // AND THERE IS NO INTEGRATION-SOURCE ARM, BECAUSE THE CONSTRUCTION THIS VERB INVOKES HAS NO
 // INTEGRATION SOURCE. An earlier revision carried one and admitted in its own comment that it could
-// not arise -- the `carry_mint` error this stack has already paid for once: honest about the callee's
+// not arise -- the `callee_arm_carried_past_its_exclusion` error this stack has already paid for once: honest about the callee's
 // domain and dishonest about this operation's. The repair is not to re-report it or to translate it,
 // but to invoke a construction from which the question is ABSENT: `mint_ordinary_commit` takes no
 // integration argument, so there is no source that could be missing.

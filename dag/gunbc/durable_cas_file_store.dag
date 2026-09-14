@@ -176,7 +176,7 @@ fn cas_admit_verified_digest(attempt: CasAttempt<NonEmptyStr>) -> CasAttemptAdmi
 // But a caller that computes `content_hash_of_value` over the very value it is proposing has no
 // second opinion to disagree with: the comparison is `f(x)` against `f(x)`. Both digest arms are
 // unreachable for it, and `gunbc.scm.repository_slot` was carrying a public
-// `RepositoryPublicationDigestDisagreed` to match them -- the carry_mint class again, honest about
+// `RepositoryPublicationDigestDisagreed` to match them -- the `callee_arm_carried_past_its_exclusion` class again, honest about
 // this module's domain and dishonest about the caller's. Found by external review.
 //
 // SO THE DIGEST IS DERIVED HERE RATHER THAN ACCEPTED, and the outcome narrows to the one refusal that

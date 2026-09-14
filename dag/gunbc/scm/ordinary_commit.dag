@@ -16,7 +16,7 @@ module gunbc.scm.ordinary_commit
 // longer exists, and a note written in the present about a removed parameter is the stale authority
 // statement this stack keeps finding.
 //
-// THE FIRST ATTEMPT KEPT THE ARM AND SAID SO IN A COMMENT. That is the `carry_mint` error this stack
+// THE FIRST ATTEMPT KEPT THE ARM AND SAID SO IN A COMMENT. That is the `callee_arm_carried_past_its_exclusion` error this stack
 // has already paid for once: preserving the callee's causes is honest about the CALLEE's domain and
 // dishonest about the OPERATION's, and an annotation admitting a state is impossible while the type
 // still carries it is a signature that lies with a footnote. Re-reporting it as a parent-missing

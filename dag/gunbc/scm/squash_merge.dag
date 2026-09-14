@@ -164,7 +164,7 @@ fn carry_ancestral_mint(
 // AND THE MINT'S PARENT AND INTEGRATION QUESTIONS ARE NOW ABSENT RATHER THAN CARRIED. Reaching
 // `MergeBaseDerived` required `ancestry_walk` to TRACE both sides, so target and source are already
 // established in this repository's history; asking the generic mint to look them up again produced two
-// arms this route cannot reach, which is the `carry_mint` shape -- honest about the callee's domain,
+// arms this route cannot reach, which is the `callee_arm_carried_past_its_exclusion` shape -- honest about the callee's domain,
 // dishonest about the operation's. Both now reach `admit_commit_subject_from_basis`, whose only
 // refusal is the allocator, and `SquashMergeMintParentMissing` and
 // `SquashMergeMintIntegrationSourceMissing` are DELETED.

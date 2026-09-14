@@ -788,7 +788,7 @@ fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
 // actively harmful for a caller whose route makes one of the OTHER arms impossible: it had no way to
 // narrow, so it either matched a state it could not reach or invented a cause to close the match.
 // `gunbc.scm.ordinary_commit` hit exactly that and its first draft translated the unreachable
-// integration arm into a parent-missing -- a fabricated cause, the `carry_mint` error again.
+// integration arm into a parent-missing -- a fabricated cause, the `callee_arm_carried_past_its_exclusion` error again.
 //
 // So the construction answers `MintedCommit`, and each admission route widens it to whatever
 // coproduct ITS questions make reachable. The admission rules are not duplicated: they stay in the
@@ -1224,7 +1224,7 @@ fn admit_base_in(
 // its subject through a route which ALREADY found the parent in that subject's repository -- the
 // staging standing does exactly that, via `admit_base_in` inside `base_snapshot` -- would then carry a
 // parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment that
-// the arm is dead. That is the `carry_mint` shape this stack has now paid for four times: honest about
+// the arm is dead. That is the `callee_arm_carried_past_its_exclusion` shape this stack has now paid for four times: honest about
 // the callee's domain, dishonest about the operation's.
 //
 // So the parent and source questions are ABSENT from this route, having been answered where the basis
@@ -2936,7 +2936,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
 // A consumer of a derived base needs the same three commits this function has just proven present:
 // `squash_merge` read each side's manifest and, to do so, looked each reference up AGAIN in the very
 // commit list this module walked -- and carried a commit-missing arm for an answer its own success
-// had already excluded. That is the `carry_mint` shape, and the repair is not to translate the arm but
+// had already excluded. That is the `callee_arm_carried_past_its_exclusion` shape, and the repair is not to translate the arm but
 // to make the question ABSENT downstream by handing back what was found.
 //
 // THE ROWS ARE FREE HERE AND NOWHERE ELSE. `commits` is in scope; the walks proved target and source
