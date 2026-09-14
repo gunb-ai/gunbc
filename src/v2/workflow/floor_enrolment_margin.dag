@@ -1,6 +1,6 @@
 module v2.workflow.floor_enrolment_margin
 
-import v2.workflow.required_floor { required_floor_claim_work_envelope_ms }
+import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_typed_admitted_identities,
 }
@@ -37,8 +37,15 @@ import std.measure { Millisecond, millisecond_count }
 // job of the runs named above, INTERRUPTED-BEFORE-VERDICT lines; sample size FIFTEEN observations,
 // stated because fifteen is too few to support any percentile finer than the one this gate uses.)
 //
+// THE SENTENCE BELOW USED TO SAY "CROSSES THE 500ms CEILING" AND THIS CHANGE MADE THAT FALSE
+// (review 66007). Since CPU became observed-only for every claim, NOTHING INTERRUPTS A WITNESS AT
+// 500ms OF CPU: the armed limits are the wall deadline and the eval-step ceiling. The remedy is
+// unchanged -- a runaway still reaches no verdict and still refuses the run -- but it is reached by
+// a different limit, and leaving the old one named would be prose repealed by the change that wrote
+// it, the class `gunbc.recurring_failure_mode` `prose_repealed_by_the_change_that_wrote_it` files.
+//
 // WHAT THIS GATE IS NOT, AND THE DISTINCTION IS LOAD-BEARING. The floor ALREADY refuses a newly
-// enrolled witness that crosses the 500ms ceiling: it is interrupted, it reaches no verdict, and
+// enrolled witness that RUNS AWAY: it is interrupted, it reaches no verdict, and
 // `required_floor_outcome_is_clean` refuses the run. That mechanism is real, it is rung 2, and it
 // FIRED ON BOTH INCIDENTS ON THE PRs THEMSELVES, naming the exact identities, before either
 // merged. This gate is therefore NOT a second detector for the same fact and does not claim to be
@@ -92,7 +99,7 @@ import std.measure { Millisecond, millisecond_count }
 // precision inflation, the numeric cousin of rung inflation.
 //
 // WHY THIS FIGURE IS A POLICY INPUT AND NOT A TRANSCRIBED MEASUREMENT. It is selected FROM the
-// instrument's output by an operator ruling, exactly as `required_floor_claim_work_envelope_ms`
+// instrument's output by an operator ruling, exactly as `required_floor_per_subject_cpu_line_ms`
 // carries 500. The instrument is named above so the figure can be re-derived rather than trusted;
 // what is fixed here is the CHOICE of percentile, which is a judgement and belongs in a declaration
 // with its provenance beside it.
@@ -111,7 +118,7 @@ fn floor_enrolment_margin_envelope_permille() -> Int {
 // section 3 fork.
 fn floor_enrolment_margin_budget_ms() -> Millisecond {
   implied_clean_run_budget(
-    ceiling_ms: required_floor_claim_work_envelope_ms(),
+    ceiling_ms: required_floor_per_subject_cpu_line_ms(),
     inflation_permille: floor_enrolment_margin_envelope_permille(),
   )
 }
@@ -190,7 +197,7 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
 // authoring is the discriminating evidence; emptiness of today's list is not coverage.
 fn enrolment_typed_cost_debt_identities() -> List<String> {
   floor_cost_debt_typed_admitted_identities(
-    ceiling_ms: required_floor_claim_work_envelope_ms(),
+    ceiling_ms: required_floor_per_subject_cpu_line_ms(),
   )
 }
 

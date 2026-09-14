@@ -16,7 +16,7 @@ import v2.workflow.required_floor {
   ClaimCeilingTier, GrandfatheredTier, NewWitnessTier,
   claim_ceiling_tier, claim_ceiling_envelope_ms, claim_ceiling_eval_step_budget,
   claim_eval_step_budget_for_identity,
-  required_floor_claim_work_envelope_ms,
+  required_floor_claim_work_envelope_ms, required_floor_per_subject_cpu_line_ms,
   required_floor_new_witness_envelope_ms,
   required_floor_claim_cost_line_ms,
   required_floor_claim_wall_safety_limit_ms,
@@ -245,8 +245,9 @@ test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one(
 // ── CPU IS OBSERVED AND DOES NOT SECRETLY GATE ─────────────────────────────────────────────
 //
 // THIS IS THE DIRECTION THE FIRST RULING CHANGED, and it would have been RED before 2026-09-12.
-// 4000ms of CPU is forty times `required_floor_claim_cost_line_ms` and eight times the
-// grandfathered work envelope; under the deleted CPU deadline it derived `CompletedPastSafetyLimit`
+// 4000ms of CPU is forty times `required_floor_claim_cost_line_ms` and eight times
+// `required_floor_per_subject_cpu_line_ms`; under the deleted CPU deadline it derived
+// `CompletedPastSafetyLimit`
 // on the CPU comparison alone. The step count is drawn from bright-boar-435's gunbc#11173 evidence:
 // one identity at an IDENTICAL eval_steps of 2884 read 34ms, then 455ms, then 511ms across three
 // heads that changed no executable source.
@@ -274,7 +275,7 @@ fn cpu_does_not_gate(budget: EvalStepCount) -> Bool {
     CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
     CompletedWithinSafetyLimits =>
       int_gt(a: 4000, b: required_floor_claim_cost_line_ms())
-        && int_gt(a: 4000, b: millisecond_count(m: required_floor_claim_work_envelope_ms()))
+        && int_gt(a: 4000, b: millisecond_count(m: required_floor_per_subject_cpu_line_ms()))
   }
 }
 

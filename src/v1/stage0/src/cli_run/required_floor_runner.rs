@@ -1527,7 +1527,15 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
             None,
             None,
         );
-        floor_required_measure_count(&policy_ctx, "required_floor_claim_work_envelope_ms")?
+        // THE CPU LINE, NOT THE WORK ENVELOPE (review 66007). This budget is compared against
+        // an observed CPU reading, so the ceiling it must sit strictly below has to be
+        // denominated on the same clock. `required_floor_claim_work_envelope_ms` is policy in
+        // milliseconds of WORK, consumed only after conversion into eval steps; reading it here
+        // judged a CPU figure against a line from another quantity because both are spelled in
+        // milliseconds, which is the fusion `std.measure` `measure_clock_basis_note` forbids.
+        // The two share the magnitude 500 and that coincidence is exactly how the fork got
+        // written.
+        floor_required_measure_count(&policy_ctx, "required_floor_per_subject_cpu_line_ms")?
     };
     match v1_interpreter::run_in_context(&ctx, &qualified, false) {
         Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),

@@ -20,7 +20,7 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentMarginBlocker, EnrolmentMarginRow,
   enrolment_margin_blockers,
 }
-import v2.workflow.required_floor { required_floor_claim_work_envelope_ms }
+import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_row, floor_cost_debt_row_is_admitted,
   FloorCostDebtReachedAVerdict,
@@ -115,7 +115,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
 // coverage. This witness is the guard: the budget must be STRICTLY BELOW the ceiling.
 test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
-    < millisecond_count(m: required_floor_claim_work_envelope_ms())
+    < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
 }
 
 // THE BUDGET IS THE DERIVATION'S ANSWER AND NOT A LITERAL ANYONE WROTE. 302 appears in no
@@ -127,7 +127,7 @@ test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
   millisecond_count(m: floor_enrolment_margin_budget_ms()) == 302
     && millisecond_count(
          m: implied_clean_run_budget(
-              ceiling_ms: required_floor_claim_work_envelope_ms(),
+              ceiling_ms: required_floor_per_subject_cpu_line_ms(),
               inflation_permille: floor_enrolment_margin_envelope_permille(),
             )
        ) == 302
@@ -143,7 +143,7 @@ test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
 // comparison is written the wrong way round. No other witness in this module discriminates that.
 test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() -> Bool {
   let reading = observed(cpu_ms: 450)
-  millisecond_count(m: millisecond(count: 450)) < millisecond_count(m: required_floor_claim_work_envelope_ms())
+  millisecond_count(m: millisecond(count: 450)) < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
     && standing_kind(s: standing_of(reading: reading)) == "over-margin"
     && enrolment_margin_standing_blocks(standing: standing_of(reading: reading))
 }
@@ -464,14 +464,14 @@ test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool {
 }
 
 // HALF TWO RED JOINED TO THE CEILING AUTHORITY: 325ms observed against
-// `required_floor_claim_work_envelope_ms` cannot mint a cost-debt row. gunbc#10994 is not
+// `required_floor_per_subject_cpu_line_ms` cannot mint a cost-debt row. gunbc#10994 is not
 // waiting on a cost-debt line; this is the constructor that would have refused that classification.
 test fn an_observed_row_at_325ms_is_refused_against_the_required_floor_ceiling() -> Bool {
   !floor_cost_debt_row_is_admitted(
     standing: floor_cost_debt_row(
       identity: "fixture.tripwire_325",
       reading: ObservedCpuReading { cpu_ms: millisecond(count: 325) },
-      ceiling_ms: required_floor_claim_work_envelope_ms(),
+      ceiling_ms: required_floor_per_subject_cpu_line_ms(),
       verdict: FloorCostDebtReachedAVerdict,
     )
   )

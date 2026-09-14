@@ -1076,6 +1076,38 @@ fn required_floor_claim_work_envelope_ms() -> Millisecond {
   millisecond(count: 500)
 }
 
+// THE CPU LINE THE PER-SUBJECT GATES STILL DENOMINATE AGAINST, AND IT IS A DIFFERENT FACT FROM THE
+// ENVELOPE ABOVE DESPITE SHARING ITS MAGNITUDE (review 66007).
+//
+// THE TWO ARE NOT THE SAME NUMBER WEARING TWO NAMES, WHICH IS THE ONLY THING THAT WOULD MAKE THIS A
+// SECTION 3 NICKNAME. `required_floor_claim_work_envelope_ms` is POLICY IN MILLISECONDS OF WORK: it
+// is consumed only after conversion into eval steps, and no clock is ever compared to it. THIS
+// figure is CPU MILLISECONDS: it is compared directly against an observed CPU reading. Same
+// magnitude, two quantities -- exactly the coincidence `std.measure` `measure_clock_basis_note`
+// warns about, which is why they are two declarations and not one.
+//
+// HOW THE FORK GOT WRITTEN, RECORDED BECAUSE THE NEXT AUTHOR WILL BE TEMPTED THE SAME WAY. When
+// gunbc#11297 landed calling the deleted `required_floor_claim_cpu_safety_limit_ms`, this branch
+// repaired it by repointing those call sites at the work envelope -- on the grounds that both
+// returned 500. That is a substitution by MAGNITUDE where the question was MEANING, and it made
+// the enrolment margin derive a CPU budget from a work policy while a sibling module asserted in
+// terms that no clock is ever compared to that policy. Both statements could not be true.
+//
+// IT IS NOT A DEADLINE AND NOTHING IS ARMED ON IT. No claim is interrupted at this figure -- since
+// CPU became observed-only for every claim, the only armed deadline is the wall one. This is a LINE
+// USED BY TWO PER-SUBJECT GATES that were not converted to eval steps by this change: the enrolment
+// margin derives its budget from it, and cost-debt admission takes it as the supplied ceiling.
+//
+// DISSOLUTION (DESIGN section 5): this declaration ends when those two gates are themselves
+// denominated in eval steps, at which point nothing compares a CPU reading to a per-subject budget
+// and the figure has no consumer. That is the same capability `gunbc.rung_drop`
+// `floor_cost_cpu_regression_at_constant_eval_steps` names in its clause (iv) -- NO PER-SUBJECT
+// BUDGET MAY CONSUME A RUN-LEVEL READING -- so this symbol is that row's remaining surface made
+// nameable rather than a new debt.
+fn required_floor_per_subject_cpu_line_ms() -> Millisecond {
+  millisecond(count: 500)
+}
+
 // THE NEW-WITNESS WORK ENVELOPE: 100ms (operator ruling via fierce-lark-661, 2026-09-13).
 //
 // A SECOND POLICY INPUT, NOT A SECOND MECHANISM. The floor now carries TWO ceilings and one way of

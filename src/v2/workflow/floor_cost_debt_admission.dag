@@ -15,7 +15,8 @@ import std.measure { Millisecond, millisecond_count }
 // hot path. The identity census stays there; the READING FIELD of a new row lives here.
 //
 // THE PROVEN CLASS, STATED SO THE PR DOES NOT RE-DERIVE THE POLICY: witnesses whose observed
-// CPU exceeds `required_floor_claim_work_envelope_ms` (the 500ms grandfathered work envelope) plus censored
+// CPU exceeds `required_floor_per_subject_cpu_line_ms` (the 500ms CPU line -- CPU milliseconds, NOT the
+// work envelope: they share a magnitude and are different quantities) plus censored
 // witnesses that never reached a verdict. A censored reading must ESTABLISH that supplied
 // ceiling (censoring_ceiling equals it, lower bound at least it) and the attempt must CARRY
 // `FloorCostDebtNeverReachedAVerdict` — censoring is not that discriminator.
@@ -25,7 +26,7 @@ import std.measure { Millisecond, millisecond_count }
 //
 // THE CEILING IS A PARAMETER. This module must not import `required_floor` (cycle through
 // floor_cost_debt) and must not restate 500. Callers pass
-// `required_floor_claim_work_envelope_ms()`.
+// `required_floor_per_subject_cpu_line_ms()`.
 //
 // DECLARED FRONTIER (DESIGN §3c), not a live mint. `floor_cost_debt_row` is consumed by
 // `floor_cost_debt_admit_attempts` and by executing tests; it is NOT consumed by
