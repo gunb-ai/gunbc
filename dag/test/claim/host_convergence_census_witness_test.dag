@@ -12,8 +12,6 @@ import gunbc.host_convergence_census {
   CensusWellFormed,
   CensusMalformed,
   DuplicateDeclaration,
-  RetainCurrentIntendedMismatch,
-  BindIntendedTargetMismatch,
   SelfSuccessor,
   IdentityMissingFromCensus,
   HostConvergenceDisposition,
@@ -36,7 +34,6 @@ import gunbc.host_convergence_census {
   host_convergence_census_is_admitted,
   persistent_status_mutates,
   std_decision,
-  fleet_plan,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -46,14 +43,12 @@ fn fixture_row(
   mutates: Bool,
   disposition: HostConvergenceDisposition,
   current: String,
-  intended: String,
 ) -> HostConvergenceCensusRow {
   census_row(
     identity: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: name),
     subject: DesiredRealizationSelection,
     phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: current),
-    intended_authority: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: intended),
     persistent_host_effect: if mutates { ReachesPersistentHostMutation } else { DoesNotMutateHost },
     disposition: disposition,
     first_consumer: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: name),
@@ -67,14 +62,12 @@ fn well_formed_pair() -> List<HostConvergenceCensusRow> {
       mutates: false,
       disposition: RetainAuthority,
       current: "alpha",
-      intended: "alpha",
     ),
     fixture_row(
       name: "beta",
       mutates: true,
       disposition: BindToAuthority { target: cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "home") },
       current: "beta",
-      intended: "home",
     ),
   ]
 }
@@ -109,26 +102,10 @@ test fn w_duplicate_identity_refuses() -> Bool {
     mutates: false,
     disposition: RetainAuthority,
     current: "dup",
-    intended: "dup",
   )
   match admit_host_convergence_census(rows: [a, a]) {
     CensusMalformed { cause: DuplicateDeclaration { identity: id } } =>
       id.decl_name as String == "dup"
-    _ => false
-  }
-}
-
-test fn w_retain_current_intended_mismatch_refuses() -> Bool {
-  let row = fixture_row(
-    name: "mismatch",
-    mutates: false,
-    disposition: RetainAuthority,
-    current: "mismatch",
-    intended: "other",
-  )
-  match admit_host_convergence_census(rows: [row]) {
-    CensusMalformed { cause: RetainCurrentIntendedMismatch { identity: id } } =>
-      id.decl_name as String == "mismatch"
     _ => false
   }
 }
@@ -160,21 +137,6 @@ test fn w_non_retain_owes_declaration_retires_of_identity() -> Bool {
   )
 }
 
-test fn w_bind_intended_target_mismatch_refuses() -> Bool {
-  let row = fixture_row(
-    name: "bind_mismatch",
-    mutates: true,
-    disposition: BindToAuthority { target: fleet_plan() },
-    current: "bind_mismatch",
-    intended: "other_home",
-  )
-  match admit_host_convergence_census(rows: [row]) {
-    CensusMalformed { cause: BindIntendedTargetMismatch { identity: id } } =>
-      id.decl_name as String == "bind_mismatch"
-    _ => false
-  }
-}
-
 test fn w_self_successor_refuses() -> Bool {
   let id = cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "self")
   let row = census_row(
@@ -182,7 +144,6 @@ test fn w_self_successor_refuses() -> Bool {
     subject: DesiredRealizationSelection,
     phases: none_phases(),
     current_authority: id,
-    intended_authority: id,
     persistent_host_effect: DoesNotMutateHost,
     disposition: ReplaceAndDelete { successor: id },
     first_consumer: id,
