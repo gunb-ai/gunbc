@@ -48,20 +48,35 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
           VendorDaughterCard { form_authority: _, form_name: form } => form == "rNDC"
           _ => false
         }
-      Refused { cause: RiserOccupancyUnobserved { platform_upper_bound: bound, settled_by: settle } } =>
-        name == "ibm_01ft753" && bound == mt_collins_1u_expansion.full_height_half_length_gen4_x16_slots
-          && settle != "" && match row.candidate.context {
+      // THE IBM CANDIDATE MOVED OFF ITS REFUSAL, and this arm is where the operator's interior report
+      // actually lands. It asserted Refused { RiserOccupancyUnobserved } while the unit's riser
+      // positions were unreported; the 2026-09-14 report settles TWO fitted positions, so the PCIe
+      // path now reaches AttachmentPointOffered and the verdict is admitted on interface family with
+      // physical fit still unresolved. Fit is a separate question from availability and stays open:
+      // fitted riser positions do not establish card clearance, retention or electrical qualification.
+      Admitted { scope: InterfaceFamilyOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: _ } =>
+        name == "ibm_01ft753" && settle != ""
+          && match candidate { PcieCem => true, _ => false }
+          && match row.candidate.context {
             OrderedAwaitingArrival { reported_alias: listing_name, bracket: FullHeightBracket {}, catalog: catalog, relay_message: relay } =>
               listing_name == "CX4121A" && catalog.host_link.generation == Gen3
                 && catalog.host_link.lane_count == 8 && catalog.port_count == 2
                 && catalog.port_connector == "SFP28" && relay != ""
             _ => false
           }
+      // THE OCP CANDIDATE'S VERDICT IS UNCHANGED AND ONLY ITS CARRIED RECEIPT MOVED, which is the
+      // honest reading of the empty-bay report rather than the one the observation PR first claimed.
+      // attachment_against_evidence destructures the OCP standing as `ocp: _` and decides from
+      // platform generation and the physical variant, so this candidate was ALREADY admitted while
+      // occupancy was unobserved. The assertion below therefore changes from Unobserved to
+      // Offered { positions: 1 } in the EVIDENCE only, and the scope and fit arms stay exactly as they
+      // were. Whether an OCP admission should consult occupancy at all is a semantic question owned by
+      // the lane that built this fold, raised separately and deliberately not decided here.
       Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: evidence } =>
         name == "mcx4621a_acab_attachment" && settle != ""
           && match candidate { OcpNic3 { physical_variant: Sff } => true, _ => false }
           && match evidence {
-            UnitExpansionEvidence { observation: _, pcie: _, ocp: AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } } => true
+            UnitExpansionEvidence { observation: _, pcie: _, ocp: AttachmentPointOffered { positions: ocp_positions, basis: _ } } => ocp_positions == 1
             _ => false
           }
       _ => false
@@ -140,7 +155,22 @@ test fn pcie_refusals_survive_the_candidate_join() -> Bool {
     pcie: AttachmentPointOffered { positions: 1, basis: "fixture: one fitted position" },
     ocp: AttachmentPointAbsent { basis: "fixture" },
   }
-  match attachment_against_evidence(candidate: PcieCem, evidence: occupied, bay: NoOcpSlot) {
+  // THE UNOBSERVED REFUSAL MOVED HERE RATHER THAN OUT OF THE FILE. It used to be exercised by the LIVE
+  // unit, whose riser positions were unreported; the operator's 2026-09-14 interior report settles them,
+  // so real_candidates_reach_typed_verdicts now asserts an admission and this refusal would have had no
+  // caller left. Deleting it would retire the wall along with the gap it was watching, and the gap is
+  // permanent: a unit whose interior nobody has reported must still refuse rather than be admitted on a
+  // platform capacity. DESIGN section 4b(4) - the production handling dissolves on a climb, the evidence
+  // does not.
+  let unobserved = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointUnobserved { platform_upper_bound: 2, settled_by: "fixture: the interior has not been reported" },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  match attachment_against_evidence(candidate: PcieCem, evidence: unobserved, bay: NoOcpSlot) {
+    Refused { cause: RiserOccupancyUnobserved { platform_upper_bound: bound, settled_by: settle } } => bound == 2 && settle != ""
+    _ => false
+  } && match attachment_against_evidence(candidate: PcieCem, evidence: occupied, bay: NoOcpSlot) {
     Refused { cause: OccupiedAttachmentPoint { basis: _ } } => true
     _ => false
   } && match attachment_against_evidence(candidate: PcieCem, evidence: overreported, bay: NoOcpSlot) {
