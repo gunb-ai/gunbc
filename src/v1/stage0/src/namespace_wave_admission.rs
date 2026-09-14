@@ -1865,7 +1865,7 @@ pub struct TransitionAdmission {
 /// already wrong, short by six, assembled by a NARROWER search than the command it was filed
 /// under. Re-derive with:
 ///
-///   grep -rn '^fn [a-z_]*string_eq[a-z_]*(' --include=*.dag dag/ src/v2
+///   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
 ///
 /// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
 /// concept. `v2.std.text` is the authority; every other hit is a fork of it.
