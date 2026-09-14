@@ -140,31 +140,52 @@ fn git_authorization_matches_role(role: GitUseRole, authorization: GitUseAuthori
   }
 }
 
-fn git_use_row_findings(row: GitUseRow) -> List<GitImportAuthorityFinding> {
+
+// A ROW'S STANDING IS RESOLVED ONCE, AND BOTH CHANNELS READ THAT ONE VALUE.
+//
+// Two folds used to answer this question independently -- one in the finding channel, one in
+// the index channel -- and both destructured row.classification and both called
+// git_authorization_matches_role. That is not a shared read of a resolved fact; it is two
+// sources that can produce DIFFERENT values, and the divergence has a direction that matters:
+// add an arm to GitUseClassification or a finding to the finding channel, and the index can
+// keep admitting an import the finding channel has already condemned. A forbidden import
+// silently reclassified as authorized is the exact outcome this policy exists to refuse, so the
+// fork is a correctness concern and not a tidiness one (DESIGN 2, DESIGN 3).
+//
+// So standing is a closed sum resolved by one fold. The finding channel projects its findings
+// and the index channel projects its admissibility; neither re-derives the decision, and a new
+// classification arm or a new finding is one edit that both channels inherit. Condemned carries
+// its findings rather than a Bool beside them, so "condemned" and "why" cannot disagree either.
+type GitUseRowStanding
+  = GitUseRowInGoodStanding
+  | GitUseRowCondemned { findings: List<GitImportAuthorityFinding> }
+
+fn git_use_row_standing(row: GitUseRow) -> GitUseRowStanding {
   match row.classification {
-    UnclassifiedGitUse { reason } => [GitUseClassificationMissing { consumer: row.consumer, reason: reason }]
+    UnclassifiedGitUse { reason } =>
+      GitUseRowCondemned { findings: [GitUseClassificationMissing { consumer: row.consumer, reason: reason }] }
     ClassifiedGitUse { role, authorization } =>
       if git_authorization_matches_role(role: role, authorization: authorization) {
-        []
+        GitUseRowInGoodStanding
       } else {
-        [GitUseAuthorizationMisclassified { consumer: row.consumer }]
+        GitUseRowCondemned { findings: [GitUseAuthorizationMisclassified { consumer: row.consumer }] }
       }
   }
 }
 
-// WHETHER A ROW ADMITS ITS OWN IMPORT IS A QUESTION ABOUT THE ROW ALONE. An earlier shape asked
-// it as covers_import(row, module_name, imported_module) and the only caller passed the row's own
-// owner and target back in, so two of the three conjuncts compared a value to itself and the
-// surface match re-derived what the caller had already destructured. A conjunct that cannot fail
-// at its only call site is not a weaker check, it is a decoration that reads as coverage
-// (DESIGN 4b). The discriminating question is authorization-versus-role and nothing else; the
-// module/target pair is what the INDEX is keyed by, and answering membership is
-// git_import_authorized's job, not this predicate's.
+fn git_use_row_findings(row: GitUseRow) -> List<GitImportAuthorityFinding> {
+  match git_use_row_standing(row: row) {
+    GitUseRowInGoodStanding => []
+    GitUseRowCondemned { findings } => findings
+  }
+}
+
+// The index admits exactly the rows the finding channel does not condemn. The module/target
+// pair is what the index is KEYED by; answering membership is git_import_authorized's job.
 fn git_use_row_admits_its_import(row: GitUseRow) -> Bool {
-  match row.classification {
-    UnclassifiedGitUse { reason: _ } => false
-    ClassifiedGitUse { role, authorization } =>
-      git_authorization_matches_role(role: role, authorization: authorization)
+  match git_use_row_standing(row: row) {
+    GitUseRowInGoodStanding => true
+    GitUseRowCondemned { findings: _ } => false
   }
 }
 
