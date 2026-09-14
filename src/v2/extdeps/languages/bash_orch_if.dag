@@ -37,20 +37,17 @@ import v2.extdeps.languages.bash {
   bash_stmt_negation_target_model,
   bash_stmt_andor_target_model,
 }
+import extdeps.posix.shell_command_language { posix_name_ok }
 import v2.extdeps.languages.bash_orch_tier2 {
   orch_cmdsubst_assign_call_target_model
 }
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
 
-// The POSIX name rule (XBD 3.235) is read from extdeps.posix.shell_command_language posix_name_ok;
-// this is the bash_orch_if-facing name for the same fact, kept so its callers do not change.
-fn bash_path_ident_ok(name: String) -> Bool {
-  posix_name_ok(name: name)
-}
-
+// The POSIX name rule (XBD 3.235) is read from extdeps.posix.shell_command_language posix_name_ok
+// at every site that needs it; this module carries no second name for it.
 fn bash_dirname_ascent_target_ok(target: String) -> Bool {
-  bash_path_ident_ok(name: target)
+  posix_name_ok(name: target)
 }
 
 fn bash_path_unquoted_ok_at(path: String, i: Int, n: Int) -> Bool {
@@ -89,7 +86,7 @@ fn bash_absolute_parts_text(parts: FilePathParts) -> String {
 fn bash_path_intent_text(path: PathIntent) -> Outcome<String> {
   match path {
     PathRef { name: n } =>
-      if !bash_path_ident_ok(name: n as String) {
+      if !posix_name_ok(name: n as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(concat("$", n as String))
@@ -280,7 +277,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
     PathRef { name: n } =>
       if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
-      } else if !bash_path_ident_ok(name: n as String) {
+      } else if !posix_name_ok(name: n as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(
