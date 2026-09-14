@@ -54,7 +54,7 @@ import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculativ
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_upper,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.fabric.engram_materialization {
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
