@@ -7,14 +7,23 @@ import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   InspectServingContainer,
+  DisclosurePreconditionAbsent,
+  DisclosureAcceptedByOperator,
+  spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_population,
   spark_managed_grant_argv,
   spark_managed_grant_sudoers_command,
 }
+import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.managed_access_bootstrap { GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_standing_from_outcome,
   spark_managed_grants_to_install,
+  spark_managed_grants_to_install_under,
+  spark_managed_grants_withheld,
+  GrantInstallWithheld,
+  GrantInstallAdmitted,
+  GrantInstallNotNeeded,
   spark_managed_grants_unobserved,
   spark_managed_grants_converged,
   spark_managed_grant_sudoers_content,
@@ -47,7 +56,7 @@ data srv6_listing_with_inspect: String = "User gunbc-automation may run the foll
 
 test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   let missing = spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_before })
-  missing.length() == 2
+  missing.length() == 1
     && any(missing, m => match m {
          RebootThisHost => true
          EnableLingerForOwnAccount { subject: _ } => false
@@ -71,7 +80,10 @@ test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
 // THE HOSTS AS THEY STAND TODAY ARE NOT CONVERGED, and the one missing grant is inspect. This is the
 // access capability the live serving readers wait on, reported by the reconcile that installs it.
 test fn the_measured_hosts_are_missing_exactly_the_inspect_grant() -> Bool {
-  let missing = spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_after })
+  let missing = spark_managed_grants_to_install_under(
+    outcome: GrantEnumerated { listing: srv6_listing_after },
+    precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+  )
   missing.length() == 1
     && all(missing, m => match m {
          InspectServingContainer { container: c } => c as String == "gunbc-spark-pair"
@@ -85,7 +97,10 @@ test fn the_measured_hosts_are_missing_exactly_the_inspect_grant() -> Bool {
 // missing and the remedy is to install them.
 test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
-  spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
+  spark_managed_grants_to_install_under(
+    outcome: o,
+    precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+  ).length() == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
 
@@ -264,7 +279,7 @@ data srv6_listing_wider_than_desired: String = "User gunbc-automation may run th
 // two joins disagree about: 2 under the entry-grained join (neither grant held), 1 under the
 // substring join (linger wrongly held).
 test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool {
-  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 3
+  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 2
 }
 
 // A BANNER LINE CONTRIBUTES NOTHING RATHER THAN A NEGATIVE VOTE. The listing's prose header names
@@ -335,4 +350,47 @@ test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
   spark_managed_grants_to_install(
     outcome: GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
   ).length() == 0
+}
+
+// A FIXTURE ASSERTION, never a real decision: it exists only to show the precondition arm admits.
+fn fixture_acceptance() -> OperatorAllocation {
+  OperatorAllocation {
+    decided_by: "fixture" as NonEmptyStr,
+    decided_on: "1970-01-01" as NonEmptyStr,
+    basis: "witness fixture, not an operator decision" as NonEmptyStr,
+  }
+}
+
+// THE RED: WITH NO PRECONDITION, THE INSPECT GRANT IS NOT IN THE INSTALL SET, over the measured
+// listing where it is the one grant not held. It is reported withheld with its typed cause and the
+// host stays unconverged. Merging the grant installs nothing by itself.
+test fn without_a_disclosure_precondition_inspect_is_absent_from_the_install_set() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  spark_managed_grants_to_install_under(outcome: o, precondition: DisclosurePreconditionAbsent).length() == 0
+    && spark_managed_grants_to_install(outcome: o).length() == 0
+    && all(spark_managed_grants_withheld(outcome: o), w => match w {
+         GrantInstallWithheld { grant: g, obligation: ob } =>
+           ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+             && match g {
+                  InspectServingContainer { container: _ } => true
+                  RebootThisHost => false
+                  EnableLingerForOwnAccount { subject: _ } => false
+                }
+         GrantInstallAdmitted { grant: _ } => false
+         GrantInstallNotNeeded => false
+       })
+    && spark_managed_grants_withheld(outcome: o).length() == 1
+    && !spark_managed_grants_converged(outcome: o)
+    && string_contains(spark_managed_grant_report(host: "srv6", outcome: o), "install=withheld")
+}
+
+// THE PRECONDITION IS THE ONLY THING THAT MOVES IT, and it does not move the dataless grants: from the
+// same listing, an operator acceptance admits inspect, while reboot is admitted either way.
+test fn the_precondition_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_before }
+  spark_managed_grants_to_install_under(outcome: o, precondition: DisclosurePreconditionAbsent).length() == 1
+    && spark_managed_grants_to_install_under(
+         outcome: o,
+         precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+       ).length() == 2
 }

@@ -5,15 +5,9 @@ import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
-  InspectServingContainer,
-  GrantReturnsNoHostData,
-  GrantDisclosureUnestablished,
-  spark_managed_grant_disclosure,
-  spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_population,
   spark_managed_grant_sudoers_command,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.managed_grant_install {
@@ -101,10 +95,7 @@ test fn the_reboot_grant_plans_stage_validate_install_and_cleanup() -> Bool {
 // the guarantee ladder the check dissolved and this control stays, one rung up -- it fails if the
 // two phases are ever swapped back into a permutable sequence.
 test fn every_grant_validates_its_sudoers_before_installing_it() -> Bool {
-  fold(filter(spark_managed_grant_population, g => match spark_managed_grant_disclosure(grant: g) {
-    GrantReturnsNoHostData => true
-    GrantDisclosureUnestablished { obligation: _ } => false
-  }), init: true, f: fn(acc, g) {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     let labels = spark_grant_install_operation_labels(
       plan: spark_grant_install_plan(grant: g, principal: installer()),
     )
@@ -498,29 +489,3 @@ test fn the_credential_request_names_the_exact_grant_it_authorizes() -> Bool {
   })
 }
 
-
-// THE DISCLOSURE SEAM, as a discriminating pair over the ONE plan every install passes through. The
-// inspect grant is in the desired population and its command is as narrow as the others, yet its
-// plan refuses with the disclosure obligation and stages nothing; the reboot grant, which returns no
-// host data, plans its four phases through the same function. Removing the seam turns the first
-// half green-for-the-wrong-reason into steps, which is what reds this test.
-test fn an_unclassified_disclosure_refuses_the_install_plan_and_a_dataless_grant_does_not() -> Bool {
-  let inspect = InspectServingContainer { container: spark_pair_container_name }
-  (match spark_grant_install_plan(grant: inspect, principal: installer()) {
-     SparkGrantInstallRefused { grant: _, cause: c } =>
-       c as String == spark_inspect_grant_disclosure_unestablished_obligation as String
-     SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: _, cleanup: _ } => false
-   })
-    && spark_grant_install_operation_labels(plan: spark_grant_install_plan(grant: inspect, principal: installer())).length() == 0
-    && spark_grant_install_operation_labels(plan: spark_grant_install_plan(grant: RebootThisHost, principal: installer())).length() == 4
-}
-
-// THE POPULATION STILL DESIRES IT. The seam withholds installation; it does not quietly drop the grant
-// from what the host should hold, so the reconcile keeps reporting the host unconverged.
-test fn the_withheld_grant_stays_in_the_desired_population() -> Bool {
-  any(spark_managed_grant_population, g => match g {
-    InspectServingContainer { container: c } => c as String == spark_pair_container_name as String
-    RebootThisHost => false
-    EnableLingerForOwnAccount { subject: _ } => false
-  })
-}

@@ -8,6 +8,13 @@ import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   InspectServingContainer,
+  SparkInspectDisclosurePrecondition,
+  SparkGrantDisclosure,
+  GrantReturnsNoHostData,
+  GrantDisclosureAdmitted,
+  GrantDisclosureUnestablished,
+  spark_grant_disclosure_for_precondition,
+  spark_inspect_disclosure_precondition,
   spark_managed_grant_population,
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
@@ -133,12 +140,55 @@ fn spark_managed_grant_standings(outcome: SparkGrantOutcome) -> List<SparkManage
 // THE MISSING SET IS NOT THE COMPLEMENT OF THE HELD SET. An unobserved grant is absent from BOTH,
 // because installing a grant we could not measure would be actuating on ignorance, and reporting it
 // held would be worse. This is the one place the three-way split pays for itself.
-fn spark_managed_grants_to_install(outcome: SparkGrantOutcome) -> List<SparkManagedGrant> {
+//
+// AND A MISSING GRANT IS NOT YET AN INSTALLABLE ONE. Installing a grant changes who may read what it
+// returns, so a not-held grant enters the install set only when its disclosure admits
+// (gunbc.spark.managed_access_bootstrap spark_managed_grant_disclosure). A withheld grant is reported
+// by spark_managed_grants_withheld with its typed cause and keeps the host unconverged; it is never
+// silently dropped and never installed ahead of the precondition.
+type SparkGrantInstallAdmission
+  = GrantInstallAdmitted { grant: SparkManagedGrant }
+  | GrantInstallWithheld { grant: SparkManagedGrant, obligation: NonEmptyStr }
+  | GrantInstallNotNeeded
+
+fn spark_grant_install_admission(
+  standing: SparkManagedGrantStanding,
+  precondition: SparkInspectDisclosurePrecondition,
+) -> SparkGrantInstallAdmission {
+  match standing {
+    GrantHeld { grant: _ } => GrantInstallNotNeeded
+    GrantStandingUnobserved { grant: _, cause: _ } => GrantInstallNotNeeded
+    GrantNotHeld { grant: g } =>
+      match spark_grant_disclosure_for_precondition(grant: g, precondition: precondition) {
+        GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
+        GrantDisclosureAdmitted { assertion: _ } => GrantInstallAdmitted { grant: g }
+        GrantDisclosureUnestablished { obligation: o } => GrantInstallWithheld { grant: g, obligation: o }
+      }
+  }
+}
+
+fn spark_managed_grants_to_install_under(
+  outcome: SparkGrantOutcome,
+  precondition: SparkInspectDisclosurePrecondition,
+) -> List<SparkManagedGrant> {
   flat_map(spark_managed_grant_standings(outcome: outcome), s =>
-    match s {
-      GrantNotHeld { grant: g } => [g]
-      GrantHeld { grant: _ } => []
-      GrantStandingUnobserved { grant: _, cause: _ } => []
+    match spark_grant_install_admission(standing: s, precondition: precondition) {
+      GrantInstallAdmitted { grant: g } => [g]
+      GrantInstallWithheld { grant: _, obligation: _ } => []
+      GrantInstallNotNeeded => []
+    })
+}
+
+fn spark_managed_grants_to_install(outcome: SparkGrantOutcome) -> List<SparkManagedGrant> {
+  spark_managed_grants_to_install_under(outcome: outcome, precondition: spark_inspect_disclosure_precondition)
+}
+
+fn spark_managed_grants_withheld(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
+  flat_map(spark_managed_grant_standings(outcome: outcome), s =>
+    match spark_grant_install_admission(standing: s, precondition: spark_inspect_disclosure_precondition) {
+      GrantInstallWithheld { grant: g, obligation: o } => [GrantInstallWithheld { grant: g, obligation: o }]
+      GrantInstallAdmitted { grant: _ } => []
+      GrantInstallNotNeeded => []
     })
 }
 
@@ -214,7 +264,17 @@ fn spark_managed_grant_report(host: HostIdentity, outcome: SparkGrantOutcome) ->
       "grant-standing host=", host as String,
       " converged=", if spark_managed_grants_converged(outcome: outcome) { "true" } else { "false" }, "\n",
     ], "")],
-    map(spark_managed_grant_standings(outcome: outcome), s =>
-      spark_managed_grant_standing_wire(standing: s)),
+    concat(
+      map(spark_managed_grant_standings(outcome: outcome), s =>
+        spark_managed_grant_standing_wire(standing: s)),
+      flat_map(spark_managed_grants_withheld(outcome: outcome), w => match w {
+        GrantInstallWithheld { grant: g, obligation: o } => [join([
+          "  grant=", spark_managed_grant_wire(grant: g) as String,
+          " install=withheld cause=", o as String, "\n",
+        ], "")]
+        GrantInstallAdmitted { grant: _ } => []
+        GrantInstallNotNeeded => []
+      }),
+    ),
   ), "")
 }

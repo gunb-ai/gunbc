@@ -17,6 +17,7 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.dgx_procurement { OperatorAllocation }
 
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
@@ -246,8 +247,8 @@ type SparkManagedGrant
 // Config.Env is the part the usage-stats wall needs and the part whose values can carry secrets.
 //
 // THEREFORE THE GRANT IS DESIRED BUT NOT INSTALLABLE, and that is decided by
-// spark_managed_grant_disclosure, which gunbc.spark.managed_grant_install spark_grant_install_plan
-// consumes before any host effect. Knowing a command is narrow says who may run it; installing it
+// spark_managed_grant_disclosure, which gunbc.spark.managed_grant_reconcile spark_managed_grants_to_install
+// consumes, so merging this grant installs nothing by itself. Knowing a command is narrow says who may run it; installing it
 // changes who may read what it returns, so ignorance about that output refuses the install rather
 // than riding beside it as a trigger sentence.
 //
@@ -285,24 +286,43 @@ type SparkManagedGrant
 // two functions remembering to agree. Absolute for the sudoers Cmnd_Spec, bare for the argv, one
 // authority for both, because that is one binary rendered for two consumers and not two facts.
 // WHAT INSTALLING A GRANT DISCLOSES TO ITS GRANTEE, as the admission the install route consumes. A
-// grant that returns no host data admits; a grant whose output is a data surface admits only once
-// that surface is classified for the grantee. There is deliberately no accepted-disclosure arm yet:
-// it lands with the thing that constructs it (a classification by execution, or a recorded operator
-// acceptance naming exactly what was disclosed), because an arm nothing can construct is a
-// declaration without a consumer.
+// grant that returns no host data admits; a grant whose output is a data surface admits only on a
+// typed precondition. Today one precondition has a constructor: an operator's attributable acceptance,
+// carried in the same OperatorAllocation shape as the site allocation -- an assertion, never evidence,
+// and it does not retire the classification obligation. The established-by-classification arm lands
+// with the image-configuration reader whose receipt is its payload; a variant whose payload does not
+// exist yet would have to be a sentence.
+type SparkInspectDisclosurePrecondition
+  = DisclosurePreconditionAbsent
+  | DisclosureAcceptedByOperator { assertion: OperatorAllocation }
+
+// THE ROW AN OPERATOR DECISION EDITS. Absent until the operator decides: approve on the disclosed
+// one-off read, or wait for the reader.
+data spark_inspect_disclosure_precondition: SparkInspectDisclosurePrecondition = DisclosurePreconditionAbsent
+
 type SparkGrantDisclosure
   = GrantReturnsNoHostData
+  | GrantDisclosureAdmitted { assertion: OperatorAllocation }
   | GrantDisclosureUnestablished { obligation: NonEmptyStr }
 
-data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that object. Two facts are missing and neither implies the other: the environment the pinned base image bakes (extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference), and whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure to admit InspectServingContainer for gunbc-automation" as NonEmptyStr
-
-fn spark_managed_grant_disclosure(grant: SparkManagedGrant) -> SparkGrantDisclosure {
+fn spark_grant_disclosure_for_precondition(
+  grant: SparkManagedGrant,
+  precondition: SparkInspectDisclosurePrecondition,
+) -> SparkGrantDisclosure {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => GrantReturnsNoHostData
     RebootThisHost => GrantReturnsNoHostData
     InspectServingContainer { container: _ } =>
-      GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
+      match precondition {
+        DisclosurePreconditionAbsent =>
+          GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
+        DisclosureAcceptedByOperator { assertion: a } => GrantDisclosureAdmitted { assertion: a }
+      }
   }
+}
+
+fn spark_managed_grant_disclosure(grant: SparkManagedGrant) -> SparkGrantDisclosure {
+  spark_grant_disclosure_for_precondition(grant: grant, precondition: spark_inspect_disclosure_precondition)
 }
 
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
