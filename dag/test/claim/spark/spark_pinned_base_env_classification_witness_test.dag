@@ -1,6 +1,7 @@
 module test.claim.spark_pinned_base_env_classification_witness
 
 import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.container.oci.image_config { container_image_config_env }
 import gunbc.container.registry_image_config {
   RegistryBytesDigestMatched,
@@ -23,11 +24,14 @@ import gunbc.spark.managed_access_bootstrap {
   RebootThisHost,
   spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_disclosure_standing,
+  spark_pinned_base_env_disclosure,
   spark_pinned_base_env_disclosure_standing,
 }
 import gunbc.spark.pinned_base_env_classification {
   EnvContainsNoSecretShapedEntry,
   EnvContainsSecretShapedEntry,
+  PinnedBaseEnvReadClassified,
+  PinnedBaseEnvReadRefused,
   classify_container_image_config_env,
   classify_pinned_base_image_env,
   env_secret_standing_is_secret_bearing,
@@ -37,6 +41,8 @@ import gunbc.spark.pinned_base_env_classification {
   fixture_secret_shaped_config,
   fixture_secret_shaped_value,
   pinned_base_classification_carries_text,
+  sparkrun_pinned_base_env_classification_wet,
+  sparkrun_pinned_base_env_read,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 
@@ -169,5 +175,43 @@ test fn manifest_config_digest_refuses_when_missing() -> Bool {
   match manifest_config_digest_wire(manifest_json: "{\"schemaVersion\":2}") {
     ManifestConfigDigestUnreadable { cause: _ } => true
     ManifestConfigDigest { digest_wire: _ } => false
+  }
+}
+
+test fn the_hermetic_registry_reader_refuses_rather_than_fabricating_a_config() -> Bool {
+  match sparkrun_pinned_base_env_read() {
+    PinnedBaseEnvReadRefused { cause: _ } => true
+    PinnedBaseEnvReadClassified { classification: _ } => false
+  }
+}
+
+test fn the_hermetic_instrument_fails_closed_when_the_registry_is_unreached() -> Bool {
+  match sparkrun_pinned_base_env_classification_wet() {
+    ExitFailure { code: _, reason: _ } => true
+    ExitSuccess => false
+  }
+}
+
+test fn a_refused_read_does_not_mint_pinned_base_classified() -> Bool {
+  match spark_pinned_base_env_disclosure(read: PinnedBaseEnvReadRefused { cause: "fixture" }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_classified_read_is_the_only_producer_of_the_classified_arm() -> Bool {
+  let row = classify_pinned_base_image_env(
+    config: fixture_non_secret_config(),
+    pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  )
+  match spark_pinned_base_env_disclosure(read: PinnedBaseEnvReadClassified { classification: row }) {
+    Absent => false
+    Present { value: s } =>
+      match s {
+        PinnedBaseImageEnvClassified { classification: c } =>
+          c.pin as String == sparkrun_vllm_ds4_gb10_pinned_reference() as String
+        GrantReturnsNoHostData => false
+        GrantDisclosureUnestablished { obligation: _ } => false
+      }
   }
 }

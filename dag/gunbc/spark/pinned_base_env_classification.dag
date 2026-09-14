@@ -135,7 +135,11 @@ fn pinned_base_classification_carries_text(row: PinnedBaseImageEnvClassification
   any(pinned_base_classification_carried_strings(row: row), s => string_contains(s: s, pattern: text))
 }
 
-fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
+type PinnedBaseEnvRead
+  = PinnedBaseEnvReadClassified { classification: PinnedBaseImageEnvClassification }
+  | PinnedBaseEnvReadRefused { cause: String }
+
+fn sparkrun_pinned_base_env_read() -> PinnedBaseEnvRead
   uses net: Network
 {
   match read_docker_hub_image_config_at_digest(
@@ -143,15 +147,30 @@ fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
     digest_sha256_hex: sparkrun_vllm_ds4_gb10_digest_sha256_hex,
     pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
   ) {
-    PinnedRegistryImageConfigRefused { cause: c } =>
+    PinnedRegistryImageConfigRefused { cause: c } => PinnedBaseEnvReadRefused { cause: c }
+    PinnedRegistryImageConfig { pin: pin, config: config } =>
+      PinnedBaseEnvReadClassified {
+        classification: classify_pinned_base_image_env(config: config, pin: pin),
+      }
+  }
+}
+
+fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
+  uses net: Network
+{
+  match sparkrun_pinned_base_env_read() {
+    PinnedBaseEnvReadRefused { cause: c } =>
       exit_failure(reason: join(["sparkrun_pinned_base_env_classification: ", c], ""))
-    PinnedRegistryImageConfig { pin: pin, config: config } => {
-      let row = classify_pinned_base_image_env(config: config, pin: pin)
+    PinnedBaseEnvReadClassified { classification: row } =>
       match row.standing {
         EnvContainsNoSecretShapedEntry { names: _ } => ExitSuccess
-        EnvContainsSecretShapedEntry { secret_shaped_names: _ } => ExitSuccess
+        EnvContainsSecretShapedEntry { secret_shaped_names: ns } =>
+          if count(ns) == 0 {
+            exit_failure(reason: "sparkrun_pinned_base_env_classification: secret-bearing standing carried no names")
+          } else {
+            ExitSuccess
+          }
       }
-    }
   }
 }
 

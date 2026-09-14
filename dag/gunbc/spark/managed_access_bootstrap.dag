@@ -19,6 +19,9 @@ import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import gunbc.spark.pinned_base_env_classification {
   PinnedBaseImageEnvClassification,
+  PinnedBaseEnvRead,
+  PinnedBaseEnvReadClassified,
+  PinnedBaseEnvReadRefused,
 }
 
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
@@ -319,6 +322,14 @@ fn spark_pinned_base_env_disclosure_standing(
   classification: PinnedBaseImageEnvClassification,
 ) -> SparkGrantDisclosureStanding {
   PinnedBaseImageEnvClassified { classification: classification }
+}
+
+fn spark_pinned_base_env_disclosure(read: PinnedBaseEnvRead) -> SparkGrantDisclosureStanding? {
+  match read {
+    PinnedBaseEnvReadRefused { cause: _ } => none
+    PinnedBaseEnvReadClassified { classification: c } =>
+      Present { value: spark_pinned_base_env_disclosure_standing(classification: c) }
+  }
 }
 
 // THE POLICY AXIS. OperatorAcceptedUnresolvedDisclosureRisk is an attributable decision to install one
