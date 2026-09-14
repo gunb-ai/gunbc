@@ -160,20 +160,27 @@ fn unique_string_member(v: JsonValue, key: String) -> String? {
   }
 }
 
-fn unique_object_member(v: JsonValue, key: String) -> JsonValue? {
+type UniqueJsonObjectMember
+  = UniqueJsonObjectMember { value: JsonValue }
+  | UniqueJsonObjectMemberAbsent
+  | UniqueJsonObjectMemberDuplicated { count: Int }
+  | UniqueJsonObjectMemberHostNotAnObject
+  | UniqueJsonObjectMemberValueNotAnObject
+
+fn unique_object_member(v: JsonValue, key: String) -> UniqueJsonObjectMember {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } =>
       match found {
-        JsonObject { members: _ } => Present { value: found }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonString { value: _ } => none
-        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => UniqueJsonObjectMember { value: found }
+        JsonNull => UniqueJsonObjectMemberValueNotAnObject
+        JsonBool { value: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonNumber { lexeme: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonString { value: _ } => UniqueJsonObjectMemberValueNotAnObject
+        JsonArray { elements: _ } => UniqueJsonObjectMemberValueNotAnObject
       }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    JsonMemberAbsent => UniqueJsonObjectMemberAbsent
+    JsonMemberDuplicated { count: n } => UniqueJsonObjectMemberDuplicated { count: n }
+    JsonMemberNotAnObject => UniqueJsonObjectMemberHostNotAnObject
   }
 }
 
@@ -183,8 +190,17 @@ fn manifest_config_digest_wire(manifest_json: String) -> ManifestConfigDigestRea
       ManifestConfigDigestUnreadable { cause: json_document_gap_text(gap: g) }
     JsonDocumentParsed { value: v } =>
       match unique_object_member(v: v, key: "config") {
-        Absent => ManifestConfigDigestUnreadable { cause: "manifest JSON names no config object" }
-        Present { value: cfg } =>
+        UniqueJsonObjectMemberAbsent =>
+          ManifestConfigDigestUnreadable { cause: "manifest JSON names no config object" }
+        UniqueJsonObjectMemberHostNotAnObject =>
+          ManifestConfigDigestUnreadable { cause: "manifest JSON is not an object" }
+        UniqueJsonObjectMemberDuplicated { count: n } =>
+          ManifestConfigDigestUnreadable {
+            cause: join(["manifest JSON names config ", to_string(n), " times"], ""),
+          }
+        UniqueJsonObjectMemberValueNotAnObject =>
+          ManifestConfigDigestUnreadable { cause: "manifest config is not an object" }
+        UniqueJsonObjectMember { value: cfg } =>
           match unique_string_member(v: cfg, key: "digest") {
             Absent => ManifestConfigDigestUnreadable { cause: "manifest config names no digest string" }
             Present { value: raw } =>
@@ -205,8 +221,16 @@ fn container_image_config_env_from_json(config_json: String) -> ContainerImageCo
       ContainerImageConfigEnvUnreadable { cause: json_document_gap_text(gap: g) }
     JsonDocumentParsed { value: v } =>
       match unique_object_member(v: v, key: "config") {
-        Absent => ContainerImageConfigEnv { env: [] }
-        Present { value: cfg } =>
+        UniqueJsonObjectMemberAbsent => ContainerImageConfigEnv { env: [] }
+        UniqueJsonObjectMemberHostNotAnObject =>
+          ContainerImageConfigEnvUnreadable { cause: "image config JSON is not an object" }
+        UniqueJsonObjectMemberDuplicated { count: n } =>
+          ContainerImageConfigEnvUnreadable {
+            cause: join(["image config JSON names config ", to_string(n), " times"], ""),
+          }
+        UniqueJsonObjectMemberValueNotAnObject =>
+          ContainerImageConfigEnvUnreadable { cause: "image config config member is not an object" }
+        UniqueJsonObjectMember { value: cfg } =>
           match json_object_unique_member(v: cfg, key: "Env") {
             JsonMemberAbsent => ContainerImageConfigEnv { env: [] }
             JsonMemberNotAnObject =>

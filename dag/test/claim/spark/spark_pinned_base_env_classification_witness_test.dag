@@ -174,6 +174,29 @@ test fn malformed_config_json_refuses() -> Bool {
   }
 }
 
+test fn config_json_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool {
+  match container_image_config_env_from_json(config_json: "[]") {
+    ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "not an object")
+    ContainerImageConfigEnv { env: _ } => false
+  }
+}
+
+test fn config_member_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool {
+  match container_image_config_env_from_json(config_json: "{\"config\":[]}") {
+    ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "not an object")
+    ContainerImageConfigEnv { env: _ } => false
+  }
+}
+
+test fn duplicated_config_member_refuses_rather_than_empty_env() -> Bool {
+  match container_image_config_env_from_json(
+    config_json: "{\"config\":{},\"config\":{\"Env\":[\"HF_TOKEN=fixture-not-a-live-secret\"]}}",
+  ) {
+    ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "config")
+    ContainerImageConfigEnv { env: _ } => false
+  }
+}
+
 test fn config_env_decodes_from_json_without_values_in_the_standing() -> Bool {
   match container_image_config_env_from_json(
     config_json: "{\"config\":{\"Env\":[\"FOO=bar\",\"BAZ=quux\"]}}",
