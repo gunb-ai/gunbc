@@ -76,6 +76,14 @@ data public_workload_census_run_attempt_consumer_frontier_rows: List<FrontierRow
   ),
 ]
 
+data public_workload_census_declared_runner_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "DeclaredRunner"),
+    reason: "DeclaredRunner (DeclaredLabel | DeclaredExpression with hand-authored alternatives) and inspected_yaml_job_names are inspection transcripts. gunbc#11270 drafts extdeps.languages.yaml.gha_workflow_read into the Actions RunnerSpec (HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression) and evaluates expressions per matrix combination. Until that lands, these rows are authored census facts, not a parse of the inspected workflow blob",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc#11270 gha_workflow_read / RunnerSpec. TRIGGER: a production fold in gunbc.public_workload_census reads RunnerSpec (or equivalent) from the inspected workflow blob instead of DeclaredRunner and inspected_yaml_job_names. SUFFICIENT FOR deleting DeclaredRunner, the hand-authored DeclaredExpression.alternatives, inspected_yaml_job_names, and this row. NOT satisfied by adding more authored alternatives or YAML-name rows"),
+  ),
+]
+
 type DeclaredRunner
   = DeclaredLabel { label: String }
   | DeclaredExpression { expression: String, alternatives: List<String> }

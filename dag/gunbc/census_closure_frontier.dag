@@ -26,6 +26,7 @@ import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
   public_workload_census_replay_consumer_frontier_rows,
   public_workload_census_run_attempt_consumer_frontier_rows,
+  public_workload_census_declared_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
@@ -69,6 +70,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     create_dispatch_unconsumed_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
     public_workload_census_run_attempt_consumer_frontier_rows,
+    public_workload_census_declared_runner_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
     cpu_description_string_leaf_frontier_rows,
