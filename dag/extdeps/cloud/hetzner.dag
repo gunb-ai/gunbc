@@ -496,20 +496,3 @@ data hetzner_location_nuremberg: HetznerServerLocationRow = HetznerServerLocatio
   operated_by: hetzner_online_gmbh,
   reading: hetzner_locations_reading,
 }
-
-// SUPPORT IS AN ORGANISATION, NOT A LOCATION, and it is a separate row for exactly that reason. The
-// tempting shortcut is to answer a support-access question with the server's location row, which is
-// the vendor-region-label error the route model exists to refuse: the technicians are where upstream
-// says they are, which for this vendor is Germany for every location it serves.
-
-type HetznerSupportOrganisation {
-  provided_by: HetznerLegalEntity
-  country: NonEmptyStr
-  reading: HetznerPublishedReading
-}
-
-data hetzner_customer_support_organisation: HetznerSupportOrganisation = HetznerSupportOrganisation {
-  provided_by: hetzner_online_gmbh,
-  country: "Germany",
-  reading: hetzner_locations_reading,
-}

@@ -271,7 +271,7 @@ test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
 // CENSUS. German customer support is not the whole support path; this module already says so on
 // Helsinki. The production function must be Unread with the obligation that names the discriminator
 // (whether Finnish technical support reaches a German server), consulting the locations page and
-// Appendix 3. Matching Located with hetzner_customer_support_organisation would green a lie.
+// Appendix 3. Matching Located on the German customer-support sentence alone would green a lie.
 test fn a_support_path_located_on_customer_support_alone_is_not_the_nuremberg_census() -> Bool {
   match hetzner_nuremberg_support_path() {
     ProviderPathLocated { operator, jurisdiction, evidence } => false,
