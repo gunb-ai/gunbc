@@ -31,6 +31,7 @@ import gunbc.spark.managed_grant_reconcile {
   GrantInstallAdmittedOnAcceptedRisk,
   GrantInstallNotNeeded,
   spark_grant_install_admissions_under,
+  spark_grant_install_admission_wire,
   spark_managed_grants_unobserved,
   spark_managed_grants_converged,
   spark_managed_grant_sudoers_content,
@@ -392,6 +393,16 @@ test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Boo
        })
     && spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent).length() == 1
     && !spark_managed_grants_converged(outcome: o)
+    // AND THE FAIL-CLOSED REFUSAL RENDERING IS EXERCISED. spark_managed_grant_report resolves the
+    // basis from the production row, which is now an acceptance, so its "install=withheld" arm is no
+    // longer reached through the report -- and that arm is the refusal wire any FUTURE data-bearing
+    // grant with no acceptance falls to. So the wire is driven here directly under the absent basis,
+    // keeping its RED enrolled per DESIGN 4b(4) rather than leaving it specification-without-execution
+    // (review 66129).
+    && any(
+         flat_map(spark_grant_install_admissions_under(outcome: o, basis: InstallBasisAbsent), a => spark_grant_install_admission_wire(a: a)),
+         line => string_contains(line, "install=withheld disclosure=unestablished cause="),
+       )
 }
 
 // THE PRODUCTION ROW AFTER THE OPERATOR'S 2026-09-14 ACCEPTANCE. Over the measured listing the inspect
