@@ -538,7 +538,13 @@ test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool
     render_target: RustRender,
     out_dir: "/tmp/o"
   ) |> join(separator: " ")
-    == "compile --source-root src/v2 --source-root dag --output-dir /tmp/o --target rust --dependency-pool-index primary-precedence"
+    == "compile --source-root src/v2 --source-root dag --output-dir /tmp/o --target rust --dependency-pool-index primary-precedence --repository gunbc --measured-root-demands tools/whole_corpus_compile_measured_root_demands.json"
+}
+
+// An entry measurement is outside whole-root admission and carries neither demand flag.
+test fn an_entry_scope_carries_no_root_demand_flags() -> Bool {
+  let args = emission_compile_args(scope: EntryScope { entry: "dag/std/node.dag" }, render_target: RustRender, out_dir: "/tmp/o")
+  !any(args, a => a == "--repository") && !any(args, a => a == "--measured-root-demands")
 }
 
 // THE MIRROR OF THE ABOVE, and the pair is the point: the SAME two roots in the other order is the

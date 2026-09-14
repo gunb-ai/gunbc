@@ -67,6 +67,8 @@ import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_modu
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
 import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_healed_head_executed_verdict_without_human }
+import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
+import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -117,6 +119,8 @@ data rung_drop_roster: List<RungDrop> = [
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
   heal_healed_head_executed_verdict_without_human,
+  seed_whole_corpus_demand_population_blind,
+  seam_monolith_control_unmeasured_derived_root,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

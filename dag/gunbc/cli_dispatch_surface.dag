@@ -470,6 +470,25 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "to a subtree so a small closure can be emitted without a whole-tree pass."
           ],
           emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "repository",
+          long: "repository",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne,
+          doc: [
+            "Repository identity of a whole-root compile, declared by the caller. Joined with the",
+            "primary root and dependency pools to find the root's measured demand."
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "measured_root_demands",
+          long: "measured-root-demands",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne,
+          doc: ["Location of the repository's generated demand projection (gunbc.whole_corpus_compile_demand_projection)."],
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliRetainedHostKernel,
@@ -733,6 +752,51 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         }
       ],
       realization: CliDelegatesToHostFn { symbol: "handle_serve" },
+      emission: CarriedByGeneratedDispatch
+    },
+    CliSubcommandRow {
+      verb: "measure-root-demand",
+      variant: "MeasureRootDemand",
+      doc: [
+        "Measure a root's whole-root compile demand under an enforceable cgroup memory limit.",
+        "The only product is a receipt (gunbc.root_demand_measurement); no artifact, no verdict."
+      ],
+      operands: [],
+      options: [
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue { text_default: none },
+          arity: CliRepeated,
+          doc: ["The primary root to measure first, then its dependency pools in order."],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "repository",
+          long: "repository",
+          value: CliTextValue { text_default: none },
+          arity: CliRequired,
+          doc: ["Repository identity of the root, declared by the caller."],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "receipt",
+          long: "receipt",
+          value: CliTextValue { text_default: none },
+          arity: CliRequired,
+          doc: ["Where the parent writes the measurement receipt."],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "measurement_child",
+          long: "measurement-child",
+          value: CliToggleValue,
+          arity: CliRequired,
+          doc: ["Set by the measuring parent on the child it observes; the child emits only its census line."],
+          emission: CarriedByGeneratedDispatch
+        }
+      ],
+      realization: CliDelegatesToHostFn { symbol: "measure_root_demand" },
       emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
