@@ -23,12 +23,14 @@ import gunbc.spark.pair_serving_realization {
 import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
-  SparkServingReadiness, ServingObserved,
+  ServingObserved,
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
   ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
@@ -178,11 +180,16 @@ fn t_observed_route() -> ProviderRoute {
   }
 }
 
-fn t_ready() -> SparkServingReadiness {
-  ServingObserved {
-    ready_at: "2026-09-09T00:00:00Z",
-    receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef,
-  }
+// READINESS IS NOT A VALUE THIS TEST MAY WRITE. The binder accepts only a sealed availability verdict, so
+// the fixture obtains one the way production does: a launch read naming the offered launch.
+fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "10.0.0.1" as NonEmptyStr, port: 8000 },
+    before: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    front_door: FrontDoorAnswered,
+    after: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    now: "2026-09-09T00:00:00Z",
+  )
 }
 
 fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
@@ -194,7 +201,7 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
     trust_domain: "gunbc.trust.spark" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     seats: 1,
-    readiness: t_ready(),
+    availability: t_ready(),
     route: route,
   )
 }

@@ -114,10 +114,31 @@ type ChangedWitnessExecutionStanding =
 //
 // THE LINE IS A `Millisecond` AND THE MEASUREMENTS ARE `Nanosecond`, per
 // `std.measure` `nanosecond_millisecond_projection_note`: nanosecond is the canonical exact
-// elapsed carrier, millisecond is the policy and presentation scale, and this line is policy --
-// it is `required_floor_claim_cpu_safety_limit_ms` verbatim. It travels WITH its basis, because
-// a budget and the figures compared against it are meaningless on different clocks (the same
-// reason `std.observation` `ObservationOutcome.TimedOut` carries one basis over its pair).
+// elapsed carrier, millisecond is the policy and presentation scale. It travels WITH its basis,
+// because a budget and the figures compared against it are meaningless on different clocks (the
+// same reason `std.observation` `ObservationOutcome.TimedOut` carries one basis over its pair).
+//
+// WHICH LINE IT IS CHANGED WHEN THE CPU CEILING WAS DELETED, and this annotation said the wrong
+// one (review 65443, BLOCKING, and the finding was correct). It read
+// `required_floor_claim_work_envelope_ms` verbatim -- 500 -- while the host had already been
+// re-pointed to `required_floor_claim_cost_line_ms`. One field, two materially different
+// meanings across authority and seed, which is the section 3 meaning fork stated in this
+// document's own words.
+//
+// THE HOST IS THE CORRECT SIDE AND THIS TEXT WAS THE STALE ONE, which is why the repair is here
+// rather than a revert there. `observed_against_basis` is the CPU clock, and SINCE CPU BECAME
+// OBSERVED-ONLY FOR EVERY CLAIM THERE IS NO CPU CEILING TO REPORT AGAINST. The 500ms envelope is
+// now policy in milliseconds of WORK, consumed only after conversion into eval steps by
+// `v2.workflow.floor_eval_step_calibration`; no clock is ever compared to it. Reporting a CPU
+// nanosecond reading against it would be exactly the clock fusion `std.measure`
+// `measure_clock_basis_note` exists to forbid -- a duration judged against a line from another
+// quantity because both happen to be spelled in milliseconds.
+//
+// SO THE LINE IS `required_floor_claim_cost_line_ms`, WHICH IS DENOMINATED IN CPU MILLISECONDS
+// AND EXPLICITLY DECIDES NOTHING. That is the honest figure for a receipt: the observation is
+// reported against a line on its own clock, and that line's own declaration says it has no
+// admission consumer. A receipt reporting against a decorative line is not a defect -- reporting
+// against a line from the wrong quantity would have been.
 //
 // THE OBSERVATION IS A RECEIPT, NOT A REPAYMENT. It never edits or deletes the authored roster
 // row: a single run landing under the line does not establish that a row whose observations

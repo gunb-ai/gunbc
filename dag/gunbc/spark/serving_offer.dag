@@ -21,7 +21,7 @@ import gunbc.spark.first_party_serving {
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
 }
 import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationObservation, EndpointIncarnationStanding,
@@ -33,6 +33,9 @@ import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
 import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
+}
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
 //
@@ -113,6 +116,30 @@ data spark_serving_billing_quantum: Second = second(count: 1)
 type SparkServingReadiness
   = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
   | ServingUnobserved { obligation: NonEmptyStr }
+
+// READINESS IS A PROJECTION OF AVAILABILITY, NEVER A SECOND READING, AND ONLY FOR THE PROCESS IT WAS
+// READ FROM. gunbc.serving.serving_availability is the one statement of whether a route can take new
+// work; an offer on a launch is ready exactly when that reading is available AND names that same
+// endpoint process. An available reading from another process refuses naming both, so an answer from
+// process A can never make an offer on process B ready.
+fn spark_serving_readiness_of(verdict: ServingFrontDoorAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> SparkServingReadiness {
+  let availability = verdict.reading
+  match availability {
+    ServingAvailable { endpoint: _, launch: observed, observed_at: t, receipt: r } =>
+      if vllm_endpoint_process_launch_is(launch: observed, other: launch) {
+        ServingObserved { ready_at: t, receipt: r }
+      } else {
+        ServingUnobserved { obligation: join([
+          "availability was observed from endpoint process ", vllm_endpoint_process_launch_key(launch: observed) as String,
+          " but the offer names ", vllm_endpoint_process_launch_key(launch: launch) as String,
+        ], "") as NonEmptyStr }
+      }
+    ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+  }
+}
 
 // ── THE ROUTE IS OBSERVED OR THE OFFER DOES NOT EXIST, WHICH IS READINESS'S ARGUMENT AGAIN ────
 //
@@ -458,7 +485,7 @@ fn bind_spark_serving_offer<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  readiness: SparkServingReadiness,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: SparkServingRoute,
 ) -> SparkOfferBinding<P> {
   match route {
@@ -470,13 +497,13 @@ fn bind_spark_serving_offer<P>(
       bind_spark_serving_offer_on_route(
         principal: principal, executor: executor, launch: launch, model: model,
         trust_domain: trust_domain, isolation: isolation, seats: seats,
-        readiness: readiness, route: asserted,
+        availability: availability, route: asserted,
       )
     ServingRouteObserved { route: r0 } =>
       bind_spark_serving_offer_on_route(
         principal: principal, executor: executor, launch: launch, model: model,
         trust_domain: trust_domain, isolation: isolation, seats: seats,
-        readiness: readiness, route: r0,
+        availability: availability, route: r0,
       )
   }
 }
@@ -494,10 +521,10 @@ fn bind_spark_serving_offer_on_route<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  readiness: SparkServingReadiness,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: ProviderRoute,
 ) -> SparkOfferBinding<P> {
-  match readiness {
+  match spark_serving_readiness_of(verdict: availability, launch: launch) {
       ServingUnobserved { obligation: why } =>
         SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
       ServingObserved { ready_at: at, receipt: r } =>

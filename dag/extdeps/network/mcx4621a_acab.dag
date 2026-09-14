@@ -1,0 +1,24 @@
+module extdeps.network.mcx4621a_acab
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic3 }
+import extdeps.standards.ocp_nic_3_0 { Sff }
+
+// The part owns its attachment, independently of Ampere or any other card.
+// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// The cited NVIDIA manual names the OCP 3.0 card and separately tabulates SFF dimensions.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https, locator: "docs.nvidia.com/nvidia-connectx-4-lx-ethernet-adapter-cards-for-ocp-3-0-user-manual.pdf",
+} }
+
+data mcx4621a_acab_attachment: NicAttachmentClass = OcpNic3 { physical_variant: Sff }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.mcx4621a_acab", decl_name: "mcx4621a_acab_attachment", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

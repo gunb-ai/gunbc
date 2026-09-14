@@ -3,6 +3,10 @@ module v2.compiler.fold_lowering
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  dag_call_named_arg_value_optional,
+  dag_lex_token_symbol,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
 import v2.std.optional {
@@ -56,10 +60,96 @@ fn fold_family_head(sym: Symbol) -> Bool {
   (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
 }
 
-fn fold_call_step_fn(fold_call: Node) -> Optional<Node> {
-  match parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
-    ParseSubtreeFound { captured: fn_literal } => Present { value: fn_literal }
-    ParseSubtreeAbsent => Absent
+// THE STEP FORM IS A CLOSED SET THE GRAMMAR DECLARES, AND THE READING MUST BE TOTAL OVER IT
+// AND POSITIONED AT THE STEP ARGUMENT. v2.extdeps.languages.dag declares TWO function-value
+// productions reachable in argument position -- ^dag_production_fn_literal (emitted
+// ^dag_surface_fn_literal) and ^dag_production_arrow_lambda (emitted ^dag_surface_arrow_lambda)
+// -- and this stage searched for the first only. A step spelled `f: (acc, x) => ...` was
+// therefore read as "no step form present" and shared one state with a step passed BY NAME,
+// which is a different fact: the arrow lambda's binder and body are IN HAND here exactly as the
+// fn literal's are, while a named step's binder is a callee-resolution fact this stage does not
+// have. Collapsing the two is what made the fold site lose its carrier and, with it, its LOWERED
+// shape -- the site the complexity lens enumerates (gunbc.recurring_failure_mode
+// fold_shape_visible_to_no_lens).
+//
+// THE SEARCH GRAIN IS THE SECOND HALF OF THE SAME DEFECT, AND IT PRE-DATES THE ARROW ARM
+// (review 65699). parse_subtree_find_production_captured is a whole-subtree PRE-ORDER FIRST
+// MATCH, not a read of the step argument, so `fold(xs, init: 0, f: (acc, x) => fold(x, init:
+// acc, f: fn(a, b) { a }))` classified on the INNER fn literal and built a seam Loop whose body
+// and carrier belong to the inner lambda -- a fabricated, plausible lowering handed to the
+// complexity lens, which then answers about the wrong carrier (DESIGN section 5). The same
+// search reached inside a `fold_node(algebra: NodeFold { ... })` record, whose step is not a
+// lambda at all. So the step form is now read from the STEP ARGUMENT of THIS call, located by
+// the binding name the callee declares, and from that argument the reading descends only the
+// CAPTURED-CHILD CHAIN -- never across siblings -- so no construction nested inside the step's
+// own body can be mistaken for the step.
+//
+// StepByName is a REAL arm over the residue, not a fall-through: it is reached when the step
+// argument is absent, carries no declared inline step production, or carries a shape this stage
+// cannot decide (a named step, an algebra record). It keeps yielding the same
+// FoldCallStepFormUnresolved the seam produced before, so the ^fold_accumulator_unread refusal
+// it feeds stays reachable rather than being papered over by a wider accept.
+type FoldStepForm
+  = StepFnLiteral { literal: Node }
+  | StepArrowLambda { lambda: Node }
+  | StepByName
+
+// The step's binding name is a fact each fold-family callee declares, and they differ:
+// v2.std.algebra fold_list(xs:, empty:, cons:) and fold_list_right(xs:, empty:, snoc:),
+// v2.std.node fold_node(n:, algebra:). fold_node's step is a RECORD rather than a lambda, so
+// naming it here is what keeps the reading from descending into that record looking for one.
+fn some_step_argument_name(name: Symbol) -> Optional<Symbol> {
+  Present { value: name }
+}
+
+fn no_step_argument_name() -> Optional<Symbol> {
+  Absent
+}
+
+fn fold_step_argument_name(head: Symbol) -> Optional<Symbol> {
+  if head == ^fold {
+    some_step_argument_name(name: ^f)
+  } else if head == ^fold_list {
+    some_step_argument_name(name: ^cons)
+  } else if head == ^fold_list_right {
+    some_step_argument_name(name: ^snoc)
+  } else if head == ^fold_node {
+    some_step_argument_name(name: ^algebra)
+  } else {
+    no_step_argument_name()
+  }
+}
+
+// Descends the CAPTURED-CHILD CHAIN of the step argument's value and nothing else: an expr
+// wrapper chain has exactly one captured child per link, so this reaches the step's own
+// production or runs out. It never folds over siblings, which is what stops a literal written
+// INSIDE the step's body from being read as the step.
+fn fold_step_form_at(node: Node) -> FoldStepForm {
+  match parse_production_emitted_identity_optional(node: node) {
+    Absent => StepByName
+    Present { value: id } =>
+      match parse_production_captured_child_optional(node: node) {
+        Absent => StepByName
+        Present { value: captured } =>
+          if id == ^dag_surface_fn_literal {
+            StepFnLiteral { literal: captured }
+          } else if id == ^dag_surface_arrow_lambda {
+            StepArrowLambda { lambda: captured }
+          } else {
+            fold_step_form_at(node: captured)
+          }
+      }
+  }
+}
+
+fn fold_call_step_form(fold_call: Node, head: Symbol) -> FoldStepForm {
+  match fold_step_argument_name(head: head) {
+    Absent => StepByName
+    Present { value: step_name } =>
+      match dag_call_named_arg_value_optional(node: fold_call, name: step_name) {
+        Absent => StepByName
+        Present { value: step_value } => fold_step_form_at(node: step_value)
+      }
   }
 }
 
@@ -108,6 +198,90 @@ fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
   }
 }
 
+// ARROW-LAMBDA NAVIGATION, READ OFF THE DECLARED GRAMMAR RATHER THAN GUESSED BY DFS.
+// dag_grammar_arrow_lambda_expr is a Choice of exactly two alternatives, and the parser returns
+// the CHOSEN alternative's sequence node directly (no choice wrapper), so the two are told apart
+// by the one slot that differs -- the sequence's LEFT:
+//
+//   bare form   `acc => e`            Seq(ident_lex, Seq(fat_arrow, expr))
+//   parenthesised `(acc, x) => e`     Seq(lparen, Seq(ident, Seq(comma, Seq(ident,
+//                                       Seq(repeat, Seq(rparen, Seq(fat_arrow, expr)))))))
+//
+// A lexical token identity in that slot IS the `(`, so dag_lex_token_symbol decides it; an
+// ident-lexeme atom is the bare form's single binder. A first `=>` slot that is neither refuses
+// (Absent) -- the reading never falls through to a DFS for "the first ident that looks right",
+// which would re-open the decline-without-cause this repair closes.
+//
+// THE BARE FORM CANNOT BE A FOLD STEP and is deliberately not given a carrier here: a fold step
+// takes (accumulator, item), and the grammar admits the single-binder form for ordinary
+// one-argument lambdas. Reading its sole binder as an accumulator would fabricate a carrier the
+// source never declared, which is the one thing this stage has never done.
+
+fn arrow_lambda_is_parenthesised(lambda: Node) -> Optional<Bool> {
+  match fold_seq_child(node: lambda, name: ^grammar_sequence_left_node_projection) {
+    Absent => Absent
+    Present { value: head } =>
+      match node_atom_identity_optional(node: head) {
+        Absent => Absent
+        Present { value: sym } => Present { value: dag_lex_token_symbol(sym: sym) }
+      }
+  }
+}
+
+fn fold_seq_right(node: Node) -> Optional<Node> {
+  fold_seq_child(node: node, name: ^grammar_sequence_right_node_projection)
+}
+
+fn fold_seq_right_n(node: Optional<Node>) -> Optional<Node> {
+  match node {
+    Absent => Absent
+    Present { value: n } => fold_seq_right(node: n)
+  }
+}
+
+// `(a, b, ...) => e`: seven right steps reach the body expression, one per declared sequence
+// slot after the opening paren -- ident, comma, ident, repeat(more idents), rparen, fat_arrow.
+fn arrow_lambda_paren_body(lambda: Node) -> Optional<Node> {
+  fold_seq_right_n(
+    node: fold_seq_right_n(
+      node: fold_seq_right_n(
+        node: fold_seq_right_n(
+          node: fold_seq_right_n(
+            node: fold_seq_right_n(node: fold_seq_right(node: lambda))
+          )
+        )
+      )
+    )
+  )
+}
+
+fn arrow_lambda_paren_carrier(lambda: Node) -> Optional<Symbol> {
+  match fold_seq_right(node: lambda) {
+    Absent => Absent
+    Present { value: after_lparen } =>
+      match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
+        Absent => Absent
+        Present { value: first_param } => node_atom_identity_optional(node: first_param)
+      }
+  }
+}
+
+fn arrow_lambda_iteration_body(lambda: Node) -> Optional<Node> {
+  match arrow_lambda_is_parenthesised(lambda: lambda) {
+    Absent => Absent
+    Present { value: parenthesised } =>
+      if parenthesised { arrow_lambda_paren_body(lambda: lambda) } else { Absent }
+  }
+}
+
+fn arrow_lambda_carrier_binder_symbol(lambda: Node) -> Optional<Symbol> {
+  match arrow_lambda_is_parenthesised(lambda: lambda) {
+    Absent => Absent
+    Present { value: parenthesised } =>
+      if parenthesised { arrow_lambda_paren_carrier(lambda: lambda) } else { Absent }
+  }
+}
+
 fn fold_lowering_not_a_fold_call_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^fold_lowering_not_a_fold_call,
@@ -150,6 +324,34 @@ fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
   )
 }
 
+// THE ONE ROOT AT WHICH EVERY INLINE STEP SPELLING MEETS. Each declared inline step form
+// projects onto the same two seam inputs -- an iteration body and an accumulator binder -- and
+// from here on there is no per-spelling arm: one seam Loop, built by fold_call_seam_loop, which
+// is what the complexity lens's LOWERED shape enumerates. A step form whose own grammar puts
+// both projections in hand and yields neither is malformed, which is the one judgement this
+// stage HAS earned, so it keeps the existing shape_invalid refusal and never fabricates a Loop.
+fn fold_call_seam_from_step(
+  fold_call: Node,
+  body: Optional<Node>,
+  carrier: Optional<Symbol>
+) -> FoldCallLowering {
+  match body {
+    Absent =>
+      FoldCallStepShapeInvalid {
+        diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
+      }
+    Present { value: b } =>
+      match carrier {
+        Absent =>
+          FoldCallStepShapeInvalid {
+            diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
+          }
+        Present { value: c } =>
+          FoldCallLowered { seam_loop: fold_call_seam_loop(body: b, carrier: c) }
+      }
+  }
+}
+
 type FoldCallLowering
   = FoldCallLowered { seam_loop: Node }
   | FoldCallNotAFold { diagnostic: Diagnostic }
@@ -179,29 +381,23 @@ fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
       FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
     Present { value: head } =>
       if fold_family_head(sym: head) {
-        match fold_call_step_fn(fold_call: fold_call) {
-          Absent =>
+        match fold_call_step_form(fold_call: fold_call, head: head) {
+          StepByName =>
             FoldCallStepFormUnresolved {
               diagnostic: fold_lowering_step_form_unresolved_diagnostic(n: fold_call)
             }
-          Present { value: fn_literal } =>
-            match step_fn_iteration_body(fn_literal: fn_literal) {
-              Absent =>
-                FoldCallStepShapeInvalid {
-                  diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
-                }
-              Present { value: body } =>
-                match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
-                  Absent =>
-                    FoldCallStepShapeInvalid {
-                      diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
-                    }
-                  Present { value: carrier } =>
-                    FoldCallLowered {
-                      seam_loop: fold_call_seam_loop(body: body, carrier: carrier)
-                    }
-                }
-            }
+          StepFnLiteral { literal: fn_literal } =>
+            fold_call_seam_from_step(
+              fold_call: fold_call,
+              body: step_fn_iteration_body(fn_literal: fn_literal),
+              carrier: step_fn_carrier_binder_symbol(fn_literal: fn_literal)
+            )
+          StepArrowLambda { lambda: lambda } =>
+            fold_call_seam_from_step(
+              fold_call: fold_call,
+              body: arrow_lambda_iteration_body(lambda: lambda),
+              carrier: arrow_lambda_carrier_binder_symbol(lambda: lambda)
+            )
         }
       } else {
         FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
