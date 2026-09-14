@@ -8,6 +8,8 @@ import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.python
 import extdeps.go
+import extdeps.node
+import extdeps.typescript
 import extdeps.gunbc
 import extdeps.communication.medium { Lossless, Medium }
 import std.measure { byte_size_count }
@@ -37,6 +39,7 @@ import tools.emit_host_fixtures {
   python_stdout_fixture_source,
   go_stdout_fixture_source,
   ts_host_fixture_source,
+  ts_host_fixture_expected_sum,
   stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
@@ -72,16 +75,14 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 // route: it is an enrolled lane that invokes the gate. A future PR addressing either the gate's
 // consumer or the TypeScript/Node arms must resolve the gap before this migration is exercised wet.
 //
-// run_ts_smoke and run_node_http_serve_smoke are NOT yet migrated. Their shared
-// emit_host_node_bootstrap_script carrier (below) provisions node the same way — a section 5 widen
-// with pinned versions (nodejs.org v22.22.3 linux tarball). run_ts_smoke additionally needs a
-// TypeScript compilation authority (npx -y -p typescript@5.9.2 tsc), which is itself a runtime network
-// fetch — the same widen class. run_node_http_serve_smoke needs process lifecycle management (start
-// background server, probe, kill) which is a genuinely larger concept. Both are left with the
-// `emit_host_node_bootstrap_script` string carrier and the two triggers below naming the specific
-// missing capabilities.
+// run_ts_smoke now uses typed typescript.Compiler.Compile and node.Runtime.RunFile operations, with
+// Filesystem.Write and shell.Mktemp/Remove owning the fixture lifecycle. Its node
+// provisioning fallback and heredoc are gone. typescript.Compiler.Compile still fetches the
+// pinned compiler at runtime: the hermeticity gap remains open, and compiler failure
+// must refuse even when tsc has emitted JavaScript. run_node_http_serve_smoke still
+// owns the shared bootstrap carrier's remaining use and its separate lifecycle gap.
 
-data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_ts_smoke — concat-interpolated bash fragment splices emit_host_node_bootstrap_script (node provision) and npx -y -p typescript@5.9.2 tsc (runtime network fetch = section 5 widen) into one heredoc body. Two capabilities are missing: (1) a TypeScript compilation authority that compiles .ts to .js without fetching packages at runtime; (2) a node execution operation (like go.Toolchain.RunFile or python.Interpreter.RunFile) to run the compiled output. The provision widen was decided against (section 5, precedent: run_rust_smoke and run_python_smoke do not provision; run_go_smoke joins them in this commit). The compile widen remains open until a typed tsc authority exists. DISSOLVES WHEN run_ts_smoke routes through typed extdeps ops (shell.Mktemp/Mkdir, Filesystem.Write, TypeScript.Compile, Node.RunFile, shell.Remove) and the emit_host_node_bootstrap_script carrier retires.")
+data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: hermetic TypeScript compilation — run_ts_smoke now routes through typed Filesystem.Write, shell.Mktemp/Remove, typescript.Compiler.Compile and node.Runtime.RunFile; its concatenated heredoc and conditional node provisioning are dissolved. typescript.Compiler.Compile still uses npx to fetch typescript@5.9.2 at runtime: typing the operation does not discharge this compile hermeticity gap. DISSOLVES WHEN a hermetic TypeScript compilation authority compiles the fixture without runtime package fetch and run_ts_smoke consumes it. The emit_host_node_bootstrap_script carrier remains used by run_node_http_serve_smoke; its retirement belongs to emit_host_node_serve_process_lifecycle_trigger, not this TypeScript cutover.")
 
 data emit_host_node_serve_process_lifecycle_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_node_http_serve_smoke — concat-interpolated bash fragment splices emit_host_node_bootstrap_script (node provision = section 5 widen) and a background server lifecycle ($!, $, trap, kill, rm) into one heredoc body. Unlike the other smokes, this is not a single-run-then-capture operation: it starts a server process, computes a port, installs signal handlers, probes with an HTTP retry loop, and cleans up. Process lifecycle is a genuinely larger concept than a language runner and cannot be modeled inside this lane. The provision widen was decided against (section 5, precedent: run_rust_smoke and run_python_smoke; run_go_smoke joins them in this commit). DISSOLVES WHEN process lifecycle management (background start, liveness probe, resource cleanup) is available as typed extdeps ops and run_node_http_serve_smoke routes through them (shell.Mktemp/Mkdir, Filesystem.Write, Node.RunFile, http.Client.Probe, process management, shell.Remove) and the emit_host_node_bootstrap_script carrier retires.")
 
@@ -169,19 +170,20 @@ fn run_go_smoke() -> Bool {
 }
 
 fn run_ts_smoke() -> Bool {
-  let expected = byte_size_count(ts_signed_i32_le_byte_count)
-  let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\nprintf '%s' \"$BYTES\""
-  let reported = shell.Exec.Run(
-    script: retained_foreign(
-      body: script,
-      reason: "emit_host ts smoke: provision toolchain, compile fixture, report its octet count"
-    )
+  let dir = shell.Mktemp.Dir()
+  let src = Filesystem.Write(path: concat(dir.path, "/fixture.ts"), content: ts_host_fixture_source)
+  let compile = typescript.Compiler.Compile(
+    workdir: dir.path,
+    source_path: concat(dir.path, "/fixture.ts"),
+    out_dir: dir.path,
+    target: "ES2022",
+    module: "commonjs"
   )
-  emit_host_smoke_holds(
-    harness_ok: reported.success,
-    reported_stdout: reported.stdout,
-    expected_text: "{expected}"
-  )
+  let run = node.Runtime.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.js"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let expected = concat(from_code_point(ts_host_fixture_expected_sum), repeat_string(s: from_code_point(0), n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
+  dir.success && src.success && compile.success && run.success && cleanup.success
+    && (run.stdout == expected)
 }
 
 fn run_node_http_serve_smoke() -> Bool {

@@ -47,7 +47,7 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_items::item_kind;
 pub use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_compiler_infer_items::ItemKind::{
-    DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
+    DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};

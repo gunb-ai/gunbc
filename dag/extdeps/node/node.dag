@@ -1,0 +1,45 @@
+module extdeps.node
+
+import std.types { FilePath, String, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nodejs.org/docs/v22.23.2/api/cli.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.node",
+      decl_name: "node.Runtime",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Node.js v22.23.2 CLI contract. The installed node must be on PATH; this operation
+// neither provisions it nor enforces an installed version. env reports a missing node
+// as a nonzero exit, so the caller receives success: false without a fallback.
+service node.Runtime {
+  operation RunFile {
+    input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "node", "{script_path}", args] }
+    exit {
+      0 => Unit
+      nonzero => String "node script exited nonzero"
+    }
+  }
+}
