@@ -50,6 +50,14 @@ import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject {
+  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_wire,
+  ServingRulingCitation, serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,
+  glm_canary_serving_subject,
+}
+import gunbc.spark.host_commitment { spark_serving_admissible_hosts }
 
 // ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
 //
@@ -157,17 +165,48 @@ data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
   },
 }
 
-// ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
+// ── THE FLEET AS A SUBJECT SEES IT: THE HOSTS ADMISSIBLE TO IT, BY IDENTITY ──────────────────
+//
+// THE SHAPE THIS REPLACES CARRIED `host_count: 8`, AND THAT WAS A LIVE FAIL-OPEN. Eight units exist;
+// five were spoken for by authorities this module never read, and the fit screened
+// `hosts_consumed <= host_count`, so an eight-host shape was admitted onto a fleet with three free
+// hosts. The ledger row is gunbc.recurring_failure_mode
+// a_capacity_screen_counts_a_population_it_never_identifies, and its trigger for this site is exactly
+// what this type now is: identities with NO cardinality field beside them, so `needed <= count` has
+// nothing to be written against and every consumer names members.
+//
+// AND THE SET IS SUBJECT-RELATIVE, WHICH IS WHY THE SNAPSHOT NAMES ITS SUBJECT. A host is admissible
+// to a serving subject iff every commitment cause on it is held by that subject
+// (gunbc.spark.host_commitment). The pair unit on group A therefore sees its own four hosts as
+// available while every other subject sees them as taken -- the global "nothing has claimed it"
+// set answers the wrong question for a deployment that already holds hosts, and it is EMPTY today.
+// The subject is carried on the snapshot so the evidence identity moves when the subject moves, and
+// so a fit cannot be read against a set derived for someone else.
+//
+// THE PER-HOST MEMORY READING STAYS ONE AUTHORED FACT, and it is a measurement of a member rather
+// than of the population: the same reading applies to every unit because the units are identical.
 type FleetSnapshot {
-  host_count: Nat
+  subject: ServingSubject
+  admissible_hosts: List<HostIdentity>
   bytes_per_host: ByteSize
   how: NonEmptyStr
 }
 
-data spark_fleet_snapshot: FleetSnapshot = FleetSnapshot {
-  host_count: 8,
-  bytes_per_host: byte_size(count: 130663231488),
-  how: "torch.cuda.get_device_properties(0).total_memory read inside the serving container on a GB10, 2026-09-07; NVML refuses this query on unified memory and must not be used for it" as NonEmptyStr,
+data spark_unified_memory_per_host: ByteSize = byte_size(count: 130663231488)
+
+data spark_unified_memory_how: NonEmptyStr = "torch.cuda.get_device_properties(0).total_memory read inside the serving container on a GB10, 2026-09-07; NVML refuses this query on unified memory and must not be used for it" as NonEmptyStr
+
+// THE PRODUCTION SNAPSHOT IS DERIVED FROM THE COMMITMENT CENSUS, NEVER AUTHORED. A fixture may
+// construct a FleetSnapshot over named identities -- the type is ordinary data -- but the production
+// rows below reach their identities only through gunbc.spark.host_commitment, so a host reserved by
+// another subject or held by an undischarged reservation cannot be written into them.
+fn spark_fleet_snapshot_for(subject: ServingSubject) -> FleetSnapshot {
+  FleetSnapshot {
+    subject: subject,
+    admissible_hosts: spark_serving_admissible_hosts(subject: subject),
+    bytes_per_host: spark_unified_memory_per_host,
+    how: spark_unified_memory_how,
+  }
 }
 
 // ── THE FIXED EXECUTION PARAMETERS, CARRIED ONCE SO A CANDIDATE CANNOT DISAGREE WITH THEM ─────
@@ -534,7 +573,7 @@ data v4_1_selection_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
     reason: "V4.1 domain stays the fleet cartesian until DSV41-1 names admitted TP widths",
-    dissolution: unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) with tp * replicas <= host_count; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr),
+    dissolution: unbound_dissolution(description: "TRIGGER: DSV41-1 (loyal-ram-346) shows which tensor-parallel widths the GB10 vLLM lead accepts. Until then the V4.1 domain is every (tp, replicas) whose tp * replicas ranks fit within the subject's admissible host set; it does not guess a width set and does not drop tp4x1. SUFFICIENT FOR: a derived admitted-width set from that runtime observation replaces an unfiltered fleet cartesian for this image." as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "v4_1_gb10_kv_bytes_obligation" as NonEmptyStr),
@@ -544,7 +583,7 @@ data v4_1_selection_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "engram_standing" as NonEmptyStr),
     reason: "Engram pool-gain is a capacity standing, not a funded axis; weight-fit does not yet read it",
-    dissolution: unbound_dissolution(description: "TRIGGER: weight_fit_of (or fleet_fits on the same capacity path) refuses a shape whose fit assumes Engram UVA offload adds host-side pool on GB10 unified memory. Until that fold, engram_standing is a declared later consumer, not a selection axis and not a silent zero. SUFFICIENT FOR: candidate_readings / candidate_gaps / weight_fit_of call engram_standing, so a shape that treats offload as extra pool is excluded before Pareto." as NonEmptyStr),
+    dissolution: unbound_dissolution(description: "TRIGGER: weight_fit_of (or fleet_fit_of on the same capacity path) refuses a shape whose fit assumes Engram UVA offload adds host-side pool on GB10 unified memory. Until that fold, engram_standing is a declared later consumer, not a selection axis and not a silent zero. SUFFICIENT FOR: candidate_readings / candidate_gaps / weight_fit_of call engram_standing, so a shape that treats offload as extra pool is excluded before Pareto." as NonEmptyStr),
   ),
 ]
 
@@ -872,13 +911,52 @@ fn hosts_consumed(c: DeploymentCandidate) -> Nat {
   c.topology.tensor_parallel_degree * c.topology.replica_count
 }
 
+// ── THE HOST FIT IS A TRAVERSAL OF THE ADMISSIBLE MEMBERS, AND IT REFUSES BY NAME ─────────────
+//
+// THE SHAPE THIS REPLACES WAS `hosts_consumed(c) <= fleet.host_count`, a comparison against a number
+// that counted units which EXIST standing in for units that are AVAILABLE. The fit now walks the
+// admissible members, each taking one rank slot; a shape whose slots outlast the members is refused
+// carrying the members it had and the slots it could not fill, so a refusal says WHICH hosts this
+// subject may use rather than how many. The admitted arm carries the same identities: they are the
+// set the fabric's placement relation binds ranks within, and this module still does not assign a
+// rank to a host -- a positional rank-to-host binding derived here was a caught overstatement of an
+// earlier version (see the shape note below), and nothing about a subject-relative set changes who
+// owns that binding.
+//
 // A DEGENERATE SHAPE IS NOT A CHEAP ONE. Zero replicas or zero ranks consume no hosts and would
-// otherwise satisfy a fleet-fit test by serving nothing at all, then win every capacity axis they
-// never had to pay for.
-fn fleet_fits(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
-  c.topology.replica_count > 0
-    && c.topology.tensor_parallel_degree > 0
-    && hosts_consumed(c: c) <= fleet.host_count
+// otherwise satisfy a fit by serving nothing at all, then win every capacity axis they never had to
+// pay for.
+type FleetFit
+  = FleetFitWithinAdmissible { subject: ServingSubject, required: Nat, admissible: List<HostIdentity> }
+  | FleetFitExceedsAdmissible { subject: ServingSubject, required: Nat, admissible: List<HostIdentity>, short_by: Nat }
+  | FleetFitDegenerate { because: NonEmptyStr }
+
+fn rank_slots_left_after(required: Nat, members: List<HostIdentity>) -> Nat {
+  fold(members, init: required, f: (left, _h) => if left == 0 { left } else { left - 1 })
+}
+
+fn fleet_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot) -> FleetFit {
+  if c.topology.replica_count == 0 {
+    FleetFitDegenerate { because: "a deployment of zero replicas consumes no hosts and serves nothing" as NonEmptyStr }
+  } else if c.topology.tensor_parallel_degree == 0 {
+    FleetFitDegenerate { because: "a zero tensor-parallel degree has no ranks to place" as NonEmptyStr }
+  } else {
+    let required = hosts_consumed(c: c)
+    let short_by = rank_slots_left_after(required: required, members: fleet.admissible_hosts)
+    if short_by == 0 {
+      FleetFitWithinAdmissible { subject: fleet.subject, required: required, admissible: fleet.admissible_hosts }
+    } else {
+      FleetFitExceedsAdmissible { subject: fleet.subject, required: required, admissible: fleet.admissible_hosts, short_by: short_by }
+    }
+  }
+}
+
+fn fleet_fit_admits(f: FleetFit) -> Bool {
+  match f {
+    FleetFitWithinAdmissible { subject: _, required: _, admissible: _ } => true
+    FleetFitExceedsAdmissible { subject: _, required: _, admissible: _, short_by: _ } => false
+    FleetFitDegenerate { because: _ } => false
+  }
 }
 
 fn weight_treatment_key(t: WeightTreatment) -> String {
@@ -888,20 +966,28 @@ fn weight_treatment_key(t: WeightTreatment) -> String {
   }
 }
 
-// COVERING PARTITIONS (tp * replicas == n) ARE ONE SLICE OF WHAT THE FLEET ADMITS. GLM and
+// COVERING PARTITIONS (tp * replicas == n) ARE ONE SLICE OF WHAT THE SUBJECT'S SET ADMITS. GLM and
 // V4-Flash stay on that authored cartesian. V4.1's domain is fleet_admitted_topologies; its
 // frontier row on that function is V4.1-only (DSV41-1), not a license to widen the other subjects.
-fn full_fleet_covering_topologies(host_count: Nat) -> List<TopologyShape> {
+//
+// BOTH GENERATORS ENUMERATE OVER THE MEMBERS OF THE ADMISSIBLE SET, so a shape needing more ranks
+// than the subject has hosts is never produced -- the domain cannot contain what the fit would
+// refuse. The width of the enumeration is the size of the carried set: a size DERIVED from named
+// members every time it is read, not a scalar authored beside them, which is the distinction the
+// ledger row draws between a count that summarises a population and a set that is one.
+fn covering_topologies_over(fleet: FleetSnapshot) -> List<TopologyShape> {
+  let n = count(fleet.admissible_hosts)
   map(
-    filter(nat_range_inclusive(lo: 1, hi: host_count), d => host_count % d == 0),
-    d => topology_shape(tensor_parallel_degree: d, replica_count: host_count / d),
+    filter(nat_range_inclusive(lo: 1, hi: n), d => n % d == 0),
+    d => topology_shape(tensor_parallel_degree: d, replica_count: n / d),
   )
 }
 
 fn fleet_admitted_topologies(fleet: FleetSnapshot) -> List<TopologyShape> {
-  flat_map(nat_range_inclusive(lo: 1, hi: fleet.host_count), tp =>
+  let n = count(fleet.admissible_hosts)
+  flat_map(nat_range_inclusive(lo: 1, hi: n), tp =>
     map(
-      nat_range_inclusive(lo: 1, hi: fleet.host_count / tp),
+      nat_range_inclusive(lo: 1, hi: n / tp),
       r => topology_shape(tensor_parallel_degree: tp, replica_count: r),
     ))
 }
@@ -915,8 +1001,9 @@ fn native_quality_holds(c: DeploymentCandidate) -> Bool {
 
 // OPERATOR 2026-09-11: "we are not doing any redundancy right now". That is replica_count == 1,
 // evaluated as a constraint against the candidate's topology fact, not a score and not a
-// hand-pruned field. Tensor-parallel WIDTH is not this constraint -- it is the weight-fit axis
-// against spark_fleet_snapshot, and must come out of select_realization rather than be written.
+// hand-pruned field. Tensor-parallel WIDTH is not this constraint -- it is decided by the weight-fit
+// axis (bytes per rank against the subject's FleetSnapshot) and the host-fit axis (ranks against
+// its admissible identities), and must come out of select_realization rather than be written.
 fn no_redundancy_holds(c: DeploymentCandidate) -> Bool {
   c.topology.replica_count == 1
 }
@@ -1046,6 +1133,7 @@ fn covers_demand(p: ServingDecisionParameters, demand: WorkloadDemandStanding) -
 data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_quality")
 data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_native_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
+data ax_host_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_host_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
 data ax_authorized_runtime: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_authorized_runtime")
 data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
@@ -1070,6 +1158,7 @@ data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_native_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_host_fit, goal: HigherIsBetter },
   SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
   SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
@@ -1098,6 +1187,7 @@ data serving_selection_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_constraint_authority, axis: ax_quality, bound_micro: 1 },
   HardConstraint { identity: constraint_native_quality, axis: ax_native_quality, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_weight_fit, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_host_fit, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_runtime_feasible, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_context_covered, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_workload_established, bound_micro: 1 },
@@ -1197,7 +1287,9 @@ fn evidence_snapshot_key(e: ServingDeploymentEvidenceSnapshot) -> String {
     "q[", join(map(e.quality, a => quality_assessment_key(a: a)), ","), "]",
     "|r[", join(map(e.runtime_feasibility, r => runtime_feasibility_key(r: r)), ","), "]",
     "|w", demand_key(d: e.workload),
-    "|f", to_string(e.fleet.host_count), "x", to_string(byte_size_count(b: e.fleet.bytes_per_host)),
+    "|f", serving_subject_wire(s: e.fleet.subject) as String,
+    "[", join(map(e.fleet.admissible_hosts, h => h as String), ","), "]",
+    "x", to_string(byte_size_count(b: e.fleet.bytes_per_host)),
   ], "")
 }
 
@@ -1422,10 +1514,26 @@ fn runtime_gap(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSna
   }
 }
 
+// THE HOST FIT IS ITS OWN HARD-BOUNDED READING, NOT A FACTOR FOLDED INTO THE WEIGHT BOUND. The
+// previous version multiplied `fleet_fits` into the weight-fit reading, so a subject whose footprint
+// was not read on this fleet (V4.1 today) never had its host fit consulted at all: the weight axis
+// was a gap, and a shape needing more hosts than the subject holds sailed through to NeedsEvidence
+// instead of being excluded. A shape that cannot be placed is infeasible whatever is known about
+// its bytes, so the two facts are two readings, and this one is never a gap: the admissible set is
+// always known for a subject, and a degenerate shape reads zero rather than nothing.
+//
+// WHAT THE SPINE'S EXCLUSION LINE CARRIES IS THE IDENTITY, NOT THE HOSTS. std.decision names the
+// excluded candidate, the constraint and the axis; the members the fit named live on the FleetFit
+// value, and reaching them into NoFeasibleServingDeployment's causes is the trigger already stated
+// on the `component_route_gap_over` frontier row rather than a second row here.
+fn host_fit_reading(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot) -> AxisReading {
+  reading(axis: ax_host_fit, v: flag(b: fleet_fit_admits(f: fleet_fit_of(c: c, fleet: e.fleet))))
+}
+
 fn weight_fit_reading(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> AxisReading? {
   match weight_fit_of(c: c, fleet: e.fleet, p: p) {
     WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } =>
-      Present { value: reading(axis: ax_weight_fit, v: flag(b: fleet_fits(c: c, fleet: e.fleet))) }
+      Present { value: reading(axis: ax_weight_fit, v: 1) }
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => Present { value: reading(axis: ax_weight_fit, v: 0) }
     WeightFitUnderivable { because: _ } => none
   }
@@ -1478,6 +1586,7 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
              optional_reading(r: workload_reading(e: e)))),
     [
+      host_fit_reading(c: c, e: e),
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
       reading(axis: ax_authorized_runtime, v: flag(b: authorized_v4_1_runtime_holds(c: c))),
@@ -1778,6 +1887,14 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
 // So the result says what it is: a SHAPE, admitted for placement. The fabric cut binds these replica
 // shapes to exact hosts, network groups, failure domains, endpoints and launch arguments, and only
 // that relation may mint a launch. This keeps rank partitions deferred without understating it.
+//
+// THE SHAPE NAMES THE HOSTS IT MAY BE BOUND WITHIN, BY IDENTITY, AND NOT WHICH RANK LANDS WHERE.
+// `hosts_admissible` is the subject's admissible set from the evidence the decision was taken over
+// -- the fabric binds ranks within it and nowhere else -- and `hosts_required` is how many of them
+// the shape consumes. An earlier `hosts_unassigned: Nat` was the count of a set nobody had named,
+// computed from the scalar this change deletes; a leftover set by identity would require this module
+// to assign ranks to hosts first, which is exactly the positional binding the paragraph above records
+// as an overstatement.
 type ServingReplicaShape sole_constructor {
   tensor_parallel_degree: Nat
   replica_ordinal: Nat
@@ -1789,7 +1906,7 @@ type ServingDeploymentShape sole_constructor {
   parameters: ServingDecisionParameters
   replicas: List<ServingReplicaShape>
   hosts_required: Nat
-  hosts_unassigned: Nat
+  hosts_admissible: List<HostIdentity>
   selected_by: SelectionReceipt
   snapshot_key: String
 }
@@ -1813,7 +1930,7 @@ fn shape_of(selected: SelectedServingDeployment) -> ServingDeploymentShape {
     parameters: selected.candidate.profile,
     replicas: replica_shapes_loop(degree: selected.candidate.topology.tensor_parallel_degree, remaining: selected.candidate.topology.replica_count, acc: []),
     hosts_required: hosts_consumed(c: selected.candidate),
-    hosts_unassigned: selected.input.evidence.fleet.host_count - hosts_consumed(c: selected.candidate),
+    hosts_admissible: selected.input.evidence.fleet.admissible_hosts,
     selected_by: selected.receipt,
     snapshot_key: selected.snapshot_key,
   }
@@ -1895,21 +2012,86 @@ data deepseek_quality_requirement: QualityRequirement = quality_requirement(
   rationale: "the deployed checkpoint is the subject, and a requantisation is a different artifact rather than a cheaper way to serve this one. gunbc.spark.tensor_parallel_comparison measured 2238 millinats between tensor-parallel degrees on these weights against a bit-identical within-topology envelope, so a per-topology assessment is required and no degree inherits another's standing" as NonEmptyStr,
 )
 
+// ── ONE SERVING SUBJECT, TWO ARTIFACT VERSIONS, ONE DATED TRANSITION ──────────────────────────
+//
+// THE QUESTION THIS SETTLES: does "V4.1 takes over group A" need a successor EDGE between two
+// subjects, or is it ONE subject with versioned incarnations across a declared transition? The
+// evidence decided for the latter, and the shapes checked are named so the check is repeatable:
+//   - product.training.attempt_graph `lineage_predecessor<P>` relates execution ATTEMPTS of one
+//     training run (retry, escalation) by a prior-attempt identity and a cause receipt -- the wrong
+//     grain for a deployment changing what it serves, and its payload is a FabricIdentity of an
+//     attempt key this subject does not have;
+//   - gunbc.deploy_transition_bootstrap `transition_step_successor` is a closed protocol step order
+//     (lease held, quiesced, release installed ...), not a relation between two subjects;
+//   - the only modelled rollback, gunbc.spark.glm_canary_converge `CanaryCutover`, records the
+//     replaced launch line of the SAME arm -- a prior incarnation of one subject, which is this shape.
+// Neither of the first two is inhabitable, no ServingIncarnationProvenance exists anywhere, and an
+// incarnation identity would therefore be AUTHORED rather than inhabited. The pair deployment on
+// group A has no identity distinct from its group (gunbc.spark.serving_subject), so the subject is
+// `PairServingUnitOn { group: FabricGroupA }` before and after, and DESIGN section 3 sanctions the
+// same spelling across a declared version transition as legitimate reuse.
+//
+// WHAT KEEPS THE ROLLBACK TARGET ADDRESSABLE WITHOUT AN EDGE. The V4 Flash incarnation is intact on
+// the hosts -- image f869281d in gunbc.spark.runtime_architecture_registry_reading, weight snapshot
+// 60d8d707 in gunbc.spark.pair_serving_observed -- and it stays addressable as the FROM side of this
+// row: `deepseek_decision_input` still describes it over the same subject's admissible set, so a
+// rollback is the same subject's prior version, not a second subject. No-redundancy (operator,
+// 2026-09-11) means V4 Flash is not served BESIDE V4.1: the two fields share one subject and one set
+// precisely because at most one of them is running on it.
+//
+// THE ROW IS CONSUMED, NOT DECORATIVE: both DeepSeek domains take their artifact from it and both
+// take their fleet from its subject, so the transition is the only route by which the V4.1 field
+// reaches group A's hosts.
+type ServedArtifactTransition {
+  subject: ServingSubject
+  from: ModelArtifact
+  to: ModelArtifact
+  ruling: ServingRulingCitation
+}
+
+data group_a_served_artifact_transition: ServedArtifactTransition = ServedArtifactTransition {
+  subject: PairServingUnitOn { group: FabricGroupA },
+  from: artifact_deepseek_v4_flash_native,
+  to: artifact_deepseek_v4_1_flash_native,
+  ruling: serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,
+}
+
+// ── THE FLEET, PER SUBJECT, DERIVED FROM THE COMMITMENT CENSUS ───────────────────────────────
+//
+// Two production snapshots, one per serving subject the corpus carries. The pair unit on group A is
+// admitted its own four hosts and nothing else; the canary's subject is admitted group B, which the
+// operator's ruling reserves for it. Each is the identity set a fit is read against and a domain is
+// enumerated over, and each carries its subject so the evidence identity moves with it.
+data pair_unit_a_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: group_a_served_artifact_transition.subject)
+
+data glm_canary_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: glm_canary_serving_subject)
+
 // NO QUALITY ASSESSMENTS AND NO RUNTIME RECEIPTS. The empty lists are the honest state, and they are
-// what make both subjects answer with obligations.
-data serving_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_snapshot(
-  quality: [],
-  runtime_feasibility: [],
-  workload: serving_workload_standing,
-  fleet: spark_fleet_snapshot,
-  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
+// what make every subject answer with obligations. The fleet is the one thing the snapshots differ
+// in, and the receipt names the snapshot declaration each evidence value was taken over.
+fn serving_evidence_over(fleet: FleetSnapshot, fleet_receipt: DeclarationRef) -> ServingDeploymentEvidenceSnapshot {
+  serving_evidence_snapshot(
+    quality: [],
+    runtime_feasibility: [],
+    workload: serving_workload_standing,
+    fleet: fleet,
+    fleet_receipt: fleet_receipt,
+  )
+}
+
+data pair_unit_a_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
+  fleet: pair_unit_a_fleet_snapshot,
+  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "pair_unit_a_fleet_snapshot"),
 )
 
-data eight_host_topologies: List<TopologyShape> = full_fleet_covering_topologies(host_count: spark_fleet_snapshot.host_count)
+data glm_canary_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
+  fleet: glm_canary_fleet_snapshot,
+  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_canary_fleet_snapshot"),
+)
 
 data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
-  topologies: eight_host_topologies,
+  topologies: covering_topologies_over(fleet: glm_canary_fleet_snapshot),
   parameters: serving_parameters_current,
 )
 
@@ -1946,7 +2128,7 @@ data glm_candidate_field: ServingDeploymentCandidateField = serving_candidate_fi
 // speculative inventory.
 data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: glm_candidate_field,
-  evidence: serving_evidence_current,
+  evidence: glm_canary_evidence_current,
   quality_requirement: glm_quality_requirement,
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_selection_policy"),
   constraints: serving_selection_constraints,
@@ -1970,8 +2152,8 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
 // Recommending a topology change on a quality gate blind to topology is exactly backwards, and the
 // recommendation is withdrawn rather than restated more carefully.
 data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
-  artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: eight_host_topologies,
+  artifacts: [group_a_served_artifact_transition.from],
+  topologies: covering_topologies_over(fleet: pair_unit_a_fleet_snapshot),
   parameters: serving_parameters_current,
 )
 
@@ -1983,7 +2165,7 @@ data deepseek_candidate_field: ServingDeploymentCandidateField = serving_candida
 
 data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: deepseek_candidate_field,
-  evidence: serving_evidence_current,
+  evidence: pair_unit_a_evidence_current,
   quality_requirement: deepseek_quality_requirement,
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy"),
   constraints: serving_selection_constraints,
@@ -1998,7 +2180,10 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
 // deepseek-v4-flash:iq3s-split; cutover is a later operator decision. Host binding (srv7/srv8
 // llama.cpp RPC reservation) is fabric work downstream of a selected shape -- named, not done here.
 //
-// THE FIELD IS EVERY SHAPE THE FLEET SNAPSHOT ADMITS, CROSSED WITH THE DECLARED RUNTIME DOMAIN.
+// THE FIELD IS EVERY SHAPE THE SUBJECT'S ADMISSIBLE SET ADMITS, CROSSED WITH THE DECLARED RUNTIME
+// DOMAIN. The subject is the pair unit on group A, reached through group_a_served_artifact_transition
+// -- the ruling's second half -- so the set is srv5-srv8 and a five-to-eight-rank shape is never
+// enumerated; planted, it is refused by the host fit by name.
 // Completeness is an identity join over artifact × topology × profile. Narrowing to the existing
 // fleet image would drop the GB10 vLLM lead; llama.cpp is conversion-only and is not a candidate;
 // SGLang preview images target larger accelerators only. Engram offload is zero pool gain on GB10.
@@ -2015,8 +2200,8 @@ data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement
 fn v4_1_candidate_field_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentCandidateField {
   let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
   let domain = serving_deployment_domain_over_standings(
-    artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    artifacts: [group_a_served_artifact_transition.to],
+    topologies: fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot),
     standings: standings,
   )
   serving_candidate_field(
@@ -2029,7 +2214,7 @@ fn v4_1_candidate_field_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>
 fn v4_1_decision_input_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentDecisionInput {
   serving_decision_input(
     field: v4_1_candidate_field_from_sm12(wire: wire, admitted: admitted),
-    evidence: serving_evidence_current,
+    evidence: pair_unit_a_evidence_current,
     quality_requirement: deepseek_v4_1_quality_requirement,
     selection_policy: deepseek_v4_1_selection_policy,
     constraints: v4_1_selection_constraints,

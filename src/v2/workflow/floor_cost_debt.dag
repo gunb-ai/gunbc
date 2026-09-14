@@ -110,7 +110,16 @@ import v2.std.collection { List }
 //     against a literal, because a number copied from the current tree is a snapshot;
 //   - the direction is justified: a row leaves by being made cheap, and the forward hole is
 //     already shut -- a NEW or REGRESSED row over 500ms simply refuses, because 500 is the
-//     ceiling and nothing here admits an identity the floor did not already discover;
+//     ceiling and nothing here admits an identity the floor did not already discover.
+//     THE TYPED CONSTRUCTOR `v2.workflow.floor_cost_debt_admission` `floor_cost_debt_row` is
+//     NOT this roster's mint path today. Membership is still the hand-authored identity-string
+//     chunks `floor_cost_debt_roster` folds. Claiming those strings are minted only through
+//     the constructor was a §3c dangling assertion (review 65585). The constructor is the
+//     gate for `floor_cost_debt_typed_admission_attempts`, whose first live consumer is named
+//     at that function: the required-floor runner unioning typed-admitted identities into
+//     the withhold set, with these string chunks frozen against growth. Until that lands,
+//     a margin-crossing identity can still be string-appended here; that hole is the existing
+//     monotone contract (identity-grain stale, shrink-only review), not construction.
 //   - a rostered identity the tree no longer carries REFUSES as a stale row, so the roster
 //     cannot rot into a permission slip for witnesses that no longer exist.
 //
