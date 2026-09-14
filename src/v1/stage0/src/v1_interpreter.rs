@@ -8225,7 +8225,11 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // exactly what its own read would have returned.
     if args.is_empty() {
         if let Some(carry) = prepared_input_for(&fn_node) {
-            cross_claim_observe_hit(&func_name);
+            // NAMED APART IN THE LEDGER, because it is a different mechanism from a share hit and
+            // a reader counting `cross_claim_pure_share` rows must not read a carried-input serve
+            // as a rostered producer's hit. The row is still RECORDED — a carry invisible to the
+            // receipt would be a mechanism nobody could measure.
+            cross_claim_observe_hit(&format!("prepared-effect-input/{func_name}"));
             return Ok(carry.value.clone());
         }
     }
