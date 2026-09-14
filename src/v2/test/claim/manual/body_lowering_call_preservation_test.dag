@@ -50,6 +50,36 @@ data same_module_decl_and_call_source: String = "module m\n\nfn g(x: Int) -> Int
 
 data same_module_decl_no_call_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { 0 }\n"
 
+data call_preservation_postfix_dotted_source: String = "module m\n\ntype Stepper { step: fn(Int) -> Int }\n\nfn caller(s: Stepper) -> Int { s.step(n: 1) }\n"
+
+data call_preservation_lambda_arg_source: String = "module m\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int { x }\n\nfn caller() -> Int { apply(f: fn(y: Int) -> Int { y }, x: 1) }\n"
+
+data call_preservation_match_arm_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller(b: Bool) -> Int { match b { true => g(x: 1), false => 0 } }\n"
+
+// Freeze table for the two producers (primary ident call, postfix dotted call).
+// One executed control per shape; erasure (callee dropped / first nested operand as the body)
+// must RED the row. Do not freeze a T-fold until every arm is green on the head.
+type CallPreservationProducerShape
+  = SoleBodyIdentCall
+  | PostfixDottedCall
+  | NamedArgsCall
+  | NestedCallInArgument
+  | FoldLoopFirstByNameStep
+  | CallWithLambdaArgument
+  | CallInMatchArm
+
+fn call_preservation_producer_shapes() -> List<CallPreservationProducerShape> {
+  [
+    SoleBodyIdentCall,
+    PostfixDottedCall,
+    NamedArgsCall,
+    NestedCallInArgument,
+    FoldLoopFirstByNameStep,
+    CallWithLambdaArgument,
+    CallInMatchArm
+  ]
+}
+
 fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
   if node_is_call(node: root) {
     match call_callee_target(node: root) {
@@ -182,6 +212,82 @@ fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
   }
 }
 
+fn postfix_dotted_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_postfix_dotted_source, file: ^call_pres_postfix) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^step) == 2)
+        && match call_arg_identity_at(root: root, callee: ^step, index: 0) {
+          Present { value: recv } => recv == ^s
+          Absent => false
+        }
+  }
+}
+
+fn named_args_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_two_named_value_source, file: ^call_pres_named_vals) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && (call_arity_named(root: root, callee: ^list_append) == 2)
+        && !call_args_include_punct(root: root, callee: ^list_append, punct: ^dag_token_comma)
+        && match call_arg_identity_at(root: root, callee: ^list_append, index: 0) {
+          Present { value: a0 } => a0 == ^x
+          Absent => false
+        }
+        && match call_arg_identity_at(root: root, callee: ^list_append, index: 1) {
+          Present { value: a1 } => a1 == ^acc
+          Absent => false
+        }
+  }
+}
+
+fn nested_call_in_argument_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_nested_source, file: ^call_pres_nested) {
+    Absent => false
+    Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+  }
+}
+
+fn fold_loop_first_by_name_step_preserved() -> Bool {
+  match normalize_unprepared(src: fold_named_step_snippet, file: ^fold_named_lbrace) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_comma)
+        && (call_arity_named(root: root, callee: ^fold) == 3)
+        && match call_arg_identity_at(root: root, callee: ^fold, index: 0) {
+          Present { value: a0 } => a0 == ^xs
+          Absent => false
+        }
+        && match call_arg_identity_at(root: root, callee: ^fold, index: 2) {
+          Present { value: a2 } => a2 == ^step
+          Absent => false
+        }
+  }
+}
+
+fn lambda_argument_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_lambda_arg_source, file: ^call_pres_lambda) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^apply) == 2)
+        && match call_arg_identity_at(root: root, callee: ^apply, index: 1) {
+          Present { value: a1 } => a1 == ^x
+          Absent => false
+        }
+  }
+}
+
+fn match_arm_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_match_arm_source, file: ^call_pres_match) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^g) == 1)
+        && !tree_has_lbrace_operator(root: root)
+  }
+}
+
 fn unprepared_declared_call_preserved() -> Bool {
   match normalize_unprepared(src: call_preservation_declared_source, file: ^call_pres_unprep) {
     Absent => false
@@ -216,47 +322,15 @@ test fn call_preservation_two_arg_control_fails_if_erasure_restored() -> Bool {
 }
 
 test fn call_preservation_two_named_args_keep_values_not_comma_token() -> Bool {
-  match normalize_unprepared(src: call_preservation_two_named_value_source, file: ^call_pres_named_vals) {
-    Absent => false
-    Present { value: root } =>
-      !tree_has_lbrace_operator(root: root)
-        && (call_arity_named(root: root, callee: ^list_append) == 2)
-        && !call_args_include_punct(root: root, callee: ^list_append, punct: ^dag_token_comma)
-        && match call_arg_identity_at(root: root, callee: ^list_append, index: 0) {
-          Present { value: a0 } => a0 == ^x
-          Absent => false
-        }
-        && match call_arg_identity_at(root: root, callee: ^list_append, index: 1) {
-          Present { value: a1 } => a1 == ^acc
-          Absent => false
-        }
-  }
+  named_args_call_preserved()
 }
 
 test fn call_preservation_sole_body_named_step_fold_keeps_fold_callee_not_lbrace() -> Bool {
-  match normalize_unprepared(src: fold_named_step_snippet, file: ^fold_named_lbrace) {
-    Absent => false
-    Present { value: root } =>
-      !tree_has_lbrace_operator(root: root)
-        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_comma)
-        && (call_arity_named(root: root, callee: ^fold) == 3)
-        && !call_args_include_punct(root: root, callee: ^fold, punct: ^dag_token_comma)
-        && match call_arg_identity_at(root: root, callee: ^fold, index: 0) {
-          Present { value: a0 } => a0 == ^xs
-          Absent => false
-        }
-        && match call_arg_identity_at(root: root, callee: ^fold, index: 2) {
-          Present { value: a2 } => a2 == ^step
-          Absent => false
-        }
-  }
+  fold_loop_first_by_name_step_preserved()
 }
 
 test fn call_preservation_nested_call_arg_control_fails_if_erasure_restored() -> Bool {
-  match normalize_unprepared(src: call_preservation_nested_source, file: ^call_pres_nested) {
-    Absent => false
-    Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
-  }
+  nested_call_in_argument_preserved()
 }
 
 test fn call_preservation_nested_call_in_earlier_arg_does_not_steal_outer_callee() -> Bool {
@@ -463,4 +537,36 @@ test fn same_module_declaration_call_site_count_is_one_above_decl_only() -> Bool
     with_file: ^sm_call,
     without_file: ^sm_decl
   ) == 1
+}
+
+fn call_preservation_shape_holds(shape: CallPreservationProducerShape) -> Bool {
+  match shape {
+    SoleBodyIdentCall => unprepared_declared_call_preserved()
+    PostfixDottedCall => postfix_dotted_call_preserved()
+    NamedArgsCall => named_args_call_preserved()
+    NestedCallInArgument => nested_call_in_argument_preserved()
+    FoldLoopFirstByNameStep => fold_loop_first_by_name_step_preserved()
+    CallWithLambdaArgument => lambda_argument_call_preserved()
+    CallInMatchArm => match_arm_call_preserved()
+  }
+}
+
+test fn call_preservation_producer_shape_table_is_closed() -> Bool {
+  let shapes = call_preservation_producer_shapes()
+  (count(shapes) == 7)
+    && fold(shapes, init: true, f: fn(acc, shape) {
+      acc && call_preservation_shape_holds(shape: shape)
+    })
+}
+
+test fn call_preservation_postfix_dotted_keeps_method_and_receiver() -> Bool {
+  postfix_dotted_call_preserved()
+}
+
+test fn call_preservation_lambda_argument_keeps_outer_call() -> Bool {
+  lambda_argument_call_preserved()
+}
+
+test fn call_preservation_match_arm_keeps_callee_and_arg() -> Bool {
+  match_arm_call_preserved()
 }
