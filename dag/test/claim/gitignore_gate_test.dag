@@ -70,13 +70,23 @@ data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMateri
 
 // The discriminating positive: same function, same shape of row, opposite verdicts, decided only
 // by the source repository's visibility. Were the visibility ignored, both would survive.
+//
+// A FOURTH CONJUNCT WAS REMOVED RATHER THAN REPAIRED, and the reason is worth keeping. It asserted
+// that expected_gitignore() does not contain "public_overlay_probe/" -- a DECORATION twice over.
+// First, this change made the emitter produce bare prefixes, so a leak would read
+// /public_overlay_probe and the search for the slash-bearing spelling could never fail. Repairing
+// only that -- the obvious fix -- would have left the second and deeper reason standing: the probe
+// rows below are TEST-LOCAL data and are never members of workspace_materialisations(), which is
+// the roster expected_gitignore() folds, so NO spelling of the probe can appear in the projection
+// under any behaviour of the code. A clause that cannot go red carries no information and is worse
+// than absent, because it will be counted as coverage (DESIGN section 4b). The discriminating work
+// is done by the three conjuncts that remain, over a list this witness controls.
 test fn witness_public_source_derives_no_ignore_row() -> Bool {
   let both = [public_sourced_materialisation, private_sourced_materialisation]
   let kept = untracked_materialisations(all: both)
   count(kept) == 1
     && !materialisation_must_not_be_tracked(m: public_sourced_materialisation)
     && materialisation_must_not_be_tracked(m: private_sourced_materialisation)
-    && !string_contains(s: expected_gitignore(), pattern: "public_overlay_probe/")
 }
 
 // THE ANCHOR IS THE SUBJECT OF ITS OWN WITNESS, because an unanchored pattern passes every
