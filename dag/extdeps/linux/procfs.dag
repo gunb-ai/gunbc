@@ -27,7 +27,6 @@ type ProcfsPath
   | ProcNetUnix
   | ProcSwaps
   | ProcSysKernelHostname
-  | ProcStat
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -38,31 +37,6 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcNetUnix => "/proc/net/unix"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
-    ProcStat => "/proc/stat"
-  }
-}
-
-// THE PER-PROCESS FILES THIS REPOSITORY READS ABOUT A PROCESS OTHER THAN ITSELF. ProcfsPath above is
-// a roster of LITERAL paths, and /proc/<pid>/stat is not one: the pid is a runtime value, so the
-// path is a function. The two files are named as a closed coproduct rather than as a free path
-// string so that a reader over another process can only ask for a file this module has a shape
-// authority for -- proc_pid_stat for stat, proc_self_cgroup for cgroup (its parse is pid-agnostic;
-// only the self alias is in that module's name).
-//
-// WHAT READING THEM FROM ANOTHER PROCESS ESTABLISHES, because the join this was built for depends
-// on it. proc.5 documents /proc/<pid>/stat as world-readable and /proc/<pid>/cgroup likewise, unless
-// procfs is mounted with hidepid (proc.5, "Mount options"), in which case both refuse for a pid the
-// reader does not own. So an unprivileged principal can read a root-owned process's start time and
-// cgroup membership on a host without hidepid, and the refusal on a hidepid host is a permission
-// error, not an absent process -- the two are kept apart by the reader, never folded.
-type ProcPidFile
-  = ProcPidStat
-  | ProcPidCgroup
-
-fn proc_pid_file_path(pid: NonEmptyStr, file: ProcPidFile) -> NonEmptyStr {
-  match file {
-    ProcPidStat => concat(concat("/proc/", pid as String), "/stat") as NonEmptyStr
-    ProcPidCgroup => concat(concat("/proc/", pid as String), "/cgroup") as NonEmptyStr
   }
 }
 
@@ -82,7 +56,6 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
-  ProcStat,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in

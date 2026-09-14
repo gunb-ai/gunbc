@@ -34,7 +34,7 @@ import extdeps.linux.proc_pid_stat {
 import extdeps.posix.getconf { ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, clock_ticks_reading }
 import extdeps.procps.pgrep {
   PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing,
-  PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
+  PgrepScanOutcome, PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
 }
 import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
@@ -43,7 +43,7 @@ import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPath
 import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptureRefused, systemctl_show_property_read }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
-  HostOperationObserved, HostOperationRefused, host_operation_exec,
+  HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
   ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, GetconfClockTicksPerSecond, Sha256SumFile,
 }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }

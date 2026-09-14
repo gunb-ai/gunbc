@@ -1,6 +1,6 @@
 module extdeps.posix.getconf
 
-import std.types { NonEmptyStr, Bool, Int, Unit }
+import std.types { Bool, Int, Unit }
 import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -28,13 +28,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // THE ONE CONFIGURATION VARIABLE THIS REPOSITORY ASKS THE HOST FOR, and why it is asked rather than
 // assumed. proc_pid_stat(5) expresses a process's start time in clock ticks and says to divide by
-// sysconf(_SC_CLK_TCK); getconf(1) is the POSIX utility that reports that value from a shell, so it
-// is what a remote argv can ask. The value is 100 on every Linux architecture this fleet runs (the
-// kernel's USER_HZ), and that fact is deliberately NOT written here as a constant: a reader that
-// divides by a number it did not measure is asserting as deduced what it only inferred (DESIGN 4d),
-// and the cost of measuring is one argv on a transport the reader already holds.
-data getconf_clk_tck_variable: NonEmptyStr = "CLK_TCK" as NonEmptyStr
-
+// sysconf(_SC_CLK_TCK); getconf(1) is the POSIX utility that reports that value from a shell (getconf
+// CLK_TCK), so it is what a remote argv can ask. The value is 100 on every Linux architecture this
+// fleet runs (the kernel's USER_HZ), and that fact is deliberately NOT written here as a constant: a
+// reader that divides by a number it did not measure is asserting as deduced what it only inferred
+// (DESIGN 4d), and the cost of measuring is one argv on a transport the reader already holds.
 service posix.Getconf {
   operation ClockTicksPerSecond {
     input {}
