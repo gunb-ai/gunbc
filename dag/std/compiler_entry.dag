@@ -144,16 +144,102 @@ type CompilerEntryDriver
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
 
+// THE ROW SET IS A KEYED COLLECTION OVER A CLOSED KEY, NOT N PARALLEL FIELDS OF ONE TYPE.
+//
+// WHAT THE OLD SHAPE COST, measured rather than argued: as nine same-typed fields it was built by
+// LITERAL INITIALIZER at fourteen sites across two languages -- the .dag witnesses, the emitted
+// driver template, and hand-written Rust tests. Growing it by one row was therefore a fourteen-site
+// edit with nothing that forced the fourteen to be found, and three separate runs were spent on
+// exactly that: a partial record the seed admits (.dag does not require construction totality)
+// refused only later as rustc error[E0063] at the emitted driver. Nine parallel fields of one type
+// is DESIGN section 2's horizontal case -- one axis modelled as N declarations -- and section 5
+// asks for construction over validation, which is what this is.
+//
+// WHY ABSENCE IS NOW UNREPRESENTABLE RATHER THAN CHECKED. The collection is never enumerated by
+// hand: native_driver_exclusive_rows maps the CLOSED key roster and asks the caller's total
+// function for each key, so a value built through it carries every key by construction and there
+// is no partial state to validate. Adding a row is one variant plus one roster entry; every
+// consumer folds and none of them changes.
+//
+// THE CEILING, STATED HONESTLY. This is rung 3 and not 4: .dag has no module-private declaration
+// boundary, so the record literal stays writable and a caller could still author a partial
+// collection directly rather than going through the constructor. That residual is the same one
+// v1.compiler.emit_rust records for its own two-role split, and its next-rung trigger is the same
+// language capability -- a module-private function boundary -- not anything this change can build.
+type NativeDriverExclusiveRowKey
+  = ExclusiveLoad
+  | ExclusiveUniverseDerivation
+  | ExclusiveContext
+  | ExclusivePrepare
+  | ExclusiveEval
+  | ExclusiveReceiptAdmission
+  | ExclusiveRowSerialization
+  | ExclusiveModuleRelease
+  | ExclusiveRelayEmit
+
+// THE ROSTER IS THE ONE PLACE A ROW IS ADDED. A key absent here is absent from every constructed
+// collection, from the sum and from the serialized partition line at once, so the roster and the
+// coproduct above cannot drift apart without the exhaustive matches below refusing.
+fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
+  [
+    ExclusiveLoad,
+    ExclusiveUniverseDerivation,
+    ExclusiveContext,
+    ExclusivePrepare,
+    ExclusiveEval,
+    ExclusiveReceiptAdmission,
+    ExclusiveRowSerialization,
+    ExclusiveModuleRelease,
+    ExclusiveRelayEmit,
+  ]
+}
+
+// The wire name of a row, and the reason this is an exhaustive match rather than a data table:
+// adding a variant makes THIS refuse to compile, which is how a new row is forced to declare the
+// name its receipt will carry instead of silently serializing as something derived.
+fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> String {
+  match key {
+    ExclusiveLoad => "load"
+    ExclusiveUniverseDerivation => "universe_derivation"
+    ExclusiveContext => "context"
+    ExclusivePrepare => "prepare"
+    ExclusiveEval => "eval"
+    ExclusiveReceiptAdmission => "receipt_admission"
+    ExclusiveRowSerialization => "row_serialization"
+    ExclusiveModuleRelease => "module_release"
+    ExclusiveRelayEmit => "relay_emit"
+  }
+}
+
+type NativeDriverExclusiveRow {
+  key: NativeDriverExclusiveRowKey
+  nanos: Nanosecond
+}
+
 type NativeDriverExclusiveRows {
-  load: Nanosecond
-  universe_derivation: Nanosecond
-  context: Nanosecond
-  prepare: Nanosecond
-  eval: Nanosecond
-  receipt_admission: Nanosecond
-  row_serialization: Nanosecond
-  module_release: Nanosecond
-  relay_emit: Nanosecond
+  rows: List<NativeDriverExclusiveRow>
+}
+
+// THE ONLY CONSTRUCTION. `measure` is total over the key by its type, so there is no key it can
+// decline to answer for; the roster decides which keys are asked.
+fn native_driver_exclusive_rows(
+  measure: fn(NativeDriverExclusiveRowKey) -> Nanosecond
+) -> NativeDriverExclusiveRows {
+  NativeDriverExclusiveRows {
+    rows: map(
+      native_driver_exclusive_row_keys(),
+      k => NativeDriverExclusiveRow { key: k, nanos: measure(k) }
+    )
+  }
+}
+
+// A ZERO BASE FOR FIXTURES WHOSE SUBJECT IS THE ARITHMETIC AND NOT THE ROW SET. It is deliberately
+// NOT the default: if every fixture built from zeros and overrode a few keys, a newly added row
+// would be absorbed as zero by all of them, no witness would exercise it, and the row would land
+// untested while the suite stayed green -- the absorbing-fallback shape (section 5) moved into the
+// fixtures. Witnesses whose subject IS a row's presence construct exhaustively instead.
+fn native_driver_exclusive_rows_zero() -> NativeDriverExclusiveRows {
+  native_driver_exclusive_rows(measure: fn(_k) { nanosecond(count: 0) })
 }
 
 type NativeDriverCostAccounting
@@ -166,8 +252,9 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit))
+  nanosecond(count: fold(rows.rows, init: 0, f: (acc, r) => acc + nanosecond_count(n: r.nanos)))
 }
+
 
 fn native_driver_cost_account(
   parent_span: Nanosecond,
