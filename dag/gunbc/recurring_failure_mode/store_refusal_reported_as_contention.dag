@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.store_refusal_reported_as_contention
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailureMode {
+  identity: "store_refusal_reported_as_contention" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a conditional-write realization reports every unsuccessful write as a lost precondition, without observing that a competing publication actually defeated the expectation. HARM: permission, capacity, or IO refusal becomes ordinary contention; the caller re-evaluates and retries against a phantom winner while the operational deficit disappears from its own refusal channel. This is the DESIGN section 5 refusal-as-contention widen, not a missing shared outcome.",
+
+    "SPECIMEN, REPAIRED (silent-stag-307): cas_commit_at previously mapped every unsuccessful WriteOwnerOnly to CasPreconditionFailed via cas_probe_as_readable, including ProbedBeyondBound-as-absent. Publication now folds Filesystem.WriteCreateNew through filesystem_create_new. CasPreconditionFailed is emitted only for FilesystemCreateTargetOccupied together with a readable winner. Permission, other, unrecognized kinds, and occupied-with-no-readable-winner are CasStoreRefused. No error string is parsed. Observe uses cas_probe_as_observation, which preserves unreadability.",
+
+    "RUNG FOUND AT BY EXECUTION: mechanically preventable at the classification fold. Hermetic RED: test.claim.durable_cas_file_store_witness a_permission_refused_create_is_store_refused_not_contention and occupied_create_with_no_readable_winner_is_store_refused_not_contention. Mutation control: classifying_every_failed_publication_as_contention_turns_the_store_refusal_control_red compares production against cas_outcome_from_create_widening_every_failure_to_contention. Wet: a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution (root is a regular file). Positive contention: occupied_create_with_a_readable_winner_is_precondition_failed and a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution.",
+
+    "CEILING: mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_outcome_from_create. NEXT TRIGGER: Filesystem.Read absence versus unreadability already inhabits filesystem_exact_read and is consumed by cas_probe_from_exact; remaining ceiling is crash-durable visibility, which this class does not own.",
+
+    "FABRIC CONSUMER: gunbc.fabric_control_plane reserve_selected_cell maps CasPreconditionFailed to ReservationLost and CasStoreRefused to StoreUnavailable. Before this repair an unwritable store reported ReservationLost. After it, operational faults are StoreUnavailable. A genuine occupied slot is still ReservationLost. That is the observable change, and it is the defect closing rather than a silent shift of a correct race.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create_widening_every_failure_to_contention"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "a_permission_refused_create_is_store_refused_not_contention"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution"),
+  ],
+}
