@@ -82,7 +82,7 @@ fn fixture_attempt(t: SamplingTemperature, id: String, class: FrontendMutationCl
 
 // THE FIXTURE IS BUILT THROUGH THE TEMPERATURE'S OWN CONSTRUCTOR (a refused temperature would empty
 // the fixture, and the summary witness would then fail on `attempts == 3`, not pass vacuously).
-fn fixture_rows() -> List<EvalAttempt> {
+fn frontend_eval_fixture_rows() -> List<EvalAttempt> {
   match sampling_temperature(value: 0.0) {
     Absent => []
     Present { value: t } => [
@@ -94,7 +94,7 @@ fn fixture_rows() -> List<EvalAttempt> {
   }
 }
 
-data fixture_attempts: List<EvalAttempt> = fixture_rows()
+data fixture_attempts: List<EvalAttempt> = frontend_eval_fixture_rows()
 
 // SENTINELS ARE COUNTED APART AND A RED CONTRIBUTES NOTHING TO THE MEANS: the 1000-token failure
 // on `b` must not move the accepted mean, and `c` must land in the sentinel column, not the language one.
