@@ -1,0 +1,36 @@
+memory-cgroup-bind: not requested
+[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms=47343 wall_ms=47493 rss_growth_bytes=778874880 source_files=5760 bare_eligible=638 provenance=built-by-preparation
+claim_batch: 1 entry group(s), 5 witness(es) total; building module index...
+[floor-phase] phase=module-index state=completed wall_ms=120 modules=4318
+[floor-phase] phase=declarer-discovery state=completed wall_ms=188 declarers=18
+[floor-phase] phase=whole-tree-graph-facts state=completed wall_ms=28101
+[floor-phase] phase=declarer-closure state=completed wall_ms=5 sources=19
+◐ started compile.frontend
+✓ compile.frontend done in 19ms
+✓ compile.normalize done in 3ms
+✓ compile.reconcile done in 44ms
+✓ compile.analyses done in 1ms
+[floor-phase] phase=closure-strict-resolve state=completed wall_ms=68 sources=19
+◷ post-mock-precompute-rss — 7.3 GiB
+◷ post-mock-precompute-children-max-rss — 0.0 GiB
+claim_batch: whole-tree published mock corpus — 91 operation key(s)
+claim_batch: resolving dag/test/claim/optional_application_comparison_witness_test.dag once (5 witness(es))
+[resolve] dag/test/claim/optional_application_comparison_witness_test.dag: 4079ms  (28 modules, 1274 resolved items in closure)
+◷ post-first-entry-resolve-rss — 7.3 GiB
+claim_batch: resolved dag/test/claim/optional_application_comparison_witness_test.dag; running 5 witness(es)
+FAIL optional_element_mismatch_refuses_in_both_relations (runtime error [no-such-field]: no field 'ident' on type 'Node')
+[witness] optional_element_mismatch_refuses_in_both_relations: cpu=1ms wall=1ms subject=6c1a4d0677dd13ee eval_self=0.000ms
+FAIL identical_optional_arguments_match_in_both_relations (runtime error [no-such-field]: no field 'ident' on type 'Node')
+[witness] identical_optional_arguments_match_in_both_relations: cpu=1ms wall=1ms subject=3c219fbfe3e22456 eval_self=0.000ms
+PASS map_value_mismatch_refuses_in_both_relations
+[witness] map_value_mismatch_refuses_in_both_relations: cpu=3ms wall=3ms subject=f41b2469c34f005e eval_self=0.000ms
+PASS identical_map_arguments_match_in_both_relations
+[witness] identical_map_arguments_match_in_both_relations: cpu=1ms wall=1ms subject=d7414d80c257ed73 eval_self=0.000ms
+FAIL application_arity_mismatch_refuses_in_both_relations (runtime error [no-such-field]: no field 'ident' on type 'Node')
+[witness] application_arity_mismatch_refuses_in_both_relations: cpu=1ms wall=1ms subject=4a3e849708f14dde eval_self=0.000ms
+[resolve-summary] 1 resolve(s) in 4079ms wall; 5 witness(es) in 7ms wall
+[resolve-split] load=129.8ms parse=1652.7ms resolve=42.8ms normalize=137.2ms typecheck=4496.9ms parent_envs=0.5ms reconcile_assembly=21.5ms ownership=123.6ms
+[assembly-split] schedule=0.5ms probe=0.1ms graph=0.2ms symbol_index=483.8ms pool_fill=4390.5ms symbol_index_merge=98.5ms variant_base=23.2ms root_symbol_index=75.2ms root_variant_base=1120.8ms environment=82.6ms diagnostics=0.8ms registry=1.8ms services=44.7ms rewire_type_env=148.1ms rewire_import_str=193.5ms rewire_func_env=10.4ms emit_info=308.5ms other=21.5ms rewire_total_observation=351.9ms
+[cost-partition] {"basis":"summed_top_level_resolve_span_nanos","basis_note":"additive: each top-level resolve span's own duration, thread-sequential. Elapsed wall is NOT additive over concurrent spans and is carried under `observations`, never partitioned.","parent_span_nanos":13671070715,"spans":2,"nested_spans":0,"exclusive":{"load":129808786,"parse":1652718838,"resolve_modules":42834900,"normalize":137163258,"typecheck_compute":4496928179,"parent_envs":537441,"assembly_schedule":450963,"assembly_probe":56520,"assembly_graph":216960,"assembly_symbol_index":483797957,"assembly_pool_fill":4390510084,"pool_parse":8196770987,"assembly_symbol_index_merge":98455694,"assembly_variant_base":23204858,"assembly_root_symbol_index":75232157,"assembly_root_variant_base":1120839918,"assembly_environment":82576302,"assembly_diagnostics":784923,"assembly_registry":1799808,"assembly_services":44660588,"assembly_rewire_type_env":148050943,"assembly_rewire_import_str":193453054,"assembly_rewire_func_env":10410644,"assembly_emit_info":308466139,"reconcile_assembly":21531611,"ownership":123567160},"sum_exclusive_nanos":21784828672,"remainder_nanos":0,"inclusive":{"load_reference_scan":{"nanos":8131233,"contained_in":"load"},"load_import_closure":{"nanos":37736119,"contained_in":"load"},"load_bare_reference_closure":{"nanos":30328687,"contained_in":"load"},"load_pool_reference_closure":{"nanos":29789846,"contained_in":"load"},"load_bare_edge_index":{"nanos":100401,"contained_in":"load_bare_reference_closure"},"load_bare_path_lookup":{"nanos":22411574,"contained_in":"load_bare_reference_closure"},"load_bare_edge_walk":{"nanos":1342006,"contained_in":"load_bare_reference_closure"},"edge_index_ref_half":{"nanos":2634198219,"contained_in":"load_bare_edge_index"},"edge_index_bare_half":{"nanos":1334219296,"contained_in":"load_bare_edge_index"},"edge_index_closure_expand":{"nanos":1781748311,"contained_in":"edge_index_ref_half"},"edge_index_tree_census":{"nanos":8046175313,"contained_in":"edge_index_bare_half"},"edge_index_tree_census_miss_nanos":{"nanos":20242442059,"contained_in":"edge_index_tree_census"},"edge_index_bare_candidates":{"nanos":105014853,"contained_in":"edge_index_bare_half"},"edge_index_bare_name_universe":{"nanos":17360814,"contained_in":"edge_index_bare_half"},"edge_index_bare_resolve_loop":{"nanos":8172766170,"contained_in":"edge_index_bare_half"},"edge_index_publish":{"nanos":9129118,"contained_in":"load_bare_edge_index"}},"edge_index_construction":{"builds":1,"source_files":5760,"bare_eligible":638,"closure_expand_calls":38452,"tree_census_calls":1276,"tree_census_misses":3},"pool_parse":{"builds":1,"modules":5760},"load_reference_scan_volume":{"bytes":1361141,"calls":77,"fixpoint_rounds":3},"accounting_law":"parent_span_nanos == sum_exclusive_nanos + remainder_nanos","verdict":{"state":"Refused","cause":{"kind":"OverAttributed","sum_exclusive_nanos":21784828672,"parent_span_nanos":13671070715,"excess_nanos":8113757957},"shares_quotable":false},"span_nanos_by_entry":[{"entry":"dag/gunbc/output_policy.dag","spans":1,"nanos":9591554300,"exclusive":{"load":65343115,"parse":1036150682,"resolve_modules":26356231,"normalize":85401000,"typecheck_compute":2406528456,"parent_envs":415481,"reconcile_assembly":15210742,"ownership":71261980}},{"entry":"dag/test/claim/optional_application_comparison_witness_test.dag","spans":1,"nanos":4079516415,"exclusive":{"load":64465671,"parse":616568156,"resolve_modules":16478669,"normalize":51762258,"typecheck_compute":2090399723,"parent_envs":121960,"reconcile_assembly":6320869,"ownership":52305180}}],"observations":{"witness_entry_resolve_wall_nanos":4079000000,"witness_eval_wall_nanos":7000000},"observations_note":"Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT universe than `parent_span_nanos` (witness-entry resolves only, or process wall across concurrent workers) and are reported, never partitioned."}
+◷ per-shard-peak-rss — 7.3 GiB
+◷ children-max-rss — 0.0 GiB
