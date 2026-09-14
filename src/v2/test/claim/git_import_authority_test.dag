@@ -42,9 +42,19 @@ test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool {
     && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsAvailable { expected_source_paths: [], modules: [] }))
 }
 
+// THE FIXTURE ROW CITES A DECLARATION THAT EXISTS: this one. An earlier shape cited a plausible
+// but invented bootstrap module, which no module declares -- the declarations gate refused it as
+// CITED-MODULE-ABSENT, and it was right to. A DeclarationRef is a citation whether it appears in
+// production or in a fixture, so inventing a module name to stand in for "some bootstrap adapter"
+// forks the namespace with a symbol nothing can resolve (DESIGN 3). The row is hypothetical in
+// its CLASSIFICATION, which is the thing under test; its consumer identity does not have to be,
+// and the honest resolvable identity for a fixture row is the fixture that builds it. The
+// synthetic parsed-import population names this same module so the policy's consumer/module join
+// still holds -- that population is a fact handed TO the policy, never a claim about what this
+// module imports.
 fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
   GitUseRow {
-    consumer: decl_ref(module_path: "gunbc.bootstrap_control", decl_name: "import_baseline"),
+    consumer: decl_ref(module_path: "v2.test.git_import_authority", decl_name: "bootstrap_control_row"),
     surface: ParsedDagGitDependency { imported_module: "extdeps.git" as NonEmptyStr },
     classification: classification,
     bridge_disposition: "Import with explicit Git provenance and identity mapping." as NonEmptyStr,
@@ -53,8 +63,8 @@ fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
 }
 
 test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool {
-  let population = ParsedGitImportsAvailable { expected_source_paths: ["dag/gunbc/bootstrap_control.dag"], modules: [ParsedGitModuleImports {
-    source_path: "dag/gunbc/bootstrap_control.dag", module_name: "gunbc.bootstrap_control", imports: ["extdeps.git"]
+  let population = ParsedGitImportsAvailable { expected_source_paths: ["src/v2/test/claim/git_import_authority_test.dag"], modules: [ParsedGitModuleImports {
+    source_path: "src/v2/test/claim/git_import_authority_test.dag", module_name: "v2.test.git_import_authority", imports: ["extdeps.git"]
   }] }
   git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: ClassifiedGitUse {
     role: GitBootstrapImport, authorization: NamedBootstrapImportAdapter
