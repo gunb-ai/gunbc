@@ -56,8 +56,15 @@ fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
   }
 }
 
+// MEMBERSHIP IS DERIVED FROM THE STEP-SLOT ROW SET, NOT RESTATED BESIDE IT (review 65812 on
+// gunbc#11315). A callee is fold-family exactly when it declares a step slot, so a fifth member
+// added to one list and not the other cannot exist: it would either lower or not be a member,
+// never sit in the family with no slot and fall silently into FoldCallStepFormUnresolved.
 fn fold_family_head(sym: Symbol) -> Bool {
-  (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
+  match fold_step_argument_name(head: sym) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // THE STEP FORM IS A CLOSED SET THE GRAMMAR DECLARES, AND THE READING MUST BE TOTAL OVER IT
