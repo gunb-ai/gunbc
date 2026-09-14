@@ -198,6 +198,7 @@ fn gunbc_run_command(
     source_roots: source_roots,
     entry: entry,
     function: function,
+    arguments: [],
     claim_run: claim_run
   )
   let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)

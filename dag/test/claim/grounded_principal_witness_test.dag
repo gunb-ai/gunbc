@@ -156,6 +156,7 @@ test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
     cmd: PrivilegedCommand {
       grant: PosixSudoGrant {
         command_path: "/usr/bin/bash" as NonEmptyStr,
+        run_as: SudoRunAsAny,
         probe: NopasswdExecuteCheck { check_argv: "--version" as NonEmptyStr },
       }
     }
@@ -232,6 +233,7 @@ test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
   !posix_sudo_grant_generic_mover_lint_ok(
     g: PosixSudoGrant {
       command_path: "/usr/bin/bash" as NonEmptyStr,
+      run_as: SudoRunAsAny,
       probe: NopasswdExecuteCheck { check_argv: "--version" },
     }
   )
@@ -241,6 +243,7 @@ test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
   let projected = posix_sudo_grant_to_effect_grant(
     g: PosixSudoGrant {
       command_path: fleet_apt_get_binary_path,
+      run_as: SudoRunAsAny,
       probe: NopasswdExecuteCheck { check_argv: "--help" },
     }
   )

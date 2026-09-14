@@ -31,8 +31,25 @@ type PosixAccountDeclaredProbe {
   host: NonEmptyStr
 }
 
+// WHO THE GRANTED COMMAND MAY RUN AS, stated rather than implied. Every grant before this field rendered
+// `(ALL)`, which lets the grantee run the command as any user, root included; that remains
+// SudoRunAsAny, spelled for what it permits. SudoRunAsLogin narrows a grant to one target account, which
+// is how a login principal is allowed to run exactly one helper as a no-login service identity without
+// gaining any other identity.
+type SudoRunAs
+  = SudoRunAsAny
+  | SudoRunAsLogin { login: NonEmptyStr }
+
+fn sudo_run_as_sudoers_spec(r: SudoRunAs) -> String {
+  match r {
+    SudoRunAsAny => "(ALL)"
+    SudoRunAsLogin { login } => join(["(", login as String, ")"], "")
+  }
+}
+
 type PosixSudoGrant {
   command_path: NonEmptyStr
+  run_as: SudoRunAs
   probe: SudoNopasswdProbeKind
 }
 
@@ -193,6 +210,7 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
       command_path: fleet_hostnamectl_command_path,
+      run_as: SudoRunAsAny,
       probe: NopasswdExecuteCheck { check_argv: "--version" },
     },
   ]
@@ -323,6 +341,7 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
     xs: ci_runner_sudo_binaries,
     f: b => PosixSudoGrant {
       command_path: ci_runner_sudo_binary_path(b: b),
+      run_as: SudoRunAsAny,
       probe: ci_runner_sudo_binary_probe(b: b),
     },
   )
@@ -593,6 +612,7 @@ fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
       command_path: gunbc_deploy_privileged_helper_path,
+      run_as: SudoRunAsAny,
       probe: NopasswdGrantListCheck,
     },
   ]

@@ -2,7 +2,7 @@ module gunbc.cli_invoke
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 
 // NARROWED 2026-08-26 with the plan/walk residue cut. What stood here named four
 // claim_executor shell builders; three of them (claim_executor_run_plan_shell and the
@@ -88,10 +88,54 @@ fn source_root_invocation_words(roots: List<String>) -> List<InvocationWord> {
   )
 }
 
+// A NAMED ARGUMENT TO THE ENTRY FUNCTION, rendered as the `--arg name=value` pair gunbc run decodes by
+// splitting at the FIRST `=`. So the name is admitted - nonempty, letters, digits and underscore, which
+// is a .dag parameter name and can never carry an `=` - and the value is carried whole, `=` included.
+// A caller building the pair by concatenation could put an `=` in the name and bind a different
+// parameter than the one it meant.
+type InvocationArgumentName sole_constructor {
+  value: NonEmptyStr
+}
+
+type InvocationArgument {
+  name: InvocationArgumentName
+  value: String
+}
+
+fn invocation_argument_name_char_allowed(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57) || cp == 95
+}
+
+fn invocation_argument_name_text_ok(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { true } else {
+    if invocation_argument_name_char_allowed(cp: code_point(ch: char_at(text, i))) {
+      invocation_argument_name_text_ok(text: text, i: i + 1, len: len)
+    } else { false }
+  }
+}
+
+fn invocation_argument_name(raw: String) -> InvocationArgumentName? {
+  if raw != "" && invocation_argument_name_text_ok(text: raw, i: 0, len: length(raw)) {
+    Present { value: InvocationArgumentName { value: raw as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn invocation_argument_words(arguments: List<InvocationArgument>) -> List<InvocationWord> {
+  fold(
+    arguments,
+    init: [],
+    f: (acc, a) =>
+      concat(acc, [LiteralWord { spelling: "--arg" }, LiteralWord { spelling: join([a.name.value as String, "=", a.value], "") }])
+  )
+}
+
 fn gunbc_run_invocation_words(
   source_roots: List<String>,
   entry: String,
   function: String,
+  arguments: List<InvocationArgument>,
   claim_run: Bool
 ) -> List<InvocationWord> {
   let base = concat(
@@ -103,10 +147,11 @@ fn gunbc_run_invocation_words(
       LiteralWord { spelling: function }
     ]
   )
+  let with_arguments = concat(base, invocation_argument_words(arguments: arguments))
   if claim_run {
-    concat(base, [LiteralWord { spelling: "--claim-run" }])
+    concat(with_arguments, [LiteralWord { spelling: "--claim-run" }])
   } else {
-    base
+    with_arguments
   }
 }
 
@@ -114,6 +159,7 @@ fn gunbc_run_transport_argv(
   source_roots: List<String>,
   entry: String,
   function: String,
+  arguments: List<InvocationArgument>,
   claim_run: Bool
 ) -> List<String> {
   invocation_words_bare(
@@ -121,6 +167,7 @@ fn gunbc_run_transport_argv(
       source_roots: source_roots,
       entry: entry,
       function: function,
+      arguments: arguments,
       claim_run: claim_run
     )
   )

@@ -14,6 +14,8 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_posix_accounts {
   GroundedPosixPrincipal,
   PosixSudoGrant,
+  SudoRunAsAny,
+  sudo_run_as_sudoers_spec,
   DeployRunnerPrincipal,
   FleetAccountCiRunner,
   FleetAccountOperator,
@@ -103,6 +105,7 @@ fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
   PrivilegedCommand {
     grant: PosixSudoGrant {
       command_path: deploy_access_apt_get_binary_path,
+      run_as: SudoRunAsAny,
       probe: NopasswdExecuteCheck { check_argv: "--help" },
     }
   }
@@ -204,7 +207,7 @@ data ci_deploy_srv1_operator_local_access: DeployAccess = ci_deploy_srv1_operato
 
 fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
   concat(
-    concat(grounded_posix_principal_name(p: access.principal) as String, " ALL=(ALL) NOPASSWD: "),
+    join([grounded_posix_principal_name(p: access.principal) as String, " ALL=", sudo_run_as_sudoers_spec(r: cmd.grant.run_as), " NOPASSWD: "], ""),
     cmd.grant.command_path
   )
 }

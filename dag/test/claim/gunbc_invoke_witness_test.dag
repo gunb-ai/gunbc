@@ -5,6 +5,8 @@ import gunbc.cli_invoke {
   gunbc_run_invocation_words,
   gunbc_run_transport_argv,
   invocation_words_bare,
+  InvocationArgument,
+  invocation_argument_name,
   source_roots_shell_flags,
   SourceRootBare,
   SourceRootRooted
@@ -143,15 +145,38 @@ test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
+    arguments: [],
     claim_run: false
   )
   let words = gunbc_run_invocation_words(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
+    arguments: [],
     claim_run: false
   )
   argv == invocation_words_bare(words: words)
     && transport_argv_contains_flag(argv: argv, flag: "--entry")
     && !transport_argv_contains_flag(argv: argv, flag: "--claim-run")
+}
+
+// THE NAME CANNOT BIND A DIFFERENT PARAMETER. gunbc run splits `--arg` at the first `=`, so a name
+// carrying one would move the split; admission refuses it, and a value keeps its own `=` whole.
+test fn a_named_argument_renders_as_one_pair_and_an_equals_in_the_name_is_refused() -> Bool {
+  let refused = match invocation_argument_name(raw: "path=/etc") { Present { value: _ } => false  Absent => true }
+  let empty_refused = match invocation_argument_name(raw: "") { Present { value: _ } => false  Absent => true }
+  match invocation_argument_name(raw: "path") {
+    Absent => false
+    Present { value: n } => {
+      let argv = gunbc_run_transport_argv(
+        source_roots: ["dag"],
+        entry: "dag/gunbc/scm/cli.dag",
+        function: "scm_log",
+        arguments: [InvocationArgument { name: n, value: "a=b" }],
+        claim_run: true
+      )
+      refused && empty_refused
+        && join(argv, " ") == "run --source-root dag --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=a=b --claim-run"
+    }
+  }
 }

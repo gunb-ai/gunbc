@@ -33,6 +33,7 @@ service gunbc.Cli {
           source_roots: source_roots,
           entry: entry,
           function: function,
+          arguments: [],
           claim_run: claim_run
         )
       ]
