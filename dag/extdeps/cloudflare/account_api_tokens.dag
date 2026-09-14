@@ -1,6 +1,7 @@
 module extdeps.cloudflare.account_api_tokens
 
-import std.types { NonEmptyStr, String, Secret, Timestamp, List, Map, Bool }
+import std.string_type { String }
+import std.types { NonEmptyStr, Secret, Timestamp, List, Map, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
