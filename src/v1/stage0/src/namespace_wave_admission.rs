@@ -1771,13 +1771,12 @@ pub struct TransitionAdmission {
 /// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
 /// header paragraph went with them rather than being left describing an empty subject, which is the
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
-/// exists is worse than no prose, because it reads as coverage. What that dissolution left behind
-/// was the #11182 relocation set alone; gunbc#11274 has since retired that too.
+/// exists is worse than no prose, because it reads as coverage.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// THIRTY-EIGHTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
 /// description that stood above them goes with them.
 ///
 /// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
@@ -1800,16 +1799,6 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THAT RETENTION OF THE SEVEN #11182 ROWS IS OVERTAKEN, and it is left corrected rather than
-/// standing. It read "product.inventory carries no InventoryLotEvidence on main, checked by
-/// identity - so these seven still admit a real delta". The same identity check answers the other
-/// way now: main declares `type InventoryLotEvidence` and `fn admit_ledger_evidence` in
-/// `product.inventory`. gunbc#11274 retired the seven on that basis. This branch measured the same
-/// debt independently -- its required floor failed `namespace-wave-admission` naming exactly those
-/// seven as consumed -- and deleted them here before #11274 landed; the merge keeps main's
-/// deletion and drops this branch's duplicate of it, because the rows are retired once and the
-/// ledger records one retirement.
-///
 /// THIRTY-NINTH DISSOLUTION (2026-09-14). The one `gunbc#11193 artifact_store_fs anchor leaf`
 /// row is deleted, and the block that described it goes with it.
 ///
@@ -1831,13 +1820,23 @@ pub struct TransitionAdmission {
 /// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
 /// change makes, one per call site the required floor enumerated.
 ///
-/// NOTHING IS RETIRED BY THIS ENTRY. This change was authored believing it owed both the
-/// `gunbc#11137` row and the three `gunbc#11071` consumed-row deletions; other branches reached
-/// the roster first and paid them, and main carries that history above. The original claims are
-/// retracted rather than carried: a ledger recording one deletion twice is worse than one
-/// recording it once, and a cohort header carrying an already-satisfied trigger is how the wrong
-/// rows get retired on the next roster touch (§4b(3)).
 ///
+/// THAT RETIREMENT ALSO LANDED ON MAIN, in gunbc#11356, which deleted the same row from the same
+/// roster. The entry above is kept rather than dropped as a duplicate because it is the only
+/// place in this file that NAMES the retired row and records the identity check that admitted
+/// the deletion; main's prose states that two rows went and does not say which. One retirement,
+/// recorded once, by the side that wrote down what it was.
+///
+/// THE ROSTER RETURNED TO EMPTY ON MAIN, which is its resting state, AND THIS BRANCH REFILLS IT.
+/// Main's correction is kept because it is true and this branch's earlier wording was not: the
+/// #11182 relocation rows an older revision of this block described as surviving are gone, that
+/// claim was already stale on main where the array held one row, and gunbc#11274 retired them.
+/// This branch does not restore them and does not re-assert them. What follows the header below
+/// is a DIFFERENT population -- the 37 `string_eq` rows this change owes -- so the array is
+/// non-empty here for a reason stated at its own site rather than because emptiness was undone.
+/// The distinction main draws still holds and is why it is kept: a consumed row goes because its
+/// transition is PRESENT AT THE BASE, not because the array was being emptied.
+
 /// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared
 /// byte-identical in every `v2.lens` module that needed it. This change deletes those bodies --
 /// the delta is read from the diff, `git diff origin/main...HEAD -- '*.dag' | grep '^-fn
