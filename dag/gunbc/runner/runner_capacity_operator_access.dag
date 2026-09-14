@@ -12,8 +12,8 @@ import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
 import gunbc.runner_host_deploy {
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
+  srv3_runner_host_spec,
+  srv4_runner_host_spec,
 }
 
 data runner_capacity_operator_access_authority_disposition: Disposition = SingleAuthority
@@ -138,9 +138,9 @@ fn runner_capacity_in_band_admission_probes() -> RunnerCapacityInBandAdmissionPr
 
 fn runner_capacity_executing_principal_for_host(host: HostIdentity) -> NonEmptyStr {
   if (host as String) == (operator_host_srv3 as String) {
-    srv3_runner_host_deploy.runner_user
+    srv3_runner_host_spec.runner_user
   } else if (host as String) == (operator_host_srv4 as String) {
-    srv4_runner_host_deploy.runner_user
+    srv4_runner_host_spec.runner_user
   } else {
     "briansrls" as NonEmptyStr
   }

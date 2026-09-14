@@ -12,9 +12,7 @@ import extdeps.github.actions_runner {
   actions_runner_download_url,
 }
 import gunbc.runner_host_deploy {
-  srv1_runner_host_deploy,
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
+  admitted_deploy_for,
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
@@ -95,7 +93,7 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
 test fn witness_runner_count_not_in_installer_argv() -> Bool {
   let rendered = shell_command_render(
     command: runner_host_installer_command_argv(
-      deploy: srv3_runner_host_deploy,
+      deploy: wt_srv3_deploy(),
       installer_path: "/tmp/install-actions-runner.sh",
       pem_src_path: "/tmp/app.pem",
     ),
@@ -117,8 +115,8 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // long as the row says it is, it is one-based, and it is zero-padded. Width itself is asserted where
 // width is decided, not restated here.
 test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
-  let names = runner_instance_names(deploy: srv3_runner_host_deploy)
-  list_length(items: names) == srv3_runner_host_deploy.runner_count
+  let names = runner_instance_names(deploy: wt_srv3_deploy())
+  list_length(items: names) == wt_srv3_deploy().runner_count
     && string_contains(s: names.first(), pattern: "srv3-01")
     && list_length(items: names) > 1
     && roster_names_are_distinct(names: names)
@@ -206,8 +204,8 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // so it measured the tree rather than checking a relation. The relation it was reaching for is that
 // the instance roster and the declared count cannot disagree, which holds at any width.
 test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
-  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  list_length(items: names) == srv4_runner_host_deploy.runner_count
+  let names = runner_instance_names(deploy: wt_srv4_deploy())
+  list_length(items: names) == wt_srv4_deploy().runner_count
     && roster_names_are_distinct(names: names)
 }
 
@@ -286,7 +284,7 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
     Present { value: artifact } =>
       match runner_slot_converge_verdict(
         host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+        deploy: wt_srv1_deploy(),
         artifact: artifact,
         observation: unobserved_fixture,
         retirement_evidence: no_retirement_evidence(),
@@ -306,14 +304,14 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
     Present { value: artifact } =>
       match runner_slot_converge_verdict(
         host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+        deploy: wt_srv1_deploy(),
         artifact: artifact,
         observation: observed_two_fixture,
         retirement_evidence: no_retirement_evidence(),
       ) {
         RunnerSlotConvergePlanned { host: _, plan: p } =>
           runner_slot_provision_has_width_increase(plan: p)
-            && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
+            && membership_added_count(plan: p.membership) == (wt_srv1_deploy().runner_count - 2)
         RunnerSlotConvergeRefused { host: _, reason: _ } => false
       }
   }
@@ -400,7 +398,7 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
 test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
   let names = map(
-    desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
@@ -412,12 +410,12 @@ test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
 // that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
 // no fabric member and loses nothing.
 test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
-  list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy))
+  list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
     == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
     && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && list_length(items: desired_runner_slot_members(deploy: srv4_runner_host_deploy))
+    && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
+    && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv1)
 }
 
@@ -778,4 +776,39 @@ test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
     evidence: no_retirement_evidence(),
   )
   emits_no_tree_removal(lines: lines) && !emits_mask(lines: lines)
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv3_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv4_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv4) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
 }

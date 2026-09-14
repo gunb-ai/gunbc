@@ -33,7 +33,9 @@ import gunbc.runner_unit {
   gunbc_runner_listener_is_main_process,
   lifecycle_intent_cannot_orphan,
 }
-import gunbc.runner_host_deploy { srv1_runner_host_deploy }
+import gunbc.runner_host_deploy {
+  admitted_deploy_for,
+  RunnerHostDeploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
@@ -76,7 +78,7 @@ fn srv1_spec() -> RunnerSpec {
 fn rendered_text(intent: RunnerUnitLifecycleIntent) -> String {
   match runner_unit_text(
     rendering: runner_unit_file(
-      deploy: srv1_runner_host_deploy,
+      deploy: wt_srv1_deploy(),
       spec: srv1_spec(),
       permit_scope: live_realization(),
       intent: intent,
@@ -214,7 +216,7 @@ test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
 
 fn refusal_reason(spec: RunnerSpec) -> String {
   match gunbc_runner_unit_file(
-    deploy: srv1_runner_host_deploy,
+    deploy: wt_srv1_deploy(),
     spec: spec,
     permit_scope: live_realization(),
   ) {
@@ -253,7 +255,7 @@ fn live_realization() -> CompileParallelismRealization {
 fn invocation_local_text() -> String {
   match runner_unit_text(
     rendering: runner_unit_file(
-      deploy: srv1_runner_host_deploy,
+      deploy: wt_srv1_deploy(),
       spec: srv1_spec(),
       permit_scope: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
       intent: gunbc_runner_lifecycle_intent,
@@ -332,11 +334,11 @@ fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> Sy
     service: concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
-        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],
       concat(
-        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        runner_unit_app_environment(app: wt_srv1_deploy().app),
         [
           runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
           runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
@@ -373,7 +375,7 @@ fn expected_labels_json() -> String {
 // that refused everything would satisfy "" == "" if the expected side collapsed the same way.
 fn rendered_or_refused(realization: CompileParallelismRealization) -> String {
   match runner_unit_file(
-    deploy: srv1_runner_host_deploy,
+    deploy: wt_srv1_deploy(),
     spec: srv1_spec(),
     permit_scope: realization,
     intent: gunbc_runner_lifecycle_intent,
@@ -430,11 +432,11 @@ fn expected_invocation_local_unit_file(jobs: String) -> SystemdUnitFile {
     service: concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
-        ServiceUser { name: srv1_runner_host_deploy.runner_user },
+        ServiceUser { name: wt_srv1_deploy().runner_user },
         WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
       ],
       concat(
-        runner_unit_app_environment(app: srv1_runner_host_deploy.app),
+        runner_unit_app_environment(app: wt_srv1_deploy().app),
         [
           runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
           runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
@@ -457,4 +459,25 @@ test fn w_the_cutover_arm_has_exactly_its_intended_complete_shape() -> Bool {
   rendered_or_refused(
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   ) == serialize_systemd_unit_file(file: expected_invocation_local_unit_file(jobs: "8"))
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
 }

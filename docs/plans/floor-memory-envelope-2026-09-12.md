@@ -253,3 +253,58 @@ measurement:
 An arm64 scoped control, if subsequently enabled, establishes a cost-shape lead;
 it does not establish an amd64 cap. The exact runner phase peak and median remain
 the outstanding measurement, explicitly reported to `bright-eagle-728`.
+
+---
+
+## Outstanding state of the sizing response, 2026-09-14
+
+This report concluded that no cap change was justified *by its own findings*. The
+sizing change was authorised separately and is carried on `session/slot-sizing-26-25`
+(PR #11204). It is **not converged**, and this section records what remains so the
+state is readable without reconstructing it from the branch.
+
+**Live fleet, unchanged.** srv1 carries `MemoryHigh=16106127360` over 21 units. No
+host effect has been performed by this work: no cap write, no slot retirement, no
+canary. Every claim below is about source and CI, never about a host.
+
+**What the branch establishes in source.** The slot ceiling moves to 26 GiB
+`MemoryMax` / 25 GiB `MemoryHigh`; `cores_per_slot` rises 6 → 10, so CPU binds every
+host at 12 and the fleet commits 36 rather than 68. A raise is gated behind a
+retirement transaction: the required-retiree set is derived from a declared prior
+width (`gunbc.runner_width_transition`) and reads no observation, so it cannot shrink
+when a unit stops being listed; operator interruption authority is checked as
+*coverage over* that obligation and never contributes members to it; `mask --now` is
+rendered into the hashed fleet artifact and executed only by fleet apply; and
+completion comes from an independent readback of `UnitFileState`, `ActiveState` and
+the real cgroup. Retirement disposition participates in the plan/apply fingerprint,
+so a plan built while a unit read complete refuses if apply reobserves it populated.
+
+**srv2 is refused, not narrowed.** Its width resolves to a typed refusal and no
+`RunnerHostDeploy` is constructed for it at all; slot planning, cap construction and
+the cap writer all consume that same admission, and its generated sudoers projection
+renders teardown and host-wide grants only — no slot-install, no activation, nothing
+that could widen a host nobody can size.
+
+**What is NOT established, and is the work remaining.**
+
+1. **No wet proof.** Nothing has executed `mask --now` on a host. Every retirement
+   result is hermetic. The srv4 canary — interrupt → observed retirement → guarded
+   raise → effective-limit readback → no-change second pass — is the first real
+   proof and has not been run or authorised.
+2. **No terminal green.** The last exact-head required run was red. Two failures are
+   measured as inherited rather than assumed, each reproduced at the committed head
+   with the branch's later changes stashed:
+   `witness_fabric_cell_absent_address_plans_add_and_never_change` and
+   `srv4_sccache_prereq_pins_version_and_digest`.
+3. **One acceptance condition is specific and unmet.**
+   `test.claim.runner_slot_provision.no_deploy_row_out_commits_the_memory_budget`
+   must appear in the terminal disposition as `planned` (or
+   `planned_as_changed_witness`) **and** `passed`. At `890c264be36` it was
+   `declined_outside_required_gate` — its whole module carried no admitted
+   prefix — so the aggregate `planned=3938 executed=3938` was true and said nothing
+   about it. The prefix is now enrolled; the run proving it selected has not happened.
+
+**The instrumentation gap this report opened is still open.** Nothing here measures
+the terminal-ledger phase peak. The sizing change was justified by the floor's
+*uncensored demand* reading, not by the phase measurement this document says is
+missing, and raising the ceiling does not close that gap.

@@ -29,6 +29,7 @@ import gunbc.runner_slot_allocation {
 import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives, SliceDirectivesComplete, SliceDirectivesQuotaSurveyRefused }
 import extdeps.systemd.unit_file { slice_cpu_quota, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
+import gunbc.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -151,17 +152,17 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
   match fabric_cell_slice_desired_directives() {
     SliceDirectivesQuotaSurveyRefused { cause: _ } => false
     SliceDirectivesComplete { directives: ds } => {
-      let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
-      let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
-      let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
+      let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
+      let activation = runner_slot_activation_operations(deploy: wt_srv3_deploy()).length()
+      let fabric_slots = fabric_cell_host_slots(deploy: wt_srv3_deploy()).length()
       let directives = ds.length()
       let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
-      let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
-      let host_wide = runner_host_wide_privileged_operations(deploy: srv3_runner_host_deploy).length()
-      runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
+      let allocation_store = fabric_allocation_store_privileged_operations(deploy: wt_srv3_deploy()).length()
+      let host_wide = runner_host_wide_privileged_operations(deploy: wt_srv3_deploy()).length()
+      runner_host_privileged_operations(deploy: wt_srv3_deploy()).length()
         == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store
         && allocation_store == 2
-        && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
+        && fabric_cell_privileged_operations(deploy: wt_srv3_deploy()).length() == fabric_expected
         && activation == slots * 2
         && slots > 0
         && fabric_slots > 0
@@ -293,7 +294,27 @@ test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
 test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
   bootstrap_principal_is_not_the_grantee(
     bootstrap: executor_bootstrap_principal,
-    deploy: srv3_runner_host_deploy,
+    deploy: wt_srv3_deploy(),
   )
 }
 
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv3_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}

@@ -41,8 +41,9 @@ import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.runner_host_grants { runner_host_sudoers_content }
-import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner_host_grants {
+  runner_host_refused_sudoers_content, runner_host_sudoers_content }
+import gunbc.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.plan { expected_plan_md }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0_crate_layout_emit {
@@ -147,8 +148,19 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
           )
         }
       RunnerHostDeployRefused { host: refused, cause: why } =>
-        ArtifactGenerationRefused {
-          reason: concat(concat("runner host refused: ", refused as String), concat(" -- ", why)),
+        match runner_host_spec_for(host: refused) {
+          RunnerHostSpecFound { spec: spec } =>
+            artifact_generated(
+              content: runner_host_refused_sudoers_content(
+                spec: spec,
+                cause: why,
+                artifact_path: artifact_path(a: a),
+              )
+            )
+          RunnerHostSpecAbsent { host: h } =>
+            ArtifactGenerationRefused {
+              reason: concat("runner host refused with no spec: ", h as String),
+            }
         }
     }
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
