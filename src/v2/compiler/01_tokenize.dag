@@ -1,6 +1,7 @@
 module v2.compiler.tokenize
 
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
 import std.algebra { Cons, Empty }
@@ -240,6 +241,178 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
 type CompiledLexRule {
   rule: LexRule
   thunk: LexMatchThunk
+  index: Int
+  first: LexFirst
+}
+
+// WHICH CHARACTERS A RULE CAN START ON, decided once per rule set. lex_try_rules used to run every
+// rule's matcher at every position -- ~56 rules for .dag -- and each matcher's first step splits
+// the persistent source vector; perf --children on the bounded K=16 native-route root put the
+// tokenizer at 20.6% of the process after C2, most of it in im::Vector skip/split_off under
+// is_prefix_of. A rule whose FIRST set excludes the head character and that cannot match the empty
+// string returns LexRuleNoMatch there, and lex_try_rules_prefer_longer keeps its accumulator
+// unchanged on NoMatch -- so skipping that rule changes no answer. The set only has to
+// OVER-approximate: an extra candidate costs a matcher call, a missing one would drop a match.
+type LexFirst {
+  chars: List<Char>
+  classes: List<LexCharClass>
+  nullable: Bool
+}
+
+fn lex_first_union(left: LexFirst, right: LexFirst, nullable: Bool) -> LexFirst {
+  LexFirst {
+    chars: list_append(left: left.chars, right: right.chars),
+    classes: list_append(left: left.classes, right: right.classes),
+    nullable: nullable
+  }
+}
+
+fn lex_first_of_text(text: v2.std.text.String) -> LexFirst {
+  match string_head(s: text) {
+    CharFound { value: c } => LexFirst { chars: Cons { head: c, tail: std.algebra.Empty }, classes: std.algebra.Empty, nullable: false }
+    CharAbsent => LexFirst { chars: std.algebra.Empty, classes: std.algebra.Empty, nullable: true }
+  }
+}
+
+fn lex_first_then(left: LexFirst, right: LexFirst) -> LexFirst {
+  if left.nullable {
+    lex_first_union(left: left, right: right, nullable: right.nullable)
+  } else {
+    left
+  }
+}
+
+fn lex_first_with_nullable(first: LexFirst, nullable: Bool) -> LexFirst {
+  LexFirst { chars: first.chars, classes: first.classes, nullable: nullable }
+}
+
+fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
+  fold_lex_pattern(
+    pattern: pattern,
+    algebra: LexPatternFold {
+      empty: LexFirst { chars: std.algebra.Empty, classes: std.algebra.Empty, nullable: true },
+      literal: fn(text) { lex_first_of_text(text: text) },
+      keyword: fn(text) { lex_first_of_text(text: text) },
+      char: fn(c) { LexFirst { chars: Cons { head: c, tail: std.algebra.Empty }, classes: std.algebra.Empty, nullable: false } },
+      char_class: fn(k) { LexFirst { chars: std.algebra.Empty, classes: Cons { head: k, tail: std.algebra.Empty }, nullable: false } },
+      sequence: fn(left, right) { lex_first_then(left: left, right: right) },
+      choice: fn(left, right) { lex_first_union(left: left, right: right, nullable: left.nullable || right.nullable) },
+      optional: fn(element) { lex_first_with_nullable(first: element, nullable: true) },
+      repeat: fn(element) { lex_first_with_nullable(first: element, nullable: true) },
+      one_or_more: fn(element) { element },
+      delimited: fn(open, body, close) {
+        if open.nullable {
+          lex_first_union(
+            left: open,
+            right: lex_first_union(left: body, right: close, nullable: close.nullable),
+            nullable: close.nullable
+          )
+        } else {
+          open
+        }
+      }
+    }
+  )
+}
+
+fn lex_first_admits(first: LexFirst, c: Char) -> Bool {
+  first.nullable
+    || v2.std.algebra.contains(xs: first.chars, item: c, eq: fn(a, b) { a == b })
+    || v2.std.algebra.any(xs: first.classes, predicate: fn(k) { char_in_class(c: c, class: k) })
+}
+
+// Rules whose FIRST is only literal characters are reached through by_char; every other rule --
+// a character class, or a rule that can match the empty string -- is in residual and tested per
+// position with lex_first_admits. Both lists keep declared rule order, and lex_dispatch_candidates
+// merges them by index, because the longest-match fold breaks ties toward the LATER rule.
+type LexRuleDispatch {
+  all: List<CompiledLexRule>
+  by_char: Map<Char, List<CompiledLexRule>>
+  residual: List<CompiledLexRule>
+}
+
+fn lex_dispatch_by_char_add(by_char: Map<Char, List<CompiledLexRule>>, compiled: CompiledLexRule) -> Map<Char, List<CompiledLexRule>> {
+  fold_list(
+    xs: compiled.first.chars,
+    empty: by_char,
+    cons: fn(acc, c) {
+      match map_lookup(m: acc, key: c) {
+        Present { value: rules } =>
+          if lex_rules_contain_index(rules: rules, index: compiled.index) {
+            acc
+          } else {
+            map_insert(m: acc, key: c, value: list_snoc_item(xs: rules, item: compiled))
+          }
+        Absent => map_insert(m: acc, key: c, value: Cons { head: compiled, tail: std.algebra.Empty })
+      }
+    }
+  )
+}
+
+fn lex_rule_dispatch(compiled_rules: List<CompiledLexRule>) -> LexRuleDispatch {
+  fold_list(
+    xs: compiled_rules,
+    empty: LexRuleDispatch { all: compiled_rules, by_char: empty_map(), residual: std.algebra.Empty },
+    cons: fn(acc, compiled) {
+      if compiled.first.nullable || !is_empty(xs: compiled.first.classes) {
+        LexRuleDispatch { all: acc.all, by_char: acc.by_char, residual: list_snoc_item(xs: acc.residual, item: compiled) }
+      } else {
+        LexRuleDispatch { all: acc.all, by_char: lex_dispatch_by_char_add(by_char: acc.by_char, compiled: compiled), residual: acc.residual }
+      }
+    }
+  )
+}
+
+// Recursion on the typed list rather than a predicate lambda: a lambda over a List<CompiledLexRule>
+// reads its parameter as an unbound T at the field access here (the lambda-argument typing class
+// gunbc.lambda_argument_typing_gate records).
+fn lex_rules_contain_index(rules: List<CompiledLexRule>, index: Int) -> Bool {
+  match rules {
+    Empty => false
+    Cons { head: r, tail: rest } =>
+      if r.index == index { true } else { lex_rules_contain_index(rules: rest, index: index) }
+  }
+}
+
+fn lex_rules_admitting(rules: List<CompiledLexRule>, c: Char) -> List<CompiledLexRule> {
+  match rules {
+    Empty => Empty
+    Cons { head: r, tail: rest } =>
+      match lex_first_admits(first: r.first, c: c) {
+        true => Cons { head: r, tail: lex_rules_admitting(rules: rest, c: c) }
+        false => lex_rules_admitting(rules: rest, c: c)
+      }
+  }
+}
+
+// Merge two index-ascending lists into one index-ascending list.
+fn lex_merge_by_index(left: List<CompiledLexRule>, right: List<CompiledLexRule>) -> List<CompiledLexRule> {
+  match left {
+    Empty => right
+    Cons { head: l, tail: lt } =>
+      match right {
+        Empty => left
+        Cons { head: r, tail: rt } =>
+          match l.index < r.index {
+            true => Cons { head: l, tail: lex_merge_by_index(left: lt, right: right) }
+            false => Cons { head: r, tail: lex_merge_by_index(left: left, right: rt) }
+          }
+      }
+  }
+}
+
+fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: v2.std.text.String) -> List<CompiledLexRule> {
+  match string_head(s: source) {
+    CharAbsent => dispatch.all
+    CharFound { value: c } =>
+      lex_merge_by_index(
+        left: match map_lookup(m: dispatch.by_char, key: c) {
+          Present { value: rules } => rules
+          Absent => std.algebra.Empty
+        },
+        right: lex_rules_admitting(rules: dispatch.residual, c: c)
+      )
+  }
 }
 
 fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
@@ -369,20 +542,41 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> Le
   }
 }
 
+type LexCompileAcc {
+  reversed: List<CompiledLexRule>
+  next_index: Int
+}
+
 fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
-  let reversed = fold_list(
+  let compiled = fold_list(
     xs: rules,
-    empty: std.algebra.Empty,
+    empty: LexCompileAcc { reversed: Empty, next_index: 0 },
     cons: fn(acc, rule) {
-      Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
+      LexCompileAcc {
+        reversed: Cons {
+          head: CompiledLexRule {
+            rule: rule,
+            thunk: lex_rule_thunk(rule: rule),
+            index: acc.next_index,
+            first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
+          },
+          tail: acc.reversed
+        },
+        next_index: acc.next_index + 1
+      }
     }
   )
-  reversed.reverse()
+  compiled.reversed.reverse()
 }
 
 fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
   lex_try_compiled(
-    compiled: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) },
+    compiled: CompiledLexRule {
+      rule: rule,
+      thunk: lex_rule_thunk(rule: rule),
+      index: 0,
+      first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
+    },
     source: source
   )
 }
@@ -435,7 +629,7 @@ type LexWalkAcc {
   done: Bool
   error: Bool
   file: Symbol
-  rules: List<CompiledLexRule>
+  dispatch: LexRuleDispatch
 }
 
 fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
@@ -448,7 +642,7 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Le
     done: false,
     error: false,
     file: file,
-    rules: lex_compile_rules(rules: rules.rules)
+    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules))
   }
 }
 
@@ -468,10 +662,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
         done: true,
         error: false,
         file: acc.file,
-        rules: acc.rules
+        dispatch: acc.dispatch
       }
     false =>
-      match lex_try_rules(rules: acc.rules, source: acc.remaining) {
+      match lex_try_rules(rules: lex_dispatch_candidates(dispatch: acc.dispatch, source: acc.remaining), source: acc.remaining) {
         LexRuleNoMatch =>
           LexWalkAcc {
             remaining: acc.remaining,
@@ -482,7 +676,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             done: true,
             error: true,
             file: acc.file,
-            rules: acc.rules
+            dispatch: acc.dispatch
           }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
           match string_is_empty(s: lexeme) {
@@ -496,7 +690,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
             false =>
               LexWalkAcc {
@@ -508,7 +702,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
           }
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
@@ -523,7 +717,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
             false =>
               LexWalkAcc {
@@ -544,7 +738,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
           }
         LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
@@ -559,7 +753,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
             false =>
               LexWalkAcc {
@@ -581,7 +775,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                rules: acc.rules
+                dispatch: acc.dispatch
               }
           }
       }
