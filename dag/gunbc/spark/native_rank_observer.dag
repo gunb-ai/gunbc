@@ -1,7 +1,7 @@
 module gunbc.spark.native_rank_observer
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.remote_execution {
@@ -10,10 +10,25 @@ import gunbc.spark.remote_execution {
 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
-  glm_native_container_name, fabric_rail_interface_name,
+  glm_native_container_name,
   utilization_basis_points_in_argv, glm_native_serve_port,
 }
 import extdeps.docker.container_inspect { go_template_action }
+import extdeps.docker { DockerMount }
+import extdeps.docker.cli {
+  DockerDeviceMapping, DockerEnvAssignment, DockerLabel, DockerNamespaceMode,
+  DockerDevicesObserved, DockerDevicesUnreadable, docker_devices_from_json,
+  DockerUlimitObservation, DockerUlimitsObserved, DockerUlimitsUnreadable,
+  docker_ulimits_from_json, docker_ulimits_memlock_unlimited,
+  DockerStringListObserved, DockerStringListUnreadable, docker_string_list_from_json,
+  DockerLabelsObserved, DockerLabelsUnreadable, docker_labels_from_json,
+  DockerMountsObserved, DockerMountsUnreadable, docker_mounts_from_json,
+  docker_env_assignments_of_wire, docker_namespace_mode_of_wire,
+}
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, observed_container_realization, ContainerRealizationRead,
+  ContainerRealizationObserved, ContainerRealizationUnread,
+}
 import gunbc.spark.native_deployment_readback {
   NcclTransportObservation, NcclIbTransport, NcclSocketTransport, NcclTransportUnread,
   RankObservation, rank_observation,
@@ -36,12 +51,8 @@ import gunbc.spark.native_deployment_readback {
 // A ONE-FIELD FORMAT PER READ, so a value containing a space cannot be mistaken for a field boundary. The
 // argv is read as a JSON array and decoded rather than split on whitespace, because a launch line contains
 // members with spaces and splitting them is how argument boundaries were lost once already.
-fn rank_container_id_argv() -> List<String> {
-  ["docker", "inspect", "-f", go_template_action(body: ".Id"), glm_native_container_name as String]
-}
-
 fn rank_image_digest_argv() -> List<String> {
-  ["docker", "inspect", "-f", go_template_action(body: ".Config.Image"), glm_native_container_name as String]
+  inspect_field_argv(container: glm_native_container_name, body: ".Config.Image")
 }
 
 // .Config.Cmd IS THE HALF OF THE LAUNCH LINE THE CONTAINER ACTUALLY KEEPS. This read .Args, which is the
@@ -50,11 +61,11 @@ fn rank_image_digest_argv() -> List<String> {
 // .Config.Cmd is exactly the words passed after the image reference. The daemon consumed the "docker run"
 // half at creation and no observation can recover it, so that half is compared by other means or not at all.
 fn rank_argv_json_argv() -> List<String> {
-  ["docker", "inspect", "-f", go_template_action(body: "json .Config.Cmd"), glm_native_container_name as String]
+  inspect_field_argv(container: glm_native_container_name, body: "json .Config.Cmd")
 }
 
 fn rank_running_argv() -> List<String> {
-  ["docker", "inspect", "-f", go_template_action(body: ".State.Running"), glm_native_container_name as String]
+  inspect_field_argv(container: glm_native_container_name, body: ".State.Running")
 }
 
 // THE TRANSPORT IS READ FROM THE ENGINE'S OWN LOG, WHICH IS THE ONLY PLACE IT IS A MEASUREMENT. The
@@ -71,49 +82,209 @@ fn rank_running_argv() -> List<String> {
 // NCCL PRINTS THE IB LINE AS "NET/IB : Using [0]<hca>:1/RoCE ... ; OOB <netdev>:<ip>", so the backend,
 // the device and the out-of-band socket are separable. One line is emitted per selection; the first is
 // taken and a rank that printed neither is unread rather than assumed.
-fn rank_nccl_transport_argv() -> List<String> {
-  ["sh", "-c", join([
-    "L=$(docker logs ", glm_native_container_name as String, " 2>&1",
-    " | grep -oE 'NET/(IB|Socket) : Using [^ ]+' | head -1)",
-    "; if [ -z \"$L\" ]; then echo UNREAD; else echo \"$L\"; fi",
-  ], "")]
-}
-
+// NCCL PUBLISHES ITS OWN VERDICT, AND THAT IS WHAT DECIDES. After initialising its network the
+// communicator prints the plugin it assigned:
+//
+//   spark-0c75:346:346 [0] NCCL INFO Using network Socket
+//
+// measured on this fleet 2026-09-14. The `NET/<backend> : Using ...` lines are DETAIL about what each
+// backend found; the verdict says which backend won. Two earlier readers got this wrong in the same
+// direction. The first grepped the earliest `Using` line and took the text after its bracket, so the IB
+// plugin's `Using [RO]; OOB ...` banner -- printed after `NET/IB : No device found.` -- became an HCA
+// named ";" and four socket ranks were accepted as an RDMA deployment. The second required a numeric
+// ordinal, which fixed that case and still derived the winner from detail lines rather than from the
+// verdict, so a backend that reported a device and then lost would have answered for the deployment.
+//
+// NOTHING IS TRUNCATED AND NOTHING IS REDUCED BY ORDER. The read takes every matching line, deduplicated
+// rather than capped, so a verdict or a contradicting detail cannot fall outside a window; and a backend
+// that named two different devices is a contradiction this reader refuses rather than resolving by taking
+// the first. A rank whose communicators disagree about the network is likewise refused.
 data nccl_transport_unread_wire: String = "UNREAD"
 
-// THE PARSE IS TOTAL AND ITS UNRECOGNISED ARM IS UNREAD, NOT A BACKEND. A line this reader cannot
-// classify is a statement about the reader, and answering "socket" for it would be the fabricated
-// plausible output: it would report the very fallback the deployment is meant to refuse.
-fn nccl_transport_of_line(raw: String) -> NcclTransportObservation {
-  if raw == nccl_transport_unread_wire {
-    NcclTransportUnread { cause: "the engine log printed no NCCL transport selection line" as NonEmptyStr }
+type NcclBackendName = NcclIbBackend | NcclSocketBackend
+
+data nccl_selected_network_marker: String = "Using network "
+data nccl_ib_backend_wire: String = "IB"
+data nccl_socket_backend_wire: String = "Socket"
+
+fn nccl_backend_wire(b: NcclBackendName) -> String {
+  match b {
+    NcclIbBackend => nccl_ib_backend_wire
+    NcclSocketBackend => nccl_socket_backend_wire
+  }
+}
+
+fn nccl_backend_eq(left: NcclBackendName, right: NcclBackendName) -> Bool {
+  nccl_backend_wire(b: left) == nccl_backend_wire(b: right)
+}
+
+fn nccl_text_after(raw: String, marker: String) -> String? {
+  let parts = split(s: raw, delimiter: marker)
+  if count(parts) < 2 { none } else { parts.skip(n: 1).first() }
+}
+
+fn nccl_all_digits(s: String) -> Bool {
+  if string_length(s: s) == 0 {
+    false
   } else {
-    if string_contains(s: raw, pattern: "NET/IB") {
-      NcclIbTransport { hca: nccl_device_token(raw: raw), oob_netdev: none }
-    } else {
-      if string_contains(s: raw, pattern: "NET/Socket") {
-        NcclSocketTransport { netdev: nccl_device_token(raw: raw) }
-      } else {
-        NcclTransportUnread {
-          cause: join(["the engine printed a transport line this reader cannot classify: ", raw], "") as NonEmptyStr,
-        }
-      }
+    all(nat_range_inclusive(lo: 1, hi: string_length(s: s)), i =>
+      code_point(substring(s: s, start: i - 1, end: i)) >= 48
+        && code_point(substring(s: s, start: i - 1, end: i)) <= 57)
+  }
+}
+
+fn nccl_distinct(values: List<String>) -> List<String> {
+  fold(values, init: [] as List<String>, f: (acc, v) => if any(acc, x => x == v) { acc } else { concat(acc, [v]) })
+}
+
+// ── THE VERDICT ───────────────────────────────────────────────────────────────────────────────
+//
+// THE BACKEND NAME IS TAKEN AS A WHOLE WORD. "Using network Socket" and "Using network IB" are the two
+// spellings this fleet's NCCL prints; a line naming anything else is a plugin this reader does not model
+// and is carried into the refusal rather than guessed at.
+fn nccl_selected_backend_of_line(raw: String) -> String? {
+  match nccl_text_after(raw: raw, marker: nccl_selected_network_marker) {
+    Absent => none
+    Present { value: tail } => {
+      let word = match split(s: tail, delimiter: " ").first() { Absent => tail  Present { value: w } => w }
+      if word == "" { none } else { Present { value: word } }
     }
   }
 }
 
-// THE DEVICE TOKEN IS WHAT FOLLOWS THE BRACKETED ORDINAL, and it is taken without assuming its shape:
-// a socket netdev and a RoCE HCA render differently and neither is validated here, because a reader
-// that rejected an unfamiliar device name would refuse a correct deployment on an unfamiliar NIC.
-fn nccl_device_token(raw: String) -> NonEmptyStr {
-  let after = split(s: raw, delimiter: "]")
-  match after.skip(n: 1).first() {
-    Absent => raw as NonEmptyStr
+fn nccl_selected_backends(lines: List<String>) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_selected_backend_of_line(raw: l) { Present { value: b } => [b]  Absent => [] }))
+}
+
+// ── THE DETAIL FOR ONE BACKEND ────────────────────────────────────────────────────────────────
+//
+// A DETAIL LINE NAMES A DEVICE ONLY WHEN ITS BRACKET CARRIES AN ORDINAL. `[RO]` is a relaxed-ordering
+// banner and `[0]rocep1s0f1:1/RoCE` is a selection; the digits are what separate them.
+fn nccl_detail_marker(b: NcclBackendName) -> String {
+  join(["NET/", nccl_backend_wire(b: b), " : Using ["], "")
+}
+
+fn nccl_device_of_detail(raw: String, backend: NcclBackendName) -> String? {
+  match nccl_text_after(raw: raw, marker: nccl_detail_marker(b: backend)) {
+    Absent => none
+    Present { value: tail } =>
+      match split(s: tail, delimiter: "]").first() {
+        Absent => none
+        Present { value: ordinal } =>
+          if !nccl_all_digits(s: ordinal) {
+            none
+          } else {
+            match nccl_text_after(raw: tail, marker: "]") {
+              Absent => none
+              Present { value: rest } =>
+                match split(s: rest, delimiter: ":").first() {
+                  Absent => none
+                  Present { value: device } => if device == "" { none } else { Present { value: device } }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn nccl_oob_of_detail(raw: String) -> String? {
+  match nccl_text_after(raw: raw, marker: "OOB ") {
+    Absent => none
     Present { value: tail } =>
       match split(s: tail, delimiter: ":").first() {
-        Absent => tail as NonEmptyStr
-        Present { value: dev } => if dev == "" { tail as NonEmptyStr } else { dev as NonEmptyStr }
+        Absent => none
+        Present { value: dev } => if dev == "" { none } else { Present { value: dev } }
       }
+  }
+}
+
+fn nccl_devices_for(lines: List<String>, backend: NcclBackendName) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_device_of_detail(raw: l, backend: backend) { Present { value: d } => [d]  Absent => [] }))
+}
+
+fn nccl_oob_for(lines: List<String>, backend: NcclBackendName) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_device_of_detail(raw: l, backend: backend) {
+      Absent => []
+      Present { value: _ } => match nccl_oob_of_detail(raw: l) { Present { value: o } => [o]  Absent => [] }
+    }))
+}
+
+fn nccl_backend_of_wire(wire: String) -> NcclBackendName? {
+  if wire == nccl_ib_backend_wire {
+    Present { value: NcclIbBackend }
+  } else if wire == nccl_socket_backend_wire {
+    Present { value: NcclSocketBackend }
+  } else {
+    none
+  }
+}
+
+fn nccl_transport_for_backend(lines: List<String>, backend: NcclBackendName, raw: String) -> NcclTransportObservation {
+  let devices = nccl_devices_for(lines: lines, backend: backend)
+  if count(devices) == 0 {
+    NcclTransportUnread {
+      cause: join(["the engine selected network ", nccl_backend_wire(b: backend), " and no line names the device it selected: ", raw], "") as NonEmptyStr,
+    }
+  } else if count(devices) > 1 {
+    NcclTransportUnread {
+      cause: join([
+        "the engine selected network ", nccl_backend_wire(b: backend), " and named ", to_string(count(devices)),
+        " different devices for it: ", join(devices, ", "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match devices.first() {
+      Absent => NcclTransportUnread { cause: "a device vanished between two readings of one list" as NonEmptyStr }
+      Present { value: device } =>
+        match backend {
+          NcclSocketBackend => NcclSocketTransport { netdev: device as NonEmptyStr }
+          NcclIbBackend => {
+            let oob = nccl_oob_for(lines: lines, backend: backend)
+            if count(oob) > 1 {
+              NcclTransportUnread {
+                cause: join(["the verbs selection named ", to_string(count(oob)), " different out-of-band interfaces: ", join(oob, ", ")], "") as NonEmptyStr,
+              }
+            } else {
+              NcclIbTransport {
+                hca: device as NonEmptyStr,
+                oob_netdev: match oob.first() { Absent => none  Present { value: o } => Present { value: o as NonEmptyStr } },
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn nccl_transport_of_lines(raw: String) -> NcclTransportObservation {
+  if raw == nccl_transport_unread_wire {
+    NcclTransportUnread { cause: "the engine log printed no NCCL transport line" as NonEmptyStr }
+  } else {
+    let lines = filter(split(s: raw, delimiter: "\n"), l => l != "")
+    let selected = nccl_selected_backends(lines: lines)
+    if count(selected) == 0 {
+      NcclTransportUnread {
+        cause: join(["no line names the network the engine selected: ", raw], "") as NonEmptyStr,
+      }
+    } else if count(selected) > 1 {
+      NcclTransportUnread {
+        cause: join(["this rank's communicators selected ", to_string(count(selected)), " different networks: ", join(selected, ", ")], "") as NonEmptyStr,
+      }
+    } else {
+      match selected.first() {
+        Absent => NcclTransportUnread { cause: "a verdict vanished between two readings of one list" as NonEmptyStr }
+        Present { value: wire } =>
+          match nccl_backend_of_wire(wire: wire) {
+            Absent => NcclTransportUnread {
+              cause: join(["the engine selected a network this reader does not model: ", wire], "") as NonEmptyStr,
+            }
+            Present { value: backend } => nccl_transport_for_backend(lines: lines, backend: backend, raw: raw)
+          }
+      }
+    }
   }
 }
 
@@ -244,13 +415,15 @@ fn decode_json_string_array(raw: String) -> List<String> {
     w => w != "")
 }
 
-// THE TRANSPORT READING IS HOISTED SO ITS TWO FAILURE SOURCES STAY DISTINGUISHABLE: an exec that did
-// not run and a line this reader cannot classify are both unread, and both say which they were.
-func observed_transport(r: SparkRemoteRun) -> NcclTransportObservation {
-  if !remote_run_succeeded(r: r) {
-    NcclTransportUnread { cause: "the engine log could not be read for a transport line" as NonEmptyStr }
+// THE VERDICT IS DERIVED FROM THE EVIDENCE THE REALIZATION RETAINED, and that is one read rather than
+// two. A separate exec for the transport line would ask the same log a second question, and the two
+// answers could disagree -- so the classification runs over the lines this rank's realization is
+// carrying, which is also what the receipt prints beside it.
+fn transport_of_realization(o: ObservedContainerRealization) -> NcclTransportObservation {
+  if count(o.transport_lines) == 0 {
+    NcclTransportUnread { cause: "the engine log printed no NCCL transport line" as NonEmptyStr }
   } else {
-    nccl_transport_of_line(raw: remote_run_stdout(r: r))
+    nccl_transport_of_lines(raw: join(o.transport_lines, "\n"))
   }
 }
 
@@ -273,22 +446,27 @@ func observe_native_rank(ctx: SparkRemoteExecutionContext, expected: ArmNodeLaun
       let digest = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_image_digest_argv())
       let argvjson = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_argv_json_argv())
       let modelpath = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_model_path_argv())
-      let transport = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_nccl_transport_argv())
       match optional_nonempty(raw: remote_run_stdout(r: digest)) {
         Absent => RankReadRefused { node: expected.node, cause: "the running container reported no image reference" as NonEmptyStr }
         Present { value: d } =>
           match optional_nonempty(raw: remote_run_stdout(r: modelpath)) {
             Absent => RankReadRefused { node: expected.node, cause: "the running argv names no model path" as NonEmptyStr }
-            Present { value: mp } => RankObserved {
-              observation: rank_observation(
-                host: expected.node.host,
-                node_rank: expected.node.node_rank,
-                image_digest: d,
-                model_path: mp,
-                argv: decode_json_string_array(raw: remote_run_stdout(r: argvjson)),
-                selected_transport: observed_transport(r: transport),
-              ),
-            }
+            Present { value: mp } =>
+              match observe_container_realization(ctx: ctx, line: expected, container: glm_native_container_name) {
+                ContainerRealizationUnread { host: _, node_rank: _, cause: c } =>
+                  RankReadRefused { node: expected.node, cause: c }
+                ContainerRealizationObserved { realization: realization } => RankObserved {
+                  observation: rank_observation(
+                    host: expected.node.host,
+                    node_rank: expected.node.node_rank,
+                    image_digest: d,
+                    model_path: mp,
+                    argv: decode_json_string_array(raw: remote_run_stdout(r: argvjson)),
+                    selected_transport: transport_of_realization(o: realization),
+                    realization: realization,
+                  ),
+                }
+              }
           }
       }
     }
@@ -334,6 +512,409 @@ func observe_native_population(ctx: SparkRemoteExecutionContext, plan: ArmLaunch
           endpoint_alias: observe_endpoint_alias_of(ctx: ctx, host: head_host_of(plan: plan)),
         }
       }
+    }
+  }
+}
+
+// ── THE READS ─────────────────────────────────────────────────────────────────────────────────
+//
+// A TEMPLATE PER FIELD RATHER THAN ONE WHOLE-DOCUMENT DECODE. `docker inspect` returns a document
+// whose parse would be one failure for every field at once; a field at a time keeps each read's
+// refusal about that field, and the JSON that is decoded is the small array or object the field is.
+fn inspect_field_argv(container: NonEmptyStr, body: String) -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: body), container as String]
+}
+
+data realization_listed_marker: String = "GUNBC-REALIZATION-LISTED"
+data realization_absent_marker: String = "GUNBC-REALIZATION-NONE"
+
+// A LISTING THAT DID NOT RUN IS NOT AN EMPTY DIRECTORY, and inside a container the difference is the
+// whole subject: no /dev/infiniband at all is exactly the state that sent NCCL to sockets, while a
+// failed exec says nothing about the container. `&&` reaches the marker only from a successful list;
+// a missing directory prints the absent marker through its own arm rather than through silence.
+fn in_container_listing_argv(container: NonEmptyStr, directory: String) -> List<String> {
+  ["docker", "exec", container as String, "sh", "-c", join([
+    "if [ -d ", directory, " ]; then ls -1A ", directory, " && echo ", realization_listed_marker,
+    "; else echo ", realization_absent_marker, "; fi",
+  ], "")]
+}
+
+type InContainerListing
+  = ListingPopulated { names: List<String> }
+  | ListingDirectoryAbsent
+  | ListingUnread { cause: NonEmptyStr }
+
+fn in_container_listing_of(raw: String, directory: String) -> InContainerListing {
+  if raw == realization_absent_marker {
+    ListingDirectoryAbsent
+  } else {
+    let lines = split(s: raw, delimiter: "\n")
+    match lines.last() {
+      Absent => ListingUnread { cause: join(["the listing of ", directory, " printed nothing"], "") as NonEmptyStr }
+      Present { value: tail } =>
+        if tail != realization_listed_marker {
+          ListingUnread { cause: join(["the listing of ", directory, " did not reach its completion marker"], "") as NonEmptyStr }
+        } else {
+          ListingPopulated { names: filter(lines.take(n: count(lines) - 1), name => name != "") }
+        }
+    }
+  }
+}
+
+fn listing_names(l: InContainerListing) -> List<String> {
+  match l {
+    ListingPopulated { names: ns } => ns
+    ListingDirectoryAbsent => []
+    ListingUnread { cause: _ } => []
+  }
+}
+
+fn listing_unread_cause(l: InContainerListing) -> NonEmptyStr? {
+  match l {
+    ListingUnread { cause: c } => Present { value: c }
+    ListingPopulated { names: _ } => none
+    ListingDirectoryAbsent => none
+  }
+}
+
+// THE VERSION AND THE TRANSPORT COME FROM THE ENGINE'S OWN LOG, which is the only place either is a
+// measurement rather than a request. The command captures into a variable so the grep's exit status
+// never decides whether the read happened.
+fn log_pattern_argv(container: NonEmptyStr, pattern: String) -> List<String> {
+  ["sh", "-c", join([
+    "L=$(docker logs ", container as String, " 2>&1 | grep -oE ", pattern, " | head -1)",
+    "; if [ -z \"$L\" ]; then echo ", realization_absent_marker, "; else echo \"$L\"; fi",
+  ], "")]
+}
+
+// DEDUPLICATED RATHER THAN CAPPED. A window over the first few matches can exclude the verdict line or
+// a contradicting detail -- which is how a reader ends up certain about a deployment it only partly
+// read -- so the distinct lines are taken whole and the classification refuses a contradiction rather
+// than never seeing it.
+fn log_lines_argv(container: NonEmptyStr, pattern: String) -> List<String> {
+  ["sh", "-c", join([
+    "L=$(docker logs ", container as String, " 2>&1 | grep -E ", pattern, " | sort -u)",
+    "; if [ -z \"$L\" ]; then echo ", realization_absent_marker, "; else echo \"$L\"; fi",
+  ], "")]
+}
+
+data nccl_version_pattern: String = "'NCCL version [^ ]+'"
+data nccl_transport_pattern: String = "'NET/(IB|Socket) : Using [^ ]+'"
+
+// THE RAW LINES ARE RETAINED BESIDE THE CLASSIFICATION, and the first capture is why. The observer
+// reported `verbs over ;` for every rank -- an NcclIbTransport whose device token is a semicolon --
+// while the same containers carry no /dev/infiniband node at all, which is the state in which verbs
+// cannot be opened. A classification nobody can check against its own input is a reading of the
+// reader; the evidence travels with the verdict so a misparse is visible rather than inherited.
+data nccl_transport_lines_pattern: String = "'NET/(IB|Socket) : |Using network '"
+
+// THE UNIT ROSTER ON THE HOST, so an actuator that owns this container through systemd is named rather
+// than guessed at. An empty answer is an answer: nothing on this host names the container.
+fn host_units_argv(container: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "S=$(systemctl list-units --all --no-legend --plain 2>/dev/null | grep -i ", container as String, ")",
+    "; if [ -z \"$S\" ]; then echo ", realization_absent_marker, "; else echo \"$S\"; fi",
+  ], "")]
+}
+
+// THE ENVIRONMENT IS CAPTURED BY PREFIX AND THE REMAINDER IS COUNTED, which is a deliberate narrowing
+// rather than an omission. A serving container's environment can carry an upstream access token, and a
+// durable receipt that copied every assignment would move a credential into a file whose purpose is to
+// be read later. The prefixes are the ones that decide collective transport and runtime behaviour; the
+// count says how many assignments were left behind so a reader knows the capture is partial.
+data captured_environment_prefixes: List<String> = ["NCCL_", "UCX_", "GLOO_", "VLLM_", "CUDA_", "TORCH_", "OMPI_", "LD_"]
+
+fn environment_is_captured(e: DockerEnvAssignment) -> Bool {
+  any(captured_environment_prefixes, p => starts_with(s: e.name as String, prefix: p))
+}
+
+func read_field(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, body: String) -> String?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: inspect_field_argv(container: container, body: body))
+  if !remote_run_succeeded(r: r) { none } else {
+    let v = remote_run_stdout(r: r)
+    if v == "" { none } else { Present { value: v } }
+  }
+}
+
+func read_listing(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, directory: String) -> InContainerListing
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: in_container_listing_argv(container: container, directory: directory))
+  if !remote_run_succeeded(r: r) {
+    ListingUnread { cause: join(["the container could not be asked about ", directory, ": ", remote_run_text(r: r)], "") as NonEmptyStr }
+  } else {
+    in_container_listing_of(raw: remote_run_stdout(r: r), directory: directory)
+  }
+}
+
+func read_log_pattern(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, pattern: String) -> String?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: log_pattern_argv(container: container, pattern: pattern))
+  if !remote_run_succeeded(r: r) { none } else {
+    let v = remote_run_stdout(r: r)
+    if v == realization_absent_marker { none } else { Present { value: v } }
+  }
+}
+
+fn realization_unread(host: HostIdentity, rank: Nat, what: String) -> ContainerRealizationRead {
+  ContainerRealizationUnread {
+    host: host, node_rank: rank,
+    cause: join(["the container's ", what, " could not be read on ", host as String], "") as NonEmptyStr,
+  }
+}
+
+// ── ONE RANK, READ WHOLE ──────────────────────────────────────────────────────────────────────
+func observe_container_realization(ctx: SparkRemoteExecutionContext, line: ArmNodeLaunch, container: NonEmptyStr) -> ContainerRealizationRead
+  uses net: Network
+{
+  let host = line.node.host
+  let rank = line.node.node_rank
+  match read_field(ctx: ctx, host: host, container: container, body: ".Id") {
+    Absent => realization_unread(host: host, rank: rank, what: "identity")
+    Present { value: container_id } =>
+      match read_field(ctx: ctx, host: host, container: container, body: ".Image") {
+        Absent => realization_unread(host: host, rank: rank, what: "image id")
+        Present { value: image_id } =>
+          match read_field(ctx: ctx, host: host, container: container, body: ".Created") {
+            Absent => realization_unread(host: host, rank: rank, what: "creation instant")
+            Present { value: created_at } =>
+              match read_field(ctx: ctx, host: host, container: container, body: ".State.StartedAt") {
+                Absent => realization_unread(host: host, rank: rank, what: "start instant")
+                Present { value: started_at } =>
+                  observe_container_namespaces(
+                    ctx: ctx, line: line, container: container,
+                    container_id: container_id as NonEmptyStr, image_id: image_id as NonEmptyStr,
+                    created_at: created_at as NonEmptyStr, started_at: started_at as NonEmptyStr)
+              }
+          }
+      }
+  }
+}
+
+func observe_container_namespaces(
+  ctx: SparkRemoteExecutionContext, line: ArmNodeLaunch, container: NonEmptyStr,
+  container_id: NonEmptyStr, image_id: NonEmptyStr, created_at: NonEmptyStr, started_at: NonEmptyStr,
+) -> ContainerRealizationRead
+  uses net: Network
+{
+  let host = line.node.host
+  let rank = line.node.node_rank
+  match read_field(ctx: ctx, host: host, container: container, body: ".HostConfig.NetworkMode") {
+    Absent => realization_unread(host: host, rank: rank, what: "network mode")
+    Present { value: network_wire } =>
+      match docker_namespace_mode_of_wire(wire: network_wire) {
+        Absent => ContainerRealizationUnread {
+          host: host, node_rank: rank,
+          cause: join(["the container's network mode is ", network_wire, ", which this model does not name"], "") as NonEmptyStr,
+        }
+        Present { value: network } =>
+          match read_field(ctx: ctx, host: host, container: container, body: ".HostConfig.IpcMode") {
+            Absent => realization_unread(host: host, rank: rank, what: "ipc mode")
+            Present { value: ipc_wire } =>
+              match docker_namespace_mode_of_wire(wire: ipc_wire) {
+                Absent => ContainerRealizationUnread {
+                  host: host, node_rank: rank,
+                  cause: join(["the container's ipc mode is ", ipc_wire, ", which this model does not name"], "") as NonEmptyStr,
+                }
+                Present { value: ipc } =>
+                  observe_container_devices(
+                    ctx: ctx, line: line, container: container, container_id: container_id, image_id: image_id,
+                    created_at: created_at, started_at: started_at, network: network, ipc: ipc)
+              }
+          }
+      }
+  }
+}
+
+func observe_container_devices(
+  ctx: SparkRemoteExecutionContext, line: ArmNodeLaunch, container: NonEmptyStr,
+  container_id: NonEmptyStr, image_id: NonEmptyStr, created_at: NonEmptyStr, started_at: NonEmptyStr,
+  network: DockerNamespaceMode, ipc: DockerNamespaceMode,
+) -> ContainerRealizationRead
+  uses net: Network
+{
+  let host = line.node.host
+  let rank = line.node.node_rank
+  match read_field(ctx: ctx, host: host, container: container, body: "json .HostConfig.Devices") {
+    Absent => realization_unread(host: host, rank: rank, what: "device population")
+    Present { value: devices_json } =>
+      match docker_devices_from_json(stdout: devices_json) {
+        DockerDevicesUnreadable { cause: c } =>
+          ContainerRealizationUnread { host: host, node_rank: rank, cause: join(["the device population did not decode: ", c], "") as NonEmptyStr }
+        DockerDevicesObserved { devices: devices } =>
+          match read_field(ctx: ctx, host: host, container: container, body: "json .HostConfig.Ulimits") {
+            Absent => realization_unread(host: host, rank: rank, what: "ulimit population")
+            Present { value: ulimits_json } =>
+              match docker_ulimits_from_json(stdout: ulimits_json) {
+                DockerUlimitsUnreadable { cause: c } =>
+                  ContainerRealizationUnread { host: host, node_rank: rank, cause: join(["the ulimit population did not decode: ", c], "") as NonEmptyStr }
+                DockerUlimitsObserved { ulimits: ulimits } =>
+                  observe_container_capabilities(
+                    ctx: ctx, line: line, container: container, container_id: container_id, image_id: image_id,
+                    created_at: created_at, started_at: started_at, network: network, ipc: ipc,
+                    devices: devices, ulimits: ulimits)
+              }
+          }
+      }
+  }
+}
+
+func observe_container_capabilities(
+  ctx: SparkRemoteExecutionContext, line: ArmNodeLaunch, container: NonEmptyStr,
+  container_id: NonEmptyStr, image_id: NonEmptyStr, created_at: NonEmptyStr, started_at: NonEmptyStr,
+  network: DockerNamespaceMode, ipc: DockerNamespaceMode,
+  devices: List<DockerDeviceMapping>, ulimits: List<DockerUlimitObservation>,
+) -> ContainerRealizationRead
+  uses net: Network
+{
+  let host = line.node.host
+  let rank = line.node.node_rank
+  match read_string_list(ctx: ctx, host: host, container: container, body: "json .HostConfig.CapAdd") {
+    Absent => realization_unread(host: host, rank: rank, what: "added capability population")
+    Present { value: capabilities } =>
+      match read_string_list(ctx: ctx, host: host, container: container, body: "json .HostConfig.DeviceCgroupRules") {
+        Absent => realization_unread(host: host, rank: rank, what: "device cgroup rule population")
+        Present { value: cgroup_rules } =>
+          match read_string_list(ctx: ctx, host: host, container: container, body: "json .HostConfig.DeviceRequests") {
+            Absent => realization_unread(host: host, rank: rank, what: "device request population")
+            Present { value: device_requests } =>
+              match read_string_list(ctx: ctx, host: host, container: container, body: "json .Config.Env") {
+                Absent => realization_unread(host: host, rank: rank, what: "environment")
+                Present { value: env_wire } =>
+                  observe_container_surroundings(
+                    ctx: ctx, line: line, container: container, container_id: container_id, image_id: image_id,
+                    created_at: created_at, started_at: started_at, network: network, ipc: ipc,
+                    devices: devices, ulimits: ulimits, capabilities: capabilities,
+                    cgroup_rules: cgroup_rules, device_requests: device_requests,
+                    environment: filter(docker_env_assignments_of_wire(values: env_wire), e => environment_is_captured(e: e)))
+              }
+          }
+      }
+  }
+}
+
+func read_string_list(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, body: String) -> List<String>?
+  uses net: Network
+{
+  match read_field(ctx: ctx, host: host, container: container, body: body) {
+    Absent => none
+    Present { value: raw } =>
+      match docker_string_list_from_json(stdout: raw) {
+        DockerStringListUnreadable { cause: _ } => none
+        DockerStringListObserved { values: xs } => Present { value: xs }
+      }
+  }
+}
+
+func observe_container_surroundings(
+  ctx: SparkRemoteExecutionContext, line: ArmNodeLaunch, container: NonEmptyStr,
+  container_id: NonEmptyStr, image_id: NonEmptyStr, created_at: NonEmptyStr, started_at: NonEmptyStr,
+  network: DockerNamespaceMode, ipc: DockerNamespaceMode,
+  devices: List<DockerDeviceMapping>, ulimits: List<DockerUlimitObservation>,
+  capabilities: List<String>, cgroup_rules: List<String>, device_requests: List<String>,
+  environment: List<DockerEnvAssignment>,
+) -> ContainerRealizationRead
+  uses net: Network
+{
+  let host = line.node.host
+  let rank = line.node.node_rank
+  match read_field(ctx: ctx, host: host, container: container, body: "json .Mounts") {
+    Absent => realization_unread(host: host, rank: rank, what: "mount population")
+    Present { value: mounts_json } =>
+      match docker_mounts_from_json(stdout: mounts_json) {
+        DockerMountsUnreadable { cause: c } =>
+          ContainerRealizationUnread { host: host, node_rank: rank, cause: join(["the mount population did not decode: ", c], "") as NonEmptyStr }
+        DockerMountsObserved { mounts: mounts } =>
+          match read_field(ctx: ctx, host: host, container: container, body: "json .Config.Labels") {
+            Absent => realization_unread(host: host, rank: rank, what: "label population")
+            Present { value: labels_json } =>
+              match docker_labels_from_json(stdout: labels_json) {
+                DockerLabelsUnreadable { cause: c } =>
+                  ContainerRealizationUnread { host: host, node_rank: rank, cause: join(["the label population did not decode: ", c], "") as NonEmptyStr }
+                DockerLabelsObserved { labels: labels } => {
+                  let devices_listing = read_listing(ctx: ctx, host: host, container: container, directory: "/dev/infiniband")
+                  let sysfs_listing = read_listing(ctx: ctx, host: host, container: container, directory: "/sys/class/infiniband")
+                  match listing_unread_cause(l: devices_listing) {
+                    Present { value: c } => ContainerRealizationUnread { host: host, node_rank: rank, cause: c }
+                    Absent =>
+                      match listing_unread_cause(l: sysfs_listing) {
+                        Present { value: c } => ContainerRealizationUnread { host: host, node_rank: rank, cause: c }
+                        Absent => {
+                          let transport_lines = match read_lines(ctx: ctx, host: host, container: container, pattern: nccl_transport_lines_pattern) {
+                            Absent => []
+                            Present { value: ls } => ls
+                          }
+                          let version = match read_log_pattern(ctx: ctx, host: host, container: container, pattern: nccl_version_pattern) {
+                            Absent => "the engine log printed no NCCL version line" as NonEmptyStr
+                            Present { value: v } => v as NonEmptyStr
+                          }
+                          let units = match read_units(ctx: ctx, host: host, container: container) {
+                            Absent => []
+                            Present { value: us } => us
+                          }
+                          ContainerRealizationObserved {
+                            realization: observed_container_realization(
+                              host: host,
+                              node_rank: rank,
+                              container_id: container_id,
+                              image_id: image_id,
+                              created_at: created_at,
+                              started_at: started_at,
+                              network: network,
+                              ipc: ipc,
+                              devices: devices,
+                              device_cgroup_rules: cgroup_rules,
+                              device_requests: device_requests,
+                              memlock_unlimited: docker_ulimits_memlock_unlimited(ulimits: ulimits),
+                              ulimits: ulimits,
+                              capabilities: capabilities,
+                              environment: environment,
+                              mounts: mounts,
+                              labels: labels,
+                              infiniband_device_nodes: listing_names(l: devices_listing),
+                              verbs_sysfs_devices: listing_names(l: sysfs_listing),
+                              nccl_version: version,
+                              transport_lines: transport_lines,
+                              host_units_naming_the_container: units,
+                            ),
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+func read_lines(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, pattern: String) -> List<String>?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: log_lines_argv(container: container, pattern: pattern))
+  if !remote_run_succeeded(r: r) { none } else {
+    let raw = remote_run_stdout(r: r)
+    if raw == realization_absent_marker {
+      Present { value: [] }
+    } else {
+      Present { value: filter(split(s: raw, delimiter: "\n"), l => l != "") }
+    }
+  }
+}
+
+func read_units(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr) -> List<String>?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: host_units_argv(container: container))
+  if !remote_run_succeeded(r: r) { none } else {
+    let raw = remote_run_stdout(r: r)
+    if raw == realization_absent_marker {
+      Present { value: [] }
+    } else {
+      Present { value: filter(split(s: raw, delimiter: "\n"), l => l != "") }
     }
   }
 }

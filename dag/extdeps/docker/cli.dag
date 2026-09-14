@@ -7,7 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -86,14 +86,17 @@ fn docker_mount_flag(m: DockerMount) -> List<String> {
   }
 }
 
-fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+// THE VERB IS THE ONLY DIFFERENCE BETWEEN CREATING AND RUNNING, so it is the only thing the two
+// renderings do not share. A second flag list for `run` would be the fork this module exists to avoid:
+// a device or a ulimit added to one spelling and not the other is a container that differs from the
+// one the plan describes, decided by which verb a caller happened to use.
+fn docker_container_flags(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
       concat(
         concat(
           concat(
             [
-              "create",
               "--name", spec.name as String,
               "--network", docker_namespace_mode_wire(m: spec.network) as String,
               "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
@@ -116,6 +119,19 @@ fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
     ),
     concat([spec.image as String], spec.command),
   )
+}
+
+fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(["create"], docker_container_flags(spec: spec))
+}
+
+// A DETACHED RUN IS ONE COMMAND WHERE CREATE-THEN-START IS TWO, and an actuator that reaches a host
+// over one privileged leg per step has a reason to prefer it. Same fields, same order, same container.
+// It renders ARGUMENTS and not an ArgvCommand: its caller carries the words over a privileged stdin
+// rather than executing a program locally, so wrapping them would mint a command nothing runs and
+// widen extdeps.exec.command's admission roster for it.
+fn docker_run_detached_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(["run", "-d"], docker_container_flags(spec: spec))
 }
 
 fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {
@@ -428,4 +444,329 @@ fn docker_image_save_command(image: NonEmptyStr, destination: NonEmptyStr) -> Ar
 // behind it afterwards is a question only `docker image inspect` answers.
 fn docker_image_load_command(archive: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "load", "-i", archive as String])
+}
+
+
+// ── THE CREATION SPEC READ BACK, FIELD BY FIELD ───────────────────────────────────────────────
+//
+// THE DAEMON CONSUMES `docker run` AND KEEPS ITS MEANING. The container remembers only the command
+// after the image reference, which is why a readback comparing whole launch lines refuses every
+// healthy rank -- but the creation state itself survives in HostConfig and Config, and that is where
+// a device mapping, a memlock limit and an added capability are answerable. Without these decoders a
+// deployment can be observed to SPEAK the right transport while nothing can say whether the container
+// that speaks it is reproducible from the plan.
+//
+// THE ENGINE RENDERS AN ABSENT SLICE AS `null`, and that is a value rather than a gap: a container
+// created with no `--device` reports HostConfig.Devices as null, which is the same fact as an empty
+// array and is decoded as the empty population. What refuses is a document that does not parse, or a
+// member whose shape is neither null nor an array -- those say the reader could not tell.
+// Cited: docs.docker.com/reference/api/engine/ ContainerInspect HostConfig (Devices, Ulimits,
+// DeviceCgroupRules, CapAdd) and Config (Env), read against docker 29.2.1 on the Sparks.
+
+type DockerDevicesRead
+  = DockerDevicesObserved { devices: List<DockerDeviceMapping> }
+  | DockerDevicesUnreadable { cause: String }
+
+type DockerUlimitObservation {
+  name: NonEmptyStr
+  soft: Int
+  hard: Int
+}
+
+type DockerUlimitsRead
+  = DockerUlimitsObserved { ulimits: List<DockerUlimitObservation> }
+  | DockerUlimitsUnreadable { cause: String }
+
+type DockerStringListRead
+  = DockerStringListObserved { values: List<String> }
+  | DockerStringListUnreadable { cause: String }
+
+fn docker_inspect_member_text(v: JsonValue, key: String) -> String {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } => json_string_value_or_empty(v: found)
+    JsonMemberAbsent => ""
+    JsonMemberDuplicated { count: _ } => ""
+    JsonMemberNotAnObject => ""
+  }
+}
+
+fn docker_inspect_member_int(v: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: lx } => parse_int(s: lx)
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn docker_device_of_json(v: JsonValue) -> DockerDeviceMapping? {
+  let host = docker_inspect_member_text(v: v, key: "PathOnHost")
+  let container = docker_inspect_member_text(v: v, key: "PathInContainer")
+  let permissions = docker_inspect_member_text(v: v, key: "CgroupPermissions")
+  if host == "" || container == "" || permissions == "" {
+    none
+  } else {
+    Present { value: DockerDeviceMapping {
+      host_path: host as FilePath,
+      container_path: container as FilePath,
+      cgroup_permissions: permissions as NonEmptyStr,
+    } }
+  }
+}
+
+fn docker_devices_from_json(stdout: String) -> DockerDevicesRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => DockerDevicesUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonNull => DockerDevicesObserved { devices: [] }
+        JsonArray { elements: es } => {
+          let decoded = flat_map(es, e => match docker_device_of_json(v: e) { Present { value: d } => [d]  Absent => [] })
+          if count(decoded) != count(es) {
+            DockerDevicesUnreadable { cause: "a HostConfig.Devices element carries no PathOnHost, PathInContainer and CgroupPermissions triple" }
+          } else {
+            DockerDevicesObserved { devices: decoded }
+          }
+        }
+        JsonBool { value: _ } => DockerDevicesUnreadable { cause: "HostConfig.Devices is neither null nor an array" }
+        JsonNumber { lexeme: _ } => DockerDevicesUnreadable { cause: "HostConfig.Devices is neither null nor an array" }
+        JsonString { value: _ } => DockerDevicesUnreadable { cause: "HostConfig.Devices is neither null nor an array" }
+        JsonObject { members: _ } => DockerDevicesUnreadable { cause: "HostConfig.Devices is neither null nor an array" }
+      }
+  }
+}
+
+fn docker_ulimit_of_json(v: JsonValue) -> DockerUlimitObservation? {
+  let name = docker_inspect_member_text(v: v, key: "Name")
+  match docker_inspect_member_int(v: v, key: "Soft") {
+    Absent => none
+    Present { value: soft } =>
+      match docker_inspect_member_int(v: v, key: "Hard") {
+        Absent => none
+        Present { value: hard } =>
+          if name == "" { none } else {
+            Present { value: DockerUlimitObservation { name: name as NonEmptyStr, soft: soft, hard: hard } }
+          }
+      }
+  }
+}
+
+fn docker_ulimits_from_json(stdout: String) -> DockerUlimitsRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => DockerUlimitsUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonNull => DockerUlimitsObserved { ulimits: [] }
+        JsonArray { elements: es } => {
+          let decoded = flat_map(es, e => match docker_ulimit_of_json(v: e) { Present { value: u } => [u]  Absent => [] })
+          if count(decoded) != count(es) {
+            DockerUlimitsUnreadable { cause: "a HostConfig.Ulimits element carries no Name, Soft and Hard triple" }
+          } else {
+            DockerUlimitsObserved { ulimits: decoded }
+          }
+        }
+        JsonBool { value: _ } => DockerUlimitsUnreadable { cause: "HostConfig.Ulimits is neither null nor an array" }
+        JsonNumber { lexeme: _ } => DockerUlimitsUnreadable { cause: "HostConfig.Ulimits is neither null nor an array" }
+        JsonString { value: _ } => DockerUlimitsUnreadable { cause: "HostConfig.Ulimits is neither null nor an array" }
+        JsonObject { members: _ } => DockerUlimitsUnreadable { cause: "HostConfig.Ulimits is neither null nor an array" }
+      }
+  }
+}
+
+// UNLIMITED IS BOTH BOUNDS AT -1, which is the convention `--ulimit memlock=-1:-1` renders and the
+// one the engine reports back. A soft bound alone is not the same request: a process can raise its
+// own soft bound only up to the hard one, so memlock=-1 soft with a finite hard limit still caps
+// pinned memory at that hard figure.
+data docker_ulimit_memlock_name: NonEmptyStr = "memlock" as NonEmptyStr
+
+fn docker_ulimit_is_unlimited(u: DockerUlimitObservation) -> Bool {
+  u.soft == -1 && u.hard == -1
+}
+
+fn docker_ulimits_memlock_unlimited(ulimits: List<DockerUlimitObservation>) -> Bool {
+  any(ulimits, u => (u.name as String) == (docker_ulimit_memlock_name as String) && docker_ulimit_is_unlimited(u: u))
+}
+
+fn docker_string_list_from_json(stdout: String) -> DockerStringListRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => DockerStringListUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonNull => DockerStringListObserved { values: [] }
+        JsonArray { elements: _ } =>
+          match json_array_string_elements(v: v) {
+            Absent => DockerStringListUnreadable { cause: "the member is not an array of strings" }
+            Present { value: xs } => DockerStringListObserved { values: xs }
+          }
+        JsonBool { value: _ } => DockerStringListUnreadable { cause: "the member is neither null nor an array" }
+        JsonNumber { lexeme: _ } => DockerStringListUnreadable { cause: "the member is neither null nor an array" }
+        JsonString { value: _ } => DockerStringListUnreadable { cause: "the member is neither null nor an array" }
+        JsonObject { members: _ } => DockerStringListUnreadable { cause: "the member is neither null nor an array" }
+      }
+  }
+}
+
+// AN ENVIRONMENT ASSIGNMENT IS A NAME AND A VALUE, AND THE VALUE MAY CONTAIN THE SEPARATOR. Docker
+// reports Config.Env as "NAME=value" strings; the name is everything before the FIRST "=", so a value
+// carrying its own "=" -- a base64 payload, a comma-separated device list -- survives the decode.
+fn docker_env_assignment_of_wire(wire: String) -> DockerEnvAssignment? {
+  let parts = split(s: wire, delimiter: "=")
+  match parts.first() {
+    Absent => none
+    Present { value: name } =>
+      if name == "" || count(parts) < 2 {
+        none
+      } else {
+        Present { value: DockerEnvAssignment {
+          name: name as NonEmptyStr,
+          value: join(parts.skip(n: 1), "="),
+        } }
+      }
+  }
+}
+
+fn docker_env_assignments_of_wire(values: List<String>) -> List<DockerEnvAssignment> {
+  flat_map(values, w => match docker_env_assignment_of_wire(wire: w) { Present { value: e } => [e]  Absent => [] })
+}
+
+fn docker_env_value(env: List<DockerEnvAssignment>, name: NonEmptyStr) -> String? {
+  match filter(env, e => (e.name as String) == (name as String)).first() {
+    Absent => none
+    Present { value: e } => Present { value: e.value }
+  }
+}
+
+fn docker_namespace_mode_of_wire(wire: String) -> DockerNamespaceMode? {
+  if wire == "host" {
+    Present { value: NamespaceHost }
+  } else if wire == "private" {
+    Present { value: NamespacePrivate }
+  } else {
+    none
+  }
+}
+
+// A LABEL IS A NAME AND A VALUE AND THE ENGINE REPORTS THEM AS AN OBJECT, not as the "NAME=value"
+// array Config.Env uses. It is its own type rather than an environment assignment reused: a label is
+// metadata the engine carries about the container, an assignment is a variable the process reads, and
+// one carrier for two concepts is the nickname DESIGN section 3 rules out.
+type DockerLabel {
+  name: NonEmptyStr
+  value: String
+}
+
+type DockerLabelsRead
+  = DockerLabelsObserved { labels: List<DockerLabel> }
+  | DockerLabelsUnreadable { cause: String }
+
+fn docker_label_of_member(m: JsonKeyValue) -> DockerLabel? {
+  if m.key == "" {
+    none
+  } else {
+    Present { value: DockerLabel { name: m.key as NonEmptyStr, value: json_string_value_or_empty(v: m.value) } }
+  }
+}
+
+fn docker_labels_from_json(stdout: String) -> DockerLabelsRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => DockerLabelsUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonNull => DockerLabelsObserved { labels: [] }
+        JsonObject { members: ms } => {
+          let decoded = flat_map(ms, m => match docker_label_of_member(m: m) { Present { value: l } => [l]  Absent => [] })
+          if count(decoded) != count(ms) {
+            DockerLabelsUnreadable { cause: "a Config.Labels member carries no name" }
+          } else {
+            DockerLabelsObserved { labels: decoded }
+          }
+        }
+        JsonBool { value: _ } => DockerLabelsUnreadable { cause: "Config.Labels is neither null nor an object" }
+        JsonNumber { lexeme: _ } => DockerLabelsUnreadable { cause: "Config.Labels is neither null nor an object" }
+        JsonString { value: _ } => DockerLabelsUnreadable { cause: "Config.Labels is neither null nor an object" }
+        JsonArray { elements: _ } => DockerLabelsUnreadable { cause: "Config.Labels is neither null nor an object" }
+      }
+  }
+}
+
+// THE MOUNT POPULATION READ BACK INTO THE SAME COPRODUCT THE SPEC RENDERS. The engine reports Type,
+// Source, Destination and RW; a bind is the only kind whose source is a host path, and a volume names
+// its volume in the same field, so the decode follows Type rather than guessing from the shape.
+type DockerMountsRead
+  = DockerMountsObserved { mounts: List<DockerMount> }
+  | DockerMountsUnreadable { cause: String }
+
+fn docker_mount_is_readonly(v: JsonValue) -> Bool {
+  match json_object_unique_member(v: v, key: "RW") {
+    JsonMemberFound { value: rw } =>
+      match rw {
+        JsonBool { value: b } => !b
+        JsonNull => true
+        JsonNumber { lexeme: _ } => true
+        JsonString { value: _ } => true
+        JsonArray { elements: _ } => true
+        JsonObject { members: _ } => true
+      }
+    JsonMemberAbsent => true
+    JsonMemberDuplicated { count: _ } => true
+    JsonMemberNotAnObject => true
+  }
+}
+
+fn docker_mount_of_json(v: JsonValue) -> DockerMount? {
+  let kind = docker_inspect_member_text(v: v, key: "Type")
+  let source = docker_inspect_member_text(v: v, key: "Source")
+  let destination = docker_inspect_member_text(v: v, key: "Destination")
+  let name = docker_inspect_member_text(v: v, key: "Name")
+  if destination == "" {
+    none
+  } else if kind == "bind" {
+    if source == "" { none } else {
+      Present { value: BindMount {
+        host_path: source as FilePath,
+        container_path: destination as FilePath,
+        readonly: docker_mount_is_readonly(v: v),
+      } }
+    }
+  } else if kind == "volume" {
+    if name == "" { none } else {
+      Present { value: VolumeMount {
+        volume: name as NonEmptyStr,
+        container_path: destination as FilePath,
+        readonly: docker_mount_is_readonly(v: v),
+      } }
+    }
+  } else {
+    none
+  }
+}
+
+fn docker_mounts_from_json(stdout: String) -> DockerMountsRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } => DockerMountsUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonNull => DockerMountsObserved { mounts: [] }
+        JsonArray { elements: es } => {
+          let decoded = flat_map(es, e => match docker_mount_of_json(v: e) { Present { value: m } => [m]  Absent => [] })
+          if count(decoded) != count(es) {
+            DockerMountsUnreadable { cause: "a Mounts element is neither a readable bind nor a readable volume" }
+          } else {
+            DockerMountsObserved { mounts: decoded }
+          }
+        }
+        JsonBool { value: _ } => DockerMountsUnreadable { cause: "Mounts is neither null nor an array" }
+        JsonNumber { lexeme: _ } => DockerMountsUnreadable { cause: "Mounts is neither null nor an array" }
+        JsonString { value: _ } => DockerMountsUnreadable { cause: "Mounts is neither null nor an array" }
+        JsonObject { members: _ } => DockerMountsUnreadable { cause: "Mounts is neither null nor an array" }
+      }
+  }
 }

@@ -1,0 +1,366 @@
+module test.claim.spark.native_incarnation_fixture
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused }
+import extdeps.docker.cli { DockerCreateSpec, NamespaceHost, RestartNo }
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, observed_container_realization,
+}
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan, glm_native_device_memory_policy,
+}
+import std.content_hash { content_hash_of_value, sha256_hex_digest, Sha256Hash }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved }
+import gunbc.harness.harness_backend { harness_launch_from_body }
+import gunbc.spark.native_deployment_readback {
+  NcclIbTransport, RankObservation, rank_observation, DeploymentRanksRead,
+}
+import gunbc.serving.incarnation_provenance { ServingCoordinateReading, CoordinateObserved, CoordinateUnestablished }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned }
+import gunbc.artifact_acquisition { AcquisitionObservation, AcquisitionVerified, AcquisitionAbsent }
+import gunbc.spark.vllm_incarnation_provenance {
+  NativeIncarnationPort, IncarnationObservationPhase, BeforeAssessment, AfterAssessment,
+  DirectoryPopulationReading, DirectoryListed, DirectoryUnread,
+  PathDigestReading, PathDigestObserved, PathDigestUnread,
+  FileTextReading, FileTextRead, FileTextUnread,
+}
+
+// ── A WORLD THE INCARNATION TRANSACTION CAN BE ASKED ABOUT ────────────────────────────────────
+//
+// THE WORLD IS ANSWERS, AND EVERY ANSWER IS KEYED BY THE QUESTION. A port whose closures ignored their
+// arguments would answer "verified" for any snapshot on any host and "listed" for any directory, and the
+// transaction could then verify the wrong subject or read the wrong directory and still bind. So each
+// closure answers only the question this world can actually answer -- this revision on these hosts, this
+// directory on this host -- and everything else is unread. The directory and the installed revision are
+// written here as literals, independently of the checkpoint row the transaction derives them from, which
+// is what makes a positive control over this world a check on that derivation rather than a restatement
+// of it.
+
+type InstalledSnapshot {
+  host: HostIdentity
+  repo: NonEmptyStr
+  revision: NonEmptyStr
+}
+
+type IncarnationWorld {
+  launch_before: VllmEndpointProcessLaunchObservation
+  launch_after: VllmEndpointProcessLaunchObservation
+  running_basis_points: Nat?
+  ranks: List<RankObservation>
+  endpoint_alias: NonEmptyStr?
+  installed: List<InstalledSnapshot>
+  source_host: HostIdentity
+  snapshot_directory: NonEmptyStr
+  listing: DirectoryPopulationReading
+  bytes_salt: String
+  configuration_text: String
+  image_host: HostIdentity
+  image: ServingCoordinateReading
+}
+
+data fixture_repo: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
+data fixture_revision: NonEmptyStr = "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+data fixture_snapshot_directory: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+data fixture_model_path: NonEmptyStr = "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+data fixture_endpoint: String = "192.168.1.236:30000"
+data fixture_rail_hca: NonEmptyStr = "rocep1s0f1" as NonEmptyStr
+
+// THE NETDEV A RANK REPORTS BOOTSTRAPPING OVER, authored as an observed value rather than read back
+// from the plan the observation is compared against.
+data fixture_rail_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+
+// THE MEASURED LAYOUT OF THE MOUNTED REVISION, as the transaction's listing reader would return it.
+data fixture_snapshot_names: List<String> = [
+  "LICENSE", "README.md", "chat_template.jinja", "config.json", "generation_config.json",
+  "model-00001-of-00062.safetensors", "model.safetensors.index.json", "processor_config.json",
+  "tokenizer.json", "tokenizer_config.json",
+]
+
+// THE RESOLUTION THE RUNNING ARM CARRIES in this world. The transaction builds its comparison plan at
+// whatever the port answers, so the ranks below are rendered at the same fraction.
+data fixture_basis_points: Nat = 8400
+
+fn fixture_envelope() -> ResolvedDeviceMemoryEnvelope {
+  ResolvedForAttempt {
+    basis_points: fixture_basis_points,
+    binding_node_rank: 1,
+    policy: glm_native_device_memory_policy,
+    attempt: "incarnation-fixture" as NonEmptyStr,
+    standings: [],
+  }
+}
+
+fn fixture_plan() -> ArmLaunchPlan {
+  glm_native_tp4_launch_plan(envelope: fixture_envelope())
+}
+
+fn fixture_engine_argv(rank: Nat) -> List<String> {
+  match fixture_plan() {
+    ArmLaunchRefused { cause: _ } => []
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => []
+        Present { value: l } => l.engine_argv
+      }
+  }
+}
+
+fn fixture_image_reference() -> NonEmptyStr {
+  match fixture_plan() {
+    ArmLaunchRefused { cause: c } => c
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match ls.first() {
+        Absent => "the plan names no line" as NonEmptyStr
+        Present { value: l } => l.image_reference
+      }
+  }
+}
+
+// ── A CONTAINER THE PLAN COULD HAVE CREATED ───────────────────────────────────────────────────
+//
+// THE FAITHFUL REALIZATION IS BUILT FROM THE PLAN'S OWN SPEC, and that is deliberate rather than
+// circular. This is the POSITIVE CONTROL: it establishes that a container created exactly as the plan
+// renders it is accepted, which is the premise every perturbation in
+// test.claim.spark.native_deployment_readback_witness_test depends on -- a fixture that diverged here
+// would make every red row pass for the wrong reason. The fields the plan does NOT render -- the
+// container's identity, when it started, what it observed at runtime -- are authored, because the plan
+// has nothing to say about them and a readback that compared them would be comparing itself.
+fn fixture_spec(rank: Nat) -> DockerCreateSpec? {
+  match fixture_plan() {
+    ArmLaunchRefused { cause: _ } => none
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => none
+        Present { value: l } => Present { value: l.spec }
+      }
+  }
+}
+
+data fixture_container_id: NonEmptyStr = "c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ff" as NonEmptyStr
+data fixture_created_at: NonEmptyStr = "2026-09-14T00:00:00.000000000Z" as NonEmptyStr
+data fixture_started_at: NonEmptyStr = "2026-09-14T00:00:12.000000000Z" as NonEmptyStr
+data fixture_nccl_version: NonEmptyStr = "NCCL version 2.28.3+cuda13.0" as NonEmptyStr
+
+// THE VERBS NODES THE CONTAINER CAN SEE, which is the field the live fleet was found EMPTY on while its
+// sysfs listing named all four devices. A fixture that populated only sysfs would describe the broken
+// deployment; this one describes the container a verbs plan asks for.
+data fixture_infiniband_nodes: List<String> = ["rdma_cm", "uverbs0", "uverbs1", "uverbs2", "uverbs3"]
+data fixture_verbs_sysfs: List<String> = ["rocep1s0f1", "roceP2p1s0f0", "roceP3p1s0f0", "roceP4p1s0f0"]
+
+data fixture_transport_lines: List<String> = [
+  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>",
+  "spark-0c75:346:346 [0] NCCL INFO Using network IB",
+]
+
+fn fixture_realization(host: HostIdentity, rank: Nat, spec: DockerCreateSpec) -> ObservedContainerRealization {
+  observed_container_realization(
+    host: host,
+    node_rank: rank,
+    container_id: fixture_container_id,
+    image_id: spec.image,
+    created_at: fixture_created_at,
+    started_at: fixture_started_at,
+    network: spec.network,
+    ipc: spec.ipc,
+    devices: spec.devices,
+    device_cgroup_rules: [],
+    device_requests: [],
+    memlock_unlimited: spec.memlock_unlimited,
+    ulimits: [],
+    capabilities: map(spec.cap_add, c => c as String),
+    environment: spec.env,
+    mounts: spec.mounts,
+    labels: [],
+    infiniband_device_nodes: fixture_infiniband_nodes,
+    verbs_sysfs_devices: fixture_verbs_sysfs,
+    nccl_version: fixture_nccl_version,
+    transport_lines: fixture_transport_lines,
+    host_units_naming_the_container: [],
+  )
+}
+
+// A RANK WHOSE PLAN LINE DOES NOT EXIST HAS NO REALIZATION TO DESCRIBE, so the fixture renders the
+// container as created from an EMPTY spec rather than inventing one -- which makes the resulting
+// observation diverge loudly instead of agreeing by default.
+fn fixture_absent_spec() -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: "no-such-line" as NonEmptyStr,
+    image: "no-such-line" as NonEmptyStr,
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: 0,
+    memlock_unlimited: false,
+    gpus_all: false,
+    devices: [],
+    cap_add: [],
+    restart: RestartNo,
+    mounts: [],
+    env: [],
+    command: [],
+  }
+}
+
+fn fixture_rank_realization(host: HostIdentity, rank: Nat) -> ObservedContainerRealization {
+  fixture_realization(host: host, rank: rank, spec: match fixture_spec(rank: rank) {
+    Absent => fixture_absent_spec()
+    Present { value: s } => s
+  })
+}
+
+fn fixture_rank(host: HostIdentity, rank: Nat) -> RankObservation {
+  rank_observation(
+    host: host,
+    node_rank: rank,
+    image_digest: fixture_image_reference(),
+    model_path: fixture_model_path,
+    argv: fixture_engine_argv(rank: rank),
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: host, rank: rank),
+  )
+}
+
+data fixture_hosts: List<HostIdentity> = [operator_host_srv9, operator_host_srv10, operator_host_srv12, operator_host_srv11]
+
+fn fixture_ranks() -> List<RankObservation> {
+  [
+    fixture_rank(host: operator_host_srv9, rank: 0),
+    fixture_rank(host: operator_host_srv10, rank: 1),
+    fixture_rank(host: operator_host_srv12, rank: 2),
+    fixture_rank(host: operator_host_srv11, rank: 3),
+  ]
+}
+
+fn fixture_installed_everywhere(revision: NonEmptyStr) -> List<InstalledSnapshot> {
+  map(fixture_hosts, h => InstalledSnapshot { host: h, repo: fixture_repo, revision: revision })
+}
+
+// THE LAUNCH IS PARSED BY THE HARNESS'S OWN READER FROM AN EXPORTER BODY, because that is the observable a
+// harness offer is keyed on. A launch built by hand beside it would agree with itself and say nothing about
+// whether provenance and placement name one process.
+fn fixture_metrics_body(start: String) -> String {
+  join(["# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\nprocess_start_time_seconds ", start, "\n"], "")
+}
+
+fn fixture_launch(start: String) -> VllmEndpointProcessLaunchObservation {
+  harness_launch_from_body(group: FabricGroupB, address: fixture_endpoint, body: fixture_metrics_body(start: start))
+}
+
+data fixture_start: String = "1.78928202645e+09"
+
+fn fixture_runtime_image() -> ServingCoordinateReading {
+  let raw = fixture_image_reference() as String
+  let hex = if starts_with(s: raw, prefix: "sha256:") { substring(s: raw, start: 7, end: string_length(s: raw)) } else { raw }
+  match sha256_hex_digest(hex: hex) {
+    Absent => CoordinateUnestablished { obligation: "the planned image reference is not a sha256 digest" as NonEmptyStr }
+    Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+  }
+}
+
+// ONE BUILDER OVER THE ANSWERS A ROW VARIES, so each row below states exactly the answer it changes and
+// inherits every other answer from the faithful world.
+fn world_of(
+  launch_before: VllmEndpointProcessLaunchObservation,
+  launch_after: VllmEndpointProcessLaunchObservation,
+  ranks: List<RankObservation>,
+  installed: List<InstalledSnapshot>,
+  listing: DirectoryPopulationReading,
+  bytes_salt: String,
+  configuration_text: String,
+  image_host: HostIdentity,
+  image: ServingCoordinateReading,
+) -> IncarnationWorld {
+  IncarnationWorld {
+    launch_before: launch_before,
+    launch_after: launch_after,
+    running_basis_points: Present { value: fixture_basis_points },
+    ranks: ranks,
+    endpoint_alias: Present { value: "glm-5.3-flash" as NonEmptyStr },
+    installed: installed,
+    source_host: operator_host_srv9,
+    snapshot_directory: fixture_snapshot_directory,
+    listing: listing,
+    bytes_salt: bytes_salt,
+    configuration_text: configuration_text,
+    image_host: image_host,
+    image: image,
+  }
+}
+
+fn faithful_world() -> IncarnationWorld {
+  world_of(
+    launch_before: fixture_launch(start: fixture_start),
+    launch_after: fixture_launch(start: fixture_start),
+    ranks: fixture_ranks(),
+    installed: fixture_installed_everywhere(revision: fixture_revision),
+    listing: DirectoryListed { names: fixture_snapshot_names },
+    bytes_salt: "",
+    configuration_text: "{}",
+    image_host: operator_host_srv9,
+    image: fixture_runtime_image(),
+  )
+}
+
+// ── THE PORT OVER A WORLD ─────────────────────────────────────────────────────────────────────
+
+fn world_verification(w: IncarnationWorld, host: HostIdentity, snapshot: ModelSnapshotDesired) -> AcquisitionObservation {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => AcquisitionAbsent
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: _, revision_provenance: _ } =>
+      if any(w.installed, i => host_identity_eq(a: i.host, b: host) && (i.repo as String) == (r.path as String) && (i.revision as String) == (rev as String)) {
+        AcquisitionVerified
+      } else {
+        AcquisitionAbsent
+      }
+  }
+}
+
+fn world_holds_path(w: IncarnationWorld, host: HostIdentity, path: NonEmptyStr) -> Bool {
+  host_identity_eq(a: host, b: w.source_host) && starts_with(s: path as String, prefix: join([w.snapshot_directory as String, "/"], ""))
+}
+
+fn world_port(w: IncarnationWorld) -> NativeIncarnationPort {
+  NativeIncarnationPort {
+    endpoint_launch: fn(phase) {
+      match phase {
+        BeforeAssessment => w.launch_before
+        AfterAssessment => w.launch_after
+      }
+    },
+    running_basis_points: fn(node) { w.running_basis_points },
+    population: fn(plan) { DeploymentRanksRead { ranks: w.ranks, endpoint_alias: w.endpoint_alias } },
+    checkpoint_verification: fn(host, snapshot) { world_verification(w: w, host: host, snapshot: snapshot) },
+    directory_population: fn(host, dir) {
+      if host_identity_eq(a: host, b: w.source_host) && (dir as String) == (w.snapshot_directory as String) {
+        w.listing
+      } else {
+        DirectoryUnread { cause: "this world holds no such directory on that host" as NonEmptyStr }
+      }
+    },
+    path_digest: fn(host, path) {
+      if world_holds_path(w: w, host: host, path: path) {
+        PathDigestObserved { hash: content_hash_of_value(value: join([path as String, w.bytes_salt], "") as NonEmptyStr) }
+      } else {
+        PathDigestUnread { cause: "this world holds no such path on that host" as NonEmptyStr }
+      }
+    },
+    file_text: fn(host, path) {
+      if world_holds_path(w: w, host: host, path: path) {
+        FileTextRead { text: w.configuration_text }
+      } else {
+        FileTextUnread { cause: "this world holds no such file on that host" as NonEmptyStr }
+      }
+    },
+    runtime_image: fn(host) {
+      if host_identity_eq(a: host, b: w.image_host) {
+        w.image
+      } else {
+        CoordinateUnestablished { obligation: "this world runs no serving container on that host" as NonEmptyStr }
+      }
+    },
+  }
+}

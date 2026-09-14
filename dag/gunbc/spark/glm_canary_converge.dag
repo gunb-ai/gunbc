@@ -39,7 +39,7 @@ import gunbc.spark.serving_arm {
   ServingCheckpointRow, ServingRuntimeRow, ReasoningResponseProjection, ParsedReasoningField,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
-  serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+  serving_arm_admits, serving_checkpoint_row, serving_runtime_row, serving_checkpoint_snapshot,
   runtime_artifact_wire, CheckpointQuantization, checkpoint_quantization_on_argv,
 }
 import gunbc.spark.model_snapshot_acquisition {
@@ -49,7 +49,7 @@ import gunbc.spark.model_snapshot_acquisition {
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
   SparkMaterializeRefused,
-  SnapshotAcquisitionExecutor, ContainerizedCli,
+  SnapshotAcquisitionExecutor, ContainerizedCli, snapshot_executor_in_runtime,
   spark_materialize_member,
   SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
@@ -193,13 +193,7 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
 fn glm_canary_snapshot(arm: GlmCanaryArm) -> ModelSnapshotDesired? {
   match serving_checkpoint_row(c: arm.checkpoint) {
     Absent => none
-    Present { value: row } => Present { value: ModelSnapshotPinned {
-      identity: arm.served_model_alias,
-      repo: row.repo,
-      revision: row.revision,
-      placement: row.placement,
-      revision_provenance: row.provenance,
-    } }
+    Present { value: row } => Present { value: serving_checkpoint_snapshot(row: row, identity: arm.served_model_alias) }
   }
 }
 
@@ -299,12 +293,16 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
       host_path: "/nonexistent" as NonEmptyStr,
       container_path: "/out" as NonEmptyStr,
     }
-    Present { value: rrow } => ContainerizedCli {
-      image: runtime_artifact_wire(a: rrow.artifact),
-      cli_path: rrow.hub_cli_path,
-      host_path: glm_canary_host_path(arm: arm),
-      container_path: "/out" as NonEmptyStr,
-    }
+    Present { value: rrow } =>
+      match serving_checkpoint_row(c: arm.checkpoint) {
+        Absent => ContainerizedCli {
+          image: runtime_artifact_wire(a: rrow.artifact),
+          cli_path: rrow.hub_cli_path,
+          host_path: "/nonexistent" as NonEmptyStr,
+          container_path: "/out" as NonEmptyStr,
+        }
+        Present { value: crow } => snapshot_executor_in_runtime(checkpoint: crow, runtime: rrow)
+      }
   }
 }
 

@@ -1,0 +1,206 @@
+module test.claim.spark.collective_transport_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv1 }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.spark.collective_transport {
+  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, RequireNcclSocket,
+  transport_plan_for, transport_env, transport_requires_verbs,
+  transport_expected_device, transport_expected_out_of_band,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, glm_native_collective_transport,
+}
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan, glm_native_device_memory_policy,
+}
+
+// ── THE TRANSPORT IS DERIVED FROM THE LANE, AND THE LAUNCH RENDERS IT ─────────────────────────
+//
+// WHAT THESE ROWS EXIST OVER. The GLM launcher named the rail's netdev and the rail's address and
+// nothing else, so its containers were created with no device to open and NCCL fell to sockets on all
+// four ranks -- measured, with HostConfig.Devices empty on every one of them. Every row here is a fact
+// the previous launch line had no field to carry.
+
+fn plan_for(host: HostIdentity, requirement: CollectiveTransportRequirement) -> CollectiveTransportPlan? {
+  transport_plan_for(host: host, requirement: requirement)
+}
+
+fn env_value(env: List<DockerEnvAssignment>, name: String) -> String? {
+  match filter(env, e => (e.name as String) == name).first() {
+    Absent => none
+    Present { value: e } => Present { value: e.value }
+  }
+}
+
+fn env_names(env: List<DockerEnvAssignment>) -> List<String> {
+  map(env, e => e.name as String)
+}
+
+// ── 1. THE PLAN IS THE HOST'S OWN LANE ────────────────────────────────────────────────────────
+test fn a_verbs_plan_names_the_hosts_own_rdma_device_and_netdev() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclIb) {
+    Absent => false
+    Present { value: plan } =>
+      (plan.rdma_device as String) == "rocep1s0f1"
+        && (plan.netdev as String) == "enp1s0f1np1"
+        && transport_requires_verbs(plan: plan)
+        && (transport_expected_device(plan: plan) as String) == "rocep1s0f1"
+        && (transport_expected_out_of_band(plan: plan) as String) == "enp1s0f1np1"
+  }
+}
+
+// A HOST WITH NO OBSERVED LANE HAS NO TRANSPORT PLAN, which is what makes the launcher's refusal
+// reachable: srv1 is a real host in the fleet roster and carries no fabric lane.
+test fn a_host_with_no_observed_lane_has_no_transport_plan() -> Bool {
+  match plan_for(host: operator_host_srv1, requirement: RequireNcclIb) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── 2. REQUIRING VERBS RENDERS WHAT VERBS NEEDS ───────────────────────────────────────────────
+//
+// THE DEVICE, THE PINNED-MEMORY BOUND AND THE CAPABILITY TRAVEL TOGETHER. Any one of them missing is a
+// container that can see the RoCE devices in sysfs -- as these containers do -- and open none of them.
+test fn requiring_verbs_renders_the_device_the_memlock_and_the_capability() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclIb) {
+    Absent => false
+    Present { value: plan } =>
+      count(plan.device_population) == 1
+        && any(plan.device_population, d => (d.host_path as String) == "/dev/infiniband" && (d.container_path as String) == "/dev/infiniband" && (d.cgroup_permissions as String) == "rwm")
+        && plan.memlock_unlimited
+        && any(plan.capabilities, c => (c as String) == "IPC_LOCK")
+  }
+}
+
+// AND SELECTING SOCKETS RENDERS NONE OF IT, which is the discrimination that says the requirement is
+// consumed rather than decorative: the same host, the same lane, a different declared realization.
+test fn selecting_sockets_renders_no_device_no_memlock_and_no_capability() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "selecting_sockets_renders_no_device_no_memlock_and_no_capability") }) {
+    Absent => false
+    Present { value: plan } =>
+      count(plan.device_population) == 0
+        && !plan.memlock_unlimited
+        && count(plan.capabilities) == 0
+        && !transport_requires_verbs(plan: plan)
+        && (transport_expected_device(plan: plan) as String) == "enp1s0f1np1"
+  }
+}
+
+// ── 3. THE ENVIRONMENT NAMES THE EXACT DEVICE AND FORCES THE BACKEND ──────────────────────────
+//
+// THE EXACT-MATCH FORM IS THE LEADING "=", which NCCL documents for naming one device: four RoCE
+// devices are visible on these hosts and a prefix match would admit the wrong one. NCCL_NET=IB is what
+// turns a verbs failure into a refusal instead of a silent socket fallback -- the state this fleet has
+// been serving in.
+test fn a_verbs_environment_pins_the_hca_exactly_and_forces_the_backend() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclIb) {
+    Absent => false
+    Present { value: plan } => {
+      let env = transport_env(plan: plan)
+      (match env_value(env: env, name: "NCCL_IB_HCA") { Present { value: v } => v == "=rocep1s0f1"  Absent => false })
+        && (match env_value(env: env, name: "NCCL_NET") { Present { value: v } => v == "IB"  Absent => false })
+        && (match env_value(env: env, name: "UCX_NET_DEVICES") { Present { value: v } => v == "rocep1s0f1:1"  Absent => false })
+        && (match env_value(env: env, name: "NCCL_SOCKET_IFNAME") { Present { value: v } => v == "enp1s0f1np1"  Absent => false })
+        && (match env_value(env: env, name: "GLOO_SOCKET_IFNAME") { Present { value: v } => v == "enp1s0f1np1"  Absent => false })
+    }
+  }
+}
+
+// THE GID IS SELECTED BY ADDRESS FAMILY AND ROCE VERSION, never by the image's baked slot. Group A lost
+// a day to exactly that: the image bakes index 3, the flap emptied slot 3, and the IPv4 RoCE v2 GID
+// moved to slot 4.
+test fn a_verbs_environment_selects_its_gid_by_attributes() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclIb) {
+    Absent => false
+    Present { value: plan } => {
+      let env = transport_env(plan: plan)
+      (match env_value(env: env, name: "NCCL_IB_GID_INDEX") { Present { value: v } => v == "-1"  Absent => false })
+        && (match env_value(env: env, name: "NCCL_IB_ADDR_FAMILY") { Present { value: v } => v == "AF_INET"  Absent => false })
+        && (match env_value(env: env, name: "NCCL_IB_ROCE_VERSION_NUM") { Present { value: v } => v == "2"  Absent => false })
+    }
+  }
+}
+
+// A SOCKET REALIZATION ASKS FOR SOCKETS BY NAME AND FOR NO VERBS DEVICE. The absence of a device mapping
+// is a consequence of the selection, never the mechanism of it: a plan that said nothing would be taking
+// whatever NCCL found, which is the fallback this vocabulary exists to end.
+test fn a_socket_environment_selects_sockets_and_names_no_verbs_device() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "a_socket_environment_selects_sockets_and_names_no_verbs_device") }) {
+    Absent => false
+    Present { value: plan } => {
+      let env = transport_env(plan: plan)
+      let names = env_names(env: env)
+      (match env_value(env: env, name: "NCCL_NET") { Present { value: v } => v == "Socket"  Absent => false })
+        && !any(names, n => n == "NCCL_IB_HCA")
+        && !any(names, n => n == "NCCL_IB_GID_INDEX")
+        && any(names, n => n == "NCCL_SOCKET_IFNAME")
+    }
+  }
+}
+
+// ── 4. THE NATIVE ARM REQUIRES VERBS, AND ITS RENDERED LINE CARRIES THEM ──────────────────────
+fn arm_plan() -> ArmLaunchPlan {
+  glm_native_tp4_launch_plan(envelope: ResolvedForAttempt {
+    basis_points: 8400,
+    binding_node_rank: 1,
+    policy: glm_native_device_memory_policy,
+    attempt: "collective-transport-witness" as NonEmptyStr,
+    standings: [],
+  })
+}
+
+fn arm_argv(rank: Nat) -> List<String> {
+  match arm_plan() {
+    ArmLaunchRefused { cause: _ } => []
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => []
+        Present { value: l } => l.argv
+      }
+  }
+}
+
+fn argv_carries(argv: List<String>, word: String) -> Bool {
+  any(argv, w => w == word)
+}
+
+// THE RENDERED LINE IS WHAT WOULD ACTUALLY BE RUN, and these are the words whose absence left four
+// ranks on sockets. The environment assignment is asserted as the exact word the renderer emits.
+test fn the_native_arms_rendered_line_carries_its_transport_realization() -> Bool {
+  let argv = arm_argv(rank: 0)
+  count(argv) != 0
+    && argv_carries(argv: argv, word: "/dev/infiniband:/dev/infiniband:rwm")
+    && argv_carries(argv: argv, word: "memlock=-1:-1")
+    && argv_carries(argv: argv, word: "IPC_LOCK")
+    && argv_carries(argv: argv, word: "NCCL_NET=IB")
+    && argv_carries(argv: argv, word: "NCCL_IB_HCA==rocep1s0f1")
+    && argv_carries(argv: argv, word: "NCCL_IB_GID_INDEX=-1")
+}
+
+// AND EVERY RANK CARRIES ITS OWN LANE'S DEVICE rather than one name copied across the roster. On this
+// fleet the four legs happen to share a device name, so the assertion is that each line was rendered
+// from ITS OWN host's plan -- which is what the per-line transport field makes checkable.
+test fn every_planned_rank_carries_a_transport_plan_for_its_own_host() -> Bool {
+  match arm_plan() {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      count(ls) == 4
+        && all(ls, l => (l.transport.host as String) == (l.node.host as String))
+        && all(ls, l => transport_requires_verbs(plan: l.transport))
+        && all(ls, l => (render_ipv4_address(addr: l.transport.rail_address) as String) == (render_ipv4_address(addr: l.node.rail) as String))
+  }
+}
+
+test fn the_native_arm_requires_verbs() -> Bool {
+  match glm_native_collective_transport {
+    RequireNcclIb => true
+    RequireNcclSocket { basis: _ } => false
+  }
+}

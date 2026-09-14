@@ -1,0 +1,450 @@
+module test.claim.spark.vllm_incarnation_transaction_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, serialize_content_hash }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch, vllm_endpoint_process_launch_is, vllm_endpoint_process_launch_key,
+}
+import gunbc.spark.native_deployment_readback { RankObservation, rank_observation, NcclIbTransport }
+
+import gunbc.serving.incarnation_provenance {
+  CoordinateObserved, CoordinateUnestablished, CoordinateAbsentByObservation,
+  serving_execution_source_ref, serving_execution_runtime_ref,
+}
+import gunbc.spark.vllm_incarnation_provenance {
+  VllmIncarnationOutcome, IncarnationBound, IncarnationUnestablished, VllmServingIncarnationProvenance,
+  observe_native_incarnation, incarnation_applies_to, incarnation_for_launch,
+  IncarnationFound, IncarnationMissing, IncarnationAmbiguous,
+  DirectoryListed, DirectoryUnread, directory_population_of, path_digest_of, PathNotPresent, PathDigestObserved, PathDigestUnread,
+  ChatTemplateOverride, OverrideNotRequested, OverrideRequested, OverrideMalformed, chat_template_override_in,
+  semantic_runtime_coordinate_of,
+}
+import test.claim.spark.native_incarnation_fixture {
+  fixture_rank_realization,
+  IncarnationWorld, InstalledSnapshot, world_of, faithful_world, world_port,
+  fixture_launch, fixture_start, fixture_ranks, fixture_installed_everywhere, fixture_revision, fixture_repo,
+  fixture_snapshot_names, fixture_snapshot_directory, fixture_runtime_image, fixture_image_reference,
+  fixture_engine_argv, fixture_model_path, fixture_rail_hca, fixture_rail_netdev,
+}
+import product.fabric.work {
+  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import std.measure { hardware_thread_count }
+import gunbc.serving.turn_demand {
+  ServingTurnRequest, ServingTurnExecution, TurnExecutionBound,
+  TurnWorkBound, TurnWorkUnestablished, serving_turn_work, serving_turn_requirements,
+}
+
+// ── THE INCARNATION TRANSACTION, DRIVEN THROUGH ITS PORT ──────────────────────────────────────
+//
+// EVERY ROW RUNS observe_native_incarnation, the only route by which bind_incarnation is reached. The rows
+// that used to live in test.claim.spark.native_deployment_readback_witness_test called bind_incarnation
+// directly with a caller-chosen rank count and a fixture rung; that call no longer compiles from here, and
+// the refusal is the point. What a row may vary is an ANSWER the world gives -- never a question the
+// transaction asks, and never the rank population, subject or directory it asks about.
+
+data t_attempt: NonEmptyStr = "glm-native-incarnation-2026-09-14T10:00:00Z" as NonEmptyStr
+
+fn observe(w: IncarnationWorld) -> VllmIncarnationOutcome {
+  observe_native_incarnation(port: world_port(w: w), attempt: t_attempt)
+}
+
+fn bound(o: VllmIncarnationOutcome) -> Bool {
+  match o {
+    IncarnationBound { provenance: _ } => true
+    IncarnationUnestablished { obligations: _ } => false
+  }
+}
+
+fn refused_naming(o: VllmIncarnationOutcome, pattern: String) -> Bool {
+  match o {
+    IncarnationBound { provenance: _ } => false
+    IncarnationUnestablished { obligations: os } => any(os, x => string_contains(s: x as String, pattern: pattern))
+  }
+}
+
+// ── 1. THE POSITIVE CONTROL: A FAITHFUL WORLD BINDS, AND SAYS WHAT IT BOUND ───────────────────
+//
+// EVERY RED BELOW IS A DISCRIMINATION ONLY BECAUSE THIS ROW IS GREEN. The evidence is asserted field by
+// field against values written in the fixture independently of the row the transaction derives from: the
+// plan's full population, the directory the world holds the bytes in, the template file it carries, and a
+// receipt naming this attempt rather than a producer class.
+test fn a_faithful_world_binds_an_incarnation() -> Bool {
+  match observe(w: faithful_world()) {
+    IncarnationUnestablished { obligations: _ } => false
+    IncarnationBound { provenance: p } =>
+      p.evidence.ranks_agreed == 4
+        && p.evidence.ranks_required == 4
+        && (p.evidence.snapshot_directory as String) == (fixture_snapshot_directory as String)
+        && string_contains(s: p.evidence.template_origin as String, pattern: "chat_template.jinja")
+        && string_contains(s: p.execution.receipt as String, pattern: t_attempt as String)
+        && string_contains(s: p.execution.receipt as String, pattern: vllm_endpoint_process_launch_key(launch: p.launch) as String)
+  }
+}
+
+// ── 2. ONE RANK WITHOUT THE VERIFIED SNAPSHOT REFUSES THE WHOLE INCARNATION ───────────────────
+//
+// THIS IS FINDING 1, AND IT WAS NEVER EXECUTABLE BEFORE. The per-rank verifier had no caller, so no input
+// could make the checkpoint coordinate refuse: it was minted from a repository and a revision string.
+test fn one_rank_without_a_verified_snapshot_refuses() -> Bool {
+  let installed = filter(fixture_installed_everywhere(revision: fixture_revision), i => (i.host as String) != (operator_host_srv11 as String))
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: installed,
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: join(["not installed on ", operator_host_srv11 as String], ""),
+  )
+}
+
+// A SNAPSHOT VERIFIED AT ANOTHER REVISION IS NOT THIS SUBJECT. Every host verifies something; none of it is
+// the revision the plan launches, so a transaction that asked the world about the wrong subject -- or about
+// any subject at all -- would bind here.
+test fn a_snapshot_verified_at_another_revision_does_not_count() -> Bool {
+  !bound(o: observe(w: world_of(
+    launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+    ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: "0000000000000000000000000000000000000000" as NonEmptyStr),
+    listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+    image_host: operator_host_srv9, image: fixture_runtime_image(),
+  )))
+}
+
+// ── 3. THE LAUNCH IS READ BEFORE AND AFTER, AND A REPLACEMENT BETWEEN THEM REFUSES ────────────
+test fn a_process_replaced_during_the_observation_refuses() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: "1.78928999999e+09"),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "replaced during the observation",
+  )
+}
+
+test fn an_unread_launch_refuses_before_anything_else_is_asked() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: LaunchUnobserved { group: FabricGroupB, obligation: "the metrics endpoint did not answer" as NonEmptyStr },
+      launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "the metrics endpoint did not answer",
+  )
+}
+
+// ── 4. A DEPLOYMENT THAT DIVERGED BINDS NOTHING, HOWEVER GOOD EVERYTHING ELSE IS ──────────────
+test fn a_diverged_deployment_binds_nothing() -> Bool {
+  let wrong_image_rank = rank_observation(
+    host: operator_host_srv12, node_rank: 2,
+    image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
+    model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: operator_host_srv12, rank: 2),
+  )
+  let ranks = map(fixture_ranks(), r => if r.node_rank == 2 { wrong_image_rank } else { r })
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: ranks, installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "DIVERGED",
+  )
+}
+
+// AND NOTHING ABOUT THE SOURCE IS ASKED OF A DEPLOYMENT THAT DIVERGED. This world also has the snapshot
+// installed nowhere; a transaction that went on to verify it would report that too, at the cost of hashing
+// the whole revision on every serving rank to describe a deployment that is not the planned one.
+test fn a_diverged_deployment_is_not_asked_about_its_source() -> Bool {
+  let wrong_image_rank = rank_observation(
+    host: operator_host_srv12, node_rank: 2,
+    image_digest: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr,
+    model_path: fixture_model_path, argv: fixture_engine_argv(rank: 2),
+    selected_transport: NcclIbTransport { hca: fixture_rail_hca, oob_netdev: Present { value: fixture_rail_netdev } },
+    realization: fixture_rank_realization(host: operator_host_srv12, rank: 2),
+  )
+  let o = observe(w: world_of(
+    launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+    ranks: map(fixture_ranks(), r => if r.node_rank == 2 { wrong_image_rank } else { r }),
+    installed: [] as List<InstalledSnapshot>,
+    listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+    image_host: operator_host_srv9, image: fixture_runtime_image(),
+  ))
+  refused_naming(o: o, pattern: "DIVERGED") && !refused_naming(o: o, pattern: "not installed")
+}
+
+// ── 5. AN UNREADABLE SNAPSHOT DIRECTORY IS NOT AN EMPTY ONE ───────────────────────────────────
+//
+// THE SHELL OBSERVER THIS REPLACES BOUND HERE. A snapshot directory that did not exist made `ls | grep |
+// wc -l` print 0 and exit zero, every member read ABSENT, the template fell through to "inherited", and
+// with the checkpoint minted from strings the manifest resolved over nothing. The refusal must carry the
+// unread cause, not the no-template sentence an empty listing would produce.
+test fn an_unreadable_snapshot_directory_is_not_an_empty_one() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryUnread { cause: "the snapshot directory could not be listed on the head" as NonEmptyStr },
+      bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "could not be listed on the head",
+  )
+}
+
+// ── 6. WHICH TEMPLATE, AND EACH ANSWER REACHABLE ──────────────────────────────────────────────
+test fn two_template_files_are_ambiguous_and_both_are_named() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: concat(fixture_snapshot_names, ["chat_template.json"]) },
+      bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "2 template-shaped files and nothing selecting between them: chat_template.jinja, chat_template.json",
+  )
+}
+
+fn names_without_template() -> List<String> {
+  filter(fixture_snapshot_names, n => n != "chat_template.jinja")
+}
+
+// THE INHERITED BRANCH IS REACHABLE, which the observer it replaces could not say: `ls | grep -ci` exited
+// nonzero on no match, so that branch was never entered by any input.
+test fn an_inline_template_in_configuration_binds_as_inherited() -> Bool {
+  match observe(w: world_of(
+    launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+    ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+    listing: DirectoryListed { names: names_without_template() },
+    bytes_salt: "", configuration_text: "{\"chat_template\": \"{{ messages }}\"}",
+    image_host: operator_host_srv9, image: fixture_runtime_image(),
+  )) {
+    IncarnationUnestablished { obligations: _ } => false
+    IncarnationBound { provenance: p } => string_contains(s: p.evidence.template_origin as String, pattern: "tokenizer_config: present")
+  }
+}
+
+test fn no_template_anywhere_refuses() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: names_without_template() },
+      bytes_salt: "", configuration_text: "{\"model_max_length\": 202752}",
+      image_host: operator_host_srv9, image: fixture_runtime_image(),
+    )),
+    pattern: "no template was found",
+  )
+}
+
+// ── 7. THE RUNTIME HALF IS JOINED TO THE ACCEPTANCE, AND READ WHERE THE PLAN SERVES ───────────
+test fn a_runtime_image_other_than_the_accepted_one_refuses() -> Bool {
+  let other = match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
+    Absent => CoordinateUnestablished { obligation: "fixture digest did not parse" as NonEmptyStr }
+    Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+  }
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv9, image: other,
+    )),
+    pattern: "the runtime closure was observed from",
+  )
+}
+
+test fn the_runtime_image_is_read_on_the_planned_head() -> Bool {
+  refused_naming(
+    o: observe(w: world_of(
+      launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+      ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+      listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+      image_host: operator_host_srv10, image: fixture_runtime_image(),
+    )),
+    pattern: "runs no serving container on that host",
+  )
+}
+
+// ── 8. LAUNCH IDENTITY: A RESTART IS A NEW LAUNCH OVER THE SAME EXECUTION ─────────────────────
+fn bound_for_start(start: String) -> VllmIncarnationOutcome {
+  observe(w: world_of(
+    launch_before: fixture_launch(start: start), launch_after: fixture_launch(start: start),
+    ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+    listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: "", configuration_text: "{}",
+    image_host: operator_host_srv9, image: fixture_runtime_image(),
+  ))
+}
+
+test fn a_restart_is_a_new_launch_over_the_same_execution() -> Bool {
+  match bound_for_start(start: fixture_start) {
+    IncarnationUnestablished { obligations: _ } => false
+    IncarnationBound { provenance: p1 } =>
+      match bound_for_start(start: "1.78929000000e+09") {
+        IncarnationUnestablished { obligations: _ } => false
+        IncarnationBound { provenance: p2 } =>
+          (serving_execution_source_ref(c: p1.execution) as String) == (serving_execution_source_ref(c: p2.execution) as String)
+            && (serving_execution_runtime_ref(c: p1.execution) as String) == (serving_execution_runtime_ref(c: p2.execution) as String)
+            && !incarnation_applies_to(p: p1, launch: p2.launch)
+      }
+  }
+}
+
+test fn provenance_for_one_launch_is_found_only_for_that_launch() -> Bool {
+  match bound_for_start(start: fixture_start) {
+    IncarnationUnestablished { obligations: _ } => false
+    IncarnationBound { provenance: p1 } =>
+      match bound_for_start(start: "1.78929000000e+09") {
+        IncarnationUnestablished { obligations: _ } => false
+        IncarnationBound { provenance: p2 } =>
+          (match incarnation_for_launch(candidates: [p1], launch: p2.launch) {
+            IncarnationMissing => true
+            IncarnationFound { provenance: _ } => false
+            IncarnationAmbiguous { matches: _ } => false
+          }) && (match incarnation_for_launch(candidates: [p1, p2], launch: p1.launch) {
+            IncarnationFound { provenance: f } => vllm_endpoint_process_launch_is(launch: f.launch, other: p1.launch)
+            IncarnationMissing => false
+            IncarnationAmbiguous { matches: _ } => false
+          }) && (match incarnation_for_launch(candidates: [p1, p1], launch: p1.launch) {
+            IncarnationAmbiguous { matches: n } => n == 2
+            IncarnationFound { provenance: _ } => false
+            IncarnationMissing => false
+          })
+      }
+  }
+}
+
+// THE KEY IS NOT FRAMED BY SEPARATORS A FIELD MAY CONTAIN. Under the U+001F/U+001E rendering these two
+// launches produced one material and one key; each field is now hashed on its own before combination.
+test fn launch_keys_do_not_collide_across_the_former_separators() -> Bool {
+  let a = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "a" as NonEmptyStr, process_start_field: "b\u{1e}process-start\u{1f}c" as NonEmptyStr)
+  let b = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "a\u{1e}process-start\u{1f}b" as NonEmptyStr, process_start_field: "c" as NonEmptyStr)
+  !vllm_endpoint_process_launch_is(launch: a, other: b)
+    && (vllm_endpoint_process_launch_key(launch: a) as String) != (vllm_endpoint_process_launch_key(launch: b) as String)
+}
+
+test fn two_launches_that_once_collided_on_at_signs_are_distinct_and_key_apart() -> Bool {
+  let a = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "a@b" as NonEmptyStr, process_start_field: "c" as NonEmptyStr)
+  let b = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "a" as NonEmptyStr, process_start_field: "b@c" as NonEmptyStr)
+  !vllm_endpoint_process_launch_is(launch: a, other: b)
+    && (vllm_endpoint_process_launch_key(launch: a) as String) != (vllm_endpoint_process_launch_key(launch: b) as String)
+}
+
+// ── 9. WORK IDENTITY FROM A CLOSURE OBTAINED THE WAY PRODUCTION OBTAINS ONE ───────────────────
+fn t_request(execution: ServingTurnExecution) -> ServingTurnRequest {
+  ServingTurnRequest {
+    execution: execution,
+    inputs: "probe.inputs" as ArtifactManifestRef,
+    effect_contract: "probe.effects" as EffectContractRef,
+    output_contract: "probe.outputs" as OutputContractRef,
+  }
+}
+
+fn t_requirements() -> ExecutionRequirements {
+  serving_turn_requirements(
+    capacity_class: ControlPlaneCapacity,
+    capabilities: "gunbc.capabilities.spark-serving.probe" as CapabilityManifestRef,
+    trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
+  )
+}
+
+fn work_key_for_salt(salt: String) -> String {
+  match observe(w: world_of(
+    launch_before: fixture_launch(start: fixture_start), launch_after: fixture_launch(start: fixture_start),
+    ranks: fixture_ranks(), installed: fixture_installed_everywhere(revision: fixture_revision),
+    listing: DirectoryListed { names: fixture_snapshot_names }, bytes_salt: salt, configuration_text: "{}",
+    image_host: operator_host_srv9, image: fixture_runtime_image(),
+  )) {
+    IncarnationUnestablished { obligations: _ } => "unbound"
+    IncarnationBound { provenance: p } =>
+      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: t_request(execution: TurnExecutionBound { closure: p.execution }), requirements: t_requirements()) {
+        TurnWorkUnestablished { obligation: _ } => "unestablished"
+        TurnWorkBound { work: w } => w.id.key as String
+      }
+  }
+}
+
+test fn an_observed_incarnation_mints_work_through_the_fabric_constructor() -> Bool {
+  work_key_for_salt(salt: "") != "unbound" && work_key_for_salt(salt: "") != "unestablished"
+}
+
+// DIFFERENT MEMBER BYTES ARE TWO WORKS, and the same bytes observed twice are one.
+test fn different_member_bytes_are_two_works_and_the_same_bytes_are_one() -> Bool {
+  work_key_for_salt(salt: "") == work_key_for_salt(salt: "")
+    && work_key_for_salt(salt: "") != work_key_for_salt(salt: "tokenizer-retrained")
+    && work_key_for_salt(salt: "tokenizer-retrained") != "unbound"
+}
+
+// ── 10. THE READERS AND PROJECTIONS, AT THEIR OWN GRAIN ───────────────────────────────────────
+test fn a_listing_is_accepted_only_with_its_completion_marker() -> Bool {
+  (match directory_population_of(raw: "config.json\ntokenizer.json") {
+    DirectoryUnread { cause: _ } => true
+    DirectoryListed { names: _ } => false
+  }) && (match directory_population_of(raw: "config.json\ntokenizer.json\nGUNBC-DIRECTORY-LISTED") {
+    DirectoryListed { names: ns } => count(ns) == 2
+    DirectoryUnread { cause: _ } => false
+  }) && (match directory_population_of(raw: "GUNBC-DIRECTORY-LISTED") {
+    DirectoryListed { names: ns } => count(ns) == 0
+    DirectoryUnread { cause: _ } => false
+  })
+}
+
+test fn a_digest_read_distinguishes_absent_from_unreadable() -> Bool {
+  (match path_digest_of(raw: "ABSENT", path: "/x" as NonEmptyStr) { PathNotPresent => true  _ => false })
+    && (match path_digest_of(raw: "sha256sum: /x: Permission denied", path: "/x" as NonEmptyStr) { PathDigestUnread { cause: _ } => true  _ => false })
+    && (match path_digest_of(raw: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 */x", path: "/x" as NonEmptyStr) { PathDigestObserved { hash: _ } => true  _ => false })
+}
+
+test fn the_chat_template_override_is_found_in_both_spellings_and_only_there() -> Bool {
+  (match chat_template_override_in(argv: ["/m", "--chat-template", "/t.jinja", "--port", "1"]) {
+    OverrideRequested { value: v } => (v as String) == "/t.jinja"
+    _ => false
+  }) && (match chat_template_override_in(argv: ["/m", "--chat-template=/t.jinja", "--port", "1"]) {
+    OverrideRequested { value: v } => (v as String) == "/t.jinja"
+    _ => false
+  }) && (match chat_template_override_in(argv: ["/m", "--chat-template-content-format", "string"]) {
+    OverrideNotRequested => true
+    _ => false
+  }) && (match chat_template_override_in(argv: ["/m", "--chat-template"]) {
+    OverrideMalformed { cause: _ } => true
+    _ => false
+  }) && (match chat_template_override_in(argv: ["--chat-template", "/a", "--chat-template=/b"]) {
+    OverrideMalformed { cause: _ } => true
+    _ => false
+  })
+}
+
+fn runtime_hash_text(argv: List<String>) -> String {
+  match semantic_runtime_coordinate_of(argv: argv) {
+    CoordinateObserved { hash: h } => serialize_content_hash(hash: h) as String
+    _ => "unobserved"
+  }
+}
+
+// A SEMANTIC FLAG MOVES THE RUNTIME COORDINATE AND A REALIZATION FLAG DOES NOT. The review's required
+// control, at the grain the projection runs.
+test fn a_semantic_runtime_flag_moves_the_runtime_coordinate_and_a_port_does_not() -> Bool {
+  let base = ["/m", "--kv-cache-dtype", "auto", "--tensor-parallel-size", "4", "--port", "30000"]
+  let dtype = ["/m", "--kv-cache-dtype", "fp8", "--tensor-parallel-size", "4", "--port", "30000"]
+  let port = ["/m", "--kv-cache-dtype", "auto", "--tensor-parallel-size", "4", "--port", "30001"]
+  runtime_hash_text(argv: base) != runtime_hash_text(argv: dtype)
+    && runtime_hash_text(argv: base) == runtime_hash_text(argv: port)
+    && runtime_hash_text(argv: base) != "unobserved"
+}

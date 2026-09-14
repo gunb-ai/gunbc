@@ -6,43 +6,18 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
-  fabric_rail_interface_name,
 }
+import extdeps.docker.cli { DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, NamespaceHost, RestartNo }
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, observed_container_realization,
+}
+
 import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
   glm_native_device_memory_policy,
 }
-import std.content_hash { content_hash_of_value, sha256_hex_digest, Sha256Hash }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
-import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
-  vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
-}
-import gunbc.spark.vllm_incarnation_provenance {
-  VllmIncarnationOutcome, IncarnationBound, IncarnationUnestablished,
-  bind_incarnation, incarnation_applies_to, incarnation_for_launch,
-  IncarnationFound, IncarnationMissing, IncarnationAmbiguous,
-}
-import product.fabric.work {
-  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
-  ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
-}
-import product.fabric.envelope { unstated_envelope }
-import product.fabric.isolation { IsolationProfile }
-import std.measure { hardware_thread_count }
-import gunbc.serving.turn_demand {
-  ServingTurnRequest, ServingTurnExecution, TurnExecutionBound,
-  TurnWorkBound, TurnWorkUnestablished, serving_turn_work, serving_turn_requirements,
-}
-import gunbc.serving.incarnation_provenance {
-  ServingSourceResolution, ServingRuntimeResolution,
-  ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation,
-  CoordinateUnestablished, RevisionAddressedUpstreamVerification,
-  resolve_serving_source, resolve_serving_runtime,
-  serving_execution_source_ref,
-}
 import gunbc.spark.native_deployment_readback {
-  NcclTransportObservation, NcclIbTransport, NcclSocketTransport, NcclTransportUnread,
+  NcclIbTransport, NcclSocketTransport, NcclTransportUnread,
   RankObservation, rank_observation,
   NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
@@ -50,6 +25,11 @@ import gunbc.spark.native_deployment_readback {
 }
 
 data subject: NonEmptyStr = "the native four-rank deployment on fabric cage 2" as NonEmptyStr
+
+// THE NETDEV IS AUTHORED HERE AS AN OBSERVED VALUE, not imported from the launcher. A fixture that read
+// the plan's own netdev back would agree with the plan by construction; what a rank REPORTS is a reading
+// of the world, and this is the string this fleet's engines print.
+data t_rail_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
 // THIS IS THE STOCK RUNTIME, AND IT IS NOW THE WRONG-IMAGE VALUE RATHER THAN THE FAITHFUL ONE. Every
 // fixture below used to report it as the image a healthy rank is running, while the plan pins the runtime
 // this fleet derived -- so each of them silently varied the image DIMENSION as well as the one its name
@@ -111,6 +91,72 @@ fn join_argv(items: List<List<String>>) -> List<String> {
   fold(items, init: [] as List<String>, f: (acc, x) => concat(acc, x))
 }
 
+
+// ── THE CONTAINER A FAITHFUL RANK WAS CREATED IN ──────────────────────────────────────────────
+//
+// A RANK OBSERVATION NOW CARRIES ITS CREATION STATE, and the faithful one is rendered from the plan's own
+// spec. That is the POSITIVE CONTROL and not a tautology: it fixes the state in which acceptance is
+// reachable, so each perturbation below varies exactly the dimension its name claims. The fields the plan
+// does not render -- identity, instants, what the container observed at runtime -- are authored here,
+// because a readback that compared them would be comparing the plan with itself.
+fn empty_spec() -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: "no-such-line" as NonEmptyStr, image: "no-such-line" as NonEmptyStr,
+    network: NamespaceHost, ipc: NamespaceHost, shm_size_bytes: 0,
+    memlock_unlimited: false, gpus_all: false, devices: [], cap_add: [],
+    restart: RestartNo, mounts: [], env: [], command: [],
+  }
+}
+
+fn spec_for(rank: Nat) -> DockerCreateSpec {
+  match plan() {
+    ArmLaunchRefused { cause: _ } => empty_spec()
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => empty_spec()
+        Present { value: l } => l.spec
+      }
+  }
+}
+
+data t_container_id: NonEmptyStr = "c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ffee0c75c0ff" as NonEmptyStr
+data t_created_at: NonEmptyStr = "2026-09-14T00:00:00.000000000Z" as NonEmptyStr
+data t_started_at: NonEmptyStr = "2026-09-14T00:00:12.000000000Z" as NonEmptyStr
+data t_nccl_version: NonEmptyStr = "NCCL version 2.28.3+cuda13.0" as NonEmptyStr
+data t_infiniband_nodes: List<String> = ["rdma_cm", "uverbs0", "uverbs1", "uverbs2", "uverbs3"]
+data t_verbs_sysfs: List<String> = ["rocep1s0f1", "roceP2p1s0f0", "roceP3p1s0f0", "roceP4p1s0f0"]
+data t_transport_lines: List<String> = [
+  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>",
+  "spark-0c75:346:346 [0] NCCL INFO Using network IB",
+]
+
+fn realization_from(
+  host: HostIdentity, rank: Nat, spec: DockerCreateSpec,
+  devices: List<DockerDeviceMapping>, memlock_unlimited: Bool,
+  capabilities: List<String>, environment: List<DockerEnvAssignment>,
+  infiniband_device_nodes: List<String>,
+) -> ObservedContainerRealization {
+  observed_container_realization(
+    host: host, node_rank: rank, container_id: t_container_id, image_id: spec.image,
+    created_at: t_created_at, started_at: t_started_at, network: spec.network, ipc: spec.ipc,
+    devices: devices, device_cgroup_rules: [], device_requests: [],
+    memlock_unlimited: memlock_unlimited, ulimits: [], capabilities: capabilities,
+    environment: environment, mounts: spec.mounts, labels: [],
+    infiniband_device_nodes: infiniband_device_nodes, verbs_sysfs_devices: t_verbs_sysfs,
+    nccl_version: t_nccl_version, transport_lines: t_transport_lines,
+    host_units_naming_the_container: [],
+  )
+}
+
+fn faithful_realization(host: HostIdentity, rank: Nat) -> ObservedContainerRealization {
+  let spec = spec_for(rank: rank)
+  realization_from(
+    host: host, rank: rank, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)
+}
+
 // A FAITHFUL READING OF ONE RANK: the words the plan rendered for that rank, the pinned digest, the
 // pinned revision path, the host the plan named, and the interface the engine reported selecting.
 fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
@@ -120,7 +166,8 @@ fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     image_digest: planned_image_for(rank: rank),
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: rank),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: host, rank: rank),
   )
 }
 
@@ -154,6 +201,82 @@ test fn four_faithful_ranks_are_accepted() -> Bool {
   }
 }
 
+
+// ── THE CREATION STATE IS PART OF ACCEPTANCE ──────────────────────────────────────────────────
+//
+// THESE FOUR ROWS EXIST BECAUSE THE FLEET WAS ACCEPTED IN EXACTLY THIS STATE. On 2026-09-14 the four
+// ranks were running containers with no /dev/infiniband mapping, no memlock policy and no IPC_LOCK,
+// and the readback said DeploymentAccepted -- because it compared a transport reading and nothing the
+// daemon kept. Every rank below reports the VERBS transport the faithful one does, so the transport
+// comparison stays green and only the creation state moves: a row that went red on both would not
+// establish that the creation state is what refused it.
+fn rank_with_realization(host: HostIdentity, rank: Nat, realization: ObservedContainerRealization) -> RankObservation {
+  rank_observation(
+    host: host, node_rank: rank,
+    image_digest: planned_image_for(rank: rank), model_path: pinned_model_path,
+    argv: planned_argv_for(rank: rank),
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: realization,
+  )
+}
+
+fn population_with(rank: Nat, realization: ObservedContainerRealization) -> List<RankObservation> {
+  map(all_four_faithful, r =>
+    if r.node_rank == rank { rank_with_realization(host: r.host, rank: rank, realization: realization) } else { r })
+}
+
+fn rejected(ranks: List<RankObservation>) -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) > 0
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// THE EXACT LIVE STATE: the plan renders the verbs device mappings and the container carries none.
+test fn a_container_created_without_the_verbs_devices_is_rejected() -> Bool {
+  let spec = spec_for(rank: 0)
+  rejected(ranks: population_with(rank: 0, realization: realization_from(
+    host: operator_host_srv9, rank: 0, spec: spec,
+    devices: [], memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: [])))
+}
+
+// MEMLOCK IS NOT A PREFERENCE. Registering memory regions for the adapter needs an unlimited locked-memory
+// ceiling; a container created without it can open the device and still fail to use it.
+test fn a_container_created_without_unlimited_memlock_is_rejected() -> Bool {
+  let spec = spec_for(rank: 1)
+  rejected(ranks: population_with(rank: 1, realization: realization_from(
+    host: operator_host_srv10, rank: 1, spec: spec,
+    devices: spec.devices, memlock_unlimited: false,
+    capabilities: map(spec.cap_add, c => c as String), environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
+// THE CAPABILITY THE PLAN ADDS IS THE ONE THE LIVE CONTAINERS LACKED.
+test fn a_container_created_without_the_planned_capability_is_rejected() -> Bool {
+  let spec = spec_for(rank: 2)
+  rejected(ranks: population_with(rank: 2, realization: realization_from(
+    host: operator_host_srv12, rank: 2, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: [], environment: spec.env,
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
+// AN ASSIGNMENT THE PLAN RENDERS AND THE CONTAINER DOES NOT CARRY IS A DEVIATION, which is how a transport
+// selection gets lost without anything else changing. The environment comparison is a SUBSET check in one
+// direction, so dropping every planned assignment is the discriminating input rather than adding one.
+test fn a_container_missing_the_planned_environment_is_rejected() -> Bool {
+  let spec = spec_for(rank: 3)
+  rejected(ranks: population_with(rank: 3, realization: realization_from(
+    host: operator_host_srv11, rank: 3, spec: spec,
+    devices: spec.devices, memlock_unlimited: spec.memlock_unlimited,
+    capabilities: map(spec.cap_add, c => c as String), environment: [],
+    infiniband_device_nodes: t_infiniband_nodes)))
+}
+
 // ── THE ROW THIS MODULE EXISTS FOR ────────────────────────────────────────────────────────────
 //
 // ONE RANK ON A DIFFERENT IMAGE IS REJECTED, AND THE COARSE ARM IDENTITY CANNOT SEE IT. That identity
@@ -169,7 +292,8 @@ data one_rank_wrong_digest: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 2),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv12, rank: 2),
   ),
   faithful_rank(host: operator_host_srv11, rank: 3),
 ]
@@ -192,7 +316,8 @@ data one_rank_wrong_revision: List<RankObservation> = [
     image_digest: planned_image_for(rank: 1),
     model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
     argv: planned_argv_for(rank: 1),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv10, rank: 1),
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -233,6 +358,7 @@ data interface_unread: List<RankObservation> = [
     host: operator_host_srv9, node_rank: 0,
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0), selected_transport: NcclTransportUnread { cause: "the engine log printed no transport line" as NonEmptyStr },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -255,6 +381,7 @@ data interface_wrong: List<RankObservation> = [
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
     selected_transport: NcclSocketTransport { netdev: "wlan0" as NonEmptyStr },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -318,7 +445,8 @@ data one_word_changed_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0, image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: argv_with_one_word_changed(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -347,7 +475,8 @@ data reordered_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv10, node_rank: 1, image_digest: planned_image_for(rank: 1), model_path: pinned_model_path,
     argv: argv_reversed(rank: 1),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv10, rank: 1),
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -390,7 +519,8 @@ data rank_zero_twice: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -424,7 +554,8 @@ data an_unexpected_fifth_rank: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: t_rail_netdev } },
+    realization: faithful_realization(host: operator_host_srv9, rank: 4),
   ),
 ]
 
@@ -438,204 +569,66 @@ test fn an_unexpected_extra_rank_is_rejected() -> Bool {
 }
 
 
-// ── PROVENANCE IS BOUND TO A LAUNCH, AND THE ACCEPTANCE COMES FROM THE REAL PRODUCER ──────────
+// ── THE TRANSPORT IS COMPARED AGAINST THE PLAN, NOT AGAINST THE OBSERVER'S OWN OPINION ────────
 //
-// THESE LIVE HERE RATHER THAN BESIDE THE GENERIC IDENTITY WITNESSES BECAUSE DeploymentAcceptance IS
-// sole_constructor. A fixture cannot mint one, which is the substrate enforcing the property that
-// matters: an acceptance must come from accept_deployment over a real plan and a real reading, so
-// these rows exercise the authority production uses instead of a shape authored to be convenient.
-fn t_source_readings(checkpoint: String) -> ServingSourceResolution {
-  resolve_serving_source(
-    checkpoint: CoordinateObserved { hash: content_hash_of_value(value: checkpoint as NonEmptyStr) },
-    model_config: CoordinateObserved { hash: content_hash_of_value(value: "model-config" as NonEmptyStr) },
-    tokenizer: CoordinateObserved { hash: content_hash_of_value(value: "tokenizer" as NonEmptyStr) },
-    tokenizer_config: CoordinateObserved { hash: content_hash_of_value(value: "tokenizer-config" as NonEmptyStr) },
-    special_tokens: CoordinateAbsentByObservation,
-    chat_template: CoordinateObserved { hash: content_hash_of_value(value: "chat-template" as NonEmptyStr) },
-    model_side_code: CoordinateAbsentByObservation,
-    generation_defaults: CoordinateObserved { hash: content_hash_of_value(value: "generation-defaults" as NonEmptyStr) },
-    processor_config: CoordinateObserved { hash: content_hash_of_value(value: "processor-config" as NonEmptyStr) },
-    rung: RevisionAddressedUpstreamVerification {
-      authority: "probe/repo" as NonEmptyStr,
-      revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
-    },
-  )
+// THE ARM REQUIRES VERBS OVER ITS LANE'S DEVICE. These rows are the discriminations the previous
+// comparison could not make: it asked only whether the observation was NcclIbTransport, so a rank on
+// any HCA, bootstrapping over any interface, passed -- and the misparse that reported `verbs over ;`
+// passed with them.
+fn one_rank_transport(transport: NcclTransportObservation) -> List<RankObservation> {
+  [
+    rank_observation(
+      host: operator_host_srv9, node_rank: 0,
+      image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
+      argv: planned_argv_for(rank: 0), selected_transport: transport,
+    realization: faithful_realization(host: operator_host_srv9, rank: 0),
+  ),
+    faithful_rank(host: operator_host_srv10, rank: 1),
+    faithful_rank(host: operator_host_srv12, rank: 2),
+    faithful_rank(host: operator_host_srv11, rank: 3),
+  ]
 }
 
-// THE RUNTIME IMAGE MUST BE THE IMAGE THE ACCEPTANCE NAMES, AND THIS FIXTURE USED TO DISAGREE. It
-// hashed the literal "runtime-image" while the acceptance carried the plan's real pinned reference, so
-// the two halves of the incarnation described different images -- exactly the pairing the
-// acceptance-to-runtime join refuses, and the join caught it here first. Deriving the coordinate from
-// the plan's own reference is what makes this fixture a POSITIVE control rather than a forgery that
-// happened to be green before the join existed.
-fn t_runtime_image_reading() -> ServingCoordinateReading {
-  match sha256_hex_digest(hex: strip_sha256_prefix(raw: planned_image_for(rank: 0) as String)) {
-    Absent => CoordinateUnestablished {
-      obligation: "the planned image reference is not a sha256 digest" as NonEmptyStr,
-    }
-    Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+test fn verbs_over_another_hca_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: "roceP2p1s0f0" as NonEmptyStr, oob_netdev: Present { value: t_rail_netdev } }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
   }
 }
 
-fn strip_sha256_prefix(raw: String) -> String {
-  match split(s: raw, delimiter: ":").skip(n: 1).first() {
-    Absent => raw
-    Present { value: hex } => hex
+test fn verbs_bootstrapping_over_another_interface_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: "wlP9s9" as NonEmptyStr } }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
   }
 }
 
-fn t_runtime_readings() -> ServingRuntimeResolution {
-  resolve_serving_runtime(
-    runtime_image: t_runtime_image_reading(),
-    runtime_extensions: CoordinateAbsentByObservation,
-    runtime_configuration: CoordinateAbsentByObservation,
-  )
-}
-
-fn t_launch(group: FabricGroup, endpoint: String, start: String) -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(
-    group: group, endpoint: endpoint as NonEmptyStr, process_start_field: start as NonEmptyStr)
-}
-
-fn t_bind(launch: VllmEndpointProcessLaunch, reading: NativeDeploymentObserved, checkpoint: String) -> VllmIncarnationOutcome {
-  bind_incarnation(
-    launch: launch,
-    acceptance: acceptance_of(reading: reading),
-    ranks_required: 4,
-    source: t_source_readings(checkpoint: checkpoint),
-    runtime: t_runtime_readings(),
-  )
-}
-
-fn t_faithful_reading() -> NativeDeploymentObserved {
-  DeploymentRanksRead { ranks: all_four_faithful, endpoint_alias: served() }
-}
-
-// ── 1. AN ACCEPTED DEPLOYMENT AND A COMPLETE OBSERVATION BIND AN INCARNATION ──────────────────
-test fn an_accepted_deployment_binds_an_incarnation() -> Bool {
-  match t_bind(launch: t_launch(group: FabricGroupB, endpoint: "e", start: "s"), reading: t_faithful_reading(), checkpoint: "checkpoint-a") {
-    IncarnationUnestablished { obligations: _ } => false
-    IncarnationBound { provenance: _ } => true
+// A VERBS SELECTION THAT NAMED NO BOOTSTRAP INTERFACE IS UNVERIFIED RATHER THAN ACCEPTED. The payload
+// path is established and the path the ranks found each other on is not, and acceptance promises both.
+test fn verbs_without_an_out_of_band_interface_is_unverified() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: none }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentUnverified { unknowns: us } => count(us) == 1
+    _ => false
   }
 }
 
-// ── 2. A REJECTED DEPLOYMENT BINDS NOTHING, HOWEVER GOOD THE OBSERVATIONS ARE ─────────────────
-//
-// THE SOURCE AND RUNTIME READINGS HERE ARE THE SAME ONES THE POSITIVE ROW USES, so what changes is
-// only the deployment verdict. Without this, a producer that ignored the acceptance entirely would
-// still pass row 1.
-test fn a_rejected_deployment_binds_no_incarnation() -> Bool {
-  match t_bind(launch: t_launch(group: FabricGroupB, endpoint: "e", start: "s"), reading: DeploymentRanksRead { ranks: one_rank_wrong_digest, endpoint_alias: served() }, checkpoint: "checkpoint-a") {
-    IncarnationBound { provenance: _ } => false
-    IncarnationUnestablished { obligations: os } => count(os) != 0
+// AND THE DEPLOYMENT THIS FLEET IS ACTUALLY RUNNING IS REJECTED, which is the whole subject: sockets
+// over the correct rail are still not the transport a four-node tensor-parallel arm was planned on.
+test fn sockets_over_the_planned_rail_are_still_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead {
+    ranks: one_rank_transport(transport: NcclSocketTransport { netdev: t_rail_netdev }),
+    endpoint_alias: served(),
+  }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
   }
-}
-
-// ── 3. TWO LAUNCHES THAT ONCE SERIALISED ALIKE ARE DISTINCT IN BOTH SENSES ────────────────────
-//
-// THIS IS THE FIXTURE THAT WOULD HAVE STAYED GREEN AGAINST THE OLD RENDERING. The key used to join
-// group, endpoint and process_start_field with "@", so endpoint "a@b" with start "c" and endpoint "a"
-// with start "b@c" produced one key and one offer subject. Ordinary fixtures never contain "@", which
-// is why such a defect survives a suite that looks thorough. Both halves are asserted: the launches
-// are not equal, AND their keys now differ -- because fixing equality alone would leave fabric offer
-// identity still collapsing them.
-test fn two_launches_that_once_collided_are_distinct_and_key_apart() -> Bool {
-  let a = t_launch(group: FabricGroupB, endpoint: "a@b", start: "c")
-  let b = t_launch(group: FabricGroupB, endpoint: "a", start: "b@c")
-  !vllm_endpoint_process_launch_is(launch: a, other: b)
-    && (vllm_endpoint_process_launch_key(launch: a) as String)
-         != (vllm_endpoint_process_launch_key(launch: b) as String)
-}
-
-// ── 4. PROVENANCE FOR ONE LAUNCH MAY NOT BIND ANOTHER ─────────────────────────────────────────
-test fn provenance_for_one_launch_does_not_bind_another() -> Bool {
-  let mine = t_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000", start: "start-1")
-  let other = t_launch(group: FabricGroupA, endpoint: "192.168.1.226:30000", start: "start-1")
-  match t_bind(launch: mine, reading: t_faithful_reading(), checkpoint: "checkpoint-a") {
-    IncarnationUnestablished { obligations: _ } => false
-    IncarnationBound { provenance: p } =>
-      match incarnation_for_launch(candidates: [p], launch: other) {
-        IncarnationFound { provenance: _ } => false
-        IncarnationAmbiguous { matches: _ } => false
-        IncarnationMissing =>
-          match incarnation_for_launch(candidates: [p], launch: mine) {
-            IncarnationMissing => false
-            IncarnationAmbiguous { matches: _ } => false
-            IncarnationFound { provenance: _ } => true
-          }
-      }
-  }
-}
-
-// ── 5. A RESTART IS A NEW LAUNCH OVER THE SAME EXECUTION ──────────────────────────────────────
-//
-// THE TWO IDENTITIES MOVE INDEPENDENTLY, which is the whole reason the launch sits beside the
-// execution rather than inside the manifests. Identical bytes restarted must not mint a new semantic
-// Work, and must mint a new offer.
-test fn a_restart_is_a_new_launch_over_the_same_execution() -> Bool {
-  let before = t_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000", start: "start-1")
-  let after = t_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000", start: "start-2")
-  match t_bind(launch: before, reading: t_faithful_reading(), checkpoint: "checkpoint-a") {
-    IncarnationUnestablished { obligations: _ } => false
-    IncarnationBound { provenance: p1 } =>
-      match t_bind(launch: after, reading: t_faithful_reading(), checkpoint: "checkpoint-a") {
-        IncarnationUnestablished { obligations: _ } => false
-        IncarnationBound { provenance: p2 } =>
-          (serving_execution_source_ref(c: p1.execution) as String)
-              == (serving_execution_source_ref(c: p2.execution) as String)
-            && !incarnation_applies_to(p: p1, launch: after)
-      }
-  }
-}
-
-
-// ── WORK IDENTITY, BUILT FROM A CLOSURE OBTAINED THE WAY PRODUCTION OBTAINS ONE ────────────────
-//
-// THESE ROWS LIVE HERE RATHER THAN BESIDE turn_demand BECAUSE THE SEAL IS ADMITTED-ONLY. A
-// ServingTurnExecutionClosure can be minted only by the incarnation producer, and that producer needs
-// a real DeploymentAcceptance -- so a positive control over Work identity necessarily exercises the
-// whole join: acceptance, rank population, source and runtime observation, launch binding. That is a
-// stronger control than the one it replaces, which assembled a closure in the fixture.
-fn t_request(execution: ServingTurnExecution) -> ServingTurnRequest {
-  ServingTurnRequest {
-    execution: execution,
-    inputs: "probe.inputs" as ArtifactManifestRef,
-    effect_contract: "probe.effects" as EffectContractRef,
-    output_contract: "probe.outputs" as OutputContractRef,
-  }
-}
-
-fn t_probe_requirements() -> ExecutionRequirements {
-  serving_turn_requirements(
-    capacity_class: ControlPlaneCapacity,
-    capabilities: "gunbc.capabilities.spark-serving.probe" as CapabilityManifestRef,
-    trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
-    isolation: IsolationProfile { guarantees: [] },
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
-  )
-}
-
-fn t_work_key_for(checkpoint: String) -> String {
-  match t_bind(launch: t_launch(group: FabricGroupB, endpoint: "e", start: "s"), reading: t_faithful_reading(), checkpoint: checkpoint) {
-    IncarnationUnestablished { obligations: _ } => "unbound"
-    IncarnationBound { provenance: p } =>
-      match serving_turn_work(
-        principal: "gunbc" as NonEmptyStr,
-        request: t_request(execution: TurnExecutionBound { closure: p.execution }),
-        requirements: t_probe_requirements(),
-      ) {
-        TurnWorkUnestablished { obligation: _ } => "unestablished"
-        TurnWorkBound { work: w } => w.id.key as String
-      }
-  }
-}
-
-test fn an_observed_incarnation_mints_work_through_the_fabric_constructor() -> Bool {
-  t_work_key_for(checkpoint: "checkpoint-a") != "unbound"
-    && t_work_key_for(checkpoint: "checkpoint-a") != "unestablished"
-}
-
-// TWO SOURCES ARE TWO WORKS, and the identity is derived from the contract rather than decided here.
-test fn two_incarnation_sources_are_two_works() -> Bool {
-  t_work_key_for(checkpoint: "checkpoint-a") != t_work_key_for(checkpoint: "checkpoint-b")
 }

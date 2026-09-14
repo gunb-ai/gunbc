@@ -14,7 +14,14 @@ import std.goal_assessment {
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused,
   ArmNodeLaunch, ArmNode,
-  fabric_rail_interface_name,
+}
+import gunbc.spark.container_realization {
+  ObservedContainerRealization, RealizationDeviation, realization_deviations, realization_deviation_text,
+}
+import extdeps.docker.cli { DockerCreateSpec }
+import gunbc.spark.collective_transport {
+  CollectiveTransportPlan, transport_requires_verbs, transport_expected_device,
+  transport_expected_out_of_band, collective_transport_requirement_wire,
 }
 
 // ── WHY THE THREE-FIELD ARM IDENTITY IS NOT A DEPLOYMENT RECEIPT ───────────────────────────────
@@ -49,6 +56,10 @@ import gunbc.spark.serving_arm_launch {
 // the engine at start-up, and a reader that did not capture it has NOT established it -- inferring the
 // interface from the environment the launch requested would make the check agree with itself, since the
 // launch is what set the variable. An unread interface is an unknown, not a pass.
+// THE CREATION STATE IS PART OF THE OBSERVATION, NOT A SEPARATE ERRAND. A rank reading that carried the
+// selected transport and not the container it was selected in could establish that NCCL chose verbs and
+// say nothing about whether this repository could produce that container again -- which is the state the
+// fleet was found in on 2026-09-14, accepted and unreproducible.
 type RankObservation sole_constructor {
   host: HostIdentity
   node_rank: Nat
@@ -56,6 +67,7 @@ type RankObservation sole_constructor {
   model_path: NonEmptyStr
   argv: List<String>
   selected_transport: NcclTransportObservation
+  realization: ObservedContainerRealization
 }
 
 fn rank_observation(
@@ -65,6 +77,7 @@ fn rank_observation(
   model_path: NonEmptyStr,
   argv: List<String>,
   selected_transport: NcclTransportObservation,
+  realization: ObservedContainerRealization,
 ) -> RankObservation {
   RankObservation {
     host: host,
@@ -73,6 +86,7 @@ fn rank_observation(
     model_path: model_path,
     argv: argv,
     selected_transport: selected_transport,
+    realization: realization,
   }
 }
 
@@ -91,9 +105,11 @@ type DeploymentDeviation
   | EndpointAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
   | DuplicateObservedRank { node_rank: Nat, observations: Nat }
   | UnexpectedObservedRank { node_rank: Nat }
+  | RankRealizationDiffers { deviation: RealizationDeviation }
 
 type DeploymentUnknown
   = FabricInterfaceUnread { node_rank: Nat }
+  | FabricOutOfBandUnread { node_rank: Nat }
   | EndpointAliasUnread
 
 type DeploymentReceipt sole_constructor {
@@ -233,26 +249,73 @@ fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<De
     })
 }
 
-// THE REQUIRED BACKEND IS COMPARED, AND A FALLBACK IS A DEVIATION RATHER THAN A DETAIL. A rank that
-// reached the right rail through the wrong transport has not satisfied the plan: its capacity, its
-// latency and every throughput standing scoped to the intended transport are different facts. So a
-// socket-transport rank is reported as a divergence, with the transport it actually used named.
+// THE COMPARISON IS AGAINST THE PLAN, WHICH IS WHERE THE REQUIREMENT LIVES. This asked whether the
+// observation was NcclIbTransport and accepted any answer that was -- so a rank reporting verbs over
+// an HCA nobody planned passed, and, measured 2026-09-14, four ranks whose transport reading was a
+// misparse of the IB plugin's `Using [RO]` banner passed as an RDMA deployment. The plan now carries
+// the requirement, the device and the out-of-band interface, and each is compared.
+//
+// A SOCKET RANK UNDER A VERBS REQUIREMENT IS A DIVERGENCE AND NOT A DETAIL: its capacity, its latency
+// and every throughput standing scoped to the intended transport are different facts. A VERBS rank
+// under a permitted-socket plan is equally a divergence -- the realization is not the one selected,
+// and a standing measured over sockets does not describe it.
+fn rank_transport_deviation(desired: ArmNodeLaunch, node_rank: Nat, observed: NonEmptyStr) -> List<DeploymentDeviation> {
+  [RankFabricInterfaceDiffers {
+    node_rank: node_rank,
+    desired: join([
+      collective_transport_requirement_wire(r: desired.transport.requirement) as String,
+      " (", transport_expected_device(plan: desired.transport) as String,
+      ", out of band ", transport_expected_out_of_band(plan: desired.transport) as String, ")",
+    ], "") as NonEmptyStr,
+    observed: observed,
+  }]
+}
+
 fn rank_interface_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
   match observed.selected_transport {
     NcclTransportUnread { cause: _ } => []
-    NcclIbTransport { hca: _, oob_netdev: _ } => []
     NcclSocketTransport { netdev: n } =>
-      [RankFabricInterfaceDiffers {
-        node_rank: desired.node.node_rank,
-        desired: "NCCL verbs transport over the fabric rail" as NonEmptyStr,
-        observed: join(["NCCL TCP sockets over ", n as String], "") as NonEmptyStr,
-      }]
+      if transport_requires_verbs(plan: desired.transport) {
+        rank_transport_deviation(desired: desired, node_rank: desired.node.node_rank,
+          observed: join(["NCCL TCP sockets over ", n as String], "") as NonEmptyStr)
+      } else if (n as String) != (transport_expected_device(plan: desired.transport) as String) {
+        rank_transport_deviation(desired: desired, node_rank: desired.node.node_rank,
+          observed: join(["NCCL TCP sockets over ", n as String], "") as NonEmptyStr)
+      } else {
+        []
+      }
+    NcclIbTransport { hca: h, oob_netdev: oob } =>
+      if !transport_requires_verbs(plan: desired.transport) {
+        rank_transport_deviation(desired: desired, node_rank: desired.node.node_rank,
+          observed: join(["NCCL verbs over ", h as String], "") as NonEmptyStr)
+      } else if (h as String) != (transport_expected_device(plan: desired.transport) as String) {
+        rank_transport_deviation(desired: desired, node_rank: desired.node.node_rank,
+          observed: join(["NCCL verbs over ", h as String], "") as NonEmptyStr)
+      } else {
+        match oob {
+          Absent => []
+          Present { value: o } =>
+            if (o as String) == (transport_expected_out_of_band(plan: desired.transport) as String) {
+              []
+            } else {
+              rank_transport_deviation(desired: desired, node_rank: desired.node.node_rank,
+                observed: join(["NCCL verbs over ", h as String, " bootstrapping on ", o as String], "") as NonEmptyStr)
+            }
+        }
+      }
   }
 }
 
+// AN IB SELECTION THAT NAMED NO OUT-OF-BAND INTERFACE IS A FACT THE RECEIPT CANNOT ASSERT. NCCL prints
+// the bootstrap socket beside the device it selected; a reading without it establishes the payload path
+// and not the path the ranks found each other on, which is one of the three facts acceptance promises.
 fn rank_unknowns(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentUnknown> {
   match observed.selected_transport {
-    NcclIbTransport { hca: _, oob_netdev: _ } => []
+    NcclIbTransport { hca: _, oob_netdev: oob } =>
+      match oob {
+        Present { value: _ } => []
+        Absent => [FabricOutOfBandUnread { node_rank: desired.node.node_rank }]
+      }
     NcclSocketTransport { netdev: _ } => []
     NcclTransportUnread { cause: _ } => [FabricInterfaceUnread { node_rank: desired.node.node_rank }]
   }
@@ -315,7 +378,10 @@ fn population_deviations(observed: List<RankObservation>, ls: List<ArmNodeLaunch
 fn line_deviations(observed: List<RankObservation>, l: ArmNodeLaunch) -> List<DeploymentDeviation> {
   match observation_for_rank(observed: observed, rank: l.node.node_rank) {
     Absent => [RankAbsent { expected_rank: l.node.node_rank, expected_host: l.node.host as NonEmptyStr }]
-    Present { value: o } => concat(rank_deviations(desired: l, observed: o), rank_interface_deviations(desired: l, observed: o))
+    Present { value: o } =>
+      concat(
+        concat(rank_deviations(desired: l, observed: o), rank_interface_deviations(desired: l, observed: o)),
+        map(realization_deviations(planned: l.spec, observed: o.realization), d => RankRealizationDiffers { deviation: d }))
   }
 }
 
@@ -440,6 +506,8 @@ fn deployment_unknown_text(u: DeploymentUnknown) -> String {
   match u {
     FabricInterfaceUnread { node_rank: r } =>
       join(["rank ", to_string(r), ": the selected fabric interface could not be read"], "")
+    FabricOutOfBandUnread { node_rank: r } =>
+      join(["rank ", to_string(r), ": the verbs selection named no out-of-band interface"], "")
     EndpointAliasUnread => "the endpoint's served model alias could not be read"
   }
 }
@@ -465,6 +533,7 @@ fn deployment_deviation_text(d: DeploymentDeviation) -> String {
       join(["rank ", to_string(r), " was observed ", to_string(n), " times and a rank is one process"], "")
     UnexpectedObservedRank { node_rank: r } =>
       join(["rank ", to_string(r), " is running and the plan names no such rank"], "")
+    RankRealizationDiffers { deviation: d } => realization_deviation_text(d: d)
   }
 }
 

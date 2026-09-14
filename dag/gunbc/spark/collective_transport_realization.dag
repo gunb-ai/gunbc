@@ -1,0 +1,306 @@
+module gunbc.spark.collective_transport_realization
+
+import std.types { String, Bool, NonEmptyStr, List, Int, Secret, FilePath }
+import std.nat { Nat }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.placement_supply { HostIdentity }
+import extdeps.docker.container_inspect { go_template_action }
+import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+import extdeps.docker.cli {
+  DockerDeviceMapping, DockerEnvAssignment, DockerLabel, DockerNamespaceMode, NamespaceHost, NamespacePrivate,
+  DockerDevicesRead, DockerDevicesObserved, DockerDevicesUnreadable, docker_devices_from_json,
+  DockerUlimitObservation, DockerUlimitsRead, DockerUlimitsObserved, DockerUlimitsUnreadable,
+  docker_ulimits_from_json, docker_ulimits_memlock_unlimited,
+  DockerStringListRead, DockerStringListObserved, DockerStringListUnreadable, docker_string_list_from_json,
+  DockerLabelsRead, DockerLabelsObserved, DockerLabelsUnreadable, docker_labels_from_json,
+  DockerMountsRead, DockerMountsObserved, DockerMountsUnreadable, docker_mounts_from_json,
+  docker_env_assignments_of_wire, docker_namespace_mode_of_wire, docker_namespace_mode_wire,
+}
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import gunbc.spark.native_deployment_readback {
+  RankObservation, NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,
+  nccl_transport_text,
+}
+import gunbc.spark.container_realization { ObservedContainerRealization }
+import gunbc.spark.native_rank_observer {
+  observe_rank_utilization_basis_points, observe_native_population,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmNodeLaunch, ArmNode, ArmNodeRosterRefused, ArmNodesResolved,
+  glm_native_container_name,
+}
+import gunbc.spark.device_memory_envelope {
+  glm_native_tp4_launch_plan, glm_native_tp4_nodes,
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_device_memory_policy,
+}
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch_is, vllm_endpoint_process_launch_key,
+}
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint, serving_route,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.harness.harness_backend { harness_observe_engine }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketRefused, MaterializedSshKeyFileBracketCompleted,
+}
+
+// ── WHAT IS ACTUALLY RUNNING, BEFORE ANYTHING IS CHANGED ──────────────────────────────────────
+//
+// THIS MODULE EXISTS BECAUSE AN INFERENCE FROM ACCEPTANCE WAS WRONG. On 2026-09-14 the four-rank GLM
+// deployment was ACCEPTED by the readback, and acceptance refuses a socket rank and refuses an unread
+// one -- so it appeared to establish that every rank was on the NCCL verbs backend. The first capture
+// this module ran refuted that in one field: the containers carry NO /dev/infiniband node, no device
+// mapping, no memlock policy and no added capability, which is the state in which verbs cannot be
+// opened at all. The transport reading was a misparse of the IB plugin's own banner, and the fix lives
+// in gunbc.spark.native_rank_observer beside the lines that caused it.
+//
+// WHAT A CREATION-STATE CAPTURE ANSWERS THAT A RUNTIME READING CANNOT. The engine log says which
+// network NCCL chose; the daemon says what the container was given to choose from. A deployment can
+// only be reproduced from the second, and the two disagreeing is exactly how a fallback survives a
+// readback -- so the creation state is captured, retained, and compared separately.
+//
+// SO THE FIRST MOVE IS A READING AND NOT AN EDIT (operator ruling, 2026-09-14). This module captures
+// the creation state the daemon kept -- devices, ulimits, capabilities, namespaces, environment,
+// mounts, labels -- beside the transport each rank actually selected, bound to the exact endpoint
+// process launch, so the realization can be reproduced deliberately rather than reconstructed from
+// memory after it is gone.
+//
+// IT ANSWERS WHAT IS RUNNING AND DECIDES NOTHING ABOUT WHAT SHOULD RUN. The desired transport plan and
+// the adoption verdict are separate work; this is their input.
+
+// ── THE WHOLE DEPLOYMENT, BOUND TO THE LAUNCH IT DESCRIBES ────────────────────────────────────
+//
+// THE LAUNCH IS READ BEFORE AND AFTER, exactly as the incarnation transaction does: a capture that
+// spanned a restart would describe containers from two different deployments and read as one.
+type CollectiveTransportRealizationObservation sole_constructor {
+  launch: VllmEndpointProcessLaunch
+  attempt: NonEmptyStr
+  ranks: List<RankObservation>
+}
+
+type RealizationCaptureOutcome
+  = RealizationCaptured { observation: CollectiveTransportRealizationObservation }
+  | RealizationCaptureRefused { obligations: List<NonEmptyStr> }
+
+// THE CAPTURE READS THROUGH THE PRODUCER THE READBACK USES, and an earlier revision of this module read
+// the containers itself. Two readers of one subject is two answers about it: a receipt that says what is
+// running is worthless if the acceptance path could have read something else, and the whole reason this
+// module exists is that an acceptance and a creation state disagreed. So the rank observation -- argv,
+// image, model path, selected transport AND the realization it was selected in -- is produced once, by
+// gunbc.spark.native_rank_observer, and this module renders it rather than re-reading it.
+func capture_transport_realization(
+  ctx: SparkRemoteExecutionContext, endpoint: ServingRouteEndpoint, plan: ArmLaunchPlan,
+  container: NonEmptyStr, attempt: NonEmptyStr,
+) -> RealizationCaptureOutcome
+  uses net: Network
+{
+  match harness_observe_engine(endpoint: endpoint).launch {
+    LaunchUnobserved { group: _, obligation: o } =>
+      RealizationCaptureRefused { obligations: [join(["the launch could not be read before the capture: ", o as String], "") as NonEmptyStr] }
+    LaunchObserved { launch: before, receipt: _ } => {
+      let population = observe_native_population(ctx: ctx, plan: plan)
+      let obligations = match population {
+        DeploymentNothingRunning { detail: d } => [d]
+        DeploymentRanksRead { ranks: _, endpoint_alias: _ } => [] as List<NonEmptyStr>
+      }
+      let observed = match population {
+        DeploymentNothingRunning { detail: _ } => [] as List<RankObservation>
+        DeploymentRanksRead { ranks: rs, endpoint_alias: _ } => rs
+      }
+      match harness_observe_engine(endpoint: endpoint).launch {
+        LaunchUnobserved { group: _, obligation: o } =>
+          RealizationCaptureRefused { obligations: concat(obligations, [join(["the launch could not be re-read after the capture: ", o as String], "") as NonEmptyStr]) }
+        LaunchObserved { launch: after, receipt: _ } =>
+          if !vllm_endpoint_process_launch_is(launch: before, other: after) {
+            RealizationCaptureRefused {
+              obligations: concat(obligations, ["the endpoint's process was replaced during the capture, so these containers are not one deployment" as NonEmptyStr]),
+            }
+          } else if count(obligations) != 0 {
+            RealizationCaptureRefused { obligations: obligations }
+          } else if count(observed) == 0 {
+            RealizationCaptureRefused { obligations: ["no rank was read, so nothing was captured" as NonEmptyStr] }
+          } else {
+            RealizationCaptured {
+              observation: CollectiveTransportRealizationObservation { launch: after, attempt: attempt, ranks: observed },
+            }
+          }
+      }
+    }
+  }
+}
+
+// ── THE RECEIPT ───────────────────────────────────────────────────────────────────────────────
+fn device_text(d: DockerDeviceMapping) -> String {
+  join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")
+}
+
+fn ulimit_text(u: DockerUlimitObservation) -> String {
+  join([u.name as String, "=", to_string(u.soft), ":", to_string(u.hard)], "")
+}
+
+fn mount_text(m: DockerMount) -> String {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      join(["bind ", h as String, "->", c as String, if ro { " ro" } else { " rw" }], "")
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      join(["volume ", v as String, "->", c as String, if ro { " ro" } else { " rw" }], "")
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      join(["tmpfs ", c as String, " ", to_string(n)], "")
+  }
+}
+
+fn environment_text(e: DockerEnvAssignment) -> String {
+  join([e.name as String, "=", e.value], "")
+}
+
+fn label_text(l: DockerLabel) -> String {
+  join([l.name as String, "=", l.value], "")
+}
+
+fn rank_realization_text(r: RankObservation) -> String {
+  let o = r.realization
+  join([
+    "RANK ", to_string(o.node_rank), " on ", o.host as String, "\n",
+    "  container      ", o.container_id as String, "\n",
+    "  image          ", o.image_id as String, "\n",
+    "  created        ", o.created_at as String, "\n",
+    "  started        ", o.started_at as String, "\n",
+    "  network/ipc    ", docker_namespace_mode_wire(m: o.network) as String, " / ", docker_namespace_mode_wire(m: o.ipc) as String, "\n",
+    "  devices        ", if count(o.devices) == 0 { "(none)" } else { join(map(o.devices, d => device_text(d: d)), ", ") }, "\n",
+    "  cgroup rules   ", if count(o.device_cgroup_rules) == 0 { "(none)" } else { join(o.device_cgroup_rules, ", ") }, "\n",
+    "  device requests ", if count(o.device_requests) == 0 { "(none)" } else { join(o.device_requests, ", ") }, "\n",
+    "  ulimits        ", if count(o.ulimits) == 0 { "(none)" } else { join(map(o.ulimits, u => ulimit_text(u: u)), ", ") },
+    "  memlock unlimited=", if o.memlock_unlimited { "true" } else { "false" }, "\n",
+    "  capabilities   ", if count(o.capabilities) == 0 { "(none)" } else { join(o.capabilities, ", ") }, "\n",
+    "  mounts         ", if count(o.mounts) == 0 { "(none)" } else { join(map(o.mounts, m => mount_text(m: m)), ", ") }, "\n",
+    "  labels         ", if count(o.labels) == 0 { "(none)" } else { join(map(o.labels, l => label_text(l: l)), ", ") }, "\n",
+    "  /dev/infiniband ", if count(o.infiniband_device_nodes) == 0 { "(none)" } else { join(o.infiniband_device_nodes, ", ") }, "\n",
+    "  sysfs verbs    ", if count(o.verbs_sysfs_devices) == 0 { "(none)" } else { join(o.verbs_sysfs_devices, ", ") }, "\n",
+    "  transport      ", nccl_transport_text(t: r.selected_transport), "\n",
+    "  transport lines ", if count(o.transport_lines) == 0 { "(none)" } else { join(o.transport_lines, " || ") }, "\n",
+    "  nccl version   ", o.nccl_version as String, "\n",
+    "  host units     ", if count(o.host_units_naming_the_container) == 0 { "(none)" } else { join(o.host_units_naming_the_container, " | ") }, "\n",
+    "  environment    ", if count(o.environment) == 0 { "(none captured)" } else { join(map(o.environment, e => environment_text(e: e)), ", ") }, "\n",
+  ], "")
+}
+
+fn realization_receipt_text(o: CollectiveTransportRealizationObservation) -> String {
+  join([
+    "COLLECTIVE TRANSPORT REALIZATION OBSERVED\n",
+    "  launch       ", vllm_endpoint_process_launch_key(launch: o.launch) as String, "\n",
+    "  process_start ", o.launch.process_start_field as String, "\n",
+    "  endpoint     ", o.launch.endpoint as String, "\n",
+    "  attempt      ", o.attempt as String, "\n",
+    "  ranks        ", to_string(count(o.ranks)), "\n",
+    join(map(o.ranks, r => rank_realization_text(r: r)), ""),
+  ], "")
+}
+
+data realization_receipt_path: String = "target/spark-collective-transport-realization.txt"
+
+fn realization_envelope(basis_points: Nat) -> ResolvedDeviceMemoryEnvelope {
+  ResolvedForAttempt {
+    basis_points: basis_points,
+    binding_node_rank: 0,
+    policy: glm_native_device_memory_policy,
+    attempt: "transport-realization-capture" as NonEmptyStr,
+    standings: [],
+  }
+}
+
+func observe_glm_transport_realization(ctx: SparkRemoteExecutionContext, attempt: NonEmptyStr) -> ProcessExit
+  uses net: Network
+{
+  match serving_route(group: FabricGroupB) {
+    ServingRouteUnresolved { group: _, obligation: o } => exit_failure(reason: join(["REALIZATION UNREAD: ", o as String], ""))
+    ServingRouteResolved { endpoint: endpoint, ceiling: _ } =>
+      match glm_native_tp4_nodes() {
+        ArmNodeRosterRefused { cause: c } => exit_failure(reason: join(["REALIZATION UNREAD: ", c as String], ""))
+        ArmNodesResolved { nodes: ns, master: _ } =>
+          match ns.first() {
+            Absent => exit_failure(reason: "REALIZATION UNREAD: the roster names no head rank")
+            Present { value: head } =>
+              match observe_rank_utilization_basis_points(ctx: ctx, node: head) {
+                Absent => exit_failure(reason: "REALIZATION UNREAD: the running arm's memory fraction could not be read, so no plan names the rank population")
+                Present { value: bp } =>
+                  match capture_transport_realization(
+                    ctx: ctx, endpoint: endpoint,
+                    plan: glm_native_tp4_launch_plan(envelope: realization_envelope(basis_points: bp)),
+                    container: glm_native_container_name, attempt: attempt,
+                  ) {
+                    RealizationCaptureRefused { obligations: os } =>
+                      exit_failure(reason: join(["REALIZATION UNREAD: ", join(map(os, o => o as String), "; ")], ""))
+                    RealizationCaptured { observation: observation } => {
+                      let body = realization_receipt_text(o: observation)
+                      let w = Filesystem.Write(path: realization_receipt_path, content: body)
+                      if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", body], "")) }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+func glm_transport_realization_wet() -> ProcessExit
+  uses net: Network
+{
+  match clock_now_probed_at() {
+    Absent => exit_failure(reason: "the clock could not be read, so there is no attempt identity to bind this capture to")
+    Present { value: now } =>
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["realization capture: ", c], ""))
+        ExecutorReachKnown { short_hostname: _, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: "transport-realization") {
+                Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
+                Present { value: ssh_attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: ssh_attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join([
+                      "trust could not be established, so no leg ran: ",
+                      known_hosts_materialization_receipt(outcome: materialization),
+                    ], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-transport-realization-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          observe_glm_transport_realization(
+                            ctx: SparkRemoteExecutionContext {
+                              trust: trust,
+                              reach_path: path,
+                              administrator: administrator as Secret,
+                              administrator_file: file,
+                            },
+                            attempt: join(["glm-transport-realization-", now as String], "") as NonEmptyStr,
+                          )
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: v } => v
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}

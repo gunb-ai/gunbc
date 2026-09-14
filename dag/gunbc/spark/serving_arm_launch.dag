@@ -49,6 +49,16 @@ import gunbc.spark.serving_deployment_selection {
   RuntimeRevision, runtime_revision,
 }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
+import gunbc.spark.collective_transport {
+  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, RequireNcclSocket,
+  transport_plan_for, transport_env, transport_requires_verbs,
+  transport_expected_device, transport_expected_out_of_band, collective_transport_requirement_wire,
+}
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerEnvAssignment, DockerNamespaceMode, NamespaceHost,
+  DockerRestartPolicy, RestartNo, docker_run_detached_arguments,
+}
+import extdeps.docker { DockerMount, BindMount }
 
 // ── WHY THIS IS A SECOND MULTI-HOST LAUNCHER AND NOT A FORK ────────────────────────────────────
 //
@@ -172,13 +182,12 @@ data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Nat = 29501
 data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
 
-// THE RAIL INTERFACE, BECAUSE A RENDEZVOUS ADDRESS DOES NOT DECIDE THE PAYLOAD PATH. `--master-addr` on
-// the rail proves where the ranks MEET; NCCL then selects its own transport, and with --network host it
-// sees every interface including the wireless management link. If it chooses wrong the group still
-// serves and is merely slow, with nothing in any log calling it a fault -- so the interface is pinned
-// for both NCCL and Gloo rather than left to auto-selection. It is the leg_netdev the fabric lane
-// observations already record, which is why this is one name and not one per host.
-data fabric_rail_interface_name: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+// THE RAIL INTERFACE IS NO LONGER A CONSTANT HERE, and the deletion is the point rather than a tidy-up.
+// This row pinned one netdev name for the whole fleet on the grounds that the lane observations already
+// record it -- which is the argument for READING those observations, not for copying one of their values
+// into a second authority. gunbc.spark.collective_transport derives the netdev, the rail address and the
+// RDMA device from the lane observed for each host, so a host whose leg differs is a different plan
+// rather than a silently wrong one.
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
 // A LOCAL CHECKOUT IS MOUNTED AS ITSELF, at the path the canary already uses, so a line rendered for
@@ -384,23 +393,66 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // srv10: NCCL reported "NET/IB : No device found" and bound "NET/Socket : Using [0]enp1s0f1np1", so the
 // socket spelling the observer greps for is the one this fleet actually produces -- the RoCE devices are
 // present on these hosts but NCCL does not select them inside this container.
-fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
-  concat([
-    "docker", "run", "-d",
-    "--name", glm_native_container_name as String,
-    "--gpus", "all",
-    "--network", "host",
-    "--ipc", "host",
-    "-e", join(["GLOO_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
-    "-e", join(["NCCL_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
-    "-e", "NCCL_DEBUG=INFO",
-    "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
-    "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: node.rail) as String], ""),
-    "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
-    "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
-    "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
-    runtime_artifact_wire(a: rrow.artifact) as String,
-  ], arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points))
+fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat, transport: CollectiveTransportPlan) -> List<String> {
+  docker_run_detached_arguments(spec: arm_container_spec(
+    node: node, master: master, crow: crow, rrow: rrow, ranks: ranks,
+    profile: profile, utilization_basis_points: utilization_basis_points, transport: transport))
+}
+
+// THE ARM'S OWN ENVIRONMENT, WHICH IS EVERYTHING THE TRANSPORT PLAN DOES NOT DECIDE. The two NCCL_DEBUG
+// assignments are an observation obligation rather than a tuning knob: NCCL prints its transport
+// selection only under them, and without that line gunbc.spark.native_rank_observer has nothing to read
+// and the readback refuses every rank of a healthy deployment. SUBSYS is narrowed to INIT,NET because
+// bare INFO narrates every channel of every collective.
+fn arm_engine_environment(node: ArmNode) -> List<DockerEnvAssignment> {
+  [
+    DockerEnvAssignment { name: "NCCL_DEBUG" as NonEmptyStr, value: "INFO" },
+    DockerEnvAssignment { name: "NCCL_DEBUG_SUBSYS" as NonEmptyStr, value: "INIT,NET" },
+    DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: render_ipv4_address(addr: node.rail) },
+    DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds) },
+    DockerEnvAssignment { name: "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr, value: to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb) },
+  ]
+}
+
+// ── THE CONTAINER AS A SPEC, NOT AS A HAND-BUILT LINE ─────────────────────────────────────────
+//
+// THE HAND-BUILT LINE HAD NO FIELD WHOSE ABSENCE COULD BE NOTICED. It named the GPUs, the namespaces
+// and the rail's netdev, and a reader comparing it against the fabric found nothing missing -- because
+// there was nothing to compare: no devices field to be empty, no memlock field to be false, no
+// capability list to lack IPC_LOCK. Measured 2026-09-14, every rank of the four-rank deployment ran
+// with HostConfig.Devices empty and NCCL on sockets, and the readback accepted it.
+//
+// THE SPEC IS THE SAME ONE gunbc.spark.pair_serving_realization RENDERS FOR GROUP A, so the transport
+// realization is one authority for both serving paths rather than two hand-maintained argv lists that
+// happened to diverge. What differs between the arms is the plan they are given, not the fields they
+// can express.
+//
+// SHM AND RESTART ARE THIS ARM'S OWN AND ARE UNCHANGED BY THIS CUT. The shared-memory size is the
+// figure group A's live unit carries; the restart policy stays RestartNo because the cutover
+// transaction owns this container's lifecycle and a daemon that restarted it would race that
+// transaction's own readback.
+data arm_container_shm_size_bytes: Nat = 10737418240
+
+fn arm_container_spec(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat, transport: CollectiveTransportPlan) -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: glm_native_container_name,
+    image: runtime_artifact_wire(a: rrow.artifact),
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: arm_container_shm_size_bytes,
+    memlock_unlimited: transport.memlock_unlimited,
+    gpus_all: true,
+    devices: transport.device_population,
+    cap_add: transport.capabilities,
+    restart: RestartNo,
+    mounts: [BindMount {
+      host_path: arm_mount_plan(row: crow).host_dir as FilePath,
+      container_path: arm_mount_plan(row: crow).container_dir as FilePath,
+      readonly: true,
+    }],
+    env: concat(transport_env(plan: transport), arm_engine_environment(node: node)),
+    command: arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points),
+  }
 }
 
 // ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
@@ -526,11 +578,16 @@ type ArmLaunchPlan
 // wrong for this arm: it pins a BARE content id with no "@", so the filter selected nothing and joined an
 // EMPTY string, which then printed as `is not the planned ` with the planned value simply missing. A
 // planner that already holds the image reference and the engine argument list should state them.
+// THE SPEC TRAVELS BESIDE THE ARGV IT RENDERS, so a readback compares FIELDS rather than re-parsing a
+// command line the daemon has already consumed. The argv is what is executed; the spec is what it means,
+// and only one of them can be compared against `docker inspect` without inventing a parser.
 type ArmNodeLaunch sole_constructor {
   node: ArmNode
   argv: List<String>
   engine_argv: List<String>
   image_reference: NonEmptyStr
+  transport: CollectiveTransportPlan
+  spec: DockerCreateSpec
 }
 
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
@@ -599,20 +656,50 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
             Present { value: rrow } =>
               match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
                 ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
-                ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
-                  lines: map(ns, n => ArmNodeLaunch {
-                    node: n,
-                    argv: arm_container_argv(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
-                    engine_argv: arm_engine_argv(node: n, master: m, crow: crow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
-                    image_reference: runtime_artifact_wire(a: rrow.artifact),
-                  }),
-                  master: m,
-                },
+                ArmNodesResolved { nodes: ns, master: m } =>
+                  arm_planned_lines(nodes: ns, master: m, crow: crow, rrow: rrow, topology: topology, profile: profile, utilization_basis_points: utilization_basis_points),
               }
           }
       }
   }
 }
+}
+
+// ── A RANK WITH NO OBSERVED LANE HAS NO TRANSPORT, AND THAT REFUSES THE PLAN ──────────────────
+//
+// THE ARM'S REQUIREMENT IS VERBS, so every rank must be able to say which RDMA device its own host
+// carries. A host with no lane observation cannot, and launching it anyway would put the arm back in
+// the state this cut exists to end: a four-node model whose collectives fall to sockets because one
+// container was created without a device to open. The roster already refuses a host with no rail
+// address; this refuses one whose lane is unobserved, which is the same fact read for the other half.
+data glm_native_collective_transport: CollectiveTransportRequirement = RequireNcclIb
+
+fn arm_planned_lines(nodes: List<ArmNode>, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, topology: ServingTopology, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> ArmLaunchPlan {
+  let unresolved = filter(nodes, n => match transport_plan_for(host: n.host, requirement: glm_native_collective_transport) { Absent => true  Present { value: _ } => false })
+  match unresolved.first() {
+    Present { value: n } => ArmLaunchRefused {
+      cause: join([
+        "no fabric lane is observed for ", n.host as String,
+        ", so this rank has no collective transport plan and the arm requires ",
+        collective_transport_requirement_wire(r: glm_native_collective_transport) as String,
+      ], "") as NonEmptyStr,
+    }
+    Absent => ArmLaunchPlanned {
+      lines: flat_map(nodes, n =>
+        match transport_plan_for(host: n.host, requirement: glm_native_collective_transport) {
+          Absent => []
+          Present { value: transport } => [ArmNodeLaunch {
+            node: n,
+            argv: docker_run_detached_arguments(spec: arm_container_spec(node: n, master: master, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points, transport: transport)),
+            engine_argv: arm_engine_argv(node: n, master: master, crow: crow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
+            image_reference: runtime_artifact_wire(a: rrow.artifact),
+            transport: transport,
+            spec: arm_container_spec(node: n, master: master, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points, transport: transport),
+          }]
+        }),
+      master: master,
+    }
+  }
 }
 
 // ── THE PLAN AS TEXT, FOR READING BEFORE ANYTHING RUNS ────────────────────────────────────────

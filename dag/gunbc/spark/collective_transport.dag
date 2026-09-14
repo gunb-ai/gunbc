@@ -1,0 +1,192 @@
+module gunbc.spark.collective_transport
+
+import std.types { String, Bool, NonEmptyStr, List, FilePath }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.nvidia.nccl {
+  NcclRoceGidSelection, NcclGidByAddressFamily, NcclGidFixedIndex,
+  NcclAddressFamily, NcclAfInet, NcclAfInet6, NcclRoceVersion, NcclRoceV1, NcclRoceV2,
+  NcclEnvAssignment, nccl_roce_gid_selection_env,
+}
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_for_host }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// ── A RAIL IS NOT A TRANSPORT, AND THE FLEET HAS BEEN SERVING AS IF IT WERE ────────────────────
+//
+// ONE PHYSICAL RAIL CARRIES TWO MATERIALLY DIFFERENT NCCL REALIZATIONS. Sockets over the Ethernet rail
+// and verbs over the same rail's RoCE device are both "enp1s0f1np1" to anything that reads an
+// interface name, and only one of them is what a four-node tensor-parallel model was placed on. The
+// GLM launcher named the netdev and the rail address and nothing else, so its containers were created
+// with no device node to open -- measured 2026-09-14, every rank: `NET/IB : No device found.` followed
+// by `NET/Socket : Using [0]enp1s0f1np1`, with HostConfig.Devices empty.
+//
+// SO THE TRANSPORT IS A PLAN FACT, DERIVED FROM THE LANE THE HOST IS ON. Nothing here is authored per
+// launcher: the netdev, the rail address and the RDMA device come from
+// gunbc.spark.fabric_switch_observed's lane observation for that exact host, and a host with no
+// observed lane has no transport plan rather than a default one.
+//
+// AND THE BACKEND IS SELECTED RATHER THAN PERMITTED. Both arms name ONE realization and the readback
+// refuses the other: a deployment that came up on verbs where sockets were selected is as much a
+// divergence as the reverse, because a capacity standing measured over one transport is not a claim
+// about the other. The socket arm was first spelled `PermitNcclSocket`, which read as "either will do"
+// while its renderer set no selector and its readback refused verbs -- so it was a requirement wearing
+// a permission's name (exact-head review, 2026-09-14). It now forces NCCL_NET=Socket, and the absence
+// of a device mapping is a consequence of the selection rather than the mechanism of it.
+
+// GROUP A IS THE OTHER CONSUMER AND HAS NOT YET BEEN MOVED, which is a sequencing fact rather than an
+// oversight. gunbc.spark.pair_serving_realization renders the same device mapping, memlock bound and
+// IPC_LOCK capability from its own inline spec, and on main it additionally carries the RoCE GID
+// selection this module reads (#11302). Rewriting that path HERE would author a second version of a
+// change that already exists upstream and collide with it at merge. TRIGGER: this branch merges with
+// main, at which point spark_pair_container_spec and spark_pair_container_env consume
+// transport_plan_for and transport_env for the host each unit is rendered for, and their inline device,
+// memlock, capability, HCA and GID rows delete in that change.
+type CollectiveTransportRequirement
+  = RequireNcclIb
+  | RequireNcclSocket { basis: DeclarationRef }
+
+fn collective_transport_requirement_wire(r: CollectiveTransportRequirement) -> NonEmptyStr {
+  match r {
+    RequireNcclIb => "NCCL verbs over the lane's RDMA device" as NonEmptyStr
+    RequireNcclSocket { basis: _ } => "NCCL TCP sockets over the lane's netdev, by declared selection" as NonEmptyStr
+  }
+}
+
+// THE PLAN IS PER HOST BECAUSE THE LANE IS. Every field is a projection of one observation, so two
+// ranks cannot disagree about which device their own host carries, and no consumer spells a device
+// name of its own.
+type CollectiveTransportPlan sole_constructor {
+  host: HostIdentity
+  netdev: NonEmptyStr
+  rail_address: Ipv4Address
+  rdma_device: NonEmptyStr
+  device_population: List<DockerDeviceMapping>
+  memlock_unlimited: Bool
+  capabilities: List<NonEmptyStr>
+  gid_selection: NcclRoceGidSelection
+  requirement: CollectiveTransportRequirement
+}
+
+// THE CHARACTER DEVICES VERBS NEEDS, AND WHY THE WHOLE DIRECTORY RATHER THAN EACH NODE. libibverbs
+// opens /dev/infiniband/uverbsN for the device it selects and /dev/infiniband/rdma_cm for connection
+// management; mapping the directory admits the pair the driver actually publishes on this host rather
+// than a roster this repository would have to keep in step with the kernel module.
+data infiniband_device_directory: FilePath = "/dev/infiniband"
+
+data ipc_lock_capability: NonEmptyStr = "IPC_LOCK" as NonEmptyStr
+
+fn verbs_device_population() -> List<DockerDeviceMapping> {
+  [DockerDeviceMapping {
+    host_path: infiniband_device_directory,
+    container_path: infiniband_device_directory,
+    cgroup_permissions: "rwm" as NonEmptyStr,
+  }]
+}
+
+// PINNED MEMORY AND THE CAPABILITY TO PIN IT TRAVEL WITH THE DEVICE. Verbs registers memory regions,
+// which the kernel refuses beyond the process's locked-memory bound, and a container's default bound
+// is small; NCCL's own troubleshooting names registration failures as the next wall after device
+// visibility. A socket deployment needs neither, and asking for them would be realization a permitted
+// fallback does not use.
+fn transport_plan_for(host: HostIdentity, requirement: CollectiveTransportRequirement) -> CollectiveTransportPlan? {
+  match fabric_lane_for_host(host: host) {
+    Absent => none
+    Present { value: lane } =>
+      Present { value: CollectiveTransportPlan {
+        host: host,
+        netdev: lane.leg_netdev,
+        rail_address: fabric_rail_address_of(o: lane),
+        rdma_device: lane.leg_rdma_device,
+        device_population: match requirement { RequireNcclIb => verbs_device_population()  RequireNcclSocket { basis: _ } => [] },
+        memlock_unlimited: match requirement { RequireNcclIb => true  RequireNcclSocket { basis: _ } => false },
+        capabilities: match requirement { RequireNcclIb => [ipc_lock_capability]  RequireNcclSocket { basis: _ } => [] },
+        gid_selection: NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 },
+        requirement: requirement,
+      } }
+  }
+}
+
+// ── THE ENVIRONMENT THE PLAN RENDERS ──────────────────────────────────────────────────────────
+//
+// THE HCA IS NAMED EXACTLY AND NOT LEFT TO NCCL. Four RoCE devices are visible on these hosts and only
+// one is the lane's leg; without NCCL_IB_HCA the library picks among them, which is a second placement
+// decision taken by a library rather than by the plan. UCX reads its own name for the same device.
+//
+// THE SOCKET NAMES ARE SET IN BOTH REALIZATIONS, because even a verbs deployment bootstraps
+// out-of-band over a socket -- the OOB interface in NCCL's own selection line -- and Gloo's collectives
+// are socket-bound regardless. What the requirement decides is whether verbs is the payload path.
+data nccl_socket_ifname_env: NonEmptyStr = "NCCL_SOCKET_IFNAME" as NonEmptyStr
+data gloo_socket_ifname_env: NonEmptyStr = "GLOO_SOCKET_IFNAME" as NonEmptyStr
+data nccl_ib_hca_env: NonEmptyStr = "NCCL_IB_HCA" as NonEmptyStr
+data ucx_net_devices_env: NonEmptyStr = "UCX_NET_DEVICES" as NonEmptyStr
+data nccl_net_env: NonEmptyStr = "NCCL_NET" as NonEmptyStr
+data nccl_net_ib_value: String = "IB"
+data nccl_net_socket_value: String = "Socket"
+
+// THE EXACT-MATCH FORM, which NCCL documents as the leading "=" spelling: `NCCL_IB_HCA=rocep1s0f1`
+// matches any device whose name BEGINS with that text, so a fleet that ever carries rocep1s0f1x would
+// admit the wrong one; `=rocep1s0f1` is the device and nothing else.
+fn nccl_exact_hca_value(device: NonEmptyStr) -> String {
+  join(["=", device as String], "")
+}
+
+fn nccl_env_assignment_as_docker(e: NcclEnvAssignment) -> DockerEnvAssignment {
+  DockerEnvAssignment { name: e.name, value: e.value }
+}
+
+fn transport_socket_env(plan: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
+  [
+    DockerEnvAssignment { name: nccl_socket_ifname_env, value: plan.netdev as String },
+    DockerEnvAssignment { name: gloo_socket_ifname_env, value: plan.netdev as String },
+  ]
+}
+
+// NCCL_NET IS SET IN BOTH ARMS, AND THAT IS THE WHOLE POINT OF NAMING A REALIZATION. Without it a verbs
+// launch that cannot initialise falls back to sockets and serves -- the state this fleet has been in,
+// healthy-looking and slow -- and a socket launch is merely what happens to be left when no device was
+// mapped. With it each arm asks for one network by name, and a failure to get it is a refusal at start
+// rather than a silent substitution.
+fn transport_env(plan: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
+  match plan.requirement {
+    RequireNcclSocket { basis: _ } =>
+      concat(
+        transport_socket_env(plan: plan),
+        [DockerEnvAssignment { name: nccl_net_env, value: nccl_net_socket_value }],
+      )
+    RequireNcclIb =>
+      concat(
+        concat(
+          transport_socket_env(plan: plan),
+          [
+            DockerEnvAssignment { name: nccl_net_env, value: nccl_net_ib_value },
+            DockerEnvAssignment { name: nccl_ib_hca_env, value: nccl_exact_hca_value(device: plan.rdma_device) },
+            DockerEnvAssignment { name: ucx_net_devices_env, value: join([plan.rdma_device as String, ":1"], "") },
+          ],
+        ),
+        map(nccl_roce_gid_selection_env(s: plan.gid_selection), e => nccl_env_assignment_as_docker(e: e)),
+      )
+  }
+}
+
+// ── WHAT A READBACK MUST FIND ─────────────────────────────────────────────────────────────────
+//
+// THE PLAN ANSWERS THE COMPARISON RATHER THAN THE OBSERVER. A reader that decided for itself that
+// verbs is required would agree with itself; these three projections are what an observation is
+// measured against, and they come from the same value the launch was rendered from.
+fn transport_requires_verbs(plan: CollectiveTransportPlan) -> Bool {
+  match plan.requirement {
+    RequireNcclIb => true
+    RequireNcclSocket { basis: _ } => false
+  }
+}
+
+fn transport_expected_device(plan: CollectiveTransportPlan) -> NonEmptyStr {
+  if transport_requires_verbs(plan: plan) { plan.rdma_device } else { plan.netdev }
+}
+
+fn transport_expected_out_of_band(plan: CollectiveTransportPlan) -> NonEmptyStr {
+  plan.netdev
+}

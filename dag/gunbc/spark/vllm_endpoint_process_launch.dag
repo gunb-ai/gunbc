@@ -1,6 +1,9 @@
 module gunbc.spark.vllm_endpoint_process_launch
 
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash {
+  serialize_content_hash, as_content_hash_structural, content_hash_combine_structural,
+  content_hash_tagged_structural, content_hash_atom,
+}
 
 import std.types { Bool, String, NonEmptyStr }
 import product.fabric.demand { ObservationReceiptRef }
@@ -81,24 +84,27 @@ fn vllm_endpoint_process_launch(group: FabricGroup, endpoint: NonEmptyStr, proce
 // spark_serving_offer_key, so two different running processes could share one offer identity, with
 // one launch's readiness and queue state answering for the other.
 //
-// FIELD TAGS AND A RECORD SEPARATOR MAKE IT INJECTIVE, the same idiom product.training.resolution
-// uses for manifest material: U+001F between a field name and its value, U+001E between fields.
-// Neither separator can occur in a group wire, an endpoint or a start field, so the material is
-// injective over this domain and the hash of it is a name rather than a readable join.
+// A SEPARATOR ONLY FRAMES A FIELD WHOSE TYPE EXCLUDES IT, AND THESE TYPES DO NOT. The repair after "@"
+// joined the fields with U+001F and U+001E and asserted neither could occur in them -- but endpoint and
+// process_start_field are NonEmptyStr, so the assertion lived in an annotation and not in the carrier
+// (exact-head review, 2026-09-14). An exported start time is a field an upstream exporter renders, and
+// nothing typed here stops it carrying either byte.
 //
-// THE KEY'S VALUE CHANGES WITH THIS EDIT. It is an in-run subject identity rather than a persisted
-// contract, so the discontinuity is one-time; anything that stored a previous key would be comparing
-// across a representation change, which is the thing the old rendering could not even detect.
-fn vllm_endpoint_process_launch_material(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
-  join([
-    join(["group", "\u{1f}", fabric_group_wire(g: launch.group) as String], ""),
-    join(["endpoint", "\u{1f}", launch.endpoint as String], ""),
-    join(["process-start", "\u{1f}", launch.process_start_field as String], ""),
-  ], "\u{1e}") as NonEmptyStr
-}
-
+// SO NO FIELD SHARES A BYTE STREAM WITH ANOTHER. Each is hashed on its own, tagged with its name, and the
+// fixed-width digests are combined -- std.content_hash's structural combination, the third of the forms
+// the review named. A field's content can no longer move a boundary, because there is no boundary in any
+// string to move; what remains is the structural hash's own collision bound, which every Work key shares.
+//
+// THE KEY'S VALUE CHANGES WITH THIS EDIT, a second time. It is an in-run subject identity rather than a
+// persisted contract, so the discontinuity is one-time.
 fn vllm_endpoint_process_launch_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
-  serialize_content_hash(hash: content_hash_of_value(value: vllm_endpoint_process_launch_material(launch: launch)))
+  serialize_content_hash(hash: as_content_hash_structural(structural: content_hash_combine_structural(
+    left: content_hash_tagged_structural(tag: "group" as NonEmptyStr, payload: content_hash_atom(value: fabric_group_wire(g: launch.group))),
+    right: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "endpoint" as NonEmptyStr, payload: content_hash_atom(value: launch.endpoint)),
+      right: content_hash_tagged_structural(tag: "process-start" as NonEmptyStr, payload: content_hash_atom(value: launch.process_start_field)),
+    ),
+  )))
 }
 
 // EQUALITY IS STRUCTURAL AND DOES NOT ROUTE THROUGH THE KEY. Even with an injective key, deciding
