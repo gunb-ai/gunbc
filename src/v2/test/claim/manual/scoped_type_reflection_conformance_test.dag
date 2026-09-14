@@ -233,3 +233,33 @@ test fn cited_ambiguous_qualified_name_refuses_rather_than_taking_the_head() -> 
     )
   )
 }
+
+// THE SPECIMEN A PRODUCTION CLAIM NOW DEPENDS ON, which is what makes this pair a regression control
+// rather than a second copy of the Representation pair above. Bool is declared as a closed coproduct
+// in BOTH v2.std.logic and std.types, and the cross-representation equality witness reads its arms
+// to prove its own non-vacuity. Before the cutover that read consumed whichever declaration load
+// order reached first; the guarded bare route refuses it, and the witness now cites v2.std.logic.
+// These two claims are what say that citation is the right one and that the bare form is genuinely
+// ambiguous -- if either flips, the production witness is resting on a spelling again.
+test fn cited_bool_resolves_to_the_logic_module_arms() -> Bool {
+  outcome_arm_keys_are(
+    o: coproduct_arm_keys_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.logic",
+        decl_name: "Bool",
+        field: WholeDeclaration
+      }
+    ),
+    expected: [^True, ^False]
+  )
+}
+
+test fn bare_bool_spelling_refuses_as_ambiguous() -> Bool {
+  outcome_is_rejected(
+    o: coproduct_arm_keys_checked(
+      pool_roots: scoped_reflection_pool_roots,
+      type_name: ^Bool
+    )
+  )
+}
