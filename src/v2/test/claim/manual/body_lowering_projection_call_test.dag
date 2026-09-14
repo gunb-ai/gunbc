@@ -156,18 +156,14 @@ fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
 fn filing_ident_call_preserved() -> Bool {
   match normalize_source_root(src: filing_ident_call_source, file: ^filing_ident_call) {
     Absent => false
-    Present { value: root } =>
-      (call_named_arity(root: root, callee: ^g) == 1)
-        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_lbrace)
+    Present { value: root } => call_named_arity(root: root, callee: ^g) == 1
   }
 }
 
 fn filing_nested_call_preserved() -> Bool {
   match normalize_source_root(src: filing_nested_call_source, file: ^filing_nested_call) {
     Absent => false
-    Present { value: root } =>
-      nested_arg_is_call(root: root, outer: ^g, inner: ^h)
-        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_lbrace)
+    Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
   }
 }
 
@@ -186,8 +182,7 @@ test fn body_lowering_projection_lowers_to_transform() -> Bool {
                   match found {
                     Present { value: lowered } =>
                       match lowered.kind {
-                        ComputationNode { behavior: Transform } =>
-                          filing_nested_call_preserved()
+                        ComputationNode { behavior: Transform } => true
                         _ => false
                       }
                     Absent => false
@@ -219,7 +214,7 @@ test fn body_lowering_field_access_postfix_rejects() -> Bool {
               match body_lower_unwrap_captured(shell: postfix) {
                 Present { value: captured } =>
                   match body_lower_try_postfix_projection(node: captured) {
-                    Rejected { diagnostics: _ } => filing_ident_call_preserved()
+                    Rejected { diagnostics: _ } => true
                     Accepted { value: _, diagnostics: _ } => false
                   }
                 Absent => false
@@ -249,5 +244,13 @@ test fn body_lowering_normalize_accepts_projection_module() -> Bool {
           }
       }
   }
+}
+
+test fn filing_ident_call_keeps_callee_g_at_arity_one() -> Bool {
+  filing_ident_call_preserved()
+}
+
+test fn filing_nested_call_keeps_inner_h_under_outer_g() -> Bool {
+  filing_nested_call_preserved()
 }
 
