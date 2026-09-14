@@ -1,0 +1,133 @@
+module gunbc.machine_intake_mtcollins1_expansion_observation
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.measure { RackUnit, rack_unit }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.mt_collins_1u_product_brief.specifications {
+  MtCollins1UExpansion, mt_collins_1u_expansion,
+  OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot, mt_collins_1u_ocp_slot,
+}
+
+// A report relayed by eager-owl-205, not an inspection performed by this session, on the shape of
+// gunbc.machine_intake_mtcollins1_dimm_connector_observation. The unit is named through its
+// existing intake receipt rather than a newly invented fleet identity.
+//
+// WHY THIS MODULE IS PUBLIC, stated because the nearer authority points the other way.
+// extdeps.ampere.mt_collins_1u_product_brief.specifications says slot OCCUPANCY belongs in the
+// private held-unit receipts. The nearer precedent disagrees in practice: the DIMM connector
+// observation is a per-unit operator report and it is public. This module follows the precedent it
+// is copied from and states the divergence so a reviewer can move it rather than discover it. What
+// is here is chassis STRUCTURE an operator saw from outside the machine, not an inventory of what
+// is installed in it.
+data observed_unit: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.machine_intake_mtcollins1_access_observation",
+  decl_name: "mtcollins1_access_observation",
+  field: WholeDeclaration,
+}
+
+// THE DISTINCTION THIS MODULE EXISTS TO HOLD. An APERTURE is a hole in the rear panel. A RISER
+// ASSEMBLY is the bracket, connector and retention hardware behind it. A chassis ships with
+// apertures whether or not risers are fitted -- that is what a blanking plate is for. The operator
+// saw the rear panel; nobody has yet reported the inside. Collapsing the two would convert a
+// platform capacity into a unit fact, which is the same error as reading "this DIMM type is
+// supported" into "this population will train".
+type RearApertureReport {
+  aperture_count: Nat
+  aperture_note: NonEmptyStr
+}
+
+type RiserOccupancy
+  = RiserPositionsFitted { positions: Nat, evidence: NonEmptyStr }
+  | RiserPositionsUnobserved { settled_by: NonEmptyStr }
+
+type OcpBayOccupancy
+  = OcpBayEmpty { evidence: NonEmptyStr }
+  | OcpBayPopulated { evidence: NonEmptyStr }
+  | OcpBayOccupancyUnobserved { settled_by: NonEmptyStr }
+
+type MtCollinsExpansionOperatorObservation {
+  unit: DeclarationRef
+  chassis_height: RackUnit
+  observed_on: SpecificationDocumentDate
+  observer: NonEmptyStr
+  method: NonEmptyStr
+  rear_apertures: RearApertureReport
+  riser_occupancy: RiserOccupancy
+  ocp_bay_occupancy: OcpBayOccupancy
+}
+
+data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 13 },
+  observer: "operator",
+  method: "Operator report of the rear panel of Foxconn Mt. Collins unit 1, relayed in the session dashboard. No interior inspection was reported and none was performed by this session.",
+  rear_apertures: RearApertureReport {
+    aperture_count: 2,
+    aperture_note: "Two large horizontal rear apertures, consistent in position and orientation with the platform's two full-height half-length expansion positions. An aperture is what the rear panel exposes; it is not a report that a riser occupies it.",
+  },
+  riser_occupancy: RiserPositionsUnobserved {
+    settled_by: "An interior report of whether a riser cage with a PCIe edge connector is fitted behind each aperture, or whether the positions are empty behind a blanking plate.",
+  },
+  ocp_bay_occupancy: OcpBayOccupancyUnobserved {
+    settled_by: "An interior or rear-bay report of whether the OCP 3.0 bay holds a card. BMC sensors naming an OCP zone were read on 2026-09-06 and name a slot rather than its occupancy.",
+  },
+}
+
+// WHAT THE UNIT OFFERS, which is a different question from what the platform permits. The platform
+// half is already modelled and is imported rather than restated: mt_collins_1u_expansion carries
+// the "up to 2x FHHL PCIe Gen4 x16" upper bound and mt_collins_1u_ocp_slot carries the OCP 3.0
+// mezzanine standing. This fold joins those with the observation above and refuses to answer
+// further than the evidence reaches.
+type AttachmentPointStanding
+  = AttachmentPointOffered { positions: Nat, basis: NonEmptyStr }
+  | AttachmentPointUnobserved { platform_upper_bound: Nat, settled_by: NonEmptyStr }
+  | AttachmentPointAbsent { basis: NonEmptyStr }
+
+fn pcie_attachment_standing(observation: MtCollinsExpansionOperatorObservation) -> AttachmentPointStanding {
+  let platform: MtCollins1UExpansion = mt_collins_1u_expansion
+  match observation.riser_occupancy {
+    RiserPositionsFitted { positions: positions, evidence: evidence } =>
+      AttachmentPointOffered { positions: positions, basis: evidence }
+    RiserPositionsUnobserved { settled_by: settled_by } =>
+      AttachmentPointUnobserved {
+        platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
+        settled_by: settled_by,
+      }
+  }
+}
+
+fn ocp_attachment_standing(observation: MtCollinsExpansionOperatorObservation) -> AttachmentPointStanding {
+  match mt_collins_1u_ocp_slot {
+    NoOcpSlot => AttachmentPointAbsent { basis: "The platform brief states no OCP mezzanine slot for this chassis." }
+    OcpMezzanineSlotPresent { generation: generation, multi_host: multi_host, occupancy_note: occupancy_note } =>
+      match observation.ocp_bay_occupancy {
+        OcpBayEmpty { evidence: evidence } => AttachmentPointOffered { positions: 1, basis: evidence }
+        OcpBayPopulated { evidence: evidence } => AttachmentPointOffered { positions: 1, basis: evidence }
+        OcpBayOccupancyUnobserved { settled_by: settled_by } =>
+          AttachmentPointUnobserved { platform_upper_bound: 1, settled_by: settled_by }
+      }
+  }
+}
+
+type MtCollinsUnitExpansionEvidence
+  = UnitExpansionEvidence {
+      observation: MtCollinsExpansionOperatorObservation,
+      pcie: AttachmentPointStanding,
+      ocp: AttachmentPointStanding,
+    }
+  | NoExpansionObservationForUnit { requested_unit: DeclarationRef }
+
+fn expansion_evidence_for_unit(unit: DeclarationRef) -> MtCollinsUnitExpansionEvidence {
+  if declaration_ref_eq(a: unit, b: observed_unit) {
+    UnitExpansionEvidence {
+      observation: mtcollins1_expansion_observation,
+      pcie: pcie_attachment_standing(observation: mtcollins1_expansion_observation),
+      ocp: ocp_attachment_standing(observation: mtcollins1_expansion_observation),
+    }
+  } else {
+    NoExpansionObservationForUnit { requested_unit: unit }
+  }
+}
