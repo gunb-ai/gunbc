@@ -142,9 +142,13 @@ fn replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessment
   }
 }
 
+// Capture identity shared by replay and the selection counterexample controls.
+data pre_os_selection_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-topology-control-rerun-attached-before-stimulus-2026-09-12.txt"
+data pre_os_selection_capture_sha256: NonEmptyStr = "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7"
+
 fn replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelectionArchiveAssessment, NonEmptyStr> {
-  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-rerun-attached-before-stimulus-2026-09-12.txt",
-    expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
+  match read_verified_memory_capture(path: pre_os_selection_capture_path,
+    expected_sha256: pre_os_selection_capture_sha256) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: payload } => ObservationEstablished { observed: PreOsFirmwareSelectionArchiveAssessment {
       selection: pre_os_firmware_boot_selection(text: payload, host_mac: mtcollins1_host_nic_mac),
