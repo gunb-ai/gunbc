@@ -358,8 +358,6 @@ fn gib_hundredths_to_bytes(hundredths: Nat) -> ByteSize {
 // that memory IS available must use the lower.
 fn group_rank_free_memory_upper(r: GroupRankFreeMemoryObserved) -> ByteSize { r.free_upper }
 
-fn group_rank_free_memory_lower(r: GroupRankFreeMemoryObserved) -> ByteSize { r.free_lower }
-
 fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
   first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))
 }
