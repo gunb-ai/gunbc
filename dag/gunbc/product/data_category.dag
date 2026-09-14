@@ -47,11 +47,14 @@ type AbuseAndSanctionsRecord
 // admission fold compares those. These are the only spellings of the references; a consumer that
 // needs one imports it rather than re-spelling the module path. A marker gains its reference
 // function with its FIRST MINT OR SINK, so no function here is a declaration nothing reads
-// (DESIGN 3c, review 65204). PersonalIdentity and BuildOutput earned theirs from their mints. The
-// remaining six earn theirs from the first SINK: gunbc-private strategy.data_map binds one marker
-// per description row and hands it to product.data_class admit_data_effect, which compares marker
-// identity -- so without these the private rows would have to re-spell the module path, forking the
-// only spelling this annotation exists to keep single (DESIGN 3).
+// (DESIGN 3c, review 65204). They are earned two ways. PersonalIdentity and BuildOutput earned
+// theirs from their MINTS. SourceAndBuildInput, MeteringTelemetry and CiSecret earn theirs from a
+// PUBLIC caller that was already there and spelling this module's path the long way -- the frontier
+// rows of product.data_class, cut over in this change. The rest earn theirs from the first SINK:
+// gunbc-private strategy.data_map binds one marker per description row and hands it to
+// product.data_class admit_data_effect, which compares marker identity -- so without these the
+// private rows would have to re-spell the module path, forking the only spelling this annotation
+// exists to keep single (DESIGN 3).
 //
 // THIS SENTENCE PREVIOUSLY SAID ONLY TWO REFERENCES EXIST, and it stood above two while the corpus
 // needed eight. Prose asserting what the code contradicts rots silently because no Accepted program
@@ -68,9 +71,11 @@ fn metering_telemetry_ref() -> DeclarationRef { decl_ref(module_path: data_categ
 fn support_communication_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SupportCommunication") }
 fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "AbuseAndSanctionsRecord") }
 
-// THE SIX REFERENCES WITH NO CALL SITE IN THIS TREE, DECLARED AS A FRONTIER RATHER THAN LEFT TO BE
-// INFERRED. personal_identity_ref and build_output_ref are called by their mints in
-// product.data_class. The six below are not called anywhere public, and DESIGN 3c gives a
+// THE REFERENCES WITH NO CALL SITE IN THIS TREE, DECLARED AS A FRONTIER RATHER THAN LEFT TO BE
+// INFERRED. THE LIST BELOW IS THE CENSUS AND THIS SENTENCE DELIBERATELY CARRIES NO COUNT: an earlier
+// revision said SIX here, three of those six turned out to be called already, and a count in prose
+// beside the list it counts is the second census that made this module's other annotation wrong in
+// the first place. The rows below are not called anywhere public, and DESIGN 3c gives a
 // declaration exactly three honest states: consumed by execution here, a declared frontier with its
 // trigger stated BESIDE it, or dangling. These are the second, and the trigger has to be a typed row
 // rather than the paragraph above them -- DESIGN 4c settles that an annotation is never evidence a
@@ -86,16 +91,13 @@ fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: da
 data data_category_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: data_category_module_path,
   decl_names: [
-    "source_and_build_input_ref" as NonEmptyStr,
-    "ci_secret_ref" as NonEmptyStr,
     "job_log_ref" as NonEmptyStr,
-    "metering_telemetry_ref" as NonEmptyStr,
     "support_communication_ref" as NonEmptyStr,
     "abuse_and_sanctions_record_ref" as NonEmptyStr,
   ],
-  reason: "no public call site. These are the markers' only spellings, and the first consumer that needs them is a private one. product.data_class carries the matching frontier for the MARKERS and states that their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings. ONE REASON RATHER THAN SIX: the six share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence six times with only the symbol substituted, which is DESIGN 2 authored duplication and makes a seventh marker a seventh paste.",
+  reason: "no public call site. THREE OF THE ORIGINAL SIX WERE WRONG TO BE HERE and are gone from this list: source_and_build_input_ref, metering_telemetry_ref and ci_secret_ref are now CALLED, by product.data_class's own frontier rows, which had been re-spelling this module's path the long way beside the functions that name it. Review 66072 caught that, and it caught the worse half: minting a second spelling beside an existing one is the DESIGN 3 nicknaming fork, and this PR CREATED it rather than cutting over -- while the annotation above claims these are the only spellings, which the tree then contradicted at three sites. The remaining three are genuinely uncalled in public: their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so those rows import one spelling instead of re-spelling this module's path, which is the fork DESIGN 3 forbids. ONE REASON RATHER THAN THREE: they share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence per name.",
   dissolution: unbound_dissolution(
-    description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing these functions from this module. SUFFICIENT FOR deleting a name from the list above; the roster empties when all six are imported. NOT satisfied by a public witness calling one of them, which would prove the function evaluates and not that anything consumes the identity it names.",
+    description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing these functions from this module. SUFFICIENT FOR deleting a name from the list above; the roster empties when every name in it is imported. NOT satisfied by a public witness calling one of them, which would prove the function evaluates and not that anything consumes the identity it names.",
   ),
 )
 

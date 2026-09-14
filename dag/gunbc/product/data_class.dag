@@ -9,6 +9,7 @@ import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision,
 import product.data_category {
   PersonalIdentity, BuildOutput,
   personal_identity_ref, build_output_ref,
+  source_and_build_input_ref, metering_telemetry_ref, ci_secret_ref,
 }
 
 // WHY THIS MODULE EXISTS. Operator direction 2026-09-13: "i just want real compliance modeling and
@@ -514,17 +515,17 @@ fn admitted_seed<C, T>(
 // folds them like every sibling frontier group (review 65204).
 data data_class_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "product.data_category", decl_name: "SourceAndBuildInput"),
+    ref: source_and_build_input_ref(),
     reason: "the fabric's job INPUT bytes have no ingest boundary in this tree yet: product.fabric.work WorkContract.inputs is an ArtifactManifestRef and no M0 module stages input bytes for a job, so there is no function at which a customer's source could be classified as it is read. The output half landed (gunbc.fabric_m0_origin_commit job_output_bytes); the input half is a category with a marker and no mint",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: the M0 module that fetches a job's input manifest members from the durable origin into the job's working tree. TRIGGER: that module's staging function returns Classified<SourceAndBuildInput, _> for each staged member through an admit_callers-sealed classify_source_and_build_input mint added to product.data_class, and the job's compute step takes the classified members. SUFFICIENT FOR deleting this row. NOT satisfied by a witness minting the value, nor by classifying the readback of an OUTPUT, which is a BuildOutput"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "product.data_category", decl_name: "MeteringTelemetry"),
+    ref: metering_telemetry_ref(),
     reason: "the metering usage receipt (gunbc#11177 HardwareThreadMinute usage receipt, open at this writing) is the named first producer for MeteringTelemetry and the Telemetry sink's first consumer; it is not on main, so neither a classify_metering_telemetry mint nor a Telemetry admission has a production caller here",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_usage_receipt's receipt producer, once gunbc#11177 lands. TRIGGER: that producer returns Classified<MeteringTelemetry, _> through a sealed mint and the telemetry emission takes a DataEffectPermit from admit_data_effect for a Telemetry sink. SUFFICIENT FOR deleting this row. NOT satisfied by the receipt type merging without its emission taking the permit"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "product.data_category", decl_name: "CiSecret"),
+    ref: ci_secret_ref(),
     reason: "CiSecret, JobLog, SupportCommunication and AbuseAndSanctionsRecord are markers with no boundary and no sink in this tree (JobLog is imported by the enrolled log-channel probe as a phantom Sink<JobLog> argument, which typechecks and executes nothing): their consumers are the private description rows of gunbc-private strategy.data_map that cite them by DeclarationRef, which this tree cannot see. In public they are declared identities with no mint, no witness and no permit -- the honest state of a category that exists in policy before it exists in code",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first ingest boundary for each -- a CI secret entering a job's environment (CiSecret), a job's stdout/stderr entering the log channel (JobLog), a support message entering the operator's tooling (SupportCommunication), a screening result entering provider admission (AbuseAndSanctionsRecord). TRIGGER, per marker: an admit_callers-sealed classify_<category> mint in product.data_class with a production boundary as its admitted caller. SUFFICIENT FOR deleting that marker from this row; the row deletes when all four have mints. NOT satisfied by the private citation alone"),
   ),
