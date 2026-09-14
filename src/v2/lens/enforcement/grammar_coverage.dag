@@ -54,14 +54,24 @@ data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 // retired the rest of the cohort. It stays because the collapse was ATTEMPTED HERE AND MEASURED, and
 // the premise behind "one delete plus an import" is false for this file specifically.
 //
-// THIS MODULE DECLARES NO IMPORTS AT ALL. Every name it uses -- dedupe_snoc, tokenize,
-// parse_module and the rest -- reaches its declaration through the shared name slot rather than
-// through anything this file wrote. Adding the single import line the collapse needs turns on the
-// listed-import requirement for the whole file, and those names stop resolving: the collapse was
-// attempted and the refusal set read off the compile, which gains exactly the unresolved names
-// dedupe_snoc, tokenize and parse_module, plus the downstream effect-summary refusal each of them
-// causes. The shape is stated rather than a count transcribed (section 6): re-derive it by adding
-// the import and compiling this module, which is the same act the trigger below closes on.
+// THIS MODULE DECLARES NO IMPORTS AT ALL, so every name it uses reaches its declaration through
+// the shared name slot. Adding the one import line the collapse needs moves this file's
+// resolution into its OWN IMPORT CLOSURE, and the names that fall outside that closure stop
+// resolving: the collapse was attempted and the refusal set read off the compile, which gains
+// exactly dedupe_snoc (v2.lens.coverage), tokenize (v2.compiler.tokenize) and parse_module
+// (v2.compiler.parse), each as `has no established callee identity, so its effects cannot be
+// joined`. The shape is stated rather than a count transcribed (section 6); re-derive it by
+// adding the import and compiling this module, which is the same act the trigger below closes on.
+//
+// THE RULE IS THE CLOSURE, NOT THE FILE, and this diff carries its own control for that -- a
+// correction owed to review 65902, which found the earlier phrasing ("turns on the listed-import
+// requirement for the whole file") contradicted two files away. v2.lens.fact_cardinality also had
+// zero imports at base, also gained `import v2.std.text { string_eq }` as its only import, and its
+// bare names KEPT resolving. They did because v2.std.text imports v2.std.algebra, so contains and
+// list_snoc_item are inside the closure that one import opens. The three names above are not:
+// nothing on the path from v2.std.text reaches v2.lens.coverage or v2.compiler. Same act, opposite
+// outcome, and the discriminator is where the names are declared relative to the closure -- which
+// is why fact_cardinality collapsed in this change and this file did not.
 //
 // So the honest collapse of this clone is the qualification of this module's whole surface --
 // naming v2.lens.coverage, v2.compiler.tokenize and v2.compiler.parse as the sources they already
