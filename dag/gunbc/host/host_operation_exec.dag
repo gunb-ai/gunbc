@@ -6,7 +6,6 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.tools.hostname
 import extdeps.linux.cgroup_v2
 import extdeps.linux.procfs
-import extdeps.procps.pgrep
 import extdeps.posix.getconf
 import extdeps.crypto.hash
 import gunbc.host_effect {
@@ -120,7 +119,6 @@ type HostOperation =
   | ProcfsReadStat
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
-  | PgrepFullCommandLine { pattern: NonEmptyStr }
   | GetconfClockTicksPerSecond
   | Sha256SumFile { path: NonEmptyStr }
 
@@ -223,14 +221,6 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     ProcfsReadPidCgroup { pid: p } => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadPidCgroup"),
       bindings: [operation_argv_bind_text(name: "pid", text: p as String)],
-    )
-    PgrepFullCommandLine { pattern: p } => bind_operation_invocation(
-      at: OperationRef {
-        path: pgrep_operation_path,
-        service: pgrep_operation_service,
-        operation: "MatchFullCommandLine",
-      },
-      bindings: [operation_argv_bind_text(name: "pattern", text: p as String)],
     )
     GetconfClockTicksPerSecond => bind_operation_invocation(
       at: OperationRef {
@@ -350,10 +340,6 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = linux.Procfs.ReadPidCgroup(pid: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
-    PgrepFullCommandLine { pattern: p } => {
-      let result = procps.Pgrep.MatchFullCommandLine(pattern: p)
-      HostOperationObserved { stdout: result.pids, success: result.success, stderr: none }
-    }
     GetconfClockTicksPerSecond => {
       let result = posix.Getconf.ClockTicksPerSecond()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
@@ -434,8 +420,6 @@ data cgroup_v2_operation_path: String = "dag/extdeps/linux/cgroup_v2.dag"
 data cgroup_v2_operation_service: String = "linux.CgroupV2"
 data procfs_operation_path: String = "dag/extdeps/linux/procfs.dag"
 data procfs_operation_service: String = "linux.Procfs"
-data pgrep_operation_path: String = "dag/extdeps/procps/pgrep.dag"
-data pgrep_operation_service: String = "procps.Pgrep"
 data getconf_operation_path: String = "dag/extdeps/posix/getconf.dag"
 data getconf_operation_service: String = "posix.Getconf"
 data sha256sum_operation_path: String = "dag/extdeps/crypto/hash.dag"

@@ -17,35 +17,6 @@ import std.algebra { trim }
 // reason this row is narrow, not because anything consumes them.
 data pgrep_exit_no_match: Int = 1
 
-// THE SCAN AS A MODELED OPERATION, so a host-effect executor can carry it over a remote transport
-// (DESIGN 3: the transport binds to this shape). `-f` matches the pattern against the FULL command
-// line; the operation prints one pid per line and NOTHING of the command lines it matched. That
-// property is why a fleet observer that must locate a process without reading its argv asks pgrep
-// rather than reading /proc/<pid>/cmdline: a command line can carry a token or key as an argument,
-// and the only thing that leaves the host here is the pid.
-//
-// EXIT 1 IS AN ANSWER. Per the EXIT STATUS row above, 1 means no process matched -- a successful
-// observation of absence -- so it maps to Unit with that sentence, and 2 and 3 are the refusal arms.
-service procps.Pgrep {
-  operation MatchFullCommandLine {
-    input { pattern: NonEmptyStr }
-    output {
-      pids: String from "stdout"
-      success: Bool from "exit_success"
-    }
-    readonly
-    transport shell { argv: ["pgrep", "-f", "{pattern}"] }
-    exit {
-      0 => Unit
-      1 => Unit "no process matched"
-      nonzero => String "pgrep failed before answering"
-    }
-    mock_response {
-      0 => { pids: "4242\n", success: true } "hermetic procps.Pgrep.MatchFullCommandLine"
-    }
-  }
-}
-
 type PgrepPidListing
   = PgrepPidsRead { pids: List<Int> }
   | PgrepPidLineUnparseable { line: String }
@@ -77,5 +48,30 @@ fn pgrep_pid_listing(stdout: String) -> PgrepPidListing {
   match scan.bad {
     Present { value: line } => PgrepPidLineUnparseable { line: line }
     Absent => PgrepPidsRead { pids: scan.pids }
+  }
+}
+
+// THE SCAN AS TYPED ARGV, and the exit-code contract that makes it safe to read. pgrep's exit code
+// IS its answer: 0 matched (stdout carries the pids), 1 no match, 2 syntax error, 3 fatal. A generic
+// executor that flattens exit to a success bool cannot tell 1 from 2/3, so a caller reading any
+// non-zero as absence commits exactly the fail-open the EXIT STATUS note above forbids -- a malformed
+// pattern or an internal failure proving a server had stopped. So this operation is consumed over a
+// transport that preserves the exit code, and pgrep_scan_outcome classifies it.
+fn pgrep_match_full_command_line_argv(pattern: NonEmptyStr) -> List<String> {
+  ["pgrep", "-f", pattern as String]
+}
+
+type PgrepScanOutcome
+  = PgrepMatched { listing: String }
+  | PgrepNoMatch
+  | PgrepScanFailed { exit_code: Int, stderr: String }
+
+fn pgrep_scan_outcome(exit_code: Int, stdout: String, stderr: String) -> PgrepScanOutcome {
+  if exit_code == 0 {
+    PgrepMatched { listing: stdout }
+  } else if exit_code == pgrep_exit_no_match {
+    PgrepNoMatch
+  } else {
+    PgrepScanFailed { exit_code: exit_code, stderr: stderr }
   }
 }

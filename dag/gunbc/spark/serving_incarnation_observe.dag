@@ -17,6 +17,7 @@ import gunbc.spark.vllm_serving_launch {
 import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_unit_name }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv, spark_managed_grant_wire }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.docker.cli {
   DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
   docker_container_inspect_identity_from_stdout, docker_image_id_sha256_hex,
@@ -31,7 +32,10 @@ import extdeps.linux.proc_pid_stat {
   StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time,
 }
 import extdeps.posix.getconf { ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, clock_ticks_reading }
-import extdeps.procps.pgrep { PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing }
+import extdeps.procps.pgrep {
+  PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing,
+  PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
+}
 import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
@@ -40,7 +44,7 @@ import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptu
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
   HostOperationObserved, HostOperationRefused, host_operation_exec,
-  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, PgrepFullCommandLine, GetconfClockTicksPerSecond, Sha256SumFile,
+  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, GetconfClockTicksPerSecond, Sha256SumFile,
 }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
@@ -76,7 +80,7 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConv
 // inspect object carries; it runs the exact argv gunbc.spark.managed_access_bootstrap
 // InspectServingContainer authorizes, and the reader takes .Id and .Image off the object and
 // nothing else (extdeps.docker.cli docker_container_inspect_identity_from_stdout). Until that grant
-// is installed on a host, that leg refuses as InspectGrantNotHeld and the incarnation stays
+// is installed on a host, that leg fails (the sudo is denied) and the incarnation stays
 // unobserved with that cause; every unprivileged fact is still established first, so the refusal
 // names the exact container the grant would have described.
 //
@@ -100,7 +104,8 @@ type ServingIncarnationRefusal
   | IncarnationAmbiguousProcessStart { pids: List<Int>, field: NonEmptyStr }
   | IncarnationProcessCgroupUnread { pid: Int, cause: String }
   | IncarnationProcessNotInDockerContainer { pid: Int, cgroup_path: NonEmptyStr }
-  | InspectGrantNotHeld { container: NonEmptyStr, cause: String }
+  | InspectLegDidNotRun { container: NonEmptyStr, cause: String }
+  | InspectCommandFailed { container: NonEmptyStr, exit_code: Int, stderr: String }
   | InspectIdentityUnreadable { container: NonEmptyStr, cause: String }
   | InspectedContainerIsNotTheAnsweringOne { by_name: NonEmptyStr, answering: NonEmptyStr }
   | IncarnationImageIdNotSha256 { image_id: NonEmptyStr }
@@ -138,8 +143,10 @@ fn serving_incarnation_refusal_text(r: ServingIncarnationRefusal) -> String {
       join(["the cgroup of pid ", to_string(p), " could not be read: ", c], "")
     IncarnationProcessNotInDockerContainer { pid: p, cgroup_path: g } =>
       join(["pid ", to_string(p), " runs in ", g as String, ", which is not a docker container's cgroup"], "")
-    InspectGrantNotHeld { container: c, cause: why } =>
-      join(["the inspect grant for ", c as String, " is not held by the automation principal on this host, so the image the answering container was created from is unread: ", why], "")
+    InspectLegDidNotRun { container: c, cause: why } =>
+      join(["the inspect leg for ", c as String, " did not run, so the image the answering container was created from is unread: ", why], "")
+    InspectCommandFailed { container: c, exit_code: code, stderr: err } =>
+      join(["the inspect command for ", c as String, " exited ", to_string(code), ", so the image the answering container was created from is unread -- this is where a not-held InspectServingContainer grant (sudo denies) surfaces, but a removed or renamed container answers the same way, so the exit and stderr are carried rather than a cause asserted: ", trim(s: err)], "")
     InspectIdentityUnreadable { container: c, cause: why } =>
       join(["the inspect object of ", c as String, " did not yield an id and image: ", why], "")
     InspectedContainerIsNotTheAnsweringOne { by_name: n, answering: a } =>
@@ -184,18 +191,14 @@ type HostTextRead
 
 // ONE HOST READ, TYPED, over a gunbc.host_operation_exec HostOperation directly -- this module does
 // not re-roster those operations under second names (DESIGN 3): a read it needs is a variant there,
-// not a variant here. pgrep exits 1 for "nothing matched" (extdeps.procps.pgrep), reported as
-// success=false with empty stdout, and that is an ANSWER -- so the PgrepFullCommandLine arm keeps
-// the (empty) stdout and the caller reads it as no process; every other read's non-zero exit is a
-// typed, located refusal.
+// not a variant here. Every one of these reads answers with exit 0 or fails; a non-zero exit is a
+// typed, located refusal. pgrep is NOT one of these -- its exit code is its answer (1 = no match, 2/3
+// = the scan never ran to a verdict), which host_operation_exec's success bool cannot carry -- so it
+// runs over the exit-code-preserving typed-argv leg instead (scan_engine_processes below).
 fn host_read_text(transport: HostEffectTransport, operation: HostOperation) -> HostTextRead {
   match host_operation_exec(transport: transport, operation: operation) {
     HostOperationObserved { stdout: out, success: true, stderr: _ } => HostTextObserved { stdout: out }
-    HostOperationObserved { stdout: out, success: false, stderr: err } =>
-      match operation {
-        PgrepFullCommandLine { pattern: _ } => HostTextObserved { stdout: out }
-        _ => HostTextRefused { cause: host_read_failure_text(stderr: err) }
-      }
+    HostOperationObserved { stdout: _, success: false, stderr: err } => HostTextRefused { cause: host_read_failure_text(stderr: err) }
     HostOperationRefused { operation: op, reason: why } => HostTextRefused { cause: join([op, ": ", why], "") }
   }
 }
@@ -277,10 +280,10 @@ fn incarnation_after_container(
   let grant = InspectServingContainer { container: spark_pair_container_name }
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: spark_managed_grant_argv(grant: grant)) {
     TypedArgvExecRefused { reason: why } =>
-      IncarnationRefused { refusal: InspectGrantNotHeld { container: spark_pair_container_name, cause: why } }
+      IncarnationRefused { refusal: InspectLegDidNotRun { container: spark_pair_container_name, cause: why } }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
-        IncarnationRefused { refusal: InspectGrantNotHeld { container: spark_pair_container_name, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") } }
+        IncarnationRefused { refusal: InspectCommandFailed { container: spark_pair_container_name, exit_code: r.exit_code, stderr: r.stderr } }
       } else {
         match docker_container_inspect_identity_from_stdout(stdout: r.stdout) {
           DockerContainerInspectIdentityUnreadable { cause: c } =>
@@ -358,6 +361,20 @@ fn incarnation_after_process(
   }
 }
 
+// THE PGREP LEG, RUN SO ITS EXIT CODE SURVIVES. host_operation_exec flattens exit to a success
+// bool, which is correct for reads whose only non-zero is failure, and wrong for pgrep whose exit
+// code distinguishes no-match (1) from scan-failure (2/3). So pgrep runs over
+// typed_argv_exec_over_fleet_ssh, whose SshSessionExecResult carries exit_code, and pgrep_scan_outcome
+// classifies it. A transport refusal (portable words / session) is a scan refusal, never a no-match.
+fn scan_engine_processes(target: SshTarget, context: FleetSshExecutionContext, pattern: NonEmptyStr) -> PgrepScanOutcome {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: pattern)) {
+    TypedArgvExecRefused { reason: why } =>
+      PgrepScanFailed { exit_code: 0 - 1, stderr: join(["the pgrep leg did not run: ", why], "") }
+    TypedArgvExecConverged { result: r } =>
+      pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
 fn incarnation_after_host_facts(
   transport: HostEffectTransport,
   target: SshTarget,
@@ -372,9 +389,11 @@ fn incarnation_after_host_facts(
   ticks: Int,
 ) -> ServingIncarnationReading {
   let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
-  match host_read_text(transport: transport, operation: PgrepFullCommandLine { pattern: pattern }) {
-    HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: c } }
-    HostTextObserved { stdout: listing } =>
+  match scan_engine_processes(target: target, context: context, pattern: pattern) {
+    PgrepScanFailed { exit_code: code, stderr: err } =>
+      IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep exited ", to_string(code), ", which is neither a match (0) nor a clean no-match (1), so the scan did not answer: ", trim(s: err)], "") } }
+    PgrepNoMatch => IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: pattern } }
+    PgrepMatched { listing: listing } =>
       match pgrep_pid_listing(stdout: listing) {
         PgrepPidLineUnparseable { line: l } =>
           IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep printed a non-pid line: ", l], "") } }
@@ -402,10 +421,6 @@ fn incarnation_after_host_facts(
           }
       }
   }
-}
-
-fn sha256sum_first_field(line: String) -> String {
-  fold(split(s: trim(s: line), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
 }
 
 fn incarnation_after_unit(
@@ -478,13 +493,17 @@ fn observe_endpoint_incarnation(
               match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
                 HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
                 HostTextObserved { stdout: line } =>
-                  match sha256_hex_digest(hex: sha256sum_first_field(line: line)) {
-                    Absent => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest" } }
-                    Present { value: digest } =>
-                      incarnation_after_unit(
-                        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                        invocation: invocation_text as NonEmptyStr, unit_digest: Sha256Hash(digest),
-                      )
+                  match sha256sum_line_digest(line: line) {
+                    Absent => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
+                    Present { value: d } =>
+                      match sha256_digest_content_hash(digest: d) {
+                        Absent => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
+                        Present { value: digest } =>
+                          incarnation_after_unit(
+                            transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                            invocation: invocation_text as NonEmptyStr, unit_digest: digest,
+                          )
+                      }
                   }
               }
             }
