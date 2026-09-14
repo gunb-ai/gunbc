@@ -34,10 +34,6 @@ fn write_tasks(path: String) -> ProcessExit {
   write_projection(path: path, content: frontend_eval_tasks_json())
 }
 
-fn write_card(path: String) -> ProcessExit {
-  write_projection(path: path, content: frontend_language_card())
-}
-
 // THE REPORT: gunbc.frontend_eval.attempt frontend_eval_report is the fold; its rows are NOT in
 // this tree. A run's attempt records are the driver's output and stay beside the run (a generated
 // entry under target/ folds them through the same fn), because committing measured numbers as
@@ -46,3 +42,6 @@ fn write_card(path: String) -> ProcessExit {
 // numbers reach a reader through the PR that ran them, cited to the driver and the identities each
 // row binds; they enter the tree only when an in-tree instrument produces them (same trigger as
 // the frontier above).
+fn write_card(path: String) -> ProcessExit {
+  write_projection(path: path, content: frontend_language_card())
+}
