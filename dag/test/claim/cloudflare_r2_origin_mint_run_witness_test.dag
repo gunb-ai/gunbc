@@ -81,7 +81,9 @@ import gunbc.cloudflare.r2_token_mint_run {
   NothingWasWritten, WriteOutcomeUnknown, VersionLandedUnverified,
   ObserveCustodyContainer, CustodyContainerNotNeeded,
   r2_mint_container_not_required_reason,
-  r2_mint_receipt_path,
+  r2_mint_receipt_path_in, r2_mint_receipt_glob_in, r2_mint_receipt_scope,
+  r2_mint_receipt_dir_root,
+  R2MintReceiptAttemptScoped, R2MintReceiptUnscoped,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
 }
@@ -540,7 +542,8 @@ test fn the_orphan_receipt_carries_no_secret_value() -> Bool {
 // BOTH ARMS WRITE THE SAME PATH, BECAUSE THE UPLOADER GLOBS ONE PATH. An orphan receipt written
 // anywhere else is invisible to exactly the run it was written for.
 test fn the_orphan_receipt_lands_where_the_uploader_looks() -> Bool {
-  let path = r2_mint_receipt_path(
+  let path = r2_mint_receipt_path_in(
+    scope: R2MintReceiptUnscoped,
     request: CreateAccountTokenRequest {
       name: "fabric-durable-origin-object-write",
       policies: [],
@@ -609,4 +612,61 @@ test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool 
       string_contains(s: reason as String, pattern: "writes no Secret Manager version")
     ObserveCustodyContainer => false
   }
+}
+
+// ── A PREVIOUS ATTEMPT'S RECEIPT CANNOT BE THIS ATTEMPT'S EVIDENCE ────────────────────────────
+// THE CONTROL THE REFUSAL ASKED FOR, and the failure it discriminates is the one that matters most:
+// a self-hosted runner's /tmp survives across attempts, the uploader runs with always(), and an
+// attempt that refuses EARLY writes no receipt of its own. Under a shared path the uploader would
+// then collect the receipt attempt N left behind and present it as attempt N+1's evidence -- and an
+// operator reads that receipt to decide which live Cloudflare token to revoke, so a stale one names
+// the wrong token.
+//
+// The separation is asserted at the SAME run id, differing only in attempt, because that is the
+// sharp case: a re-run of one run is exactly when the old file is still sitting there.
+fn witness_write_request() -> CreateAccountTokenRequest {
+  CreateAccountTokenRequest {
+    name: "fabric-durable-origin-object-write",
+    policies: [],
+    not_before: none,
+    expires_on: none,
+  }
+}
+
+// The assertion is two-part on purpose: the stale path must be a REAL receipt (so the test cannot
+// pass by the path being malformed) and must lie OUTSIDE the directory this attempt uploads.
+test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bool {
+  let stale = r2_mint_receipt_path_in(
+    scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1") },
+    request: witness_write_request(),
+  )
+  let this_attempt_dir = concat(
+    r2_mint_receipt_dir_root,
+    concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2"), "/"))
+  string_contains(s: stale, pattern: "-mint-receipt.txt")
+    && !string_contains(s: stale, pattern: this_attempt_dir)
+}
+
+// AND THE UNSCOPED RECEIPT IS COLLECTED BY NOTHING RATHER THAN BY THE WRONG ATTEMPT. A workflow run
+// whose environment lacked the identity writes to the root; the uploader names an attempt directory,
+// so that file is not evidence for any attempt instead of being evidence for this one.
+test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool {
+  let unscoped = r2_mint_receipt_path_in(scope: R2MintReceiptUnscoped, request: witness_write_request())
+  let attempt_dir = concat(
+    r2_mint_receipt_dir_root,
+    concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1"), "/"))
+  !string_contains(s: unscoped, pattern: attempt_dir)
+}
+
+// THE UPLOADER'S GLOB NAMES A DIRECTORY, NOT A WILDCARD ONE. The bucket name stays a wildcard
+// because it is unknowable at emit time; the attempt is not, and that is what makes the exclusion
+// structural rather than probabilistic.
+test fn the_uploaded_glob_pins_the_attempt_and_wildcards_only_the_bucket() -> Bool {
+  let g = r2_mint_receipt_glob_in(
+    scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2") },
+    profile: R2OriginObjectWrite,
+  )
+  string_contains(s: g, pattern: "34824976188-2/")
+    && string_contains(s: g, pattern: "*")
+    && !string_contains(s: g, pattern: "34824976188-1/")
 }

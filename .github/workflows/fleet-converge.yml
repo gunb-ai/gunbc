@@ -428,7 +428,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: r2-object-write-mint-receipt
-          path: /tmp/r2-*-object-write-mint-receipt.txt
+          path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
           if-no-files-found: warn
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_object_write_mint'

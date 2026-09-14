@@ -942,24 +942,102 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: Durab
 // construction: the upload step is if-no-files-found: warn, so renaming the path here would lose
 // the orphan receipt in precisely the run where a live unheld Cloudflare credential exists and its
 // id is the only thing that makes the damage recoverable.
-data r2_mint_receipt_path_prefix: String = "/tmp/r2-"
+// ── THE RECEIPT IS SCOPED TO ONE ATTEMPT, BECAUSE /tmp OUTLIVES THE ATTEMPT ───────────────────
+// A SELF-HOSTED RUNNER'S /tmp SURVIVES ACROSS RUNS AND ACROSS ATTEMPTS OF THE SAME RUN, so a shared
+// path plus an always() uploader is a route by which a PREVIOUS attempt's receipt is collected as
+// THIS attempt's evidence. That is the fabricated-evidence failure aimed at the one artifact whose
+// whole purpose is to be trusted after a disaster: an operator reading an orphan receipt is deciding
+// which live Cloudflare token to revoke, and a stale receipt names the wrong one.
+//
+// It is also the shape this PR filed a failure-mode row about, arriving from the other side. There
+// the check was correctly written and positioned after the irreversible effect; here the artifact is
+// correctly written and can be read as belonging to a run that did not produce it. Both are a
+// receipt asserting something the execution does not establish.
+//
+// SO THE DIRECTORY CARRIES THE ATTEMPT IDENTITY AND THE UPLOADER NAMES ONLY THAT DIRECTORY. A stale
+// receipt from attempt N lives under a path attempt N+1's glob cannot match -- structurally, not by
+// a cleanup step that must remember to run. The scope SHAPE is declared once here; the two callers
+// differ only in where the identity comes from, which is a real difference: the mint reads the
+// runner's environment at execution time, the emitter writes a workflow expression evaluated at
+// dispatch time. Neither spells the directory.
+data r2_mint_receipt_dir_root: String = "/tmp/r2-mint-receipts/"
+
+data r2_mint_receipt_path_prefix: String = "r2-"
 
 data r2_mint_receipt_path_suffix: String = "-mint-receipt.txt"
 
-fn r2_mint_receipt_path(request: CreateAccountTokenRequest) -> String {
-  join([r2_mint_receipt_path_prefix, request.name, r2_mint_receipt_path_suffix], "")
+data r2_mint_receipt_run_id_env: NonEmptyStr = "GITHUB_RUN_ID" as NonEmptyStr
+
+data r2_mint_receipt_run_attempt_env: NonEmptyStr = "GITHUB_RUN_ATTEMPT" as NonEmptyStr
+
+// PURE, so the separation property is witnessable without a runner. The join is trivial and that is
+// the point: both callers must produce the SAME scope for the same attempt, and a different scope
+// for a different attempt, and neither may re-spell the separator.
+fn r2_mint_receipt_scope(run_id: String, run_attempt: String) -> String {
+  join([run_id, "-", run_attempt], "")
 }
 
-// THE GLOB THE EMITTED UPLOADER USES, DERIVED FROM THE SAME THREE PARTS. The wildcard stands for the
-// bucket name, which is not knowable where the workflow is emitted; everything around it is read
-// from the declarations above, so one edit moves the producer and the uploader together.
-fn r2_mint_receipt_glob(profile: R2OriginTokenProfile) -> String {
+fn r2_mint_receipt_dir_for(scope: String) -> String {
+  join([r2_mint_receipt_dir_root, scope, "/"], "")
+}
+
+// AN UNSCOPED RUN IS A SESSION RUN, AND IT IS NOT THE HAZARD. Off a runner there is no run id, no
+// second attempt, and no uploader; the receipt is read by the operator who just ran the entry. The
+// arm is named rather than defaulted so that a WORKFLOW run missing the identity cannot quietly
+// reuse it -- the uploader names an attempt directory, so an unscoped receipt is collected by
+// nothing rather than collected as the wrong attempt's.
+type R2MintReceiptScope
+  = R2MintReceiptAttemptScoped { scope: String }
+  | R2MintReceiptUnscoped
+
+fn r2_mint_receipt_dir(scope: R2MintReceiptScope) -> String {
+  match scope {
+    R2MintReceiptAttemptScoped { scope: s } => r2_mint_receipt_dir_for(scope: s)
+    R2MintReceiptUnscoped => r2_mint_receipt_dir_root
+  }
+}
+
+fn r2_mint_receipt_path_in(scope: R2MintReceiptScope, request: CreateAccountTokenRequest) -> String {
   join([
+    r2_mint_receipt_dir(scope: scope),
+    r2_mint_receipt_path_prefix,
+    request.name,
+    r2_mint_receipt_path_suffix,
+  ], "")
+}
+
+// THE GLOB THE EMITTED UPLOADER USES, DERIVED FROM THE SAME PARTS AND NOW SCOPED. The wildcard still
+// stands for the bucket name, which is not knowable at emit time; the directory is not a wildcard,
+// which is what makes a previous attempt's receipt unmatchable rather than merely unlikely.
+fn r2_mint_receipt_glob_in(scope: R2MintReceiptScope, profile: R2OriginTokenProfile) -> String {
+  join([
+    r2_mint_receipt_dir(scope: scope),
     r2_mint_receipt_path_prefix,
     "*",
     r2_origin_token_name_suffix(profile: profile),
     r2_mint_receipt_path_suffix,
   ], "")
+}
+
+// THE SCOPE THIS RUN IS IN, READ FROM THE RUNNER'S OWN ENVIRONMENT. Both variables are set by GitHub
+// on every runner; requiring BOTH means a half-populated environment scopes nothing rather than
+// scoping to a partial identity that a later attempt could collide with.
+fn r2_mint_receipt_scope_for_this_run() -> R2MintReceiptScope {
+  match shell.Env.Get(name: r2_mint_receipt_run_id_env).value {
+    Absent => R2MintReceiptUnscoped
+    Present { value: run_id } =>
+      match shell.Env.Get(name: r2_mint_receipt_run_attempt_env).value {
+        Absent => R2MintReceiptUnscoped
+        Present { value: run_attempt } =>
+          if trim(s: run_id) == "" || trim(s: run_attempt) == "" {
+            R2MintReceiptUnscoped
+          } else {
+            R2MintReceiptAttemptScoped {
+              scope: r2_mint_receipt_scope(run_id: trim(s: run_id), run_attempt: trim(s: run_attempt)),
+            }
+          }
+      }
+  }
 }
 
 fn r2_orphan_receipt_content(
@@ -989,7 +1067,7 @@ fn refuse_with_orphan_receipt(
   cause: NonEmptyStr,
   custody: R2MintedCustodyStanding,
 ) -> ProcessExit {
-  let path = r2_mint_receipt_path(request: request)
+  let path = r2_mint_receipt_path_in(scope: r2_mint_receipt_scope_for_this_run(), request: request)
   let written = Filesystem.Write(
     path: path,
     content: r2_orphan_receipt_content(token: token, cause: cause, custody: custody),
@@ -1054,7 +1132,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit use
               refuse_with_orphan_receipt(token: token, request: request, cause: cause, custody: custody)
             R2CredentialStoredAt { version_resource: version_resource } => {
               let written = Filesystem.Write(
-                path: r2_mint_receipt_path(request: request),
+                path: r2_mint_receipt_path_in(scope: r2_mint_receipt_scope_for_this_run(), request: request),
                 content: join(
                   [
                     concat("token_id=", token.id as String),

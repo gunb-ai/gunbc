@@ -14,7 +14,9 @@ import extdeps.github.actions {
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
-import gunbc.cloudflare.r2_token_mint_run { r2_mint_receipt_glob, R2OriginObjectWrite }
+import gunbc.cloudflare.r2_token_mint_run {
+  r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
+}
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -1150,6 +1152,21 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
   }
 }
 
+// THE ATTEMPT IDENTITY IS A WORKFLOW FACT AND IS OWNED HERE; THE DIRECTORY SHAPE IS THE MINT'S.
+// A self-hosted runner's /tmp survives across attempts, so an always() uploader over a shared path
+// could collect a PREVIOUS attempt's orphan receipt as this attempt's evidence -- and an operator
+// reads that receipt to decide which live Cloudflare token to revoke. These two expressions are the
+// only part of the path this module knows; everything around them comes from r2_mint_receipt_glob_in,
+// and the mint composes the SAME scope from GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT on the runner.
+fn fleet_converge_r2_mint_receipt_scope() -> R2MintReceiptAttemptScoped {
+  R2MintReceiptAttemptScoped {
+    scope: r2_mint_receipt_scope(
+      run_id: "${{ github.run_id }}",
+      run_attempt: "${{ github.run_attempt }}",
+    ),
+  }
+}
+
 // THE GLOB IS NOW DERIVED, NOT HAND-SPELLED, AND THE EARLIER ANNOTATION DEFENDED ONLY HALF OF IT.
 // It argued the wildcard avoids re-spelling the bucket name -- true -- while the prefix and suffix
 // around it were typed here and owned by gunbc.cloudflare.r2_token_mint_run (review 66010). Both
@@ -1174,7 +1191,10 @@ fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "r2-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob(profile: R2OriginObjectWrite))),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2OriginObjectWrite,
+      ))),
       kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
