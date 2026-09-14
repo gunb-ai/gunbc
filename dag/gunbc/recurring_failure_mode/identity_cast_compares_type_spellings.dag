@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.identity_cast_compares_type_spellings
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data identity_cast_compares_type_spellings: RecurringFailureMode = RecurringFailureMode {
+  identity: "identity_cast_compares_type_spellings" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an identity-cast decision compares source and target type spellings instead of their resolved identities. A qualified inferred name and a bare target spelling can therefore disagree even when both denote the same carrier. HARM: accepted source fails during execution on an unnecessary identity conversion, inviting authors to normalize spellings locally and leave the decision broken.",
+    "SPECIMEN, gunbc#11182 on 2026-09-12: the scoped Spark claim_batch run accepted empty_map() as Map<InventoryLotIdentity, Nat> and then refused with cannot cast std.types.Map (runtime carrier Map) to Map. v1_interpreter cast_identity_result compares source_name == target_name; eval_cast has numeric conversion and string cases but no map conversion. The runtime failure occurred at initialization before the typed-map lookup ran. The inventory row now initializes its already-typed map field directly with empty_map(), following existing map construction rather than requesting a conversion; this removes a redundant operation and does not repair cast identity.",
+    "DISTINGUISHING FACTS: source and target must resolve to the same type with the same arguments; equal carrier labels alone are not sufficient, since distinct brands or parameterizations may require refusal. Compare a qualified/bare identity pair with a genuinely different target as the discriminating control. This differs from carrier_by_spelling, where a bare import selects a different declaration: here the failed decision never compares resolved declarations.",
+    "FOUND AT MITIGATABLE through a located runtime type-error, not a compile-time guarantee. CEILING: STRUCTURALLY GUARANTEED for resolved type identity, which is decidable. NEXT TRIGGER: identity casts use resolved type identities and arguments across qualified, bare and alias presentations, while nonidentity conversions retain their modeled admission/refusal rules. Normalizing one Map spelling or deleting this specimen's cast does not discharge that capability.",
+  ],
+  evidence: [],
+}

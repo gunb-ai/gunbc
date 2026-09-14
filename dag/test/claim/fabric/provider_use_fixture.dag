@@ -8,9 +8,11 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied,
   DispositionStanding, DispositionCleared, admit_provider_use,
 }
 
@@ -108,10 +110,19 @@ fn fx_hash(seed: String) -> ContentHash {
   as_content_hash_structural(structural: content_hash_atom(value: seed))
 }
 
+// THE POSTURE PERMITS THE ONE JURISDICTION EVERY FIXTURE PATH IS LOCATED IN, and nothing else. That
+// keeps this convenience fixture's callers green on the subject they are actually about - ranking,
+// arbitration, the store - rather than refusing them over a jurisdiction none of them declares an
+// interest in. It enrolls no drop: an exception is the admission witness's subject, not this one's.
 fn fx_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_posture_authority"),
     revision: fx_hash(seed: "fixture-posture-r1"),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_jurisdiction"),
+      further: [],
+    },
+    jurisdiction_drop_enrollments: [],
   }
 }
 
@@ -199,6 +210,26 @@ fn fx_scope(
 // The roster is built FOR the route being asked about, so this returns an admitted use for any
 // route a caller names. That is deliberate for a fixture whose subject is not admission: it keeps
 // the callers' reds about ranking rather than about whether the fixture happened to cover them.
+fn fixture_posture_revision() -> ContentHash {
+  fx_posture().revision
+}
+
+fn fixture_route_facts_revision() -> ContentHash {
+  fx_facts(route: fixture_route()).facts_revision
+}
+
+fn fixture_permit_for(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> ProviderUsePermit<NonEmptyStr>? {
+  match fixture_admitted_use(route: route, offer: offer, demand: demand, work: work) {
+    ProviderUseAdmitted { permit: p } => Present { value: p }
+    ProviderUseDenied { decision: _, cause: _ } => none
+  }
+}
+
 fn fixture_admitted_use(
   route: ProviderRoute,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,

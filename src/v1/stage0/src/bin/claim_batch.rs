@@ -216,12 +216,7 @@ fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCo
         let declared: std::collections::BTreeSet<String> = parsed
             .items
             .iter()
-            .filter(|item| {
-                matches!(
-                    item_kind((*item).clone()),
-                    ItemKind::FnItem | ItemKind::FuncItem
-                )
-            })
+            .filter(|item| matches!(item_kind((*item).clone()), ItemKind::FnItem))
             .map(|item| item.name.clone())
             .collect();
         let missing: Vec<&str> = group

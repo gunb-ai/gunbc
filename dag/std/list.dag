@@ -1,0 +1,15 @@
+module std.list
+
+import std.types { List, Bool }
+// Temporary realization: the seed intercepts algebra.contains and discards eq.
+// Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
+// list_cover when the declared contains route executes caller equality, with the
+// existing equality witness green and declaration-body mutation red.
+fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
+  xs.any(y => eq(y, x))
+}
+
+fn list_cover<T>(held: List<T>, expected: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  expected.all(e => list_member(xs: held, x: e, eq: eq))
+    && held.all(h => list_member(xs: expected, x: h, eq: eq))
+}

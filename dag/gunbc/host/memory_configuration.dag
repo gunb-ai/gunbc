@@ -1,0 +1,98 @@
+module gunbc.memory_configuration
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import extdeps.boards.types { BaseboardModel }
+import extdeps.memory.types { DramModuleCatalogRow }
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
+import product.placement_supply { HostIdentity }
+import product.installed_bom_reconcile { DimmSlotLocator }
+
+// Coordinates are part of the proposal, not derivations from a part number.
+// Connector-to-controller mapping is separately cited to the board authority.
+type MemoryPosition {
+  connector: DimmSlotLocator
+  socket: Nat
+  controller: Nat
+  slot: Nat
+  mapping: DeclarationRef
+}
+
+type MemoryPackageEvidence {
+  value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT
+  source: DeclarationRef
+}
+
+// A variant is an allowed delivery, not a sample asserted representative of an
+// unknown family. Empty alternatives and absent package evidence stay unknown.
+// RCD identity is orthogonal: it is not read by the package requirement.
+type MemoryDeliveryVariant {
+  identity: NonEmptyStr
+  package: MemoryPackageEvidence?
+  register_vendor: NonEmptyStr?
+}
+
+type MemoryUnitOrigin
+  = RetainedMemoryUnit { serial: NonEmptyStr? }
+  | AcquireMemoryUnit
+
+type PositionedMemoryModule {
+  position: MemoryPosition
+  part: DeclarationRef
+  catalog: DramModuleCatalogRow
+  alternatives: List<MemoryDeliveryVariant>
+  origin: MemoryUnitOrigin
+}
+
+type MemoryFirmwareSetting {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type MemoryPlatform {
+  host: HostIdentity
+  board: BaseboardModel
+  board_part: DeclarationRef
+  processor: DeclarationRef
+  firmware: NonEmptyStr
+  settings: List<MemoryFirmwareSetting>
+}
+
+type MemoryConfiguration {
+  platform: MemoryPlatform
+  population: List<PositionedMemoryModule>
+}
+
+type MemoryOperatingObligation
+  = MemoryPlacement
+  | MemoryFirmwareScopeCoverage
+  | MemoryPackageMixture
+  | MemoryClassSupport
+  | MemorySpecificPartQualification
+  | MemoryTraining
+  | MemoryBoot
+  | MemoryTrainingFailureScreen
+  | AdditionalMemoryRequirement { authority: DeclarationRef }
+
+// Runtime requirements have a fixed minimum; caller additions cannot erase it.
+data memory_operating_obligations: List<MemoryOperatingObligation> = [
+  MemoryPlacement, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
+  MemorySpecificPartQualification, MemoryTraining, MemoryBoot,
+  MemoryTrainingFailureScreen,
+]
+
+// This is a simulation input. It does not inhabit an observed receipt. Applying
+// a population while powered off is distinct from initializing that population.
+type MemoryPlanAction
+  = MemoryPowerOff
+  | MemoryReplacePopulation { population: List<PositionedMemoryModule> }
+  | MemoryInitialize
+  | MemoryReadbackRequired
+
+type MemoryChangeProposal {
+  initial: MemoryConfiguration
+  proposed: MemoryConfiguration
+  actions: List<MemoryPlanAction>
+  additional_requirements: List<MemoryOperatingObligation>
+}

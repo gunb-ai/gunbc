@@ -526,7 +526,7 @@ fn typed_remote_file_step_outcome(
 // by name, so a converge that stops is a statement about WHICH invariant did not hold rather than a
 // single opaque false. Nothing is published under the destination name until the rename, and nothing
 // is called converged until the destination has been read back and compared.
-func converge_typed_remote_file(
+fn converge_typed_remote_file(
   target: SshTarget,
   context: FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,

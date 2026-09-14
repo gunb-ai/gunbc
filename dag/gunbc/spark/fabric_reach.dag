@@ -82,7 +82,7 @@ type ExecutorReach
 // Read once per run from the executing host, never from an environment variable or a flag: the
 // path is a fact about where the run is, and a caller-chosen path would be the fallback this module
 // refuses to have.
-func observe_executor_reach() -> ExecutorReach
+fn observe_executor_reach() -> ExecutorReach
   uses net: Network
 {
   match run_shell_command_capture(command: hostname_read_command(), transport: LocalExec) {

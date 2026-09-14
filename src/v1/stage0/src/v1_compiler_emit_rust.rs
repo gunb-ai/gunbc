@@ -261,8 +261,9 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    EmissionConstructUnprojectable, InternalError, ParameterDefaultFormNotAdmitted,
-    ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
+    EffectfulSelfRecursionUnrealized, EmissionConstructUnprojectable, InternalError,
+    ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
+    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -6421,6 +6422,7 @@ pub struct EmitRustContext {
     pub workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     pub workflow_default_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub effectful_recursion_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub svc_module_map: Rc<HashMap<String, String>>,
     pub test_projections: Rc<Vec<Rc<TestProjection>>>,
     pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -6528,6 +6530,17 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             }
             __result
         });
+        let effectful_recursion_diags = Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*effectful_self_recursion_diagnostics(tm.clone(), registry.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -6574,6 +6587,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             workflow_funcs: workflow_funcs.clone(),
             workflow_default_diags: workflow_default_diags.clone(),
             anonymous_record_diags: anonymous_record_diags.clone(),
+            effectful_recursion_diags: effectful_recursion_diags.clone(),
             svc_module_map: svc_module_map.clone(),
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
@@ -6646,6 +6660,13 @@ pub fn emit_rust_selected(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: anonymous_record_diags.clone(),
+            });
+        }
+        let effectful_recursion_diags = ctx.effectful_recursion_diags.clone();
+        if ((effectful_recursion_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: effectful_recursion_diags.clone(),
             });
         }
         let filename_collisions =
@@ -30438,6 +30459,43 @@ pub fn struct_candidates_by_field_names(
                 } {
                     __result.push(summary);
                 }
+            }
+            __result
+        })
+    }
+}
+
+pub fn effectful_self_recursion_diagnostics(
+    tm: Rc<TypedModule>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let si = tm.type_env.clone().source_indices.clone();
+        let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in tm.items.clone().iter().cloned() {
+                __result.extend((*match item.body.clone() {
+    Some(body) => if ((item.uses.clone().len() as i64) > 0) {
+            {
+                let name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+if crate::v1_compiler_emit::is_self_recursive(Rc::new(DeclaredCallableIdentity {
+    owner_module_path: module_name.clone(),
+    decl_name: name.clone(),
+}), body.clone(), registry.clone(), si.clone()) {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectfulSelfRecursionUnrealized {
+    name: name.clone(),
+    span: item.span.clone(),
+}), module_name.clone())])
+                } else {
+                    Rc::new(vec![])
+                }
+}
+        } else {
+            Rc::new(vec![])
+        },
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })

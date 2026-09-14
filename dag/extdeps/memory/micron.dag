@@ -1,5 +1,6 @@
 module extdeps.memory.micron
 
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
 import std.measure { ByteSize, byte_size, bit_width }
 import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, MonolithicDie, DualDiePackage }
 import extdeps.vendor.micron { micron }
@@ -199,4 +200,13 @@ data mta36asf2g72pz_2g1a2_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
 data mta36asf2g72pz_2g1a2_catalog_citation: FactCitation = FactCitation {
   fact: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36asf2g72pz_2g1a2_catalog"),
   authority: micron_part_catalog_mta36asf2g72pz_2g1a2,
+}
+
+// Micron's published ADS SPD images agree at byte 6 across its process codes.
+// This is a manufacturer fact; observed firmware rejection stays
+// in the observing layer.
+data mta36ads2g72pz_2g1a1_primary_package: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT = SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: 145 }
+data mta36ads2g72pz_2g1a1_primary_package_citation: FactCitation = FactCitation {
+  fact: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_primary_package"),
+  authority: micron_part_catalog_mta36ads2g72pz_2g1a1,
 }

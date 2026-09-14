@@ -47,6 +47,7 @@ data sha256sum_cli_tool: CliTool = CliTool {
 // answers "does this file match this digest", which cannot be used to LEARN a digest: a caller that
 // wants to record which bytes it actually ran has nothing to compare against yet. coreutils prints
 // `<digest>  <path>` on stdout, so the reading is the first whitespace-delimited field.
+// DigestStdin uses the no-file-operand mode to digest the supplied content.
 service sha256sum.Sha256 {
   operation DigestFile {
     input { path: NonEmptyStr }
@@ -59,6 +60,23 @@ service sha256sum.Sha256 {
     exit {
       0 => Unit
       nonzero => String "sha256sum could not read the file"
+    }
+  }
+
+  operation DigestStdin {
+    input { content: String }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: ["sha256sum"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sha256sum could not digest standard input"
     }
   }
 

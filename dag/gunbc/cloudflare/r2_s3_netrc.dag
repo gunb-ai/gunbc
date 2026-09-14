@@ -68,7 +68,7 @@ fn r2_s3_netrc_workspace_refusal(cause: String, removed: Bool) -> R2S3NetrcPlace
   }
 }
 
-func place_r2_s3_netrc(
+fn place_r2_s3_netrc(
   host: NonEmptyStr,
   access_key_id: NonEmptyStr,
   token_value: SecretRef,
@@ -135,6 +135,6 @@ func place_r2_s3_netrc(
   }
 }
 
-func shred_r2_s3_netrc(workspace: FilePath) -> Bool {
+fn shred_r2_s3_netrc(workspace: FilePath) -> Bool {
   shell.Remove.RecursiveForce(path: workspace).success
 }

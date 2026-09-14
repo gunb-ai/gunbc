@@ -33,9 +33,9 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // that kept guessing passes the control and FAILS the refusal. Neither arm is satisfiable by a
 // check that always answers the same way.
 
-data dra_ambiguous_entry_source: String = "module dra_probe_ambiguous\n\nimport test.fixture.data_reference_identity_alpha\nimport test.fixture.data_reference_identity_beta\n\ntype DraAmbNet \{\n  id: Int\n}\n\nfunc dra_amb_run(model: String = dri_model) -> String\n  uses net: DraAmbNet\n\{\n  model\n}\n"
+data dra_ambiguous_entry_source: String = "module dra_probe_ambiguous\n\nimport test.fixture.data_reference_identity_alpha\nimport test.fixture.data_reference_identity_beta\n\ntype DraAmbNet \{\n  id: Int\n}\n\nfn dra_amb_run(model: String = dri_model) -> String\n  uses net: DraAmbNet\n\{\n  model\n}\n"
 
-data dra_sole_entry_source: String = "module dra_probe_sole\n\nimport test.fixture.data_reference_identity_shared\n\ntype DraSoleNet \{\n  id: Int\n}\n\nfunc dra_sole_run(endpoint: String = dri_shared_endpoint) -> String\n  uses net: DraSoleNet\n\{\n  endpoint\n}\n"
+data dra_sole_entry_source: String = "module dra_probe_sole\n\nimport test.fixture.data_reference_identity_shared\n\ntype DraSoleNet \{\n  id: Int\n}\n\nfn dra_sole_run(endpoint: String = dri_shared_endpoint) -> String\n  uses net: DraSoleNet\n\{\n  endpoint\n}\n"
 
 // THE REFUSAL. Two visible declarations answer to `dri_model`, so the fold answers with neither
 // and the unfolded default reaches validate_workflow_param_defaults -- one hard diagnostic,
@@ -125,7 +125,7 @@ test fn the_sole_declaration_entry_carries_neither_class() -> Bool {
 // THE FIXTURE IS A BINOP RATHER THAN A CALL, deliberately: `1 + 1` is the smallest expression that
 // is neither a literal nor a reference, so the arm is reached without dragging in name resolution
 // that could refuse first for an unrelated reason and satisfy the assertion by accident.
-data dra_inadmissible_default_entry_source: String = "module dra_probe_inadmissible\n\ntype DraFormNet \{\n  id: Int\n}\n\nfunc dra_form_run(model: String = 1 + 1) -> String\n  uses net: DraFormNet\n\{\n  model\n}\n"
+data dra_inadmissible_default_entry_source: String = "module dra_probe_inadmissible\n\ntype DraFormNet \{\n  id: Int\n}\n\nfn dra_form_run(model: String = 1 + 1) -> String\n  uses net: DraFormNet\n\{\n  model\n}\n"
 
 test fn an_inadmissible_default_form_is_reported_as_such() -> Bool {
   dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "ParameterDefaultFormNotAdmitted") == 1
@@ -152,7 +152,7 @@ test fn an_inadmissible_default_form_is_no_longer_a_compiler_bug() -> Bool {
 // answers false for an all-import: visibility into a module is not re-export onward, so a chain of
 // bare imports would stop at hop_01 and the walk would complete with zero modules -- Absent, not
 // budget-exhausted, and this arm would never be reached.
-data dra_budget_chain_entry_source: String = "module dra_probe_budget\n\nimport test.fixture.data_reference_visibility_chain.hop_01 \{ dvb_endpoint }\n\ntype DraBudgetNet \{\n  id: Int\n}\n\nfunc dra_budget_run(endpoint: String = dvb_endpoint) -> String\n  uses net: DraBudgetNet\n\{\n  endpoint\n}\n"
+data dra_budget_chain_entry_source: String = "module dra_probe_budget\n\nimport test.fixture.data_reference_visibility_chain.hop_01 \{ dvb_endpoint }\n\ntype DraBudgetNet \{\n  id: Int\n}\n\nfn dra_budget_run(endpoint: String = dvb_endpoint) -> String\n  uses net: DraBudgetNet\n\{\n  endpoint\n}\n"
 
 test fn an_exhausted_visibility_walk_is_reported_as_such() -> Bool {
   dra_blocking_count(source: dra_budget_chain_entry_source, wanted: "DataReferenceVisibilityBudgetExceeded") == 1

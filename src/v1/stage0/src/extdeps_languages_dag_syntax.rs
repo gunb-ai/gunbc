@@ -67,17 +67,8 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         has_params: true,
         has_return_type: true,
         return_required: true,
-        has_uses: false,
-        body_kind: BodyKind::ExprBody,
-    }), Rc::new(ItemForm {
-        kind: ItemFormKind::FuncForm,
-        keyword: "func".to_string(),
-        has_type_params: false,
-        has_params: true,
-        has_return_type: true,
-        return_required: false,
         has_uses: true,
-        body_kind: BodyKind::BlockBody,
+        body_kind: BodyKind::ExprBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "resource".to_string(),
@@ -156,7 +147,6 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("alias".to_string(), true);
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
-            __m.insert("func".to_string(), true);
             __m.insert("resource".to_string(), true);
             __m.insert("service".to_string(), true);
             __m.insert("data".to_string(), true);

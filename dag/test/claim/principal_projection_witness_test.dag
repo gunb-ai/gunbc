@@ -16,10 +16,13 @@ import extdeps.access.posix_effective_principal_read_op {
 }
 import gunbc.principal_projection {
   OidcPrincipal, PosixPrincipal,
-  OidcProjection, PosixProjection,
+  OidcProjected, PosixProjection,
   oidc_principal_projection, posix_principal_projection, projected_principal,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { declaration_ref_eq }
+import product.data_category { personal_identity_ref }
+import product.data_class { classified_category }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,7 +38,11 @@ fn oidc_evidence() -> OidcIdTokenClaims {
   }
 }
 
-test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained() -> Bool {
+// The standard claims are retained CLASSIFIED: what this test can see of them outside
+// product.data_class is the category label. Their payload fidelity is established where a payload
+// can legitimately be read -- on a permit -- by test.claim.fabric.data_class_admission_witness
+// the_standard_claims_survive_classification_intact (review 65254).
+test fn oidc_principal_is_exact_issuer_subject_projection_with_the_standard_claims_classified() -> Bool {
   let claims = oidc_evidence()
   let projection = oidc_principal_projection(claims: claims)
   match projected_principal(projection: projection) {
@@ -43,7 +50,10 @@ test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained
     OidcPrincipal { principal: principal } =>
       principal.issuer == claims.issuer && principal.subject == claims.subject
         && match projection {
-          OidcProjection { claims: retained } => retained == claims
+          OidcProjected { projection: retained } =>
+            retained.issuer == claims.issuer
+              && retained.subject == claims.subject
+              && declaration_ref_eq(a: classified_category(c: retained.standard), b: personal_identity_ref())
           PosixProjection { observation: _ } => false
         }
   }
@@ -64,7 +74,7 @@ test fn posix_principal_is_exact_effective_name_projection_with_evidence_retaine
         PosixPrincipal { principal: principal } =>
           principal.effective_name == "ghrunner"
             && match projection {
-              OidcProjection { claims: _ } => false
+              OidcProjected { projection: _ } => false
               PosixProjection { observation: retained } =>
                 effective_posix_principal_name(observation: retained) == "ghrunner"
             }

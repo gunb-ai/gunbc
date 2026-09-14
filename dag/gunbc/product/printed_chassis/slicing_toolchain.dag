@@ -160,7 +160,7 @@ type OrcaExecutionStanding
 // owns that fact, so it now seals OrcaExecutable and mints the invocations. This function takes the
 // executable and builds the probe itself; there is no parameter through which a command of another
 // kind can arrive.
-func attempt_orca_execution(
+fn attempt_orca_execution(
   observation: HostRuntimeObservation,
   executable: OrcaExecutable,
   transport: CommandTransport,

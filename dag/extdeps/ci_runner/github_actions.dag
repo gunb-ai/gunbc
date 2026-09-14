@@ -6,7 +6,13 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.pricing.github_actions { github_actions_linux_arm_2core_price }
 import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmSiliconStanding,
+  ArmUsdPerMinute,
+  ArmListPriceStanding,
+  ArmCapacityChannel,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -15,6 +21,7 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
+  ResoldNamedCloud,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -112,3 +119,23 @@ data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: github_actions_catalog_snapshot,
   availability: github_actions_runner_catalog,
 )
+
+// Linux 2-core arm64 list price is github_actions_linux_arm_2core_price.per_minute
+// (extdeps.pricing.github_actions); this module does not restate the micros.
+// Silicon: the 2025-01-16 changelog names Cobalt 100-based processors for the 4 vCPU
+// public ubuntu-*-arm runners; that sentence is not a SKU for the larger-runner table.
+// Capacity: GitHub names Microsoft Azure's Arm VMs in that changelog.
+// Offer standing is unread in the census (hosted-label docs are not a signup surface).
+data github_actions_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords {
+  quoted_family: "Cobalt 100-based processors",
+  cited_surface: "GitHub changelog 2025-01-16: Cobalt 100-based processors for public ubuntu-*-arm 4 vCPU (read 2026-09-13).",
+}
+
+data github_actions_arm_capacity: ArmCapacityChannel = ResoldNamedCloud {
+  vendor_words: "Microsoft Azure Arm VMs",
+}
+
+data github_actions_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: github_actions_linux_arm_2core_price.per_minute,
+  priced_label: "ubuntu-latest-arm-2core",
+}

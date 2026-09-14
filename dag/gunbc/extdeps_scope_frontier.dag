@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/node/node.dag",
+  "dag/extdeps/typescript/typescript.dag",
   "dag/extdeps/llm/anthropic_messages_api.dag",
   "dag/extdeps/llm/anthropic_messages_api_contracts.dag",
   "dag/extdeps/bazel/bazel.dag",
@@ -260,6 +262,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cpu/ampere_altra_platform_hw_design/subject.dag",
   "dag/extdeps/cpu/ampere_altra_platform_hw_design/platform.dag",
   "dag/extdeps/bmc/aspeed_ast2500.dag",
+  "dag/extdeps/bmc/ipmi_channel.dag",
   "dag/extdeps/ocp/mt_mitchell/platform.dag",
   "dag/extdeps/cpu_attachment/ilm4926.dag",
   "dag/extdeps/ssh/client_options.dag",
@@ -311,6 +314,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/toolchain/icestorm/subject.dag",
   "dag/extdeps/firmware/openbmc/subject.dag",
   "dag/extdeps/firmware/tianocore_edk2/subject.dag",
+  "dag/extdeps/firmware/tianocore_edk2/sdram_spd_ddr4.dag",
   "dag/extdeps/firmware/trusted_firmware_a/subject.dag",
   "dag/extdeps/simulators/icarus_verilog/subject.dag",
   "dag/extdeps/simulators/ngspice/subject.dag",
@@ -419,10 +423,21 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/accounting/encumbrance.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/platform.dag",
   "dag/extdeps/boards/supermicro.dag",
+  "dag/extdeps/ci_runner/actuated.dag",
+  "dag/extdeps/ci_runner/aws_codebuild.dag",
   "dag/extdeps/ci_runner/blacksmith.dag",
+  "dag/extdeps/ci_runner/buildjet.dag",
+  "dag/extdeps/ci_runner/buildkite.dag",
   "dag/extdeps/ci_runner/circleci.dag",
+  "dag/extdeps/ci_runner/cirrus_runners.dag",
   "dag/extdeps/ci_runner/depot.dag",
   "dag/extdeps/ci_runner/github_actions.dag",
+  "dag/extdeps/ci_runner/gitlab.dag",
+  "dag/extdeps/ci_runner/google_cloud_build.dag",
+  "dag/extdeps/ci_runner/namespace.dag",
+  "dag/extdeps/ci_runner/runs_on.dag",
+  "dag/extdeps/ci_runner/semaphore.dag",
+  "dag/extdeps/ci_runner/sprinters.dag",
   "dag/extdeps/ci_runner/types.dag",
   "dag/extdeps/ci_runner/warpbuild.dag",
   "dag/extdeps/cloud/gcp/adc_document.dag",
@@ -505,13 +520,18 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ebay/marketplace_account_deletion.dag",
   "dag/extdeps/google/workspace.dag",
   "dag/extdeps/google/sheets.dag",
-  "dag/extdeps/moonshot/kimi_code.dag"
+  "dag/extdeps/common_paper/cloud_service_agreement.dag",
+  "dag/extdeps/bonterms/cloud_terms.dag",
+  "dag/extdeps/moonshot/kimi_code.dag",
+  "dag/extdeps/tax/new_jersey_sales_and_use.dag",
+  "dag/extdeps/tax/new_york_city_sales_and_use.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/external_authority.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/publication.dag",
+  "dag/extdeps/tax/statutory_rate.dag",
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
   "dag/extdeps/cron/mock_corpus.dag",

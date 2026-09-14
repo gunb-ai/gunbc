@@ -56,7 +56,7 @@ fn mbs_emit_args(overlay_dir: String) -> List<String> {
   ]
 }
 
-func run_module_binding_supply_gate_ready(root: String) -> Bool {
+fn run_module_binding_supply_gate_ready(root: String) -> Bool {
   let target_ready = shell.Mkdir.Parents(path: concat(root, "/target"))
   if target_ready.success {
     let overlay = shell.Mktemp.DirWithTemplate(
@@ -91,7 +91,7 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
   }
 }
 
-func run_module_binding_supply_gate() -> Bool {
+fn run_module_binding_supply_gate() -> Bool {
   let root = git.Inspect.Toplevel()
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {

@@ -3122,6 +3122,72 @@ pub enum MultiModuleCompileFixtureOutcome {
     },
 }
 
+/// THE OUTCOME OF BUILDING A CLAIM SCOPE over a caller-authored fixture manifest.
+///
+/// The bare-name-ambiguity refusal lives in `claim_scope_for`, which the ordinary fixture
+/// instrument never reaches -- `compile_dag_multi_module_fixture` stops at
+/// `compile_to_resolved`. So a wall in the scope builder had a positive control that could run
+/// and a discriminating RED that could not: the fixture harness could not see it, and a corpus
+/// module authored to carry an ambiguous read would refuse the whole floor rather than sit there
+/// as a probe. DESIGN section 4b answers exactly that shape -- a state unrepresentable in the
+/// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
+/// a compiler is a thing whose regression probes are invalid programs.
+///
+/// THE §3c FRONTIER THIS TYPE CARRIED IS DISCHARGED IN THIS CHANGE, and the paragraph that
+/// declared it is replaced rather than left standing. gunbc#11143 admitted this type with its
+/// only consumers being its own witness rows, naming the consumer that would arrive (the
+/// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
+/// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
+/// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
+/// describing a state that no longer holds.
+///
+/// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
+/// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
+/// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
+/// of the same `ambiguous_reads` vector -- which the wall refuses on and which no census
+/// prints, because this climb deleted the read census that used to. A second computation here, even
+/// an identical one, would be the second authority the census exists to avoid and would be free
+/// to drift.
+///
+/// What differs from the floor's call is the memo arguments, which are a caching decision and not
+/// a semantic one: `None` for the fragment cache, and a caller-built reference-closure index so
+/// this throwaway subject does not occupy one of the bounded per-subject slots the floor needs.
+/// `claim_scope_for_without_memos` is the obvious spelling for that and is NOT used -- it is
+/// `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimScopeFixtureOutcome {
+    /// The harness itself could not measure: a ragged manifest, an entry naming no source, a
+    /// compile that never produced a graph. Distinct from a scope refusal so that a broken
+    /// fixture cannot render as "the scope was accepted" OR as "the wall fired".
+    InstrumentRefused { cause: String },
+    /// The manifest did not compile far enough to build a scope over. Carries the blocking
+    /// diagnostics so a control can tell "my fixture is malformed" from "the scope refused".
+    CompileRefused {
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+    },
+    /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
+    ScopeRefused { cause: String },
+    /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
+    /// the scope builder raises applied.
+    ///
+    /// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. On gunbc#11143 this arm was
+    /// deliberately SILENT about ambiguity: the scope builder collected the ambiguous reads (in a field this climb has since deleted)
+    /// and returned them on the accepted scope without refusing, so acceptance was compatible
+    /// with any number of ambiguous bare reads and a control asserting it established nothing
+    /// about that class. This change adds the refusal, so acceptance now DOES exclude them --
+    /// which is the whole point of the wall and is what lets the negative controls in
+    /// `bare_name_ambiguity_wall_witness_test` assert through this arm.
+    ///
+    /// The scope of that is worth stating exactly, because "no ambiguous read" is a narrower
+    /// claim than it sounds: it means no VALUE-POSITION read of a name two transitively-reached
+    /// modules declare, over the population the census measures. Type-position collisions are
+    /// explicitly outside it -- see the wall's own annotation, which names that as the adjacent
+    /// class it does not cover.
+    ScopeAccepted { module_count: i64 },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReferenceOccurrenceBindingDisposition {
     Bound {
@@ -20146,7 +20212,7 @@ pub fn run_bootstrap_dag_operation(
     let declaration_present = graph.item_registry.values().any(|item| {
         item.module_name == declaration_module
             && item.name == declaration_name
-            && matches!(item.kind, ItemKind::FnItem | ItemKind::FuncItem)
+            && matches!(item.kind, ItemKind::FnItem)
     });
     if !declaration_present {
         eprintln!(
@@ -33857,7 +33923,7 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
     let closed = non_fold_residue_closed_coproduct_type_names();
     let mut out = Vec::new();
     for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+        if !matches!(fact.kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = fact.node.body.as_ref() else {
@@ -34054,7 +34120,7 @@ fn fac_compute_census_facts(roots: &[String]) -> Vec<FallbackArmCensusFactRaw> {
     let closed = non_fold_residue_closed_coproduct_type_names();
     let mut out = Vec::new();
     for fact in &walk.facts {
-        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+        if !matches!(fact.kind, ItemKind::FnItem) {
             continue;
         }
         let Some(body) = fact.node.body.as_ref() else {
@@ -37987,8 +38053,8 @@ fn serialize_variant_to_wire_json(
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
     use crate::v1_compiler_emit_rust::{
-        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field, rust_serde_tag_attr,
-        rust_tagged_object_policy, wire_variant_tag_for_policy,
+        data_path_wire_variant_tag, policy_is_string_variant, policy_is_untagged,
+        policy_serde_tag_field, rust_tagged_object_policy,
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
@@ -38009,13 +38075,13 @@ fn serialize_variant_to_wire_json(
     }
 
     if policy_is_string_variant(policy.clone()) {
-        let tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+        let tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
             .ok_or_else(|| format!("no wire tag for string variant {type_name}::{variant_name}"))?;
         return Ok(serde_json::Value::String(tag));
     }
 
     if let Some(tag_field) = policy_serde_tag_field(policy.clone()) {
-        let wire_tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+        let wire_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
@@ -38031,12 +38097,8 @@ fn serialize_variant_to_wire_json(
     }
 
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
-    let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
-        variant_name.to_string()
-    } else {
-        wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
-            .unwrap_or_else(|| variant_name.to_string())
-    };
+    let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
+        .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
@@ -40327,7 +40389,6 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
     use crate::v1_compiler_infer_items::ItemKind;
     match kind {
         ItemKind::FnItem => "fn",
-        ItemKind::FuncItem => "func",
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",
@@ -40408,13 +40469,9 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: Vec<AmbiguousBareName>,
-    /// THE READS, which is the population a refusal is affordable against — see
-    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
-    /// the two whose members are defects rather than declarations.
-    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
     /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
-    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
-    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// with the module that answered it. A pair that no longer refuses proves only that
+    /// the wall stopped firing on it; this says what the reference resolves TO, which is the whole content of a
     /// qualification. `(name, referring module, resolved module)`.
     pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
@@ -40691,6 +40748,36 @@ fn reference_closure_index(
             FLOOR_PREPARED_SUBJECTS_PER_PROCESS
         ));
     }
+    let index = build_reference_closure_index(prepared)?;
+    REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), index.clone()))
+    });
+    Ok(index)
+}
+
+/// THE BUILD, LIFTED OUT OF THE CACHE THAT MEMOIZES IT.
+///
+/// Over the prepared subject alone: it walks that graph and returns the index, registering
+/// nothing and consulting nothing. It still REFUSES on its own subject-level ground --
+/// `ExprVarReconciliationMismatch`, where a traversed occurrence landed in no member -- which is a
+/// fact about the supplied graph and is deliberately distinct from the BUDGET refusal the cache
+/// above raises, which is a fact about the host process. `reference_closure_index` is this plus
+/// the bounded
+/// per-subject memo, and every production caller still goes through that -- the corpus subject
+/// and the `policy_prepared` subject observe exactly the behaviour they observed before this
+/// split, because the cache path is unchanged and this function is the body it always ran.
+///
+/// WHO NEEDS THE UNMEMOIZED FORM. A self-contained fixture subject built inside a floor claim
+/// (`claim_scope_dag_multi_module_fixture`). It is one module and is thrown away immediately, so
+/// it has no business in a cache sized and bounded for the floor's own long-lived subjects --
+/// registering it would spend one of `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` on a throwaway and
+/// refuse the next real subject. Raising that bound is deliberately not the remedy: it is a
+/// stated production cost wall, and widening it to fit a test instrument is the instrument
+/// dictating production limits.
+pub(crate) fn build_reference_closure_index(
+    prepared: &PreparedRepository,
+) -> Result<Rc<ReferenceClosureIndex>, String> {
     let started = std::time::Instant::now();
     // TWO PASSES, BECAUSE THE CLASSIFICATION IS ONLY DECIDABLE ONCE EVERY DECLARATION IS KNOWN.
     // Deciding that a name is a reference means deciding that SOME module declares it, and a
@@ -40823,10 +40910,6 @@ fn reference_closure_index(
         index.decl_index.len(),
         prepared.subject_digest
     );
-    REFERENCE_CLOSURE_INDEXES.with(|c| {
-        c.borrow_mut()
-            .push((prepared.subject_digest.clone(), index.clone()))
-    });
     Ok(index)
 }
 
@@ -40884,6 +40967,7 @@ pub fn claim_scope_for(
         entry_module_path,
         Some(fragments.as_ref()),
         order_index,
+        None,
     )
 }
 
@@ -40902,14 +40986,26 @@ pub fn claim_scope_for_without_memos(
         entry_module_path,
         None,
         build_scope_order_index(prepared),
+        None,
     )
 }
 
+/// `reference_index` is the ONE knob a caller has over the bounded per-subject memo, and `None`
+/// is exactly today's behaviour: consult and register in `REFERENCE_CLOSURE_INDEXES`, refusing a
+/// subject beyond `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`. Every production caller passes `None`,
+/// so the corpus subject and the `policy_prepared` subject observe no change from this parameter
+/// existing.
+///
+/// `Some(index)` is for a caller that has built the index for THIS subject itself and must not
+/// occupy a slot -- a self-contained, immediately-discarded fixture subject built inside a floor
+/// claim. Registering such a subject would spend one of a bounded population on a throwaway and
+/// refuse the next real one.
 fn claim_scope_for_with_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
     fragments: Option<&v1_interpreter::ScopeFragmentCache>,
     order_index: Rc<ScopeOrderIndex>,
+    reference_index: Option<Rc<ReferenceClosureIndex>>,
 ) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
@@ -40963,7 +41059,10 @@ fn claim_scope_for_with_memos(
     // a function of the graph and not of a hash map's iteration -- order is part of the scope's
     // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
     // every cache keyed on it.
-    let ref_index = reference_closure_index(prepared)?;
+    let ref_index = match reference_index {
+        Some(index) => index,
+        None => reference_closure_index(prepared)?,
+    };
     // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
     //
     // The entry module's closure is taken from `func_env.parents` above precisely because a
@@ -41163,11 +41262,112 @@ fn claim_scope_for_with_memos(
         qualified_reads.sort();
         qualified_reads.dedup();
     }
+    // THE WALL. Every row left in `ambiguous_reads` is a bare value reference reaching the shared
+    // name slot with two transitively-reached declarations spelling it and nothing the author
+    // wrote ranking them. Until now the slot settled it silently by scope precedence -- a
+    // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
+    // rather than in an output. The line stops here instead, typed and located.
+    //
+    // KEYED ON THE SAME VALUE THE READ CENSUS USED TO PUBLISH, and that census is DELETED by this
+    // climb rather than left beside it. `ambiguous_reads` is the single binding. An earlier draft
+    // of this comment said "the census lines in `required_floor_runner` read this same vector, so
+    // the refusal and the count cannot drift apart" -- which this diff falsifies: the refusal
+    // returns Err before a scope exists, the runner reaches `built` only through
+    // `claim_scope_for(..)?`, so the read census could not agree with the refusal either. It could
+    // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
+    // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
+    // read lines are gone and the fixture rows in
+    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    //
+    // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
+    // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
+    // so they keep carrying information. Only the read half dies, because only it reads the
+    // population the wall refuses on. A wall keyed on the RAW free-reference set
+    // would over-approximate -- that set unions type annotations, record-literal type names,
+    // field labels and variant constructors -- and would refuse `Foo { observation: o }` the day
+    // a second `observation` is declared. The value-position projection plus the three resolution
+    // tiers behind `falls_through_to_shared_slot` are what make this population precise enough to
+    // refuse on.
+    //
+    // THE REFUSAL CARRIES ITS REMEDY, AND THE REMEDY NAMES DECLARING MODULES. This wall lands into
+    // a corpus that is still moving: a site authored next week reds someone who never heard of
+    // this campaign, in a module they may not own, over a name they did not know was contested. A
+    // message that only says "this read is ambiguous" hands that person a dead remedy, and the
+    // cheapest way out is to copy whatever import an adjacent file has -- which is how a
+    // re-exporting module gets named instead of a declaring one, and how `import std.types
+    // { String }` came to appear in ~1951 modules while binding nothing. So each row prints its
+    // claimants WITH the module that declares each, and an import line to paste.
+    //
+    // THE MECHANISM ANYONE NARROWING AN IMPORT NEEDS, recorded here because a PR body is not
+    // readable from the code: A BARE `import some.module` RE-EXPORTS THAT MODULE'S OWN IMPORTED
+    // BINDINGS, not merely its declarations. `extdeps.clock` imports `v2.std.optional { Present }`
+    // and `extdeps.filesystem.filesystem_io` imports `std.types { ... List ... }`, so files that
+    // bare-imported those were receiving `Present` and `List` through them. Narrowing a bare
+    // import to a name list therefore STRANDS names belonging to modules the file never mentions,
+    // and a check that joins the file against the NARROWED module's declarations cannot find them
+    // -- the lost names are declared elsewhere. Measured on gunbc#11156: six such names across
+    // four modules, surfaced by this phase's own `NewUnresolvedness` deltas after a hand sweep
+    // missed them.
+    //
+    // WHAT THIS WALL DOES NOT COVER, stated so that zero rows is never later cited as "no
+    // ambiguity in the corpus":
+    //
+    //   - TYPE-POSITION name collisions. `String`, `Int`, `List`, `Bool` and `WireContract` are
+    //     each declared by both `std.*` and its `v2.std.*` self-host copy. That double is a real
+    //     ambiguity in a different channel, owned by the v2 self-host replacement migration, and
+    //     it ends by ending the double -- not by a rename this wall could ask for. The census line
+    //     `channel=value_position_only not_covered=type_position_name_collisions
+    //     owner=v2_self_host_replacement_migration` is what says so.
+    //   - A VARIANT ARM reachable only through an ALIAS right-hand side naming a coproduct in
+    //     another module. The arm tier is node-local (`fragment_coproduct_disj_node`) and does not
+    //     follow such an alias, so a read of that arm stays in this population and refuses. That
+    //     is the conservative direction -- a false REFUSAL, never a false pass -- and the
+    //     next-rung trigger is a scope-wide arm index built after resolution.
+    //   - PATHS OTHER THAN CLAIM-SCOPE CONSTRUCTION. This refuses where the census measures, so
+    //     the two cannot disagree. Per §4b(1) a class's rung is the MINIMUM across its in-scope
+    //     paths: the honest report is mechanically-preventable on the claim-scope path, with
+    //     extension to the general interpreter entry as the named next-rung trigger.
+    if !ambiguous_reads.is_empty() {
+        let sites = ambiguous_reads
+            .iter()
+            .map(|row| {
+                let claimants = row
+                    .claimants
+                    .iter()
+                    .map(|(module, kind)| format!("{module} (declares it as {kind})"))
+                    .collect::<Vec<String>>()
+                    .join(" and ");
+                let remedy = row
+                    .claimants
+                    .iter()
+                    .map(|(module, _)| format!("import {module} {{ {} }}", row.name))
+                    .collect::<Vec<String>>()
+                    .join("   OR   ");
+                format!(
+                    "  `{}` is read bare by {}, and is declared by {}.\n                          Add ONE of these to {}, choosing the authority that module means:\n       {}",
+                    row.name, row.referring_module, claimants, row.referring_module, remedy
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=AmbiguousBareNameRead scope={entry_module_path} \
+             sites={}\n{}\n\
+             Each names a value two transitively-reached modules both declare, where the \
+             referring module neither declares it nor names a source for it -- so the shared name \
+             slot would pick one by scope precedence, which is a resolution nothing in the source \
+             authorizes.\n\
+             THE IMPORT MUST NAME THE MODULE THAT DECLARES THE NAME. An import naming a module \
+             that merely re-exports or mentions it binds nothing and leaves this refusal standing \
+             -- copying an adjacent file's import line is the common way to get that wrong.",
+            ambiguous_reads.len(),
+            sites
+        ));
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_reads: ambiguous_reads,
         qualified_bare_reads: qualified_reads,
         ambiguous_bare_names: ambiguous
             .into_iter()
@@ -41801,9 +42001,9 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
-    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
-    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
-    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
+    // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
+    // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
