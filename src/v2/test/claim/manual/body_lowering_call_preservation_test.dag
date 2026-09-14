@@ -563,9 +563,91 @@ fn call_preservation_shape_holds(shape: CallPreservationProducerShape) -> Bool {
   }
 }
 
+fn call_preservation_producer_shape_eq(
+  left: CallPreservationProducerShape,
+  right: CallPreservationProducerShape
+) -> Bool {
+  match left {
+    SoleBodyIdentCall =>
+      match right {
+        SoleBodyIdentCall => true
+        _ => false
+      }
+    PostfixDottedCall =>
+      match right {
+        PostfixDottedCall => true
+        _ => false
+      }
+    NamedArgsCall =>
+      match right {
+        NamedArgsCall => true
+        _ => false
+      }
+    NestedCallInArgument =>
+      match right {
+        NestedCallInArgument => true
+        _ => false
+      }
+    FoldLoopFirstByNameStep =>
+      match right {
+        FoldLoopFirstByNameStep => true
+        _ => false
+      }
+    CallWithLambdaArgument =>
+      match right {
+        CallWithLambdaArgument => true
+        _ => false
+      }
+    CallInMatchArm =>
+      match right {
+        CallInMatchArm => true
+        _ => false
+      }
+    CallOnInfixRhs =>
+      match right {
+        CallOnInfixRhs => true
+        _ => false
+      }
+  }
+}
+
+fn call_preservation_producer_shape_in_roster(shape: CallPreservationProducerShape) -> Bool {
+  fold(call_preservation_producer_shapes(), init: false, f: fn(acc, s) {
+    acc || call_preservation_producer_shape_eq(left: shape, right: s)
+  })
+}
+
+fn call_preservation_producer_shape_occurrence_count(shape: CallPreservationProducerShape) -> Int {
+  fold(call_preservation_producer_shapes(), init: 0, f: fn(acc, s) {
+    if call_preservation_producer_shape_eq(left: shape, right: s) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn call_preservation_roster_identities_unique() -> Bool {
+  fold(call_preservation_producer_shapes(), init: true, f: fn(acc, shape) {
+    acc && (call_preservation_producer_shape_occurrence_count(shape: shape) == 1)
+  })
+}
+
+fn call_preservation_every_constructor_enrolled() -> Bool {
+  call_preservation_producer_shape_in_roster(shape: SoleBodyIdentCall)
+    && call_preservation_producer_shape_in_roster(shape: PostfixDottedCall)
+    && call_preservation_producer_shape_in_roster(shape: NamedArgsCall)
+    && call_preservation_producer_shape_in_roster(shape: NestedCallInArgument)
+    && call_preservation_producer_shape_in_roster(shape: FoldLoopFirstByNameStep)
+    && call_preservation_producer_shape_in_roster(shape: CallWithLambdaArgument)
+    && call_preservation_producer_shape_in_roster(shape: CallInMatchArm)
+    && call_preservation_producer_shape_in_roster(shape: CallOnInfixRhs)
+}
+
 test fn call_preservation_producer_shape_table_is_closed() -> Bool {
   let shapes = call_preservation_producer_shapes()
-  (count(shapes) == 8)
+  call_preservation_roster_identities_unique()
+    && call_preservation_every_constructor_enrolled()
     && fold(shapes, init: true, f: fn(acc, shape) {
       acc && call_preservation_shape_holds(shape: shape)
     })
