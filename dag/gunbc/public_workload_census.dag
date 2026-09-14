@@ -1458,15 +1458,6 @@ data workload_census: List<WorkloadCandidate> = [
   candidate_openobserve_summary,
 ]
 
-fn observed_run_is_the_inspected_workload(c: WorkloadCandidate) -> Bool {
-  match candidate_run_identity(c: c) {
-    ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => true
-    WorkflowEquivalentOnly { inspected, observed, blob } => true
-    RunIdentityMismatched { cause } => false
-    RunIdentityUnresolved { cause } => false
-  }
-}
-
 fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandidate) -> Bool {
   count(filter(rows, r =>
     (r.repository as String) == (needle.repository as String)
@@ -1492,7 +1483,12 @@ fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandid
 
 fn selected_workloads() -> List<WorkloadCandidate> {
   filter(workload_census, c => match c.selection {
-    SelectedWorkload { rank, complementarity } => observed_run_is_the_inspected_workload(c: c)
+    SelectedWorkload { rank, complementarity } => match candidate_run_identity(c: c) {
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => true
+      WorkflowEquivalentOnly { inspected, observed, blob } => true
+      RunIdentityMismatched { cause } => false
+      RunIdentityUnresolved { cause } => false
+    }
     CandidateRejected { reason } => false
     CandidateUnresolved { obligation } => false
   })

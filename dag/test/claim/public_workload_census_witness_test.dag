@@ -47,8 +47,7 @@ import gunbc.public_workload_census {
   effect_disposition, CoverageUpload, WorkflowArtifactUpload,
   RemovedFromBothRealizations, RetainedAndTimed,
   workload_census, selected_workloads, correctness_admitted_workloads,
-  rejected_candidates, unresolved_candidates, census_contains_subject,
-  observed_run_is_the_inspected_workload,
+  rejected_candidates, unresolved_candidates,   census_contains_subject,
   candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
   candidate_openobserve_amd64, candidate_openobserve_manifest,
   candidate_biome_test_windows, candidate_biome_test_macos, candidate_openobserve_summary,
@@ -711,8 +710,13 @@ test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
     && census_contains_subject(rows: selected_workloads(), needle: candidate_openobserve_arm_build)
     && match candidate_biome_blob_mismatch_control.selection {
       SelectedWorkload { rank, complementarity } =>
-        !observed_run_is_the_inspected_workload(c: candidate_biome_blob_mismatch_control)
-          && !census_contains_subject(rows: workload_census, needle: candidate_biome_blob_mismatch_control)
+        match candidate_run_identity(c: candidate_biome_blob_mismatch_control) {
+          RunIdentityMismatched { cause } =>
+            !census_contains_subject(rows: workload_census, needle: candidate_biome_blob_mismatch_control)
+          ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+          WorkflowEquivalentOnly { inspected, observed, blob } => false
+          RunIdentityUnresolved { cause } => false
+        }
       CandidateRejected { reason } => false
       CandidateUnresolved { obligation } => false
     }
