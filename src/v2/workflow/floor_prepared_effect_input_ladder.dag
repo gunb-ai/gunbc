@@ -1,0 +1,170 @@
+module v2.workflow.floor_prepared_effect_input_ladder
+
+import std.cache_interface {
+  AtCapacityDisposition, ByteCapacity, CapacityBounded, CapacityLimit, CapacityPolicy,
+  CapacityValue, ExactLimit, ProviderRetention, ReleasePolicy, ReleasedAtProviderScopeExit,
+  RefuseNewStore
+}
+import std.materialization_ladder {
+  CacheCoverage, CacheKeying, CacheProvider, ContentKeyed, CoversIdentities, DemandNature,
+  Frame, FrameDemand, FrameKind, IsolatedChildrenFrame, LadderVerdict, MemoTier,
+  PureComputation, SharedStateFrame, WorldRead, materialization_ladder,
+  verdict_is_discharged_by
+}
+import std.measure { byte_size }
+import v2.std.collection { List }
+import v2.workflow.floor_pure_producer_share {
+  CarriedInputWarmRow, PreparedEffectInput, carried_input_warm_producers,
+  floor_cross_claim_carried_input_warm_rows, floor_cross_claim_prepared_effect_inputs,
+  prepared_effect_input_acquisitions
+}
+import v2.std.text { String }
+
+// THE LADDER ANSWER FOR THE PREPARED-EFFECT-INPUT CARRY, AT THE LADDER'S OWN VOCABULARY.
+//
+// WHY THIS IS A MODULE AND NOT A PARAGRAPH IN THE ROSTER. DESIGN section 2 names
+// `std.materialization_ladder` as the STRUCTURAL AUTHORITY over "another production may exist",
+// and a citation that lives only in a plan document is a side channel: the next reader opens the
+// roster declaration, not the plan (bright-boar-435's condition on the 2026-09-14 adjudication).
+// So the obligations are carried as TYPED VALUES a fold decides, not as prose a reader is asked
+// to believe.
+//
+// WHY IT IS NOT IN THE ROSTER MODULE ITSELF. `v2.workflow.floor_pure_producer_share` is a
+// declared closure seed of the required floor, so every import it grows widens the subject every
+// required run must frame — its own header says a wall that costs the floor a new module edge is
+// a worse trade than one spelled in the kernel. This module imports the roster; the roster
+// imports nothing new. The floor never frames this module, and the witness lane does.
+//
+// WHAT IS NOT RESTATED HERE. That a carry across an isolation boundary needs a STORE tier is
+// derived by `std.materialization_ladder.tier_axes` from the addressing axis — an edge-addressed
+// reference cannot span a boundary the edge does not cross. This module states the facts of THIS
+// provider and lets that authority decide; restating the rule would be the fork the ladder exists
+// to prevent.
+
+// THE FRAME PATH, and each frame's kind is a fact about the floor's own execution rather than a
+// label. Preparation is a SHARED-STATE frame: one process, one prepared subject, and the carried
+// value is bound in it. A claim is an ISOLATED-CHILDREN frame because the floor builds a fresh
+// evaluation frame per claim deliberately — one witness must not contaminate the next — which is
+// exactly why the eval-frame memo dies at every claim boundary and why the obligation LCA is
+// preparation rather than any claim.
+fn floor_preparation_frame() -> Frame {
+  Frame { name: "required-floor-preparation", kind: SharedStateFrame }
+}
+
+fn floor_claim_frame(name: String) -> Frame {
+  Frame { name: name, kind: IsolatedChildrenFrame }
+}
+
+fn floor_claim_site(name: String) -> List<Frame> {
+  [floor_preparation_frame(), floor_claim_frame(name: name)]
+}
+
+// THE PROVIDER: the cross-claim pure-producer tier, described as it actually behaves.
+//
+// scope      — the preparation frame, which is the least common visible ancestor of the claims.
+// coverage   — the enrolled identities and nothing else; admission is a declared roster, never
+//              every pure call, because cross-claim retention is byte-unbounded by construction.
+// tier       — MemoTier { ContentKeyed }: an in-process store whose key is the resolved fn node
+//              plus the portable argument row, and the carried value IS that argument row.
+// retention  — released when the prepared subject is cleared, with the exact 256 MiB ceiling the
+//              tier enforces at publication and RefuseNewStore as its at-capacity disposition
+//              (an over-budget producer recomputes per claim as if never enrolled).
+fn cross_claim_tier_retention() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedAtProviderScopeExit,
+    capacity: CapacityBounded {
+      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
+      at_capacity: RefuseNewStore
+    }
+  }
+}
+
+fn carried_input_identities() -> List<String> {
+  concat(
+    prepared_effect_input_acquisitions(inputs: floor_cross_claim_prepared_effect_inputs),
+    carried_input_warm_producers(rows: floor_cross_claim_carried_input_warm_rows)
+  )
+}
+
+fn prepared_effect_input_provider() -> CacheProvider {
+  CacheProvider {
+    id: "floor-cross-claim-pure-share",
+    scope: [floor_preparation_frame()],
+    coverage: CoversIdentities { identities: carried_input_identities() },
+    tier: MemoTier { keying: ContentKeyed },
+    retention: cross_claim_tier_retention()
+  }
+}
+
+// THE DEMANDS, one per consuming claim frame, at the two natures this carry actually has.
+//
+// The ACQUISITION is a `WorldRead` with its staleness envelope DECLARED, and the declaration is
+// not a flag set to true: the envelope is the prepared subject itself. The path is a committed
+// checkout input, confirmed under the checkout root by the same wall that refuses everything it
+// cannot confirm, so the content cannot change within one prepared run — which is what makes one
+// acquisition the same value every claim would have read for itself.
+//
+// The PRODUCER is a `PureComputation`, and it is pure BY EXECUTION rather than by assertion: an
+// implicit-acquisition row whose warm dispatches any effect with the carry installed is refused
+// by the floor, because a remaining effect is a second input the key does not represent.
+fn acquisition_demand(acquisition: String, claim: String) -> FrameDemand {
+  FrameDemand {
+    identity: acquisition,
+    site: floor_claim_site(name: claim),
+    nature: WorldRead { staleness_envelope_declared: true }
+  }
+}
+
+fn producer_demand(producer: String, claim: String) -> FrameDemand {
+  FrameDemand {
+    identity: producer,
+    site: floor_claim_site(name: claim),
+    nature: PureComputation
+  }
+}
+
+// Two consuming claim frames is the minimum that makes the demand SHARED — one demand is a
+// single recompute the ladder accepts and this roster refuses to enrol besides ("a
+// single-consumer warm row is the per-claim budget relocated, not a recurrence removed"). The
+// live population is larger; these two stand for the shape, and the roster's own measurement
+// field names the instrument that re-derives the real one.
+fn carried_input_demands(rows: List<CarriedInputWarmRow>, inputs: List<PreparedEffectInput>) -> List<FrameDemand> {
+  concat(
+    fold(inputs, init: [], f: fn(acc, input) {
+      concat(acc, [
+        acquisition_demand(acquisition: input.acquisition, claim: "claim-a"),
+        acquisition_demand(acquisition: input.acquisition, claim: "claim-b")
+      ])
+    }),
+    fold(rows, init: [], f: fn(acc, row) {
+      concat(acc, [
+        producer_demand(producer: row.producer, claim: "claim-a"),
+        producer_demand(producer: row.producer, claim: "claim-b")
+      ])
+    })
+  )
+}
+
+fn carried_input_ladder_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: carried_input_demands(
+      rows: floor_cross_claim_carried_input_warm_rows,
+      inputs: floor_cross_claim_prepared_effect_inputs
+    ),
+    providers: [prepared_effect_input_provider()],
+    cost_floor_exempt: []
+  )
+}
+
+// Every enrolled identity is DISCHARGED BY THIS PROVIDER, decided by the ladder fold rather than
+// claimed here. A row the ladder refuses — scope too narrow, existence-keyed, retention
+// unbounded, no provider at this layer — fails this fold, and that is the point of carrying the
+// facts as values.
+fn every_carried_identity_is_discharged() -> Bool {
+  let verdicts = carried_input_ladder_verdicts()
+  fold(carried_input_identities(), init: true, f: fn(acc, identity) {
+    acc && any(xs: verdicts, predicate: fn(v) {
+      verdict_is_discharged_by(v: v, identity: identity, provider_id: "floor-cross-claim-pure-share")
+    })
+  })
+}

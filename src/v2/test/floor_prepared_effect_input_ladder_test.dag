@@ -1,0 +1,69 @@
+module v2.test.floor_prepared_effect_input_ladder
+
+import v2.workflow.floor_prepared_effect_input_ladder {
+  carried_input_identities, carried_input_ladder_verdicts, cross_claim_tier_retention,
+  every_carried_identity_is_discharged, floor_preparation_frame,
+  prepared_effect_input_provider
+}
+import v2.workflow.floor_pure_producer_share {
+  carried_input_roster_collisions, carried_input_rows_without_a_prepared_input,
+  floor_cross_claim_admitted_producers, floor_cross_claim_carried_input_warm_rows,
+  floor_cross_claim_prepared_effect_inputs
+}
+import std.cache_interface { retention_growth_is_bounded, retention_has_exact_byte_bound }
+import std.materialization_ladder { CacheProvider, Frame, LadderVerdict, provider_is_content_keyed, provider_is_store_tier }
+import v2.std.logic { Bool }
+
+// THE LADDER OBLIGATIONS ARE DECIDED BY THE FOLD, NOT ASSERTED IN PROSE. Each test below names
+// one of the four facts DESIGN section 2 requires of a provider that may discharge a repeated
+// demand, and each is answered by `std.materialization_ladder` or `std.cache_interface` over the
+// live rows rather than by a sentence in this file.
+
+// SCOPE reaches the obligation LCA: the provider's scope is required-floor PREPARATION, which is
+// the least common visible ancestor of the consuming claims. A provider scoped inside a claim
+// would be refused RefusedScopeTooNarrow by the same fold.
+test fn the_carry_is_discharged_at_the_preparation_lca() -> Bool {
+  every_carried_identity_is_discharged()
+}
+
+// KEY represents every declared input the result depends on: the tier is CONTENT-keyed, which is
+// what makes a changed carrier content a different key rather than a stale hit.
+test fn the_provider_is_content_keyed_and_a_store_tier() -> Bool {
+  let p = prepared_effect_input_provider()
+  provider_is_content_keyed(p: p) && provider_is_store_tier(p: p)
+}
+
+// RETENTION spans the obligated lifetime and no longer: released when the prepared subject's
+// scope exits, with an exact byte ceiling — the two predicates `std.cache_interface` separates
+// deliberately, because scope release is evidence about growth over time and never about peak.
+test fn the_retention_is_scope_released_and_byte_bounded() -> Bool {
+  let r = cross_claim_tier_retention()
+  retention_growth_is_bounded(r: r) && retention_has_exact_byte_bound(r: r)
+}
+
+// COVERAGE includes every enrolled identity: a row enrolled but uncovered would be refused by the
+// fold above, so this states the population is nonempty — an empty coverage would make the
+// discharge test vacuously true, which is the decoration DESIGN section 4b refuses.
+test fn the_covered_population_is_not_empty() -> Bool {
+  length(xs: carried_input_identities()) > 0
+    && length(xs: carried_input_ladder_verdicts()) > 0
+}
+
+// THE TWO ROSTER WALLS, over the live rows: every carried-input row names an input that is
+// actually prepared, and no producer stands in both a plain roster and a carried-input row —
+// the second is the one that matters, because a plain warm row stores under the EMPTY argument
+// row while a carried-input row stores under the carried content, so a producer in both would be
+// servable under a key that does not represent the carrier.
+test fn every_carried_row_names_a_prepared_input() -> Bool {
+  length(xs: carried_input_rows_without_a_prepared_input(
+    rows: floor_cross_claim_carried_input_warm_rows,
+    inputs: floor_cross_claim_prepared_effect_inputs
+  )) == 0
+}
+
+test fn no_producer_is_both_carried_and_plainly_rostered() -> Bool {
+  length(xs: carried_input_roster_collisions(
+    rows: floor_cross_claim_carried_input_warm_rows,
+    admitted: floor_cross_claim_admitted_producers()
+  )) == 0
+}
