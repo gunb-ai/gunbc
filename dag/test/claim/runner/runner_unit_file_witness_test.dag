@@ -33,7 +33,7 @@ import gunbc.runner_unit {
   gunbc_runner_listener_is_main_process,
   lifecycle_intent_cannot_orphan,
 }
-import gunbc.runner_host_deploy { srv1_runner_host_deploy, RunnerHostDeploy }
+import gunbc.runner_host_deploy { srv1_runner_host_deploy, srv3_runner_host_deploy, RunnerHostDeploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_posix_accounts {
@@ -69,7 +69,6 @@ import gunbc.runner_unit_file {
   runner_slot_instance_directory,
   gunbc_runner_unit_depriv_dropin_text,
   gunbc_runner_unit_depriv_dropin_text_from_figure,
-  gunbc_runner_unit_fragment_for_host,
   gunbc_runner_unit_fragment_from_deploy,
   runner_job_user_xdg_runtime_uid,
   RunnerJobUserRuntimeUidFigure,
@@ -297,7 +296,7 @@ test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> B
 }
 
 test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv() -> Bool {
-  match gunbc_runner_unit_fragment_for_host(host: operator_host_srv3) {
+  match gunbc_runner_unit_fragment_from_deploy(deploy: srv3_runner_host_deploy, host: operator_host_srv3) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: t } =>
       string_contains(s: t, pattern: "srv3")

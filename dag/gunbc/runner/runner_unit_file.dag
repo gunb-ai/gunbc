@@ -54,9 +54,6 @@ import gunbc.runner_host_deploy {
   RunnerHostDeploy,
   GithubAppRunnerConfig,
   github_app_runner_org,
-  RunnerHostDeployFound,
-  RunnerHostDeployUnmodeled,
-  runner_host_deploy_for,
   runner_job_user_env_name,
 }
 import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
@@ -496,16 +493,6 @@ fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostId
           permit_scope: gunbc_fleet_runner_permit_scope(),
         ),
       )
-  }
-}
-
-fn gunbc_runner_unit_fragment_for_host(host: HostIdentity) -> RunnerUnitTextRendering {
-  match runner_host_deploy_for(host: host) {
-    RunnerHostDeployUnmodeled { host: _ } =>
-      RunnerUnitTextRefused {
-        reason: "runner_unit_file: host has no runner deploy row, so there is no fragment to install" as NonEmptyStr,
-      }
-    RunnerHostDeployFound { deploy: d } => gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host)
   }
 }
 
