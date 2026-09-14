@@ -8,7 +8,6 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 // than whole-module because `WorkflowRunStatus` and `extdeps.github.pulls`'s `ReviewState` both
 // declare a `Pending` variant, and importing both wholesale is an ambiguity the resolver refuses.
 import extdeps.github.workflow_runs { WorkflowRunList, WorkflowRun }
-import extdeps.github.actions { github_event_name_pull_request }
 import extdeps.github.pulls
 import extdeps.github.commits {
   CommitParentRef,
@@ -209,8 +208,6 @@ fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
 // garbage-collected, the head was force-pushed past -- and then there is no instant to compare the
 // merge ref against, so the provenance question has no answer at all.
 //
-// SCOPED TO THE pull_request EVENT, as this function's name always said: extdeps.github.workflow_runs ListForRef takes the event as a required query input (gunbc#11238), so a push or merge_group run on the same head can no longer stand in for the pull-request run whose start this compares against.
-//
 // THE MOST RECENT RUN IS THE ONE THAT MATTERS. GitHub returns runs newest-first for a head, and
 // the newest run's green is what a reader relies on at merge time.
 fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> Timestamp? {
@@ -219,7 +216,6 @@ fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha)
     owner: owner,
     repo: repo,
     head_sha: head_sha,
-    event: github_event_name_pull_request,
   )
   match runs.runs.workflow_runs {
     Cons { head, tail: _ } => Present { value: head.created_at }

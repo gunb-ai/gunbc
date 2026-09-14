@@ -3,7 +3,7 @@ module tools.cheap_claim_pool_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.cheap_gate_pool { run_cheap_claim_pool }
 
-fn run_cheap_claim_pool_gate_body() -> ProcessExit {
+func run_cheap_claim_pool_gate_body() -> ProcessExit {
   return if run_cheap_claim_pool() {
     ExitSuccess
   } else {
@@ -13,10 +13,10 @@ fn run_cheap_claim_pool_gate_body() -> ProcessExit {
   }
 }
 
-fn main() -> ProcessExit {
+func main() -> ProcessExit {
   run_cheap_claim_pool_gate_body()
 }
 
-fn run_cheap_claim_pool_ci_gate() -> ProcessExit {
+func run_cheap_claim_pool_ci_gate() -> ProcessExit {
   run_cheap_claim_pool_gate_body()
 }

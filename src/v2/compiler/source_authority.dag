@@ -41,7 +41,7 @@ import v2.std.diagnostic {
   textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -476,22 +476,6 @@ fn source_storage_hash_conflict_in_list(refs: List<SourceRef>) -> Bool {
 // the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the
 // eventual pinned authority; selection today keys on storage path resolved through
 // ModuleStorageIndex only.
-
-// Native ingest already carries the observed bytes. Derive content identities from that
-// observation, never from the selection-only source_ref_for_storage_path placeholder.
-fn source_refs_from_ingest(ingest: SourceRootIngest) -> List<SourceRef> {
-  fold_list(
-    xs: ingest,
-    empty: [],
-    cons: fn(acc, read) {
-      list_snoc_item(xs: acc, item: SourceRef {
-        path: symbol_lexeme(sym: read.compilation_unit),
-        source_root: read.source_root,
-        content_hash: content_hash_of_value(value: read.source.carried)
-      })
-    }
-  )
-}
 
 fn source_ref_path(ref: SourceRef) -> String {
   ref.path

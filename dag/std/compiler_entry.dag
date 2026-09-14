@@ -1,7 +1,5 @@
 module std.compiler_entry
 
-import std.decl_ref { DeclarationRef, decl_ref }
-
 import std.measure {
   Nanosecond,
   nanosecond,
@@ -111,30 +109,6 @@ type CompilerEntryDriver
 // coverage. So the driver times the serialize-and-write span with its own clock reads, the
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
-
-// REALIZATION OBSERVATIONS, not semantic call predictions. The Rust emitter instruments
-// exactly these declarations at function entry and observes elapsed time on return. The native
-// driver consumes the resulting rows in producer_counts on its existing partition receipt.
-// Roster membership is the opt-in; no environment switch and no per-module derived counts.
-// Nanos are inclusive observations inside the existing context/prepare phases, NEVER additional
-// exclusive rows. Nested producer spans overlap and must not be summed as a run-time saving.
-type NativeDriverProducerCount {
-  declaration: DeclarationRef
-  executions: Int
-  nanos: Nanosecond
-}
-
-// Host monotonic counts become std.measure Nanosecond at the snapshot boundary.
-// Negative/overflowing counts and backwards clocks refuse at the realization boundary
-// rather than fabricating a zero or saturating observation.
-data native_driver_producer_roster: List<DeclarationRef> = [
-  decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model"),
-  decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots"),
-  decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots"),
-  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module"),
-  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved"),
-  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_context_from_ingest")
-]
 
 type NativeDriverExclusiveRows {
   load: Nanosecond

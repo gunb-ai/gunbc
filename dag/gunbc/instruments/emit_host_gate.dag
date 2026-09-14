@@ -67,7 +67,7 @@ fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bo
   )
 }
 
-fn run_emit_host_gate_body() -> ProcessExit {
+func run_emit_host_gate_body() -> ProcessExit {
   rust = run_rust_smoke()
   python = run_python_smoke()
   go = run_go_smoke()
@@ -81,10 +81,10 @@ fn run_emit_host_gate_body() -> ProcessExit {
   }
 }
 
-fn main() -> ProcessExit {
+func main() -> ProcessExit {
   run_emit_host_gate_body()
 }
 
-fn run_emit_host_ci_gate() -> ProcessExit {
+func run_emit_host_ci_gate() -> ProcessExit {
   run_emit_host_gate_body()
 }

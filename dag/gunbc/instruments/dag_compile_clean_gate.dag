@@ -21,18 +21,18 @@ fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
   }
 }
 
-fn run_dag_compile_clean_gate_body() -> ProcessExit {
+func run_dag_compile_clean_gate_body() -> ProcessExit {
   gate_receipt_exit(r: run_clean_tree_compile())
 }
 
-fn run_dag_compile_clean_gate() -> ProcessExit {
+func run_dag_compile_clean_gate() -> ProcessExit {
   run_dag_compile_clean_gate_body()
 }
 
-fn dag_compile_clean_failure_receipt() -> String {
+func dag_compile_clean_failure_receipt() -> String {
   gate_receipt_failure_detail(r: run_clean_tree_compile())
 }
 
-fn main() -> ProcessExit {
+func main() -> ProcessExit {
   run_dag_compile_clean_gate_body()
 }

@@ -70,7 +70,7 @@ fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFin
 // re-invocation of the producer (operator ruling: cost and correctness must not ride on incidental
 // memoization of a repeated producer call).
 
-fn run_generated_artifact_drift_gate_body() -> ProcessExit {
+func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let findings = generated_artifact_population_findings(expected: committed_generated_artifacts(), observations: observations)
   let all_ok = generated_artifact_population_findings_empty(f: findings)
@@ -86,11 +86,11 @@ fn run_generated_artifact_drift_gate_body() -> ProcessExit {
   return verdict
 }
 
-fn main() -> ProcessExit {
+func main() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
 }
 
-fn run_generated_artifact_drift_gate() -> ProcessExit {
+func run_generated_artifact_drift_gate() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
 }
 
@@ -115,7 +115,7 @@ fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
   }
 }
 
-fn generated_artifact_drift_failure_receipt() -> String {
+func generated_artifact_drift_failure_receipt() -> String {
   gate_receipt_failure_detail(r: consume_generated_artifact_drift_gate_receipt())
 }
 
@@ -207,7 +207,7 @@ fn artifact_selection_for_path(path: String) -> ArtifactSelection {
   )
 }
 
-fn main_wet_one(path: String) -> ProcessExit {
+func main_wet_one(path: String) -> ProcessExit {
   match artifact_selection_for_path(path: path) {
     ArtifactSelectionEmpty { matches: _ } => exit_failure(
       reason: concat(
@@ -238,7 +238,7 @@ fn main_wet_one(path: String) -> ProcessExit {
   }
 }
 
-fn main_wet() -> ProcessExit {
+func main_wet() -> ProcessExit {
   fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
     match acc {
       ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
@@ -319,7 +319,7 @@ fn unjudged_ledger_refusals(observations: List<GeneratedArtifactObservation>) ->
   })
 }
 
-fn heal_repair_declaration() -> ProcessExit {
+func heal_repair_declaration() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let unjudged = unjudged_ledger_refusals(observations: observations)
   if length(unjudged) > 0 {
@@ -353,7 +353,7 @@ fn heal_repair_declaration() -> ProcessExit {
   }
 }
 
-fn main_wet_verified() -> ProcessExit {
+func main_wet_verified() -> ProcessExit {
   let first = main_wet()
   match first {
     ExitSuccess => run_generated_artifact_drift_gate_body()

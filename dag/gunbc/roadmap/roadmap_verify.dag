@@ -13,15 +13,10 @@ import gunbc.roadmap_execution_contract {
   ModeledValidationCommand,
   validation_operation_command,
   modeled_validation_command_wire,
-  ClaimSourceRootLayout,
-  contract_source_roots,
   ContractClosure,
   ContractDeclaresNoValidation,
   ContractClosesNothing,
   ContractCloses,
-  ContractNotAgentWork,
-  NonAgentWorkMode,
-  non_agent_work_mode_label,
   contract_closure,
 }
 import gunbc.roadmap_dashboard_instance {
@@ -98,10 +93,6 @@ type VerificationOutcome
   = VerificationUnbound {
       node_id: String,
     }
-  | VerificationNotAgentWork {
-      node_id: String,
-      mode: NonAgentWorkMode,
-    }
   | VerificationPassed {
       node_id: String,
       validations_run: Int,
@@ -120,15 +111,14 @@ type VerificationOutcome
       node_id: String,
     }
 
-// SIX ARMS BECAUSE SIX REMEDIES. Unbound means an agent-work node names no validation — nothing
-// failed, there is simply nothing to run, and the fix is to author a contract. NotAgentWork is
-// not that state: NotAgentWork refuses by NonAgentWorkMode,
-// and must not become ContractNeededFirst. Failed means the validation ran and answered no: the
-// work is genuinely incomplete. Refused means it could not run at all — a missing binary, an
-// unrealized capability, a transport that did not deliver the command — which is an environment
-// problem and never evidence about the work. Passed carries the count so a contract that
-// silently lost its validations cannot report success from an empty list. NotFound is a
-// caller error, distinct from every state of a real node.\n\nThe pair
+// FIVE ARMS BECAUSE FIVE REMEDIES. Unbound means the node names no validation — nothing failed,
+// there is simply nothing to run, and the fix is to author a contract; this is the state most of
+// the board is in and collapsing it into a failure would report fifty imaginary regressions. Failed
+// means the validation ran and answered no: the work is genuinely incomplete. Refused means it
+// could not run at all — a missing binary, an unrealized capability, a transport that did not
+// deliver the command — which is an environment problem and never evidence about the work. Passed
+// carries the count so a contract that silently lost its validations cannot report success from an
+// empty list. NotFound is a caller error, distinct from every state of a real node.\n\nThe pair
 // that must never merge is Failed and Refused. A refusal reported as a failure sends someone to
 // debug code that was never executed, and it is the exact shape of the fabricated verdicts this
 // repository keeps finding. It is also precisely what the wrong-host defect produced: a validation
@@ -215,12 +205,10 @@ fn verification_run_one(
   instance: HostDashboardInstance,
   workdir: FilePath,
   validation: ValidationOperation,
-  source_roots: ClaimSourceRootLayout,
 ) -> VerificationOutcome {
   match validation_operation_command(
     validation: validation,
     environment: instance.execution_environment,
-    source_roots: source_roots,
   ) {
     Absent =>
       VerificationRefused {
@@ -268,7 +256,6 @@ fn verification_fold(
   instance: HostDashboardInstance,
   workdir: FilePath,
   validations: List<ValidationOperation>,
-  source_roots: ClaimSourceRootLayout,
 ) -> VerificationOutcome {
   fold(
     validations,
@@ -281,7 +268,6 @@ fn verification_fold(
             instance: instance,
             workdir: workdir,
             validation: validation,
-            source_roots: source_roots,
           ) {
             VerificationPassed { node_id: _, validations_run: _ } =>
               VerificationPassed { node_id: n, validations_run: ran + 1 }
@@ -302,15 +288,12 @@ fn verify_contract(
   match contract_closure(contract: contract) {
     ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
     ContractClosesNothing => VerificationUnbound { node_id: node_id }
-    ContractNotAgentWork { mode } =>
-      VerificationNotAgentWork { node_id: node_id, mode: mode }
     ContractCloses { validations } =>
       verification_fold(
         node_id: node_id,
         instance: instance,
         workdir: workdir,
         validations: validations,
-        source_roots: contract_source_roots(contract: contract),
       )
   }
 }
@@ -423,10 +406,16 @@ type AttemptVerification
       node_id: String,
       reason: String,
     }
-  | AttemptVerificationNotAgentWork {
-      node_id: String,
-      mode: NonAgentWorkMode,
-    }
+
+fn first_closing_validation(
+  contract: WorkItemExecutionContract,
+) -> ValidationOperation? {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation => none
+    ContractClosesNothing => none
+    ContractCloses { validations } => first(validations)
+  }
+}
 
 fn verify_attempt(
   instance: HostDashboardInstance,
@@ -436,31 +425,16 @@ fn verify_attempt(
   revision: NonEmptyStr,
 ) -> AttemptVerification {
   let node_id = node.node as String
-  match contract_closure(contract: node.execution) {
-    ContractNotAgentWork { mode } =>
-      AttemptVerificationNotAgentWork { node_id: node_id, mode: mode }
-    ContractDeclaresNoValidation =>
+  match first_closing_validation(contract: node.execution) {
+    Absent =>
       AttemptVerificationUnbound {
         node_id: node_id,
         reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
       }
-    ContractClosesNothing =>
-      AttemptVerificationUnbound {
-        node_id: node_id,
-        reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
-      }
-    ContractCloses { validations } =>
-      match first(validations) {
-        Absent =>
-          AttemptVerificationUnbound {
-            node_id: node_id,
-            reason: "ContractCloses is the nonempty arm of contract_closure, so first() Absent is uninhabited; List.first is still optional",
-          }
-        Present { value: validation } =>
+    Present { value: validation } =>
       match validation_operation_command(
         validation: validation,
         environment: instance.execution_environment,
-        source_roots: contract_source_roots(contract: node.execution),
       ) {
         Absent =>
           AttemptVerified {
@@ -546,7 +520,6 @@ fn verify_attempt(
           }
       }
   }
-  }
 }
 
 // PERSISTING THE RECEIPT IS A HOST EFFECT AND IT OBEYS THE SAME TRANSPORT THE VERIFICATION DID. The
@@ -622,7 +595,6 @@ type VerifiedDispatchDisposition
   = ReadyForAcceptance { node_id: String, validations_run: Int }
   | DispatchWarranted { node_id: String, because: String }
   | ContractNeededFirst { node_id: String }
-  | DispatchNotAgentWork { node_id: String, mode: NonAgentWorkMode }
   | EnvironmentBlocked { node_id: String, reason: String }
 
 fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDisposition {
@@ -635,8 +607,6 @@ fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDis
         because: join([label as String, " failed: ", detail], ""),
       }
     VerificationUnbound { node_id } => ContractNeededFirst { node_id: node_id }
-    VerificationNotAgentWork { node_id, mode } =>
-      DispatchNotAgentWork { node_id: node_id, mode: mode }
     VerificationRefused { node_id, label: _, reason } =>
       EnvironmentBlocked { node_id: node_id, reason: reason }
     VerificationNodeNotFound { node_id } =>
@@ -650,8 +620,6 @@ fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDis
 fn verification_outcome_label(outcome: VerificationOutcome) -> String {
   match outcome {
     VerificationUnbound { node_id: _ } => "unbound"
-    VerificationNotAgentWork { node_id: _, mode } =>
-      non_agent_work_mode_label(mode: mode)
     VerificationPassed { node_id: _, validations_run: _ } => "passed"
     VerificationFailed { node_id: _, label: _, detail: _ } => "failed"
     VerificationRefused { node_id: _, label: _, reason: _ } => "refused"
@@ -675,13 +643,6 @@ fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
       exit_failure(reason: join([
         node_id, ": no closing validation is declared, so there is nothing to verify",
       ], ""))
-    VerificationNotAgentWork { node_id, mode } =>
-      exit_failure(reason: join([
-        node_id,
-        ": ",
-        non_agent_work_mode_label(mode: mode),
-        ": this work is not for an agent, so there is no contract to author",
-      ], ""))
     VerificationNodeNotFound { node_id } =>
       exit_failure(reason: join([
         node_id, ": node id is not declared in the roadmap authority",
@@ -689,7 +650,7 @@ fn verification_process_exit(outcome: VerificationOutcome) -> ProcessExit {
   }
 }
 
-fn verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
+func verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv2_lab_dashboard_instance(),
@@ -698,7 +659,7 @@ fn verify_srv2_lab_base_wet(node_id: String) -> ProcessExit {
   )
 }
 
-fn verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
+func verify_srv1_lab_base_wet(node_id: String) -> ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
       instance: srv1_lab_dashboard_instance(),

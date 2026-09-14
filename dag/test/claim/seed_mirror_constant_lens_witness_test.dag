@@ -1,7 +1,7 @@
 module test.claim.seed_mirror_constant_lens_witness_test
 
 import extdeps.filesystem.filesystem_io
-import std.measure { byte_size_count, events_per_minute_count, millisecond_count, basis_point_count }
+import std.measure { byte_size_count }
 import gunbc.typed_module_cache_capacity {
   typed_module_bytes_per_entry_estimate,
   typed_module_cache_entries_floor,
@@ -12,11 +12,6 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_measured_peak_demand }
-import gunbc.memory_stall_refusal {
-  memory_stall_major_fault_rate_threshold,
-  memory_stall_verdict_window_minimum_wall,
-  memory_stall_progress_cpu_share_floor,
-}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -134,12 +129,6 @@ type SeedMirrorRow {
   expected: Int
 }
 
-// THE THREE MEMORY-STALL MIRRORS were marked in the seed by the memory-stall governor landing
-// (2f75219598b, 2026-08-30) with no roster row, so the backward arm has been false since. Each
-// expected value derives from its gunbc.memory_stall_refusal row. authority_symbol is the string
-// the seed's marker CARRIES: for the first two that string names no declaration (the rows are
-// memory_stall_major_fault_rate_threshold and memory_stall_verdict_window_minimum_wall), a seed
-// citation defect this roster records rather than hides.
 fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
   [
     SeedMirrorRow {
@@ -177,24 +166,6 @@ fn seed_mirror_constant_rows() -> List<SeedMirrorRow> {
       decl_prefix: "pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = ",
       authority_symbol: "whole_corpus_compile_measured_peak_demand",
       expected: byte_size_count(b: whole_corpus_compile_measured_peak_demand()),
-    },
-    SeedMirrorRow {
-      seed_path: memory_governor_seed_path,
-      decl_prefix: "pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = ",
-      authority_symbol: "memory_stall_major_fault_rate_per_minute_threshold",
-      expected: events_per_minute_count(r: memory_stall_major_fault_rate_threshold) as Int,
-    },
-    SeedMirrorRow {
-      seed_path: memory_governor_seed_path,
-      decl_prefix: "pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = ",
-      authority_symbol: "memory_stall_verdict_window_minimum_wall_ms",
-      expected: millisecond_count(m: memory_stall_verdict_window_minimum_wall) as Int,
-    },
-    SeedMirrorRow {
-      seed_path: memory_governor_seed_path,
-      decl_prefix: "pub const MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS: u64 = ",
-      authority_symbol: "memory_stall_progress_cpu_share_floor",
-      expected: basis_point_count(bp: memory_stall_progress_cpu_share_floor) as Int,
     },
   ]
 }

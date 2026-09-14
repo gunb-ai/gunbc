@@ -263,7 +263,6 @@ service github.WorkflowRuns {
       owner: String
       repo: String
       head_sha: CommitSha
-      event: String
       per_page: Int = default_per_page
     }
     output {
@@ -273,7 +272,7 @@ service github.WorkflowRuns {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs",
-      query: { head_sha: head_sha, event: event, per_page: per_page }
+      query: { head_sha: head_sha, per_page: per_page }
     }
     response {
       200 => WorkflowRunList

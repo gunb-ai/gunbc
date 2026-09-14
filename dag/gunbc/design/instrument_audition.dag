@@ -22,7 +22,6 @@ import gunbc.design.instrument_physical {
 import gunbc.roadmap_program_view {
   V1DeletionProgramView, FinishLineView, FrontView, RemainingShape,
   ConstraintView, ConstraintKind, ImplementationConstraint, ContractConstraint,
-  NonAgentWorkConstraint,
   program_front_key,
 }
 
@@ -279,7 +278,6 @@ fn constraint_kind_key(k: ConstraintKind) -> String {
   match k {
     ImplementationConstraint => "implementation"
     ContractConstraint => "contract"
-    NonAgentWorkConstraint => "non-agent-work"
   }
 }
 

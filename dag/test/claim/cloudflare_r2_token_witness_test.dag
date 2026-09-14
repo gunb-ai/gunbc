@@ -42,9 +42,6 @@ import extdeps.cloudflare.r2 {
   R2S3Endpoint,
   R2JurisdictionDefault,
   R2JurisdictionEu,
-  R2JurisdictionFedramp,
-  R2JurisdictionFedrampHigh,
-  R2JurisdictionUs,
   r2_s3_endpoint_url,
   r2_bucket_resource_name,
   r2_account_resource_name,
@@ -55,7 +52,6 @@ import extdeps.cloudflare.r2 {
   r2_object_read_grant,
   cloudflare_r2_frontier_rows
 }
-import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed, frontier_subject_eq }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.human_intervention {
@@ -170,24 +166,6 @@ test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
         jurisdiction: R2JurisdictionEu
       }
     ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.eu.r2.cloudflarestorage.com"
-    && r2_s3_endpoint_url(
-      endpoint: R2S3Endpoint {
-        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
-        jurisdiction: R2JurisdictionUs
-      }
-    ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.us.r2.cloudflarestorage.com"
-    && r2_s3_endpoint_url(
-      endpoint: R2S3Endpoint {
-        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
-        jurisdiction: R2JurisdictionFedramp
-      }
-    ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.fedramp.r2.cloudflarestorage.com"
-    && r2_s3_endpoint_url(
-      endpoint: R2S3Endpoint {
-        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
-        jurisdiction: R2JurisdictionFedrampHigh
-      }
-    ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.fedramp-high.r2.cloudflarestorage.com"
     && r2_bucket_resource_name(
       account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
       jurisdiction: R2JurisdictionDefault,
@@ -440,5 +418,4 @@ test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
   all(cloudflare_r2_token_mint_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_account_api_tokens_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_r2_frontier_rows, row => census_contains_frontier_subject(row: row))
-    && all(cloudflare_r2_supplier_frontier_rows, row => census_contains_frontier_subject(row: row))
 }

@@ -1,31 +1,16 @@
 module extdeps.vendor.cloudflare
 
-import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.securities { Securities }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=NET"
-  }
-}
-
-data cloudflare_subprocessors_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.cloudflare.com/gdpr/subprocessors/cloudflare-services"
-  }
-}
-
-data cloudflare_customer_dpa_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "cf-assets.www.cloudflare.com/slt3lc6tev37/1TTgT35GoUNlKZYGuKWBFy/4e7dfc8cf402419a9b1cf624291fc69f/cloudflare_customer_dpa-v6.4_april_3_2026.pdf"
   }
 }
 
@@ -38,44 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.vendor.cloudflare.extdeps_external_authority_anchor,
-  further_citations: [
-    cloudflare_subprocessors_authority,
-    cloudflare_customer_dpa_authority,
-  ]
+  further_citations: []
 }
 
 data cloudflare: Vendor<Securities> = Vendor { legal_name: "Cloudflare, Inc." }
-
-// COMPANY DOCUMENTS, NOT R2 PRODUCT FACTS. The Customer DPA and the subprocessors table are
-// independently versioned on Cloudflare's company cadence. They sit on this vendor subject so a
-// Workers or Zero Trust module does not import extdeps.cloudflare.r2 for a company fact, and so an
-// R2 change does not rewrite them.
-data cloudflare_subprocessors_reading: NonEmptyStr = "Last Updated: October 1, 2025. Cloudflare uses a handful of sub-processors to support the Cloudflare service. Some of these sub-processors are members of the Cloudflare Group (Cloudflare, Inc. and its subsidiaries) and some are third parties. Third-party entities include Slack Technologies, Inc. (Customer support communications, United States); Zendesk, Inc. (Customer support and account management, United States, the European Economic Area, Japan, and Australia); Salesforce, Inc. (Customer support and account management, United States); Google LLC (Cloudflare Developer Platform, Cloudflare Zero Trust and AI Gateway; European Economic Area, United States, Australia, India); Oracle America, Inc. (Cloudflare Developer Platform and Cache Reserve; United States, European Economic Area, UK, Japan, Australia, Canada, Singapore); Amazon Web Services (Cloudflare Email Security; United States, European Economic Area); CoreWeave, Inc., Nebius BV (Workers AI); Anthropic PBC, OpenAI, Inc., X.AI Corp., Groq, Inc. (AI Gateway). The page lists Cloudflare Group subsidiaries by location."
-
-data cloudflare_subprocessors_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.vendor.cloudflare",
-    decl_name: "cloudflare_subprocessors_reading",
-    field: WholeDeclaration
-  },
-  authority: cloudflare_subprocessors_authority,
-}
-
-data cloudflare_customer_dpa_reading: NonEmptyStr = "Cloudflare, Inc. Data Processing Addendum, Version 6.4 April 3, 2026. The Customer grants a general written authorization: (a) to Cloudflare to appoint other members of the Cloudflare Group as sub-Processors, and (b) to Cloudflare and other members of the Cloudflare Group to appoint third party data center operators, and business, engineering and customer support providers as sub-Processors to support the performance of the Service. Cloudflare will maintain a list of sub-Processors at https://www.cloudflare.com/gdpr/subprocessors/. This DPA and any action related thereto shall be governed by and construed in accordance with the laws as specified in the Main Agreement, and the parties consent to the personal jurisdiction of, and venue in, the courts specified in the Main Agreement."
-
-data cloudflare_customer_dpa_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.vendor.cloudflare",
-    decl_name: "cloudflare_customer_dpa_reading",
-    field: WholeDeclaration
-  },
-  authority: cloudflare_customer_dpa_authority,
-}
-
-fn cloudflare_company_document_readings() -> List<NonEmptyStr> {
-  [cloudflare_subprocessors_reading, cloudflare_customer_dpa_reading]
-}
-
-fn cloudflare_company_document_citations() -> List<FactCitation> {
-  [cloudflare_subprocessors_citation, cloudflare_customer_dpa_citation]
-}

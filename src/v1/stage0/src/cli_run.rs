@@ -3122,74 +3122,6 @@ pub enum MultiModuleCompileFixtureOutcome {
     },
 }
 
-/// THE OUTCOME OF BUILDING A CLAIM SCOPE over a caller-authored fixture manifest.
-///
-/// The bare-name-ambiguity refusal lives in `claim_scope_for`, which the ordinary fixture
-/// instrument never reaches -- `compile_dag_multi_module_fixture` stops at
-/// `compile_to_resolved`. So a wall in the scope builder had a positive control that could run
-/// and a discriminating RED that could not: the fixture harness could not see it, and a corpus
-/// module authored to carry an ambiguous read would refuse the whole floor rather than sit there
-/// as a probe. DESIGN section 4b answers exactly that shape -- a state unrepresentable in the
-/// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
-/// a compiler is a thing whose regression probes are invalid programs.
-///
-/// DECLARED FRONTIER (DESIGN §3c), named rather than gestured at. Every consumer of this type in
-/// THIS change is a row that witnesses the instrument itself; the consumer it was built for -- the
-/// bare-name-ambiguity refusal in `claim_scope_for` -- is not in this diff. §3c admits that state
-/// in exactly one form, "a named consumer that lands in a named later change, admissible only
-/// with the trigger stated beside it", so both are stated here:
-///
-///   CONSUMER: the `AmbiguousBareNameRead` refusal and its controls, on branch
-///   `session/witty-moth-510-wall2` (gunbc#11166), which uses `claim_scope_fixture` and
-///   `claim_scope_refusal_names` to author the refusal's discriminating RED.
-///
-///   TRIGGER: that refusal cannot land until the census population it governs reaches zero, which
-///   needs the qualification batches merged AND the variant-arm resolution tier that stops the
-///   census over-counting five correctly-written sites. Until then this type's only consumers are
-///   its own witness rows, and that is the state this frontier declares.
-///
-/// If that refusal is abandoned, this instrument has no remaining consumer and should be deleted
-/// rather than retained -- a declaration nothing consumes is §2's redundant work, and saying so
-/// here is what keeps the frontier from becoming a permanent resting state.
-///
-/// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
-/// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
-/// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
-/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
-/// an identical one, would be the second authority the census exists to avoid and would be free
-/// to drift.
-///
-/// What differs from the floor's call is the memo arguments, which are a caching decision and not
-/// a semantic one: `None` for the fragment cache, and a caller-built reference-closure index so
-/// this throwaway subject does not occupy one of the bounded per-subject slots the floor needs.
-/// `claim_scope_for_without_memos` is the obvious spelling for that and is NOT used -- it is
-/// `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClaimScopeFixtureOutcome {
-    /// The harness itself could not measure: a ragged manifest, an entry naming no source, a
-    /// compile that never produced a graph. Distinct from a scope refusal so that a broken
-    /// fixture cannot render as "the scope was accepted" OR as "the wall fired".
-    InstrumentRefused { cause: String },
-    /// The manifest did not compile far enough to build a scope over. Carries the blocking
-    /// diagnostics so a control can tell "my fixture is malformed" from "the scope refused".
-    CompileRefused {
-        diagnostics: Vec<CompileDiagnosticCensusRow>,
-    },
-    /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
-    ScopeRefused { cause: String },
-    /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
-    /// the scope builder currently raises applied.
-    ///
-    /// ACCEPTANCE IS SILENT ABOUT AMBIGUITY, and that is not a temporary wording choice. The
-    /// scope builder COLLECTS `ambiguous_bare_reads` and returns them on the accepted scope; it
-    /// does not refuse on them. So this arm is compatible with any number of ambiguous bare
-    /// reads, and a control asserting it establishes nothing about that class. The refusal that
-    /// would make acceptance mean something stronger lands separately, with its own controls; a
-    /// reader who needs "no ambiguous read" must consult `ambiguous_bare_reads` rather than
-    /// infer it from this arm.
-    ScopeAccepted { module_count: i64 },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReferenceOccurrenceBindingDisposition {
     Bound {
@@ -38055,8 +37987,8 @@ fn serialize_variant_to_wire_json(
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
     use crate::v1_compiler_emit_rust::{
-        data_path_wire_variant_tag, policy_is_string_variant, policy_is_untagged,
-        policy_serde_tag_field, rust_tagged_object_policy,
+        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field, rust_serde_tag_attr,
+        rust_tagged_object_policy, wire_variant_tag_for_policy,
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
@@ -38077,13 +38009,13 @@ fn serialize_variant_to_wire_json(
     }
 
     if policy_is_string_variant(policy.clone()) {
-        let tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
+        let tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
             .ok_or_else(|| format!("no wire tag for string variant {type_name}::{variant_name}"))?;
         return Ok(serde_json::Value::String(tag));
     }
 
     if let Some(tag_field) = policy_serde_tag_field(policy.clone()) {
-        let wire_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
+        let wire_tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
@@ -38099,8 +38031,12 @@ fn serialize_variant_to_wire_json(
     }
 
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
-    let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
-        .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
+    let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
+        variant_name.to_string()
+    } else {
+        wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+            .unwrap_or_else(|| variant_name.to_string())
+    };
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
@@ -40755,36 +40691,6 @@ fn reference_closure_index(
             FLOOR_PREPARED_SUBJECTS_PER_PROCESS
         ));
     }
-    let index = build_reference_closure_index(prepared)?;
-    REFERENCE_CLOSURE_INDEXES.with(|c| {
-        c.borrow_mut()
-            .push((prepared.subject_digest.clone(), index.clone()))
-    });
-    Ok(index)
-}
-
-/// THE BUILD, LIFTED OUT OF THE CACHE THAT MEMOIZES IT.
-///
-/// Over the prepared subject alone: it walks that graph and returns the index, registering
-/// nothing and consulting nothing. It still REFUSES on its own subject-level ground --
-/// `ExprVarReconciliationMismatch`, where a traversed occurrence landed in no member -- which is a
-/// fact about the supplied graph and is deliberately distinct from the BUDGET refusal the cache
-/// above raises, which is a fact about the host process. `reference_closure_index` is this plus
-/// the bounded
-/// per-subject memo, and every production caller still goes through that -- the corpus subject
-/// and the `policy_prepared` subject observe exactly the behaviour they observed before this
-/// split, because the cache path is unchanged and this function is the body it always ran.
-///
-/// WHO NEEDS THE UNMEMOIZED FORM. A self-contained fixture subject built inside a floor claim
-/// (`claim_scope_dag_multi_module_fixture`). It is one module and is thrown away immediately, so
-/// it has no business in a cache sized and bounded for the floor's own long-lived subjects --
-/// registering it would spend one of `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` on a throwaway and
-/// refuse the next real subject. Raising that bound is deliberately not the remedy: it is a
-/// stated production cost wall, and widening it to fit a test instrument is the instrument
-/// dictating production limits.
-pub(crate) fn build_reference_closure_index(
-    prepared: &PreparedRepository,
-) -> Result<Rc<ReferenceClosureIndex>, String> {
     let started = std::time::Instant::now();
     // TWO PASSES, BECAUSE THE CLASSIFICATION IS ONLY DECIDABLE ONCE EVERY DECLARATION IS KNOWN.
     // Deciding that a name is a reference means deciding that SOME module declares it, and a
@@ -40917,6 +40823,10 @@ pub(crate) fn build_reference_closure_index(
         index.decl_index.len(),
         prepared.subject_digest
     );
+    REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), index.clone()))
+    });
     Ok(index)
 }
 
@@ -40974,7 +40884,6 @@ pub fn claim_scope_for(
         entry_module_path,
         Some(fragments.as_ref()),
         order_index,
-        None,
     )
 }
 
@@ -40993,26 +40902,14 @@ pub fn claim_scope_for_without_memos(
         entry_module_path,
         None,
         build_scope_order_index(prepared),
-        None,
     )
 }
 
-/// `reference_index` is the ONE knob a caller has over the bounded per-subject memo, and `None`
-/// is exactly today's behaviour: consult and register in `REFERENCE_CLOSURE_INDEXES`, refusing a
-/// subject beyond `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`. Every production caller passes `None`,
-/// so the corpus subject and the `policy_prepared` subject observe no change from this parameter
-/// existing.
-///
-/// `Some(index)` is for a caller that has built the index for THIS subject itself and must not
-/// occupy a slot -- a self-contained, immediately-discarded fixture subject built inside a floor
-/// claim. Registering such a subject would spend one of a bounded population on a throwaway and
-/// refuse the next real one.
 fn claim_scope_for_with_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
     fragments: Option<&v1_interpreter::ScopeFragmentCache>,
     order_index: Rc<ScopeOrderIndex>,
-    reference_index: Option<Rc<ReferenceClosureIndex>>,
 ) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
@@ -41066,10 +40963,7 @@ fn claim_scope_for_with_memos(
     // a function of the graph and not of a hash map's iteration -- order is part of the scope's
     // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
     // every cache keyed on it.
-    let ref_index = match reference_index {
-        Some(index) => index,
-        None => reference_closure_index(prepared)?,
-    };
+    let ref_index = reference_closure_index(prepared)?;
     // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
     //
     // The entry module's closure is taken from `func_env.parents` above precisely because a

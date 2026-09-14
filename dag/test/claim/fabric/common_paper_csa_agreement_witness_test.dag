@@ -8,13 +8,11 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
-  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
   ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
   ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
-  PostureJurisdictionsUnread, TransferOrLocationUnresolved, ProviderAccessPathUnsupported,
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
   DispositionStanding, DispositionCleared, admit_provider_use,
@@ -67,15 +65,7 @@ fn hash_of(seed: String) -> ContentHash {
 }
 
 fn posture(seed: String) -> CompliancePostureRevision {
-  CompliancePostureRevision {
-    authority: here(decl_name: "posture_authority"),
-    revision: hash_of(seed: seed),
-    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
-      first: here(decl_name: "jurisdiction_one"),
-      further: [],
-    },
-    jurisdiction_drop_enrollments: [],
-  }
+  CompliancePostureRevision { authority: here(decl_name: "posture_authority"), revision: hash_of(seed: seed) }
 }
 
 fn route() -> ProviderRoute {
@@ -160,9 +150,6 @@ fn accepted_of(c: ProviderUseRefusal) -> List<DeclarationRef> {
     ProviderRouteUnclassified { route } => [],
     ProviderRouteFactsIncomplete { route, obligation } => [],
     DownstreamProviderUnassessed { obligation } => [],
-    PostureJurisdictionsUnread { obligation } => [],
-    TransferOrLocationUnresolved { route, jurisdiction } => [],
-    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [],
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [],
     DataHandlingUnsupported { cause } => [],

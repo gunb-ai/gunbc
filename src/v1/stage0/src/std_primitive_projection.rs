@@ -200,24 +200,6 @@ pub fn primitive_symbol_intern_lexeme() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_resolve_type_node() -> Rc<PrimitiveIdentity> {
-    thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("resolve_type_node".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
-}
-
-pub fn primitive_data_init_decl_facts_live() -> Rc<PrimitiveIdentity> {
-    thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("data_init_decl_facts_live".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
-}
-
 pub fn symbol_lexeme_seam_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -306,18 +288,6 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_symbol_intern_lexeme(),
             "v2.std.compilers.lexing".to_string(),
             "symbol_intern_lexeme".to_string(),
-            Rc::new(ProjectionFidelity::HostRealizedSeam),
-        ),
-        primitive_projection_row(
-            primitive_resolve_type_node(),
-            "v2.std.node_reflection".to_string(),
-            "resolve_type_node".to_string(),
-            Rc::new(ProjectionFidelity::HostRealizedSeam),
-        ),
-        primitive_projection_row(
-            primitive_data_init_decl_facts_live(),
-            "v2.std.data_index".to_string(),
-            "data_init_decl_facts_live".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
