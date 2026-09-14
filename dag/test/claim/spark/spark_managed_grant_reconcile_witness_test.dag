@@ -7,9 +7,9 @@ import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   InspectServingContainer,
-  SparkInspectDisclosurePrecondition,
-  DisclosurePreconditionAbsent,
-  DisclosureAcceptedByOperator,
+  SparkGrantInstallBasis,
+  InstallBasisAbsent,
+  OperatorAcceptedUnresolvedDisclosureRisk,
   spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_population,
   spark_managed_grant_argv,
@@ -21,9 +21,12 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grants_to_install_under,
   spark_managed_grants_withheld,
+  spark_managed_grants_withheld_under,
   GrantInstallWithheld,
   GrantInstallAdmitted,
+  GrantInstallAdmittedOnAcceptedRisk,
   GrantInstallNotNeeded,
+  spark_grant_install_admissions_under,
   spark_managed_grants_unobserved,
   spark_managed_grants_converged,
   spark_managed_grant_sudoers_content,
@@ -82,7 +85,7 @@ test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
 test fn the_measured_hosts_are_missing_exactly_the_inspect_grant() -> Bool {
   let missing = spark_managed_grants_to_install_under(
     outcome: GrantEnumerated { listing: srv6_listing_after },
-    precondition: fixture_acceptance(),
+    basis: fixture_accepted_risk(),
   )
   missing.length() == 1
     && all(missing, m => match m {
@@ -99,7 +102,7 @@ test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
   spark_managed_grants_to_install_under(
     outcome: o,
-    precondition: fixture_acceptance(),
+    basis: fixture_accepted_risk(),
   ).length() == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
@@ -352,21 +355,21 @@ test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
   ).length() == 0
 }
 
-// A FIXTURE ASSERTION, never a real decision: it exists only to show the precondition arm admits.
-fn fixture_acceptance() -> SparkInspectDisclosurePrecondition {
-  DisclosureAcceptedByOperator {
-    decided_by: "fixture" as NonEmptyStr,
+// A FIXTURE DECISION, never a real one: it exists only to show the accepted-risk arm admits.
+fn fixture_accepted_risk() -> SparkGrantInstallBasis {
+  OperatorAcceptedUnresolvedDisclosureRisk {
+    actor: "fixture" as NonEmptyStr,
     decided_on: "1970-01-01" as NonEmptyStr,
-    disclosed: "witness fixture, not an operator decision" as NonEmptyStr,
+    accepted_for: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
   }
 }
 
 // THE RED: WITH NO PRECONDITION, THE INSPECT GRANT IS NOT IN THE INSTALL SET, over the measured
 // listing where it is the one grant not held. It is reported withheld with its typed cause and the
 // host stays unconverged. Merging the grant installs nothing by itself.
-test fn without_a_disclosure_precondition_inspect_is_absent_from_the_install_set() -> Bool {
+test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_after }
-  spark_managed_grants_to_install_under(outcome: o, precondition: DisclosurePreconditionAbsent).length() == 0
+  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 0
     && spark_managed_grants_to_install(outcome: o).length() == 0
     && all(spark_managed_grants_withheld(outcome: o), w => match w {
          GrantInstallWithheld { grant: g, obligation: ob } =>
@@ -376,6 +379,7 @@ test fn without_a_disclosure_precondition_inspect_is_absent_from_the_install_set
                   RebootThisHost => false
                   EnableLingerForOwnAccount { subject: _ } => false
                 }
+         GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => false
          GrantInstallAdmitted { grant: _ } => false
          GrantInstallNotNeeded => false
        })
@@ -386,11 +390,38 @@ test fn without_a_disclosure_precondition_inspect_is_absent_from_the_install_set
 
 // THE PRECONDITION IS THE ONLY THING THAT MOVES IT, and it does not move the dataless grants: from the
 // same listing, an operator acceptance admits inspect, while reboot is admitted either way.
-test fn the_precondition_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
+test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_before }
-  spark_managed_grants_to_install_under(outcome: o, precondition: DisclosurePreconditionAbsent).length() == 1
+  spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 1
     && spark_managed_grants_to_install_under(
          outcome: o,
-         precondition: fixture_acceptance(),
+         basis: fixture_accepted_risk(),
        ).length() == 2
+}
+
+// THE TWO AXES STAY TWO. Accepting the risk admits the install but does not classify anything: the
+// admission still carries the disclosure obligation, and the report says the grant was admitted with the
+// disclosure unestablished rather than reading as if the knowledge wall came down.
+test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  any(spark_grant_install_admissions_under(outcome: o, basis: fixture_accepted_risk()), a => match a {
+    GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: _ } =>
+      ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+    GrantInstallAdmitted { grant: _ } => false
+    GrantInstallWithheld { grant: _, obligation: _ } => false
+    GrantInstallNotNeeded => false
+  })
+    && spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length() == 0
+}
+
+// ACCEPTANCE IS SCOPED TO THE GRANT IT NAMES. A basis naming a different container admits nothing.
+test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
+  spark_managed_grants_to_install_under(
+    outcome: GrantEnumerated { listing: srv6_listing_after },
+    basis: OperatorAcceptedUnresolvedDisclosureRisk {
+      actor: "fixture" as NonEmptyStr,
+      decided_on: "1970-01-01" as NonEmptyStr,
+      accepted_for: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
+    },
+  ).length() == 0
 }

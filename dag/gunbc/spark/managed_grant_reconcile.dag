@@ -8,12 +8,14 @@ import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   InspectServingContainer,
-  SparkInspectDisclosurePrecondition,
+  SparkGrantInstallBasis,
+  InstallBasisAbsent,
+  OperatorAcceptedUnresolvedDisclosureRisk,
   GrantReturnsNoHostData,
-  GrantDisclosureAdmitted,
   GrantDisclosureUnestablished,
-  spark_grant_disclosure_for_precondition,
-  spark_inspect_disclosure_precondition,
+  spark_managed_grant_disclosure_standing,
+  spark_managed_grant_install_basis,
+  spark_install_basis_accepts_risk_for,
   spark_managed_grant_population,
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
@@ -141,54 +143,103 @@ fn spark_managed_grant_standings(outcome: SparkGrantOutcome) -> List<SparkManage
 // held would be worse. This is the one place the three-way split pays for itself.
 //
 // AND A MISSING GRANT IS NOT YET AN INSTALLABLE ONE. Installing a grant changes who may read what it
-// returns, so a not-held grant enters the install set only when its disclosure admits
-// (gunbc.spark.managed_access_bootstrap spark_grant_disclosure_for_precondition). A withheld grant is reported
-// by spark_managed_grants_withheld with its typed cause and keeps the host unconverged; it is never
-// silently dropped and never installed ahead of the precondition.
+// returns, so a not-held grant enters the install set on its disclosure standing and install basis
+// together (gunbc.spark.managed_access_bootstrap spark_managed_grant_disclosure_standing,
+// spark_managed_grant_install_basis). An unclassified grant with no accepted risk is withheld and
+// reported with its typed cause; one admitted on accepted risk KEEPS its obligation in the admission, so
+// "installed despite unresolved classification" stays distinguishable from "classified".
+//
+// THE CLAIM IS BOUNDED TO THIS INSTALLER. A grant already held is not re-admitted -- GrantHeld reads as
+// nothing to install, and convergence counts it held -- so this establishes that the modeled installer
+// cannot newly install a data-bearing grant without admission. It does not establish that no host
+// holds one without it: a manual or pre-existing sudoers entry is outside this seam.
 type SparkGrantInstallAdmission
   = GrantInstallAdmitted { grant: SparkManagedGrant }
+  | GrantInstallAdmittedOnAcceptedRisk { grant: SparkManagedGrant, obligation: NonEmptyStr, basis: SparkGrantInstallBasis }
   | GrantInstallWithheld { grant: SparkManagedGrant, obligation: NonEmptyStr }
   | GrantInstallNotNeeded
 
 fn spark_grant_install_admission(
   standing: SparkManagedGrantStanding,
-  precondition: SparkInspectDisclosurePrecondition,
+  basis: SparkGrantInstallBasis,
 ) -> SparkGrantInstallAdmission {
   match standing {
     GrantHeld { grant: _ } => GrantInstallNotNeeded
     GrantStandingUnobserved { grant: _, cause: _ } => GrantInstallNotNeeded
     GrantNotHeld { grant: g } =>
-      match spark_grant_disclosure_for_precondition(grant: g, precondition: precondition) {
+      match spark_managed_grant_disclosure_standing(grant: g) {
         GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
-        GrantDisclosureAdmitted { precondition: _ } => GrantInstallAdmitted { grant: g }
-        GrantDisclosureUnestablished { obligation: o } => GrantInstallWithheld { grant: g, obligation: o }
+        GrantDisclosureUnestablished { obligation: o } =>
+          if spark_install_basis_accepts_risk_for(basis: basis, grant: g) {
+            GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: basis }
+          } else {
+            GrantInstallWithheld { grant: g, obligation: o }
+          }
       }
   }
 }
 
+fn spark_grant_install_admissions_under(
+  outcome: SparkGrantOutcome,
+  basis: SparkGrantInstallBasis,
+) -> List<SparkGrantInstallAdmission> {
+  map(spark_managed_grant_standings(outcome: outcome), s =>
+    spark_grant_install_admission(standing: s, basis: basis))
+}
+
 fn spark_managed_grants_to_install_under(
   outcome: SparkGrantOutcome,
-  precondition: SparkInspectDisclosurePrecondition,
+  basis: SparkGrantInstallBasis,
 ) -> List<SparkManagedGrant> {
-  flat_map(spark_managed_grant_standings(outcome: outcome), s =>
-    match spark_grant_install_admission(standing: s, precondition: precondition) {
+  flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: basis), a =>
+    match a {
       GrantInstallAdmitted { grant: g } => [g]
+      GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: _, basis: _ } => [g]
       GrantInstallWithheld { grant: _, obligation: _ } => []
       GrantInstallNotNeeded => []
     })
 }
 
 fn spark_managed_grants_to_install(outcome: SparkGrantOutcome) -> List<SparkManagedGrant> {
-  spark_managed_grants_to_install_under(outcome: outcome, precondition: spark_inspect_disclosure_precondition)
+  spark_managed_grants_to_install_under(outcome: outcome, basis: spark_managed_grant_install_basis)
 }
 
-fn spark_managed_grants_withheld(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
-  flat_map(spark_managed_grant_standings(outcome: outcome), s =>
-    match spark_grant_install_admission(standing: s, precondition: spark_inspect_disclosure_precondition) {
+fn spark_managed_grants_withheld_under(
+  outcome: SparkGrantOutcome,
+  basis: SparkGrantInstallBasis,
+) -> List<SparkGrantInstallAdmission> {
+  flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: basis), a =>
+    match a {
       GrantInstallWithheld { grant: g, obligation: o } => [GrantInstallWithheld { grant: g, obligation: o }]
+      GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => []
       GrantInstallAdmitted { grant: _ } => []
       GrantInstallNotNeeded => []
     })
+}
+
+fn spark_managed_grants_withheld(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
+  spark_managed_grants_withheld_under(outcome: outcome, basis: spark_managed_grant_install_basis)
+}
+
+fn spark_grant_install_admission_wire(a: SparkGrantInstallAdmission) -> List<String> {
+  match a {
+    GrantInstallWithheld { grant: g, obligation: o } => [join([
+      "  grant=", spark_managed_grant_wire(grant: g) as String,
+      " install=withheld disclosure=unestablished cause=", o as String, "\n",
+    ], "")]
+    GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: b } => [join([
+      "  grant=", spark_managed_grant_wire(grant: g) as String,
+      " install=admitted-on-accepted-risk",
+      match b {
+        OperatorAcceptedUnresolvedDisclosureRisk { actor: who, decided_on: when, accepted_for: _ } =>
+          join([" actor=", who as String, " decided_on=", when as String], "")
+        InstallBasisAbsent => ""
+      },
+      " disclosure=unestablished outstanding=", o as String, "\n",
+    ], "")]
+    GrantInstallAdmitted { grant: _ } => []
+    GrantInstallNotNeeded => []
+  }
 }
 
 fn spark_managed_grants_unobserved(outcome: SparkGrantOutcome) -> List<SparkManagedGrant> {
@@ -266,14 +317,8 @@ fn spark_managed_grant_report(host: HostIdentity, outcome: SparkGrantOutcome) ->
     concat(
       map(spark_managed_grant_standings(outcome: outcome), s =>
         spark_managed_grant_standing_wire(standing: s)),
-      flat_map(spark_managed_grants_withheld(outcome: outcome), w => match w {
-        GrantInstallWithheld { grant: g, obligation: o } => [join([
-          "  grant=", spark_managed_grant_wire(grant: g) as String,
-          " install=withheld cause=", o as String, "\n",
-        ], "")]
-        GrantInstallAdmitted { grant: _ } => []
-        GrantInstallNotNeeded => []
-      }),
+      flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: spark_managed_grant_install_basis), a =>
+        spark_grant_install_admission_wire(a: a)),
     ),
   ), "")
 }
