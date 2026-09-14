@@ -179,7 +179,7 @@ test fn no_path_segment_safety_character_is_refused_at_any_seam() -> Bool {
 // name. A foreign module mints both with a cast carrying the exact `..` and `/` those functions
 // exist to refuse, and adds no blocking diagnostic. The control imports the SAME two production
 // modules, so their whole closure cancels and the delta is the forgery alone.
-data forgery_probe_control: String = "module probe_forgery_control\nimport std.types { String }\nimport gunbc.merge_admission_subject { WalkAttemptId }\nimport gunbc.fleet.fleet_known_hosts_anchor { FleetSshAttemptIdentity }\ndata forged_attempt_id_escapes_its_directory: WalkAttemptId = \"ok\" as WalkAttemptId\ndata forged_ssh_identity_introduces_a_level: FleetSshAttemptIdentity = \"ok\" as FleetSshAttemptIdentity\nfn any_string_becomes_an_attempt_id(raw: String) -> WalkAttemptId { raw as WalkAttemptId }\n"
+data forgery_probe_control: String = "module probe_forgery_control\nimport std.types { String }\nimport gunbc.merge_admission_subject { WalkAttemptId }\nimport gunbc.fleet_known_hosts_anchor { FleetSshAttemptIdentity }\ndata forged_attempt_id_escapes_its_directory: WalkAttemptId = \"ok\" as WalkAttemptId\ndata forged_ssh_identity_introduces_a_level: FleetSshAttemptIdentity = \"ok\" as FleetSshAttemptIdentity\nfn any_string_becomes_an_attempt_id(raw: String) -> WalkAttemptId { raw as WalkAttemptId }\n"
 
 test fn a_branded_path_segment_can_be_forged_from_any_module() -> Bool {
   blocking_delta(

@@ -9,7 +9,7 @@ module test.probe.branded_path_segment_forgery_probe
 //                                      constructor, and refuse rather than sanitizing."
 //                                      The id is concatenated into
 //                                      <root>/.gunbc/merge-admission/<attempt_id>/.
-//   gunbc.fleet.fleet_known_hosts_anchor -- "fleet_ssh_attempt_identity is the only constructor and
+//   gunbc.fleet_known_hosts_anchor -- "fleet_ssh_attempt_identity is the only constructor and
 //                                      REFUSES rather than sanitizing".
 //
 // Both statements are TRUE ABOUT THE FUNCTIONS AND FALSE ABOUT THE TYPES. Each identity is
