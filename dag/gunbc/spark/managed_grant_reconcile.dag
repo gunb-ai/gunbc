@@ -142,7 +142,7 @@ fn spark_managed_grant_standings(outcome: SparkGrantOutcome) -> List<SparkManage
 //
 // AND A MISSING GRANT IS NOT YET AN INSTALLABLE ONE. Installing a grant changes who may read what it
 // returns, so a not-held grant enters the install set only when its disclosure admits
-// (gunbc.spark.managed_access_bootstrap spark_managed_grant_disclosure). A withheld grant is reported
+// (gunbc.spark.managed_access_bootstrap spark_grant_disclosure_for_precondition). A withheld grant is reported
 // by spark_managed_grants_withheld with its typed cause and keeps the host unconverged; it is never
 // silently dropped and never installed ahead of the precondition.
 type SparkGrantInstallAdmission
@@ -160,7 +160,7 @@ fn spark_grant_install_admission(
     GrantNotHeld { grant: g } =>
       match spark_grant_disclosure_for_precondition(grant: g, precondition: precondition) {
         GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
-        GrantDisclosureAdmitted { assertion: _ } => GrantInstallAdmitted { grant: g }
+        GrantDisclosureAdmitted { precondition: _ } => GrantInstallAdmitted { grant: g }
         GrantDisclosureUnestablished { obligation: o } => GrantInstallWithheld { grant: g, obligation: o }
       }
   }

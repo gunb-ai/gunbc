@@ -7,6 +7,7 @@ import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
   RebootThisHost,
   InspectServingContainer,
+  SparkInspectDisclosurePrecondition,
   DisclosurePreconditionAbsent,
   DisclosureAcceptedByOperator,
   spark_inspect_grant_disclosure_unestablished_obligation,
@@ -14,7 +15,6 @@ import gunbc.spark.managed_access_bootstrap {
   spark_managed_grant_argv,
   spark_managed_grant_sudoers_command,
 }
-import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.managed_access_bootstrap { GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_standing_from_outcome,
@@ -82,7 +82,7 @@ test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
 test fn the_measured_hosts_are_missing_exactly_the_inspect_grant() -> Bool {
   let missing = spark_managed_grants_to_install_under(
     outcome: GrantEnumerated { listing: srv6_listing_after },
-    precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+    precondition: fixture_acceptance(),
   )
   missing.length() == 1
     && all(missing, m => match m {
@@ -99,7 +99,7 @@ test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
   spark_managed_grants_to_install_under(
     outcome: o,
-    precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+    precondition: fixture_acceptance(),
   ).length() == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
@@ -353,11 +353,11 @@ test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
 }
 
 // A FIXTURE ASSERTION, never a real decision: it exists only to show the precondition arm admits.
-fn fixture_acceptance() -> OperatorAllocation {
-  OperatorAllocation {
+fn fixture_acceptance() -> SparkInspectDisclosurePrecondition {
+  DisclosureAcceptedByOperator {
     decided_by: "fixture" as NonEmptyStr,
     decided_on: "1970-01-01" as NonEmptyStr,
-    basis: "witness fixture, not an operator decision" as NonEmptyStr,
+    disclosed: "witness fixture, not an operator decision" as NonEmptyStr,
   }
 }
 
@@ -391,6 +391,6 @@ test fn the_precondition_admits_inspect_and_leaves_dataless_grants_unconditional
   spark_managed_grants_to_install_under(outcome: o, precondition: DisclosurePreconditionAbsent).length() == 1
     && spark_managed_grants_to_install_under(
          outcome: o,
-         precondition: DisclosureAcceptedByOperator { assertion: fixture_acceptance() },
+         precondition: fixture_acceptance(),
        ).length() == 2
 }
