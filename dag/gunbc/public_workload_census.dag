@@ -457,23 +457,6 @@ fn inspected_job_matrix_axes_join(
   }
 }
 
-fn selector_axis_names(matrix: JobMatrixIdentity) -> List<NonEmptyStr> {
-  match matrix {
-    NoMatrix => []
-    MatrixCombination { axes } => map(axes, a => a.axis)
-  }
-}
-
-fn axis_name_sets_are_identical(declared: List<NonEmptyStr>, selector: List<NonEmptyStr>) -> Bool {
-  count(declared) == count(selector)
-    && count(filter(declared, d =>
-      count(filter(selector, s => (s as String) == (d as String))) == 0
-    )) == 0
-    && count(filter(selector, s =>
-      count(filter(declared, d => (d as String) == (s as String))) == 0
-    )) == 0
-}
-
 data inspected_yaml_job_names: List<InspectedYamlJobName> = [
   InspectedYamlJobName {
     repository: "biomejs/biome",
@@ -553,28 +536,43 @@ fn inspected_yaml_job_name_join(
   }
 }
 
-fn matrix_combination_values(axes: List<MatrixAxisAssignment>) -> List<NonEmptyStr> {
-  map(axes, a => a.value)
+type MatrixValueProjection
+  = MatrixValuesProjected { values: List<NonEmptyStr> }
+  | MatrixValueLookupRefused
+
+fn assignments_for_declared_axis(
+  axes: List<MatrixAxisAssignment>,
+  name: NonEmptyStr,
+) -> List<MatrixAxisAssignment> {
+  filter(axes, a => (a.axis as String) == (name as String))
 }
 
-fn observed_name_matches_inspected_prefix(
-  job_name: String,
-  prefix: String,
-  matrix: JobMatrixIdentity,
-) -> Bool {
+fn selector_assignments(matrix: JobMatrixIdentity) -> List<MatrixAxisAssignment> {
   match matrix {
-    NoMatrix => job_name == prefix
-    MatrixCombination { axes } =>
-      if count(axes) == 0 {
-        false
-      } else {
-        job_name == concat(
-          prefix,
-          workflow_job_name_matrix_value_parenthetical(
-            values: matrix_combination_values(axes: axes),
-          ),
-        )
-      }
+    NoMatrix => []
+    MatrixCombination { axes } => axes
+  }
+}
+
+fn matrix_values_in_declared_axis_order(
+  declared: List<NonEmptyStr>,
+  axes: List<MatrixAxisAssignment>,
+) -> MatrixValueProjection {
+  if count(declared) != count(axes) {
+    MatrixValueLookupRefused
+  } else if count(filter(declared, name =>
+    count(assignments_for_declared_axis(axes: axes, name: name)) != 1
+  )) != 0 {
+    MatrixValueLookupRefused
+  } else {
+    MatrixValuesProjected {
+      values: map(declared, name =>
+        match assignments_for_declared_axis(axes: axes, name: name).first() {
+          Present { value: row } => row.value
+          Absent => name
+        }
+      ),
+    }
   }
 }
 
@@ -607,17 +605,31 @@ fn inspected_leg_binding(
       ) {
         InspectedMatrixAxesUninspected { cause } => InspectedLegUninspected { cause: cause }
         InspectedMatrixAxesBound { axes } =>
-          if axis_name_sets_are_identical(
+          match matrix_values_in_declared_axis_order(
             declared: axes,
-            selector: selector_axis_names(matrix: matrix),
+            axes: selector_assignments(matrix: matrix),
           ) {
-            if observed_name_matches_inspected_prefix(job_name: job_name, prefix: prefix, matrix: matrix) {
-              InspectedLegBound
-            } else {
-              InspectedLegNameMismatch
-            }
-          } else {
-            InspectedLegAxisMismatch
+            MatrixValueLookupRefused => InspectedLegAxisMismatch
+            MatrixValuesProjected { values } =>
+              match matrix {
+                NoMatrix =>
+                  if job_name == prefix {
+                    InspectedLegBound
+                  } else {
+                    InspectedLegNameMismatch
+                  }
+                MatrixCombination { axes: _unused_selector_axes } =>
+                  if count(values) == 0 {
+                    InspectedLegNameMismatch
+                  } else if job_name == concat(
+                    prefix,
+                    workflow_job_name_matrix_value_parenthetical(values: values),
+                  ) {
+                    InspectedLegBound
+                  } else {
+                    InspectedLegNameMismatch
+                  }
+              }
           }
       }
   }
