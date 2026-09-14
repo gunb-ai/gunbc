@@ -9,7 +9,7 @@ import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_deepseek_v4_1_sm12_revision, vllm_recipe_targeting }
-import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
 import gunbc.spark.serving_deployment_selection { topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
@@ -19,7 +19,7 @@ import gunbc.spark.v41_runtime_candidate {
   V41RuntimeArtifactInputs, V41ModelSourceInputs, V41EngramRealizationInputs, V41CandidateInputs,
   V41ManifestObserved, V41ManifestUnestablished,
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
-  V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
+  V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
 }
 
@@ -84,8 +84,8 @@ fn w_default(patches: V41PatchPopulation) -> V41CandidateInputs {
   w_inputs(patches: patches, partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)
 }
 
-fn w_key(s: V41CandidateStanding, which: String) -> String {
-  match s {
+fn w_key(s: V41CandidateVerdict, which: String) -> String {
+  match s.standing {
     V41CandidateKeyed { runtime_artifact: r, model_source: m, engram_realization: e, execution_profile: x, candidate: c, authorization_obligation: _ } =>
       if which == "runtime" { serialize_content_hash(hash: r) as String }
       else if which == "engram" { serialize_content_hash(hash: e) as String }
@@ -96,8 +96,8 @@ fn w_key(s: V41CandidateStanding, which: String) -> String {
   }
 }
 
-fn w_refused_with(s: V41CandidateStanding, fragment: String) -> Bool {
-  match s {
+fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
+  match s.standing {
     V41CandidateRefused { defects: d } => any(d, x => (x as String).contains(fragment))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateUnestablished { obligations: _ } => false
@@ -108,7 +108,7 @@ fn w_refused_with(s: V41CandidateStanding, fragment: String) -> Bool {
 // manifests and the row-store encoding are all unwritten, so an identity minted now would be shared by
 // every future candidate that fills those holes differently.
 test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bool {
-  match v41_candidate() {
+  match v41_candidate().standing {
     V41CandidateUnestablished { obligations: o } =>
       any(o, x => (x as String).contains("patch"))
         && any(o, x => (x as String).contains("weight manifest"))
@@ -122,7 +122,7 @@ test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bo
 // THE POSITIVE CONTROL: the same inputs with every axis established key, and the keyed candidate still
 // carries the authorization obligation -- identity is not permission.
 test fn an_established_fixture_is_keyed_and_still_owes_authorization() -> Bool {
-  match v41_candidate_standing(c: w_default(patches: w_two_patches())) {
+  match v41_candidate_standing(c: w_default(patches: w_two_patches())).standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: a } =>
       (a as String).contains("authorized_v4_1_runtime_holds")
     V41CandidateUnestablished { obligations: _ } => false
@@ -277,4 +277,27 @@ test fn a_route_reference_that_differs_in_module_or_field_is_not_the_admitted_ro
   let field_of_b = decl_field_ref(module_path: engram_route_b_identity.module_path as String, decl_name: engram_route_b_identity.decl_name as String, field_name: "origin")
   w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: foreign_module, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
     && w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: field_of_b, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
+}
+
+// A WHEEL FROM A NEIGHBOURING RELEASE CARRIES THE RIGHT PACKAGE NAME AND THE WRONG BYTES. The row is minted
+// by the FlashInfer authority itself, against a 0.7.0 acquisition, so it is a well-formed wheel -- just not
+// one this runtime's acquisition installs. Package-bag equality alone admits it; re-admission refuses it.
+fn w_foreign_release_wheel() -> List<FlashInferWheel> {
+  match admit_flashinfer_wheel(
+    acquisition: FlashInferPublishedRelease { version: "0.7.0" as NonEmptyStr, channel: FlashInferProjectStable, index: "fixture" as NonEmptyStr },
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0-py3-none-any.whl" as NonEmptyStr,
+    sha256_hex: w_sha(c: "d").hex as String,
+  ) {
+    FlashInferWheelAdmitted { wheel: w } => [w]
+    FlashInferWheelRefused { refusal: _ } => [] as List<FlashInferWheel>
+  }
+}
+
+test fn a_wheel_from_a_neighbouring_release_refuses_even_with_the_right_package_names() -> Bool {
+  let foreign = w_foreign_release_wheel()
+  let swapped = concat(foreign, w_wheels_named(names: ["flashinfer-cubin", "flashinfer-jit-cache"]))
+  length(foreign) == 1
+    && length(swapped) == 3
+    && w_refused_with(s: v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: swapped)), fragment: "does not re-admit")
 }
