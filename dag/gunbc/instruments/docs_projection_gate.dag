@@ -232,8 +232,30 @@ fn docs_placement_verdict_over(placements: List<DocsArtifactPlacement>) -> Proce
   }
 }
 
+// THE POPULATION IS THE NON-DOCS SIDE ONLY, AND THAT IS A COST REPAIR RATHER THAN A NARROWING
+// (review 65901). `placement_is_outside_docs` can be true ONLY for an artifact that is not
+// docs-located, so restricting the input to that side removes no reachable refusal -- the verdict
+// over the registry is identical, element for element.
+//
+// WHAT IT REMOVES IS A FULL RENDER PER DOCS PROJECTION, EVERY RUN. `has_producer` resolves through
+// `docs_projection_producer`, whose `Present` arm IS the rendered document, so asking the Bool
+// question about a docs-located artifact rendered the whole projection -- the failure-mode ledger
+// among them -- and threw the bytes away, after which `docs_projection_resolutions` rendered it
+// again. Restricted to the non-docs side every artifact answers `Absent`, so nothing renders at
+// all and the question costs a location comparison.
+//
+// THIS IS THE SAME DEFECT THE `RESOLVE ONCE AND CARRY THE BYTES` NOTE ABOVE RECORDS, REINTRODUCED
+// BY THE CHANGE THAT ADDED THIS ARM. It is worth saying plainly rather than quietly fixing: the
+// repair was already written down in this module, in a comment naming the exact shape, and the
+// next edit walked into it anyway. DESIGN section 6 rules that a proven cost-shape defect is
+// always fixed regardless of the realized n, and this module is the one whose arm the floor's
+// enrolment margin has already refused once on cost.
 fn docs_placement_verdict() -> ProcessExit {
-  docs_placement_verdict_over(placements: docs_artifact_placements(artifacts: generated_artifact_registry))
+  docs_placement_verdict_over(
+    placements: docs_artifact_placements(
+      artifacts: filter(generated_artifact_registry, a => !artifact_is_docs_located(a: a))
+    )
+  )
 }
 
 

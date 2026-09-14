@@ -265,6 +265,23 @@ test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
 // and its two controls are what DESIGN section 4b asks of the evidence; paying a floor refusal to
 // restate what production already executes is not.
 
+// THE COST REPAIR CHANGES NO VERDICT, ASSERTED RATHER THAN CLAIMED (review 65901). Production
+// hands the placement verdict only the NON-docs side of the registry, because a docs-located
+// artifact can never satisfy `placement_is_outside_docs` and asking the question about one costs a
+// full render of the projection. This arm is the equivalence: a docs-located placement WITH a
+// producer -- the state every real docs projection is in, and the whole population the filter
+// removes -- is green, so removing it from the input removes no refusal.
+test fn the_population_the_cost_filter_removes_would_have_been_green_anyway() -> Bool {
+  match docs_placement_verdict_over(placements: [
+    DocsArtifactPlacement { path: "docs/design-failure-modes.md", directory: "docs", has_producer: true },
+    DocsArtifactPlacement { path: "docs/design-rung-drops.md", directory: "docs", has_producer: true },
+    DocsArtifactPlacement { path: "docs/onboarding.md", directory: "docs", has_producer: true }
+  ]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
 // DERIVED MEMBERSHIP: THE DISCRIMINATING RED. A non-docs artifact must NOT be admitted to the
 // docs population, and must have no docs producer. Without this arm the predicate above is
 // satisfied by one that answers true for everything -- which would put .gitignore in the docs
