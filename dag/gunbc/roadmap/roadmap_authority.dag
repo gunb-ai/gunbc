@@ -2277,6 +2277,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
+      id: "fleet-mtcollins1-first-host",
+      owner: "fleet",
+      path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
+      t: fields(
+        headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
+        boundary: "Every fact the unit's intake depends on (memory population, expansion attachment points, controller credential standing, PCI identity) is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. Open at the 2026-09-14 wind-down: gunbc#11376 (OCP bay occupancy and riser fitment from the operator's interior report); gunbc#11189 (the bring-up evidence corpus, whose six artifacts still have no in-repo consumer and whose Run A header misstates the population); the mtcollins1_bmc_secure_standing_frontier dissolution (a channel-census observation plus SecretRef minting BmcSecureStanding); the PCI rendering-equivalence debt rostered by gunbc#11373; and unpushed-to-main follow-ups on branch model/mtcollins-expansion-attachment (zero offers, over-reports and populated bays refuse instead of answering).",
+        displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
+        first_slice: "Land gunbc#11376 and reconcile the model/mtcollins-expansion-attachment refusals onto it.",
+        red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
+        out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
+        handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
+      )
+    ),
+    active_large(
       identity: "rn_PEH90XVR97GYYA5FXGDJXZ70PF",
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",
