@@ -15,6 +15,7 @@ import extdeps.vllm.source_build {
 import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
   flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels,
+  FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel,
 }
 import extdeps.safetensors.format { SafetensorsEntry }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -121,6 +122,19 @@ fn v41_wheels_named(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> List
   filter(wheels, w => (w.package as String) == (package as String))
 }
 
+// EVERY WHEEL MUST RE-ADMIT AGAINST THE ACQUISITION THIS RUNTIME DECLARES. Comparing the acquisition's
+// version to the recipe's and then counting packages leaves the rows themselves unchecked: three rows with
+// the right package names, taken from a neighbouring release, would key a runtime whose recipe installs
+// something else. The authority that decides whether a row belongs to a release is
+// extdeps.flashinfer.flashinfer admit_flashinfer_wheel, so each row is offered back to it.
+fn v41_kernel_admission_defects(acquisition: FlashInferAcquisition, wheels: List<FlashInferWheel>) -> List<NonEmptyStr> {
+  flat_map(wheels, w => match admit_flashinfer_wheel(acquisition: acquisition, package: w.package, filename: w.filename, sha256_hex: w.sha256.hex as String) {
+    FlashInferWheelAdmitted { wheel: _ } => [] as List<NonEmptyStr>
+    FlashInferWheelRefused { refusal: _ } =>
+      [join(["the wheel ", w.filename as String, " does not re-admit against this runtime's kernel acquisition"], "") as NonEmptyStr]
+  })
+}
+
 fn v41_kernel_population_defects(wheels: List<FlashInferWheel>) -> List<NonEmptyStr> {
   let missing = map(filter(v41_required_kernel_packages, p => length(v41_wheels_named(wheels: wheels, package: p)) == 0), p => join(["the kernel population carries no ", p as String, " wheel"], "") as NonEmptyStr)
   let duplicated = map(filter(v41_required_kernel_packages, p => length(v41_wheels_named(wheels: wheels, package: p)) > 1), p => join(["the kernel population carries more than one ", p as String, " wheel, so which variant this runtime installs is undecided"], "") as NonEmptyStr)
@@ -135,7 +149,7 @@ fn v41_kernel_defects(i: V41RuntimeArtifactInputs) -> List<NonEmptyStr> {
       if (v as String) != (i.recipe.flashinfer_version as String) {
         [join(["the kernel acquisition pins flashinfer ", v as String, " but the recipe installs ", i.recipe.flashinfer_version as String], "") as NonEmptyStr]
       } else {
-        v41_kernel_population_defects(wheels: i.kernel_wheels)
+        concat(v41_kernel_population_defects(wheels: i.kernel_wheels), v41_kernel_admission_defects(acquisition: i.kernel_acquisition, wheels: i.kernel_wheels))
       }
   }
 }
@@ -348,6 +362,14 @@ type V41CandidateInputs {
   device: GpuComputeCapability
 }
 
+// THE CANDIDATE VERDICT, SEALED. V41CandidateStanding is a coproduct a caller can write, so the keyed arm
+// with arbitrary hashes in it is writable too -- which would defeat the whole module: the point is that a
+// key exists only when every axis was established. Consumers therefore take this record, which only
+// v41_candidate_standing mints. The input records stay constructible; they are what a caller supplies.
+type V41CandidateVerdict sole_constructor {
+  standing: V41CandidateStanding
+}
+
 type V41CandidateStanding
   = V41CandidateKeyed {
       runtime_artifact: ContentHash
@@ -395,7 +417,11 @@ fn v41_standing_obligations(s: V41IdentityStanding) -> List<NonEmptyStr> {
 
 // REFUSALS DOMINATE OBLIGATIONS. A candidate that is both malformed and incomplete reports what is
 // wrong, because finishing it would not make it right.
-fn v41_candidate_standing(c: V41CandidateInputs) -> V41CandidateStanding {
+fn v41_candidate_standing(c: V41CandidateInputs) -> V41CandidateVerdict {
+  V41CandidateVerdict { standing: v41_candidate_standing_of(c: c) }
+}
+
+fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
   let runtime = v41_runtime_artifact_key(i: c.runtime, partition: c.engram.partition)
   let source = v41_model_source_key(s: c.model_source)
   let engram = v41_engram_realization_key(e: c.engram)
@@ -489,6 +515,6 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   device: gb10_observed_compute_capability,
 }
 
-fn v41_candidate() -> V41CandidateStanding {
+fn v41_candidate() -> V41CandidateVerdict {
   v41_candidate_standing(c: v41_candidate_inputs)
 }
