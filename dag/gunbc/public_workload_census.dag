@@ -305,6 +305,44 @@ fn observed_label_set_rendering(labels: List<String>) -> String {
   join(labels, ", ")
 }
 
+type ObservedSingleLabelOrUnresolved
+  = ObservedSingleLabel { label: String }
+  | ObservedLabelUnresolved { label: String, cause: NonEmptyStr }
+
+fn observed_single_label_or_unresolved(s: ObservedLabelStanding) -> ObservedSingleLabelOrUnresolved {
+  match s {
+    ObservedLabel { label } => ObservedSingleLabel { label: label }
+    NoRunObservedForLabel { obligation } => ObservedLabelUnresolved {
+      label: "(no run)",
+      cause: concat("no runner label was observed because no job run was observed: ", obligation),
+    }
+    JobResourceCarriedNoLabels { job_id } => ObservedLabelUnresolved {
+      label: "(empty labels)",
+      cause: "the job resource carried an empty labels list",
+    }
+    JobResourceCarriedMultipleLabels { labels } => ObservedLabelUnresolved {
+      label: concat("[", concat(observed_label_set_rendering(labels: labels), "]")),
+      cause: concat(
+        "the job resource carried multiple labels; this census resolves a single-label runner only and does not take the first as the observed runner: ",
+        observed_label_set_rendering(labels: labels),
+      ),
+    }
+  }
+}
+
+fn observed_provider_standing(
+  o: ObservedExecution,
+  observed_at: Rfc3339Timestamp,
+) -> ProviderReading {
+  match observed_single_label_or_unresolved(s: observed_label_standing(o: o)) {
+    ObservedSingleLabel { label } =>
+      provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
+    ObservedLabelUnresolved { label, cause } => ProviderUnresolved {
+      label: label,
+      cause: cause,
+    }
+  }
+}
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
   match o {
     NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
@@ -317,31 +355,6 @@ fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
       } else {
         JobResourceCarriedMultipleLabels { labels: labels }
       }
-  }
-}
-
-fn observed_provider_standing(
-  o: ObservedExecution,
-  observed_at: Rfc3339Timestamp,
-) -> ProviderReading {
-  match observed_label_standing(o: o) {
-    ObservedLabel { label } =>
-      provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
-    NoRunObservedForLabel { obligation } => ProviderUnresolved {
-      label: "(no run)",
-      cause: concat("no runner label was observed because no job run was observed: ", obligation),
-    }
-    JobResourceCarriedNoLabels { job_id } => ProviderUnresolved {
-      label: "(empty labels)",
-      cause: "the job resource carried an empty labels list",
-    }
-    JobResourceCarriedMultipleLabels { labels } => ProviderUnresolved {
-      label: concat("[", concat(observed_label_set_rendering(labels: labels), "]")),
-      cause: concat(
-        "the job resource carried multiple labels; this census resolves a single-label runner only and does not take the first as the observed runner: ",
-        observed_label_set_rendering(labels: labels),
-      ),
-    }
   }
 }
 
@@ -562,19 +575,23 @@ fn matrix_values_in_declared_axis_order(
 ) -> MatrixValueProjection {
   if count(declared) != count(axes) {
     MatrixValueLookupRefused
-  } else if count(filter(declared, name =>
-    count(assignments_for_declared_axis(axes: axes, name: name)) != 1
-  )) != 0 {
-    MatrixValueLookupRefused
   } else {
-    MatrixValuesProjected {
-      values: map(declared, name =>
-        match assignments_for_declared_axis(axes: axes, name: name).first() {
-          Present { value: row } => row.value
-          Absent => name
-        }
-      ),
-    }
+    fold(declared, init: MatrixValuesProjected { values: [] }, f: fn(acc, name) {
+      match acc {
+        MatrixValueLookupRefused => MatrixValueLookupRefused
+        MatrixValuesProjected { values } =>
+          let hits = assignments_for_declared_axis(axes: axes, name: name)
+          if count(hits) != 1 {
+            MatrixValueLookupRefused
+          } else {
+            match hits.first() {
+              Present { value: row } =>
+                MatrixValuesProjected { values: concat(values, [row.value]) }
+              Absent => MatrixValueLookupRefused
+            }
+          }
+      }
+    })
   }
 }
 
@@ -664,23 +681,12 @@ type RunIdentityStanding
   | RunIdentityUnresolved { cause: NonEmptyStr }
 
 fn observed_arm_standing(o: ObservedExecution, observed_at: Rfc3339Timestamp) -> ArmStanding {
-  match observed_label_standing(o: o) {
-    ObservedLabel { label } =>
+  match observed_single_label_or_unresolved(s: observed_label_standing(o: o)) {
+    ObservedSingleLabel { label } =>
       arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at))
-    NoRunObservedForLabel { obligation } => ArmUndetermined {
-      label: "(no run)",
-      cause: concat("no runner label was observed because no job run was observed: ", obligation),
-    }
-    JobResourceCarriedNoLabels { job_id } => ArmUndetermined {
-      label: "(empty labels)",
-      cause: "the job resource carried an empty labels list",
-    }
-    JobResourceCarriedMultipleLabels { labels } => ArmUndetermined {
-      label: concat("[", concat(observed_label_set_rendering(labels: labels), "]")),
-      cause: concat(
-        "the job resource carried multiple labels; this census resolves a single-label runner only and does not take the first as the observed runner: ",
-        observed_label_set_rendering(labels: labels),
-      ),
+    ObservedLabelUnresolved { label, cause } => ArmUndetermined {
+      label: label,
+      cause: cause,
     }
   }
 }
@@ -886,15 +892,15 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
   }
 }
 
+data observed_job_did_not_conclude_success: NonEmptyStr = "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline"
+
 fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission {
   match c.observed {
     NoRunObserved { obligation } =>
       BaselineRefused { cause: concat("no run observed: ", obligation) }
     JobRunObserved { job, repository, workflow_path, workflow_blob_sha_at_head, head_sha, correctness } =>
       match job.conclusion {
-        Absent => BaselineRefused {
-          cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-        }
+        Absent => BaselineRefused { cause: observed_job_did_not_conclude_success }
         Present { value: conclusion } =>
           if job.run_attempt < 1 {
             BaselineRefused {
@@ -928,27 +934,13 @@ fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission
             NoTestsExecuted { note } =>
               BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
           }
-          Failure => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Cancelled => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Neutral => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          Skipped => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          TimedOut => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          ActionRequired => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
-          StartupFailure => BaselineRefused {
-            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-          }
+          Failure => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          Cancelled => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          Neutral => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          Skipped => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          TimedOut => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          ActionRequired => BaselineRefused { cause: observed_job_did_not_conclude_success }
+          StartupFailure => BaselineRefused { cause: observed_job_did_not_conclude_success }
             }
           }
       }
