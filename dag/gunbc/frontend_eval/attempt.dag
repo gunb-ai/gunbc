@@ -1,7 +1,8 @@
 module gunbc.frontend_eval.attempt
 
-import std.types { String, Bool, Int, Float, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { Millisecond, TokenCount, token_count_value }
+import extdeps.vllm.sampling_params { SamplingTemperature }
 import gunbc.frontend_eval.task { FrontendMutationClass, mutation_class_scored_separately, mutation_class_key }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM, and it binds every
@@ -76,7 +77,7 @@ type EvalAttempt {
   compiler_program_sha256: String
   card_sha256: String
   tool_schema_sha256: String
-  temperature: Float
+  temperature: SamplingTemperature
   max_tokens: TokenCount
   usage: EvalUsage
   cycles: Int
@@ -148,9 +149,11 @@ fn mean_text(total: Int, n: Int) -> String {
   if n == 0 { "-" } else { to_string(value: total / n) }
 }
 
+// AN ARM WITH NO ATTEMPTS IS "not run", NEVER A SCORED ROW: a zero-denominator row printed as
+// `0/0` reads as a measurement (DESIGN section 4d: do not assert as deduced what is only inferred).
 fn arm_summary_line(s: ArmSummary) -> String {
   let accepted = s.language_accepted + s.sentinel_accepted
-  join([
+  if s.attempts == 0 { join(["| ", eval_arm_key(arm: s.arm), " | not run | not run | - | - | - | - |"], "") } else { join([
     "| ", eval_arm_key(arm: s.arm),
     " | ", ratio_text(num: s.language_accepted, den: s.language_attempts),
     " | ", ratio_text(num: s.sentinel_accepted, den: s.sentinel_attempts),
@@ -159,7 +162,7 @@ fn arm_summary_line(s: ArmSummary) -> String {
     " | ", mean_text(total: s.cycles_over_accepted, n: accepted),
     " | ", mean_text(total: s.tool_calls_over_accepted, n: accepted),
     " |",
-  ], "")
+  ], "") }
 }
 
 // THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the

@@ -43,5 +43,5 @@ fn write_card(path: String) -> ProcessExit {
 // THE REPORT IS COMPUTED HERE, IN THE INTERPRETER, FROM THE COMMITTED TYPED ROWS -- the instrument a
 // reader names to re-derive the table (DESIGN section 6), never a table pasted into prose.
 fn write_report(path: String) -> ProcessExit {
-  write_projection(path: path, content: frontend_eval_report(attempts: attempt_rows))
+  write_projection(path: path, content: frontend_eval_report(attempts: attempt_rows()))
 }

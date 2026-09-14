@@ -1,0 +1,39 @@
+module extdeps.vllm.sampling_params
+
+import std.types { String, Bool, Float, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// vLLM'S SAMPLING PARAMETERS, as the OpenAI-compatible server actually binds them. The upstream
+// class is vllm.SamplingParams: `temperature` is a float, 0 selects greedy decoding, and the
+// constructor refuses a negative value. That bound is what makes a decode temperature a DOMAIN
+// value rather than a bare Float -- `-3.0` must have no constructor here (DESIGN section 5), and
+// the OpenAI wire's `temperature: Float?` in extdeps.llm.openai_rest is the transport rendering of
+// this value, not its authority.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.vllm.ai/en/latest/api/vllm/sampling_params.html#vllm.sampling_params.SamplingParams"
+  }
+}
+
+type SamplingTemperature sole_constructor {
+  value: Float
+}
+
+fn sampling_temperature(value: Float) -> SamplingTemperature? {
+  if value < 0.0 {
+    none
+  } else {
+    Present { value: SamplingTemperature { value: value } }
+  }
+}
+
+fn sampling_temperature_value(t: SamplingTemperature) -> Float {
+  t.value
+}
+
+// GREEDY DECODING, the one temperature with a name upstream: SamplingParams treats 0 as argmax.
+fn sampling_is_greedy(t: SamplingTemperature) -> Bool {
+  t.value == 0.0
+}
