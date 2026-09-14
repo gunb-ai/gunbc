@@ -1,0 +1,74 @@
+module test.claim.mtcollins1_expansion_witness_test
+
+import std.types { Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.machine_intake_mtcollins1_expansion_observation {
+  AttachmentPointStanding,
+  AttachmentPointOffered,
+  AttachmentPointUnobserved,
+  AttachmentPointAbsent,
+  MtCollinsUnitExpansionEvidence,
+  UnitExpansionEvidence,
+  NoExpansionObservationForUnit,
+  mtcollins1_expansion_observation,
+  pcie_attachment_standing,
+  ocp_attachment_standing,
+  expansion_evidence_for_unit,
+  observed_unit,
+}
+
+// THE DISCRIMINATING CONTROL, and the reason this witness exists rather than a shape check. The
+// observation reports TWO rear apertures. If a later edit reads that count as two fitted riser
+// positions -- the obvious and wrong simplification -- this arm turns red, because the PCIe
+// standing would become Offered. The platform upper bound of two is carried INSIDE the unobserved
+// arm precisely so that a reader gets the capacity and the open question together instead of one
+// standing in for the other.
+test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
+  match pcie_attachment_standing(observation: mtcollins1_expansion_observation) {
+    AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointAbsent { basis: _ } => false
+    AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: _ } => bound == 2
+  }
+}
+
+// The OCP bay is a platform fact and its OCCUPANCY is not. The brief establishes the slot; nobody
+// has reported whether a card sits in it, so this must answer unobserved rather than offered.
+test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
+  match ocp_attachment_standing(observation: mtcollins1_expansion_observation) {
+    AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointAbsent { basis: _ } => false
+    AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: _ } => bound == 1
+  }
+}
+
+test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
+  match expansion_evidence_for_unit(unit: observed_unit) {
+    NoExpansionObservationForUnit { requested_unit: _ } => false
+    UnitExpansionEvidence { observation: _, pcie: pcie, ocp: ocp } =>
+      match pcie {
+        AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } =>
+          match ocp {
+            AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => true
+            AttachmentPointOffered { positions: _, basis: _ } => false
+            AttachmentPointAbsent { basis: _ } => false
+          }
+        AttachmentPointOffered { positions: _, basis: _ } => false
+        AttachmentPointAbsent { basis: _ } => false
+      }
+  }
+}
+
+// A different unit gets no answer rather than this unit's answer. Without this arm the lookup could
+// return unit 1's standing for any machine asked about, which is the shape that makes a per-unit
+// observation read as a fleet fact.
+test fn another_unit_gets_no_observation_rather_than_this_one() -> Bool {
+  let other_unit: DeclarationRef = DeclarationRef {
+    module_path: "gunbc.machine_intake_mtcollins2_access_observation",
+    decl_name: "mtcollins2_access_observation",
+    field: WholeDeclaration,
+  }
+  match expansion_evidence_for_unit(unit: other_unit) {
+    UnitExpansionEvidence { observation: _, pcie: _, ocp: _ } => false
+    NoExpansionObservationForUnit { requested_unit: _ } => true
+  }
+}
