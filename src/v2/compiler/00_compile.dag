@@ -45,7 +45,12 @@ import v2.compiler.program_assembly {
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
-  source_root_set_from_ingest
+  source_root_set_from_ingest,
+  source_refs_from_ingest,
+  DiscoveredSourceRefsDigest,
+  DiscoveredSourceRefsDigestFromList,
+  DiscoveredSourceRefsDigestUnavailable,
+  discovered_source_refs_digest_for_refs
 }
 import v2.compiler.native_test_vocabulary {
   NativeTestFileRefusal,
@@ -92,6 +97,8 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.observation { TimedMeasurement }
+import std.measure { ByteSize }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim }
 import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
@@ -2167,7 +2174,16 @@ fn native_lane_closure_ingest(
 // second authority, so they owe a witness joining this route's universe against the discovery
 // producer's own population at identity grain on the same tree. That witness is the wall and it is
 // NOT yet built; until it is, the same-universe property is diligence rather than a check.
+// Receipt construction is nested within universe derivation, not another exclusive phase.
+// Both clocks qualify their own measurement; missing CPU observations never become zero.
+type NativeLaneIngestReceiptCost {
+  timings: List<TimedMeasurement>
+  ingested_files: Int
+  ingested_bytes: ByteSize
+}
+
 type NativeLaneIngestReceipt {
+  context_identity: DiscoveredSourceRefsDigest
   closure_modules: List<String>
   ingested_paths: List<String>
   scanned_paths: List<String>
@@ -2179,6 +2195,7 @@ fn native_lane_ingest_receipt(
   ingest: SourceRootIngest
 ) -> NativeLaneIngestReceipt {
   NativeLaneIngestReceipt {
+    context_identity: discovered_source_refs_digest_for_refs(refs: source_refs_from_ingest(ingest: ingest)),
     closure_modules: closure,
     ingested_paths: fold_list(
       xs: ingest,
@@ -2214,6 +2231,15 @@ fn native_lane_ingest_matches_closure(
   receipt: NativeLaneIngestReceipt,
   ingest: SourceRootIngest
 ) -> Outcome<Bool> {
+  match receipt.context_identity {
+    DiscoveredSourceRefsDigestUnavailable { cause: _ } => {
+      return native_lane_refused(
+        reason: ^native_lane_ingest_identity_unavailable,
+        detail: "ingested source population has no structural content identity"
+      )
+    }
+    DiscoveredSourceRefsDigestFromList { digest: _ } => {}
+  }
   let by_path = native_lane_module_by_path(facts: facts)
   let closure_set = native_lane_module_set(modules: receipt.closure_modules)
   let ingested_outside = list_find_first(
