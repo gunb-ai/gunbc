@@ -1005,7 +1005,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_Y7LUBUZ2A4MWRN2XJI5F4ZGBMY",
       id: "2-scm-native-authority-program",
       owner: "source-intent",
-      path: "docs/plans/native-scm-cas-fit-and-consumer-cut.md",
+      path: "docs/plans/dag-native-scm-design.md",
       intricacy: IntricacyHigh,
       volume: VolumeLarge,
       t: fields(
