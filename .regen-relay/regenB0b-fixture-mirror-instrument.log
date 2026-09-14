@@ -1,0 +1,199 @@
+SEED_STATE mirrors_from=COMMITTED(c5778afd5db35e058bbf95721d2e7ba592c5bb17) sources=c5778afd5db35e058bbf95721d2e7ba592c5bb17
+Running as unit: run-ra4923497b40a4ef29e6a3fa40c0dd8e1.scope; invocation ID: b013bf6b96d54710a46293533588fda6
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.9
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde v1.0.228
+   Compiling yoke v0.8.2
+   Compiling serde_derive v1.0.228
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling ar_archive_writer v0.5.1
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.149
+   Compiling tinystr v0.8.3
+   Compiling psm v0.1.31
+   Compiling bitmaps v2.1.0
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling rand_core v0.6.4
+   Compiling writeable v0.6.3
+   Compiling itoa v1.0.18
+   Compiling litemap v0.8.2
+   Compiling icu_locale_core v2.2.0
+   Compiling rand_xoshiro v0.6.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_properties_data v2.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling unicode-properties v0.1.4
+   Compiling zeroize v1.8.2
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_runtime)
+   Compiling smallvec v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling utf8parse v0.2.2
+   Compiling untrusted v0.9.0
+   Compiling crc32fast v1.5.0
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling rustls v0.23.40
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling percent-encoding v2.3.2
+   Compiling adler2 v2.0.1
+   Compiling hashbrown v0.17.1
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-query v1.1.5
+   Compiling simd-adler32 v0.3.9
+   Compiling anstyle v1.0.14
+   Compiling equivalent v1.0.2
+   Compiling indexmap v2.14.0
+   Compiling anstream v1.0.0
+   Compiling miniz_oxide v0.8.9
+   Compiling form_urlencoded v1.2.2
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_extdeps_languages)
+   Compiling rustls-webpki v0.103.13
+   Compiling webpki-roots v1.0.7
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling log v0.4.29
+   Compiling clap_lex v1.1.0
+   Compiling toml_write v0.1.2
+   Compiling once_cell v1.21.4
+   Compiling winnow v0.7.15
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling toml_edit v0.22.27
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling base64 v0.22.1
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0)
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/src/v1/stage0_v1_infer)
+   Compiling toml v0.8.23
+   Compiling clap v4.6.1
+   Compiling hmac v0.12.1
+   Compiling hex v0.4.3
+   Compiling lazy_static v1.5.0
+    Finished `release` profile [optimized] target(s) in 7m 42s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 4 minutes
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 18 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 26 seconds
+✓ compile.normalize done in 689ms
+✓ compile.reconcile done in 48 seconds
+✓ compile.analyses done in 741ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 26 seconds
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 1ms
+regen-round-cost: refused: regen refused before convergence planning: refusal: emitted surface has no committed mirror — ["test_claim_ownership_branch_read_witness_test.rs"]; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that — the produced candidate tree is at /home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/target/stage0-regen-candidate/src
+ M src/v1/stage0/src/emitted_population.rs
+ M src/v1/stage0/src/lib.rs
+?? src/v1/stage0/src/test_claim_ownership_branch_read_witness_test.rs
+INSTALLED_CANDIDATE dcbce49d0788163ad54718d13df64f3860e59a9b
+Running as unit: run-r3e250df4aad645eaa065937a954e7ff7.scope; invocation ID: 829a2a5cb5ac4c0b92ffdfb9e3fce951
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 6 minutes
+regen-round-cost: refused: refusal: the seed build replaced the running executable (fnv1a64:56ad9688a7e721a5 -> fnv1a64:1a8a9b579e45256d), so an emit from this process would measure a seed the build did not produce. Re-run claim_executor --regen-round-cost so the emitting seed is the built one.
+Running as unit: run-r68df227e42a64ec48a9b677a888d1fd0.scope; invocation ID: e2cff43639db4324b3342a4a3adc27d6
+    Finished `release` profile [optimized] target(s) in 0.09s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 134ms
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 17 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 27 seconds
+✓ compile.normalize done in 664ms
+✓ compile.reconcile done in 48 seconds
+✓ compile.analyses done in 745ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 54ms
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 11ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 124ms
+◐ started regen.digest
+✓ regen.digest done in 25 seconds
+required-regen: elapsed_ms=410647 first_generation_equal=true planned=156 executed=156 adjudicated=156 declared_divergent=1 [main.rs]
+regen-round-cost: producer=claim_executor --regen-round-cost host=srv2 tree=dcbce49d0788163ad54718d13df64f3860e59a9b tree_dirty=false seed_build_compiled_crates=0 rebuild_compiled_crates=0 rustfmt_spawns=312
+regen-round-cost: phase=seed_build wall_ms=134 cpu_ms=140
+regen-round-cost: phase=corpus_load wall_ms=17757 cpu_ms=17690
+regen-round-cost: phase=compile.frontend wall_ms=27506 cpu_ms=27430
+regen-round-cost: phase=compile.normalize wall_ms=664 cpu_ms=670
+regen-round-cost: phase=compile.reconcile wall_ms=48445 cpu_ms=48300
+regen-round-cost: phase=compile.analyses wall_ms=745 cpu_ms=740
+regen-round-cost: phase=compile.emit wall_ms=264544 cpu_ms=263710
+regen-round-cost: phase=mirror_write wall_ms=54 cpu_ms=50
+regen-round-cost: phase=candidate_verify wall_ms=0 cpu_ms=0
+regen-round-cost: phase=adjudicate wall_ms=11 cpu_ms=10
+regen-round-cost: phase=hand_verify wall_ms=124 cpu_ms=130
+regen-round-cost: phase=digest wall_ms=25896 cpu_ms=26530
+regen-round-cost: total wall_ms=385880 cpu_ms=385400
+regen-round-cost: changed_paths=0 []
+regen-round-cost: convergence_stages=0 []
+partition-rebuild: RebuildScopeRefused NoChangedMirrorsToRebuild
+regen-round-cost: execution-identity rebuild_packages=0 [] executable_digest=fnv1a64:1a8a9b579e45256d second_generation_candidate=fnv1a64:8481715974bbef8c
+regen-round-cost: receipt=/home/briansrls/eager-raven-113/regenB0b.oz9Ewf/repo/target/stage0-regen-round-cost.txt
+memory-cgroup-bind: not requested
+◐ started compile.frontend
+✓ compile.frontend done in 25 seconds
+✓ compile.normalize done in 600ms
+✓ compile.reconcile done in 47 seconds
+✓ compile.analyses done in 726ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+required-regen-fixed-point: fixed_point_equal=true referenced_first_generation_equal=true referenced_at=dcbce49d0788163ad54718d13df64f3860e59a9b
