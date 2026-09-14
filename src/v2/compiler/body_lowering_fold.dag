@@ -2317,27 +2317,62 @@ fn body_lower_arg_expr_optional(expr: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_before_comma_node(node: Node) -> Node {
+fn body_lower_arg_comma_split_left_ok(node: Node) -> Bool {
+  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+    Absent => false
+    Present { value: id } =>
+      if body_lower_surface_punct_token(id: id) {
+        false
+      } else if (id == ^dag_token_kw_fn)
+        || (id == ^dag_token_kw_match)
+        || (id == ^dag_token_kw_if)
+        || (id == ^dag_token_kw_let)
+        || (id == ^dag_token_kw_loop) {
+        false
+      } else {
+        true
+      }
+  }
+}
+
+fn body_lower_top_level_arg_rest_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
-    Absent => stripped
+    Absent => optional_absent()
     Present { value: pair } =>
       match body_lower_after_comma_tail_optional(node: pair.right) {
-        Present { value: _ } => body_lower_deep_unwrap_optional(node: pair.left)
-        Absent => stripped
+        Present { value: tail } =>
+          if body_lower_arg_comma_split_left_ok(node: pair.left) {
+            optional_present(value: tail)
+          } else {
+            optional_absent()
+          }
+        Absent =>
+          match body_lower_top_level_arg_rest_optional(node: pair.left) {
+            Present { value: tail } => Present { value: tail }
+            Absent => body_lower_top_level_arg_rest_optional(node: pair.right)
+          }
       }
   }
 }
 
 fn body_lower_arg_operand_local_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_before_comma_node(node: node)
+  let stripped = match body_lower_top_level_arg_rest_optional(node: node) {
+    Present { value: _ } =>
+      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+        Present { value: pair } => body_lower_deep_unwrap_optional(node: pair.left)
+        Absent => body_lower_deep_unwrap_optional(node: node)
+      }
+    Absent => body_lower_deep_unwrap_optional(node: node)
+  }
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
       if (emitted == ^dag_surface_expr)
         || (emitted == ^dag_surface_arg)
         || (emitted == ^dag_surface_primary_expr)
         || (emitted == ^dag_surface_postfix_expr)
-        || (emitted == ^dag_surface_binary_expr) {
+        || (emitted == ^dag_surface_binary_expr)
+        || (emitted == ^dag_surface_fn_literal) {
         match parse_production_captured_child_optional(node: stripped) {
           Present { value: captured } => body_lower_arg_operand_local_optional(node: captured)
           Absent => body_lower_arg_expr_optional(expr: stripped)
@@ -2412,6 +2447,33 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_call_arg_edges(arg_capture: Node) -> List<Node> {
+  match body_lower_call_arg_edge_optional(arg_capture: arg_capture) {
+    Absent => Empty
+    Present { value: operand } =>
+      match body_lower_top_level_arg_rest_optional(node: arg_capture) {
+        Absent =>
+          match sugar_sequence_pair_optional(node: arg_capture) {
+            Absent => [operand]
+            Present { value: pair } =>
+              match body_lower_top_level_arg_rest_optional(node: pair.right) {
+                Present { value: rest } =>
+                  list_append(
+                    left: [operand],
+                    right: body_lower_collect_call_arg_operands(sequence_capture: rest)
+                  )
+                Absent => [operand]
+              }
+          }
+        Present { value: rest } =>
+          list_append(
+            left: [operand],
+            right: body_lower_collect_call_arg_operands(sequence_capture: rest)
+          )
+      }
+  }
+}
+
 fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
@@ -2419,47 +2481,34 @@ fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node>
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
           if id == ^dag_token_comma {
-            match body_lower_call_arg_edge_optional(
+            body_lower_call_arg_edges(
               arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
-            ) {
-              Present { value: operand } => [operand]
-              Absent => Empty
-            }
+            )
           } else {
-            match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
-              Present { value: operand } => [operand]
-              Absent => Empty
-            }
+            body_lower_call_arg_edges(arg_capture: pair.left)
           }
-        Absent =>
-          match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
-            Present { value: operand } => [operand]
-            Absent => Empty
-          }
+        Absent => body_lower_call_arg_edges(arg_capture: pair.left)
       }
-    Absent =>
-      match body_lower_call_arg_edge_optional(arg_capture: stripped) {
-        Present { value: operand } => [operand]
-        Absent => Empty
-      }
+    Absent => body_lower_call_arg_edges(arg_capture: stripped)
   }
 }
 
 fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
-  match body_lower_call_arg_edge_optional(arg_capture: stripped) {
-    Present { value: operand } => [operand]
-    Absent =>
-      match sugar_sequence_pair_optional(node: stripped) {
-        Present { value: pair } =>
-          let left_ops = body_lower_call_arg_operand_from_repeat_elem(repeat_elem: pair.left)
-          if count(left_ops) > 0 {
-            left_ops
-          } else {
-            body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
-          }
-        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
-      }
+  let edges = body_lower_call_arg_edges(arg_capture: stripped)
+  if count(edges) > 0 {
+    edges
+  } else {
+    match sugar_sequence_pair_optional(node: stripped) {
+      Present { value: pair } =>
+        let left_ops = body_lower_call_arg_operand_from_repeat_elem(repeat_elem: pair.left)
+        if count(left_ops) > 0 {
+          left_ops
+        } else {
+          body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
+        }
+      Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
+    }
   }
 }
 
@@ -2487,9 +2536,11 @@ fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
   let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
   match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: first, diagnostics: _ } =>
-      let first_operands = match body_lower_call_arg_edge_optional(arg_capture: first) {
-        Present { value: operand } => [operand]
-        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: first)
+      let first_edges = body_lower_call_arg_edges(arg_capture: first)
+      let first_operands = if count(first_edges) > 0 {
+        first_edges
+      } else {
+        body_lower_call_arg_operand_from_repeat_elem(repeat_elem: first)
       }
       match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
         Accepted { value: tail, diagnostics: _ } =>
@@ -2500,9 +2551,10 @@ fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
         Rejected { diagnostics: _ } => first_operands
       }
     Rejected { diagnostics: _ } =>
-      match body_lower_call_arg_edge_optional(arg_capture: unwrapped) {
-        Present { value: operand } => [operand]
-        Absent =>
+      let from_unwrapped = body_lower_call_arg_edges(arg_capture: unwrapped)
+      if count(from_unwrapped) > 0 {
+        from_unwrapped
+      } else {
           match sugar_sequence_pair_optional(node: unwrapped) {
             Present { value: pair } =>
               match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
@@ -4104,6 +4156,18 @@ fn body_lower_bound_value(node: Node) -> Outcome<Node> {
   }
 }
 
+fn body_lower_stmt_expression(node: Node) -> Outcome<Node> {
+  match body_lower_try_body_lowered(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: d } =>
+      match found {
+        Present { value: lowered } =>
+          outcome_with_diagnostics(value: lowered, diagnostics: d)
+        Absent => body_lower_fold(node: node)
+      }
+  }
+}
+
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   match body_lower_stmt_spine_head_optional(spine: spine) {
     Absent =>
@@ -4115,10 +4179,10 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
       )
     Present { value: head } =>
       match body_lower_stmt_spine_rest_optional(spine: spine) {
-        Absent => body_lower_fold(node: head)
+        Absent => body_lower_stmt_expression(node: head)
         Present { value: rest } =>
           match body_lower_stmt_spine_head_optional(spine: rest) {
-            Absent => body_lower_fold(node: head)
+            Absent => body_lower_stmt_expression(node: head)
             Present { value: _ } =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
