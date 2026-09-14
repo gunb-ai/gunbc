@@ -643,3 +643,14 @@ jobs:
           MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         if: always()
+      - name: Dispatch private witnesses for this public merge
+        run: |
+          set -eu
+          PR_NUMBER=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/gunb-ai/gunbc/commits/${PUBLIC_SHA}/pulls" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["number"] if d else "")')
+          if [ -z "${PR_NUMBER}" ]; then echo no associated pull request >&2; exit 1; fi
+          curl -fsS -X POST -H "Authorization: Bearer ${GITHUB_REPOSITORY_DISPATCH_TOKEN}" -H "Accept: application/vnd.github+json" -H "Content-Type: application/json" --data "{\"event_type\":\"gunbc_public_main\",\"client_payload\":{\"sha\":\"${PUBLIC_SHA}\",\"pr_number\":${PR_NUMBER}}}" "https://api.github.com/repos/gunb-ai/gunbc-private/dispatches"
+        env:
+          GITHUB_REPOSITORY_DISPATCH_TOKEN: ${{ secrets.GUNBC_PRIVATE_REPOSITORY_DISPATCH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_SHA: ${{ github.sha }}
+        if: github.event_name == 'push'

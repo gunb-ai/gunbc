@@ -1,0 +1,150 @@
+module gunbc.private_witness_dispatch
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.github { Repository, default_api_base }
+import extdeps.github.effect { GitHubEffect, DispatchRepository, github_effect_required_permissions, contents_write }
+import extdeps.github.repository_dispatch {
+  repository_dispatch_url,
+  commit_associated_pulls_url,
+  repository_dispatch_auth_env,
+  client_payload_sha_key,
+  client_payload_pr_number_key,
+  github_json_accept
+}
+import extdeps.github.actions {
+  Step, RunStep,
+  github_event_name_push
+}
+import extdeps.github.expressions { Equals, ContextAccess, Github, StringLiteral, serialize_expression }
+import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
+import extdeps.tools.curl { curl_program }
+
+data gunbc_private_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc-private",
+  full_name: "gunb-ai/gunbc-private",
+  private: true,
+  default_branch: "main",
+}
+
+data public_main_dispatch_event_type: NonEmptyStr = "gunbc_public_main"
+
+data private_witness_dispatch_token: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "GUNBC_PRIVATE_REPOSITORY_DISPATCH_TOKEN" as NonEmptyStr,
+  version: "1",
+  hash_state: HashPending,
+}
+
+data private_witness_dispatch_effect: GitHubEffect = DispatchRepository {
+  repository: gunbc_private_repository,
+  event_type: public_main_dispatch_event_type
+}
+
+fn private_witness_dispatch_uses_contents_write() -> Bool {
+  let perms = github_effect_required_permissions(effect: private_witness_dispatch_effect)
+  count(perms) == 1 && fold(perms, init: false, f: fn(found, p) {
+    found || (p.name == contents_write.name && p.access == contents_write.access)
+  })
+}
+
+fn github_actions_secret_expression(secret_name: NonEmptyStr) -> String {
+  concat("${", concat("{ secrets.", concat(secret_name as String, " }}")))
+}
+
+fn github_sha_gha_expression() -> String {
+  concat("${", "{ github.sha }}")
+}
+
+fn public_sha_env_name() -> String { "PUBLIC_SHA" }
+
+fn associated_pr_python() -> String {
+  "import json,sys; d=json.load(sys.stdin); print(d[0][\"number\"] if d else \"\")"
+}
+
+fn shell_env_ref(name: String) -> String {
+  concat("${", concat(name, "}"))
+}
+
+fn private_witness_dispatch_script() -> String {
+  let pulls_url = commit_associated_pulls_url(
+    api_base: default_api_base,
+    repository: gunbc_repository,
+    sha_env: shell_env_ref(name: public_sha_env_name())
+  )
+  let dispatch_url = repository_dispatch_url(
+    api_base: default_api_base,
+    repository: gunbc_private_repository
+  )
+  let token_env = repository_dispatch_auth_env as String
+  let sha_key = client_payload_sha_key
+  let pr_key = client_payload_pr_number_key
+  join([
+    "set -eu",
+    concat("PR_NUMBER=$(", curl_program as String, " -fsS -H \"Authorization: Bearer ", shell_env_ref(name: "GITHUB_TOKEN"), "\" -H \"Accept: ", github_json_accept, "\" \"", pulls_url, "\" | python3 -c ", "'", associated_pr_python(), "'", ")"),
+    concat("if [ -z \"", shell_env_ref(name: "PR_NUMBER"), "\" ]; then echo no associated pull request >&2; exit 1; fi"),
+    concat(
+      curl_program as String,
+      " -fsS -X POST -H \"Authorization: Bearer ",
+      shell_env_ref(name: token_env),
+      "\" -H \"Accept: ",
+      github_json_accept,
+      "\" -H \"Content-Type: application/json\" --data \"{\\\"event_type\\\":\\\"",
+      public_main_dispatch_event_type as String,
+      "\\\",\\\"client_payload\\\":{\\\"",
+      sha_key,
+      "\\\":\\\"",
+      shell_env_ref(name: public_sha_env_name()),
+      "\\\",\\\"",
+      pr_key,
+      "\\\":",
+      shell_env_ref(name: "PR_NUMBER"),
+      "}}\" \"",
+      dispatch_url,
+      "\""
+    )
+  ], "\n")
+}
+
+fn private_witness_dispatch_if() -> String {
+  serialize_expression(expression: Equals {
+    left: ContextAccess { context: Github, path: ["event_name"] },
+    right: StringLiteral { value: github_event_name_push }
+  })
+}
+
+fn private_witness_dispatch_step_env() -> List<YamlKeyValue> {
+  [
+    kv(
+      key: repository_dispatch_auth_env as String,
+      value: yaml_string(s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret))
+    ),
+    kv(
+      key: "GITHUB_TOKEN",
+      value: yaml_string(s: github_actions_secret_expression(secret_name: "GITHUB_TOKEN" as NonEmptyStr))
+    ),
+    kv(
+      key: public_sha_env_name(),
+      value: yaml_string(s: github_sha_gha_expression())
+    )
+  ]
+}
+
+data private_witness_dispatch_step_name: String = "Dispatch private witnesses for this public merge"
+
+fn private_witness_dispatch_step() -> Step {
+  RunStep {
+    name: Present { value: private_witness_dispatch_step_name },
+    id: none,
+    run: private_witness_dispatch_script(),
+    shell: none,
+    env: Present { value: private_witness_dispatch_step_env() },
+    working_directory: none,
+    if_condition: Present { value: private_witness_dispatch_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
