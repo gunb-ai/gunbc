@@ -43,6 +43,15 @@ type RiserOccupancy
   = RiserPositionsFitted { positions: Nat, evidence: NonEmptyStr }
   | RiserPositionsUnobserved { settled_by: NonEmptyStr }
 
+// DECLARED FRONTIER (DESIGN section 3c), stated because nothing in THIS closure branches on
+// ocp_physical_variant. CONSUMER: the part-admission fold in gunbc#11353
+// (session/quiet-swift-866), which matches OcpPhysicalVariantUnresolved and carries its settled_by
+// into Admitted.physical_fit = PhysicalFitUnresolved with scope InterfaceGenerationOnly, so an
+// admitted OCP 3.0 card reads as admitted-on-generation and unresolved-on-fit rather than settled.
+// TRIGGER: that PR landing on main. It is written and validated today, not an intention -- it is
+// held draft only until this module lands, because its diff would otherwise re-propose these files.
+// If #11353 is abandoned, this type and field come out rather than waiting for another consumer.
+//
 // GENERATION AND PHYSICAL VARIANT ARE TWO FACTS. The 1U brief states "OCP 3.0 mezzanine card with
 // multi-host support" and does not state SFF or thumbscrew retention, and OCP NIC 3.0 defines SFF
 // alongside other physical variants -- so the generation does not imply the variant. Carried here
@@ -108,22 +117,21 @@ fn pcie_attachment_standing(observation: MtCollinsExpansionOperatorObservation) 
   let platform: MtCollins1UExpansion = mt_collins_1u_expansion
   match observation.riser_occupancy {
     RiserPositionsFitted { positions: positions, evidence: evidence } =>
-      match nat_compare(a: positions, b: platform.full_height_half_length_gen4_x16_slots) {
-        Greater => AttachmentPointReportExceedsPlatform {
-          reported: positions,
-          platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
+      match nat_compare(a: positions, b: 0) {
+        Equal => AttachmentPointAbsent {
+          basis: "The report states zero fitted riser positions on this unit. The platform permits two; none are present, so nothing is offered here.",
         }
-        Equal => AttachmentPointOffered { positions: positions, basis: evidence }
-        Less =>
-          match nat_compare(a: positions, b: 0) {
-            Equal => AttachmentPointAbsent {
-              basis: "The report states zero fitted riser positions on this unit. The platform permits two; none are present, so nothing is offered here.",
-            }
-            Greater => AttachmentPointOffered { positions: positions, basis: evidence }
-            Less => AttachmentPointReportExceedsPlatform {
+        Less => AttachmentPointAbsent {
+          basis: "Unreachable: a Nat is never below zero. This arm exists because Ordering is a closed three-arm coproduct and the match must be exhaustive; it asserts nothing about any unit.",
+        }
+        Greater =>
+          match nat_compare(a: positions, b: platform.full_height_half_length_gen4_x16_slots) {
+            Greater => AttachmentPointReportExceedsPlatform {
               reported: positions,
               platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
             }
+            Equal => AttachmentPointOffered { positions: positions, basis: evidence }
+            Less => AttachmentPointOffered { positions: positions, basis: evidence }
           }
       }
     RiserPositionsUnobserved { settled_by: settled_by } =>
