@@ -6,7 +6,7 @@ import extdeps.storage.types { Gen3 }
 import extdeps.standards.nic_attachment { OcpNic2, OcpNic3, PcieCem, VendorDaughterCard }
 import extdeps.standards.ocp_nic_2_0 { Type1, Type2, Type3, Type4, Type5 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
-import extdeps.ampere.mt_collins_1u_product_brief.specifications { NoOcpSlot, mt_collins_1u_ocp_slot, mt_collins_1u_expansion }
+import extdeps.ampere.mt_collins_1u_product_brief.specifications { NoOcpSlot, OcpMezzanineSlotPresent, mt_collins_1u_ocp_slot, mt_collins_1u_expansion }
 import gunbc.machine_intake_mtcollins1_expansion_observation {
   expansion_evidence_for_unit, UnitExpansionEvidence, NoExpansionObservationForUnit,
   AttachmentPointUnobserved, AttachmentPointOffered, AttachmentPointAbsent,
@@ -96,6 +96,20 @@ test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool {
   }
 }
 
+// A controlled disagreement checks that matching the present sources has not
+// coupled their authorities: changing only the bay claim cannot relabel a card.
+test fn changed_bay_generation_does_not_relabel_the_candidate() -> Bool {
+  let different_bay = OcpMezzanineSlotPresent {
+    generation: "OCP 2.0",
+    multi_host: false,
+    occupancy_note: "Controlled fixture, not a claim about Mt. Collins.",
+  }
+  match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: expansion_evidence_for_unit(unit: observed_unit), bay: different_bay) {
+    Refused { cause: WrongOcpGeneration { candidate_generation: candidate, bay_generation: bay } } => candidate == "OCP 3.0" && bay == "OCP 2.0"
+    _ => false
+  }
+}
+
 test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool {
   fold([Type2, Type3, Type4, Type5], init: true, f: (acc, variant) => acc && match attachment_for_unit(candidate: OcpNic2 { physical_variant: variant }, unit: observed_unit) {
     Refused { cause: WrongOcpGeneration { candidate_generation: _, bay_generation: _ } } => true
@@ -146,6 +160,7 @@ fn main() -> Bool {
     && matching_generation_does_not_establish_physical_variant()
     && unknown_unit_never_borrows_mtcollins1_observation()
     && absent_ocp_bay_cannot_admit_a_matching_card()
+    && changed_bay_generation_does_not_relabel_the_candidate()
     && other_ocp2_physical_variants_still_refuse_wrong_generation()
     && pcie_refusals_survive_the_candidate_join()
 }

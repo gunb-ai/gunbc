@@ -42,6 +42,10 @@ type AttachmentVerdict
     }
   | Refused { cause: AttachmentRefusal }
 
+// The standard's generation name and Ampere's reported slot generation are
+// independently cited claims, not aliases. Join them here so a changed platform
+// claim can disagree with the candidate without relabelling the standard. This
+// follows extdeps.ocp.mt_mitchell.platform's downstream authority-join precedent.
 fn ocp_generation_attachment(
   candidate: NicAttachmentClass,
   candidate_generation: NonEmptyStr,
