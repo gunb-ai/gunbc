@@ -24,6 +24,7 @@ import v2.workflow.floor_terminal_ledger {
   NotAttemptedAfterAbort,
   Panicked,
   PanickedBeforeVerdict,
+  Failed,
   Passed,
   RouteGap,
   RuntimeErrored,
