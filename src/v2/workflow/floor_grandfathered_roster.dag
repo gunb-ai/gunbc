@@ -1,6 +1,6 @@
 module v2.workflow.floor_grandfathered_roster
 
-import v2.std.algebra { Cons, Empty, list_flat_map, length, contains }
+import v2.std.algebra { Cons, Empty, list_flat_map, length, contains, filter }
 import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
@@ -916,6 +916,28 @@ fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {
 // transcribed roster count costs: its prose carried three different figures, no two agreeing, none
 // of them the roster's length, while the roster itself was correct throughout. This folds the same
 // chunks the roster folds, so it cannot disagree with what the floor consults.
+// THE EFFECTIVE ROSTER AS A LIST -- THE CUT WITH THE REMOVALS ACTUALLY TAKEN OUT. This exists
+// because the SEED READS THE ROSTER AS A LIST, once per run, to build the membership set its tier
+// mirror tests against; it does not call `floor_grandfathered_holds` per claim (that would re-fold
+// a 3,795-row roster once per claim). Before removals subtracted, the cut and the roster were the
+// same population and one producer served both readers. They are now different, so a host reading
+// the CUT would disagree with the model on exactly the removed identities -- the mirror and its
+// authority would be joined on different sets while claiming to read "the SAME roster".
+//
+// THIS IS THE LIST FORM OF `floor_grandfathered_holds` AND NOT A SECOND MEMBERSHIP RULE. Both
+// subtract the same declared removals from the same cut; if they could disagree this would be the
+// section 3 fork, which is why the predicate is not re-implemented here.
+fn floor_grandfathered_members() -> List<String> {
+  filter(
+    xs: floor_grandfathered_cut(),
+    predicate: fn(n) {
+      removal_withdraws(name: n, removals: floor_grandfathered_removals) == false
+    },
+  )
+}
+
+// THE SIZE OF THE CUT, WHICH IS NOT THE SIZE OF THE ROSTER. Named for the cut deliberately: it
+// counts what was observed, before subtraction.
 fn floor_grandfathered_cut_size() -> Int {
   length(xs: floor_grandfathered_cut())
 }

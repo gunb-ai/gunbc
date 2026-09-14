@@ -5603,6 +5603,12 @@ pub fn run_required_floor(
     // by having been accepted once. `v2.workflow.required_floor` `claim_ceiling_tier` is the
     // authority; this is its mirror, and the two are joined by reading the SAME roster.
     //
+    // IT READS `floor_grandfathered_members` AND NOT THE CUT, AND THE DISTINCTION IS LOAD-BEARING
+    // SINCE REMOVALS BEGAN TO SUBTRACT (review 65986). The roster is the frozen cut MINUS the
+    // declared removals. `floor_grandfathered_cut` is the observation before subtraction; reading
+    // it here would make this mirror disagree with `claim_ceiling_tier` on exactly the removed
+    // identities while the paragraph above claimed both read the same set.
+    //
     // THE BUDGETS ARE READ ONCE AND THE MEMBERSHIP IS CHECKED PER CLAIM. Reading
     // `claim_eval_step_budget_for_identity` per claim would re-fold a 3,795-row roster 3,795 times
     // inside the interpreter; reading the two tier budgets once and doing the membership test
@@ -5610,12 +5616,12 @@ pub fn run_required_floor(
     let grandfathered_roster: HashSet<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
-            "v2.workflow.floor_grandfathered_roster.floor_grandfathered_roster",
+            "v2.workflow.floor_grandfathered_roster.floor_grandfathered_members",
             false,
         )
-        .map_err(|e| format!("floor_grandfathered_roster: {e}"))?;
+        .map_err(|e| format!("floor_grandfathered_members: {e}"))?;
         let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|e| format!("floor_grandfathered_roster: {e}"))?;
+            .map_err(|e| format!("floor_grandfathered_members: {e}"))?;
         let mut out = HashSet::new();
         for item in items {
             match item {
@@ -5625,13 +5631,13 @@ pub fn run_required_floor(
                     // grandfathered, and the second copy survives every removal of the first.
                     if !out.insert(s.to_string()) {
                         return Err(format!(
-                            "floor_grandfathered_roster: duplicate grandfathered identity: {s}"
+                            "floor_grandfathered_members: duplicate grandfathered identity: {s}"
                         ));
                     }
                 }
                 other => {
                     return Err(format!(
-                        "floor_grandfathered_roster: expected a qualified name, got {}",
+                        "floor_grandfathered_members: expected a qualified name, got {}",
                         floor_value_shape(Some(other))
                     ));
                 }
@@ -5647,7 +5653,7 @@ pub fn run_required_floor(
         // change (DESIGN §5: a failure arm must refuse, never widen).
         if out.is_empty() {
             return Err("REQUIRED-FLOOR REFUSAL cause=GrandfatheredRosterEmpty \
-                 v2.workflow.floor_grandfathered_roster.floor_grandfathered_roster decoded to zero \
+                 v2.workflow.floor_grandfathered_roster.floor_grandfathered_members decoded to zero \
                  identities. An empty roster would reclassify every required claim as new work and \
                  judge it against the new-witness ceiling in one step, which no ruling authorises; \
                  it is what a failed read looks like, not a policy."
