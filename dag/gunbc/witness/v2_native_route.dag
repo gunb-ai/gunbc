@@ -7,10 +7,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import v2.compiler.self_host.emitter_producer_provenance {
-  ProducerMintAdmitted,
-  ProducerMintRefused,
-  RealizedEmitterClosure,
-  v2_emitter_closure_admission
+  RealizedEmitterClosure
 }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
@@ -493,7 +490,7 @@ data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbo
 // disposition absent_by_construction carrying a v2_emitter-admitted closure of a SucceedsNative
 // generation, EXECUTED. Unbound: binding this row to a declaration would report fired on the
 // day the row was written.
-data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from an admitted native producer closure of a SucceedsNative generation, EXECUTED rather than fixtured. Until then dag tests are the only consumers of the arm; the live receipt uses the window arms.")
+data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from a SucceedsNative generation whose produced_by_execution_of is the named parent artifact, EXECUTED rather than fixtured. Until then this arm does not close native_route_old_route_closed (a v2_emitter_closure_admission ProducerMintAdmitted is a negative module-path filter and names the same modules as the interpreted door-run; review 66062). The live receipt uses the window arms.")
 
 // MIXED DIGEST FAMILIES ON NativeRouteReceipt (review 65524, DESIGN section 4c).
 // preparation_seed_identity is sha512 of GenesisFromSeed.seed_binary; executable_identity is
@@ -892,11 +889,13 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
-    OldRouteAbsentByConstruction { admitted_native_producer_closure: c } =>
-      match v2_emitter_closure_admission(closure: c) {
-        ProducerMintAdmitted => true
-        ProducerMintRefused { cause: _ } => false
-      }
+    // Not v2_emitter_closure_admission. That fold is a negative module-path filter; the
+    // interpreted door-run closure is ProducerMintAdmitted and names the same modules as a
+    // native compile (v2.compiler.self_host.ancestry, review 66062). Nativeness is
+    // SucceedsNative executed bytes. Until native_route_old_route_absent_by_construction_production_frontier
+    // this arm does not close the clause.
+    OldRouteAbsentByConstruction { admitted_native_producer_closure: _ } =>
+      false
     OldRouteControlAbsent => false
   }
 }
