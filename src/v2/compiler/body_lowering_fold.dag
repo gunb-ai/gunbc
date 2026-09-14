@@ -2386,54 +2386,8 @@ fn body_lower_match_arm_wire_from_body(
   }
 }
 
-fn body_lower_arg_comma_split_left_ok(node: Node) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
-    Absent => false
-    Present { value: id } =>
-      if dag_lex_delimiter_token(sym: id) {
-        false
-      } else if (id == ^dag_token_kw_fn)
-        || (id == ^dag_token_kw_match)
-        || (id == ^dag_token_kw_if)
-        || (id == ^dag_token_kw_let)
-        || (id == ^dag_token_kw_loop) {
-        false
-      } else {
-        true
-      }
-  }
-}
-
-fn body_lower_top_level_arg_rest_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Absent => optional_absent()
-    Present { value: pair } =>
-      match body_lower_after_comma_tail_optional(node: pair.right) {
-        Present { value: tail } =>
-          if body_lower_arg_comma_split_left_ok(node: pair.left) {
-            optional_present(value: tail)
-          } else {
-            optional_absent()
-          }
-        Absent =>
-          match body_lower_top_level_arg_rest_optional(node: pair.left) {
-            Present { value: tail } => Present { value: tail }
-            Absent => body_lower_top_level_arg_rest_optional(node: pair.right)
-          }
-      }
-  }
-}
-
 fn body_lower_arg_operand_local_optional(node: Node) -> Outcome<Optional<Node>> {
-  let stripped = match body_lower_top_level_arg_rest_optional(node: node) {
-    Present { value: _ } =>
-      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: node)) {
-        Present { value: pair } => body_lower_deep_unwrap_optional(node: pair.left)
-        Absent => body_lower_deep_unwrap_optional(node: node)
-      }
-    Absent => body_lower_deep_unwrap_optional(node: node)
-  }
+  let stripped = body_lower_deep_unwrap_optional(node: node)
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
       if (emitted == ^dag_surface_expr)
@@ -2497,11 +2451,16 @@ fn body_lower_node_is_punct_atom(node: Node) -> Bool {
   }
 }
 
-fn body_lower_call_value_optional(operand: Node) -> Optional<Node> {
+fn body_lower_call_value_optional(operand: Node) -> Outcome<Optional<Node>> {
   if body_lower_node_is_punct_atom(node: operand) {
-    optional_absent()
+    outcome_rejected(
+      d: body_lower_diagnostic(
+        reason: ^body_lowering_reason_unsupported_form,
+        n: operand
+      )
+    )
   } else {
-    optional_present(value: operand)
+    outcome_accepted(value: optional_present(value: operand))
   }
 }
 
@@ -2511,10 +2470,15 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Outcome<Optional<Node
     Accepted { value: named_opt, diagnostics: nd } =>
       match named_opt {
         Present { value: operand } =>
-          outcome_with_diagnostics(
-            value: body_lower_call_value_optional(operand: operand),
-            diagnostics: nd
-          )
+          match body_lower_call_value_optional(operand: operand) {
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: nd, rejected: r) }
+            Accepted { value: v, diagnostics: vd } =>
+              outcome_with_diagnostics(
+                value: v,
+                diagnostics: diagnostics_merge(outer: nd, inner: vd)
+              )
+          }
         Absent =>
           match body_lower_arg_operand_local_optional(node: arg_capture) {
             Rejected { diagnostics: r } =>
@@ -2522,10 +2486,23 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Outcome<Optional<Node
             Accepted { value: local_opt, diagnostics: ld } =>
               match local_opt {
                 Present { value: operand } =>
-                  outcome_with_diagnostics(
-                    value: body_lower_call_value_optional(operand: operand),
-                    diagnostics: diagnostics_merge(outer: nd, inner: ld)
-                  )
+                  match body_lower_call_value_optional(operand: operand) {
+                    Rejected { diagnostics: r } =>
+                      Rejected {
+                        diagnostics: rejected_with_pending(
+                          pending: diagnostics_merge(outer: nd, inner: ld),
+                          rejected: r
+                        )
+                      }
+                    Accepted { value: v, diagnostics: vd } =>
+                      outcome_with_diagnostics(
+                        value: v,
+                        diagnostics: diagnostics_merge(
+                          outer: diagnostics_merge(outer: nd, inner: ld),
+                          inner: vd
+                        )
+                      )
+                  }
                 Absent =>
                   outcome_with_diagnostics(
                     value: optional_absent(),
@@ -2544,28 +2521,7 @@ fn body_lower_call_arg_edges(arg_capture: Node) -> Outcome<List<Node>> {
       match edge_opt {
         Absent => outcome_with_diagnostics(value: Empty, diagnostics: ed)
         Present { value: operand } =>
-          match body_lower_top_level_arg_rest_optional(node: arg_capture) {
-            Absent =>
-              match sugar_sequence_pair_optional(node: arg_capture) {
-                Absent =>
-                  outcome_with_diagnostics(value: [operand], diagnostics: ed)
-                Present { value: pair } =>
-                  match body_lower_top_level_arg_rest_optional(node: pair.right) {
-                    Present { value: rest } =>
-                      body_lower_append_outcome_lists(
-                        left: outcome_with_diagnostics(value: [operand], diagnostics: ed),
-                        right: body_lower_collect_call_arg_operands(sequence_capture: rest)
-                      )
-                    Absent =>
-                      outcome_with_diagnostics(value: [operand], diagnostics: ed)
-                  }
-              }
-            Present { value: rest } =>
-              body_lower_append_outcome_lists(
-                left: outcome_with_diagnostics(value: [operand], diagnostics: ed),
-                right: body_lower_collect_call_arg_operands(sequence_capture: rest)
-              )
-          }
+          outcome_with_diagnostics(value: [operand], diagnostics: ed)
       }
   }
 }
