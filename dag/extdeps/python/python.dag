@@ -1,6 +1,7 @@
 module extdeps.python
 
-import std.types { FilePath, String, List }
+import std.types { FilePath, List, Unit }
+import std.string_type { String }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
