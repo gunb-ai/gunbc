@@ -24,6 +24,7 @@ import product.supplier.hetzner {
   hetzner_helsinki_route, hetzner_nuremberg_route,
   hetzner_helsinki_route_facts, hetzner_nuremberg_route_facts,
   hetzner_helsinki_downstream, hetzner_route_facts_population,
+  hetzner_nuremberg_support_path,
 }
 import extdeps.cloud.hetzner {
   hetzner_subcontractors_for_server_location, hetzner_subcontractor_finland,
@@ -61,6 +62,8 @@ data hetzner_witness_export_cleared: NonEmptyStr = "hetzner-witness-export-clear
 data hetzner_witness_resolved_operator: NonEmptyStr = "hetzner-witness-resolved-operator"
 data hetzner_witness_resolved_jurisdiction: NonEmptyStr = "hetzner-witness-resolved-jurisdiction"
 data hetzner_witness_resolved_evidence: NonEmptyStr = "hetzner-witness-resolved-evidence"
+
+data hetzner_witness_no_downstream: NonEmptyStr = "hetzner-witness-no-downstream"
 
 fn t_resolved() -> ProviderPathStanding {
   ProviderPathLocated {
@@ -261,6 +264,58 @@ test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
     })),
     tag: "facts-incomplete",
     located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
+  )
+}
+
+// RED -- A SUPPORT PATH LOCATED ON CUSTOMER-SUPPORT EVIDENCE ALONE IS REFUSED AS THE NUREMBERG
+// CENSUS. German customer support is not the whole support path; this module already says so on
+// Helsinki. The production function must be Unread with the obligation that names the discriminator
+// (whether Finnish technical support reaches a German server), consulting the locations page and
+// Appendix 3. Matching Located with hetzner_customer_support_organisation would green a lie.
+test fn a_support_path_located_on_customer_support_alone_is_not_the_nuremberg_census() -> Bool {
+  match hetzner_nuremberg_support_path() {
+    ProviderPathLocated { operator, jurisdiction, evidence } => false,
+    ProviderPathAbsent { evidence } => false,
+    ProviderPathUnread { obligation, consulted } =>
+      declaration_ref_eq(
+        a: obligation,
+        b: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_support_access_obligation"),
+      )
+        && count(filter(
+          consulted,
+          r => declaration_ref_eq(
+            a: r,
+            b: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+          ),
+        )) == 1
+        && count(filter(
+          consulted,
+          r => declaration_ref_eq(
+            a: r,
+            b: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+          ),
+        )) == 1,
+  }
+}
+
+fn t_nuremberg_facts_with_support(support: ProviderPathStanding) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: hetzner_nuremberg_route(),
+    contract_terms: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
+    data_paths: t_helsinki_paths_with_support(support: support),
+    downstream: NoDownstreamProviders {
+      evidence: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_no_downstream"),
+    },
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "hetzner-witness-nuremberg-support" as NonEmptyStr)),
+  }
+}
+
+test fn one_unread_nuremberg_support_path_refuses_with_that_paths_obligation() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: t_nuremberg_facts_with_support(support: hetzner_nuremberg_support_path())),
+    tag: "facts-incomplete",
+    located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_support_access_obligation"),
   )
 }
 

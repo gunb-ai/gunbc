@@ -25,9 +25,10 @@ import product.fabric.provider_route {
 // and is asked first, because product.fabric.provider_admission runs before any price is compared.
 //
 // BOTH ROUTES REFUSE TODAY, AND THAT IS THE DELIVERABLE RATHER THAN A GAP IN IT. The vendor
-// publishes enough to LOCATE execution, backups and (for one region) support; it publishes nothing
-// this reader could find about where its log system, its telemetry, its control plane, its
-// administrators or any spill of customer material sit, and its own snapshot rule places durable
+// publishes enough to LOCATE execution and backups; it publishes nothing this reader could find
+// about where its log system, its telemetry, its control plane, its administrators or any spill of
+// customer material sit, German customer support does not locate the support path (Finnish
+// technical support reaching a German server is unread), and its own snapshot rule places durable
 // storage in a location the route cannot name. Every one of those is ProviderPathUnread with an
 // obligation, so admit_provider_use refuses and the refusal names the exact document that would
 // discharge it. Reaching for ProviderPathLocated to make these rows look finished is the failure the
@@ -106,7 +107,9 @@ data hetzner_helsinki_durable_storage_obligation: NonEmptyStr = "THE JURISDICTIO
 
 data hetzner_nuremberg_durable_storage_obligation: NonEmptyStr = "THE JURISDICTION OF DURABLE STORAGE ON THE NUREMBERG ROUTE IS NOT DETERMINED BY THE ROUTE, on the same reading as the Helsinki row and with the direction reversed. extdeps.cloud.hetzner hetzner_backup_snapshot_reading records the vendor's own per-location statement: Cloud server in Nuremberg - Snapshot is stored in Helsinki or Falkenstein. Helsinki is Finland by the locations page's own words, so a GERMAN route's durable storage may sit in FINLAND, and the route cannot say which. Only Appendix 3's EU-wide statement bounds it, and the European Union is not a jurisdiction: it is several, which is why product.fabric.provider_route refuses a regional kernel in that slot. RESOLVED BY the same two readings the Helsinki obligation names."
 
-data hetzner_helsinki_support_access_obligation: NonEmptyStr = "SUPPORT ACCESS TO A HELSINKI SERVER IS DOCUMENTED TWICE, BY TWO PARTIES IN TWO COUNTRIES, AND THE PATH CARRIES ONE. extdeps.cloud.hetzner hetzner_locations_reading states that Hetzner's own team of technicians in Germany provides customer support for the Hetzner Cloud servers in Europe, the USA, and Singapore. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading lists, against SERVER LOCATION Finland, the approved subcontractor Hetzner Finland Oy of Huurrekuja 10, 04360 Tuusula, whose type of service is building rental and TECHNICAL SUPPORT. Both are current readings of 2026-09-12 and they do not contradict each other -- German customer support and Finnish technical support are different services -- so support access on this route reaches Hetzner Online GmbH in Germany AND Hetzner Finland Oy in Finland. ProviderPathLocated carries one operator and one jurisdiction, so naming either alone would delete a documented party from the route's answer. RESOLVED BY a Hetzner statement partitioning which support functions touch a customer server at the Finland location, or by a ProviderPathStanding able to carry a multi-party path. The Nuremberg route has no such second party in the table and its support path is located."
+data hetzner_helsinki_support_access_obligation: NonEmptyStr = "SUPPORT ACCESS TO A HELSINKI SERVER IS DOCUMENTED TWICE, BY TWO PARTIES IN TWO COUNTRIES, AND THE PATH CARRIES ONE. extdeps.cloud.hetzner hetzner_locations_reading states that Hetzner's own team of technicians in Germany provides customer support for the Hetzner Cloud servers in Europe, the USA, and Singapore. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading lists, against SERVER LOCATION Finland, the approved subcontractor Hetzner Finland Oy of Huurrekuja 10, 04360 Tuusula, whose type of service is building rental and TECHNICAL SUPPORT. Both are current readings of 2026-09-12 and they do not contradict each other -- German customer support and Finnish technical support are different services -- so support access on this route reaches Hetzner Online GmbH in Germany AND Hetzner Finland Oy in Finland. ProviderPathLocated carries one operator and one jurisdiction, so naming either alone would delete a documented party from the route's answer. RESOLVED BY a Hetzner statement partitioning which support functions touch a customer server at the Finland location, or by a ProviderPathStanding able to carry a multi-party path. The Nuremberg route shares the German customer-support sentence and has no German Appendix 3 row; whether Finnish technical support reaches it is a different unread, hetzner_nuremberg_support_access_obligation."
+
+data hetzner_nuremberg_support_access_obligation: NonEmptyStr = "WHETHER TECHNICAL SUPPORT REACHES A NUREMBERG SERVER FROM FINLAND IS UNREAD, AND GERMAN CUSTOMER SUPPORT DOES NOT ANSWER IT. extdeps.cloud.hetzner hetzner_locations_reading states that Hetzner's own team of technicians in Germany provides customer support for the Hetzner Cloud servers in Europe, the USA, and Singapore -- that is CUSTOMER SUPPORT, and it is not the whole support path. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading lists Hetzner Finland Oy against SERVER LOCATION Finland for building rental and TECHNICAL SUPPORT, and it has no German row; its closing note that technical and customer support services for ALL server locations are provided within the EU leaves open whether that Finland-row party's technical support reaches a German-location server. Writing ProviderPathLocated with hetzner_customer_support_organisation as jurisdiction would treat the customer-support sentence as locating the path, which is the inference the Helsinki support obligation in this module already refuses. RESOLVED BY a Hetzner statement of whether Hetzner Finland Oy's technical support reaches a server at the Nuremberg location, and from where -- that is the discriminator; an evidenced none of such reach, with customer support remaining the only support function, is what would take the located arm at the German organisation."
 
 data hetzner_nuremberg_downstream_obligation: NonEmptyStr = "WHETHER THE NUREMBERG ROUTE HAS DOWNSTREAM PROVIDERS IS UNREAD, AND THE EMPTY TABLE ROW IS PRECISELY WHY. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading is Appendix 3 of the Data Protection Agreement, version 1.0 of August 08, 2024, whose table is keyed by SERVER LOCATION and lists approved subcontractors for Finland, the USA and Singapore. No row names a German server location. THAT ABSENCE IS NOT AN EVIDENCED NONE: the document says which companies are approved, and it nowhere says that a location without a row has no subcontractor -- and its own closing note, that technical and customer support services for ALL server locations are provided within the EU, leaves open whether the Finland-row party's technical support reaches a German-location server. Taking NoDownstreamProviders here would convert a silence into a finding, which is the fail-open this arm exists to refuse. RESOLVED BY a Hetzner statement that the approved-subcontractor table is exhaustive per location, or by a later version of Appendix 3 carrying a German row -- either reading answers it, in opposite directions."
 
@@ -169,15 +172,17 @@ fn hetzner_nuremberg_backups_path() -> ProviderPathStanding {
   }
 }
 
-// THE JURISDICTION OF THE NUREMBERG SUPPORT PATH CITES THE SUPPORT ORGANISATION, NOT THE SERVER
-// LOCATION, even though both say Germany. They say it for different reasons and only one of them is
-// about support, so citing the location row would make the answer look like it followed from where
-// the server sits -- which is the inference this whole module refuses to make.
+// GERMAN CUSTOMER SUPPORT DOES NOT LOCATE THE NUREMBERG SUPPORT PATH. The locations page names a
+// German customer-support organisation; Appendix 3 names Finnish technical support against Finland
+// and is silent on Germany. Those are the two documents consulted. The located arm would need the
+// discriminator hetzner_nuremberg_support_access_obligation names.
 fn hetzner_nuremberg_support_path() -> ProviderPathStanding {
-  ProviderPathLocated {
-    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
-    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_customer_support_organisation"),
-    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+  ProviderPathUnread {
+    obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_support_access_obligation"),
+    consulted: [
+      decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+      decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+    ],
   }
 }
 
