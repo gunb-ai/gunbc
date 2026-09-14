@@ -1,0 +1,190 @@
+/home/briansrls/eager-raven-113/regenB0.SJqrpc/b0-ownership.patch: OK
+PATCH_APPLIED relay=LOCAL-b0-ownership
+SEED_STATE mirrors_from=MAIN_COMMITTED(ed853cf430e8004b937b9017ca1fb6742901c00e) sources=ed853cf430e8004b937b9017ca1fb6742901c00e+b0-ownership.patch
+A  dag/test/claim/ownership_branch_read_witness_test.dag
+M  src/v1/ownership.dag
+Running as unit: run-r17eb1a9bf783422c95685b3d6573faf4.scope; invocation ID: 51085b4440244799a9b03dfe904889fe
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v1.3.0
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling typenum v1.20.1
+   Compiling cfg-if v1.0.4
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde v1.0.228
+   Compiling serde_derive v1.0.228
+   Compiling yoke v0.8.2
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling zmij v1.0.21
+   Compiling ar_archive_writer v0.5.1
+   Compiling serde_json v1.0.149
+   Compiling tinystr v0.8.3
+   Compiling psm v0.1.31
+   Compiling bitmaps v2.1.0
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling writeable v0.6.3
+   Compiling rand_core v0.6.4
+   Compiling litemap v0.8.2
+   Compiling itoa v1.0.18
+   Compiling icu_locale_core v2.2.0
+   Compiling rand_xoshiro v0.6.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling icu_properties_data v2.2.0
+   Compiling icu_normalizer_data v2.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling zeroize v1.8.2
+   Compiling unicode-properties v0.1.4
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_runtime)
+   Compiling smallvec v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling crc32fast v1.5.0
+   Compiling untrusted v0.9.0
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling hashbrown v0.17.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling equivalent v1.0.2
+   Compiling rustls v0.23.40
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.9
+   Compiling percent-encoding v2.3.2
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling form_urlencoded v1.2.2
+   Compiling miniz_oxide v0.8.9
+   Compiling indexmap v2.14.0
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_extdeps_languages)
+   Compiling rustls-webpki v0.103.13
+   Compiling webpki-roots v1.0.7
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling once_cell v1.21.4
+   Compiling winnow v0.7.15
+   Compiling clap_lex v1.1.0
+   Compiling toml_write v0.1.2
+   Compiling log v0.4.29
+   Compiling toml_edit v0.22.27
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling base64 v0.22.1
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0)
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/src/v1/stage0_v1_infer)
+   Compiling clap v4.6.1
+   Compiling toml v0.8.23
+   Compiling hmac v0.12.1
+   Compiling lazy_static v1.5.0
+   Compiling hex v0.4.3
+    Finished `release` profile [optimized] target(s) in 8m 14s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 150ms
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 18 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 28 seconds
+✓ compile.normalize done in 646ms
+✓ compile.reconcile done in 46 seconds
+✓ compile.analyses done in 681ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 27 seconds
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 32ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 115ms
+◐ started regen.digest
+✓ regen.digest done in 25 seconds
+required-regen: elapsed_ms=432868 first_generation_equal=false planned=155 executed=155 adjudicated=155 declared_divergent=1 [main.rs]
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 6 minutes
+✓ round.install done in 6 minutes
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 6 minutes
+✓ round.install done in 7 minutes
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 6 minutes
+✓ round.install done in 6 minutes
+regen-round-cost: producer=claim_executor --regen-round-cost host=srv2 tree=ed853cf430e8004b937b9017ca1fb6742901c00e tree_dirty=true seed_build_compiled_crates=0 rebuild_compiled_crates=14 rustfmt_spawns=622
+regen-round-cost: phase=seed_build wall_ms=150 cpu_ms=150
+regen-round-cost: phase=corpus_load wall_ms=18578 cpu_ms=18510
+regen-round-cost: phase=compile.frontend wall_ms=28489 cpu_ms=28390
+regen-round-cost: phase=compile.normalize wall_ms=646 cpu_ms=640
+regen-round-cost: phase=compile.reconcile wall_ms=46520 cpu_ms=45710
+regen-round-cost: phase=compile.analyses wall_ms=681 cpu_ms=670
+regen-round-cost: phase=compile.emit wall_ms=259980 cpu_ms=258640
+regen-round-cost: phase=mirror_write wall_ms=27442 cpu_ms=28000
+regen-round-cost: phase=candidate_verify wall_ms=0 cpu_ms=0
+regen-round-cost: phase=adjudicate wall_ms=32 cpu_ms=30
+regen-round-cost: phase=hand_verify wall_ms=115 cpu_ms=110
+regen-round-cost: phase=digest wall_ms=25871 cpu_ms=26440
+regen-round-cost: phase=rebuild_from_installed wall_ms=370377 cpu_ms=710710
+regen-round-cost: phase=install wall_ms=393057 cpu_ms=733300
+regen-round-cost: phase=rebuild_from_installed wall_ms=418627 cpu_ms=791600
+regen-round-cost: phase=install wall_ms=436144 cpu_ms=808980
+regen-round-cost: phase=rebuild_from_installed wall_ms=401416 cpu_ms=757100
+regen-round-cost: phase=install wall_ms=419252 cpu_ms=774780
+regen-round-cost: total wall_ms=2847377 cpu_ms=4983760
+regen-round-cost: changed_paths=18 [src/v1/stage0/src/extdeps_container_oci_digest.rs, src/v1/stage0/src/extdeps_version_semver.rs, src/v1/stage0/src/std_dissolution.rs, src/v1/stage0/src/std_induction.rs, src/v1/stage0/src/std_nat.rs, src/v1/stage0/src/std_occurrence_identity.rs, src/v1/stage0/src/std_termination.rs, src/v1/stage0/src/v1_compiler_compile.rs, src/v1/stage0/src/v1_compiler_emit.rs, src/v1/stage0/src/v1_compiler_emit_core_support.rs, src/v1/stage0/src/v1_compiler_emit_rust.rs, src/v1/stage0/src/v1_compiler_infer.rs, src/v1/stage0/src/v1_compiler_infer_patterns.rs, src/v1/stage0/src/v1_compiler_infer_resolve.rs, src/v1/stage0/src/v1_compiler_infer_types.rs, src/v1/stage0/src/v1_compiler_ownership.rs, src/v1/stage0/src/v1_compiler_parse.rs, src/v1/stage0/src/v1_compiler_trait_derive_emit.rs]
+regen-round-cost: convergence_stages=3 [stage-1, stage-2, stage-3]
+partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[extdeps_container_oci_digest.rs, extdeps_version_semver.rs, std_dissolution.rs, std_induction.rs, std_nat.rs, std_occurrence_identity.rs, std_termination.rs, v1_compiler_compile.rs, v1_compiler_emit.rs, v1_compiler_emit_core_support.rs, v1_compiler_emit_rust.rs, v1_compiler_infer.rs, v1_compiler_infer_patterns.rs, v1_compiler_infer_resolve.rs, v1_compiler_infer_types.rs, v1_compiler_ownership.rs, v1_compiler_parse.rs, v1_compiler_trait_derive_emit.rs] owning_packages=[v1-stage0-std-core, v1-compiler, v1-stage0-v1-infer] package_closure=[v1-stage0-std-core, v1-compiler, v1-stage0-v1-infer, v1-stage0-std-surface, v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-emit-core] executable_assembly=assembled package=v1-compiler bin=claim_executor
+regen-round-cost: execution-identity rebuild_packages=6 [v1-compiler, v1-stage0-extdeps-languages, v1-stage0-std-core, v1-stage0-std-surface, v1-stage0-v1-artifact, v1-stage0-v1-infer] executable_digest=fnv1a64:008d90e51846ce3d second_generation_candidate=fnv1a64:52e45b33bb7d84a5
+regen-round-cost: receipt=/home/briansrls/eager-raven-113/regenB0.SJqrpc/repo/target/stage0-regen-round-cost.txt
+memory-cgroup-bind: not requested
+◐ started compile.frontend
+✓ compile.frontend done in 26 seconds
+✓ compile.normalize done in 578ms
+✓ compile.reconcile done in 42 seconds
+✓ compile.analyses done in 707ms
+◐ started compile.emit
+✓ compile.emit done in 3 minutes
+required-regen-fixed-point: fixed_point_equal=true referenced_first_generation_equal=true referenced_at=ed853cf430e8004b937b9017ca1fb6742901c00e

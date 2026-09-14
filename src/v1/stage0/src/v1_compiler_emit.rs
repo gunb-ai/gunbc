@@ -1738,13 +1738,13 @@ pub fn render_named_type_base(
         };
         let param_names = v1_rt::concat(explicit_params.clone(), inferred_params.clone());
         if ((param_names.clone().len() as i64) == 0) {
-            base
+            base.clone()
         } else {
             {
                 let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(base, spec.type_arg_open.clone()),
+                        v1_rt::concat(base.clone(), spec.type_arg_open.clone()),
                         param_names.clone().join(&", ".to_string()),
                     ),
                     spec.type_arg_close.clone(),
@@ -3874,14 +3874,14 @@ pub fn shared_tco_block(
                         std::option::Option::None => spec.tco.clone().break_return.clone(),
                     };
                     if ((init_state.text.clone().len() as i64) == 0) {
-                        last_str
+                        last_str.clone()
                     } else {
                         v1_rt::concat(
                             v1_rt::concat(
                                 init_state.text.clone().join(&"\n".to_string()),
                                 "\n".to_string(),
                             ),
-                            last_str,
+                            last_str.clone(),
                         )
                     }
                 }
@@ -4582,14 +4582,14 @@ pub fn emit_unified_typed_func_body(
                             ),
                         };
                         if ((init_state.text.clone().len() as i64) == 0) {
-                            last_str
+                            last_str.clone()
                         } else {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     init_state.text.clone().join(&"\n".to_string()),
                                     "\n".to_string(),
                                 ),
-                                last_str,
+                                last_str.clone(),
                             )
                         }
                     }
@@ -4800,7 +4800,7 @@ pub fn hex_digit_char(d: i64) -> String {
 pub fn int_to_upper_hex_inner(mut n: i64, mut acc: String) -> String {
     loop {
         if (n.clone() == 0) {
-            break acc;
+            break acc.clone();
         } else {
             {
                 let __tco_0 = (n.clone() / 16);
@@ -4831,20 +4831,20 @@ pub fn escape_emoji_codepoints_inner(
 ) -> String {
     loop {
         if (pos.clone() >= n.clone()) {
-            break acc;
+            break acc.clone();
         } else {
             let ch_str = v1_rt::char_at(&s, pos.clone());
             let cp = v1_rt::code_point(ch_str.clone());
             let next_acc = if v1_rt::is_emoji_ident(cp.clone()) {
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(acc, prefix.clone()),
+                        v1_rt::concat(acc.clone(), prefix.clone()),
                         int_to_upper_hex(cp.clone()),
                     ),
                     suffix.clone(),
                 )
             } else {
-                v1_rt::concat(acc, ch_str.clone())
+                v1_rt::concat(acc.clone(), ch_str.clone())
             };
             {
                 let __tco_0 = (pos + 1);
@@ -4872,9 +4872,9 @@ pub fn apply_char_sanitization(name: String, rule: CharSanitization) -> String {
     {
         let esc = crate::v1_compiler_languages::canonical_emoji_char_escape();
         match rule.clone() {
-            CharSanitization::NoCharSanitization => name,
+            CharSanitization::NoCharSanitization => name.clone(),
             CharSanitization::EmojiEscape => {
-                escape_emoji_codepoints(name, esc.prefix.clone(), esc.suffix.clone())
+                escape_emoji_codepoints(name.clone(), esc.prefix.clone(), esc.suffix.clone())
             }
         }
     }
@@ -6009,7 +6009,7 @@ pub fn emit_typed_cast_shared(
             _ => "".to_string(),
         };
         if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
-            expr_str
+            expr_str.clone()
         } else {
             if cast_source_representation_identical(
                 expr.clone(),
@@ -6017,7 +6017,7 @@ pub fn emit_typed_cast_shared(
                 env.clone(),
                 target.clone(),
             ) {
-                expr_str
+                expr_str.clone()
             } else {
                 if crate::v1_compiler_coercion::can_cast(
                     target.clone(),
@@ -6025,7 +6025,7 @@ pub fn emit_typed_cast_shared(
                     ty_str.clone(),
                 ) {
                     crate::v1_compiler_coercion::render_cast(
-                        expr_str,
+                        expr_str.clone(),
                         ty_str.clone(),
                         target.clone(),
                     )
