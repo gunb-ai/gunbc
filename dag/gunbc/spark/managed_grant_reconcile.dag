@@ -157,6 +157,7 @@ type SparkGrantInstallAdmission
   = GrantInstallAdmitted { grant: SparkManagedGrant }
   | GrantInstallAdmittedOnAcceptedRisk { grant: SparkManagedGrant, obligation: NonEmptyStr, basis: SparkGrantInstallBasis }
   | GrantInstallWithheld { grant: SparkManagedGrant, obligation: NonEmptyStr }
+  | GrantInstallStandingUnobserved { grant: SparkManagedGrant, cause: NonEmptyStr }
   | GrantInstallNotNeeded
 
 fn spark_grant_install_admission(
@@ -165,7 +166,7 @@ fn spark_grant_install_admission(
 ) -> SparkGrantInstallAdmission {
   match standing {
     GrantHeld { grant: _ } => GrantInstallNotNeeded
-    GrantStandingUnobserved { grant: _, cause: _ } => GrantInstallNotNeeded
+    GrantStandingUnobserved { grant: g, cause: c } => GrantInstallStandingUnobserved { grant: g, cause: c }
     GrantNotHeld { grant: g } =>
       match spark_managed_grant_disclosure_standing(grant: g) {
         GrantReturnsNoHostData => GrantInstallAdmitted { grant: g }
@@ -196,6 +197,7 @@ fn spark_managed_grants_to_install_under(
       GrantInstallAdmitted { grant: g } => [g]
       GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: _, basis: _ } => [g]
       GrantInstallWithheld { grant: _, obligation: _ } => []
+      GrantInstallStandingUnobserved { grant: _, cause: _ } => []
       GrantInstallNotNeeded => []
     })
 }
@@ -213,12 +215,27 @@ fn spark_managed_grants_withheld_under(
       GrantInstallWithheld { grant: g, obligation: o } => [GrantInstallWithheld { grant: g, obligation: o }]
       GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => []
       GrantInstallAdmitted { grant: _ } => []
+      GrantInstallStandingUnobserved { grant: _, cause: _ } => []
       GrantInstallNotNeeded => []
     })
 }
 
 fn spark_managed_grants_withheld(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
   spark_managed_grants_withheld_under(outcome: outcome, basis: spark_managed_grant_install_basis)
+}
+
+// THE UNOBSERVED ADMISSIONS, for the run verdict. "Nothing to install because the host holds it" and
+// "nothing to install because the standing could not be read" are different facts; the second is a
+// refusal the install run must stop on, exactly as a withheld grant is.
+fn spark_managed_grants_install_unobserved(outcome: SparkGrantOutcome) -> List<SparkGrantInstallAdmission> {
+  flat_map(spark_grant_install_admissions_under(outcome: outcome, basis: spark_managed_grant_install_basis), a =>
+    match a {
+      GrantInstallStandingUnobserved { grant: g, cause: c } => [GrantInstallStandingUnobserved { grant: g, cause: c }]
+      GrantInstallWithheld { grant: _, obligation: _ } => []
+      GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => []
+      GrantInstallAdmitted { grant: _ } => []
+      GrantInstallNotNeeded => []
+    })
 }
 
 fn spark_grant_install_admission_wire(a: SparkGrantInstallAdmission) -> List<String> {
@@ -237,6 +254,7 @@ fn spark_grant_install_admission_wire(a: SparkGrantInstallAdmission) -> List<Str
       },
       " disclosure=unestablished outstanding=", o as String, "\n",
     ], "")]
+    GrantInstallStandingUnobserved { grant: _, cause: _ } => []
     GrantInstallAdmitted { grant: _ } => []
     GrantInstallNotNeeded => []
   }

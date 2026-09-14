@@ -22,6 +22,7 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install_under,
   spark_managed_grants_withheld,
   spark_managed_grants_withheld_under,
+  spark_managed_grants_install_unobserved,
   GrantInstallWithheld,
   GrantInstallAdmitted,
   GrantInstallAdmittedOnAcceptedRisk,
@@ -381,6 +382,7 @@ test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Boo
                 }
          GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: _, basis: _ } => false
          GrantInstallAdmitted { grant: _ } => false
+         GrantInstallStandingUnobserved { grant: _, cause: _ } => false
          GrantInstallNotNeeded => false
        })
     && spark_managed_grants_withheld(outcome: o).length() == 1
@@ -409,6 +411,7 @@ test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() 
       ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
     GrantInstallAdmitted { grant: _ } => false
     GrantInstallWithheld { grant: _, obligation: _ } => false
+    GrantInstallStandingUnobserved { grant: _, cause: _ } => false
     GrantInstallNotNeeded => false
   })
     && spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length() == 0
@@ -424,4 +427,12 @@ test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
       accepted_for: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
     },
   ).length() == 0
+}
+
+// HELD AND UNREAD DO NOT SHARE AN ARM. A refused probe leg admits every grant as standing-unobserved,
+// while a listing that names every grant admits none that way: the verdict can tell them apart.
+test fn an_unread_standing_is_its_own_admission_and_not_nothing_needed() -> Bool {
+  spark_managed_grants_install_unobserved(outcome: GrantProbeRefused { cause: "leg refused" }).length()
+      == spark_managed_grant_population.length()
+    && spark_managed_grants_install_unobserved(outcome: GrantEnumerated { listing: srv6_listing_with_inspect }).length() == 0
 }

@@ -69,6 +69,7 @@ import gunbc.spark.grant_privileged_operation {
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
   spark_managed_grants_withheld,
+  spark_managed_grants_install_unobserved,
   SparkGrantInstallAdmission,
   spark_managed_grant_report,
   spark_managed_grant_standing_from_outcome,
@@ -663,6 +664,7 @@ type SparkGrantInstallRun {
   standing_report: String
   outcomes: List<SparkGrantInstallOutcome>
   withheld: List<SparkGrantInstallAdmission>
+  unobserved: List<SparkGrantInstallAdmission>
 }
 
 fn spark_grant_install_host(
@@ -682,6 +684,7 @@ fn spark_grant_install_host(
         administrator: administrator, grant: g,
       )),
     withheld: spark_managed_grants_withheld(outcome: outcome),
+    unobserved: spark_managed_grants_install_unobserved(outcome: outcome),
   }
 }
 
@@ -705,8 +708,10 @@ fn spark_grant_install_run_text(run: SparkGrantInstallRun) -> String {
 // empty install set because every missing grant was withheld are different facts, and the second is a
 // refusal the run must stop on: the reconcile has already decided the host needs a grant it may not
 // have, so exiting green would put that refusal in the receipt text and nowhere in the process result.
+// AN UNREAD STANDING IS THE SAME CLASS: a probe that never ran or failed yields no install set and no
+// withheld grant, and inferring success from those empty lists would pass a host nobody measured.
 fn spark_grant_install_run_succeeded(run: SparkGrantInstallRun) -> Bool {
-  run.withheld.length() == 0 && fold(run.outcomes, init: true, f: fn(acc, o) {
+  run.withheld.length() == 0 && run.unobserved.length() == 0 && fold(run.outcomes, init: true, f: fn(acc, o) {
     acc && spark_grant_install_succeeded(outcome: o)
   })
 }
