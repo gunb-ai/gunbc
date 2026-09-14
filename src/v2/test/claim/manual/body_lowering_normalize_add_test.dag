@@ -194,8 +194,12 @@ test fn body_lowering_binary_infix_holds() -> Bool {
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
             ParseSubtreeFound { captured: binary } =>
               match body_lower_try_infix_transform(node: binary) {
-                Present { value: _ } => true
-                Absent => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
               }
             ParseSubtreeAbsent => false
           }
@@ -213,8 +217,12 @@ test fn body_lowering_expr_infix_holds() -> Bool {
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
             ParseSubtreeFound { captured: expr } =>
               match body_lower_try_infix_transform(node: expr) {
-                Present { value: _ } => true
-                Absent => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
               }
             ParseSubtreeAbsent => false
           }
@@ -232,8 +240,12 @@ test fn body_lowering_fn_body_infix_holds() -> Bool {
           match parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
             ParseSubtreeFound { captured: body } =>
               match body_lower_try_infix_transform(node: body) {
-                Present { value: _ } => true
-                Absent => false
+                Rejected { diagnostics: _ } => false
+                Accepted { value: found, diagnostics: _ } =>
+                  match found {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
               }
             ParseSubtreeAbsent => false
           }
