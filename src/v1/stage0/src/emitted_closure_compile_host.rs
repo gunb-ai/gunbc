@@ -1051,10 +1051,8 @@ pub(crate) fn run_cargo(
 }
 
 /// Native genesis remaps the host build directory out of the artifact. The spawn sets denial
-/// plus remap on RUSTFLAGS; the receipt's `rustflags` field is the denial row alone
-/// (`WARNING_DENIAL_RUSTFLAGS`). Remap is `BuildPathTreatment` on the generation identity
-/// (review 65198) — concatenating it into rustflags made `emitted_build_warnings_denied`
-/// permanently red.
+/// plus remap on RUSTFLAGS; the receipt's `rustflags` field is that same observed string
+/// (review 65922). Remap is also `BuildPathTreatment` on the generation identity.
 pub(crate) fn rustflags_with_remap_prefix(remap_flag: &str) -> String {
     format!("{} {}", WARNING_DENIAL_RUSTFLAGS, remap_flag)
 }

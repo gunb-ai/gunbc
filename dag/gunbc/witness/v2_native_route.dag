@@ -1,6 +1,6 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item, list_starts_with }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -24,6 +24,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import v2.std.text { char_eq }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -513,11 +514,11 @@ type NativeRouteOldRouteControl
 // toolchain action defaults RUSTFLAGS to `-D warnings`, a workstation exports none, and the same
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
-// with another's: the exact argv cargo was spawned with, the warning-denial RUSTFLAGS the lane
-// SET (never inherited -- gunbc.repo_self_warning_policy repo_self_warning_denial_rustflags,
-// applied at the invocation, on BOTH channels cargo reads; path remap is BuildPathTreatment on
-// the generation, not concatenated into this string — equality here is the denial row, not a
-// contains check),
+// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that
+// spawn (never inherited -- gunbc.repo_self_warning_policy repo_self_warning_denial_rustflags
+// is the warning-denial prefix; a remapped genesis concatenates --remap-path-prefix, and the
+// receipt records that observed string rather than synthesizing the denial row alone -- review
+// 65922),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a
 // wrapper would be evidence about a build that did not happen), that executable's
@@ -901,9 +902,10 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
 }
 
 // The build clauses read the emitted-build receipt and nothing else: rustc named itself; the
-// RUSTFLAGS the lane set are exactly the repository's denial row (equality, not containment --
-// a flag string that carries the denial plus something else is a different build environment
-// and the receipt must say so); and the build completed with status 0 and no warning header.
+// RUSTFLAGS the lane set are the denial row, or the denial row then a remap-path-prefix flag
+// (equality of the denial prefix, not a substring contains -- a flag string that carries the
+// denial plus something other than remap is a different build environment and the receipt must
+// say so); and the build completed with status 0 and no warning header.
 fn native_route_emitted_build_rustc_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.emitted_build.rustc_identity != ""
 }
@@ -912,8 +914,16 @@ fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Boo
   receipt.emitted_build.compiler_path != ""
 }
 
+fn native_route_rustflags_are_denial_then_remap(flags: String) -> Bool {
+  let prefix = concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=")
+  length(xs: flags) > length(xs: prefix)
+    && list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
+}
+
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
-  receipt.emitted_build.rustflags == repo_self_warning_denial_rustflags()
+  let flags = receipt.emitted_build.rustflags
+  flags == repo_self_warning_denial_rustflags()
+    || native_route_rustflags_are_denial_then_remap(flags: flags)
 }
 
 fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {
