@@ -2,8 +2,22 @@ module test.claim.durable_cas_file_store_witness
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, sha256_hex_digest, as_content_hash_cryptographic }
-import std.durable_compare_and_set { CasAttempt, CasExpectation, ExpectSlotAbsent, cas_attempt }
-import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, cas_file_slot_path }
+import std.durable_compare_and_set {
+  CasAttempt, CasExpectation, ExpectSlotAbsent, cas_attempt,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasReadableAbsent, CasReadablePresent, CasSlotVersion, CasSlotObservation,
+  CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused, CasUnreadableMalformed, CasUnreadableContentMissing,
+  cas_generation_count, cas_generation_first,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  FilesystemPermissionDenied, FilesystemExactPathKindUnrecognized,
+}
+import gunbc.durable_cas_file_store {
+  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+  admit_cas_attempt, cas_file_slot_path,
+  cas_outcome_from_create, cas_probe_from_exact, cas_probe_as_observation,
+}
 
 // Evidence for the pure half of the file-backed CAS store. What is DELIBERATELY
 // absent is a hermetic row over file_compare_and_set itself.
@@ -15,13 +29,44 @@ import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, C
 // which compiles anything, read by a passing reader as coverage. A witness that
 // cannot reach its subject is worse than no witness, because it is cited.
 //
-// The effectful fold's evidence is therefore a live run against a real
-// directory, recorded on the cut that introduces its consumer, not a row here.
-// Its two arms -- a first write committing, and a second write to the same
-// slot losing to O_EXCL -- are only observable where writes actually happen.
+// The effectful fold's evidence is a live run against a real directory in
+// test.claim.durable_cas_file_store_wet_witness. This file keeps the pure mint
+// and the publication-classification fold, which have no host effect.
 
 fn cas_probe_attempt(key: NonEmptyStr, payload: NonEmptyStr, claimed: ContentHash, expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
   cas_attempt(key: key, expected: expected, proposed: payload, proposed_content: claimed)
+}
+
+fn honest_absent(payload: NonEmptyStr) -> CasAttempt<NonEmptyStr> {
+  cas_probe_attempt(key: "slot-a", payload: payload, claimed: content_hash_of_value(value: payload), expected: ExpectSlotAbsent)
+}
+
+fn outcome_is_store_refused(o: CasOutcome<NonEmptyStr>) -> Bool {
+  match o {
+    CasStoreRefused { cause: _ } => true
+    CasCommitted { committed: _ } => false
+    CasPreconditionFailed { expected: _, observed: _ } => false
+  }
+}
+
+fn outcome_is_precondition_failed_with_present(o: CasOutcome<NonEmptyStr>, payload: NonEmptyStr) -> Bool {
+  match o {
+    CasPreconditionFailed { expected: _, observed: r } =>
+      match r {
+        CasReadablePresent { version: v } => v.value == payload
+        CasReadableAbsent => false
+      }
+    CasCommitted { committed: _ } => false
+    CasStoreRefused { cause: _ } => false
+  }
+}
+
+fn outcome_is_committed(o: CasOutcome<NonEmptyStr>, payload: NonEmptyStr) -> Bool {
+  match o {
+    CasCommitted { committed: v } => v.value == payload && cas_generation_count(g: v.generation) == 1
+    CasPreconditionFailed { expected: _, observed: _ } => false
+    CasStoreRefused { cause: _ } => false
+  }
 }
 
 // The discriminating red: pairing a payload with a DIFFERENT value's digest is
@@ -133,5 +178,102 @@ test fn a_key_carrying_a_path_separator_is_refused_even_when_it_escapes_nothing(
     CasAttemptAdmitted { verified: _ } => false
     CasAttemptDigestMismatch { claimed: _, actual: _ } => false
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+  }
+}
+
+fn winner_observation(payload: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable {
+    readable: CasReadablePresent {
+      version: CasSlotVersion {
+        generation: 1,
+        content: content_hash_of_value(value: payload),
+        value: payload,
+      }
+    }
+  }
+}
+
+fn empty_observation() -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable { readable: CasReadableAbsent }
+}
+
+test fn a_successful_create_commits_the_proposed_generation() -> Bool {
+  let attempt = honest_absent(payload: "state-A")
+  outcome_is_committed(
+    o: cas_outcome_from_create(
+      attempt: attempt,
+      target: 1,
+      created: FilesystemCreated { path: "/cas/slot-a.1" },
+      post: empty_observation(),
+    ),
+    payload: "state-A",
+  )
+}
+
+test fn occupied_create_with_a_readable_winner_is_precondition_failed() -> Bool {
+  let attempt = honest_absent(payload: "state-A")
+  outcome_is_precondition_failed_with_present(
+    o: cas_outcome_from_create(
+      attempt: attempt,
+      target: 1,
+      created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
+      post: winner_observation(payload: "state-B"),
+    ),
+    payload: "state-B",
+  )
+}
+
+test fn occupied_create_with_no_readable_winner_is_store_refused_not_contention() -> Bool {
+  let attempt = honest_absent(payload: "state-A")
+  outcome_is_store_refused(
+    o: cas_outcome_from_create(
+      attempt: attempt,
+      target: 1,
+      created: FilesystemCreateTargetOccupied { path: "/cas/slot-a.1" },
+      post: empty_observation(),
+    ),
+  )
+}
+
+test fn a_permission_refused_create_is_store_refused_not_contention() -> Bool {
+  let attempt = honest_absent(payload: "state-A")
+  outcome_is_store_refused(
+    o: cas_outcome_from_create(
+      attempt: attempt,
+      target: 1,
+      created: FilesystemCreateRefused { path: "/cas/slot-a.1", kind: FilesystemPermissionDenied, error: "ignored text" },
+      post: empty_observation(),
+    ),
+  )
+}
+
+test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool {
+  let attempt = honest_absent(payload: "state-A")
+  outcome_is_store_refused(
+    o: cas_outcome_from_create(
+      attempt: attempt,
+      target: 1,
+      created: FilesystemCreateKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },
+      post: empty_observation(),
+    ),
+  )
+}
+
+test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> Bool {
+  let probe = cas_probe_from_exact(
+    root: "/cas",
+    key: "slot-a",
+    generation: cas_generation_first(),
+    previous: "unread",
+    exact: FilesystemExactPathKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },
+  )
+  match cas_probe_as_observation(probe: probe) {
+    CasObservedUnreadable { cause: c } =>
+      match c {
+        CasUnreadableMalformed { detail: _ } => true
+        CasUnreadableReadRefused { detail: _ } => false
+        CasUnreadableContentMissing { referenced: _ } => false
+      }
+    CasObservedReadable { readable: _ } => false
   }
 }
