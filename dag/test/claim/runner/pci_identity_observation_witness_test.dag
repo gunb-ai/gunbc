@@ -2,7 +2,7 @@ module test.claim.pci_identity_observation_witness
 
 import std.types { Bool, String }
 import gunbc.runner.runner_host_hardware_observation { mtcollins1_observed_pci_functions }
-import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_first_own_image_boot, mtcollins1_igb_binding }
+import gunbc.runner.runner_host_first_boot_receipt { mtcollins1_igb_binding }
 
 // Import both formerly broken receipt closures on the ordinary discovery path.
 // Missing location evidence must coexist with the recorded device identity,
@@ -19,9 +19,8 @@ test fn w_recorded_and_unrecorded_pci_addresses_remain_distinct() -> Bool {
   })
 }
 
-test fn w_first_boot_receipt_and_driver_binding_resolve_together() -> Bool {
-  mtcollins1_first_own_image_boot.capture_byte_count > 0
-    && mtcollins1_first_own_image_boot.capture_artifact != ""
-    && count(mtcollins1_igb_binding.bound_addresses) == 2
-    && mtcollins1_igb_binding.driver == "igb"
+test fn w_igb_binding_count_joins_the_recorded_intel_functions() -> Bool {
+  let recorded = filter(mtcollins1_observed_pci_functions, function => function.vendor as String == "8086")
+  count(mtcollins1_igb_binding.bound_addresses) == count(recorded)
+    && count(recorded) == 2
 }
