@@ -20,6 +20,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
+  ModelSnapshotDesired, ModelSnapshotPinned,
 }
 
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
@@ -174,6 +175,22 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
     Glm53NativeFp8 => Present { value: glm53_native_fp8_row }
     Glm53Nvfp4CompressedTensors => none
     DeepseekV4FlashIq3sSplit => none
+  }
+}
+
+// THE SNAPSHOT A CHECKPOINT ROW DENOTES, derived once so every consumer that acquires, verifies or reads
+// the bytes asks the row the launch line was rendered from. gunbc.spark.glm_canary_converge built this
+// record inline and gunbc.spark.vllm_incarnation_provenance carried the repository, revision and snapshot
+// directory as literals beside it -- three spellings of one checkpoint, and the literal one is how an
+// incarnation came to assert a revision nobody had verified. The identity is the consumer's name for the
+// subject and is the only field the row does not decide.
+fn serving_checkpoint_snapshot(row: ServingCheckpointRow, identity: NonEmptyStr) -> ModelSnapshotDesired {
+  ModelSnapshotPinned {
+    identity: identity,
+    repo: row.repo,
+    revision: row.revision,
+    placement: row.placement,
+    revision_provenance: row.provenance,
   }
 }
 

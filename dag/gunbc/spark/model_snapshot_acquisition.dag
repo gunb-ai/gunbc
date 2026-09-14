@@ -119,10 +119,20 @@ fn snapshot_install_path(placement: SnapshotPlacement, repo: HubRepoId, revision
 
 // THE DOWNLOAD COMMAND, DERIVED PER PLACEMENT. `hf download --local-dir` is upstream's own supported
 // form and keeps its metadata beside the tree so a later run is incremental rather than a re-fetch.
+//
+// THE HUB ARM NAMES ITS CACHE ROOT, AND BOTH ARMS USED TO OMIT IT. Without `--cache-dir` the CLI
+// resolves the DEFAULT cache of whoever runs it -- and no Spark host carries an `hf` executable, so
+// every acquisition runs it inside a container (gunbc.spark.model_snapshot_materialize executor_wrap),
+// where the default is the container's own ephemeral home. A download there lands in a directory the
+// container discards on exit, and a verify there inspects an empty cache. The local-directory arm
+// never had this defect because it passes its path; the executor then translates that path across the
+// mount, and it translates `--cache-dir <root>` the same way. Upstream accepts both flags on both
+// commands and refuses the pair together (huggingface_hub `cli.cache.verify` and
+// `cli.download.download`, read at 1.31.0; the version inside the runtime image is not established).
 fn snapshot_download_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
   let base = [hub_cli_program as String, "download", repo.path as String, "--revision", revision as String]
   match placement {
-    HubCachePlacement { cache_root: _ } => base
+    HubCachePlacement { cache_root: root } => concat(base, ["--cache-dir", root as String])
     LocalDirectoryPlacement { host_path: p } => concat(base, ["--local-dir", p as String])
   }
 }
@@ -137,7 +147,7 @@ fn snapshot_verify_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revis
     "--revision", revision as String, "--fail-on-missing-files",
   ]
   match placement {
-    HubCachePlacement { cache_root: _ } => base
+    HubCachePlacement { cache_root: root } => concat(base, ["--cache-dir", root as String])
     LocalDirectoryPlacement { host_path: p } => concat(base, ["--local-dir", p as String])
   }
 }

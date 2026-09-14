@@ -17,7 +17,7 @@ import gunbc.spark.serving_arm_launch {
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, VllmOpenaiGlm53Flash, FourSparkTp4, ArmBoundedExperiment,
   serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing, runtime_artifact_wire,
-  glm53_nope_derived_row,
+  glm53_nope_derived_row, ServingCheckpointRow, ServingRuntimeRow, serving_checkpoint_row, serving_runtime_row,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_compatibility {
@@ -668,6 +668,25 @@ fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaun
         authorization: authorize_selection(s: sel, granted_for_normal_serving: false),
         envelope: envelope,
       )
+  }
+}
+
+// THE ROWS THE PLAN WAS RENDERED FROM, read off the SAME selection rather than named beside it. A consumer
+// that verifies or reads the checkpoint, or runs a CLI inside the runtime image, must be asking about the
+// artifact the launch line names; the selection is a zero-argument pure fold, so a second call agrees with
+// the one glm_native_tp4_launch_plan made by construction -- the same argument this module already makes
+// for reading the node roster twice.
+fn glm_native_tp4_checkpoint_row() -> ServingCheckpointRow? {
+  match glm_native_tp4_selection() {
+    SelectionRefused { cause: _ } => none
+    SelectionAdmitted { selected: sel } => serving_checkpoint_row(c: sel.subject.checkpoint)
+  }
+}
+
+fn glm_native_tp4_runtime_row() -> ServingRuntimeRow? {
+  match glm_native_tp4_selection() {
+    SelectionRefused { cause: _ } => none
+    SelectionAdmitted { selected: sel } => serving_runtime_row(r: sel.subject.runtime)
   }
 }
 

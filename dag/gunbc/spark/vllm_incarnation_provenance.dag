@@ -1,50 +1,70 @@
 module gunbc.spark.vllm_incarnation_provenance
 
-import std.types { String, NonEmptyStr, List, Bool, Secret }
+import std.types { String, NonEmptyStr, List, Bool, Secret, Int }
+import std.nat { Nat }
 import std.content_hash {
   ContentHash, Sha256Hash, sha256_hex_digest, content_hash_of_value, serialize_content_hash,
+  as_content_hash_structural, content_hash_combine_structural, content_hash_tagged_structural,
+  content_hash_atom,
 }
 import gunbc.serving.incarnation_provenance {
   ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation, CoordinateUnestablished,
   ServingCoordinate, CoordinateContent, CoordinateAbsent,
-  RuntimeManifestResolved, RuntimeManifestUnestablished,
   RuntimeImageAxis, serving_runtime_coordinate,
   ServingSourceEvidenceRung, RevisionAddressedUpstreamVerification,
   ServingSourceResolution, ServingRuntimeResolution,
-  resolve_serving_source, resolve_serving_runtime,
+  SourceManifestResolved, SourceManifestUnestablished,
+  RuntimeManifestResolved, RuntimeManifestUnestablished,
+  ExecutionClosureResolved, ExecutionClosureUnestablished,
+  ServingTurnExecutionClosure,
+  resolve_serving_source, resolve_serving_runtime, seal_serving_execution_closure,
+  serving_execution_source_ref, serving_execution_runtime_ref, serving_source_rung_wire,
 }
 import extdeps.docker.container_inspect { go_template_action }
+import extdeps.exec.command { shell_quote }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, snapshot_install_path, model_snapshot_subject, model_snapshot_verify_argv, spark_hub_cache_root,
+}
 import gunbc.spark.model_snapshot_materialize {
-  SparkMaterializeContext, SnapshotAcquisitionExecutor, spark_snapshot_observe,
+  SparkMaterializeContext, SnapshotAcquisitionExecutor, spark_snapshot_observe, snapshot_executor_in_runtime,
 }
 import gunbc.artifact_acquisition {
-  AcquisitionSubject, AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,
-  AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
 }
 import gunbc.spark.remote_execution {
   SparkRemoteExecutionContext, spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv9 }
-import std.nat { Nat }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch, vllm_endpoint_process_launch_is,
-  vllm_endpoint_process_launch_key,
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch_is, vllm_endpoint_process_launch_key,
 }
 import gunbc.spark.native_deployment_readback {
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
+  NativeDeploymentObserved,
   deployment_deviations_text, deployment_unknowns_text,
   accept_deployment, inspect_native_deployment, plan_lines,
 }
-import gunbc.spark.native_rank_observer { observe_native_population }
+import gunbc.spark.native_rank_observer { observe_native_population, observe_rank_utilization_basis_points }
 import gunbc.spark.device_memory_envelope {
   glm_native_tp4_launch_plan, glm_native_tp4_nodes, glm_native_device_memory_policy,
+  glm_native_tp4_checkpoint_row, glm_native_tp4_runtime_row,
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt,
 }
-import gunbc.spark.serving_arm_launch { ArmNodeRosterRefused, ArmNodesResolved, ArmLaunchPlan, ArmNodeLaunch }
-import gunbc.spark.native_rank_observer { observe_rank_utilization_basis_points }
+import gunbc.spark.serving_arm_launch {
+  ArmNodeRosterRefused, ArmNodesResolved, ArmLaunchPlan, ArmNodeLaunch, ArmNode, glm_native_container_name,
+}
+import gunbc.spark.serving_arm { ServingCheckpointRow, ServingRuntimeRow, serving_checkpoint_snapshot }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
-import gunbc.serving.incarnation_provenance { ServingTurnExecutionClosure }
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint, serving_route,
+}
+import gunbc.harness.harness_backend { harness_observe_engine }
 import product.fabric.demand { ObservationReceiptRef }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -63,233 +83,191 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.auth.materialized_secret {
   with_materialized_ssh_key_file, MaterializedSshKeyFileBracketRefused, MaterializedSshKeyFileBracketCompleted,
 }
-import gunbc.serving.incarnation_provenance {
-  SourceManifestResolved, SourceManifestUnestablished,
-  RuntimeManifestResolved, RuntimeManifestUnestablished,
-  ExecutionClosureResolved, ExecutionClosureUnestablished,
-  seal_serving_execution_closure,
-  serving_execution_source_ref, serving_execution_runtime_ref,
-  serving_source_rung_wire,
+
+// ── ONE OBSERVATION TRANSACTION, AND IT IS THE ONLY ROUTE TO AN INCARNATION ────────────────────
+//
+// WHAT THE PREVIOUS SHAPE CLAIMED AND DID NOT HOLD (exact-head review, 2026-09-14). The seal admitted
+// one caller, bind_incarnation, and bind_incarnation was an ordinary function over five independent
+// arguments -- a launch, an acceptance, a rank count, a source resolution and a runtime resolution. So
+// the forgery the seal was added to stop had moved one call up: this repository's own witnesses bound
+// incarnations out of a fixture launch, a caller-supplied `ranks_required: 4` and a source resolution
+// whose rung named "probe/repo". And the one route that did observe the world minted its checkpoint
+// coordinate from two string literals: the per-rank verifier this module carried had no caller at all,
+// so the live receipt reading `rung=revision-addressed upstream verification` was produced without any
+// verification running.
+//
+// SO THE JOINS LIVE IN ONE FUNCTION AND THE WORLD IS ITS ONLY PARAMETER. observe_native_incarnation
+// asks every question itself, at loci it derives -- which launch, which plan, which hosts, which
+// snapshot, which directory -- and a port supplies only the answers. A fixture can make the world say
+// anything, but it cannot skip a question, pair an answer with a question it was not asked, or supply
+// the rank population, the checkpoint subject or the directory the members are read from. bind_incarnation
+// is reachable only through it: the seal admits bind_incarnation, and each later step of the transaction
+// admits only the step before it, back to this function.
+//
+// THE PORT IS THE REALIZATION SEAM DESIGN SECTION 2 DESCRIBES, NOT A TEST HOOK. Production binds it to
+// remote readings (native_incarnation_port); a witness binds it to an authored world. Both run the
+// identical transaction, which is what makes a positive control a control over the production path.
+
+// ── WHICH READING OF THE LAUNCH IS BEING ASKED FOR ────────────────────────────────────────────
+//
+// THE PHASE IS AN ARGUMENT SO A RESTART DURING THE WINDOW IS AUTHORABLE. Production ignores it -- it
+// reads the world each time it is asked -- but a closure that took no argument would answer both
+// readings identically, and the red that proves the before/after comparison runs could not be written.
+type IncarnationObservationPhase
+  = BeforeAssessment
+  | AfterAssessment
+
+// ── THE READINGS A PORT RETURNS, EACH ONE ABLE TO SAY IT DID NOT READ ─────────────────────────
+//
+// A DIRECTORY IS LISTED OR IT IS UNREAD, AND NOTHING IN BETWEEN BECOMES AN EMPTY LISTING. The shell
+// readers this replaces counted with `ls DIR | grep | wc -l`: a pipeline's status is its LAST stage's, so
+// a directory that did not exist printed "0" and exited zero, and a missing snapshot read as a snapshot
+// with no model-side code and no template. That is unread rendered as absent -- the collapse the
+// coordinate type in gunbc.serving.incarnation_provenance exists to prevent, arriving through a pipe.
+type DirectoryPopulationReading
+  = DirectoryListed { names: List<String> }
+  | DirectoryUnread { cause: NonEmptyStr }
+
+// A PATH IS DIGESTED, IS NOT THERE, OR COULD NOT BE READ -- three answers with three remedies.
+type PathDigestReading
+  = PathDigestObserved { hash: ContentHash }
+  | PathNotPresent
+  | PathDigestUnread { cause: NonEmptyStr }
+
+type FileTextReading
+  = FileTextRead { text: String }
+  | FileTextUnread { cause: NonEmptyStr }
+
+type NativeIncarnationPort {
+  endpoint_launch: fn(IncarnationObservationPhase) -> VllmEndpointProcessLaunchObservation
+  running_basis_points: fn(ArmNode) -> Nat?
+  population: fn(ArmLaunchPlan) -> NativeDeploymentObserved
+  checkpoint_verification: fn(HostIdentity, ModelSnapshotDesired) -> AcquisitionObservation
+  directory_population: fn(HostIdentity, NonEmptyStr) -> DirectoryPopulationReading
+  path_digest: fn(HostIdentity, NonEmptyStr) -> PathDigestReading
+  file_text: fn(HostIdentity, NonEmptyStr) -> FileTextReading
+  runtime_image: fn(HostIdentity) -> ServingCoordinateReading
 }
 
-// THE RECEIPT NAMES THE PRODUCER THAT TOOK THE READINGS, so a closure carries the identity of the
-// observation that built it rather than one supplied by whoever later consumes it.
-data vllm_incarnation_receipt: ObservationReceiptRef = "gunbc.spark.vllm_incarnation_provenance" as ObservationReceiptRef
+// ── THE RECEIPT NAMES THIS OBSERVATION, NOT THE CLASS OF PRODUCER THAT TOOK IT ────────────────
+//
+// IT WAS A CONSTANT, "gunbc.spark.vllm_incarnation_provenance", so two incarnations observed a day apart
+// carried one receipt, and nothing in a sealed closure could say which reading established it. The
+// attempt is the instant the transaction started (minted by the wet entry, refused when the clock is
+// unreadable) and the launch is the one the transaction bound.
+//
+// THE RENDERING IS INJECTIVE BECAUSE ITS ONLY FREE FIELD IS NOT LAST. The producer is a constant prefix
+// and the launch key is a fixed-width structural digest at the end, so an attempt of any content is
+// recovered by stripping both -- no separator inside the attempt can move a boundary.
+data vllm_incarnation_producer: NonEmptyStr = "gunbc.spark.vllm_incarnation_provenance" as NonEmptyStr
 
-// ── READING ONE MEMBER OF A MOUNTED SNAPSHOT, THREE-VALUED AT THE SOURCE ───────────────────────
+fn incarnation_receipt(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> ObservationReceiptRef {
+  join([
+    vllm_incarnation_producer as String, "/", attempt as String, "/",
+    vllm_endpoint_process_launch_key(launch: launch) as String,
+  ], "") as ObservationReceiptRef
+}
+
+// ── THE PRODUCTION READERS, EACH DECIDING READ-OR-NOT FROM ITS OWN EXIT STATUS ────────────────
 //
-// THE COMMAND DISTINGUISHES THE THREE ANSWERS ITSELF RATHER THAN LEAVING THEM TO BE INFERRED FROM AN
-// EMPTY STRING. A file that is not there prints ABSENT; a file that is there prints its digest; a
-// read that could not happen prints neither and the exec itself fails. Collapsing the first and third
-// into "no output" is how "we did not look" becomes "there was nothing", which the coordinate type
-// exists to keep apart -- so the distinction is made where the observation happens, not afterwards.
-//
-// sha256sum IS THE MEMBER'S OWN CONTENT IDENTITY AND IS NOT THE MANIFEST REFERENCE. The reference is
-// a structural identity over the canonical axis material; these digests are what make the members
-// verifiable, and they are cryptographic where the reference is not.
-// THE LOCUS IS A WHOLE PATH, NOT A SNAPSHOT-RELATIVE NAME. A launch may select a template that is not
-// inside the snapshot at all -- the annotation on the origin type says so -- and the previous reader
-// prepended the snapshot directory unconditionally, so an absolute override would have been hashed at
-// a path that does not exist and reported ABSENT. Callers that do want a snapshot member join the two
-// themselves, which keeps the joining visible rather than implied by a parameter name.
+// THE LISTING ENDS IN A MARKER THAT ONLY A SUCCESSFUL `ls` CAN REACH. `&&` short-circuits, so a listing
+// that failed prints no marker and exits nonzero; a listing that succeeded prints every name and then
+// the marker. The reader accepts the names only when the marker is the last line.
+data directory_listed_marker: String = "GUNBC-DIRECTORY-LISTED"
+
+fn directory_population_argv(dir: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join(["ls -1A -- ", shell_quote(arg: dir as String), " && echo ", directory_listed_marker], "")]
+}
+
+fn directory_population_of(raw: String) -> DirectoryPopulationReading {
+  let lines = split(s: raw, delimiter: "\n")
+  match lines.last() {
+    Absent => DirectoryUnread { cause: "the listing printed nothing, not even its completion marker" as NonEmptyStr }
+    Present { value: tail } =>
+      if tail != directory_listed_marker {
+        DirectoryUnread { cause: "the listing did not reach its completion marker" as NonEmptyStr }
+      } else {
+        DirectoryListed { names: filter(lines.take(n: count(lines) - 1), name => name != "") }
+      }
+  }
+}
+
+func observe_directory_population(ctx: SparkRemoteExecutionContext, host: HostIdentity, dir: NonEmptyStr) -> DirectoryPopulationReading
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: directory_population_argv(dir: dir))
+  if !remote_run_succeeded(r: r) {
+    DirectoryUnread { cause: join(["the directory ", dir as String, " could not be listed: ", remote_run_text(r: r)], "") as NonEmptyStr }
+  } else {
+    directory_population_of(raw: remote_run_stdout(r: r))
+  }
+}
+
+// sha256sum IS THE MEMBER'S OWN CONTENT IDENTITY AND IS NOT THE MANIFEST REFERENCE. The reference is a
+// structural identity over the canonical axis material; these digests are what make the members
+// verifiable, and they are cryptographic where the reference is not. The command is not a pipeline:
+// `sha256sum` alone decides the status, and the hex is cut from its output afterwards.
+data path_not_present_wire: String = "ABSENT"
+
 fn path_digest_argv(path: NonEmptyStr) -> List<String> {
   ["sh", "-c", join([
-    "P=", path as String,
-    "; if [ -e \"$P\" ]; then sha256sum -b \"$P\" | cut -c1-64; else echo ABSENT; fi",
+    "P=", shell_quote(arg: path as String),
+    "; if [ -e \"$P\" ]; then sha256sum -b -- \"$P\"; else echo ", path_not_present_wire, "; fi",
   ], "")]
 }
 
-fn snapshot_member_path(snapshot_dir: NonEmptyStr, member: NonEmptyStr) -> NonEmptyStr {
-  join([snapshot_dir as String, "/", member as String], "") as NonEmptyStr
-}
-
-data snapshot_member_absent_wire: String = "ABSENT"
-
-// A DIGEST THAT DOES NOT PARSE IS UNESTABLISHED, NOT ABSENT. std.content_hash sha256_hex_digest
-// refuses a malformed hex rather than answering, and that refusal is carried through here: a truncated
-// read, a permission error that printed to stdout, or a tool that changed its output format all land
-// in the arm that says nobody established the value -- never in the arm that says there was nothing.
-fn snapshot_member_reading(raw: String, member: NonEmptyStr) -> ServingCoordinateReading {
-  if raw == snapshot_member_absent_wire {
-    CoordinateAbsentByObservation
+fn path_digest_of(raw: String, path: NonEmptyStr) -> PathDigestReading {
+  if raw == path_not_present_wire {
+    PathNotPresent
   } else {
-    match sha256_hex_digest(hex: raw) {
-      Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
-      Absent => CoordinateUnestablished {
-        obligation: join([
-          "the member ", member as String, " at the mounted snapshot answered neither a sha256 digest nor ABSENT",
-        ], "") as NonEmptyStr,
-      }
+    match split(s: raw, delimiter: " ").first() {
+      Absent => PathDigestUnread { cause: join(["the path ", path as String, " answered nothing"], "") as NonEmptyStr }
+      Present { value: hex } =>
+        match sha256_hex_digest(hex: hex) {
+          Present { value: d } => PathDigestObserved { hash: Sha256Hash(d) }
+          Absent => PathDigestUnread {
+            cause: join(["the path ", path as String, " answered neither a sha256 digest nor ", path_not_present_wire], "") as NonEmptyStr,
+          }
+        }
     }
   }
 }
 
-func observe_snapshot_member(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, member: NonEmptyStr,
-) -> ServingCoordinateReading
-  uses net: Network
-{
-  let r = spark_exec(ctx: ctx, host: host, argv: path_digest_argv(path: snapshot_member_path(snapshot_dir: snapshot_dir, member: member)))
-  if !remote_run_succeeded(r: r) {
-    CoordinateUnestablished {
-      obligation: join([
-        "the member ", member as String, " could not be read on ", host as String, ": ", remote_run_text(r: r),
-      ], "") as NonEmptyStr,
-    }
-  } else {
-    snapshot_member_reading(raw: remote_run_stdout(r: r), member: member)
-  }
-}
-
-
-// THE OVERRIDE IS READ AT ITS OWN PATH. This exists so observe_effective_chat_template can hash a
-// template the launch named wherever it lives, rather than forcing every reading through the snapshot.
-func observe_path_digest(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, path: NonEmptyStr,
-) -> ServingCoordinateReading
+func observe_path_digest(ctx: SparkRemoteExecutionContext, host: HostIdentity, path: NonEmptyStr) -> PathDigestReading
   uses net: Network
 {
   let r = spark_exec(ctx: ctx, host: host, argv: path_digest_argv(path: path))
   if !remote_run_succeeded(r: r) {
-    CoordinateUnestablished {
-      obligation: join(["the path ", path as String, " could not be read on ", host as String], "") as NonEmptyStr,
-    }
+    PathDigestUnread { cause: join(["the path ", path as String, " could not be read: ", remote_run_text(r: r)], "") as NonEmptyStr }
   } else {
-    snapshot_member_reading(raw: remote_run_stdout(r: r), member: path)
+    path_digest_of(raw: remote_run_stdout(r: r), path: path)
   }
 }
 
-data snapshot_member_model_config: NonEmptyStr = "config.json" as NonEmptyStr
-data snapshot_member_tokenizer: NonEmptyStr = "tokenizer.json" as NonEmptyStr
-data snapshot_member_tokenizer_config: NonEmptyStr = "tokenizer_config.json" as NonEmptyStr
-data snapshot_member_special_tokens: NonEmptyStr = "special_tokens_map.json" as NonEmptyStr
-data snapshot_member_chat_template: NonEmptyStr = "chat_template.jinja" as NonEmptyStr
-data snapshot_member_generation_defaults: NonEmptyStr = "generation_config.json" as NonEmptyStr
-data snapshot_member_processor_config: NonEmptyStr = "processor_config.json" as NonEmptyStr
-
-// ── MODEL-SIDE CODE IS A POPULATION, NOT A FILE ────────────────────────────────────────────────
-//
-// A REPOSITORY EITHER SHIPS PYTHON THE ENGINE MAY IMPORT OR IT DOES NOT, and which files those are is
-// not knowable from a fixed name. So this counts them and reads the count: zero is a measurement that
-// the repository ships none, and any other number must reach identity -- which at this rung it cannot
-// do faithfully, because a count is not a content identity. The reading therefore refuses rather than
-// hashing a number, and the trigger is the same per-file enumeration the checkpoint rung waits on.
-fn snapshot_model_side_code_argv(snapshot_dir: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "ls ", snapshot_dir as String, "/*.py 2>/dev/null | wc -l",
-  ], "")]
-}
-
-func observe_model_side_code(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr,
-) -> ServingCoordinateReading
+func observe_file_text(ctx: SparkRemoteExecutionContext, host: HostIdentity, path: NonEmptyStr) -> FileTextReading
   uses net: Network
 {
-  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_model_side_code_argv(snapshot_dir: snapshot_dir))
+  let r = spark_exec(ctx: ctx, host: host, argv: ["cat", "--", path as String])
   if !remote_run_succeeded(r: r) {
-    CoordinateUnestablished {
-      obligation: join(["the model-side code population could not be counted on ", host as String], "") as NonEmptyStr,
-    }
+    FileTextUnread { cause: join(["the file ", path as String, " could not be read: ", remote_run_text(r: r)], "") as NonEmptyStr }
   } else {
-    if remote_run_stdout(r: r) == "0" {
-      CoordinateAbsentByObservation
-    } else {
-      CoordinateUnestablished {
-        obligation: join([
-          "the repository ships ", remote_run_stdout(r: r),
-          " model-side python files and this rung cannot identify their content; the trigger is per-file enumeration",
-        ], "") as NonEmptyStr,
-      }
-    }
+    FileTextRead { text: remote_run_stdout(r: r) }
   }
 }
 
-// ── THE CHECKPOINT COORDINATE AT THE REVISION RUNG ─────────────────────────────────────────────
-//
-// THE VALUE IS DERIVED FROM THE REPOSITORY AND THE IMMUTABLE REVISION, and the rung beside it says so.
-// This is NOT a per-file content manifest and must never be cited as one: what it identifies is which
-// upstream revision was materialised, verified by the Hub client's own per-file integrity check rather
-// than by a manifest retained here. gunbc.spark.model_snapshot_acquisition declares that weakening and
-// names the tree API that would close it.
-//
-// BUT THE STRINGS ALONE PROVE ONLY THAT A CALLER SUPPLIED THEM. A first cut built this coordinate
-// straight from its two parameters, so the source identity asserted "repo R at revision V" on the
-// strength of nobody having looked -- while gunbc.spark.model_snapshot_materialize
-// spark_snapshot_observe, which runs `hf cache verify --fail-on-missing-files` and distinguishes
-// absent, verified, mismatched and unprobed, sat unused two modules away. The coordinate is now minted
-// only behind that observation.
-//
-// AND IT IS OBSERVED ON EVERY RANK, NOT ON THE HEAD. The deployment readback establishes that each
-// rank runs the same image, argv and model PATH; it cannot establish that the path holds the same
-// BYTES everywhere, because nothing it reads looks inside. A four-rank arm whose second host holds a
-// half-transferred snapshot at the right path satisfies every check the readback performs. So the
-// verification runs per host and one unverified rank refuses the whole coordinate -- which costs four
-// verifications per incarnation instead of one, and buys the difference between "the same path" and
-// "the same weights".
-// THE MATERIAL IS FRAMED, BECAUSE "@" BETWEEN TWO FREE STRINGS IS THE COLLISION THIS BRANCH JUST
-// FIXED ONE COMMIT EARLIER FOR LAUNCH IDENTITY. repo "a@b" with revision "c" and repo "a" with
-// revision "b@c" join identically, so two different upstream subjects would share one checkpoint
-// coordinate -- the same defect, reintroduced in the same stack, three declarations away from its
-// own annotation. Field tags and a record separator make it injective over this domain.
-fn checkpoint_revision_material(repo: NonEmptyStr, revision: NonEmptyStr) -> NonEmptyStr {
-  join([
-    join(["repo", "\u{1f}", repo as String], ""),
-    join(["revision", "\u{1f}", revision as String], ""),
-  ], "\u{1e}") as NonEmptyStr
-}
-
-fn checkpoint_revision_reading(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingCoordinateReading {
-  CoordinateObserved {
-    hash: content_hash_of_value(value: checkpoint_revision_material(repo: repo, revision: revision)),
-  }
-}
-
-fn checkpoint_revision_rung(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingSourceEvidenceRung {
-  RevisionAddressedUpstreamVerification { authority: repo, revision: revision }
-}
-
-func observe_serving_source(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity,
-  snapshot_dir: NonEmptyStr, repo: NonEmptyStr, revision: NonEmptyStr, container: NonEmptyStr,
-) -> ServingSourceResolution
-  uses net: Network
-{
-  resolve_serving_source(
-    checkpoint: checkpoint_revision_reading(repo: repo, revision: revision),
-    model_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_model_config),
-    tokenizer: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer),
-    tokenizer_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer_config),
-    special_tokens: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_special_tokens),
-    chat_template: observe_effective_chat_template(
-      ctx: ctx, host: host, snapshot_dir: snapshot_dir,
-      origin: observe_chat_template_origin(ctx: ctx, host: host, snapshot_dir: snapshot_dir, container: container)),
-    model_side_code: observe_model_side_code(ctx: ctx, host: host, snapshot_dir: snapshot_dir),
-    generation_defaults: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_generation_defaults),
-    processor_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_processor_config),
-    rung: checkpoint_revision_rung(repo: repo, revision: revision),
-  )
-}
-
-// ── THE RUNTIME CLOSURE ────────────────────────────────────────────────────────────────────────
-//
-// THE IMAGE CONTENT ID IS THE RUNTIME'S IDENTITY AND IT IS ALREADY A SHA-256. A first-party built
-// image has NO registry digest -- measured on this fleet: docker inspect of the derived runtime
-// returns RepoDigests [] because it was built locally and loaded from an archive -- so the only
-// content identity it has is its own Id, which is exactly what this reads.
-//
-// THE EXTENSION POPULATION IS ABSENT HERE AND THAT IS A MEASUREMENT ABOUT THIS ARM. Its three
-// FlashInfer wheels were installed INTO the derived image at build time, so they are inside the image
-// content id rather than beside it; an arm that installed wheels at container start would read a real
-// population here. Absent means "no runtime artifact outside the image", not "no extensions".
+// THE IMAGE CONTENT ID IS THE RUNTIME'S IDENTITY AND IT IS ALREADY A SHA-256. A first-party built image
+// has NO registry digest -- measured on this fleet: docker inspect of the derived runtime returns
+// RepoDigests [] because it was built locally and loaded from an archive -- so its own Id is the only
+// content identity it has.
 fn runtime_image_id_argv(container: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "docker inspect -f '", go_template_action(body: ".Image"), "' ", container as String, " | sed 's/^sha256://'",
-  ], "")]
+  ["docker", "inspect", "-f", go_template_action(body: ".Image"), container as String]
 }
 
-func observe_runtime_image(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr,
-) -> ServingCoordinateReading
+fn strip_sha256_prefix(raw: String) -> String {
+  if starts_with(s: raw, prefix: "sha256:") { substring(s: raw, start: 7, end: string_length(s: raw)) } else { raw }
+}
+
+func observe_runtime_image(ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr) -> ServingCoordinateReading
   uses net: Network
 {
   let r = spark_exec(ctx: ctx, host: host, argv: runtime_image_id_argv(container: container))
@@ -298,7 +276,7 @@ func observe_runtime_image(
       obligation: join(["the running container's image id could not be read on ", host as String], "") as NonEmptyStr,
     }
   } else {
-    match sha256_hex_digest(hex: remote_run_stdout(r: r)) {
+    match sha256_hex_digest(hex: strip_sha256_prefix(raw: remote_run_stdout(r: r))) {
       Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
       Absent => CoordinateUnestablished {
         obligation: "the running container reported an image id that is not a sha256 digest" as NonEmptyStr,
@@ -307,653 +285,367 @@ func observe_runtime_image(
   }
 }
 
-func observe_serving_runtime(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, plan: ArmLaunchPlan,
-) -> ServingRuntimeResolution
-  uses net: Network
-{
-  resolve_serving_runtime(
-    runtime_image: observe_runtime_image(ctx: ctx, host: host, container: container),
-    runtime_extensions: CoordinateAbsentByObservation,
-    runtime_configuration: observe_semantic_runtime_configuration(plan: plan),
-  )
+// ── A MEMBER'S COORDINATE, DECIDED FROM THE LISTING AND THE DIGEST TOGETHER ───────────────────
+//
+// ABSENCE IS READ FROM A SUCCESSFUL LISTING, NEVER FROM A DIGEST READ. A name the listing did not carry
+// is AbsentByObservation; a name it did carry is digested, and a digest read that then finds nothing is
+// a CONTRADICTION between two readings of one directory -- which is unestablished, not absent.
+data snapshot_member_model_config: NonEmptyStr = "config.json" as NonEmptyStr
+data snapshot_member_tokenizer: NonEmptyStr = "tokenizer.json" as NonEmptyStr
+data snapshot_member_tokenizer_config: NonEmptyStr = "tokenizer_config.json" as NonEmptyStr
+data snapshot_member_special_tokens: NonEmptyStr = "special_tokens_map.json" as NonEmptyStr
+data snapshot_member_generation_defaults: NonEmptyStr = "generation_config.json" as NonEmptyStr
+data snapshot_member_processor_config: NonEmptyStr = "processor_config.json" as NonEmptyStr
+
+fn member_path(dir: NonEmptyStr, member: String) -> NonEmptyStr {
+  join([dir as String, "/", member], "") as NonEmptyStr
 }
 
-
-// ── EXECUTING THE OBSERVATION AGAINST A RUNNING INCARNATION ────────────────────────────────────
-//
-// THIS ENTRY EXISTS SO THE PRODUCER IS PROVEN BY EXECUTION RATHER THAN BY COMPILING. Every coordinate
-// above is a remote read, and a module full of readings that nobody has run is the specification
-// -without-execution DESIGN section 5 names: it typechecks, the symbols resolve, and not one digest
-// has been taken. What this prints is the pair of references a turn's Work identity would be built
-// from, or the obligations that stopped them being built.
-data glm_native_snapshot_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
-
-data glm_native_repo: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
-data glm_native_revision: NonEmptyStr = "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
-data glm_native_endpoint: NonEmptyStr = "192.168.1.236:30000" as NonEmptyStr
-
-data glm_native_container: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
-// THE HOST IS NAMED BY THE FLEET ROSTER, NOT SPELLED HERE. A first cut wrote the machine's own
-// hostname as a literal and every leg refused: "No ED25519 host key is known for spark-0c75 and you
-// have requested strict checking". The trust anchor keys on the fleet's identity for that host, and
-// a second spelling of a host is the DESIGN section 3 nickname -- which here does not merely
-// duplicate a name, it addresses a machine the trust policy cannot vouch for.
-data glm_native_provenance_host: HostIdentity = operator_host_srv9
-
-// ── A SUCCESSFUL OBSERVATION MUST NOT LEAVE THROUGH THE FAILURE ARM ───────────────────────────
-//
-// THIS ENTRY REPORTED EVERY RESULT AS exit_failure, INCLUDING THE ONES THAT WORKED. It was written to
-// print the derived references, and exit_failure was the arm that printed -- so every live receipt this
-// producer has produced so far arrived through a terminal that says the run failed, and a reader
-// consulting the exit status would have concluded the opposite of what happened. It is the same
-// asymmetry gunbc.spark.native_cutover_wet carried, where only refusals spoke.
-//
-// THE RECEIPT IS WRITTEN RATHER THAN PRINTED for the same reason it is there: a provenance producer
-// whose output exists only in a log line cannot be consumed by anything.
-data incarnation_receipt_path: String = "target/spark-incarnation-provenance-receipt.txt"
-
-// ── THE LAUNCH IDENTITY IS OBSERVED, NOT SUPPLIED ─────────────────────────────────────────────
-//
-// A PROCESS-START FIELD A CALLER TYPES IN IS NOT A LAUNCH IDENTITY. It is the container's own creation
-// instant that distinguishes one run of an endpoint from the next, so it is read from the daemon --
-// and read AGAIN after the deployment has been assessed, because a restart between those two moments
-// would leave an acceptance describing a process that is no longer answering. Equal before and after
-// is the weakest statement that rules that out.
-fn container_started_at_argv(container: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "docker inspect -f '", go_template_action(body: ".State.StartedAt"), "' ", container as String,
-  ], "")]
-}
-
-// THE PLAN IS BUILT AT THE FRACTION THE ARM IS ACTUALLY CARRYING. The memory fraction is resolved per
-// attempt from observed device supply, so two correct launches of one arm can carry different values --
-// and a comparison plan built at any fixed fraction reads a converged deployment as divergent. This is
-// the same recovery gunbc.spark.native_cutover_wet performs before its own readback.
-fn incarnation_envelope(basis_points: Nat) -> ResolvedDeviceMemoryEnvelope {
-  ResolvedForAttempt {
-    basis_points: basis_points,
-    binding_node_rank: 0,
-    policy: glm_native_device_memory_policy,
-    attempt: "incarnation-provenance" as NonEmptyStr,
-    standings: [],
+fn listing_names(listing: DirectoryPopulationReading) -> List<String> {
+  match listing {
+    DirectoryListed { names: ns } => ns
+    DirectoryUnread { cause: _ } => []
   }
 }
 
-func observe_launch_identity(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, endpoint: NonEmptyStr,
-) -> VllmEndpointProcessLaunch?
-  uses net: Network
-{
-  let r = spark_exec(ctx: ctx, host: host, argv: container_started_at_argv(container: container))
-  if !remote_run_succeeded(r: r) { none }
-  else {
-    if remote_run_stdout(r: r) == "" { none }
-    else {
-      Present {
-        value: vllm_endpoint_process_launch(
-          group: FabricGroupB, endpoint: endpoint,
-          process_start_field: remote_run_stdout(r: r) as NonEmptyStr),
-      }
-    }
-  }
+fn listing_carries(listing: DirectoryPopulationReading, name: String) -> Bool {
+  any(listing_names(listing: listing), n => n == name)
 }
 
-// ── ONE OBSERVATION TRANSACTION ───────────────────────────────────────────────────────────────
-//
-// THE SEAL REFUSED THIS FUNCTION AND THE REFUSAL WAS RIGHT. An earlier shape called
-// seal_serving_execution_closure here, pairing readings it happened to hold; the admission list caught
-// it, and the repair is not to widen the list but to go through the producer -- which means this entry
-// must now do what a producer needs: observe the launch, assess the deployment, observe the closure's
-// halves, and bind them together or refuse.
-func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
-  uses net: Network
-{
-  match observe_launch_identity(
-    ctx: ctx, host: glm_native_provenance_host,
-    container: glm_native_container, endpoint: glm_native_endpoint,
-  ) {
-    Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the launch's own start instant could not be read, so there is no launch to bind to")
-    Present { value: launch_before } =>
-      match glm_native_tp4_nodes() {
-        ArmNodeRosterRefused { cause: c } => exit_failure(reason: join(["INCARNATION UNESTABLISHED: ", c as String], ""))
-        ArmNodesResolved { nodes: ns, master: _ } =>
-      match ns.first() {
-        Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the roster names no head rank")
-        Present { value: head } =>
-      match observe_rank_utilization_basis_points(ctx: ctx, node: head) {
-        Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the running arm's memory fraction could not be read, so no plan can be built at the fraction it carries")
-        Present { value: running_bp } => {
-      let plan = glm_native_tp4_launch_plan(envelope: incarnation_envelope(basis_points: running_bp))
-      let acceptance = accept_deployment(inspection: inspect_native_deployment(
-        subject: "the native four-rank deployment" as NonEmptyStr,
-        plan: plan,
-        reading: observe_native_population(ctx: ctx, plan: plan),
-      ))
-      let source = observe_serving_source(
-        ctx: ctx, host: glm_native_provenance_host,
-        snapshot_dir: glm_native_snapshot_dir, repo: glm_native_repo,
-        revision: glm_native_revision, container: glm_native_container)
-      let runtime = observe_serving_runtime(
-        ctx: ctx, host: glm_native_provenance_host, container: glm_native_container, plan: plan)
-      match observe_launch_identity(
-        ctx: ctx, host: glm_native_provenance_host,
-        container: glm_native_container, endpoint: glm_native_endpoint,
-      ) {
-        Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the launch could not be re-read after the assessment, so nothing establishes that the process assessed is the process still answering")
-        Present { value: launch_after } =>
-          if !vllm_endpoint_process_launch_is(launch: launch_before, other: launch_after) {
-            exit_failure(reason: "INCARNATION UNESTABLISHED: the endpoint restarted during the observation, so the acceptance describes a process that is no longer answering")
-          } else {
-            match bind_incarnation(
-              launch: launch_after, acceptance: acceptance,
-              ranks_required: count(plan_lines(plan: plan)),
-              source: source, runtime: runtime,
-            ) {
-              IncarnationUnestablished { obligations: os } =>
-                exit_failure(reason: join([
-                  "INCARNATION UNESTABLISHED: ", join(map(os, o => o as String), "; "),
-                ], ""))
-              IncarnationBound { provenance: p } => {
-                let body = join([
-                  "INCARNATION OBSERVED -- launch=", vllm_endpoint_process_launch_key(launch: p.launch) as String,
-                  " source=", serving_execution_source_ref(c: p.execution) as String,
-                  " runtime=", serving_execution_runtime_ref(c: p.execution) as String,
-                  " ranks=", to_string(p.evidence.ranks_agreed),
-                  " rung=", serving_source_rung_wire(rung: p.execution.source.rung) as String,
-                ], "")
-                let w = Filesystem.Write(path: incarnation_receipt_path, content: body)
-                if w.success { ExitSuccess } else { exit_failure(reason: body) }
-              }
-            }
-          }
-      }
-    }}}}
-  }
-}
-
-func glm_incarnation_provenance_wet() -> ProcessExit
-  uses net: Network
-{
-  let now = clock_now_probed_at()
-  match observe_executor_reach() {
-    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["incarnation probe: ", c], ""))
-    ExecutorReachKnown { short_hostname: _, path: path } =>
-      match read_bootstrap_credential() {
-        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
-        BootstrapCredentialReady { secret: administrator } =>
-          match fleet_ssh_attempt_identity(raw: "incarnation-provenance") {
-            Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
-            Present { value: attempt } => {
-              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-              match fleet_openssh_trust_policy_of(outcome: materialization) {
-                Absent => exit_failure(reason: join([
-                  "trust could not be established, so no leg ran: ",
-                  known_hosts_materialization_receipt(outcome: materialization),
-                ], ""))
-                Present { value: trust } =>
-                  match with_materialized_ssh_key_file(
-                    identity_file_name: "gunbc-incarnation-provenance-admin-password" as NonEmptyStr,
-                    secret_bytes: administrator as Secret,
-                    use: fn(file) {
-                      observe_glm_incarnation(
-                        ctx: SparkRemoteExecutionContext {
-                          trust: trust,
-                          reach_path: path,
-                          administrator: administrator as Secret,
-                          administrator_file: file,
-                        },
-                      )
-                    },
-                  ) {
-                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                    MaterializedSshKeyFileBracketCompleted { value: v } => v
-                  }
-              }
-            }
-          }
-      }
-  }
-}
-
-
-// ── BINDING THE CLOSURE TO THE EXACT LAUNCH THAT REALIZES IT ───────────────────────────────────
-//
-// A SOURCE AND A RUNTIME ARE NOT YET AN INCARNATION. What makes them one is evidence that THIS running
-// launch was configured from THOSE closures, and gunbc.spark.vllm_endpoint_process_launch is explicit
-// that its own carrier establishes only the API process lifetime -- not the engine core, not the rank
-// population, not the runtime image, not the loaded model. So the launch identity is joined here to a
-// privileged observation rather than trusted to speak for those facts itself.
-//
-// WORK IDENTITY MUST NOT CONTAIN THE LAUNCH AND OFFER IDENTITY MUST. Restarting the same bytes is the
-// same semantic Work and a different offer, so the launch sits BESIDE the execution closure in this
-// receipt rather than inside the manifests: the closure answers "what would this compute", the launch
-// answers "which process is currently answering", and a consumer needs both to know that a particular
-// endpoint may be asked for a particular Work.
-type VllmIncarnationEvidence sole_constructor {
-  ranks_agreed: Nat
-  ranks_required: Nat
-  image_digest: NonEmptyStr
-  model_path: NonEmptyStr
-}
-
-type VllmServingIncarnationProvenance sole_constructor {
-  launch: VllmEndpointProcessLaunch
-  execution: ServingTurnExecutionClosure
-  evidence: VllmIncarnationEvidence
-}
-
-type VllmIncarnationOutcome
-  = IncarnationBound { provenance: VllmServingIncarnationProvenance }
-  | IncarnationUnestablished { obligations: List<NonEmptyStr> }
-
-// THE DEPLOYMENT MUST HAVE BEEN ACCEPTED, AND A PARTIAL POPULATION IS NOT AN ACCEPTANCE. The readback
-// already compares every rank's image, engine arguments, checkpoint revision, host and bound fabric
-// interface and refuses on any divergence, so this consumes that verdict rather than restating the
-// comparison -- and it additionally requires the agreed population to be the REQUIRED one, because a
-// receipt that says three ranks agreed is a receipt about three ranks.
-fn incarnation_deployment_obligations(acceptance: DeploymentAcceptance, ranks_required: Nat) -> List<NonEmptyStr> {
-  match acceptance {
-    DeploymentRejected { deviations: ds } =>
-      [join(["the deployment DIVERGED from the plan: ", deployment_deviations_text(ds: ds)], "") as NonEmptyStr]
-    DeploymentUnverified { unknowns: us } =>
-      [join(["the deployment readback could not establish every fact it must assert: ", deployment_unknowns_text(us: us)], "") as NonEmptyStr]
-    DeploymentUnverifiable { cause: c } =>
-      [join(["the deployment could not be assessed at all: ", c as String], "") as NonEmptyStr]
-    DeploymentAccepted { receipt: r } =>
-      if r.ranks_agreed == ranks_required { [] } else {
-        [join([
-          "the deployment was accepted over ", to_string(r.ranks_agreed),
-          " ranks and this topology requires ", to_string(ranks_required),
-        ], "") as NonEmptyStr]
-      }
-  }
-}
-
-// ── THE ACCEPTANCE AND THE MANIFESTS MUST DESCRIBE ONE THING ──────────────────────────────────
-//
-// OBSERVED IN THE SAME TRANSACTION IS NOT THE SAME AS JOINED. The acceptance carries the image every
-// rank is running and the model path they were launched against; the runtime manifest carries an image
-// this module read separately. Storing both and comparing neither would admit a provenance whose
-// acceptance describes one image and whose runtime closure names another -- each fact true, the
-// conjunction false, which is the shape of every defect this vertical exists to prevent.
-//
-// THE COMPARISON IS EXACT BECAUSE BOTH SIDES RENDER THE SAME WAY. The readback reads the container's
-// .Image, which is "sha256:<hex>"; the runtime coordinate is a Sha256Hash whose serialization is
-// "sha256:<hex>". No normalization is invented to make them meet.
-fn runtime_image_agreement(receipt_image: NonEmptyStr, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
-  match runtime {
-    RuntimeManifestUnestablished { obligations: _ } => []
-    RuntimeManifestResolved { manifest: m } =>
-      match serving_runtime_coordinate(m: m, axis: RuntimeImageAxis) {
-        CoordinateAbsent => [
-          "the accepted deployment names an image and the runtime closure observed none" as NonEmptyStr,
-        ]
-        CoordinateContent { hash: h } =>
-          if (serialize_content_hash(hash: h) as String) == (receipt_image as String) { [] } else {
-            [join([
-              "the accepted deployment runs image ", receipt_image as String,
-              " and the runtime closure was observed from ", serialize_content_hash(hash: h) as String,
-            ], "") as NonEmptyStr]
-          }
-      }
-  }
-}
-
-fn acceptance_image_obligations(acceptance: DeploymentAcceptance, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
-  match acceptance {
-    DeploymentRejected { deviations: _ } => []
-    DeploymentUnverified { unknowns: _ } => []
-    DeploymentUnverifiable { cause: _ } => []
-    DeploymentAccepted { receipt: r } => runtime_image_agreement(receipt_image: r.image_digest, runtime: runtime)
-  }
-}
-
-fn bind_incarnation(
-  launch: VllmEndpointProcessLaunch,
-  acceptance: DeploymentAcceptance,
-  ranks_required: Nat,
-  source: ServingSourceResolution,
-  runtime: ServingRuntimeResolution,
-) -> VllmIncarnationOutcome {
-  let deployment_obligations = concat(
-    incarnation_deployment_obligations(acceptance: acceptance, ranks_required: ranks_required),
-    acceptance_image_obligations(acceptance: acceptance, runtime: runtime))
-  match seal_serving_execution_closure(source: source, runtime: runtime, receipt: vllm_incarnation_receipt) {
-    ExecutionClosureUnestablished { obligations: os } =>
-      IncarnationUnestablished { obligations: concat(deployment_obligations, os) }
-    ExecutionClosureResolved { closure: c } =>
-      if count(deployment_obligations) != 0 {
-        IncarnationUnestablished { obligations: deployment_obligations }
+fn member_coordinate(port: NativeIncarnationPort, host: HostIdentity, dir: NonEmptyStr, listing: DirectoryPopulationReading, member: NonEmptyStr) -> ServingCoordinateReading {
+  match listing {
+    DirectoryUnread { cause: c } => CoordinateUnestablished { obligation: c }
+    DirectoryListed { names: _ } =>
+      if !listing_carries(listing: listing, name: member as String) {
+        CoordinateAbsentByObservation
       } else {
-        match acceptance {
-          DeploymentRejected { deviations: _ } => IncarnationUnestablished { obligations: deployment_obligations }
-          DeploymentUnverified { unknowns: _ } => IncarnationUnestablished { obligations: deployment_obligations }
-          DeploymentUnverifiable { cause: _ } => IncarnationUnestablished { obligations: deployment_obligations }
-          DeploymentAccepted { receipt: r } =>
-            IncarnationBound {
-              provenance: VllmServingIncarnationProvenance {
-                launch: launch,
-                execution: c,
-                evidence: VllmIncarnationEvidence {
-                  ranks_agreed: r.ranks_agreed,
-                  ranks_required: ranks_required,
-                  image_digest: r.image_digest,
-                  model_path: r.model_path,
-                },
-              },
-            }
+        let digest = port.path_digest
+        match digest(host, member_path(dir: dir, member: member as String)) {
+          PathDigestObserved { hash: h } => CoordinateObserved { hash: h }
+          PathDigestUnread { cause: c } => CoordinateUnestablished { obligation: c }
+          PathNotPresent => CoordinateUnestablished {
+            obligation: join(["the listing carried ", member as String, " and the digest read then found no such path"], "") as NonEmptyStr,
+          }
         }
       }
   }
 }
 
-// ── PROVENANCE FOR ONE LAUNCH MAY NEVER BIND ANOTHER ───────────────────────────────────────────
+// ── MODEL-SIDE CODE IS A POPULATION, NOT A FILE ───────────────────────────────────────────────
 //
-// TWO GROUPS ANSWERING THE SAME ALIAS IS THE CASE THIS FORBIDS. A receipt established against group A's
-// launch says nothing about what group B loaded, and admitting it because both advertise one model name
-// would let a turn be placed on an engine nobody observed. The comparison is on the launch's own offer
-// key, which gunbc.spark.vllm_endpoint_process_launch already folds from every field of the carrier --
-// so a restart, a different endpoint or a different group is a different launch by construction.
-// THE COMPARISON IS FIELD BY FIELD BECAUSE THE OFFER KEY IS NOT INJECTIVE. That key renders
-// group@endpoint@process_start_field over two UNCONSTRAINED NonEmptyStr fields, so an endpoint of
-// "a@b" with a start field of "c" and an endpoint of "a" with a start field of "b@c" serialise
-// identically -- and comparing keys would then report two different launches as one, which is exactly
-// the confusion this predicate exists to prevent. Fixture values rarely contain "@", so a key
-// comparison can stay green while being wrong; the structural comparison cannot.
-fn incarnation_applies_to(p: VllmServingIncarnationProvenance, launch: VllmEndpointProcessLaunch) -> Bool {
-  vllm_endpoint_process_launch_is(launch: p.launch, other: launch)
-}
-
-// ── A LOOKUP THAT RESOLVES AMBIGUITY BY LIST ORDER IS NOT A LOOKUP ────────────────────────────
-//
-// TWO PROVENANCE ROWS FOR ONE LAUNCH IS A CONTRADICTION, NOT A CHOICE. The previous body filtered and
-// took the first, so two rows disagreeing about source or runtime would silently elect whichever the
-// caller happened to hold first -- and the disagreement is exactly the condition under which a turn
-// must not be placed at all. Absence and contradiction are different answers with different remedies:
-// one says nobody observed this launch, the other says two observations of it do not agree.
-type IncarnationLookup
-  = IncarnationFound { provenance: VllmServingIncarnationProvenance }
-  | IncarnationMissing
-  | IncarnationAmbiguous { matches: Nat }
-
-fn incarnation_for_launch(
-  candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
-) -> IncarnationLookup {
-  let matches = filter(candidates, p => incarnation_applies_to(p: p, launch: launch))
-  if count(matches) > 1 {
-    IncarnationAmbiguous { matches: count(matches) }
-  } else {
-    match matches.first() {
-      Absent => IncarnationMissing
-      Present { value: p } => IncarnationFound { provenance: p }
+// ZERO PYTHON FILES IS A MEASUREMENT AND ANY OTHER NUMBER MUST REACH IDENTITY -- which at this rung it
+// cannot, because a count is not a content identity. So a non-zero population refuses rather than hashing
+// a number, and the trigger is the same per-file enumeration the checkpoint rung waits on.
+fn model_side_code_coordinate(listing: DirectoryPopulationReading) -> ServingCoordinateReading {
+  match listing {
+    DirectoryUnread { cause: c } => CoordinateUnestablished { obligation: c }
+    DirectoryListed { names: ns } => {
+      let code = filter(ns, n => ends_with(s: n, suffix: ".py"))
+      if count(code) == 0 {
+        CoordinateAbsentByObservation
+      } else {
+        CoordinateUnestablished {
+          obligation: join([
+            "the repository ships ", to_string(count(code)),
+            " model-side python files and this rung cannot identify their content; the trigger is per-file enumeration",
+          ], "") as NonEmptyStr,
+        }
+      }
     }
   }
 }
 
+// ── THE CHECKPOINT COORDINATE, MINTED ONLY BY THE RANK FOLD ───────────────────────────────────
+//
+// THE VALUE IS DERIVED FROM THE REPOSITORY AND THE IMMUTABLE REVISION, and the rung beside it says so:
+// this is NOT a per-file content manifest. What licenses it is the verification -- `hf cache verify
+// --fail-on-missing-files`, which checks every file of the revision against the Hub's own checksums --
+// having passed on every planned rank. checkpoint_coordinate_from_ranks is the one place that decides it.
+//
+// THE MATERIAL IS HASHED FIELD BY FIELD. A delimiter between two NonEmptyStr fields frames them only if
+// the type excludes the delimiter, and these types do not; hashing each field on its own and combining
+// the fixed-width digests leaves no boundary in any string for a field's content to move.
+fn checkpoint_revision_coordinate(repo: NonEmptyStr, revision: NonEmptyStr) -> ServingCoordinateReading {
+  CoordinateObserved {
+    hash: as_content_hash_structural(structural: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "repo" as NonEmptyStr, payload: content_hash_atom(value: repo)),
+      right: content_hash_tagged_structural(tag: "revision" as NonEmptyStr, payload: content_hash_atom(value: revision)),
+    )),
+  }
+}
 
-// ── WHICH TEMPLATE THE LAUNCH ACTUALLY USES, NOT EVERY TEMPLATE-SHAPED FILE PRESENT ────────────
+// EACH ARM OF THE OBSERVATION HAS ITS OWN REMEDY AND ONLY Verified LICENSES A COORDINATE. A rank
+// contributes its complaint or nothing; the coordinate is minted once, after every rank has none.
+fn rank_checkpoint_obligation(host: HostIdentity, observation: AcquisitionObservation) -> List<NonEmptyStr> {
+  match observation {
+    AcquisitionVerified => []
+    AcquisitionAbsent => [join(["the checkpoint is not installed on ", host as String], "") as NonEmptyStr]
+    AcquisitionDigestMismatch => [join(["verification refused the installed checkpoint on ", host as String], "") as NonEmptyStr]
+    AcquisitionProbeFailed { reason: r } =>
+      [join(["the checkpoint could not be verified on ", host as String, ": ", r as String], "") as NonEmptyStr]
+  }
+}
+
+// THE POPULATION IS THE PLAN'S, AND ONE DISSENTER REFUSES THE COORDINATE. The deployment readback
+// proves each rank runs the same model PATH; only a verification on each rank proves the path holds the
+// same BYTES, so a rank whose snapshot was half-transferred satisfies every check the readback performs.
+fn checkpoint_coordinate_from_ranks(port: NativeIncarnationPort, plan: ArmLaunchPlan, crow: ServingCheckpointRow) -> ServingCoordinateReading {
+  let lines = plan_lines(plan: plan)
+  if count(lines) == 0 {
+    CoordinateUnestablished { obligation: "the plan names no rank, so the checkpoint was verified nowhere" as NonEmptyStr }
+  } else {
+    let snapshot = serving_checkpoint_snapshot(row: crow, identity: crow.repo.path)
+    let verify = port.checkpoint_verification
+    let obligations = flat_map(lines, l => rank_checkpoint_obligation(host: l.node.host, observation: verify(l.node.host, snapshot)))
+    if count(obligations) != 0 {
+      CoordinateUnestablished { obligation: join(map(obligations, o => o as String), "; ") as NonEmptyStr }
+    } else {
+      checkpoint_revision_coordinate(repo: crow.repo.path, revision: crow.revision)
+    }
+  }
+}
+
+fn checkpoint_rung(crow: ServingCheckpointRow) -> ServingSourceEvidenceRung {
+  RevisionAddressedUpstreamVerification { authority: crow.repo.path, revision: crow.revision }
+}
+
+// ── WHICH TEMPLATE THE LAUNCH ACTUALLY USES ───────────────────────────────────────────────────
 //
-// HASHING chat_template.jinja BECAUSE IT IS THERE IS NOT THE SAME QUESTION. A snapshot may carry a
-// template the launch never selects, a launch may override it on the command line, and a tokenizer
-// configuration may carry one inline -- and the source identity must name the one that SHAPED THE
-// REQUEST. The previous observation read the repository file unconditionally, which happens to be
-// right on this deployment and would be silently wrong on the next.
+// IDENTITY IS THE SELECTED TEMPLATE'S CONTENT AND ORIGIN IS EVIDENCE BESIDE IT. What this observer can
+// guarantee is that NO template the engine could load escapes identity: every upstream template locus is
+// either a template-shaped file in the snapshot, which is counted here, or an inline key inside
+// tokenizer_config.json or processor_config.json, each its own coordinate (transformers CHAT_TEMPLATE_FILE,
+// CHAT_TEMPLATE_DIR and LEGACY_PROCESSOR_CHAT_TEMPLATE_FILE, read at 5.17.0; the version inside the
+// runtime image is not established, which is why the match is a superset rather than that exact roster).
 //
-// IDENTITY IS THE SELECTED TEMPLATE'S CONTENT AND ORIGIN IS EVIDENCE BESIDE IT. Two launches whose
-// effective templates are byte-identical compute the same thing whichever path the bytes came from,
-// so origin must not enter the coordinate; what origin answers is how a reader would reproduce the
-// selection, which is a different question from what the engine did.
+// WHAT IT DOES NOT GUARANTEE, STATED RATHER THAN IMPLIED: OVER-DISTINCTION. Identical template bytes moved
+// from chat_template.jinja into tokenizer_config.json change the source reference, because one axis goes
+// absent while another changes digest. Two launches computing the same thing may therefore be two Works.
+// That is the conservative direction -- no two different computations can share one Work -- and the
+// annotation previously claimed the opposite property, that origin never enters identity.
 //
-// AMBIGUITY REFUSES RATHER THAN PICKING. More than one template-shaped file with nothing selecting
-// between them is a question this observer cannot answer, and answering it by convention -- first
-// alphabetically, or the one matching a known name -- would be a fabricated plausible output.
+// A LAUNCH OVERRIDE REFUSES UNTIL ITS INTERPRETATION IS MODELLED. vLLM's --chat-template takes a file path
+// OR a single-line template and decides which by attempting to open it, and a path it names is a CONTAINER
+// path; hashing either reading here would be a guess about a selection the engine made. No plan in this
+// repository passes the flag, so the refusal costs nothing today and names its trigger.
 type ChatTemplateOrigin
-  = TemplateFromLaunchOverride { path: NonEmptyStr }
-  | TemplateFromRepositoryFile { path: NonEmptyStr }
-  | TemplateInheritedFromTokenizerConfig
-  | TemplateSelectionAmbiguous { candidates: Nat }
+  = TemplateFromRepositoryFile { name: NonEmptyStr }
+  | TemplateInheritedFromConfiguration { tokenizer_config: Bool, processor_config: Bool }
+  | TemplateSelectionAmbiguous { candidates: List<String> }
+  | TemplateLaunchOverrideUnmodelled { value: NonEmptyStr }
   | TemplateOriginUnestablished { cause: NonEmptyStr }
+
+data chat_template_flag: String = "--chat-template"
+data chat_template_flag_assigned: String = "--chat-template="
+
+// THE OVERRIDE IS FOUND IN THE ACCEPTED PLAN'S ARGV, BOTH SPELLINGS, EXACTLY. The readback has already
+// proved every rank runs these words, so this reads a fact the deployment was shown to carry rather than
+// re-reading a container through `tr ',' | grep -A1`, which could not tell `--chat-template /p` from
+// `--chat-template=/p` and took the NEXT flag as the value of the second.
+type ChatTemplateOverride
+  = OverrideNotRequested
+  | OverrideRequested { value: NonEmptyStr }
+  | OverrideMalformed { cause: NonEmptyStr }
+
+fn value_after_word(argv: List<String>, word: String) -> String? {
+  match argv.first() {
+    Absent => none
+    Present { value: head } =>
+      if head == word {
+        argv.skip(n: 1).first()
+      } else {
+        value_after_word(argv: argv.skip(n: 1), word: word)
+      }
+  }
+}
+
+fn chat_template_override_in(argv: List<String>) -> ChatTemplateOverride {
+  let spaced = filter(argv, w => w == chat_template_flag)
+  let assigned = filter(argv, w => starts_with(s: w, prefix: chat_template_flag_assigned))
+  if count(spaced) + count(assigned) == 0 {
+    OverrideNotRequested
+  } else if count(spaced) + count(assigned) > 1 {
+    OverrideMalformed { cause: "the launch names --chat-template more than once" as NonEmptyStr }
+  } else if count(assigned) == 1 {
+    match assigned.first() {
+      Absent => OverrideMalformed { cause: "the assigned --chat-template word vanished between two readings of one list" as NonEmptyStr }
+      Present { value: w } => {
+        let v = substring(s: w, start: string_length(s: chat_template_flag_assigned), end: string_length(s: w))
+        if v == "" { OverrideMalformed { cause: "--chat-template= carries no value" as NonEmptyStr } } else { OverrideRequested { value: v as NonEmptyStr } }
+      }
+    }
+  } else {
+    match value_after_word(argv: argv, word: chat_template_flag) {
+      Absent => OverrideMalformed { cause: "--chat-template is the last word and carries no value" as NonEmptyStr }
+      Present { value: v } =>
+        if v == "" { OverrideMalformed { cause: "--chat-template carries an empty value" as NonEmptyStr } } else { OverrideRequested { value: v as NonEmptyStr } }
+    }
+  }
+}
+
+// A CASE-FOLDED SUBSTRING TEST OVER ASCII, because the observer it replaces matched `grep -i template` and
+// std carries no case fold; minting a general one here would be a string authority in a serving module.
+fn ascii_folded_code_point(cp: Int) -> Int {
+  if cp >= 65 && cp <= 90 { cp + 32 } else { cp }
+}
+
+fn folded_match_at(name: String, needle: String, at: Int, k: Int) -> Bool {
+  if k >= string_length(s: needle) {
+    true
+  } else if ascii_folded_code_point(cp: code_point(substring(s: name, start: at + k, end: at + k + 1)))
+      == code_point(substring(s: needle, start: k, end: k + 1)) {
+    folded_match_at(name: name, needle: needle, at: at, k: k + 1)
+  } else {
+    false
+  }
+}
+
+fn folded_contains_from(name: String, needle: String, at: Int) -> Bool {
+  if at + string_length(s: needle) > string_length(s: name) {
+    false
+  } else if folded_match_at(name: name, needle: needle, at: at, k: 0) {
+    true
+  } else {
+    folded_contains_from(name: name, needle: needle, at: at + 1)
+  }
+}
+
+fn template_shaped(name: String) -> Bool {
+  folded_contains_from(name: name, needle: "template", at: 0)
+}
+
+// AN INLINE KEY IS READ AS JSON STRUCTURE, NOT GREPPED AS TEXT. `grep -c '"chat_template"'` counted the
+// string anywhere in the file, and `|| echo 0` then emitted a second line; a parsed member lookup answers
+// exactly whether the top-level object carries the key, and a duplicated key refuses rather than choosing.
+type InlineTemplateReading
+  = InlineTemplatePresent
+  | InlineTemplateAbsent
+  | InlineTemplateUnread { cause: NonEmptyStr }
+
+fn inline_template_in(port: NativeIncarnationPort, host: HostIdentity, dir: NonEmptyStr, listing: DirectoryPopulationReading, member: NonEmptyStr) -> InlineTemplateReading {
+  if !listing_carries(listing: listing, name: member as String) {
+    InlineTemplateAbsent
+  } else {
+    let read = port.file_text
+    match read(host, member_path(dir: dir, member: member as String)) {
+      FileTextUnread { cause: c } => InlineTemplateUnread { cause: c }
+      FileTextRead { text: t } =>
+        match parse_json_document(s: t) {
+          JsonDocumentUnreadable { gap: g } =>
+            InlineTemplateUnread { cause: join([member as String, " is ", json_document_gap_text(gap: g)], "") as NonEmptyStr }
+          JsonDocumentParsed { value: doc } =>
+            match json_object_unique_member(v: doc, key: "chat_template") {
+              JsonMemberFound { value: _ } => InlineTemplatePresent
+              JsonMemberAbsent => InlineTemplateAbsent
+              JsonMemberDuplicated { count: n } =>
+                InlineTemplateUnread { cause: join([member as String, " carries chat_template ", to_string(n), " times"], "") as NonEmptyStr }
+              JsonMemberNotAnObject =>
+                InlineTemplateUnread { cause: join([member as String, " is not a JSON object"], "") as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+fn inline_template_is_present(r: InlineTemplateReading) -> Bool {
+  match r {
+    InlineTemplatePresent => true
+    InlineTemplateAbsent => false
+    InlineTemplateUnread { cause: _ } => false
+  }
+}
+
+fn inline_template_unread_cause(r: InlineTemplateReading) -> NonEmptyStr? {
+  match r {
+    InlineTemplateUnread { cause: c } => Present { value: c }
+    InlineTemplatePresent => none
+    InlineTemplateAbsent => none
+  }
+}
+
+fn chat_template_origin(port: NativeIncarnationPort, host: HostIdentity, dir: NonEmptyStr, listing: DirectoryPopulationReading, argv: List<String>) -> ChatTemplateOrigin {
+  match chat_template_override_in(argv: argv) {
+    OverrideMalformed { cause: c } => TemplateOriginUnestablished { cause: c }
+    OverrideRequested { value: v } => TemplateLaunchOverrideUnmodelled { value: v }
+    OverrideNotRequested =>
+      match listing {
+        DirectoryUnread { cause: c } => TemplateOriginUnestablished { cause: c }
+        DirectoryListed { names: ns } => {
+          let candidates = filter(ns, n => template_shaped(name: n))
+          if count(candidates) > 1 {
+            TemplateSelectionAmbiguous { candidates: candidates }
+          } else {
+            match candidates.first() {
+              Present { value: name } => TemplateFromRepositoryFile { name: name as NonEmptyStr }
+              Absent => {
+                let tokenizer = inline_template_in(port: port, host: host, dir: dir, listing: listing, member: snapshot_member_tokenizer_config)
+                let processor = inline_template_in(port: port, host: host, dir: dir, listing: listing, member: snapshot_member_processor_config)
+                match inline_template_unread_cause(r: tokenizer) {
+                  Present { value: c } => TemplateOriginUnestablished { cause: c }
+                  Absent =>
+                    match inline_template_unread_cause(r: processor) {
+                      Present { value: c } => TemplateOriginUnestablished { cause: c }
+                      Absent =>
+                        if !inline_template_is_present(r: tokenizer) && !inline_template_is_present(r: processor) {
+                          TemplateOriginUnestablished {
+                            cause: "no template was found in the launch line, the snapshot or either configuration file" as NonEmptyStr,
+                          }
+                        } else {
+                          TemplateInheritedFromConfiguration {
+                            tokenizer_config: inline_template_is_present(r: tokenizer),
+                            processor_config: inline_template_is_present(r: processor),
+                          }
+                        }
+                    }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
 
 fn chat_template_origin_wire(origin: ChatTemplateOrigin) -> NonEmptyStr {
   match origin {
-    TemplateFromLaunchOverride { path: p } =>
-      join(["selected by the launch line: ", p as String], "") as NonEmptyStr
-    TemplateFromRepositoryFile { path: p } =>
-      join(["the repository's own template file: ", p as String], "") as NonEmptyStr
-    TemplateInheritedFromTokenizerConfig =>
-      "inherited from the tokenizer configuration, whose digest is its own coordinate" as NonEmptyStr
-    TemplateSelectionAmbiguous { candidates: n } =>
-      join([to_string(n), " template-shaped files and nothing selecting between them"], "") as NonEmptyStr
+    TemplateFromRepositoryFile { name: n } =>
+      join(["the repository's own template file: ", n as String], "") as NonEmptyStr
+    TemplateInheritedFromConfiguration { tokenizer_config: t, processor_config: p } =>
+      join([
+        "inherited from configuration whose digests are their own coordinates (tokenizer_config: ",
+        if t { "present" } else { "absent" }, ", processor_config: ", if p { "present" } else { "absent" }, ")",
+      ], "") as NonEmptyStr
+    TemplateSelectionAmbiguous { candidates: cs } =>
+      join([to_string(count(cs)), " template-shaped files and nothing selecting between them: ", join(cs, ", ")], "") as NonEmptyStr
+    TemplateLaunchOverrideUnmodelled { value: v } =>
+      join(["the launch overrides the template with ", v as String, " and whether vLLM read that as a path or as a template is not modelled"], "") as NonEmptyStr
     TemplateOriginUnestablished { cause: c } => c
   }
 }
 
-// THE LAUNCH LINE IS READ FIRST BECAUSE IT WINS. An override names a path that need not be inside the
-// snapshot at all, so the selection is decided before anything looks at the repository population.
-fn launch_chat_template_override_argv(container: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "docker inspect -f '", go_template_action(body: "json .Config.Cmd"), "' ", container as String,
-    " | tr ',' '\\n' | grep -A1 -- '--chat-template' | tail -1 | tr -d '\"[] '",
-  ], "")]
-}
-
-// A COUNT OF ZERO IS AN ANSWER, AND grep EXITS NONZERO WHEN IT FINDS NOTHING. Measured: `ls | grep -ci
-// template` over a directory with no match prints "0" and exits 1, which this observer read as "the
-// population could not be counted" -- so the zero arm below, and the whole inherited-template branch it
-// guards, were UNREACHABLE. A production path that cannot be entered is the same defect class as a test
-// that cannot go red, and it was introduced by an idiom that looks like it reports a number.
-//
-// `|| true` IS NOT THE FIX EITHER, because it would also swallow a real failure to list the directory.
-// The listing and the counting are separated: ls decides whether the read happened, wc -l counts, and
-// grep's exit status is never consulted.
-fn snapshot_template_candidates_argv(snapshot_dir: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "ls ", snapshot_dir as String, " | grep -i template | wc -l",
-  ], "")]
-}
-
-// grep -c ALREADY PRINTS ZERO, so the `|| echo 0` this used to carry emitted a SECOND line: measured
-// output was "0\n0", which equals neither "0" nor anything else the caller tested, and a no-match could
-// therefore be read as an inline template. The redirection stays for the missing-file case and the
-// count is taken once.
-fn tokenizer_config_carries_template_argv(snapshot_dir: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "grep -c '\"chat_template\"' ", snapshot_dir as String, "/tokenizer_config.json 2>/dev/null | head -1",
-  ], "")]
-}
-
-
-// ONE TEMPLATE-SHAPED FILE IS NOT THE SAME AS THAT FILE BEING THE ONE WE NAME. The previous selection
-// counted names containing "template" and, on a count of one, returned the fixed path
-// chat_template.jinja -- so a repository carrying only foo_template.json selected a file that is not
-// there, and the coordinate would have read ABSENT for a model that does have a template. The name is
-// read rather than assumed.
-fn snapshot_template_name_argv(snapshot_dir: NonEmptyStr) -> List<String> {
-  ["sh", "-c", join([
-    "ls ", snapshot_dir as String, " | grep -i template | head -1",
-  ], "")]
-}
-
-func observe_named_template(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr,
-) -> NonEmptyStr?
-  uses net: Network
-{
-  let r = spark_exec(ctx: ctx, host: host, argv: snapshot_template_name_argv(snapshot_dir: snapshot_dir))
-  if !remote_run_succeeded(r: r) { none }
-  else {
-    if remote_run_stdout(r: r) == "" { none } else { Present { value: remote_run_stdout(r: r) as NonEmptyStr } }
-  }
-}
-
-func observe_chat_template_origin(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, container: NonEmptyStr,
-) -> ChatTemplateOrigin
-  uses net: Network
-{
-  let override = spark_exec(ctx: ctx, host: host, argv: launch_chat_template_override_argv(container: container))
-  if !remote_run_succeeded(r: override) {
-    TemplateOriginUnestablished { cause: "the launch line could not be read for a chat-template override" as NonEmptyStr }
-  } else {
-    if remote_run_stdout(r: override) != "" {
-      TemplateFromLaunchOverride { path: remote_run_stdout(r: override) as NonEmptyStr }
-    } else {
-      let candidates = spark_exec(ctx: ctx, host: host, argv: snapshot_template_candidates_argv(snapshot_dir: snapshot_dir))
-      if !remote_run_succeeded(r: candidates) {
-        TemplateOriginUnestablished { cause: "the snapshot's template population could not be counted" as NonEmptyStr }
-      } else {
-        if remote_run_stdout(r: candidates) == "1" {
-          match observe_named_template(ctx: ctx, host: host, snapshot_dir: snapshot_dir) {
-            Absent => TemplateOriginUnestablished {
-              cause: "one template-shaped file was counted and its name could not be read" as NonEmptyStr,
-            }
-            Present { value: name } => TemplateFromRepositoryFile { path: snapshot_member_path(snapshot_dir: snapshot_dir, member: name) }
-          }
-        } else {
-          if remote_run_stdout(r: candidates) == "0" {
-            let inherited = spark_exec(ctx: ctx, host: host, argv: tokenizer_config_carries_template_argv(snapshot_dir: snapshot_dir))
-            if !remote_run_succeeded(r: inherited) {
-              TemplateOriginUnestablished { cause: "the tokenizer configuration could not be read for an inline template" as NonEmptyStr }
-            } else {
-              if remote_run_stdout(r: inherited) == "0" {
-                TemplateOriginUnestablished { cause: "no template was found in the launch line, the repository or the tokenizer configuration" as NonEmptyStr }
-              } else {
-                TemplateInheritedFromTokenizerConfig
-              }
-            }
-          } else {
-            TemplateSelectionAmbiguous { candidates: 2 }
-          }
-        }
-      }
-    }
-  }
-}
-
-// THE COORDINATE FOLLOWS THE SELECTION. An inherited template is AbsentByObservation on this axis and
-// is covered by the tokenizer-configuration coordinate that actually contains it -- the same shape the
-// special-token axis takes in this layout -- while an ambiguous or unestablished selection refuses, so
-// no manifest is built over a template nobody identified.
-func observe_effective_chat_template(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, origin: ChatTemplateOrigin,
-) -> ServingCoordinateReading
-  uses net: Network
-{
+// THE COORDINATE FOLLOWS THE SELECTION. An inherited template is AbsentByObservation on this axis and is
+// covered by the configuration coordinates that contain it; every other non-file origin refuses, so no
+// manifest is built over a template nobody identified.
+fn chat_template_coordinate(port: NativeIncarnationPort, host: HostIdentity, dir: NonEmptyStr, listing: DirectoryPopulationReading, origin: ChatTemplateOrigin) -> ServingCoordinateReading {
   match origin {
-    TemplateFromLaunchOverride { path: p } => observe_path_digest(ctx: ctx, host: host, path: p)
-    TemplateFromRepositoryFile { path: p } => observe_path_digest(ctx: ctx, host: host, path: p)
-    TemplateInheritedFromTokenizerConfig => CoordinateAbsentByObservation
-    TemplateSelectionAmbiguous { candidates: n } =>
-      CoordinateUnestablished {
-        obligation: join([
-          "the effective chat template is ambiguous: ",
-          chat_template_origin_wire(origin: TemplateSelectionAmbiguous { candidates: n }) as String,
-        ], "") as NonEmptyStr,
-      }
+    TemplateFromRepositoryFile { name: n } => member_coordinate(port: port, host: host, dir: dir, listing: listing, member: n)
+    TemplateInheritedFromConfiguration { tokenizer_config: _, processor_config: _ } => CoordinateAbsentByObservation
+    TemplateSelectionAmbiguous { candidates: _ } =>
+      CoordinateUnestablished { obligation: join(["the effective chat template is ambiguous: ", chat_template_origin_wire(origin: origin) as String], "") as NonEmptyStr }
+    TemplateLaunchOverrideUnmodelled { value: _ } => CoordinateUnestablished { obligation: chat_template_origin_wire(origin: origin) }
     TemplateOriginUnestablished { cause: c } => CoordinateUnestablished { obligation: c }
   }
 }
 
-
-// ── THE CHECKPOINT IS VERIFIED WHERE IT IS MOUNTED, ON EVERY RANK ──────────────────────────────
-//
-// THE CONTEXT IS REBUILT PER HOST because SparkMaterializeContext names the host it acts on, while
-// this module's SparkRemoteExecutionContext carries the trust and credential that reach any of them.
-fn materialize_context_for(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, executor: SnapshotAcquisitionExecutor,
-) -> SparkMaterializeContext {
-  SparkMaterializeContext {
-    host: host,
-    trust: ctx.trust,
-    path: ctx.reach_path,
-    admin_credential: ctx.administrator,
-    admin_credential_file: ctx.administrator_file,
-    executor: executor,
-  }
-}
-
-// EACH ARM OF THE OBSERVATION HAS ITS OWN REMEDY AND NONE OF THEM IS "PROBABLY FINE". Absent means the
-// snapshot is not installed; DigestMismatch means verification refused what is installed; ProbeFailed
-// means the verifier never delivered a verdict -- and only Verified licenses a coordinate. Collapsing
-// any of the three into an absent MEMBER would be the reading that says a model with no weights has a
-// legitimate empty checkpoint.
-// THE PER-RANK RESULT IS AN OBLIGATION OR NOTHING, NOT A COORDINATE. A first draft had this return a
-// ServingCoordinateReading and used CoordinateAbsentByObservation to mean "verified", which would have
-// spelled a successful verification with the same value that means "this member does not exist" -- the
-// collapse the reading type exists to prevent, reintroduced as a convenience. A rank contributes only
-// its complaint; the coordinate is minted once, by the fold, after every rank has none.
-func observe_checkpoint_on_rank(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, subject: AcquisitionSubject,
-  verify: List<String>, executor: SnapshotAcquisitionExecutor,
-) -> NonEmptyStr?
-  uses net: Network
-{
-  match spark_snapshot_observe(
-    ctx: materialize_context_for(ctx: ctx, host: host, executor: executor),
-    verify: verify, subject: subject,
-  ) {
-    AcquisitionVerified => none
-    AcquisitionAbsent => Present {
-      value: join(["the checkpoint is not installed on ", host as String], "") as NonEmptyStr,
-    }
-    AcquisitionDigestMismatch => Present {
-      value: join(["verification refused the installed checkpoint on ", host as String], "") as NonEmptyStr,
-    }
-    AcquisitionProbeFailed { reason: r } => Present {
-      value: join(["the checkpoint could not be verified on ", host as String, ": ", r as String], "") as NonEmptyStr,
-    }
-  }
-}
-
-// THE POPULATION IS FOLDED AND ONE DISSENTER REFUSES THE COORDINATE. A verified majority is not a
-// verified deployment: the rank that failed is the rank whose weights the engine is reading.
-func observe_checkpoint_across_ranks(
-  ctx: SparkRemoteExecutionContext, hosts: List<HostIdentity>, subject: AcquisitionSubject,
-  verify: List<String>, executor: SnapshotAcquisitionExecutor, repo: NonEmptyStr, revision: NonEmptyStr,
-) -> ServingCoordinateReading
-  uses net: Network
-{
-  if count(hosts) == 0 {
-    CoordinateUnestablished {
-      obligation: "no rank hosts were named, so the checkpoint was verified nowhere" as NonEmptyStr,
-    }
-  } else {
-    let obligations = flat_map(hosts, h =>
-      match observe_checkpoint_on_rank(ctx: ctx, host: h, subject: subject, verify: verify, executor: executor) {
-        Present { value: o } => [o]
-        Absent => []
-      })
-    if count(obligations) != 0 {
-      CoordinateUnestablished {
-        obligation: join(map(obligations, o => o as String), "; ") as NonEmptyStr,
-      }
-    } else {
-      checkpoint_revision_reading(repo: repo, revision: revision)
-    }
-  }
-}
-
-
 // ── THE SEMANTIC RUNTIME CONFIGURATION, AS A CLOSED PROJECTION OVER THE ACCEPTED LAUNCH ────────
 //
-// runtime_configuration WAS AbsentByObservation AND THAT WAS A PLACEHOLDER, NOT A MEASUREMENT. It was
-// written to make the manifest total, and it said "no runtime configuration outside the image" about a
-// launch whose own argv carries the KV cache numeric policy and the parsers that shape every reply. As
-// written, the same image and the same source with a different kv-cache dtype produced one Work.
-//
-// THE ROSTER IS CLOSED AND EACH MEMBER IS CLASSIFIED DELIBERATELY. Hashing the whole argv would sweep
-// in the endpoint, the master address, the node rank and the memory fraction -- realization facts that
-// must NOT change a semantic identity, or every restart on a different port would mint new Work. What
-// is in: the KV cache dtype (a numeric policy), the tool-call and reasoning parsers (they change what a
-// reply IS, not merely how fast it arrives), auto tool choice, and the tensor-parallel degree, which
-// changes reduction order and therefore numerics.
-//
-// WHAT IS DELIBERATELY OUT, AND WHY IT IS A JUDGEMENT RATHER THAN AN OVERSIGHT: max-model-len and the
-// scheduler bounds are capability limits -- a request inside them computes the same answer -- and the
-// memory fraction governs how much KV fits, not what a token is. Prefix caching is excluded on the
-// ruling already recorded in gunbc.serving.turn_demand: the warm prefix is an internal subcomputation
-// of one step and no fabric permission governs it.
+// THE ROSTER IS CLOSED AND EACH MEMBER IS CLASSIFIED DELIBERATELY. Hashing the whole argv would sweep in
+// the endpoint, the master address, the node rank and the memory fraction -- realization facts that must
+// NOT change a semantic identity. What is in: the KV cache dtype (a numeric policy), the tool-call and
+// reasoning parsers (they change what a reply IS), auto tool choice, and the tensor-parallel degree, which
+// changes reduction order and therefore numerics. What is out: max-model-len and the scheduler bounds
+// (capability limits), the memory fraction, and prefix caching, which gunbc.serving.turn_demand rules an
+// internal subcomputation of one step.
 type SemanticRuntimeFlag
   = KvCacheDtypeFlag
   | ToolCallParserFlag
@@ -988,46 +680,500 @@ fn semantic_runtime_flag_takes_value(f: SemanticRuntimeFlag) -> Bool {
   }
 }
 
-fn argv_value_after(argv: List<String>, flag: String) -> String {
-  match argv.first() {
-    Absent => ""
-    Present { value: head } =>
-      if head == flag {
-        match argv.skip(n: 1).first() { Absent => "" Present { value: v } => v }
-      } else {
-        argv_value_after(argv: argv.skip(n: 1), flag: flag)
-      }
-  }
-}
-
-fn argv_has_word(argv: List<String>, word: String) -> Bool {
-  count(filter(argv, w => w == word)) != 0
-}
-
-fn semantic_runtime_flag_material(argv: List<String>, f: SemanticRuntimeFlag) -> NonEmptyStr {
-  let name = semantic_runtime_flag_wire(f: f) as String
-  if semantic_runtime_flag_takes_value(f: f) {
-    join([name, "\u{1f}", argv_value_after(argv: argv, flag: name)], "") as NonEmptyStr
+fn semantic_runtime_flag_hash(argv: List<String>, f: SemanticRuntimeFlag) -> ContentHash {
+  let name = semantic_runtime_flag_wire(f: f)
+  let value = if semantic_runtime_flag_takes_value(f: f) {
+    match value_after_word(argv: argv, word: name as String) { Absent => "unset" Present { value: v } => join(["value:", v], "") }
   } else {
-    join([name, "\u{1f}", if argv_has_word(argv: argv, word: name) { "present" } else { "absent" }], "") as NonEmptyStr
+    if any(argv, w => w == (name as String)) { "present" } else { "absent" }
   }
-}
-
-fn semantic_runtime_material(argv: List<String>) -> NonEmptyStr {
-  join(
-    map(semantic_runtime_flags(), f => semantic_runtime_flag_material(argv: argv, f: f) as String),
-    "\u{1e}") as NonEmptyStr
+  as_content_hash_structural(structural: content_hash_tagged_structural(tag: name, payload: content_hash_atom(value: value as NonEmptyStr)))
 }
 
 // THE COORDINATE IS READ FROM THE ACCEPTED PLAN'S ENGINE ARGV, which the readback has already compared
-// against every rank -- so this projects a value the deployment was proven to be running, rather than a
-// value this module read separately and hoped matched.
-fn observe_semantic_runtime_configuration(plan: ArmLaunchPlan) -> ServingCoordinateReading {
+// against every rank. The flags are combined as fixed-width digests, so no flag value can move a boundary.
+fn semantic_runtime_coordinate_of(argv: List<String>) -> ServingCoordinateReading {
+  CoordinateObserved {
+    hash: content_hash_of_value(value: join(
+      map(semantic_runtime_flags(), f => serialize_content_hash(hash: semantic_runtime_flag_hash(argv: argv, f: f)) as String),
+      ",") as NonEmptyStr),
+  }
+}
+
+fn semantic_runtime_configuration(plan: ArmLaunchPlan) -> ServingCoordinateReading {
   match plan_lines(plan: plan).first() {
     Absent => CoordinateUnestablished {
       obligation: "the accepted plan names no line, so no runtime configuration could be projected" as NonEmptyStr,
     }
-    Present { value: l } =>
-      CoordinateObserved { hash: content_hash_of_value(value: semantic_runtime_material(argv: l.engine_argv)) }
+    Present { value: l } => semantic_runtime_coordinate_of(argv: l.engine_argv)
+  }
+}
+
+// ── BINDING THE CLOSURE TO THE EXACT LAUNCH THAT REALIZES IT ───────────────────────────────────
+//
+// WORK IDENTITY MUST NOT CONTAIN THE LAUNCH AND OFFER IDENTITY MUST. Restarting the same bytes is the same
+// semantic Work and a different offer, so the launch sits BESIDE the execution closure: the closure answers
+// "what would this compute", the launch answers "which process is currently answering".
+//
+// THE LAUNCH IS THE ENDPOINT-PROCESS LAUNCH THE HARNESS NAMES, AND IT WAS NOT. This producer filled
+// VllmEndpointProcessLaunch.process_start_field with docker's .State.StartedAt, while
+// gunbc.harness.harness_backend fills the same field with the exporter's process_start_time_seconds --
+// measured on the serving endpoint 2026-09-14 as `1.78928202645e+09`. Two measurands in one field can
+// never compare equal, so no provenance this producer made could ever have applied to a launch the harness
+// observed, and a product-root lookup over them would have been green in fixtures and unreachable in
+// production. The port now answers with the harness's own observation of the route's endpoint.
+type VllmIncarnationEvidence sole_constructor {
+  ranks_agreed: Nat
+  ranks_required: Nat
+  image_digest: NonEmptyStr
+  model_path: NonEmptyStr
+  snapshot_directory: NonEmptyStr
+  template_origin: NonEmptyStr
+}
+
+type VllmServingIncarnationProvenance sole_constructor {
+  launch: VllmEndpointProcessLaunch
+  execution: ServingTurnExecutionClosure
+  evidence: VllmIncarnationEvidence
+}
+
+type VllmIncarnationOutcome
+  = IncarnationBound { provenance: VllmServingIncarnationProvenance }
+  | IncarnationUnestablished { obligations: List<NonEmptyStr> }
+
+// THE DEPLOYMENT MUST HAVE BEEN ACCEPTED OVER THE PLAN'S WHOLE POPULATION. The required count is the
+// plan's line count, never a caller's number: a receipt that says three ranks agreed is a receipt about
+// three ranks.
+fn incarnation_deployment_obligations(acceptance: DeploymentAcceptance, ranks_required: Nat) -> List<NonEmptyStr> {
+  match acceptance {
+    DeploymentRejected { deviations: ds } =>
+      [join(["the deployment DIVERGED from the plan: ", deployment_deviations_text(ds: ds)], "") as NonEmptyStr]
+    DeploymentUnverified { unknowns: us } =>
+      [join(["the deployment readback could not establish every fact it must assert: ", deployment_unknowns_text(us: us)], "") as NonEmptyStr]
+    DeploymentUnverifiable { cause: c } =>
+      [join(["the deployment could not be assessed at all: ", c as String], "") as NonEmptyStr]
+    DeploymentAccepted { receipt: r } =>
+      if r.ranks_agreed == ranks_required { [] } else {
+        [join([
+          "the deployment was accepted over ", to_string(r.ranks_agreed),
+          " ranks and this topology requires ", to_string(ranks_required),
+        ], "") as NonEmptyStr]
+      }
+  }
+}
+
+// OBSERVED IN THE SAME TRANSACTION IS NOT THE SAME AS JOINED. The acceptance carries the image every rank
+// is running; the runtime manifest carries an image read separately. Storing both and comparing neither
+// would admit a provenance whose two halves describe different images. Both render "sha256:<hex>".
+fn runtime_image_agreement(receipt_image: NonEmptyStr, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
+  match runtime {
+    RuntimeManifestUnestablished { obligations: _ } => []
+    RuntimeManifestResolved { manifest: m } =>
+      match serving_runtime_coordinate(m: m, axis: RuntimeImageAxis) {
+        CoordinateAbsent => [
+          "the accepted deployment names an image and the runtime closure observed none" as NonEmptyStr,
+        ]
+        CoordinateContent { hash: h } =>
+          if (serialize_content_hash(hash: h) as String) == (receipt_image as String) { [] } else {
+            [join([
+              "the accepted deployment runs image ", receipt_image as String,
+              " and the runtime closure was observed from ", serialize_content_hash(hash: h) as String,
+            ], "") as NonEmptyStr]
+          }
+      }
+  }
+}
+
+fn acceptance_image_obligations(acceptance: DeploymentAcceptance, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
+  match acceptance {
+    DeploymentRejected { deviations: _ } => []
+    DeploymentUnverified { unknowns: _ } => []
+    DeploymentUnverifiable { cause: _ } => []
+    DeploymentAccepted { receipt: r } => runtime_image_agreement(receipt_image: r.image_digest, runtime: runtime)
+  }
+}
+
+fn bind_incarnation(
+  launch: VllmEndpointProcessLaunch,
+  acceptance: DeploymentAcceptance,
+  plan: ArmLaunchPlan,
+  source: ServingSourceResolution,
+  runtime: ServingRuntimeResolution,
+  receipt: ObservationReceiptRef,
+  snapshot_directory: NonEmptyStr,
+  template_origin: NonEmptyStr,
+) -> VllmIncarnationOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.vllm_incarnation_provenance", decl_name: "observe_accepted_incarnation"),
+  ]
+  = {
+  let ranks_required = count(plan_lines(plan: plan))
+  let deployment_obligations = concat(
+    incarnation_deployment_obligations(acceptance: acceptance, ranks_required: ranks_required),
+    acceptance_image_obligations(acceptance: acceptance, runtime: runtime))
+  match seal_serving_execution_closure(source: source, runtime: runtime, receipt: receipt) {
+    ExecutionClosureUnestablished { obligations: os } =>
+      IncarnationUnestablished { obligations: concat(deployment_obligations, os) }
+    ExecutionClosureResolved { closure: c } =>
+      if count(deployment_obligations) != 0 {
+        IncarnationUnestablished { obligations: deployment_obligations }
+      } else {
+        match acceptance {
+          DeploymentRejected { deviations: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentUnverified { unknowns: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentUnverifiable { cause: _ } => IncarnationUnestablished { obligations: deployment_obligations }
+          DeploymentAccepted { receipt: r } =>
+            IncarnationBound {
+              provenance: VllmServingIncarnationProvenance {
+                launch: launch,
+                execution: c,
+                evidence: VllmIncarnationEvidence {
+                  ranks_agreed: r.ranks_agreed,
+                  ranks_required: ranks_required,
+                  image_digest: r.image_digest,
+                  model_path: r.model_path,
+                  snapshot_directory: snapshot_directory,
+                  template_origin: template_origin,
+                },
+              },
+            }
+        }
+      }
+  }
+}
+
+// ── THE TRANSACTION ───────────────────────────────────────────────────────────────────────────
+//
+// THE PLAN IS BUILT AT THE FRACTION THE ARM IS ACTUALLY CARRYING. The memory fraction is resolved per
+// attempt from observed device supply, so a comparison plan built at any fixed fraction reads a converged
+// deployment as divergent. This is the same recovery gunbc.spark.native_cutover_wet performs.
+fn incarnation_envelope(basis_points: Nat) -> ResolvedDeviceMemoryEnvelope {
+  ResolvedForAttempt {
+    basis_points: basis_points,
+    binding_node_rank: 0,
+    policy: glm_native_device_memory_policy,
+    attempt: "incarnation-provenance" as NonEmptyStr,
+    standings: [],
+  }
+}
+
+data native_incarnation_subject: NonEmptyStr = "the native four-rank deployment an incarnation is observed over" as NonEmptyStr
+
+fn unestablished(reason: String) -> VllmIncarnationOutcome {
+  IncarnationUnestablished { obligations: [reason as NonEmptyStr] }
+}
+
+// THE SNAPSHOT IS THE ONE THE PLAN'S CHECKPOINT ROW DENOTES, and so is the directory the members are read
+// from. The model path every rank was proven to run and the directory verified on every rank are two
+// projections of that one row -- which is what makes "the acceptance's model path corresponds to the source
+// manifest" a construction here rather than a comparison whose red no input could author.
+fn observe_native_incarnation(port: NativeIncarnationPort, attempt: NonEmptyStr) -> VllmIncarnationOutcome {
+  let endpoint_launch = port.endpoint_launch
+  match endpoint_launch(BeforeAssessment) {
+    LaunchUnobserved { group: _, obligation: o } =>
+      unestablished(reason: join(["the launch the endpoint is answering for could not be read before the assessment: ", o as String], ""))
+    LaunchObserved { launch: launch_before, receipt: _ } =>
+      match glm_native_tp4_nodes() {
+        ArmNodeRosterRefused { cause: c } => unestablished(reason: c as String)
+        ArmNodesResolved { nodes: ns, master: _ } =>
+          match ns.first() {
+            Absent => unestablished(reason: "the roster names no head rank")
+            Present { value: head_node } => {
+              let running_basis_points = port.running_basis_points
+              match running_basis_points(head_node) {
+                Absent => unestablished(reason: "the running arm's memory fraction could not be read, so no plan can be built at the fraction it carries")
+                Present { value: bp } =>
+                  match glm_native_tp4_checkpoint_row() {
+                    Absent => unestablished(reason: "the selection that renders this plan names no checkpoint row")
+                    Present { value: crow } =>
+                      observe_native_incarnation_over(
+                        port: port, attempt: attempt, launch_before: launch_before, crow: crow,
+                        plan: glm_native_tp4_launch_plan(envelope: incarnation_envelope(basis_points: bp)),
+                      )
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE SECOND HALF TAKES THE LAUNCH, THE ROW AND THE PLAN AS ARGUMENTS, SO IT IS ADMITTED TO THE FIRST HALF
+// ALONE. Callable from anywhere, it would accept a plan and a checkpoint row nobody derived -- the forgery
+// this split must not reopen -- which is why bind_incarnation names this function and this function names
+// observe_native_incarnation.
+fn observe_native_incarnation_over(
+  port: NativeIncarnationPort,
+  attempt: NonEmptyStr,
+  launch_before: VllmEndpointProcessLaunch,
+  crow: ServingCheckpointRow,
+  plan: ArmLaunchPlan,
+) -> VllmIncarnationOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.vllm_incarnation_provenance", decl_name: "observe_native_incarnation"),
+  ]
+  = {
+  let population = port.population
+  let acceptance = accept_deployment(inspection: inspect_native_deployment(
+    subject: native_incarnation_subject, plan: plan, reading: population(plan)))
+  match acceptance {
+    DeploymentAccepted { receipt: _ } => observe_accepted_incarnation(port: port, attempt: attempt, launch_before: launch_before, crow: crow, plan: plan, acceptance: acceptance)
+    DeploymentRejected { deviations: _ } =>
+      IncarnationUnestablished { obligations: incarnation_deployment_obligations(acceptance: acceptance, ranks_required: count(plan_lines(plan: plan))) }
+    DeploymentUnverified { unknowns: _ } =>
+      IncarnationUnestablished { obligations: incarnation_deployment_obligations(acceptance: acceptance, ranks_required: count(plan_lines(plan: plan))) }
+    DeploymentUnverifiable { cause: _ } =>
+      IncarnationUnestablished { obligations: incarnation_deployment_obligations(acceptance: acceptance, ranks_required: count(plan_lines(plan: plan))) }
+  }
+}
+
+// NOTHING ABOUT THE SOURCE IS READ FOR A DEPLOYMENT THAT WAS NOT ACCEPTED. The checkpoint verification is
+// `hf cache verify` over the whole revision on every planned rank -- on this arm, 306 GiB hashed four
+// times on hosts that are serving -- and a diverged or unverified deployment has already refused the
+// incarnation completely. Collecting source obligations about a deployment that is not the planned one
+// would spend that cost to report facts about the wrong subject.
+fn observe_accepted_incarnation(
+  port: NativeIncarnationPort,
+  attempt: NonEmptyStr,
+  launch_before: VllmEndpointProcessLaunch,
+  crow: ServingCheckpointRow,
+  plan: ArmLaunchPlan,
+  acceptance: DeploymentAcceptance,
+) -> VllmIncarnationOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.vllm_incarnation_provenance", decl_name: "observe_native_incarnation_over"),
+  ]
+  = {
+  match plan_lines(plan: plan).first() {
+    Absent => unestablished(reason: "the plan names no line, so there is no head rank to read the source on")
+    Present { value: head_line } => {
+      let dir = snapshot_install_path(placement: crow.placement, repo: crow.repo, revision: crow.revision)
+      let head = head_line.node.host
+      let directory_population = port.directory_population
+      let listing = directory_population(head, dir)
+      let origin = chat_template_origin(port: port, host: head, dir: dir, listing: listing, argv: head_line.engine_argv)
+      let source = resolve_serving_source(
+        checkpoint: checkpoint_coordinate_from_ranks(port: port, plan: plan, crow: crow),
+        model_config: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_model_config),
+        tokenizer: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_tokenizer),
+        tokenizer_config: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_tokenizer_config),
+        special_tokens: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_special_tokens),
+        chat_template: chat_template_coordinate(port: port, host: head, dir: dir, listing: listing, origin: origin),
+        model_side_code: model_side_code_coordinate(listing: listing),
+        generation_defaults: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_generation_defaults),
+        processor_config: member_coordinate(port: port, host: head, dir: dir, listing: listing, member: snapshot_member_processor_config),
+        rung: checkpoint_rung(crow: crow),
+      )
+      let runtime_image = port.runtime_image
+      let runtime = resolve_serving_runtime(
+        runtime_image: runtime_image(head),
+        runtime_extensions: CoordinateAbsentByObservation,
+        runtime_configuration: semantic_runtime_configuration(plan: plan),
+      )
+      let endpoint_launch = port.endpoint_launch
+      match endpoint_launch(AfterAssessment) {
+        LaunchUnobserved { group: _, obligation: o } =>
+          unestablished(reason: join(["the launch could not be re-read after the assessment, so nothing establishes that the process assessed is the process still answering: ", o as String], ""))
+        LaunchObserved { launch: launch_after, receipt: _ } =>
+          if !vllm_endpoint_process_launch_is(launch: launch_before, other: launch_after) {
+            unestablished(reason: "the endpoint's process was replaced during the observation, so the acceptance describes a process that is no longer answering")
+          } else {
+            bind_incarnation(
+              launch: launch_after,
+              acceptance: acceptance,
+              plan: plan,
+              source: source,
+              runtime: runtime,
+              receipt: incarnation_receipt(attempt: attempt, launch: launch_after),
+              snapshot_directory: dir,
+              template_origin: chat_template_origin_wire(origin: origin),
+            )
+          }
+      }
+    }
+  }
+}
+
+// ── PROVENANCE FOR ONE LAUNCH MAY NEVER BIND ANOTHER ───────────────────────────────────────────
+//
+// THE COMPARISON IS FIELD BY FIELD, on the launch's own structural equality, so a restart, a different
+// endpoint or a different group is a different launch by construction.
+fn incarnation_applies_to(p: VllmServingIncarnationProvenance, launch: VllmEndpointProcessLaunch) -> Bool {
+  vllm_endpoint_process_launch_is(launch: p.launch, other: launch)
+}
+
+// ── A LOOKUP THAT RESOLVES AMBIGUITY BY LIST ORDER IS NOT A LOOKUP ────────────────────────────
+//
+// TWO PROVENANCE ROWS FOR ONE LAUNCH IS A CONTRADICTION, NOT A CHOICE. Absence and contradiction are
+// different answers with different remedies: one says nobody observed this launch, the other says two
+// observations of it do not agree.
+type IncarnationLookup
+  = IncarnationFound { provenance: VllmServingIncarnationProvenance }
+  | IncarnationMissing
+  | IncarnationAmbiguous { matches: Nat }
+
+fn incarnation_for_launch(
+  candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
+) -> IncarnationLookup {
+  let matches = filter(candidates, p => incarnation_applies_to(p: p, launch: launch))
+  if count(matches) > 1 {
+    IncarnationAmbiguous { matches: count(matches) }
+  } else {
+    match matches.first() {
+      Absent => IncarnationMissing
+      Present { value: p } => IncarnationFound { provenance: p }
+    }
+  }
+}
+
+// ── THE PRODUCTION PORT ───────────────────────────────────────────────────────────────────────
+//
+// THE CONTEXT IS REBUILT PER HOST because SparkMaterializeContext names the host it acts on, while
+// SparkRemoteExecutionContext carries the trust and credential that reach any of them. The executor runs the
+// Hub CLI inside the runtime image the plan launches, at the path measured in that image.
+fn materialize_context_for(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, executor: SnapshotAcquisitionExecutor,
+) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: host,
+    trust: ctx.trust,
+    path: ctx.reach_path,
+    admin_credential: ctx.administrator,
+    admin_credential_file: ctx.administrator_file,
+    executor: executor,
+  }
+}
+
+fn verify_snapshot_on(ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot: ModelSnapshotDesired, executor: SnapshotAcquisitionExecutor) -> AcquisitionObservation {
+  match model_snapshot_subject(snapshot: snapshot, cache_root: spark_hub_cache_root) {
+    Absent => AcquisitionProbeFailed { reason: "the snapshot carries no pinned revision, so there is no subject to verify" as NonEmptyStr }
+    Present { value: subject } =>
+      spark_snapshot_observe(
+        ctx: materialize_context_for(ctx: ctx, host: host, executor: executor),
+        verify: model_snapshot_verify_argv(snapshot: snapshot),
+        subject: subject,
+      )
+  }
+}
+
+fn native_incarnation_port(
+  ctx: SparkRemoteExecutionContext,
+  endpoint: ServingRouteEndpoint,
+  executor: SnapshotAcquisitionExecutor,
+) -> NativeIncarnationPort {
+  NativeIncarnationPort {
+    endpoint_launch: fn(phase) { harness_observe_engine(endpoint: endpoint).launch },
+    running_basis_points: fn(node) { observe_rank_utilization_basis_points(ctx: ctx, node: node) },
+    population: fn(plan) { observe_native_population(ctx: ctx, plan: plan) },
+    checkpoint_verification: fn(host, snapshot) { verify_snapshot_on(ctx: ctx, host: host, snapshot: snapshot, executor: executor) },
+    directory_population: fn(host, dir) { observe_directory_population(ctx: ctx, host: host, dir: dir) },
+    path_digest: fn(host, path) { observe_path_digest(ctx: ctx, host: host, path: path) },
+    file_text: fn(host, path) { observe_file_text(ctx: ctx, host: host, path: path) },
+    runtime_image: fn(host) { observe_runtime_image(ctx: ctx, host: host, container: glm_native_container_name) },
+  }
+}
+
+// ── THE WET ENTRY ─────────────────────────────────────────────────────────────────────────────
+//
+// A SUCCESSFUL OBSERVATION LEAVES THROUGH THE SUCCESS ARM AND WRITES ITS RECEIPT; a refusal names every
+// obligation. The attempt is the instant the transaction started, and an unreadable clock refuses rather
+// than falling back to a fixed word that every clock-blind run would share.
+data incarnation_receipt_path: String = "target/spark-incarnation-provenance-receipt.txt"
+
+fn native_incarnation_attempt(now: NonEmptyStr?) -> NonEmptyStr? {
+  match now {
+    Absent => none
+    Present { value: ts } => Present { value: join(["glm-native-incarnation-", ts as String], "") as NonEmptyStr }
+  }
+}
+
+fn incarnation_receipt_text(p: VllmServingIncarnationProvenance) -> String {
+  join([
+    "INCARNATION OBSERVED -- launch=", vllm_endpoint_process_launch_key(launch: p.launch) as String,
+    " process_start=", p.launch.process_start_field as String,
+    " source=", serving_execution_source_ref(c: p.execution) as String,
+    " runtime=", serving_execution_runtime_ref(c: p.execution) as String,
+    " ranks=", to_string(p.evidence.ranks_agreed), "/", to_string(p.evidence.ranks_required),
+    " snapshot=", p.evidence.snapshot_directory as String,
+    " template=", p.evidence.template_origin as String,
+    " rung=", serving_source_rung_wire(rung: p.execution.source.rung) as String,
+    " receipt=", p.execution.receipt as String,
+  ], "")
+}
+
+func observe_glm_incarnation(ctx: SparkRemoteExecutionContext, attempt: NonEmptyStr) -> ProcessExit
+  uses net: Network
+{
+  match serving_route(group: FabricGroupB) {
+    ServingRouteUnresolved { group: _, obligation: o } => exit_failure(reason: join(["INCARNATION UNESTABLISHED: ", o as String], ""))
+    ServingRouteResolved { endpoint: endpoint, ceiling: _ } =>
+      match glm_native_tp4_checkpoint_row() {
+        Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the selection names no checkpoint row")
+        Present { value: crow } =>
+          match glm_native_tp4_runtime_row() {
+            Absent => exit_failure(reason: "INCARNATION UNESTABLISHED: the selection names no runtime row, so there is no image to run the Hub CLI in")
+            Present { value: rrow } =>
+              match observe_native_incarnation(
+                port: native_incarnation_port(ctx: ctx, endpoint: endpoint, executor: snapshot_executor_in_runtime(checkpoint: crow, runtime: rrow)),
+                attempt: attempt,
+              ) {
+                IncarnationUnestablished { obligations: os } =>
+                  exit_failure(reason: join(["INCARNATION UNESTABLISHED: ", join(map(os, o => o as String), "; ")], ""))
+                IncarnationBound { provenance: p } => {
+                  let body = incarnation_receipt_text(p: p)
+                  let w = Filesystem.Write(path: incarnation_receipt_path, content: body)
+                  if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", body], "")) }
+                }
+              }
+          }
+      }
+  }
+}
+
+func glm_incarnation_provenance_wet() -> ProcessExit
+  uses net: Network
+{
+  match native_incarnation_attempt(now: clock_now_probed_at()) {
+    Absent => exit_failure(reason: "incarnation probe: the clock could not be read, so there is no attempt identity to bind a receipt to")
+    Present { value: attempt } =>
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["incarnation probe: ", c], ""))
+        ExecutorReachKnown { short_hostname: _, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: "incarnation-provenance") {
+                Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
+                Present { value: ssh_attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: ssh_attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join([
+                      "trust could not be established, so no leg ran: ",
+                      known_hosts_materialization_receipt(outcome: materialization),
+                    ], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-incarnation-provenance-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          observe_glm_incarnation(
+                            ctx: SparkRemoteExecutionContext {
+                              trust: trust,
+                              reach_path: path,
+                              administrator: administrator as Secret,
+                              administrator_file: file,
+                            },
+                            attempt: attempt,
+                          )
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: v } => v
+                      }
+                  }
+                }
+              }
+          }
+      }
   }
 }

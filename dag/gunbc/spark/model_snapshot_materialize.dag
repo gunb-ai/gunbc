@@ -29,7 +29,9 @@ import gunbc.artifact_acquisition {
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf, SnapshotRoleUndecidable,
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
+  HubCachePlacement, LocalDirectoryPlacement,
 }
+import gunbc.spark.serving_arm { ServingCheckpointRow, ServingRuntimeRow, runtime_artifact_wire }
 
 // THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
 //
@@ -147,6 +149,23 @@ type SnapshotAcquisitionExecutor
 // same process space as the CLI: if the container cannot start, no sentinel is emitted at all and the
 // reading is InstrumentDidNotRun. Provenance has to be produced by the thing whose execution is in
 // question -- wrapping it one layer out measures the wrapper.
+// THE EXECUTOR A SERVING ARM ACQUIRES AND VERIFIES THROUGH, derived from the arm's own two rows. No Spark
+// host carries an `hf` executable, so the CLI runs inside the arm's runtime image at the path measured in
+// that image, with the checkpoint placement's host root mounted. It lived inline in
+// gunbc.spark.glm_canary_converge; the incarnation producer needs the identical executor for the native
+// arm, and a second inline copy is how the CLI path once came from the wrong image.
+fn snapshot_executor_in_runtime(checkpoint: ServingCheckpointRow, runtime: ServingRuntimeRow) -> SnapshotAcquisitionExecutor {
+  ContainerizedCli {
+    image: runtime_artifact_wire(a: runtime.artifact),
+    cli_path: runtime.hub_cli_path,
+    host_path: match checkpoint.placement {
+      LocalDirectoryPlacement { host_path: p } => p
+      HubCachePlacement { cache_root: root } => root
+    },
+    container_path: "/out" as NonEmptyStr,
+  }
+}
+
 fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
   match executor {
     HostCli => with_execution_sentinel(argv: argv)

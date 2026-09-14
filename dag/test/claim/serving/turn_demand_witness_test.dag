@@ -56,12 +56,13 @@ test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
 
 // ── THE POSITIVE CONTROLS MOVED, BECAUSE A CLOSURE CANNOT BE FORGED HERE ANY MORE ─────────────
 //
-// gunbc.serving.incarnation_provenance seal_serving_execution_closure now admits only the incarnation
-// producer, so this module cannot mint a ServingTurnExecutionClosure -- which is the point of that
-// wall and not an obstacle to work around. The rows that need one (an observed closure mints Work,
-// and two different sources are two Works) live beside a real DeploymentAcceptance in
-// test.claim.spark.native_deployment_readback_witness, where a closure is obtained the way production
-// obtains one.
+// gunbc.serving.incarnation_provenance seal_serving_execution_closure admits only the incarnation
+// producer, and that producer is reachable only through gunbc.spark.vllm_incarnation_provenance
+// observe_native_incarnation, so this module cannot mint a ServingTurnExecutionClosure -- which is the
+// point of that wall and not an obstacle to work around. The rows that need one (an observed closure
+// mints Work, and different member bytes are two Works) live in
+// test.claim.spark.vllm_incarnation_transaction_witness_test, where a closure is obtained by running the
+// observation transaction over an authored world.
 //
 // WHAT STAYS HERE IS EVERYTHING THAT NEEDS NO CLOSURE: the unestablished arm, the step shape and the
 // output obligations. A refusal is still testable without the ability to forge the thing refused.
