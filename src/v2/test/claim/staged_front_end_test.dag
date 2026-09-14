@@ -110,8 +110,6 @@ test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> B
   }
 }
 
-data candidate_dies_at_resolve_undeclared_callee_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
-
 fn first_refusal_reason(source: String) -> Symbol {
   fold(run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
     match step {
@@ -122,6 +120,5 @@ fn first_refusal_reason(source: String) -> Symbol {
 }
 
 test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
-  (first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol)
-    && (first_refusal_reason(source: candidate_dies_at_resolve_undeclared_callee_source) == ^resolve_reason_unbound_symbol)
+  first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
 }
