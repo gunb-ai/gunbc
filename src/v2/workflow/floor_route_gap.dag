@@ -197,9 +197,7 @@ fn floor_route_gap_chunk_00() -> List<String> {
     }
     }
 }
-}
 
-fn floor_route_gap_chunk_01() -> List<String> {
   Cons {
       head: "test.claim.host_build_cache_provision_real_execution.provision_read_back_failure_not_converged_by_real_execution",
       tail:   Cons {
