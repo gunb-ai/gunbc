@@ -35,7 +35,7 @@ import extdeps.procps.pgrep { PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_
 import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
-import extdeps.systemd { InvocationIDProperty, FragmentPathProperty }
+import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPathProperty, systemd_unit_property_wire }
 import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptureRefused, systemctl_show_property_read }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
@@ -167,64 +167,38 @@ type UnitTextRead
   = UnitTextObserved { value: String }
   | UnitTextRefused { cause: String }
 
-fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property_wire: NonEmptyStr, property: SystemdUnitPropertyArg) -> UnitTextRead {
-  match property {
-    ReadInvocationID =>
-      match systemctl_show_property_read(transport: transport, unit: unit, property: InvocationIDProperty) {
-        SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
-        SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
-      }
-    ReadFragmentPath =>
-      match systemctl_show_property_read(transport: transport, unit: unit, property: FragmentPathProperty) {
-        SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
-        SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
-      }
+// ONE PROPERTY, ONE READ. The systemd property IS the argument -- there is no second enum naming
+// the same two properties, and a refusal's wire label is derived from the property by
+// systemd_unit_property_wire rather than passed beside it, so a caller cannot name a property whose
+// message disagrees with the read (the dual-fact shape gunbc.host_operation_exec already forbids).
+fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitTextRead {
+  match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
+    SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
+    SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
   }
 }
-
-type SystemdUnitPropertyArg
-  = ReadInvocationID
-  | ReadFragmentPath
 
 type HostTextRead
   = HostTextObserved { stdout: String }
   | HostTextRefused { cause: String }
 
-fn host_read_text(transport: HostEffectTransport, operation: HostOperationArg) -> HostTextRead {
-  let outcome = match operation {
-    ReadBootStat => host_operation_exec(transport: transport, operation: ProcfsReadStat)
-    ReadPidStatOf { pid: p } => host_operation_exec(transport: transport, operation: ProcfsReadPidStat { pid: to_string(p) as NonEmptyStr })
-    ReadPidCgroupOf { pid: p } => host_operation_exec(transport: transport, operation: ProcfsReadPidCgroup { pid: to_string(p) as NonEmptyStr })
-    ScanFullCommandLine { pattern: p } => host_operation_exec(transport: transport, operation: PgrepFullCommandLine { pattern: p })
-    ReadClockTicks => host_operation_exec(transport: transport, operation: GetconfClockTicksPerSecond)
-    DigestFile { path: p } => host_operation_exec(transport: transport, operation: Sha256SumFile { path: p })
-  }
-  match outcome {
+// ONE HOST READ, TYPED, over a gunbc.host_operation_exec HostOperation directly -- this module does
+// not re-roster those operations under second names (DESIGN 3): a read it needs is a variant there,
+// not a variant here. pgrep exits 1 for "nothing matched" (extdeps.procps.pgrep), reported as
+// success=false with empty stdout, and that is an ANSWER -- so the PgrepFullCommandLine arm keeps
+// the (empty) stdout and the caller reads it as no process; every other read's non-zero exit is a
+// typed, located refusal.
+fn host_read_text(transport: HostEffectTransport, operation: HostOperation) -> HostTextRead {
+  match host_operation_exec(transport: transport, operation: operation) {
     HostOperationObserved { stdout: out, success: true, stderr: _ } => HostTextObserved { stdout: out }
     HostOperationObserved { stdout: out, success: false, stderr: err } =>
       match operation {
-        ScanFullCommandLine { pattern: _ } => HostTextObserved { stdout: out }
-        ReadBootStat => HostTextRefused { cause: host_read_failure_text(stderr: err) }
-        ReadPidStatOf { pid: _ } => HostTextRefused { cause: host_read_failure_text(stderr: err) }
-        ReadPidCgroupOf { pid: _ } => HostTextRefused { cause: host_read_failure_text(stderr: err) }
-        ReadClockTicks => HostTextRefused { cause: host_read_failure_text(stderr: err) }
-        DigestFile { path: _ } => HostTextRefused { cause: host_read_failure_text(stderr: err) }
+        PgrepFullCommandLine { pattern: _ } => HostTextObserved { stdout: out }
+        _ => HostTextRefused { cause: host_read_failure_text(stderr: err) }
       }
     HostOperationRefused { operation: op, reason: why } => HostTextRefused { cause: join([op, ": ", why], "") }
   }
 }
-
-// pgrep exits 1 for "nothing matched" (extdeps.procps.pgrep), which the executor reports as
-// success=false with empty stdout; that is an answer, so the scan arm above keeps the (empty)
-// stdout and the caller reads the empty listing as no process. Every other read's non-zero exit is
-// a refusal.
-type HostOperationArg
-  = ReadBootStat
-  | ReadPidStatOf { pid: Int }
-  | ReadPidCgroupOf { pid: Int }
-  | ScanFullCommandLine { pattern: NonEmptyStr }
-  | ReadClockTicks
-  | DigestFile { path: NonEmptyStr }
 
 fn host_read_failure_text(stderr: String?) -> String {
   match stderr {
@@ -243,8 +217,13 @@ fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_second
   exported.units * ticks_per_second == (boot_epoch_seconds * ticks_per_second + start_ticks) * decimal_pow10(exponent: exported.fraction_digits)
 }
 
+type BoundProcess {
+  pid: Int
+  start_ticks: Int
+}
+
 type CandidateScan {
-  matched: List<Int>
+  matched: List<BoundProcess>
   refusal: ServingIncarnationRefusal?
 }
 
@@ -252,14 +231,14 @@ fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, 
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match host_read_text(transport: transport, operation: ReadPidStatOf { pid: pid }) {
+      match host_read_text(transport: transport, operation: ProcfsReadPidStat { pid: to_string(pid) as NonEmptyStr }) {
         HostTextRefused { cause: c } =>
           CandidateScan { matched: acc.matched, refusal: Present { value: IncarnationProcessStartUnread { pid: pid, cause: c } } }
         HostTextObserved { stdout: text } =>
           match proc_pid_stat_start_time(content: text) {
             StartTimeObserved { ticks_since_boot: st } =>
               if exported_start_equals_process_start(exported: exported, boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: st) {
-                CandidateScan { matched: append(acc.matched, pid), refusal: none }
+                CandidateScan { matched: append(acc.matched, BoundProcess { pid: pid, start_ticks: st }), refusal: none }
               } else {
                 acc
               }
@@ -353,7 +332,7 @@ fn incarnation_after_process(
   ticks: Int,
   start_ticks: Int,
 ) -> ServingIncarnationReading {
-  match host_read_text(transport: transport, operation: ReadPidCgroupOf { pid: pid }) {
+  match host_read_text(transport: transport, operation: ProcfsReadPidCgroup { pid: to_string(pid) as NonEmptyStr }) {
     HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationProcessCgroupUnread { pid: pid, cause: c } }
     HostTextObserved { stdout: text } =>
       match read_unified_cgroup_membership(content: text) {
@@ -379,34 +358,6 @@ fn incarnation_after_process(
   }
 }
 
-type BoundProcess {
-  pid: Int
-  start_ticks: Int
-}
-
-// The candidate scan reads every pid's start once; the bound process's start ticks are then read
-// AGAIN through the same operation rather than carried, so that the value used for started_at is
-// the one the equality was established on (the second read of a running process's starttime is
-// the same kernel constant; a different answer would mean the pid was reused between the reads,
-// and the equality re-check below refuses that).
-fn bind_process(transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: Int, ticks: Int) -> BoundProcess? {
-  match host_read_text(transport: transport, operation: ReadPidStatOf { pid: pid }) {
-    HostTextRefused { cause: _ } => none
-    HostTextObserved { stdout: text } =>
-      match proc_pid_stat_start_time(content: text) {
-        StartTimeObserved { ticks_since_boot: st } =>
-          if exported_start_equals_process_start(exported: exported, boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: st) {
-            Present { value: BoundProcess { pid: pid, start_ticks: st } }
-          } else {
-            none
-          }
-        StartTimeCommUnterminated => none
-        StartTimeFieldAbsent { fields_after_comm: _ } => none
-        StartTimeUnparseable { field: _ } => none
-      }
-  }
-}
-
 fn incarnation_after_host_facts(
   transport: HostEffectTransport,
   target: SshTarget,
@@ -421,7 +372,7 @@ fn incarnation_after_host_facts(
   ticks: Int,
 ) -> ServingIncarnationReading {
   let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
-  match host_read_text(transport: transport, operation: ScanFullCommandLine { pattern: pattern }) {
+  match host_read_text(transport: transport, operation: PgrepFullCommandLine { pattern: pattern }) {
     HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: c } }
     HostTextObserved { stdout: listing } =>
       match pgrep_pid_listing(stdout: listing) {
@@ -439,17 +390,13 @@ fn incarnation_after_host_facts(
                 if count(scan.matched) == 0 {
                   IncarnationRefused { refusal: IncarnationNoProcessStartsAtExportedInstant { candidates: count(pids), field: endpoint.process_start_field } }
                 } else if count(scan.matched) > 1 {
-                  IncarnationRefused { refusal: IncarnationAmbiguousProcessStart { pids: scan.matched, field: endpoint.process_start_field } }
+                  IncarnationRefused { refusal: IncarnationAmbiguousProcessStart { pids: map(scan.matched, b => b.pid), field: endpoint.process_start_field } }
                 } else {
-                  let pid = scan.matched.first()
-                  match bind_process(transport: transport, pid: pid, exported: exported, boot: boot, ticks: ticks) {
-                    Absent => IncarnationRefused { refusal: IncarnationProcessStartUnread { pid: pid, cause: "the start time did not re-read equal to the exported instant" } }
-                    Present { value: bound } =>
-                      incarnation_after_process(
-                        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                        invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
-                      )
-                  }
+                  let bound = scan.matched.first()
+                  incarnation_after_process(
+                    transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                    invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
+                  )
                 }
             }
           }
@@ -477,14 +424,14 @@ fn incarnation_after_unit(
     SampleValueUnreadable { lexeme: l } =>
       IncarnationRefused { refusal: IncarnationExportedStartUnreadable { field: endpoint.process_start_field, cause: join(["not an exposition-format number: ", l], "") } }
     SampleValueExact { value: exported } =>
-      match host_read_text(transport: transport, operation: ReadClockTicks) {
+      match host_read_text(transport: transport, operation: GetconfClockTicksPerSecond) {
         HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: c } }
         HostTextObserved { stdout: tick_text } =>
           match clock_ticks_reading(stdout: tick_text) {
             ClockTicksUnparseable { field: f } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["`", f, "` is not an integer"], "") } }
             ClockTicksNotPositive { value: v } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["tick rate ", to_string(v), " is not positive"], "") } }
             ClockTicksObserved { per_second: ticks } =>
-              match host_read_text(transport: transport, operation: ReadBootStat) {
+              match host_read_text(transport: transport, operation: ProcfsReadStat) {
                 HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: c } }
                 HostTextObserved { stdout: stat_text } =>
                   match proc_stat_boot_time(content: stat_text) {
@@ -514,21 +461,21 @@ fn observe_endpoint_incarnation(
   let target = fleet_locus_ssh_target(host: head)
   let transport = FleetSsh { target: target, context: context }
   let unit = spark_pair_head_unit_name
-  match read_unit_property(transport: transport, unit: unit, property_wire: "InvocationID" as NonEmptyStr, property: ReadInvocationID) {
+  match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
     UnitTextRefused { cause: c } =>
-      IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: "InvocationID" as NonEmptyStr, cause: c } }
+      IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
     UnitTextObserved { value: invocation_text } =>
       if invocation_text == "" {
         IncarnationRefused { refusal: IncarnationUnitNotActive { unit: unit } }
       } else {
-        match read_unit_property(transport: transport, unit: unit, property_wire: "FragmentPath" as NonEmptyStr, property: ReadFragmentPath) {
+        match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
           UnitTextRefused { cause: c } =>
-            IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: "FragmentPath" as NonEmptyStr, cause: c } }
+            IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
           UnitTextObserved { value: fragment_path } =>
             if fragment_path == "" {
               IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the unit reports no fragment path" } }
             } else {
-              match host_read_text(transport: transport, operation: DigestFile { path: fragment_path as NonEmptyStr }) {
+              match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
                 HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
                 HostTextObserved { stdout: line } =>
                   match sha256_hex_digest(hex: sha256sum_first_field(line: line)) {
