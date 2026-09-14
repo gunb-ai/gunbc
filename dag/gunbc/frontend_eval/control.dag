@@ -122,7 +122,12 @@ fn run_entry(gunbc_program: String, workspace: String, entry: String, function: 
 }
 
 // THE STAGE IS READ FROM THE REFUSAL'S OWN VOCABULARY, AND A TEXT THAT CARRIES NEITHER STAGE'S
-// VOCABULARY IS UNCLASSIFIED, NOT RESOLUTION. Parse-stage refusals carry the parser's lexemes;
+// VOCABULARY IS UNCLASSIFIED, NOT RESOLUTION. RUNG AND TRIGGER (DESIGN section 4b): this is rung 1
+// -- the stage is a fact the compiler has and this fold re-derives it from rendered text, so the
+// literals below are a contract with the renderer. It can climb after one grounding: a typed
+// diagnostic carried out of gunbc.WitnessBin.Run (the run's refusal as a value naming its phase,
+// not as stdout) -- the same capability the control's lexeme match waits on. When that lands this
+// fn reads the phase and deletes the literals. Parse-stage refusals carry the parser's lexemes;
 // resolution refusals are wrapped by the interpreter's `resolve failed for` line. A transport
 // failure, a missing binary, a panic -- none carries either, and an absorbing else would have
 // filed them as a resolve-stage refusal that could then match the expected lexeme (the mutated

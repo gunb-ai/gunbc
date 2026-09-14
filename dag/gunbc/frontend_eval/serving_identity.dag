@@ -3,7 +3,7 @@ module gunbc.frontend_eval.serving_identity
 import std.types { String, Bool, Int, NonEmptyStr, Port }
 import std.decl_ref { DeclarationRef }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.vllm_observed { VllmModelsRouteReadback, VllmSelfReportedVersion }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadback, VllmModelsEntryCreated, VllmSelfReportedVersion }
 
 // THE SERVING REALIZATION THAT ANSWERED IS NOT THE MODEL SNAPSHOT. Reasoning-token accounting, tool-call
 // parsing and the chat template's reading of `reasoning_effort` and `clear_thinking` are all the
@@ -13,14 +13,15 @@ import gunbc.spark.vllm_observed { VllmModelsRouteReadback, VllmSelfReportedVers
 // binds what the driver can OBSERVE of the realization at the endpoint, and declares as unobserved
 // what only a fleet-side receipt could establish (side-chat review, 2026-09-14).
 //
-// `engine_generation` is the `created` epoch vLLM stamps on its /v1/models entry at engine start:
-// two readings that differ are two processes, whatever else agrees.
+// The engine generation is the `created` epoch of the /v1/models entry, modeled where that route is
+// read (gunbc.spark.vllm_observed VllmModelsEntryCreated): two readings that differ are two
+// processes, whatever else agrees.
 type ObservedServing {
   host: HostIdentity
   port: Port
   models: VllmModelsRouteReadback
+  created: VllmModelsEntryCreated
   version: VllmSelfReportedVersion
-  engine_generation: Int
 }
 
 // WHAT A SESSION CANNOT OBSERVE AT THE ENDPOINT: the runtime image digest and the effective launch
@@ -39,7 +40,7 @@ type RealizedServing {
 fn realized_serving_identity(s: RealizedServing) -> NonEmptyStr {
   join([
     s.observed.host as String, ":", to_string(value: s.observed.port),
-    "@", to_string(value: s.observed.engine_generation),
+    "@", to_string(value: s.observed.created.created),
     "/", s.observed.version.version_string as String,
     "/", s.observed.models.served_model_id as String,
   ], "") as NonEmptyStr

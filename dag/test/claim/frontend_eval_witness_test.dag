@@ -21,7 +21,7 @@ import gunbc.frontend_eval.experiment {
 }
 import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortMax }
 import gunbc.frontend_eval.serving_identity { RealizedServing, ObservedServing, RuntimeUnobserved, realized_serving_identity }
-import gunbc.spark.vllm_observed { vllm_models_route_readback, vllm_self_reported_version }
+import gunbc.spark.vllm_observed { vllm_models_route_readback, vllm_models_entry_created, vllm_self_reported_version }
 import product.placement_supply { HostIdentity }
 import gunbc.frontend_eval.card { frontend_language_card }
 import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
@@ -92,8 +92,8 @@ fn fixture_serving(generation: Int) -> RealizedServing {
     observed: ObservedServing {
       host: "srv9" as HostIdentity, port: 30000,
       models: vllm_models_route_readback(served_model_id: "m" as NonEmptyStr, configured_model_path: "/w" as NonEmptyStr, max_model_len: token_count(count: 8)),
+      created: vllm_models_entry_created(created: generation),
       version: vllm_self_reported_version(version_string: "0.1" as NonEmptyStr),
-      engine_generation: generation,
     },
     runtime: RuntimeUnobserved,
   }
