@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.spark.collective_transport {
-  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, PermitNcclSocket,
+  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, RequireNcclSocket,
   transport_plan_for, transport_env, transport_requires_verbs,
   transport_expected_device, transport_expected_out_of_band,
 }
@@ -79,10 +79,10 @@ test fn requiring_verbs_renders_the_device_the_memlock_and_the_capability() -> B
   }
 }
 
-// AND PERMITTING SOCKETS RENDERS NONE OF IT, which is the discrimination that says the requirement is
+// AND SELECTING SOCKETS RENDERS NONE OF IT, which is the discrimination that says the requirement is
 // consumed rather than decorative: the same host, the same lane, a different declared realization.
-test fn permitting_sockets_renders_no_device_no_memlock_and_no_capability() -> Bool {
-  match plan_for(host: operator_host_srv9, requirement: PermitNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "permitting_sockets_renders_no_device_no_memlock_and_no_capability") }) {
+test fn selecting_sockets_renders_no_device_no_memlock_and_no_capability() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "selecting_sockets_renders_no_device_no_memlock_and_no_capability") }) {
     Absent => false
     Present { value: plan } =>
       count(plan.device_population) == 0
@@ -128,14 +128,16 @@ test fn a_verbs_environment_selects_its_gid_by_attributes() -> Bool {
   }
 }
 
-// A PERMITTED-SOCKET REALIZATION ASKS FOR NONE OF THE VERBS NAMES. Setting NCCL_NET=IB for a plan that
-// admits sockets would refuse the very realization it declares.
-test fn a_socket_environment_names_no_verbs_variable() -> Bool {
-  match plan_for(host: operator_host_srv9, requirement: PermitNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "a_socket_environment_names_no_verbs_variable") }) {
+// A SOCKET REALIZATION ASKS FOR SOCKETS BY NAME AND FOR NO VERBS DEVICE. The absence of a device mapping
+// is a consequence of the selection, never the mechanism of it: a plan that said nothing would be taking
+// whatever NCCL found, which is the fallback this vocabulary exists to end.
+test fn a_socket_environment_selects_sockets_and_names_no_verbs_device() -> Bool {
+  match plan_for(host: operator_host_srv9, requirement: RequireNcclSocket { basis: decl_ref(module_path: "test.claim.spark.collective_transport_witness_test", decl_name: "a_socket_environment_selects_sockets_and_names_no_verbs_device") }) {
     Absent => false
     Present { value: plan } => {
-      let names = env_names(env: transport_env(plan: plan))
-      !any(names, n => n == "NCCL_NET")
+      let env = transport_env(plan: plan)
+      let names = env_names(env: env)
+      (match env_value(env: env, name: "NCCL_NET") { Present { value: v } => v == "Socket"  Absent => false })
         && !any(names, n => n == "NCCL_IB_HCA")
         && !any(names, n => n == "NCCL_IB_GID_INDEX")
         && any(names, n => n == "NCCL_SOCKET_IFNAME")
@@ -199,6 +201,6 @@ test fn every_planned_rank_carries_a_transport_plan_for_its_own_host() -> Bool {
 test fn the_native_arm_requires_verbs() -> Bool {
   match glm_native_collective_transport {
     RequireNcclIb => true
-    PermitNcclSocket { basis: _ } => false
+    RequireNcclSocket { basis: _ } => false
   }
 }

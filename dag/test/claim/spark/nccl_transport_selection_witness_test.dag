@@ -9,27 +9,33 @@ import gunbc.spark.native_rank_observer { nccl_transport_of_lines }
 
 // ── THE LINES THIS FLEET ACTUALLY PRINTS ──────────────────────────────────────────────────────
 //
-// CAPTURED FROM THE RUNNING DEPLOYMENT, not composed. On 2026-09-14 every rank of the four-rank GLM
-// deployment printed these four lines in this order, and the observer that read only the first
-// `NET/x : Using` line reported NcclIbTransport { hca: ";" } for all four -- an RDMA transport on
-// containers that carry no /dev/infiniband node at all. The readback admits any IB observation, so the
-// deployment was ACCEPTED and an incarnation was minted over it.
+// CAPTURED FROM THE RUNNING DEPLOYMENT, not composed. Every rank of the four-rank GLM deployment prints
+// these lines, and two successive observers read them wrongly in the same direction.
 //
-// THE LINE THAT DOES THE DAMAGE IS THE SECOND ONE. The IB plugin prints `Using [RO]; OOB <netdev>`
-// after it has already reported no device: it describes the relaxed-ordering flag and the out-of-band
-// socket, and names no HCA. A reader that takes the text after the first bracket reads `;`.
+// THE FIRST TOOK THE EARLIEST `NET/x : Using` LINE. The IB plugin prints `Using [RO]; OOB <netdev>`
+// AFTER reporting no device -- the bracket carries a relaxed-ordering flag, not an ordinal -- so the
+// reader took the text after it and reported NcclIbTransport { hca: ";" } for four ranks whose
+// containers have no /dev/infiniband node at all. The readback admitted any IB observation, so the
+// deployment was accepted and an incarnation was minted over it.
+//
+// THE SECOND REQUIRED AN ORDINAL, which settles the banner and still derives the winner from DETAIL
+// lines. A backend can find a device and lose: the rows below include an IB detail under a Socket
+// verdict, which that reader would have called verbs. NCCL publishes its own assignment --
+// `Using network Socket` -- and that is what decides here; the detail lines supply the device and the
+// out-of-band interface for whichever backend won.
 data socket_fallback_lines: String = join([
   "spark-0c75:346:346 [0] NCCL INFO NET/IB : No device found.\n",
   "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
   "spark-0c75:346:346 [0] NCCL INFO NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>\n",
-  "spark-0c75:346:346 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'",
+  "spark-0c75:346:346 [0] NCCL INFO Using network Socket",
 ], "")
 
 // A REAL VERBS SELECTION NAMES ITS DEVICE, which is the discrimination the banner lacks. This is the
 // form NCCL prints when it opens an HCA: a bracketed ordinal, the device, its port and the link layer,
 // with the out-of-band socket named after the semicolon.
 data verbs_selection_lines: String = join([
-  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>",
+  "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+  "spark-0c75:346:346 [0] NCCL INFO Using network IB",
 ], "")
 
 test fn the_fleets_socket_fallback_reads_as_socket_and_not_as_verbs() -> Bool {
@@ -55,7 +61,90 @@ test fn a_verbs_selection_names_its_hca_and_its_out_of_band_interface() -> Bool 
 // which is the defect this file exists over.
 test fn the_ib_banner_alone_is_unread() -> Bool {
   match nccl_transport_of_lines(raw: "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>") {
-    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "names a selected device")
+    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "no line names the network the engine selected")
+    NcclIbTransport { hca: _, oob_netdev: _ } => false
+    NcclSocketTransport { netdev: _ } => false
+  }
+}
+
+// ── THE VERDICT DECIDES, NOT THE DETAIL ───────────────────────────────────────────────────────
+//
+// A BACKEND CAN REPORT A DEVICE AND STILL LOSE. An observer that derived the winner from detail lines
+// would answer IB here, because the IB plugin found and named an HCA -- and the communicator then
+// selected Socket. This is the counterexample the review named, and the only line that settles it is
+// NCCL's own assignment.
+test fn an_ib_detail_under_a_socket_verdict_reads_as_socket() -> Bool {
+  let lines = join([
+    "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO Using network Socket",
+  ], "")
+  match nccl_transport_of_lines(raw: lines) {
+    NcclSocketTransport { netdev: n } => (n as String) == "enp1s0f1np1"
+    NcclIbTransport { hca: _, oob_netdev: _ } => false
+    NcclTransportUnread { cause: _ } => false
+  }
+}
+
+// TWO VERBS DETAILS NAMING DIFFERENT DEVICES IS A CONTRADICTION. Taking the first would pass a rank
+// that opened an HCA nobody planned, which is exactly the reduction-by-order this reader refuses.
+test fn two_verbs_details_naming_different_hcas_are_refused() -> Bool {
+  let lines = join([
+    "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [1]roceP2p1s0f0:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB",
+  ], "")
+  match nccl_transport_of_lines(raw: lines) {
+    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "different devices")
+    NcclIbTransport { hca: _, oob_netdev: _ } => false
+    NcclSocketTransport { netdev: _ } => false
+  }
+}
+
+// A RANK WHOSE COMMUNICATORS DISAGREE IS REFUSED, because one rank serving two networks is not a
+// deployment this readback can accept on either of them.
+test fn communicators_selecting_different_networks_are_refused() -> Bool {
+  let lines = join([
+    "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:346 [0] NCCL INFO Using network IB\n",
+    "spark-0c75:346:399 [0] NCCL INFO Using network Socket",
+  ], "")
+  match nccl_transport_of_lines(raw: lines) {
+    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "different networks")
+    NcclIbTransport { hca: _, oob_netdev: _ } => false
+    NcclSocketTransport { netdev: _ } => false
+  }
+}
+
+// THE PLANNED DETAIL IS STILL READ WHEN IT ARRIVES LATE. The reader takes every distinct line rather
+// than a window over the first few, so a detail beyond any fixed cap still reaches the classification.
+test fn a_verbs_detail_beyond_the_former_window_is_still_observed() -> Bool {
+  let noise = join([
+    "spark-0c75:346:346 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'\n",
+    "spark-0c75:346:347 [1] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 1 'enp1s0f1np1'\n",
+    "spark-0c75:346:348 [2] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 2 'enp1s0f1np1'\n",
+    "spark-0c75:346:349 [3] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 3 'enp1s0f1np1'\n",
+    "spark-0c75:346:350 [4] NCCL INFO NET/IB : No device found.\n",
+    "spark-0c75:346:351 [5] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:352 [6] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.18<0>\n",
+    "spark-0c75:346:353 [7] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.19<0>\n",
+    "spark-0c75:346:354 [8] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
+    "spark-0c75:346:354 [8] NCCL INFO Using network IB",
+  ], "")
+  match nccl_transport_of_lines(raw: noise) {
+    NcclIbTransport { hca: h, oob_netdev: oob } =>
+      (h as String) == "rocep1s0f1"
+        && (match oob { Present { value: o } => (o as String) == "enp1s0f1np1"  Absent => false })
+    NcclSocketTransport { netdev: _ } => false
+    NcclTransportUnread { cause: _ } => false
+  }
+}
+
+// A VERDICT WITH NO DETAIL ESTABLISHES THE BACKEND AND NOT THE DEVICE, and acceptance needs both.
+test fn a_verdict_without_a_device_detail_is_unread() -> Bool {
+  match nccl_transport_of_lines(raw: "spark-0c75:346:346 [0] NCCL INFO Using network IB") {
+    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "no line names the device it selected")
     NcclIbTransport { hca: _, oob_netdev: _ } => false
     NcclSocketTransport { netdev: _ } => false
   }
@@ -71,13 +160,16 @@ test fn no_device_found_alone_is_unread() -> Bool {
 
 // TWO BACKENDS BOTH NAMING A DEVICE IS A CONTRADICTION, and resolving it by log order is exactly how
 // the banner won over the selection. One engine selects one network.
-test fn two_backends_naming_devices_refuse_rather_than_taking_the_first() -> Bool {
+// TWO BACKENDS EACH NAMING A DEVICE, AND NO VERDICT, ESTABLISHES NOTHING. Under the previous reader
+// this was the ambiguity arm; it is now the ordinary state of a log whose verdict line was not captured,
+// and it must not resolve to either backend.
+test fn two_backend_details_without_a_verdict_are_unread() -> Bool {
   let both = join([
     "spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [0]rocep1s0f1:1/RoCE [RO]; OOB enp1s0f1np1:192.168.110.17<0>\n",
     "spark-0c75:346:346 [0] NCCL INFO NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>",
   ], "")
   match nccl_transport_of_lines(raw: both) {
-    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "both NCCL backends")
+    NcclTransportUnread { cause: c } => string_contains(s: c as String, pattern: "no line names the network the engine selected")
     NcclIbTransport { hca: _, oob_netdev: _ } => false
     NcclSocketTransport { netdev: _ } => false
   }

@@ -28,11 +28,13 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // gunbc.spark.fabric_switch_observed's lane observation for that exact host, and a host with no
 // observed lane has no transport plan rather than a default one.
 //
-// AND THE BACKEND IS REQUESTED RATHER THAN HOPED FOR. A launch that requires verbs says so, renders
-// the device population and the pinned-memory and capability facts that make verbs possible, and is
-// read back against that requirement. A launch that permits sockets says THAT, with the declaration
-// admitting it -- and its capacity standing is a different subject, because a rate measured over verbs
-// is not a claim about a socket deployment.
+// AND THE BACKEND IS SELECTED RATHER THAN PERMITTED. Both arms name ONE realization and the readback
+// refuses the other: a deployment that came up on verbs where sockets were selected is as much a
+// divergence as the reverse, because a capacity standing measured over one transport is not a claim
+// about the other. The socket arm was first spelled `PermitNcclSocket`, which read as "either will do"
+// while its renderer set no selector and its readback refused verbs -- so it was a requirement wearing
+// a permission's name (exact-head review, 2026-09-14). It now forces NCCL_NET=Socket, and the absence
+// of a device mapping is a consequence of the selection rather than the mechanism of it.
 
 // GROUP A IS THE OTHER CONSUMER AND HAS NOT YET BEEN MOVED, which is a sequencing fact rather than an
 // oversight. gunbc.spark.pair_serving_realization renders the same device mapping, memlock bound and
@@ -44,12 +46,12 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // memlock, capability, HCA and GID rows delete in that change.
 type CollectiveTransportRequirement
   = RequireNcclIb
-  | PermitNcclSocket { basis: DeclarationRef }
+  | RequireNcclSocket { basis: DeclarationRef }
 
 fn collective_transport_requirement_wire(r: CollectiveTransportRequirement) -> NonEmptyStr {
   match r {
     RequireNcclIb => "NCCL verbs over the lane's RDMA device" as NonEmptyStr
-    PermitNcclSocket { basis: _ } => "NCCL TCP sockets over the lane's netdev, by declared permission" as NonEmptyStr
+    RequireNcclSocket { basis: _ } => "NCCL TCP sockets over the lane's netdev, by declared selection" as NonEmptyStr
   }
 }
 
@@ -98,9 +100,9 @@ fn transport_plan_for(host: HostIdentity, requirement: CollectiveTransportRequir
         netdev: lane.leg_netdev,
         rail_address: fabric_rail_address_of(o: lane),
         rdma_device: lane.leg_rdma_device,
-        device_population: match requirement { RequireNcclIb => verbs_device_population()  PermitNcclSocket { basis: _ } => [] },
-        memlock_unlimited: match requirement { RequireNcclIb => true  PermitNcclSocket { basis: _ } => false },
-        capabilities: match requirement { RequireNcclIb => [ipc_lock_capability]  PermitNcclSocket { basis: _ } => [] },
+        device_population: match requirement { RequireNcclIb => verbs_device_population()  RequireNcclSocket { basis: _ } => [] },
+        memlock_unlimited: match requirement { RequireNcclIb => true  RequireNcclSocket { basis: _ } => false },
+        capabilities: match requirement { RequireNcclIb => [ipc_lock_capability]  RequireNcclSocket { basis: _ } => [] },
         gid_selection: NcclGidByAddressFamily { family: NcclAfInet, version: NcclRoceV2 },
         requirement: requirement,
       } }
@@ -122,6 +124,7 @@ data nccl_ib_hca_env: NonEmptyStr = "NCCL_IB_HCA" as NonEmptyStr
 data ucx_net_devices_env: NonEmptyStr = "UCX_NET_DEVICES" as NonEmptyStr
 data nccl_net_env: NonEmptyStr = "NCCL_NET" as NonEmptyStr
 data nccl_net_ib_value: String = "IB"
+data nccl_net_socket_value: String = "Socket"
 
 // THE EXACT-MATCH FORM, which NCCL documents as the leading "=" spelling: `NCCL_IB_HCA=rocep1s0f1`
 // matches any device whose name BEGINS with that text, so a fleet that ever carries rocep1s0f1x would
@@ -141,13 +144,18 @@ fn transport_socket_env(plan: CollectiveTransportPlan) -> List<DockerEnvAssignme
   ]
 }
 
-// NCCL_NET=IB IS WHAT MAKES A FAILURE EXPLICIT. Without it, a verbs realization that cannot initialise
-// falls back to sockets and serves -- which is the state this fleet has been in, healthy-looking and
-// slow. With it, the same failure is a refusal at start rather than a silent substitution, which is
-// what "exact realization; no implicit fallback" means at this seam.
+// NCCL_NET IS SET IN BOTH ARMS, AND THAT IS THE WHOLE POINT OF NAMING A REALIZATION. Without it a verbs
+// launch that cannot initialise falls back to sockets and serves -- the state this fleet has been in,
+// healthy-looking and slow -- and a socket launch is merely what happens to be left when no device was
+// mapped. With it each arm asks for one network by name, and a failure to get it is a refusal at start
+// rather than a silent substitution.
 fn transport_env(plan: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
   match plan.requirement {
-    PermitNcclSocket { basis: _ } => transport_socket_env(plan: plan)
+    RequireNcclSocket { basis: _ } =>
+      concat(
+        transport_socket_env(plan: plan),
+        [DockerEnvAssignment { name: nccl_net_env, value: nccl_net_socket_value }],
+      )
     RequireNcclIb =>
       concat(
         concat(
@@ -171,7 +179,7 @@ fn transport_env(plan: CollectiveTransportPlan) -> List<DockerEnvAssignment> {
 fn transport_requires_verbs(plan: CollectiveTransportPlan) -> Bool {
   match plan.requirement {
     RequireNcclIb => true
-    PermitNcclSocket { basis: _ } => false
+    RequireNcclSocket { basis: _ } => false
   }
 }
 

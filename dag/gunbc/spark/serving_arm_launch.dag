@@ -50,7 +50,7 @@ import gunbc.spark.serving_deployment_selection {
 }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
 import gunbc.spark.collective_transport {
-  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, PermitNcclSocket,
+  CollectiveTransportPlan, CollectiveTransportRequirement, RequireNcclIb, RequireNcclSocket,
   transport_plan_for, transport_env, transport_requires_verbs,
   transport_expected_device, transport_expected_out_of_band, collective_transport_requirement_wire,
 }

@@ -187,9 +187,13 @@ fn log_pattern_argv(container: NonEmptyStr, pattern: String) -> List<String> {
   ], "")]
 }
 
+// DEDUPLICATED RATHER THAN CAPPED. A window over the first few matches can exclude the verdict line or
+// a contradicting detail -- which is how a reader ends up certain about a deployment it only partly
+// read -- so the distinct lines are taken whole and the classification refuses a contradiction rather
+// than never seeing it.
 fn log_lines_argv(container: NonEmptyStr, pattern: String) -> List<String> {
   ["sh", "-c", join([
-    "L=$(docker logs ", container as String, " 2>&1 | grep -E ", pattern, " | head -4)",
+    "L=$(docker logs ", container as String, " 2>&1 | grep -E ", pattern, " | sort -u)",
     "; if [ -z \"$L\" ]; then echo ", realization_absent_marker, "; else echo \"$L\"; fi",
   ], "")]
 }
@@ -202,7 +206,7 @@ data nccl_transport_pattern: String = "'NET/(IB|Socket) : Using [^ ]+'"
 // while the same containers carry no /dev/infiniband node at all, which is the state in which verbs
 // cannot be opened. A classification nobody can check against its own input is a reading of the
 // reader; the evidence travels with the verdict so a misparse is visible rather than inherited.
-data nccl_transport_lines_pattern: String = "'NET/(IB|Socket)'"
+data nccl_transport_lines_pattern: String = "'NET/(IB|Socket)|Using network'"
 
 // THE UNIT ROSTER ON THE HOST, so an actuator that owns this container through systemd is named rather
 // than guessed at. An empty answer is an answer: nothing on this host names the container.

@@ -71,51 +71,48 @@ fn rank_running_argv() -> List<String> {
 // NCCL PRINTS THE IB LINE AS "NET/IB : Using [0]<hca>:1/RoCE ... ; OOB <netdev>:<ip>", so the backend,
 // the device and the out-of-band socket are separable. One line is emitted per selection; the first is
 // taken and a rank that printed neither is unread rather than assumed.
-// EVERY TRANSPORT LINE IS READ, NOT THE FIRST ONE, AND THAT IS THE WHOLE REPAIR. Measured on this
-// fleet 2026-09-14, NCCL 2.30.7 prints FOUR lines on a socket deployment:
+// NCCL PUBLISHES ITS OWN VERDICT, AND THAT IS WHAT DECIDES. After initialising its network the
+// communicator prints the plugin it assigned:
 //
-//   NET/IB : No device found.
-//   NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>
-//   NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>
-//   NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'
+//   spark-0c75:346:346 [0] NCCL INFO Using network Socket
 //
-// The IB plugin prints its `Using [RO]; OOB ...` banner EVEN AFTER FINDING NO DEVICE -- that line
-// describes the relaxed-ordering flag and the out-of-band socket, not a selected HCA. The previous
-// reader grepped for the first `NET/x : Using` line and took whatever followed the bracket, so it read
-// `[RO];` as a device name and reported NcclIbTransport { hca: ";" } for a deployment that had no
-// /dev/infiniband node at all. The readback admits any IB observation, so four socket ranks were
-// ACCEPTED as an RDMA deployment and an incarnation was minted over them.
+// measured on this fleet 2026-09-14. The `NET/<backend> : Using ...` lines are DETAIL about what each
+// backend found; the verdict says which backend won. Two earlier readers got this wrong in the same
+// direction. The first grepped the earliest `Using` line and took the text after its bracket, so the IB
+// plugin's `Using [RO]; OOB ...` banner -- printed after `NET/IB : No device found.` -- became an HCA
+// named ";" and four socket ranks were accepted as an RDMA deployment. The second required a numeric
+// ordinal, which fixed that case and still derived the winner from detail lines rather than from the
+// verdict, so a backend that reported a device and then lost would have answered for the deployment.
 //
-// SO A SELECTION MUST NAME A DEVICE. The device token is `[<ordinal>]<name>...` where the ordinal is
-// digits; `[RO]` is not an ordinal and therefore not a selection. A backend that printed no device
-// selection did not select; a backend that did is the transport, and two of them claiming a selection
-// is a contradiction this reader refuses rather than resolving by line order.
+// NOTHING IS TRUNCATED AND NOTHING IS REDUCED BY ORDER. The read takes every matching line, deduplicated
+// rather than capped, so a verdict or a contradicting detail cannot fall outside a window; and a backend
+// that named two different devices is a contradiction this reader refuses rather than resolving by taking
+// the first. A rank whose communicators disagree about the network is likewise refused.
 fn rank_nccl_transport_argv() -> List<String> {
   ["sh", "-c", join([
     "L=$(docker logs ", glm_native_container_name as String, " 2>&1",
-    " | grep -E 'NET/(IB|Socket) : ' | head -8)",
+    " | grep -E 'NET/(IB|Socket) : |Using network ' | sort -u)",
     "; if [ -z \"$L\" ]; then echo ", nccl_transport_unread_wire, "; else echo \"$L\"; fi",
   ], "")]
 }
 
 data nccl_transport_unread_wire: String = "UNREAD"
 
-type NcclSelectionLine
-  = SelectionNamesDevice { backend: NcclBackendName, device: NonEmptyStr, oob_netdev: NonEmptyStr? }
-  | SelectionWithoutDevice { backend: NcclBackendName }
-  | BackendFoundNoDevice { backend: NcclBackendName }
-  | LineIsNotASelection
-
 type NcclBackendName = NcclIbBackend | NcclSocketBackend
 
-fn nccl_backend_of_line(raw: String) -> NcclBackendName? {
-  if string_contains(s: raw, pattern: "NET/IB : ") {
-    Present { value: NcclIbBackend }
-  } else if string_contains(s: raw, pattern: "NET/Socket : ") {
-    Present { value: NcclSocketBackend }
-  } else {
-    none
+data nccl_selected_network_marker: String = "Using network "
+data nccl_ib_backend_wire: String = "IB"
+data nccl_socket_backend_wire: String = "Socket"
+
+fn nccl_backend_wire(b: NcclBackendName) -> String {
+  match b {
+    NcclIbBackend => nccl_ib_backend_wire
+    NcclSocketBackend => nccl_socket_backend_wire
   }
+}
+
+fn nccl_backend_eq(left: NcclBackendName, right: NcclBackendName) -> Bool {
+  nccl_backend_wire(b: left) == nccl_backend_wire(b: right)
 }
 
 fn nccl_text_after(raw: String, marker: String) -> String? {
@@ -133,119 +130,156 @@ fn nccl_all_digits(s: String) -> Bool {
   }
 }
 
-// THE OUT-OF-BAND INTERFACE IS ITS OWN FACT, and on an IB selection it is the socket NCCL bootstraps
-// over while the payload rides verbs. It is read from the same line rather than inferred.
-fn nccl_oob_netdev(raw: String) -> NonEmptyStr? {
+fn nccl_distinct(values: List<String>) -> List<String> {
+  fold(values, init: [] as List<String>, f: (acc, v) => if any(acc, x => x == v) { acc } else { concat(acc, [v]) })
+}
+
+// ── THE VERDICT ───────────────────────────────────────────────────────────────────────────────
+//
+// THE BACKEND NAME IS TAKEN AS A WHOLE WORD. "Using network Socket" and "Using network IB" are the two
+// spellings this fleet's NCCL prints; a line naming anything else is a plugin this reader does not model
+// and is carried into the refusal rather than guessed at.
+fn nccl_selected_backend_of_line(raw: String) -> String? {
+  match nccl_text_after(raw: raw, marker: nccl_selected_network_marker) {
+    Absent => none
+    Present { value: tail } => {
+      let word = match split(s: tail, delimiter: " ").first() { Absent => tail  Present { value: w } => w }
+      if word == "" { none } else { Present { value: word } }
+    }
+  }
+}
+
+fn nccl_selected_backends(lines: List<String>) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_selected_backend_of_line(raw: l) { Present { value: b } => [b]  Absent => [] }))
+}
+
+// ── THE DETAIL FOR ONE BACKEND ────────────────────────────────────────────────────────────────
+//
+// A DETAIL LINE NAMES A DEVICE ONLY WHEN ITS BRACKET CARRIES AN ORDINAL. `[RO]` is a relaxed-ordering
+// banner and `[0]rocep1s0f1:1/RoCE` is a selection; the digits are what separate them.
+fn nccl_detail_marker(b: NcclBackendName) -> String {
+  join(["NET/", nccl_backend_wire(b: b), " : Using ["], "")
+}
+
+fn nccl_device_of_detail(raw: String, backend: NcclBackendName) -> String? {
+  match nccl_text_after(raw: raw, marker: nccl_detail_marker(b: backend)) {
+    Absent => none
+    Present { value: tail } =>
+      match split(s: tail, delimiter: "]").first() {
+        Absent => none
+        Present { value: ordinal } =>
+          if !nccl_all_digits(s: ordinal) {
+            none
+          } else {
+            match nccl_text_after(raw: tail, marker: "]") {
+              Absent => none
+              Present { value: rest } =>
+                match split(s: rest, delimiter: ":").first() {
+                  Absent => none
+                  Present { value: device } => if device == "" { none } else { Present { value: device } }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn nccl_oob_of_detail(raw: String) -> String? {
   match nccl_text_after(raw: raw, marker: "OOB ") {
     Absent => none
     Present { value: tail } =>
       match split(s: tail, delimiter: ":").first() {
         Absent => none
-        Present { value: dev } => if dev == "" { none } else { Present { value: dev as NonEmptyStr } }
+        Present { value: dev } => if dev == "" { none } else { Present { value: dev } }
       }
   }
 }
 
-fn nccl_selection_of_line(raw: String) -> NcclSelectionLine {
-  match nccl_backend_of_line(raw: raw) {
-    Absent => LineIsNotASelection
-    Present { value: backend } =>
-      if string_contains(s: raw, pattern: "No device found") {
-        BackendFoundNoDevice { backend: backend }
-      } else {
-        match nccl_text_after(raw: raw, marker: " : Using [") {
-          Absent => LineIsNotASelection
-          Present { value: tail } =>
-            match split(s: tail, delimiter: "]").first() {
-              Absent => SelectionWithoutDevice { backend: backend }
-              Present { value: ordinal } =>
-                if !nccl_all_digits(s: ordinal) {
-                  SelectionWithoutDevice { backend: backend }
-                } else {
-                  match nccl_text_after(raw: tail, marker: "]") {
-                    Absent => SelectionWithoutDevice { backend: backend }
-                    Present { value: rest } =>
-                      match split(s: rest, delimiter: ":").first() {
-                        Absent => SelectionWithoutDevice { backend: backend }
-                        Present { value: device } =>
-                          if device == "" {
-                            SelectionWithoutDevice { backend: backend }
-                          } else {
-                            SelectionNamesDevice {
-                              backend: backend,
-                              device: device as NonEmptyStr,
-                              oob_netdev: nccl_oob_netdev(raw: raw),
-                            }
-                          }
-                      }
-                  }
-                }
+fn nccl_devices_for(lines: List<String>, backend: NcclBackendName) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_device_of_detail(raw: l, backend: backend) { Present { value: d } => [d]  Absent => [] }))
+}
+
+fn nccl_oob_for(lines: List<String>, backend: NcclBackendName) -> List<String> {
+  nccl_distinct(values: flat_map(lines, l =>
+    match nccl_device_of_detail(raw: l, backend: backend) {
+      Absent => []
+      Present { value: _ } => match nccl_oob_of_detail(raw: l) { Present { value: o } => [o]  Absent => [] }
+    }))
+}
+
+fn nccl_backend_of_wire(wire: String) -> NcclBackendName? {
+  if wire == nccl_ib_backend_wire {
+    Present { value: NcclIbBackend }
+  } else if wire == nccl_socket_backend_wire {
+    Present { value: NcclSocketBackend }
+  } else {
+    none
+  }
+}
+
+fn nccl_transport_for_backend(lines: List<String>, backend: NcclBackendName, raw: String) -> NcclTransportObservation {
+  let devices = nccl_devices_for(lines: lines, backend: backend)
+  if count(devices) == 0 {
+    NcclTransportUnread {
+      cause: join(["the engine selected network ", nccl_backend_wire(b: backend), " and no line names the device it selected: ", raw], "") as NonEmptyStr,
+    }
+  } else if count(devices) > 1 {
+    NcclTransportUnread {
+      cause: join([
+        "the engine selected network ", nccl_backend_wire(b: backend), " and named ", to_string(count(devices)),
+        " different devices for it: ", join(devices, ", "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match devices.first() {
+      Absent => NcclTransportUnread { cause: "a device vanished between two readings of one list" as NonEmptyStr }
+      Present { value: device } =>
+        match backend {
+          NcclSocketBackend => NcclSocketTransport { netdev: device as NonEmptyStr }
+          NcclIbBackend => {
+            let oob = nccl_oob_for(lines: lines, backend: backend)
+            if count(oob) > 1 {
+              NcclTransportUnread {
+                cause: join(["the verbs selection named ", to_string(count(oob)), " different out-of-band interfaces: ", join(oob, ", ")], "") as NonEmptyStr,
+              }
+            } else {
+              NcclIbTransport {
+                hca: device as NonEmptyStr,
+                oob_netdev: match oob.first() { Absent => none  Present { value: o } => Present { value: o as NonEmptyStr } },
+              }
             }
+          }
         }
-      }
+    }
   }
 }
 
-fn nccl_selection_is(line: NcclSelectionLine, backend: NcclBackendName) -> Bool {
-  match line {
-    SelectionNamesDevice { backend: b, device: _, oob_netdev: _ } => nccl_backend_eq(left: b, right: backend)
-    SelectionWithoutDevice { backend: _ } => false
-    BackendFoundNoDevice { backend: _ } => false
-    LineIsNotASelection => false
-  }
-}
-
-fn nccl_backend_eq(left: NcclBackendName, right: NcclBackendName) -> Bool {
-  match left {
-    NcclIbBackend => match right { NcclIbBackend => true  NcclSocketBackend => false }
-    NcclSocketBackend => match right { NcclIbBackend => false  NcclSocketBackend => true }
-  }
-}
-
-fn nccl_transport_of_selection(line: NcclSelectionLine) -> NcclTransportObservation {
-  match line {
-    SelectionNamesDevice { backend: b, device: d, oob_netdev: oob } =>
-      match b {
-        NcclIbBackend => NcclIbTransport { hca: d, oob_netdev: oob }
-        NcclSocketBackend => NcclSocketTransport { netdev: d }
-      }
-    SelectionWithoutDevice { backend: _ } =>
-      NcclTransportUnread { cause: "a transport line named a backend and no device" as NonEmptyStr }
-    BackendFoundNoDevice { backend: _ } =>
-      NcclTransportUnread { cause: "a backend reported no device" as NonEmptyStr }
-    LineIsNotASelection =>
-      NcclTransportUnread { cause: "the line is not a transport selection" as NonEmptyStr }
-  }
-}
-
-// THE POPULATION DECIDES, AND ITS EVIDENCE TRAVELS IN THE REFUSAL. One backend naming a device is the
-// transport; none is unread, and both is a contradiction -- never the first line in log order, which
-// is what admitted the banner over the selection.
 fn nccl_transport_of_lines(raw: String) -> NcclTransportObservation {
   if raw == nccl_transport_unread_wire {
     NcclTransportUnread { cause: "the engine log printed no NCCL transport line" as NonEmptyStr }
   } else {
     let lines = filter(split(s: raw, delimiter: "\n"), l => l != "")
-    let selections = map(lines, l => nccl_selection_of_line(raw: l))
-    let ib = filter(selections, sel => nccl_selection_is(line: sel, backend: NcclIbBackend))
-    let socket = filter(selections, sel => nccl_selection_is(line: sel, backend: NcclSocketBackend))
-    if count(ib) != 0 && count(socket) != 0 {
+    let selected = nccl_selected_backends(lines: lines)
+    if count(selected) == 0 {
       NcclTransportUnread {
-        cause: join(["both NCCL backends report a device selection, which one engine does not do: ", raw], "") as NonEmptyStr,
+        cause: join(["no line names the network the engine selected: ", raw], "") as NonEmptyStr,
       }
-    } else if count(ib) != 0 {
-      match ib.first() {
-        Absent => NcclTransportUnread { cause: "a selection vanished between two readings of one list" as NonEmptyStr }
-        Present { value: sel } => nccl_transport_of_selection(line: sel)
-      }
-    } else if count(socket) != 0 {
-      match socket.first() {
-        Absent => NcclTransportUnread { cause: "a selection vanished between two readings of one list" as NonEmptyStr }
-        Present { value: sel } => nccl_transport_of_selection(line: sel)
+    } else if count(selected) > 1 {
+      NcclTransportUnread {
+        cause: join(["this rank's communicators selected ", to_string(count(selected)), " different networks: ", join(selected, ", ")], "") as NonEmptyStr,
       }
     } else {
-      NcclTransportUnread {
-        cause: join(["no NCCL transport line names a selected device: ", raw], "") as NonEmptyStr,
+      match selected.first() {
+        Absent => NcclTransportUnread { cause: "a verdict vanished between two readings of one list" as NonEmptyStr }
+        Present { value: wire } =>
+          match nccl_backend_of_wire(wire: wire) {
+            Absent => NcclTransportUnread {
+              cause: join(["the engine selected a network this reader does not model: ", wire], "") as NonEmptyStr,
+            }
+            Present { value: backend } => nccl_transport_for_backend(lines: lines, backend: backend, raw: raw)
+          }
       }
     }
   }
