@@ -1,0 +1,11 @@
+# Refusal preservation
+
+Gatekeeper ruling msg_1406f4c4 admits the general application comparison within B. The main reduction records the refusal previously supplied accidentally by CardOptional recursion: Int?/String? is incompatible. Applied Optional<Int>/Optional<String> and Map<String,Int>/Map<String,String> are compatible on main because the comparison falls through to their shared name. Applied Optional<Int>/Optional<Int> is also unequal on main: equality lacks its ordinary application path.
+
+The replacement uses type_application_arguments_match for both node_type_compatible and node_type_equals_core. It checks arity before walking all ordered arguments and applies the relation recursively. The old List and Map-specific comparison walks are deleted, including the Unit-element wildcard acceptance. No Optional spelling branch or CardOptional equivalence is introduced. Unexpected corpus refusals are defects to diagnose, never permission to restore acceptance.
+
+This is a declared §3b divergence from the original accepted plan: simply deleting the marker branches would erase a required refusal. The minimum replacement must carry it through canonical arguments instead.
+
+Main's make_container_type/make_map_type and resolve_node_bounded still transport collection arguments in named slots. The shared walk uses their existing child_type_node projection; other applications carry direct arguments. That is preservation of main's pre-existing producer protocol, not an intermediate Optional representation. There is no separate collection comparison policy. The later collection argument-carrier cut can delete this projection once those producers change together. Compatibility retains main's declared container alias head normalization; equality retains its authored-head relation.
+
+Permanent controls exercise Optional mismatch/identity/arity, Map value mismatch/identity, List mismatch and nested Optional mismatch in both relations. The .dag comparison claim module uses real producers and is being run on the interpreter route; native semantic controls await regenerated mirrors. See comparator-main-matrix.log for exact-main baseline observations. No candidate GREEN is claimed by this checkpoint.

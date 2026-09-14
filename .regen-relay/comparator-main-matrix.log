@@ -1,0 +1,5 @@
+MAIN_COMPARATOR legacy optional mismatch: compatible=false equals=false
+MAIN_COMPARATOR applied optional mismatch: compatible=true equals=false
+MAIN_COMPARATOR applied optional identical: compatible=true equals=false
+MAIN_COMPARATOR map value mismatch: compatible=true equals=false
+MAIN_COMPARATOR map identical: compatible=true equals=true
