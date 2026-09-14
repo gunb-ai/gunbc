@@ -33,6 +33,7 @@ import gunbc.public_workload_census {
   inspected_yaml_job_name_join, inspected_yaml_job_names, InspectedYamlJobName, AuthoredName,
   YamlJobNameBound, YamlJobNameUninspected,
   inspected_leg_binding, InspectedLegBound, InspectedLegUninspected, InspectedLegNameMismatch,
+  InspectedLegAxisMismatch,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   WorkloadCandidate, MatrixCombination, MatrixAxisAssignment, DeclaredLabel,
   JobRunObserved, TestsExecuted, ReplayAdmitted, SpendUnobserved,
@@ -148,6 +149,66 @@ data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = Workl
   trial: trial_authorization_from_census(),
   selection: CandidateRejected {
     reason: "identity-join RED: same Jobs API name and observation as the Arm test leg, but the inspected matrix selector is a different combination",
+  },
+}
+
+data candidate_pdns_axis_name_mismatch_control: WorkloadCandidate = WorkloadCandidate {
+  repository: "PowerDNS/pdns",
+  license_spdx: "GPL-2.0",
+  inspected_commit: "0f2df8380e89bb066e947a5818f6267016847d98",
+  workflow_path: ".github/workflows/build-and-test-all.yml",
+  workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
+  job_key: "build-dnsdist",
+  matrix_selector: MatrixCombination {
+    axes: [
+      MatrixAxisAssignment { axis: "sanitizers", value: "asan+ubsan" },
+      MatrixAxisAssignment { axis: "features", value: "full" },
+      MatrixAxisAssignment { axis: "cpu_family", value: "-arm" },
+    ],
+  },
+  declared_runner: DeclaredExpression {
+    expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
+    alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
+  },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 100984779675,
+      run_id: 33860869079,
+      run_attempt: 1,
+      name: "build dnsdist (asan+ubsan, full, -arm)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubuntu-24.04-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T09:57:28Z" },
+      completed_at: Present { value: "2026-09-04T10:07:09Z" },
+    },
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    workflow_blob_sha_at_head: "f9f3f705735c2fe01922f075194c735246fe97aa",
+    head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
+    correctness: TestsExecuted {
+      step: "inv ci-dnsdist-run-unit-tests",
+    },
+  },
+  observation_time: "2026-09-04T09:57:28Z",
+  workload_commands: [
+    "inv install-dnsdist-build-deps",
+    "inv ci-dnsdist-configure full",
+    "inv ci-dnsdist-run-ninja",
+    "inv ci-dnsdist-run-unit-tests",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 4),
+    uses_container: true,
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "identity-join RED: same values and Jobs API name as the admitted dnsdist Arm leg, but architecture_suffix is renamed so the selector is not the inspected workflow's axes",
   },
 }
 
@@ -771,6 +832,7 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
         InspectedLegUninspected { cause } => true
         InspectedLegBound => false
         InspectedLegNameMismatch => false
+        InspectedLegAxisMismatch => false
       }
   same_matrix_different_key
     && match candidate_run_identity(c: candidate_biome_job_key_mismatch_control) {
@@ -832,10 +894,41 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
         InspectedLegNameMismatch => true
         InspectedLegBound => false
         InspectedLegUninspected { cause } => false
+        InspectedLegAxisMismatch => false
       }
   same_key_different_matrix
     && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
       RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_matrix_selector_mismatch_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+      WorkflowEquivalentOnly { inspected, observed, blob } => false
+      RunIdentityUnresolved { cause } => false
+    }
+}
+
+test fn witness_axis_name_mismatch_is_refused_when_values_and_display_name_match() -> Bool {
+  let same_values_wrong_axis =
+    (candidate_pdns_axis_name_mismatch_control.job_key as String)
+      == (candidate_pdns_dnsdist_arm.job_key as String)
+      && candidate_pdns_axis_name_mismatch_control.matrix_selector
+        != candidate_pdns_dnsdist_arm.matrix_selector
+      && match inspected_leg_binding(
+        job_name: "build dnsdist (asan+ubsan, full, -arm)",
+        job_key: candidate_pdns_axis_name_mismatch_control.job_key,
+        matrix: candidate_pdns_axis_name_mismatch_control.matrix_selector,
+        repository: candidate_pdns_axis_name_mismatch_control.repository,
+        workflow_path: candidate_pdns_axis_name_mismatch_control.workflow_path,
+      ) {
+        InspectedLegAxisMismatch => true
+        InspectedLegBound => false
+        InspectedLegNameMismatch => false
+        InspectedLegUninspected { cause } => false
+      }
+  same_values_wrong_axis
+    && match candidate_run_identity(c: candidate_pdns_axis_name_mismatch_control) {
+      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_pdns_axis_name_mismatch_control) {
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
@@ -897,10 +990,11 @@ test fn witness_empty_matrix_axes_do_not_bind_as_empty_parenthetical() -> Bool {
     repository: candidate_empty_matrix_axes_control.repository,
     workflow_path: candidate_empty_matrix_axes_control.workflow_path,
   ) {
-    InspectedLegNameMismatch => match baseline_admission(c: candidate_empty_matrix_axes_control) {
+    InspectedLegAxisMismatch => match baseline_admission(c: candidate_empty_matrix_axes_control) {
       BaselineRefused { cause } => true
       BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
     }
+    InspectedLegNameMismatch => false
     InspectedLegBound => false
     InspectedLegUninspected { cause } => false
   }
@@ -997,6 +1091,7 @@ fn all_claims_hold() -> Bool {
     && witness_admitted_same_revision_and_blob_equivalent_hold()
     && witness_blob_mismatch_is_refused_even_when_tests_ran()
     && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
+    && witness_axis_name_mismatch_is_refused_when_values_and_display_name_match()
     && witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
     && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
     && witness_multiple_labels_are_not_resolved_from_the_first()

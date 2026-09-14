@@ -79,8 +79,8 @@ data public_workload_census_run_attempt_consumer_frontier_rows: List<FrontierRow
 data public_workload_census_declared_runner_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "DeclaredRunner"),
-    reason: "DeclaredRunner (DeclaredLabel | DeclaredExpression with hand-authored alternatives) and inspected_yaml_job_names are inspection transcripts. gunbc#11270 drafts extdeps.languages.yaml.gha_workflow_read into the Actions RunnerSpec (HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression) and evaluates expressions per matrix combination. Until that lands, these rows are authored census facts, not a parse of the inspected workflow blob",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc#11270 gha_workflow_read / RunnerSpec. TRIGGER: a production fold in gunbc.public_workload_census reads RunnerSpec (or equivalent) from the inspected workflow blob instead of DeclaredRunner and inspected_yaml_job_names. SUFFICIENT FOR deleting DeclaredRunner, the hand-authored DeclaredExpression.alternatives, inspected_yaml_job_names, and this row. NOT satisfied by adding more authored alternatives or YAML-name rows"),
+    reason: "DeclaredRunner (DeclaredLabel | DeclaredExpression with hand-authored alternatives), inspected_yaml_job_names, and inspected_job_matrix_axes are inspection transcripts. gunbc#11270 drafts extdeps.languages.yaml.gha_workflow_read into the Actions RunnerSpec (HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression) and evaluates expressions per matrix combination. Until that lands, these rows are authored census facts, not a parse of the inspected workflow blob",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc#11270 gha_workflow_read / RunnerSpec. TRIGGER: a production fold in gunbc.public_workload_census reads RunnerSpec (or equivalent) from the inspected workflow blob instead of DeclaredRunner, inspected_yaml_job_names, and inspected_job_matrix_axes. SUFFICIENT FOR deleting DeclaredRunner, the hand-authored DeclaredExpression.alternatives, inspected_yaml_job_names, inspected_job_matrix_axes, and this row. NOT satisfied by adding more authored alternatives, YAML-name rows, or matrix-axis rows"),
   ),
 ]
 
@@ -378,6 +378,102 @@ type InspectedYamlJobName {
   name: InspectedYamlJobNameFact
 }
 
+type InspectedJobMatrixAxes {
+  repository: NonEmptyStr
+  workflow_path: NonEmptyStr
+  job_key: NonEmptyStr
+  axes: List<NonEmptyStr>
+}
+
+data inspected_job_matrix_axes: List<InspectedJobMatrixAxes> = [
+  InspectedJobMatrixAxes {
+    repository: "biomejs/biome",
+    workflow_path: ".github/workflows/main.yml",
+    job_key: "test",
+    axes: ["os"],
+  },
+  InspectedJobMatrixAxes {
+    repository: "PowerDNS/pdns",
+    workflow_path: ".github/workflows/build-and-test-all.yml",
+    job_key: "build-dnsdist",
+    axes: ["sanitizers", "features", "architecture_suffix"],
+  },
+  InspectedJobMatrixAxes {
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    job_key: "build_pr_image_arm64",
+    axes: [],
+  },
+  InspectedJobMatrixAxes {
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    job_key: "build_pr_image_amd64",
+    axes: [],
+  },
+  InspectedJobMatrixAxes {
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    job_key: "build",
+    axes: [],
+  },
+  InspectedJobMatrixAxes {
+    repository: "openobserve/openobserve",
+    workflow_path: ".github/workflows/build-pr-image.yml",
+    job_key: "build_pr_image_summary",
+    axes: [],
+  },
+]
+
+type InspectedMatrixAxesJoin
+  = InspectedMatrixAxesBound { axes: List<NonEmptyStr> }
+  | InspectedMatrixAxesUninspected { cause: NonEmptyStr }
+
+fn inspected_job_matrix_axes_join(
+  rows: List<InspectedJobMatrixAxes>,
+  repository: NonEmptyStr,
+  workflow_path: NonEmptyStr,
+  job_key: NonEmptyStr,
+) -> InspectedMatrixAxesJoin {
+  let matches = filter(rows, r =>
+    (r.repository as String) == (repository as String)
+      && (r.workflow_path as String) == (workflow_path as String)
+      && (r.job_key as String) == (job_key as String)
+  )
+  if count(matches) == 0 {
+    InspectedMatrixAxesUninspected {
+      cause: "no inspected matrix-axis row for this repository, workflow path, and job_key",
+    }
+  } else if count(matches) == 1 {
+    match matches.first() {
+      Present { value: row } => InspectedMatrixAxesBound { axes: row.axes }
+      Absent => InspectedMatrixAxesUninspected {
+        cause: "no inspected matrix-axis row for this repository, workflow path, and job_key",
+      }
+    }
+  } else {
+    InspectedMatrixAxesUninspected {
+      cause: "multiple inspected matrix-axis rows for this repository, workflow path, and job_key",
+    }
+  }
+}
+
+fn selector_axis_names(matrix: JobMatrixIdentity) -> List<NonEmptyStr> {
+  match matrix {
+    NoMatrix => []
+    MatrixCombination { axes } => map(axes, a => a.axis)
+  }
+}
+
+fn axis_name_sets_are_identical(declared: List<NonEmptyStr>, selector: List<NonEmptyStr>) -> Bool {
+  count(declared) == count(selector)
+    && count(filter(declared, d =>
+      count(filter(selector, s => (s as String) == (d as String))) == 0
+    )) == 0
+    && count(filter(selector, s =>
+      count(filter(declared, d => (d as String) == (s as String))) == 0
+    )) == 0
+}
+
 data inspected_yaml_job_names: List<InspectedYamlJobName> = [
   InspectedYamlJobName {
     repository: "biomejs/biome",
@@ -485,6 +581,7 @@ fn observed_name_matches_inspected_prefix(
 type InspectedLegBinding
   = InspectedLegBound
   | InspectedLegUninspected { cause: NonEmptyStr }
+  | InspectedLegAxisMismatch
   | InspectedLegNameMismatch
 
 fn inspected_leg_binding(
@@ -502,10 +599,26 @@ fn inspected_leg_binding(
   ) {
     YamlJobNameUninspected { cause } => InspectedLegUninspected { cause: cause }
     YamlJobNameBound { prefix } =>
-      if observed_name_matches_inspected_prefix(job_name: job_name, prefix: prefix, matrix: matrix) {
-        InspectedLegBound
-      } else {
-        InspectedLegNameMismatch
+      match inspected_job_matrix_axes_join(
+        rows: inspected_job_matrix_axes,
+        repository: repository,
+        workflow_path: workflow_path,
+        job_key: job_key,
+      ) {
+        InspectedMatrixAxesUninspected { cause } => InspectedLegUninspected { cause: cause }
+        InspectedMatrixAxesBound { axes } =>
+          if axis_name_sets_are_identical(
+            declared: axes,
+            selector: selector_axis_names(matrix: matrix),
+          ) {
+            if observed_name_matches_inspected_prefix(job_name: job_name, prefix: prefix, matrix: matrix) {
+              InspectedLegBound
+            } else {
+              InspectedLegNameMismatch
+            }
+          } else {
+            InspectedLegAxisMismatch
+          }
       }
   }
 }
@@ -714,6 +827,10 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
           workflow_path: c.workflow_path,
         ) {
           InspectedLegUninspected { cause } => RunIdentityUnresolved { cause: cause }
+          InspectedLegAxisMismatch =>
+            RunIdentityMismatched {
+              cause: "the matrix selector's axis names are not exactly the inspected workflow's declared matrix axes",
+            }
           InspectedLegNameMismatch =>
             RunIdentityMismatched {
               cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
