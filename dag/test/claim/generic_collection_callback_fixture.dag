@@ -1,0 +1,11 @@
+module test.claim.generic_collection_callback_fixture
+
+import std.algebra { FreeMonoid }
+import std.types { Int }
+
+// Fixture carrier and fold consumed by the callback-binding witness’s authored
+// programs through compile_dag_diagnostic_census; independent of the allocation model.
+type Step<S> { value: S, cursor: Int }
+fn collect_state<T, S>(xs: FreeMonoid<T>, init: Step<S>, f: fn(S, T, Int) -> Step<S>) -> Step<S> {
+  fold(xs, init: init, f: fn(state, item) { f(state.value, item, state.cursor) })
+}

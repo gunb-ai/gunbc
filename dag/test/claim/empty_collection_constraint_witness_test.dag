@@ -1,0 +1,120 @@
+module test.claim.empty_collection_constraint_witness
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Permanent source-level controls for v1.compiler.infer.infer_call_arguments_generic_pass.
+// The census compiles each authored program against the live tree; a failed observation
+// refuses the claim. std.occurrence_identity.occurrence_allocation_fold is the later consumer of this shape.
+fn callback_inference_error_count(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "InternalError") {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+fn callback_compiles_clean(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data empty_fold_source: String = "module probe_generic_empty_fold\nimport std.types { Int, List, String }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Module { module: String, declarations: List<String> }\nfn asks(xs: List<Module>) -> Int {\n  let modules = fold_list(xs: xs, empty: [], cons: fn(acc, m) { list_snoc_item(xs: acc, item: m) })\n  fold_list(xs: modules, empty: 0, cons: fn(acc, m) { acc + count(m.declarations) })\n}\n"
+
+test fn empty_fold_element_binds() -> Bool {
+  callback_compiles_clean(source: empty_fold_source)
+}
+
+data nested_empty_fold_source: String = "module probe_nested_empty_fold\nimport std.types { Int, List, String }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Module { module: String, declarations: List<String> }\ntype Source { modules: List<Module> }\nfn modules_for_source(source: Source) -> List<Module> { source.modules }\nfn asks(sources: List<Source>) -> Int {\n  let modules = fold_list(\n    xs: sources,\n    empty: [],\n    cons: fn(acc, source) {\n      fold_list(\n        xs: modules_for_source(source: source),\n        empty: acc,\n        cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }\n      )\n    }\n  )\n  fold_list(xs: modules, empty: 0, cons: fn(acc, m) { acc + count(m.declarations) })\n}\n"
+
+test fn nested_empty_fold_element_binds() -> Bool {
+  callback_compiles_clean(source: nested_empty_fold_source)
+}
+
+data callback_result_element_binds_source: String = "module probe_callback_result\nimport std.types { Int, List }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Element { value: Int }\nfn asks(xs: List<Int>) -> Int {\n let elements = fold_list(xs: xs, empty: [], cons: fn(acc, n) { list_snoc_item(xs: acc, item: Element { value: n }) })\n fold_list(xs: elements, empty: 0, cons: fn(acc, e) { acc + e.value })\n}\n"
+
+test fn callback_result_element_binds() -> Bool {
+  callback_compiles_clean(source: callback_result_element_binds_source)
+}
+
+data determined_element_missing_field_refuses_source: String = "module probe_callback_result\nimport std.types { Int, List }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Element { value: Int }\nfn asks(xs: List<Int>) -> Int {\n let elements = fold_list(xs: xs, empty: [], cons: fn(acc, n) { list_snoc_item(xs: acc, item: Element { value: n }) })\n fold_list(xs: elements, empty: 0, cons: fn(acc, e) { acc + e.missing })\n}\n"
+
+test fn determined_element_missing_field_refuses() -> Bool {
+  callback_inference_error_count(source: determined_element_missing_field_refuses_source) >= 1
+}
+
+data conflicting_established_constraints_refuse_source: String = "module probe_conflicting_constraints\nimport std.types { Int, String }\nfn same<T>(left: T, right: T) -> T { left }\nfn asks() -> Int { same(left: 1, right: \"conflict\") }\n"
+
+test fn conflicting_established_constraints_refuse() -> Bool {
+  callback_inference_error_count(source: conflicting_established_constraints_refuse_source) >= 1
+}
+
+data callback_result_conflict_refuses_source: String = "module probe_callback_conflict\nimport std.types { Int, List, String }\nimport v2.std.algebra { fold_list }\nfn asks(xs: List<Int>) -> Int { fold_list(xs: xs, empty: 0, cons: fn(acc, n) { \"conflict\" }) }\n"
+
+test fn callback_result_conflict_refuses() -> Bool {
+  callback_inference_error_count(source: callback_result_conflict_refuses_source) >= 1
+}
+
+
+data collection_alias_callback_source: String = "module probe_collection_alias_callback\nimport std.types { List }\nimport v2.std.algebra { fold_list, list_snoc_item, freemonoid_empty }\nfn asks<T>(xs: List<T>) -> List<T> {\n fold_list(xs: xs, empty: freemonoid_empty(), cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) })\n}\n"
+
+test fn collection_alias_callback_result_binds() -> Bool {
+  callback_compiles_clean(source: collection_alias_callback_source)
+}
+
+// Source-level residual controls for the composed v1.compiler.infer.unify_generics
+// constraint rule. The required floor consumes these before the producer/refinement
+// scope extension: constructor owners, application expansions and Optional cardinality.
+
+data empty_constructor_accumulator_source: String = "module probe_empty_constructor\nimport std.types { List, Int }\nimport std.algebra { Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nfn asks(xs: List<Int>) -> List<Int> { fold_list(xs: xs, empty: Empty, cons: fn(acc, n) { list_snoc_item(xs: acc, item: n) }) }\n"
+
+test fn empty_constructor_accumulator_binds() -> Bool {
+  callback_compiles_clean(source: empty_constructor_accumulator_source)
+}
+
+data application_expansion_payload_source: String = "module probe_application_expansion\nimport std.types { Int, List }\nimport v2.std.algebra { fold_list, list_snoc_item }\nfn asks(xs: List<Int>) -> List<Int> { fold_list(xs: xs, empty: xs, cons: fn(acc, n) { list_snoc_item(xs: acc, item: n) }) }\n"
+
+test fn application_expansion_payload_binds() -> Bool {
+  callback_compiles_clean(source: application_expansion_payload_source)
+}
+
+data optional_cardinality_accumulator_source: String = "module probe_optional_cardinality\nimport std.types { Int, List }\nimport v2.std.optional { Optional, Present, Absent, optional_absent }\nimport v2.std.algebra { fold_list }\nfn asks(xs: List<Int>) -> Optional<Int> { fold_list(xs: xs, empty: optional_absent(), cons: fn(acc, n) { match acc { Present { value: v } => Present { value: v } Absent => if n == 0 { optional_absent() } else { Present { value: n } } } }) }\n"
+
+test fn optional_cardinality_accumulator_binds() -> Bool {
+  callback_compiles_clean(source: optional_cardinality_accumulator_source)
+}
+
+// Literal none and a Present sibling consume the same Optional application rule.
+data none_present_branch_source: String = "module probe_none_present_branch\nimport std.types { Int, Bool }\nimport v2.std.optional { Present }\nfn asks(flag: Bool) -> Int? { if flag { none } else { Present { value: 1 } } }\n"
+
+test fn none_present_branch_binds() -> Bool {
+  callback_compiles_clean(source: none_present_branch_source)
+}
+
+// Source controls consumed by the required floor for the Optional method-result
+// and inferred-application pattern-binding routes. The production consumers are
+// v1.compiler.emit_rust.compiler_pipeline_entry_decl and emit_rust_fold_method_call.
+
+data optional_method_none_join_source: String = "module probe_optional_method_none\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { none } }\n"
+
+test fn optional_method_none_join() -> Bool {
+  callback_compiles_clean(source: optional_method_none_join_source)
+}
+
+data optional_method_present_join_source: String = "module probe_optional_method_present\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { Present { value: 1 } } }\n"
+
+test fn optional_method_present_join() -> Bool {
+  callback_compiles_clean(source: optional_method_present_join_source)
+}
+
+data inferred_optional_pattern_preserves_argument_source: String = "module probe_optional_pattern\nimport std.types { Int, List }\nimport v2.std.optional { Present, Absent }\ntype Item { children: List<Int> }\nfn asks(src: Item?) -> Int {\n let candidate = match src { Present { value: v } => Present { value: v } Absent => none }\n let chosen = match src { Present { value: v } => match candidate { Present { value: w } => w Absent => v } Absent => Item { children: [] } }\n count(chosen.children)\n}\n"
+
+test fn inferred_optional_pattern_preserves_argument() -> Bool {
+  callback_compiles_clean(source: inferred_optional_pattern_preserves_argument_source)
+}

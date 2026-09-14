@@ -5,7 +5,7 @@ pub use crate::std_types::is_ordered_element_collection;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_types::{
     for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
-    node_type_equals, normalize_access_type_node, resolved_type,
+    node_type_equals, normalize_access_type_node, type_argument_node,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -83,8 +83,10 @@ pub fn keyed_collection_parts(
         match n.children.clone().first().cloned() {
             Some(key_child) => match n.children.clone().iter().cloned().skip(1 as usize).next() {
                 Some(value_child) => Some(Rc::new(KeyedCollectionParts {
-                    key_type: crate::v1_compiler_infer_types::resolved_type(key_child.clone()),
-                    value_type: crate::v1_compiler_infer_types::resolved_type(value_child.clone()),
+                    key_type: crate::v1_compiler_infer_types::type_argument_node(key_child.clone()),
+                    value_type: crate::v1_compiler_infer_types::type_argument_node(
+                        value_child.clone(),
+                    ),
                 })),
                 std::option::Option::None => std::option::Option::None,
             },

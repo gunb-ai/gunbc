@@ -218,7 +218,8 @@ pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node, is_coproduct_type, is_product_type,
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
-    node_is_set_collection, normalize_access_type_node, resolved_type,
+    node_is_set_collection, normalize_access_type_node, resolved_type, type_argument_node,
+    type_node_child_type, type_node_children,
 };
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v1_compiler_languages::{
@@ -580,8 +581,9 @@ pub fn render_rust_type_without_applied_binding(
                 ) {
                     match n.children.clone().first().cloned() {
                         Some(elem_child) => {
-                            let elem_node =
-                                crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
+                            let elem_node = crate::v1_compiler_infer_types::type_argument_node(
+                                elem_child.clone(),
+                            );
                             let elem_is_type_var =
                                 if (elem_node.inferred.clone() != std::option::Option::None) {
                                     is_type_variable(elem_node.inferred.clone().clone().unwrap())
@@ -632,7 +634,7 @@ pub fn render_rust_type_without_applied_binding(
                     ) {
                         match n.children.clone().first().cloned() {
                             Some(key_child) => {
-                                let key_node = crate::v1_compiler_infer_types::child_type_node(
+                                let key_node = crate::v1_compiler_infer_types::type_argument_node(
                                     key_child.clone(),
                                 );
                                 let val_node = match n
@@ -647,7 +649,7 @@ pub fn render_rust_type_without_applied_binding(
                                         if rust_type_node_is_arrow(val_child.clone()) {
                                             val_child.clone()
                                         } else {
-                                            crate::v1_compiler_infer_types::child_type_node(
+                                            crate::v1_compiler_infer_types::type_argument_node(
                                                 val_child.clone(),
                                             )
                                         }
@@ -710,7 +712,7 @@ pub fn render_rust_type_without_applied_binding(
                                     let elem_node = if rust_type_node_is_arrow(elem_child.clone()) {
                                         elem_child.clone()
                                     } else {
-                                        crate::v1_compiler_infer_types::child_type_node(
+                                        crate::v1_compiler_infer_types::type_argument_node(
                                             elem_child.clone(),
                                         )
                                     };
@@ -3128,7 +3130,7 @@ pub fn render_rust_decl_type_container_arg(
         source_indices.clone(),
         env.clone(),
     ) {
-        crate::v1_compiler_infer_types::child_type_node(arg.clone())
+        crate::v1_compiler_infer_types::type_argument_node(arg.clone())
     } else {
         arg.clone()
     }
@@ -3895,9 +3897,12 @@ pub fn type_node_has_closure_unbound_generic_atom(
         }
         if {
             let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
+            for c in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_node_has_closure_unbound_generic_atom(
-                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                    crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                     generic_param_names.clone(),
                     env.clone(),
                     source_indices.clone(),
@@ -3963,9 +3968,12 @@ pub fn type_node_has_unbound_type_variable(
         }
         if {
             let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
+            for c in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_node_has_unbound_type_variable(
-                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                    crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                     generic_param_names.clone(),
                     source_indices.clone(),
                 ) {
@@ -17933,7 +17941,7 @@ pub fn render_variant_payload_type(
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
                     __result.push(render_rust_type(
-                        crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(c.clone()),
                         shared_types.clone(),
                         source_indices.clone(),
                         crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
@@ -22537,9 +22545,12 @@ pub fn type_expr_reaches_sealed_carrier(
         );
         let child_reaches = {
             let mut __found = false;
-            for child in n.children.clone().iter().cloned() {
+            for child in crate::v1_compiler_infer_types::type_node_children(n.clone())
+                .iter()
+                .cloned()
+            {
                 if type_expr_reaches_sealed_carrier(
-                    crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                    crate::v1_compiler_infer_types::type_node_child_type(child.clone()),
                     emit_info.clone(),
                     source_indices.clone(),
                     seen.clone(),
@@ -22571,9 +22582,14 @@ pub fn type_expr_reaches_sealed_carrier(
                                     v1_rt::rc_map_insert(seen.clone(), name.clone(), true);
                                 {
                                     let mut __found = false;
-                                    for child in decl.children.clone().iter().cloned() {
+                                    for child in crate::v1_compiler_infer_types::type_node_children(
+                                        decl.clone(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
                                         if type_expr_reaches_sealed_carrier(
-                                            crate::v1_compiler_infer_types::child_type_node(
+                                            crate::v1_compiler_infer_types::type_node_child_type(
                                                 child.clone(),
                                             ),
                                             emit_info.clone(),
@@ -22598,7 +22614,7 @@ pub fn type_expr_reaches_sealed_carrier(
 
 pub fn decl_children_forbid_deserialize(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
+    item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -22610,9 +22626,12 @@ pub fn decl_children_forbid_deserialize(
         );
         {
             let mut __found = false;
-            for child in children.iter().cloned() {
+            for child in crate::v1_compiler_infer_types::type_node_children(item.clone())
+                .iter()
+                .cloned()
+            {
                 if type_expr_reaches_sealed_carrier(
-                    crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                    crate::v1_compiler_infer_types::type_node_child_type(child.clone()),
                     emit_info.clone(),
                     source_indices.clone(),
                     seen.clone(),
@@ -22636,7 +22655,7 @@ pub fn item_forbids_deserialize(
     } else {
         decl_children_forbid_deserialize(
             crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-            item.children.clone(),
+            item.clone(),
             emit_info.clone(),
             source_indices.clone(),
         )
@@ -23017,7 +23036,7 @@ pub fn rust_empty_map_value_type_str(
     {
         Some(value_child) => {
             let rendered = render_rust_type(
-                crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
+                crate::v1_compiler_infer_types::type_argument_node(value_child.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
                 crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
@@ -23040,7 +23059,7 @@ pub fn rust_empty_map_kv_type_str(
     {
         let key_str = match map_type.children.clone().first().cloned() {
             Some(key_child) => render_rust_type(
-                crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
+                crate::v1_compiler_infer_types::type_argument_node(key_child.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
                 crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
@@ -23100,7 +23119,7 @@ pub fn rust_empty_map_init_expr(
 
 pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     {
-        let ch = crate::v1_compiler_infer_types::child_type_node(c.clone());
+        let ch = crate::v1_compiler_infer_types::type_argument_node(c.clone());
         if (ch.inferred.clone() != std::option::Option::None) {
             is_type_variable(ch.inferred.clone().clone().unwrap())
         } else {
@@ -23150,7 +23169,7 @@ pub fn rust_empty_set_element_type_str(
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
-            let elem_node = crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
+            let elem_node = crate::v1_compiler_infer_types::type_argument_node(elem_child.clone());
             let elem_is_type_var = if (elem_node.inferred.clone() != std::option::Option::None) {
                 is_type_variable(elem_node.inferred.clone().clone().unwrap())
             } else {
@@ -23192,7 +23211,7 @@ pub fn emit_rust_empty_set_expr(
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
-            let elem_node = crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
+            let elem_node = crate::v1_compiler_infer_types::type_argument_node(elem_child.clone());
             let elem_is_type_var = if (elem_node.inferred.clone() != std::option::Option::None) {
                 is_type_variable(elem_node.inferred.clone().clone().unwrap())
             } else {
@@ -25742,7 +25761,7 @@ pub fn collection_element_type(
                 match rt.children.clone().first().cloned() {
                     Some(elem_child) => {
                         let elem_node =
-                            crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
+                            crate::v1_compiler_infer_types::type_argument_node(elem_child.clone());
                         let elem_is_error =
                             if (elem_node.inferred.clone() != std::option::Option::None) {
                                 crate::v1_std_core::is_compiler_error(

@@ -44,7 +44,12 @@ pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoi
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
 pub use crate::v1_compiler_emit_rust::item_generic_param_names;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
+pub use crate::v1_compiler_infer_types::TypeNodeChild;
+use crate::v1_compiler_infer_types::TypeNodeChild::*;
+pub use crate::v1_compiler_infer_types::{
+    child_type_node, is_coproduct_type, resolved_type, type_argument_node, type_node_child_type,
+    type_node_children,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
@@ -292,7 +297,7 @@ pub fn v1_map_key_head_names_in_type_expr(
             KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
                 Some(key_child) => Rc::new(vec![crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
-                    crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
+                    crate::v1_compiler_infer_types::type_argument_node(key_child.clone()),
                 )]),
                 std::option::Option::None => Rc::new(vec![]),
             },
@@ -303,10 +308,13 @@ pub fn v1_map_key_head_names_in_type_expr(
             own.clone(),
             Rc::new({
                 let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
+                for ch in crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                    .iter()
+                    .cloned()
+                {
                     __result.extend(
                         (*v1_map_key_head_names_in_type_expr(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            crate::v1_compiler_infer_types::type_node_child_type(ch.clone()),
                             source_indices.clone(),
                         ))
                         .iter()
@@ -331,10 +339,13 @@ pub fn v1_type_expr_head_names(
             )]),
             Rc::new({
                 let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
+                for ch in crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                    .iter()
+                    .cloned()
+                {
                     __result.extend(
                         (*v1_type_expr_head_names(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            crate::v1_compiler_infer_types::type_node_child_type(ch.clone()),
                             source_indices.clone(),
                         ))
                         .iter()
@@ -2384,7 +2395,7 @@ pub fn v1_generic_param_used_as_collection_element(
                     for c in te.children.clone().iter().cloned() {
                         if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
-                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            crate::v1_compiler_infer_types::type_argument_node(c.clone()),
                             bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
@@ -2516,7 +2527,8 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                         decl_param.clone(),
                         source_indices.clone(),
                     );
-                    let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
+                    let arg_expr =
+                        crate::v1_compiler_infer_types::type_argument_node(type_arg.clone());
                     let slot_is_phantom = v1_phantom_only_param_names_contains(
                         phantom_slot_names.clone(),
                         slot_name.clone(),
@@ -2607,10 +2619,13 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                     crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
                 if (crate::std_types::is_container_type(name.clone()) && {
                     let mut __found = false;
-                    for c in type_expr.children.clone().iter().cloned() {
+                    for c in crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                        .iter()
+                        .cloned()
+                    {
                         if v1_type_expr_mentions_param_non_phantom(
                             param_name.clone(),
-                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                             bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),
@@ -2635,10 +2650,15 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                         ),
                         std::option::Option::None => {
                             let mut __found = false;
-                            for c in type_expr.children.clone().iter().cloned() {
+                            for c in crate::v1_compiler_infer_types::type_node_children(
+                                type_expr.clone(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
                                 if v1_type_expr_mentions_param_non_phantom(
                                     param_name.clone(),
-                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                    crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                                     bounds.clone(),
                                     type_decl_items.clone(),
                                     source_indices.clone(),
@@ -3127,22 +3147,6 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
     }
 }
 
-pub fn v1_wf_child_type_node(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    {
-        let resolved = crate::v1_compiler_infer_types::child_type_node(ch.clone());
-        if (crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.clone())
-            != "".to_string())
-        {
-            resolved.clone()
-        } else {
-            ch.clone()
-        }
-    }
-}
-
 pub fn v1_type_expr_is_bare_param(
     param_name: String,
     type_expr: Rc<Node>,
@@ -3193,21 +3197,21 @@ pub fn v1_type_expr_clone_undecided_head(
             if (v1_type_expr_head_is_known(name.clone(), type_decl_items.clone())
                 || v1_rt::set_contains(&item_generic_params, name.clone()))
             {
-                type_expr.children.clone().iter().cloned().fold(
-                    "".to_string(),
-                    |acc: String, c: Rc<Node>| {
+                crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                    .iter()
+                    .cloned()
+                    .fold("".to_string(), |acc: String, c: Rc<TypeNodeChild>| {
                         if (acc.clone() != "".to_string()) {
                             acc.clone()
                         } else {
                             v1_type_expr_clone_undecided_head(
-                                crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                                crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                                 item_generic_params.clone(),
                             )
                         }
-                    },
-                )
+                    })
             } else {
                 name.clone()
             }
@@ -3246,10 +3250,14 @@ pub fn v1_type_expr_clone_impl_needs_param(
                     ),
                     std::option::Option::None => {
                         let mut __found = false;
-                        for c in type_expr.children.clone().iter().cloned() {
+                        for c in
+                            crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                                .iter()
+                                .cloned()
+                        {
                             if v1_type_expr_clone_impl_needs_param(
                                 param_name.clone(),
-                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                                 bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
@@ -3285,7 +3293,8 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                         decl_param.clone(),
                         source_indices.clone(),
                     );
-                    let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
+                    let arg_expr =
+                        crate::v1_compiler_infer_types::type_argument_node(type_arg.clone());
                     let slot_is_phantom = v1_phantom_only_param_names_contains(
                         phantom_slot_names.clone(),
                         slot_name.clone(),
@@ -3379,7 +3388,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                         ),
                     ) && v1_type_expr_clone_impl_needs_param(
                         param_name.clone(),
-                        v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
+                        crate::v1_compiler_infer_types::type_argument_node(type_arg.clone()),
                         bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
@@ -3453,10 +3462,13 @@ pub fn v1_type_expr_wf_needs_clone_param(
             {
                 let nested = {
                     let mut __found = false;
-                    for c in type_expr.children.clone().iter().cloned() {
+                    for c in crate::v1_compiler_infer_types::type_node_children(type_expr.clone())
+                        .iter()
+                        .cloned()
+                    {
                         if v1_type_expr_wf_needs_clone_param(
                             param_name.clone(),
-                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            crate::v1_compiler_infer_types::type_node_child_type(c.clone()),
                             bounds.clone(),
                             type_decl_items.clone(),
                             source_indices.clone(),

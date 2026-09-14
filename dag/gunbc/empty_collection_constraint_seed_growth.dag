@@ -1,0 +1,16 @@
+module gunbc.empty_collection_constraint_seed_growth
+
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// Consumed by review of the PURPOSE-admitted executable seed prerequisite for
+// native_lane_universe_after_ownership. The new declarations are authored in
+// .dag and their Rust mirrors are generated; the hand-authored Rust roster is
+// empty. This receipt does not add an admission exception or a handwritten mirror.
+data empty_collection_constraint_seed_growth: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [],
+  reason: "Bounded executable seed maintenance for the self-host program: v1.compiler.infer.GenericUnification carries substitution and diagnostics through every existing caller; GenericConstraintRefinement, generic_constraint_refusal and refine_generic_constraint preserve established constraints while refining unresolved element slots. variant_owner_application is the shared canonical application producer consumed by variant_reference_inferred_node, infer_record_lit_structural and infer_expr_body literal typing; owner identity and declaration payload are retained while arguments are carried directly. These declarations are authored in src/v1/04_infer.dag; generated Rust is installed only through regeneration, with no hand-authored Rust declarations added. The native_lane_universe_after_ownership corpus receipt exposes the constraint loss after canonical generic-argument substitution. This row records the source growth, not permission for a new seed admission exception.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "The self-host route derives empty-literal and application-argument substitutions in v2.std.inhabitance, refining concrete argument and callback-result constraints and refusing conflicts before admission; fierce-swift work item adhoc-8760f34f-ec2 owns that v2-side capability. The executable v1 seed rule then leaves with its superseded route. A v2 declaration without execution does not discharge the obligation.",
+  current_boundary: "v1.compiler.infer GenericUnification, GenericConstraintRefinement, generic_constraint_refusal, refine_generic_constraint, variant_owner_application; generic pass and every unification consumer, with no compatibility widening or field-deferral change"
+}

@@ -11,8 +11,13 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+pub use crate::v1_compiler_infer_types::TypeNodeChild;
+use crate::v1_compiler_infer_types::TypeNodeChild::{
+    RecordFieldChild, TypeArgumentChild, VariantFieldChild,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
+    type_argument_node, type_node_child_type, type_node_children,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -143,18 +148,27 @@ pub fn collect_type_node_import_surface_occurrences(
         } else {
             Rc::new(vec![])
         };
-        let children_are_applied_arguments = (((name.clone() != "".to_string())
-            && (peeled.connective.clone() == Connective::NoConnective))
-            && ((peeled.children.clone().len() as i64) > 0));
         let child_names = Rc::new({
             let mut __result = Vec::new();
-            for ch in peeled.children.clone().iter().cloned() {
+            for ch in crate::v1_compiler_infer_types::type_node_children(peeled.clone())
+                .iter()
+                .cloned()
+            {
                 __result.extend(
-                    (*collect_type_node_import_surface_occurrences(
-                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                        children_are_applied_arguments.clone(),
-                        source_indices.clone(),
-                    ))
+                    (*{
+                        let children_are_applied_arguments = match (*ch.clone()).clone() {
+                            TypeNodeChild::TypeArgumentChild { node: _, .. } => {
+                                (name.clone() != "".to_string())
+                            }
+                            TypeNodeChild::RecordFieldChild { node: _, .. } => false,
+                            TypeNodeChild::VariantFieldChild { node: _, .. } => false,
+                        };
+                        collect_type_node_import_surface_occurrences(
+                            crate::v1_compiler_infer_types::type_node_child_type(ch.clone()),
+                            children_are_applied_arguments.clone(),
+                            source_indices.clone(),
+                        )
+                    })
                     .iter()
                     .cloned(),
                 );

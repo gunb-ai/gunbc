@@ -19,6 +19,8 @@ import v1.std.core {
 }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
+  type_node_children, type_node_child_type, TypeArgumentChild, RecordFieldChild, VariantFieldChild,
+  type_argument_node,
   normalize_access_type_node, resolved_type,
   child_type_node, emit_map_has, node_type_equals
 }
@@ -76,9 +78,13 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
   let name = authored_name_at(source_indices: source_indices, node: peeled)
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
-  let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
-  let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+  let child_names = type_node_children(n: peeled) |> flat_map(ch =>
+    let children_are_applied_arguments = match ch {
+      TypeArgumentChild { node: _ } => name != ""
+      RecordFieldChild { node: _ } => false
+      VariantFieldChild { node: _ } => false
+    }
+    collect_type_node_import_surface_occurrences(n: type_node_child_type(child: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
   )
   let inferred_names = match peeled.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)

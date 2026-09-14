@@ -21,9 +21,9 @@ import std.algebra {
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 import v1.std.core {
-  Node, make_param_node, param_node_type_expr,
+  Node, make_param_node, param_node_type_expr, variant_node_fields,
   find_child_named, NewlineIndex,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, Disj, NoConnective, Arrow,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral, ExprError,
   ExprErrorKind, SemanticExprError, InternalExprError,
@@ -62,8 +62,47 @@ fn resolved_type(n: Node) -> Node {
   }
 }
 
+// Generic arguments are types, not named fields: their own Resolved payload is
+// a structural expansion, not a field's type slot. Infer, algebra, and emit
+// consume this direct argument projection; field consumers use child_type_node.
+fn type_argument_node(ch: Node) -> Node {
+  ch
+}
+
 fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none { resolved_type(n: ch) } else { ch }
+}
+
+// Semantic type children carry the role that decides their projection. A
+// coproduct variant made by make_variant_node has NoConnective, but its children
+// are named fields. type_resolution_verdict and the structural infer/emit/derive
+// walkers consume this role once instead of reclassifying the variant as an
+// application. Callable params and inferred returns use their existing channels.
+type TypeNodeChild
+  = TypeArgumentChild { node: Node }
+  | RecordFieldChild { node: Node }
+  | VariantFieldChild { node: Node }
+
+// Consumed by type_resolution_verdict and the structural infer/emit/derive walkers.
+fn type_node_children(n: Node) -> List<TypeNodeChild> {
+  match n.connective {
+    NoConnective => n.children |> map(child => TypeArgumentChild { node: child })
+    Conj => n.children |> map(child => RecordFieldChild { node: child })
+    Disj => n.children |> flat_map(variant =>
+      variant_node_fields(n: variant) |> map(field => VariantFieldChild { node: field })
+    )
+    Arrow => []
+  }
+}
+
+// Consumed by the same walkers: arguments retain their own type structure;
+// record and variant fields keep the existing named-field projection.
+fn type_node_child_type(child: TypeNodeChild) -> Node {
+  match child {
+    TypeArgumentChild { node: argument } => type_argument_node(ch: argument)
+    RecordFieldChild { node: field } => child_type_node(ch: field)
+    VariantFieldChild { node: field } => child_type_node(ch: field)
+  }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
@@ -228,18 +267,18 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
         if (n.children |> count) < expected {
           UnderResolved
         } else {
-          fold(n.children, init: FullyResolved, f: (acc, ch) =>
+          fold(type_node_children(n: n), init: FullyResolved, f: (acc, ch) =>
             combine_resolution_verdicts(
               acc: acc,
-              next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+              next: type_resolution_verdict(n: type_node_child_type(child: ch), source_indices: source_indices)
             )
           )
         }
       NotAContainerSpelling =>
-        fold(n.children, init: FullyResolved, f: (acc, ch) =>
+        fold(type_node_children(n: n), init: FullyResolved, f: (acc, ch) =>
           combine_resolution_verdicts(
             acc: acc,
-            next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+            next: type_resolution_verdict(n: type_node_child_type(child: ch), source_indices: source_indices)
           )
         )
     }
@@ -283,8 +322,8 @@ fn bare_map_node() -> Node? {
         Present { value: val_id } =>
           Present {
             value: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: no_span(), ident_span: Present { value: no_span() }, children: [
-              Node { occurrence_identity: OccurrenceSynthetic, name: key_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: key_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
-              Node { occurrence_identity: OccurrenceSynthetic, name: val_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: val_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+              type_variable_node(id: key_id),
+              type_variable_node(id: val_id)
             ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
           }
         Absent => none
@@ -298,7 +337,7 @@ fn bare_set_node() -> Node? {
     Present { value: elem_id } =>
       Present {
         value: Node { occurrence_identity: OccurrenceSynthetic, name: "Set", span: no_span(), ident_span: Present { value: no_span() }, children: [
-          Node { occurrence_identity: OccurrenceSynthetic, name: elem_id, span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_variable_node(id: elem_id) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+          type_variable_node(id: elem_id)
         ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
       }
     Absent => none
@@ -373,11 +412,9 @@ fn make_kernel_record_type(type_name: String, fields: List<Node>) -> Node {
 
 fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
   match container_param_name(kind_name: kind_name, index: 0) {
-    Present { value: param_name } =>
+    Present { value: _ } =>
       KernelTypeBuild {
-        ty: Node { occurrence_identity: OccurrenceSynthetic, name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [
-          Node { occurrence_identity: OccurrenceSynthetic, name: param_name, span: kernel_span(name: param_name), ident_span: Present { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-        ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
+        ty: Node { occurrence_identity: OccurrenceSynthetic, name: kind_name, span: kernel_span(name: kind_name), ident_span: Present { value: kernel_span(name: kind_name) }, children: [element], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
         diagnostics: []
       }
     Absent =>
@@ -390,14 +427,11 @@ fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
 
 fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
   match container_param_name(kind_name: "Map", index: 0) {
-    Present { value: key_name } =>
+    Present { value: _ } =>
       match container_param_name(kind_name: "Map", index: 1) {
-        Present { value: val_name } =>
+        Present { value: _ } =>
           KernelTypeBuild {
-            ty: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: kernel_span(name: "Map"), ident_span: Present { value: kernel_span(name: "Map") }, children: [
-              Node { occurrence_identity: OccurrenceSynthetic, name: key_name, span: kernel_span(name: key_name), ident_span: Present { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
-              Node { occurrence_identity: OccurrenceSynthetic, name: val_name, span: kernel_span(name: val_name), ident_span: Present { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-            ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
+            ty: Node { occurrence_identity: OccurrenceSynthetic, name: "Map", span: kernel_span(name: "Map"), ident_span: Present { value: kernel_span(name: "Map") }, children: [key, value], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
             diagnostics: []
           }
         Absent =>
@@ -466,7 +500,7 @@ fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: Strin
     )]
   } else { [] }
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
-    Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: evidence_diags }
+    Present { value: child } => KernelTypeBuild { ty: type_argument_node(ch: child), diagnostics: evidence_diags }
     Absent => KernelTypeBuild { ty: type_variable_node(id: placeholder), diagnostics: evidence_diags }
   }
 }
@@ -540,12 +574,12 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
     ReceiverSelf =>
       let s1 = match concrete.children |> first {
         Present { value: k } =>
-          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", child_type_node(ch: k)) }
+          if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", type_argument_node(ch: k)) }
         Absent => subst
       }
       match concrete.children |> skip(1) |> first {
         Present { value: v } =>
-          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", child_type_node(ch: v)) }
+          if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", type_argument_node(ch: v)) }
         Absent => s1
       }
     ReceiverKey =>
@@ -564,13 +598,13 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       if container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: concrete)) != expected_name { subst }
       else {
         match concrete.children |> first {
-          Present { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
+          Present { value: child } => unify_template(template: elem_template, concrete: type_argument_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
           Absent => subst
         }
       }
     OptionalOf { inner: inner_template } =>
       match concrete.children |> first {
-        Present { value: child } => unify_template(template: inner_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
+        Present { value: child } => unify_template(template: inner_template, concrete: type_argument_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
         Absent => subst
       }
     TupleOf { first: ft, second: st } =>
@@ -621,7 +655,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
     ReceiverSelf =>
       let receiver_name_str = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
       let is_bare = is_container_type(name: receiver_name_str) && (receiver.children |> all(ch =>
-        let inner = child_type_node(ch: ch)
+        let inner = type_argument_node(ch: ch)
         if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !is_kernel_type(name: authored_name_at(source_indices: source_indices, node: inner)) }
       ))
       if is_bare {
@@ -645,7 +679,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
     ReceiverElement =>
       match receiver.children |> first {
-        Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
+        Present { value: child } => KernelTypeBuild { ty: type_argument_node(ch: child), diagnostics: [] }
         Absent =>
           match map_get(subst, "__element__") {
             Present { value: elem } => KernelTypeBuild { ty: elem, diagnostics: [] }
@@ -663,7 +697,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       }
     ReceiverKey =>
       match receiver.children |> first {
-        Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
+        Present { value: child } => KernelTypeBuild { ty: type_argument_node(ch: child), diagnostics: [] }
         Absent =>
           match map_get(subst, "__key__") {
             Present { value: key } => KernelTypeBuild { ty: key, diagnostics: [] }
@@ -681,7 +715,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       }
     ReceiverValue =>
       match receiver.children |> skip(1) |> first {
-        Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
+        Present { value: child } => KernelTypeBuild { ty: type_argument_node(ch: child), diagnostics: [] }
         Absent =>
           match map_get(subst, "__value__") {
             Present { value: val } => KernelTypeBuild { ty: val, diagnostics: [] }
@@ -824,7 +858,7 @@ fn normalize_access_type_node(n: Node) -> Node {
 fn node_type_shape_argument_list(args: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   match args |> first {
     Present { value: a } =>
-      let head = node_type_shape(n: child_type_node(ch: a), source_indices: source_indices)
+      let head = node_type_shape(n: type_argument_node(ch: a), source_indices: source_indices)
       let rest = args |> skip(1)
       if (rest |> count) == 0 {
         head
@@ -864,7 +898,7 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
       let is_map = node_is_keyed_collection(n: n, source_indices: source_indices)
       if __is_container {
         let elem_shape = match n.children |> first {
-          Present { value: el } => node_type_shape(n: child_type_node(ch: el), source_indices: source_indices)
+          Present { value: el } => node_type_shape(n: type_argument_node(ch: el), source_indices: source_indices)
           Absent => "?"
         }
         concat("Container(", n_name, ",", elem_shape, ")")
@@ -905,8 +939,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
           Present { value: left_ch } =>
             match right.children |> first {
               Present { value: right_ch } =>
-                let left_el = child_type_node(ch: left_ch)
-                let right_el = child_type_node(ch: right_ch)
+                let left_el = type_argument_node(ch: left_ch)
+                let right_el = type_argument_node(ch: right_ch)
                 let left_el_is_unit = is_unit_like(n: left_el)
                 let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
@@ -927,8 +961,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         Present { value: left_ch } =>
           match right.children |> first {
             Present { value: right_ch } =>
-              let left_el = child_type_node(ch: left_ch)
-              let right_el = child_type_node(ch: right_ch)
+              let left_el = type_argument_node(ch: left_ch)
+              let right_el = type_argument_node(ch: right_ch)
               if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
               else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
             Absent => true
@@ -959,7 +993,7 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   let left_is_unit_inner = if left_is_container {
     match left_first_child {
       Present { value: ch } =>
-        let el = child_type_node(ch: ch)
+        let el = type_argument_node(ch: ch)
         let el_is_unit = is_unit_like(n: el)
         el_is_unit
       Absent => false
@@ -1063,7 +1097,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
         match left.children |> first {
           Present { value: left_ch } =>
             match right.children |> first {
-              Present { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch), source_indices: source_indices)
+              Present { value: right_ch } => node_type_equals(left: type_argument_node(ch: left_ch), right: type_argument_node(ch: right_ch), source_indices: source_indices)
               Absent => false
             }
           Absent => false
@@ -1082,7 +1116,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
                     Present { value: left_second } =>
                       match right.children |> skip(1) |> first {
                         Present { value: right_second } =>
-                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first), source_indices: source_indices) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second), source_indices: source_indices)
+                          node_type_equals(left: type_argument_node(ch: left_first), right: type_argument_node(ch: right_first), source_indices: source_indices) && node_type_equals(left: type_argument_node(ch: left_second), right: type_argument_node(ch: right_second), source_indices: source_indices)
                         Absent => false
                       }
                     Absent => false
@@ -1171,7 +1205,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitInt { value: _ } => int_type
     LitFloat { value: _ } => float_type
     LitBool { value: _ } => bool_type
-    LitNull => with_optional_cardinality(n: unit_type)
+    LitNull => type_variable_node(id: "empty_optional_element")
 
     LitSymbol { value: _ } => string_type
   }
@@ -1181,12 +1215,12 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
   let normed = normalize_access_type_node(n: receiver_type)
   let maybe_element = if node_is_keyed_collection(n: normed, source_indices: source_indices) {
     match normed.children |> skip(1) |> first {
-      Present { value: ch } => Present { value: child_type_node(ch: ch) }
+      Present { value: ch } => Present { value: type_argument_node(ch: ch) }
       Absent => none
     }
   } else if normed.connective == NoConnective && normed.children |> count == 1 {
     match normed.children |> first {
-      Present { value: ch } => Present { value: child_type_node(ch: ch) }
+      Present { value: ch } => Present { value: type_argument_node(ch: ch) }
       Absent => none
     }
   } else {
@@ -1302,7 +1336,7 @@ fn for_each_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>
   let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
   let extracted = if is_single_child {
     match normed.children |> first {
-      Present { value: ch } => Present { value: child_type_node(ch: ch) }
+      Present { value: ch } => Present { value: type_argument_node(ch: ch) }
       Absent => none
     }
   } else { none }
