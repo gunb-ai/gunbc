@@ -24,6 +24,7 @@ import extdeps.github.workflow_runs {
 }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
+import gunbc.roadmap_dispatch_destination { attempt_admission_subject_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
 import extdeps.pin { pin_frontier_rows }
 import extdeps.colo.types { colo_types_frontier_rows }
@@ -39,7 +40,6 @@ import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
-import product.supplier.hetzner_path_reading { hetzner_path_reading_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
 import extdeps.ebay.browse { ebay_browse_frontier_rows }
@@ -73,6 +73,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     workflow_job_run_observed_runner_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
+    attempt_admission_subject_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
     cpu_description_string_leaf_frontier_rows,
     cr1000a_dhcp_lease_transport_frontier_rows,
@@ -85,7 +86,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
-    hetzner_path_reading_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
     ebay_browse_frontier_rows,

@@ -8,9 +8,9 @@ import gunbc.roadmap_authority {
   roadmap_acceptance_receipts_from_carrier_text,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
-  accepted_roadmap_node_ids_projection_from_carrier_text,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
+  withheld_node_ids_from_carrier_text,
+  WithheldNodeIdsProjected,
+  WithheldNodeIdsProjectionRefused,
   roadmap_authority_projection_from_carrier_text,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
@@ -130,8 +130,9 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit()
     && witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses()
     && witness_digest_field_mutation_without_revocation_refuses_prefix()
-    && witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses()
+    && witness_authority_projection_refuses_when_receipts_projection_refuses()
     && witness_receipts_projection_refuses_when_history_load_refuses()
+    && witness_withheld_projection_refuses_when_history_load_refuses()
     && witness_unreadable_carrier_text_refuses_load_with_line_parse_detail()
     && witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
     && witness_missing_carrier_prevents_silent_empty_authority_projection()
@@ -294,6 +295,19 @@ test fn witness_digest_field_mutation_without_revocation_refuses_prefix() -> Boo
     && !acceptance_history_integrity_holds(history: current, prior_history: prior)
 }
 
+test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool {
+  match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
+    RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
+      match withheld_node_ids_from_carrier_text(text: unreadable_carrier_text_fixture) {
+        WithheldNodeIdsProjected { ids: _ } => false
+        WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
+          withheld_detail == history_detail
+            && string_contains(s: history_detail, pattern: "line 1:")
+      }
+  }
+}
+
 test fn witness_receipts_projection_refuses_when_history_load_refuses() -> Bool {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
@@ -315,15 +329,15 @@ test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() ->
   }
 }
 
-test fn witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses() -> Bool {
+test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
   match roadmap_acceptance_receipts_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
     RoadmapAcceptanceReceiptsProjectionRefused { detail: receipt_detail } =>
-      match accepted_roadmap_node_ids_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
-        AcceptedRoadmapNodeIdsProjected { ids: _ } => false
-        AcceptedRoadmapNodeIdsProjectionRefused { detail: node_detail } =>
-          node_detail == receipt_detail
-            && string_contains(s: node_detail, pattern: "line 1:")
+      match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
+        RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
+        RoadmapAuthorityProjectionRefused { detail: authority_detail } =>
+          authority_detail == receipt_detail
+            && string_contains(s: authority_detail, pattern: "line 1:")
       }
   }
 }
@@ -340,12 +354,12 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
   match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       string_contains(s: detail, pattern: "line 1:")
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) == 0
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) == 0
   }
     && match roadmap_authority_projection_from_carrier_text(
       text: receipt_continuity_acceptance_carrier_fixture_text,
     ) {
-      RoadmapAuthorityProjected { doc: doc, accepted: _ } => count(doc_all_nodes(doc: doc)) > 0
+      RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
       RoadmapAuthorityProjectionRefused { detail: _ } => false
     }
 }
@@ -360,7 +374,7 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
     && string_contains(s: refused_dispatch, pattern: "\"refused\": true")
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
     && match projected {
-      RoadmapAuthorityProjected { doc: _, accepted: _ } => {
+      RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => {
         let dispatch = roadmap_dispatch_file_content_for_projection(proj: projected)
         string_contains(s: dispatch, pattern: "\"brief_template\": ")
           && string_contains(s: dispatch, pattern: "\"dispatch\": ")

@@ -859,9 +859,9 @@ fn schedule_forecast(
   } }
 }
 
-// THE FORECAST'S PLAN IS A PARAMETER. The accepted set is carried BY the projection -- it is the
-// field roadmap_authority_projection fills from accepted_roadmap_node_ids_projection -- so the fold
-// reads it from the plan it was handed rather than re-deriving it from the public carrier. That is
+// THE FORECAST'S PLAN IS A PARAMETER. The accepted set and the withheld set are carried BY the
+// projection -- fields the authority fills from one history load -- so the fold reads both from
+// the plan it was handed rather than re-deriving them from the public carrier. That is
 // what makes a caller-supplied plan forecastable at all: a second read would have answered about
 // the public roadmap while the nodes came from the caller's.
 fn roadmap_schedule_forecast_over(
@@ -872,11 +872,11 @@ fn roadmap_schedule_forecast_over(
   match plan {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+    RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: withheld } =>
       let builds = roadmap_cycle_time_observation_builds()
       schedule_forecast(
-        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
-        edges: active_roadmap_edges_for_accepted(accepted: accepted),
+        nodes: active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+        edges: active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
         observations: accepted_cycle_time_observations(builds: builds),
         history_refusals: cycle_time_history_refusals(builds: builds),
         population_exclusions: cycle_time_population_exclusions(builds: builds),
