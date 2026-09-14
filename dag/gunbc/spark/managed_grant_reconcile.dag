@@ -9,7 +9,6 @@ import gunbc.spark.managed_access_bootstrap {
   RebootThisHost,
   InspectServingContainer,
   SparkInspectDisclosurePrecondition,
-  SparkGrantDisclosure,
   GrantReturnsNoHostData,
   GrantDisclosureAdmitted,
   GrantDisclosureUnestablished,
