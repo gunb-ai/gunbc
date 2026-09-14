@@ -17058,7 +17058,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::v2_std_diagnostic::Outcome;", "\n",
       "use ", crate_name, "::std_compiler_entry::\{", "\n",
       "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,", "\n",
-      "    native_driver_exclusive_sum, NativeDriverCostAccounting, NativeDriverExclusiveRows,", "\n",
+      "    native_driver_exclusive_sum, NativeDriverCostAccounting,", "\n",
       "    native_driver_exclusive_rows, native_driver_exclusive_row_name,", "\n",
       "    NativeDriverExclusiveRowKey,", "\n",
       "\};", "\n",
