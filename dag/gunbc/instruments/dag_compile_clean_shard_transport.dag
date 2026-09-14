@@ -81,11 +81,3 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport
     dcc_host_refused_before_subject(cause: "gunbc binary not ready")
   }
 }
-
-fn run_shard_a_exemplar_compile() -> Bool {
-  match single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path) {
-    SubjectGreen => true
-    SubjectRed => false
-    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
-  }
-}

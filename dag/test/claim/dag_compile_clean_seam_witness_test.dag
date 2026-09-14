@@ -9,12 +9,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Live-tree standing is tools.dag_compile_clean_seam cross_shard_seam_preservation_standing
-// (gunbc run --entry that module --function). It is not a required-floor identity: the
-// monolith is PrimaryRoot of a staged dag copy and is RefusedBeforeSubject when
-// whole-corpus admission is unreadable. A WetScheduledClaim ExpectedToHold on that
-// identity is WetTerminalVerdictNotExpected; a hermetic DirWithTemplate gap without a
-// wet pass is planned-without-terminal. Algebra below is the per-PR identity.
+// Live-tree standing is tools.dag_compile_clean_seam cross_shard_seam_preservation_standing.
+// Required-floor execution of that standing is gunbc.rung_drop.compile_clean_live_tree_seam_off_required_floor.
+// Algebra below is the per-PR identity.
 
 test fn cross_shard_seam_algebra_holds() -> Bool {
   witness_seam_algebra_reds_on_synthetic_break()
