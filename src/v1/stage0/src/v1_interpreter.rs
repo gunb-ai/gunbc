@@ -16339,37 +16339,38 @@ fn resolve_module_encoding(
 }
 
 fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
+    // Row admission and target reading are the emitter's predicates, not a second copy:
+    // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
+    // std.serialization, not a local homonym, both fields present) and
+    // `coproduct_decl_ref_decl_name`. The DeclarationRef's module_path is the one field the
+    // emitter has no reader for, because it only ever matches rows in the declaring module.
     use crate::v1_compiler_emit_rust::{
-        coproduct_wire_contract_encoding, field_value_by_name, record_string_field,
+        coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, field_value_by_name,
+        is_coproduct_wire_contract_row, record_string_field,
     };
     let si = ctx.si();
     let mut encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>> =
         std::collections::HashMap::new();
     for tm in ctx.modules.iter() {
+        let imports = crate::v1_std_core::module_imports(tm.module.clone());
         for item in tm.items.iter() {
-            if item_kind(Rc::clone(item)) != ItemKind::DataItem {
-                continue;
-            }
-            let typed_as_contract = item
-                .type_annotation
-                .as_ref()
-                .map(|t| authored_name_at(si.clone(), t.clone()) == "CoproductWireContract")
-                .unwrap_or(false);
-            if !typed_as_contract {
+            if !is_coproduct_wire_contract_row(
+                Rc::clone(item),
+                tm.items.clone(),
+                imports.clone(),
+                si.clone(),
+            ) {
                 continue;
             }
             let Some(body) = item.body.clone() else {
                 continue;
             };
-            let Some(decl_ref) =
-                field_value_by_name(body.clone(), "coproduct".to_string(), si.clone())
-            else {
+            let Some(decl_name) = coproduct_decl_ref_decl_name(body.clone(), si.clone()) else {
                 continue;
             };
-            let (Some(module_path), Some(decl_name)) = (
-                record_string_field(decl_ref.clone(), "module_path".to_string(), si.clone()),
-                record_string_field(decl_ref, "decl_name".to_string(), si.clone()),
-            ) else {
+            let Some(module_path) = field_value_by_name(body, "coproduct".to_string(), si.clone())
+                .and_then(|r| record_string_field(r, "module_path".to_string(), si.clone()))
+            else {
                 continue;
             };
             let Some(encoding) = coproduct_wire_contract_encoding(Rc::clone(item), si.clone())
@@ -16405,25 +16406,15 @@ fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireCont
     }
 }
 
-/// The wire spelling of `arm` under a `VariantNaming`. SnakeCase and ScreamingSnakeCase follow
-/// serde's `rename_all` rule, which is what the Rust emitter's realization of the same contract
-/// applies (an underscore before every uppercase letter after the first, then case-folded), so
-/// the interpreter and the emitted crate read one contract to one spelling.
+/// The wire spelling of `arm` under a `VariantNaming`, through the emitter's own spelling
+/// authority (`v1.compiler.emit_core_support` `to_snake` / `to_screaming_snake`), so the
+/// interpreter and the emitted crate read one contract row to one spelling.
 fn variant_wire_spelling(naming: &str, arm: &str) -> Option<String> {
-    let snake = || {
-        let mut out = String::with_capacity(arm.len() + 4);
-        for (i, ch) in arm.char_indices() {
-            if ch.is_uppercase() && i > 0 {
-                out.push('_');
-            }
-            out.extend(ch.to_lowercase());
-        }
-        out
-    };
+    use crate::v1_compiler_emit_core_support::{to_screaming_snake, to_snake};
     match naming {
         "AsAuthored" => Some(arm.to_string()),
-        "SnakeCase" => Some(snake()),
-        "ScreamingSnakeCase" => Some(snake().to_uppercase()),
+        "SnakeCase" => Some(to_snake(arm.to_string())),
+        "ScreamingSnakeCase" => Some(to_screaming_snake(arm.to_string())),
         _ => None,
     }
 }
