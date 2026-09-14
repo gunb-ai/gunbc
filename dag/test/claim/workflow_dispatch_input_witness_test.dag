@@ -19,7 +19,8 @@ import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke }
+import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -231,6 +232,17 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
     && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
     && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
     && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
+}
+
+// THE SERVING APPLY STEP PRINTS THE RECEIPT ITS ENTRY WRITES. The step carried its own spelling of
+// the path, which named a file the entry never writes, so every converged apply (runs 34776045365,
+// 34782197491, 34783266345) ended red on `cat: No such file` after the units had landed. The step
+// now reads the entry's own declaration; the second assertion fails on the old spelling.
+test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
+  let invoke = gunbc_ci_spark_serving_apply_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet")
+    && string_contains(s: invoke, pattern: join(["cat \"$ROOT/", spark_pair_apply_receipt_path, "\""], ""))
+    && !string_contains(s: invoke, pattern: "spark-pair-serving-apply-receipt")
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
