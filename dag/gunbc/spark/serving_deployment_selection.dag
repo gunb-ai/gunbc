@@ -839,7 +839,7 @@ data v4_1_selection_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "candidate_component_budget" as NonEmptyStr),
     reason: "the idle-free reading was taken on a Group A rank and this closure has no candidate-to-fabric-group binding to key it by",
-    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, because nothing in this closure says which fabric group a candidate lands on. The comparison that used to defend this -- spark_fleet_snapshot applied one single-host reading fleet-wide -- NO LONGER HOLDS: #11308 replaced that scalar with spark_fleet_snapshot_for, whose snapshot carries the subject's admissible host identities, so this reading is now the only place a single host's figure is generalised. A group whose ranks have less free memory would be screened against another group's reading. TRIGGER: a candidate carrying its target fabric group, so group_rank_free_memory is keyed by the group the candidate actually runs on. SUFFICIENT FOR: candidate_component_budget selects the reading for that candidate's own group and reports an obligation when no reading exists for it, rather than reaching for Group A's." as NonEmptyStr),
+    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, because nothing in this closure says which fabric group a candidate lands on. THE FALSIFICATION CONDITION, which is what makes this limit checkable rather than merely regrettable: this screen produces a WRONG answer as soon as the candidates it screens span hosts whose free-memory figures differ -- a second fabric group, a co-tenanted rank, or one host of the same group in a different state. The comparison that used to defend the limit is gone: spark_fleet_snapshot applied one single-host reading fleet-wide, and #11308 replaced it with spark_fleet_snapshot_for, whose snapshot carries the subject's admissible host IDENTITIES, so this reading is now the only place a single host's figure is generalised and the limit is WIDER than when it was admitted. AND THE IDENTITIES DO NOT CLOSE IT, for a reason that is not cost: gunbc.spark.pair_serving_observed group_rank_free_memory_observed is ONE row keyed by FabricGroup, read on one idle Group A rank, and GroupRankFreeMemoryObserved carries no host field at all -- so the identities the snapshot now supplies are keys with nothing to look up, and the generalisation lives in the OBSERVATION population rather than in this fold. NOR IS THE READING KNOWN TO BE RIGHT IN FACT: whether the other admissible hosts carry the same figure is UNOBSERVED rather than established, because one rank was read, and a uniform group is an inference about the world and not a reading of it. TRIGGER, AND IT HAS TWO PARTS BECAUSE THE GAP DOES: (1) a free-memory observation population keyed at HOST grain rather than at FabricGroup grain, so a figure exists per admissible identity; and (2) a candidate carrying the hosts it lands on, so the lookup has a key. Part 1 is an observation obligation on separately admitted resources and part 2 is a modelling one, and satisfying either alone leaves the screen generalising. SUFFICIENT FOR: candidate_component_budget selects the reading for the hosts that candidate actually runs on and reports an obligation when no reading exists for one of them, rather than reaching for a single Group A rank's figure." as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
@@ -1212,16 +1212,27 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
 //       permissive bound. So the unread count is a REFUSAL and not a subtraction, and it is a typed
 //       obligation a consumer can read rather than a number rendered into prose.
 //
-// AND THE READING'S OWN GRAIN IS STATED RATHER THAN QUIETLY WIDENED, AND IT NO LONGER HAS A NEIGHBOUR
-// TO POINT AT. The idle-free figure was read on a Group A rank, and this module does not model which
-// fabric group a candidate lands on. That limit used to be defended by comparison -- `spark_fleet_snapshot`
-// applied one single-host reading fleet-wide, so this reading claimed to add no new generalisation.
-// THAT COMPARATOR IS GONE: #11308 replaced the scalar snapshot with `spark_fleet_snapshot_for`, whose
-// FleetSnapshot carries the subject's admissible host IDENTITIES, so nothing beside this reading
-// generalises a single host's figure any more. The limit is therefore WIDER than when it was first
-// admitted, and it is stated here as the bare limit it is rather than kept alive by a citation to a
-// declaration that no longer exists. It remains a frontier row rather than a silence, and the row's
-// trigger is unchanged: a candidate that carries its target fabric group.
+// AND THE READING'S OWN GRAIN IS STATED AS A FALSIFICATION CONDITION RATHER THAN AS A WIDTH. The
+// idle-free figure was read on one Group A rank, and this module does not model which hosts a candidate
+// lands on, so the screen is WRONG the moment the candidates it screens span hosts whose free-memory
+// figures differ -- a second fabric group, a co-tenanted rank, one host of the same group in another
+// state. Saying the limit is "wide" tells a reader that it grew; naming the world that breaks it tells
+// them what to check.
+//
+// THE DEFENCE IT USED TO HAVE IS GONE, which is why the sentence changed rather than the code.
+// `spark_fleet_snapshot` applied one single-host reading fleet-wide, so this reading could claim to add
+// no new generalisation. #11308 replaced that scalar with `spark_fleet_snapshot_for`, whose FleetSnapshot
+// carries the subject's admissible host IDENTITIES, so nothing beside this reading generalises a single
+// host's figure any more.
+//
+// AND THE IDENTITIES DO NOT CLOSE IT, which is the question worth answering rather than assuming: a
+// per-host reading is unavailable because `gunbc.spark.pair_serving_observed`
+// `group_rank_free_memory_observed` is ONE row keyed by `FabricGroup`, and `GroupRankFreeMemoryObserved`
+// has no host field. The new identities are keys with nothing behind them, so the generalisation lives in
+// the OBSERVATION population and not in this fold -- an evidence obligation on separately admitted
+// resources, not a contained refactor. Nor is the reading KNOWN to be right in fact: whether the other
+// admissible hosts carry the same figure is unobserved, and a uniform group is an inference about the
+// world rather than a reading of it.
 // THE ACCUMULATOR IS A ByteSize, NOT A Nat THAT BECOMES ONE AT THE END. Summing byte counts as bare
 // naturals and re-wrapping at the boundary is a second representation of a quantity `ByteSize` already
 // carries, reconciled by hand at each hop -- DESIGN section 2's failed decomposition, and the unit
