@@ -138,7 +138,7 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
       }
     Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
-    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "sm12_designed")) {
       ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
       _ => false
     }
@@ -149,11 +149,26 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
       ))
 }
 
+// THE RUNTIME IS THE DISCRIMINATOR HERE, NOT THE FIELD, so this enumerates two designed topologies
+// rather than the twenty `fleet_admitted_topologies` yields over eight hosts.
+//
+// WHAT THE NARROWING CANNOT LOSE, which is why it is safe rather than merely cheaper: the authorized-
+// runtime axis is a HARD CONSTRAINT, so an unauthorized runtime excludes every candidate in the field
+// whatever its size, and the cause still names the runtime. Two topologies exercise that exclusion, and
+// they also leave the authorized runtime a field to reach needs-evidence over. A larger field repeats the
+// same exclusion more times; it does not test anything further about runtime authorization.
+//
+// MEASURED BEFORE CHANGING IT: this claim cost 393,216 eval_steps and 508ms CPU -- over the ceiling -- and
+// it called select_serving_deployment four times over the twenty-topology enumeration. The cost is in
+// per-candidate route-standing production, which is why only a smaller field helps.
 fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
   let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
   let domain = serving_deployment_domain_over_standings(
     artifacts: [artifact_deepseek_v4_1_flash_native],
-    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    topologies: [
+      topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+      topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+    ],
     standings: standings,
   )
   serving_decision_input(
@@ -185,10 +200,6 @@ test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
       _ => false
     }
     && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "plant_published_arm64")) {
-      ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
-      _ => false
-    }
-    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
       ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
       _ => false
     }
@@ -471,6 +482,63 @@ data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "settled_field"),
   domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: serving_parameters_current),
   candidates: [native_tp4_x2],
+)
+
+// ── A DESIGNED FOUR-CANDIDATE V4.1 FIELD, FOR THE CLAIMS WHOSE SUBJECT IS NOT THE FIELD ────────
+//
+// MEASURED, not guessed (CI run 34794567396, required_floor_claim_cost.tsv): six claims in this suite
+// and its Engram sibling carry 75.8% of their 2,947,650 eval_steps, then a 5.2x cliff, and every one of
+// the six drives the LIVE V4.1 field. The cross-subject control is what identifies the cause -- the same
+// claim shape costs 438,272 steps for V4.1, 46,261 for GLM and 34,956 for V4-Flash, 9.5x to 12.5x apart
+// on identical assertions -- because V4.1 alone enumerates `fleet_admitted_topologies` (twenty topologies
+// over eight hosts) where the others use the four-element covering cartesian.
+//
+// AND THE COST IS IN `routed_candidates`, NOT IN THE SELECTION FOLD. Two of the six call
+// `select_serving_deployment` zero times and still cost 239k and 325k steps, because route-standing
+// production runs per candidate per component either way. So only a SMALLER FIELD helps; avoiding the
+// selection call does not.
+//
+// THIS FIELD IS DESIGNED TO DISCRIMINATE, NOT TRUNCATED. Each property the claims below assert has a way
+// to fail against it:
+//   FOUR candidates over TWO distinct execution contexts (tp4 and tp8, two replica counts each), so
+//     `count(demands) < count(candidates)` is a real assertion -- candidates SHARE a demand rather than
+//     the inequality holding trivially. A single-context field would make it vacuous; a field of one
+//     would make it false.
+//   the V4.1 artifact, so every candidate carries the Engram component `ComponentPlacedByRoute` and
+//     `count(rc.route_standings) == count(components)` has something to align.
+//   DISTINCT identities, so the keyed-roster build can actually report a duplicate if the producer ever
+//     emits one.
+// What it deliberately does NOT carry is the twenty-topology enumeration, because none of these claims
+// is about how many topologies the fleet admits.
+// WHY THERE IS NO HAND-BUILT V4.1 INPUT HERE, recorded because two successive attempts at one built it
+// wrong and a third reader would try again.
+//
+// A V4.1 DECISION NEEDS MORE THAN A FIELD OF V4.1 CANDIDATES. First attempt used `input_with`, which
+// supplies V4-FLASH axes, constraints and quality -- and the axes and constraints ARE part of the decision
+// identity (DESIGN 3d), so that is a DIFFERENT decision, not a cheaper one. Second attempt supplied the
+// V4.1 axes but built candidates with `cand`, which defaults `profile: serving_parameters_current` -- so
+// the candidates carried a V4-Flash execution profile while the V4.1 axes read V4.1 profile facts.
+//
+// BOTH FAILURES COMPILED CLEAN AND WERE CAUGHT ONLY BY RUNNING. The lesson is in the construction that
+// works: a V4.1 candidate must come from `derived_candidates_for` over a domain built from V4.1 PROFILE
+// STANDINGS, which is what `v4_1_input_for_runtime` does. So the claims below reuse that builder -- now
+// narrowed to two designed topologies -- rather than assembling an input from parts.
+fn v4_1_fixture_candidate(name: String, tp: Nat, replicas: Nat) -> DeploymentCandidate {
+  cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
+}
+
+data v4_1_designed_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "v4_1_designed_field"),
+  domain: serving_deployment_domain(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2), topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+    parameters: serving_parameters_current),
+  candidates: [
+    v4_1_fixture_candidate(name: "designed_tp4_x2", tp: 4, replicas: 2),
+    v4_1_fixture_candidate(name: "designed_tp4_x1", tp: 4, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp8_x1", tp: 8, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp2_x4", tp: 2, replicas: 4),
+  ],
 )
 
 data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
@@ -1164,8 +1232,15 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
 // a cost measurement, and at this head the full-field controls are censored at the floor's ceiling, so
 // that instrument is unavailable. The honest position is that the sharing is currently unwitnessed,
 // stated here rather than implied by a control that reads as a wall and is not one.
+// THIS CLAIM'S SUBJECT IS THE PRODUCER, NOT THE FIELD. It asserts that route production preserves the
+// candidate population, that the roster it builds is duplicate-free, that standings align positionally
+// with each artifact's components, and that candidates SHARE demands rather than each minting its own.
+// Every one of those is a property of `routed_candidates` and `distinct_route_demands`, and none of them
+// is a property of how many topologies the fleet admits -- so it runs on the designed four-candidate
+// field. It cost 239,298 eval_steps on the live field with ZERO select_serving_deployment calls, which is
+// what located the cost in route-standing production rather than in the selection.
 test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
-  let field = deepseek_v4_1_candidate_field
+  let field = v4_1_designed_field
   let routed = routed_candidates(field: field)
   let demands = distinct_route_demands(routed: routed)
   count(routed) == count(field.candidates)
