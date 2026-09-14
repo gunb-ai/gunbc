@@ -12,11 +12,11 @@ pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoi
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
+    child_type_node, emit_map_has, node_is_optional_type, node_type_equals,
+    normalize_access_type_node, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
@@ -28,11 +28,10 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
+    Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LeafOwner,
+    NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -524,7 +523,7 @@ pub fn find_variant_parent(
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
-        let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_compiler_infer_types::node_is_optional_type(normed.clone());
         if is_optional.clone() {
             FieldValueShape::OptionalValue
         } else {

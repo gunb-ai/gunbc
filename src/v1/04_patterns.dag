@@ -14,19 +14,18 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
   Connective, Disj, NoConnective,
-  CardOptional,
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
   LitBool, LitNull,
-  with_optional_cardinality,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
 
 import v1.compiler.infer_types {
+  substitute_type_slots, substitute_type_slots_scoped,
   child_type_node,
   extract_optional_inner_node
 }
@@ -38,8 +37,7 @@ import v1.compiler.infer_env {
 }
 
 import v1.compiler.infer_resolve {
-  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-  substitute_type_slots_scoped
+  is_user_generic_use_site, resolve_generic_use_decl
 }
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
@@ -142,8 +140,7 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
-  let is_optional = scrut_node.return_cardinality == CardOptional
-  if is_optional || is_disj || is_witness {
+  if is_disj || is_witness {
     scrut_node
   } else {
     match scrut_node.inferred {
@@ -179,12 +176,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-fn synthesize_optional_present_variant(scrut: Node) -> Node {
-  let inner = extract_optional_inner_node(n: scrut)
-  let value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let present_node = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: scrut.span, ident_span: Present { value: kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  present_node
-}
+
 
 fn synthesize_witness_holds_variant(scrut: Node) -> Node {
   let inner = match scrut.children |> first {
@@ -307,25 +299,17 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         }
       } else {
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
-      let scrut_opt = scrut_node.return_cardinality == CardOptional
-      if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
+      if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 {
         node_lookup_failed(diagnostics: [])
       } else {
-        let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
         let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
-        if optional_cardinality_subject && variant_name == "Present" {
-          node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
-        } else if optional_cardinality_subject && variant_name == "Absent" {
-          node_lookup_resolved(node: none_type)
-        } else if witness_subject && variant_name == "Holds" {
+        if witness_subject && variant_name == "Holds" {
           node_lookup_resolved(node: synthesize_witness_holds_variant(scrut: scrut_node))
         } else if witness_subject && variant_name == "Violates" {
           node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
           let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
 
-          let optional_coproduct_subject = scrut_name == "Optional"
-            && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
 
           let record_destructure = field_binding_count > 0
@@ -333,10 +317,6 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
             && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
-          } else if optional_coproduct_subject && variant_name == "Present" {
-            node_lookup_resolved(node: synthesize_optional_present_variant(scrut: scrut_node))
-          } else if optional_coproduct_subject && variant_name == "Absent" {
-            node_lookup_resolved(node: none_type)
           } else {
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
           }
@@ -439,17 +419,7 @@ type ConstructorField { name: String, type_node: Node }
 type PatternWitnessRow { cells: List<String> }
 
 fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
-  let scrut_is_optional = type_node.return_cardinality == CardOptional
-  let has_structure = type_node.connective != NoConnective
-  let resolved_raw = if has_structure {
-    type_node
-  } else {
-    match lookup_type_for(env: env, node: type_node) {
-      Present { value: def } => def
-      Absent => type_node
-    }
-  }
-  if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
+  expand_scrut_type_for_variant_lookup(scrut_node: type_node, env: env)
 }
 
 // THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
@@ -489,11 +459,8 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
 fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
-  let resolved_is_optional = resolved.return_cardinality == CardOptional
   let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
-  if resolved_is_optional {
-    ConstructorsClosed { names: ["Present", "Absent"] }
-  } else if resolved_is_witness {
+  if resolved_is_witness {
     ConstructorsClosed { names: ["Holds", "Violates"] }
   } else if is_coproduct {
     ConstructorsClosed { names: resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c)) }

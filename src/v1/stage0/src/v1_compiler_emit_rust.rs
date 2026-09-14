@@ -216,8 +216,9 @@ pub use crate::v1_compiler_infer_service::{
 };
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, for_each_element_type_node, is_coproduct_type, is_product_type,
-    is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
+    child_type_node, emit_map_has, extract_optional_inner_node, for_each_element_type_node,
+    is_coproduct_type, is_product_type, is_unit_like, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_optional_type,
     node_is_set_collection, normalize_access_type_node, resolved_type,
 };
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
@@ -258,7 +259,7 @@ use crate::v1_std_core::CallSemantics::{
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
+use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
     EffectfulSelfRecursionUnrealized, EmissionConstructUnprojectable, InternalError,
@@ -315,7 +316,6 @@ pub use crate::v1_std_core::{
     transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
-    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -353,7 +353,7 @@ pub fn render_rust_type(
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -537,7 +537,7 @@ pub fn render_rust_type_without_applied_binding(
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -760,10 +760,7 @@ pub fn render_rust_type_without_applied_binding(
                                 } else {
                                     if is_host_text_carrier_type(n.clone(), source_indices.clone())
                                     {
-                                        rust_carrier_optional_wrap(
-                                            n.clone(),
-                                            render_rust_text_carrier(shared_types.clone()),
-                                        )
+                                        render_rust_text_carrier(shared_types.clone())
                                     } else {
                                         if rust_overlayless_alias_leaf_requires_peel(
                                             emit_info.fn_type_env.clone(),
@@ -792,7 +789,7 @@ pub fn render_rust_type_without_applied_binding(
                                             }
                                         } else {
                                             match crate::v1_compiler_coercion::realization_host_numeric_spelling(type_reference_realization_in_env(n.clone(), crate::v1_std_core::qualified_last_segment(tn.clone()), emit_info.fn_type_env.clone(), source_indices.clone())) {
-    Some(host) => rust_carrier_optional_wrap(n.clone(), host.clone()),
+    Some(host) => host.clone(),
     std::option::Option::None => crate::v1_compiler_emit::render_node_type(n.clone(), RenderTarget::Rust, shared_types.clone(), source_indices.clone()),
 }
                                         }
@@ -2243,7 +2240,7 @@ pub fn render_rust_applied_type(
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2437,7 +2434,7 @@ pub fn rust_carrier_is_at_shared_layer(
         let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
         ((((leaf.clone() != "".to_string())
             && !rust_carrier_realizes_as_machine_scalar(n.clone(), leaf.clone()))
-            && (n.return_cardinality.clone() != Cardinality::CardOptional))
+            && !crate::v1_compiler_infer_types::node_is_optional_type(n.clone()))
             && v1_rt::set_contains(&shared_types, leaf.clone()))
     }
 }
@@ -2450,16 +2447,9 @@ pub fn render_rust_shared_type_with_optional(
 ) -> String {
     {
         if rust_carrier_realizes_as_machine_scalar(n.clone(), type_name.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), rendered.clone());
+            return rendered.clone();
         }
-        rust_carrier_optional_wrap(
-            n.clone(),
-            render_rust_shared_type_if_needed(
-                type_name.clone(),
-                rendered.clone(),
-                shared_types.clone(),
-            ),
-        )
+        render_rust_shared_type_if_needed(type_name.clone(), rendered.clone(), shared_types.clone())
     }
 }
 
@@ -2510,7 +2500,7 @@ pub fn render_rust_decl_type(
             );
         }
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2650,7 +2640,7 @@ pub fn render_rust_decl_type(
                     std::option::Option::None
                 };
                 match exact_leaf.clone() {
-                    Some(exact) => rust_carrier_optional_wrap(n.clone(), exact.clone()),
+                    Some(exact) => exact.clone(),
                     std::option::Option::None => {
                         if (((n.connective.clone() == Connective::NoConnective)
                             && ((n.children.clone().len() as i64) == 0))
@@ -2668,20 +2658,14 @@ pub fn render_rust_decl_type(
                             crate::v1_compiler_emit_core_support::to_pascal(name.clone())
                         } else {
                             if (bare_native_alias.clone() != std::option::Option::None) {
-                                rust_carrier_optional_wrap(
-                                    n.clone(),
-                                    bare_native_alias.clone().unwrap(),
-                                )
+                                bare_native_alias.clone().unwrap()
                             } else {
                                 if ((((n.connective.clone() == Connective::NoConnective)
                                     && ((n.children.clone().len() as i64) == 0))
                                     && (applied_prop.clone() == std::option::Option::None))
                                     && is_host_text_carrier_type(n.clone(), source_indices.clone()))
                                 {
-                                    rust_carrier_optional_wrap(
-                                        n.clone(),
-                                        render_rust_text_carrier(shared_types.clone()),
-                                    )
+                                    render_rust_text_carrier(shared_types.clone())
                                 } else {
                                     if ((((n.connective.clone() == Connective::NoConnective)
                                         && ((n.children.clone().len() as i64) == 0))
@@ -2849,20 +2833,6 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
     }
 }
 
-pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if is_optional.clone() {
-            v1_rt::concat(
-                v1_rt::concat("Option<".to_string(), rendered.clone()),
-                ">".to_string(),
-            )
-        } else {
-            rendered.clone()
-        }
-    }
-}
-
 pub fn render_rust_fn_sig_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -2873,7 +2843,7 @@ pub fn render_rust_fn_sig_type(
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2921,16 +2891,13 @@ pub fn render_rust_fn_sig_type(
             std::option::Option::None
         };
         match exact_leaf.clone() {
-            Some(exact) => rust_carrier_optional_wrap(n.clone(), exact.clone()),
+            Some(exact) => exact.clone(),
             std::option::Option::None => {
                 if (((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) == 0))
                     && is_host_text_carrier_type(n.clone(), source_indices.clone()))
                 {
-                    rust_carrier_optional_wrap(
-                        n.clone(),
-                        render_rust_text_carrier(shared_types.clone()),
-                    )
+                    render_rust_text_carrier(shared_types.clone())
                 } else {
                     if (((((((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) == 0))
@@ -7694,11 +7661,11 @@ pub fn emit_inferred_type_leaf_name(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_compiler_infer_types::node_is_optional_type(rt.clone());
             if is_optional.clone() {
                 crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
-                    crate::v1_std_core::with_required_cardinality(rt.clone()),
+                    crate::v1_compiler_infer_types::extract_optional_inner_node(rt.clone()),
                 )
             } else {
                 crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone())
@@ -8841,9 +8808,9 @@ pub fn collect_value_emit_type_surface_names(
                 let from_inferred_list = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         let is_optional =
-                            (rt.return_cardinality.clone() == Cardinality::CardOptional);
+                            crate::v1_compiler_infer_types::node_is_optional_type(rt.clone());
                         let peeled_rt = if is_optional.clone() {
-                            crate::v1_std_core::with_required_cardinality(rt.clone())
+                            crate::v1_compiler_infer_types::extract_optional_inner_node(rt.clone())
                         } else {
                             rt.clone()
                         };
@@ -15838,10 +15805,12 @@ pub fn needs_box_wrapping(
                         break v1_rt::set_contains(&recursive_types, name.clone());
                     }
                 } else {
-                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                    let is_optional =
+                        crate::v1_compiler_infer_types::node_is_optional_type(n.clone());
                     if is_optional.clone() {
                         {
-                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                            let __tco_0 =
+                                crate::v1_compiler_infer_types::extract_optional_inner_node(n);
                             n = __tco_0;
                             continue;
                         }
@@ -16799,7 +16768,7 @@ pub fn render_rust_type_with_applied_binding_in_scope(
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+            return "String".to_string();
         }
         match crate::v1_std_core::find_property(
             n.properties.clone(),
@@ -19147,7 +19116,7 @@ pub fn emit_rust_fn_body_expr(
 pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            (rt.return_cardinality.clone() == Cardinality::CardOptional)
+            crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
         }
         _ => false,
     }
@@ -21195,7 +21164,7 @@ pub fn analyze_rc_match(
         });
         let scrutinee_is_optional = match scrutinee.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
             }
             _ => false,
         };
@@ -21233,7 +21202,7 @@ pub fn analyze_rc_match(
                 ((is_optional_like_parent_name(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     rt.clone(),
-                )) && (rt.return_cardinality.clone() != Cardinality::CardOptional))
+                )) && !crate::v1_compiler_infer_types::node_is_optional_type(rt.clone()))
                     && rust_carrier_is_at_shared_layer(
                         rt.clone(),
                         source_indices.clone(),
@@ -21910,7 +21879,8 @@ pub fn explicit_record_struct_name(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
-        let is_optional = (inferred_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional =
+            crate::v1_compiler_infer_types::node_is_optional_type(inferred_node.clone());
         if is_optional.clone() {
             {
                 let result = type_name.clone();
@@ -22070,28 +22040,13 @@ pub fn effective_variant_parent_from_resolved(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match rt.return_cardinality.clone() {
-        Cardinality::CardOptional => {
-            if is_optional_variant_name(leaf_name.clone()) {
-                Some("Optional".to_string())
-            } else {
-                effective_variant_parent_from_enum_lookup(
-                    leaf_name.clone(),
-                    rt.clone(),
-                    binding_kind.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                )
-            }
-        }
-        _ => effective_variant_parent_from_enum_lookup(
-            leaf_name.clone(),
-            rt.clone(),
-            binding_kind.clone(),
-            emit_info.clone(),
-            source_indices.clone(),
-        ),
-    }
+    effective_variant_parent_from_enum_lookup(
+        leaf_name.clone(),
+        rt.clone(),
+        binding_kind.clone(),
+        emit_info.clone(),
+        source_indices.clone(),
+    )
 }
 
 pub fn effective_variant_parent(
@@ -22189,16 +22144,17 @@ pub fn emit_value_ref_ident(
 
 pub fn emit_none_keyword_for_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> String {
     match resolved_type.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => match rt.return_cardinality.clone() {
-            Cardinality::CardOptional => {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if crate::v1_compiler_infer_types::node_is_optional_type(rt.clone()) {
                 crate::v1_compiler_emit::emit_keyword("null".to_string(), RenderTarget::Rust)
+            } else {
+                crate::v1_compiler_emit::emit_error_expr(
+                    "none/None with non-optional resolved carrier — refuse fail-open null default"
+                        .to_string(),
+                    RenderTarget::Rust,
+                )
             }
-            _ => crate::v1_compiler_emit::emit_error_expr(
-                "none/None with non-optional resolved carrier — refuse fail-open null default"
-                    .to_string(),
-                RenderTarget::Rust,
-            ),
-        },
+        }
         _ => crate::v1_compiler_emit::emit_error_expr(
             "none/None with undetermined carrier — refuse fail-open null default".to_string(),
             RenderTarget::Rust,
@@ -24180,26 +24136,12 @@ pub fn contextual_variant_parent_absent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match resolved_type.return_cardinality.clone() {
-        Cardinality::CardOptional => {
-            if is_optional_variant_name(variant_name.clone()) {
-                Some("Optional".to_string())
-            } else {
-                contextual_variant_parent_from_type_name(
-                    variant_name.clone(),
-                    resolved_type.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                )
-            }
-        }
-        _ => contextual_variant_parent_from_type_name(
-            variant_name.clone(),
-            resolved_type.clone(),
-            emit_info.clone(),
-            source_indices.clone(),
-        ),
-    }
+    contextual_variant_parent_from_type_name(
+        variant_name.clone(),
+        resolved_type.clone(),
+        emit_info.clone(),
+        source_indices.clone(),
+    )
 }
 
 pub fn contextual_variant_parent(
@@ -24537,17 +24479,19 @@ pub fn rust_call_arg_fail_closed_unwrap(
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
-                let param_required = (((param_type.return_cardinality.clone()
-                    != Cardinality::CardOptional)
-                    && !is_host_optional_carrier_type(param_type.clone(), source_indices.clone()))
-                    && !rust_param_type_is_type_variable(
-                        param_type.clone(),
-                        source_indices.clone(),
-                    ));
-                let arg_optional = (crate::v1_compiler_infer_types::resolved_type(arg.clone())
-                    .return_cardinality
-                    .clone()
-                    == Cardinality::CardOptional);
+                let param_required =
+                    ((!crate::v1_compiler_infer_types::node_is_optional_type(param_type.clone())
+                        && !is_host_optional_carrier_type(
+                            param_type.clone(),
+                            source_indices.clone(),
+                        ))
+                        && !rust_param_type_is_type_variable(
+                            param_type.clone(),
+                            source_indices.clone(),
+                        ));
+                let arg_optional = crate::v1_compiler_infer_types::node_is_optional_type(
+                    crate::v1_compiler_infer_types::resolved_type(arg.clone()),
+                );
                 if (param_required.clone() && arg_optional.clone()) {
                     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(arg_str.clone(), ".expect(\"fail-closed: an optional value flowed into non-optional parameter ".to_string()), crate::v1_compiler_emit_core_support::to_string(idx.clone())), " of ".to_string()), func.clone()), " (empty Optional at runtime)\")".to_string())
                 } else {
@@ -26852,7 +26796,7 @@ pub fn emit_rust_map_method_call(
         );
         let recv_is_optional = match receiver.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
             }
             _ => false,
         };
@@ -27669,11 +27613,9 @@ pub fn emit_typed_method_call(
                         let optional_param_set = Rc::new({
                             let mut __result = Vec::new();
                             for p in op_params.iter().cloned() {
-                                if (crate::v1_std_core::param_node_type_expr(p.clone())
-                                    .return_cardinality
-                                    .clone()
-                                    == Cardinality::CardOptional)
-                                {
+                                if crate::v1_compiler_infer_types::node_is_optional_type(
+                                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                                ) {
                                     __result.push(p);
                                 }
                             }
@@ -27995,7 +27937,7 @@ pub fn emit_typed_method_call(
                                                                     emit_info.clone(),
                                                                     1024,
                                                                 );
-                                                                let recv_is_optional = (crate::v1_compiler_infer_types::resolved_type(receiver.clone()).return_cardinality.clone() == Cardinality::CardOptional);
+                                                                let recv_is_optional = crate::v1_compiler_infer_types::node_is_optional_type(crate::v1_compiler_infer_types::resolved_type(receiver.clone()));
                                                                 let recv_str = if recv_is_optional
                                                                     .clone()
                                                                 {
@@ -29108,11 +29050,11 @@ pub fn emit_typed_match(
         );
         let scrut_type = match scrutinee.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+                let is_optional = crate::v1_compiler_infer_types::node_is_optional_type(rt.clone());
                 if is_optional.clone() {
                     crate::v1_std_core::authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
-                        crate::v1_std_core::with_required_cardinality(rt.clone()),
+                        crate::v1_compiler_infer_types::extract_optional_inner_node(rt.clone()),
                     )
                 } else {
                     crate::v1_std_core::authored_name_at(
@@ -30080,12 +30022,13 @@ pub fn is_already_optional(
                     } else {
                         match texpr.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: rt, .. }) => {
-                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
                             }
                             _ => match v1_rt::map_get(&scope.locals.clone(), n.clone()) {
                                 Some(binding) => {
-                                    (binding.resolved.clone().return_cardinality.clone()
-                                        == Cardinality::CardOptional)
+                                    crate::v1_compiler_infer_types::node_is_optional_type(
+                                        binding.resolved.clone(),
+                                    )
                                 }
                                 std::option::Option::None => false,
                             },
@@ -30138,7 +30081,9 @@ pub fn is_already_optional(
                             } else {
                                 match texpr.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                                        (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                        crate::v1_compiler_infer_types::node_is_optional_type(
+                                            rt.clone(),
+                                        )
                                     }
                                     _ => false,
                                 }
@@ -30146,7 +30091,7 @@ pub fn is_already_optional(
                         }
                         _ => match texpr.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: rt, .. }) => {
-                                (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                                crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
                             }
                             _ => false,
                         },
@@ -30155,7 +30100,7 @@ pub fn is_already_optional(
             }
             _ => match texpr.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    (rt.return_cardinality.clone() == Cardinality::CardOptional)
+                    crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
                 }
                 _ => false,
             },
@@ -31235,8 +31180,9 @@ pub fn emit_typed_record_lit(
                 let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
                     && ((is_optional_parent(bare_parent_enum.clone())
                         || is_optional_parent(effective_parent.clone()))
-                        || (resolved_type.return_cardinality.clone()
-                            == Cardinality::CardOptional)));
+                        || crate::v1_compiler_infer_types::node_is_optional_type(
+                            resolved_type.clone(),
+                        )));
                 let rust_tn = if optional_variant.clone() {
                     rust_optional_variant_spelling(variant_surface_name.clone())
                 } else {
@@ -32086,7 +32032,7 @@ pub fn emit_rust_host_bin_op(
 pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            (rt.return_cardinality.clone() == Cardinality::CardOptional)
+            crate::v1_compiler_infer_types::node_is_optional_type(rt.clone())
         }
         _ => false,
     }
@@ -32096,7 +32042,7 @@ pub fn type_node_is_ordered_element_run(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
+    (((!crate::v1_compiler_infer_types::node_is_optional_type(n.clone())
         && crate::v1_compiler_infer_types::node_is_element_collection(
             n.clone(),
             source_indices.clone(),
@@ -32168,9 +32114,9 @@ pub fn is_string_typed_expr(
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let is_optional = crate::v1_compiler_infer_types::node_is_optional_type(rt.clone());
             let inner = if is_optional.clone() {
-                crate::v1_std_core::with_required_cardinality(rt.clone())
+                crate::v1_compiler_infer_types::extract_optional_inner_node(rt.clone())
             } else {
                 rt.clone()
             };
@@ -32838,11 +32784,12 @@ pub fn emit_rust_tco_match(
             );
             let tco_scrut_type = match s.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+                    let is_optional =
+                        crate::v1_compiler_infer_types::node_is_optional_type(rt.clone());
                     if is_optional.clone() {
                         crate::v1_std_core::authored_name_at(
                             frame.scope.clone().type_env.clone().source_indices.clone(),
-                            crate::v1_std_core::with_required_cardinality(rt.clone()),
+                            crate::v1_compiler_infer_types::extract_optional_inner_node(rt.clone()),
                         )
                     } else {
                         crate::v1_std_core::authored_name_at(
@@ -34228,14 +34175,15 @@ let raw = match ch.inferred.clone().as_deref().cloned() {
     std::option::Option::None => v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n".to_string()),
 }
                                         } else {
-                                            emit_json_value_extract(field_name.clone(), from_path.clone(), crate::v1_std_core::authored_name_at(source_indices.clone(), tn.clone()), source_indices.clone())
+                                            emit_json_value_extract(field_name.clone(), from_path.clone(), crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::extract_optional_inner_node(tn.clone())), source_indices.clone())
                                         },
     _ => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for mock field: ".to_string()), ch_name.clone()), "\");".to_string()),
 };
-match ch.return_cardinality.clone() {
-    Cardinality::CardOptional => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(raw.clone(), "\nlet ".to_string()), field_name.clone()), " = Some(".to_string()), field_name.clone()), ");".to_string()),
-    _ => raw.clone(),
-}
+if crate::v1_compiler_infer_types::node_is_optional_type(crate::v1_compiler_infer_types::resolved_type(ch.clone())) {
+                                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(raw.clone(), "\nlet ".to_string()), field_name.clone()), " = Some(".to_string()), field_name.clone()), ");".to_string())
+                                        } else {
+                                            raw.clone()
+                                        }
 }); } __result });
 let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.iter().cloned() { __result.push(crate::v1_compiler_emit::emit_ident(crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
 let result_body = v1_rt::concat(v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())), ")".to_string());
@@ -35817,11 +35765,9 @@ pub fn emit_shell_call(
         let optional_params = Rc::new({
             let mut __result = Vec::new();
             for p in op_node.params.clone().iter().cloned() {
-                if (crate::v1_std_core::param_node_type_expr(p.clone())
-                    .return_cardinality
-                    .clone()
-                    == Cardinality::CardOptional)
-                {
+                if crate::v1_compiler_infer_types::node_is_optional_type(
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                ) {
                     __result.push(p);
                 }
             }
@@ -39943,14 +39889,14 @@ pub fn emit_cli_param_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = crate::v1_compiler_infer_types::node_is_optional_type(n.clone());
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         if is_optional.clone() {
             v1_rt::concat(
                 v1_rt::concat(
                     "Option<".to_string(),
                     emit_cli_param_type_node(
-                        crate::v1_std_core::with_required_cardinality(n.clone()),
+                        crate::v1_compiler_infer_types::extract_optional_inner_node(n.clone()),
                         source_indices.clone(),
                     ),
                 ),

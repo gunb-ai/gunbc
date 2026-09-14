@@ -4,8 +4,8 @@
 pub use crate::std_types::is_ordered_element_collection;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_types::{
-    for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
-    node_type_equals, normalize_access_type_node, resolved_type,
+    for_each_element_type_node, make_optional_type, node_is_element_collection,
+    node_is_keyed_collection, node_type_equals, normalize_access_type_node, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -13,7 +13,6 @@ use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
     authored_name_at, diagnostic_to_message, int_type, make_error_node, string_type, unit_type,
-    with_optional_cardinality,
 };
 pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
@@ -147,7 +146,9 @@ pub fn check_index_access_node(
                         Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
                     };
                     access_result(
-                        crate::v1_std_core::with_optional_cardinality(parts.value_type.clone()),
+                        crate::v1_compiler_infer_types::make_optional_type(
+                            parts.value_type.clone(),
+                        ),
                         key_diags.clone(),
                         span.clone(),
                         "invalid keyed collection index access".to_string(),
@@ -189,7 +190,9 @@ pub fn check_index_access_node(
                                         source_indices.clone(),
                                     );
                                 access_result(
-                                    crate::v1_std_core::with_optional_cardinality(elem.clone()),
+                                    crate::v1_compiler_infer_types::make_optional_type(
+                                        elem.clone(),
+                                    ),
                                     Rc::new(vec![]),
                                     span.clone(),
                                     "list index access".to_string(),

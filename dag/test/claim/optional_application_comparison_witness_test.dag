@@ -1,0 +1,48 @@
+module test.claim.optional_application_comparison_witness_test
+
+import std.types { Bool }
+import v1.std.core { int_type, string_type }
+import v1.compiler.infer_types { make_optional_type, make_map_type, node_type_compatible, node_type_equals }
+import v1.compiler.infer_env { node_with_children }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Consumers: both type comparison relations in the Optional replacement.
+// These claims execute the shared comparison on real producer results.
+test fn optional_element_mismatch_refuses_in_both_relations() -> Bool {
+  let left = make_optional_type(element: int_type)
+  let right = make_optional_type(element: string_type)
+  !node_type_compatible(left: left, right: right, source_indices: empty_map())
+    && !node_type_equals(left: left, right: right, source_indices: empty_map())
+}
+
+test fn identical_optional_arguments_match_in_both_relations() -> Bool {
+  let left = make_optional_type(element: int_type)
+  let right = make_optional_type(element: int_type)
+  node_type_compatible(left: left, right: right, source_indices: empty_map())
+    && node_type_equals(left: left, right: right, source_indices: empty_map())
+}
+
+test fn map_value_mismatch_refuses_in_both_relations() -> Bool {
+  let left = make_map_type(key: string_type, value: int_type)
+  let right = make_map_type(key: string_type, value: string_type)
+  count(left.diagnostics) == 0 && count(right.diagnostics) == 0
+    && !node_type_compatible(left: left.ty, right: right.ty, source_indices: empty_map())
+    && !node_type_equals(left: left.ty, right: right.ty, source_indices: empty_map())
+}
+
+test fn identical_map_arguments_match_in_both_relations() -> Bool {
+  let left = make_map_type(key: string_type, value: int_type)
+  let right = make_map_type(key: string_type, value: int_type)
+  count(left.diagnostics) == 0 && count(right.diagnostics) == 0
+    && node_type_compatible(left: left.ty, right: right.ty, source_indices: empty_map())
+    && node_type_equals(left: left.ty, right: right.ty, source_indices: empty_map())
+}
+
+test fn application_arity_mismatch_refuses_in_both_relations() -> Bool {
+  let left = make_optional_type(element: int_type)
+  let right = node_with_children(n: left, children: [int_type, string_type])
+  !node_type_compatible(left: left, right: right, source_indices: empty_map())
+    && !node_type_equals(left: left, right: right, source_indices: empty_map())
+}

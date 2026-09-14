@@ -55,8 +55,8 @@ import v1.std.core {
   lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right, no_span, with_required_cardinality, Connective, Conj, Disj,
-  NoConnective, Arrow, Cardinality, Required, CardOptional, is_rest_transport,
+  binop_left, binop_right, no_span, Connective, Conj, Disj,
+  NoConnective, Arrow, Cardinality, Required, is_rest_transport,
   transport_base_path, empty_intern_table,
   LeafOwner, SingleOwner, LeafAmbiguous
 }
@@ -175,6 +175,8 @@ import std.operator_realization {
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
+  extract_optional_inner_node,
+  node_is_optional_type,
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
@@ -272,7 +274,7 @@ fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
   }
@@ -401,7 +403,7 @@ fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
   }
@@ -466,7 +468,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
       "_"
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
-      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+      render_rust_text_carrier(shared_types: shared_types)
     } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
       match lookup_type_for(env: emit_info.fn_type_env, node: n) {
         Present { value: binding } => render_rust_type(n: resolved_type(n: binding), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -474,7 +476,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       }
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
-        Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
+        Present { value: host } => host
         Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
       }
     }
@@ -1375,7 +1377,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -1545,15 +1547,15 @@ fn rust_carrier_is_at_shared_layer(n: Node, source_indices: Map<String, NewlineI
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   leaf != ""
     && !rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf)
-    && n.return_cardinality != CardOptional
+    && !node_is_optional_type(n: n)
     && set_contains(shared_types, leaf)
 }
 
 fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, shared_types: Set<String>) -> String {
   if rust_carrier_realizes_as_machine_scalar(n: n, type_name: type_name) {
-    return rust_carrier_optional_wrap(n: n, rendered: rendered)
+    return rendered
   }
-  rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types))
+  render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -1566,7 +1568,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
   if rust_type_node_is_arrow(n: n) {
     return render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -1603,14 +1605,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: name, env: env, source_indices: source_indices))
       } else { none }
       match exact_leaf {
-        Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+        Present { value: exact } => exact
         Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if bare_native_alias != none {
-        rust_carrier_optional_wrap(n: n, rendered: bare_native_alias.value)
+        bare_native_alias.value
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
-        rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+        render_rust_text_carrier(shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
@@ -1678,17 +1680,10 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
   }
 }
 
-fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
-  let is_optional = n.return_cardinality == CardOptional
-  if is_optional {
-    concat("Option<", rendered, ">")
-  } else {
-    rendered
-  }
-}
+
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -1701,10 +1696,10 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
   match exact_leaf {
-    Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+    Present { value: exact } => exact
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
-    rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+    render_rust_text_carrier(shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
@@ -4065,9 +4060,9 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
 fn emit_inferred_type_leaf_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
+      let is_optional = node_is_optional_type(n: rt)
       if is_optional {
-        authored_name_at(source_indices: source_indices, node: with_required_cardinality(n: rt))
+        authored_name_at(source_indices: source_indices, node: extract_optional_inner_node(n: rt))
       } else { authored_name_at(source_indices: source_indices, node: rt) }
     _ => ""
   }
@@ -4498,8 +4493,8 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
     _ =>
       let from_inferred_list = match n.inferred {
         Present { value: Resolved { node: rt } } =>
-          let is_optional = rt.return_cardinality == CardOptional
-          let peeled_rt = if is_optional { with_required_cardinality(n: rt) } else { rt }
+          let is_optional = node_is_optional_type(n: rt)
+          let peeled_rt = if is_optional { extract_optional_inner_node(n: rt) } else { rt }
           collect_type_node_import_surface_names(n: peeled_rt, source_indices: source_indices)
         _ => []
       }
@@ -7599,9 +7594,9 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
     if coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: name, target: Rust), dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
-    let is_optional = n.return_cardinality == CardOptional
+    let is_optional = node_is_optional_type(n: n)
     if is_optional {
-      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices)
+      needs_box_wrapping(n: extract_optional_inner_node(n: n), recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices)
     } else {
       false
     }
@@ -8065,7 +8060,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
 }
 
 fn render_rust_type_with_applied_binding_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices) { return "String" }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
@@ -9236,7 +9231,7 @@ fn emit_rust_fn_body_expr(texpr: Node, return_is_unit: Bool, registry: Map<Strin
 
 fn inferred_expr_is_optional(texpr: Node) -> Bool {
   match texpr.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
     _ => false
   }
 }
@@ -10012,7 +10007,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   )
   let scrutinee_is_optional = match scrutinee.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
     _ => false
   }
   let scrutinee_is_rc_wrapped = match scrutinee.inferred {
@@ -10025,7 +10020,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   let scrutinee_is_rc_modeled_optional = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
       is_optional_like_parent_name(name: authored_name_at(source_indices: source_indices, node: rt))
-        && rt.return_cardinality != CardOptional
+        && !node_is_optional_type(n: rt)
         && rust_carrier_is_at_shared_layer(n: rt, source_indices: source_indices, shared_types: shared_types)
     _ => false
   }
@@ -10295,7 +10290,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
 }
 
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  let is_optional = inferred_node.return_cardinality == CardOptional
+  let is_optional = node_is_optional_type(n: inferred_node)
   if is_optional {
     let result = type_name
     return result
@@ -10378,11 +10373,7 @@ fn effective_variant_parent_from_enum_lookup(leaf_name: String, rt: Node, bindin
 }
 
 fn effective_variant_parent_from_resolved(leaf_name: String, rt: Node, binding_kind: VarBindingKind?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  match rt.return_cardinality {
-    CardOptional =>
-      if is_optional_variant_name(name: leaf_name) { Present { value: "Optional" } } else { effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices) }
-    _ => effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
-  }
+  effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
 }
 
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
@@ -10461,8 +10452,8 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
 
 // Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved
 // variant_parent, the emitter previously emitted Rust null as a fabricated plausible default.
-// variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier
-// and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined
+// variant_parent == none conflated (a) bare Optional none with a determined Optional carrier
+// and (b) undetermined carrier. Split: applied Optional → None (type-directed); any other determined
 // non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed
 // refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic
 // text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold
@@ -10472,10 +10463,8 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
 fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
   match resolved_type {
     Present { value: Resolved { node: rt } } =>
-      match rt.return_cardinality {
-        CardOptional => emit_keyword(key: "null", target: Rust)
-        _ => emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: Rust)
-      }
+      if node_is_optional_type(n: rt) { emit_keyword(key: "null", target: Rust) }
+      else { emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: Rust) }
     _ => emit_error_expr(message: "none/None with undetermined carrier — refuse fail-open null default", target: Rust)
   }
 }
@@ -11100,7 +11089,7 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 // MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an
 // effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this
 // note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted
-// rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local
+// rather than gated: `node_is_optional_type(resolved_type)` is the expression-local
 // statement of the same fact, and executing all seven poles with the function-wide arm removed
 // showed it was load-bearing for NONE of them -- it was a second representation of an
 // expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is
@@ -11290,11 +11279,7 @@ fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type:
 }
 
 fn contextual_variant_parent_absent(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  match resolved_type.return_cardinality {
-    CardOptional =>
-      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
-    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
-  }
+  contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
 }
 
 fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
@@ -11454,8 +11439,8 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
           let param_type = param_node_type_expr(n: param)
-          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
-          let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
+          let param_required = !node_is_optional_type(n: param_type) && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
+          let arg_optional = node_is_optional_type(n: resolved_type(n: arg))
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
           } else {
@@ -12282,7 +12267,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let recv_is_optional = match receiver.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
     _ => false
   }
   if recv_is_optional {
@@ -12495,7 +12480,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       let si = scope.type_env.source_indices
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let optional_param_set = op_params
-        |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+        |> filter(p => node_is_optional_type(n: param_node_type_expr(n: p)))
         |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: si), true))
       let json_param_set = op_params
         |> filter(p => coerce_primitive_type(decision: type_reference_realization(n: param_node_type_expr(n: p), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p)), target: Rust), dag_name: authored_name_at(source_indices: si, node: param_node_type_expr(n: p))) == "serde_json::Value")
@@ -12555,7 +12540,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
         emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
         let recv_str_raw = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        let recv_is_optional = resolved_type(n: receiver).return_cardinality == CardOptional
+        let recv_is_optional = node_is_optional_type(n: resolved_type(n: receiver))
         let recv_str = if recv_is_optional {
           concat(recv_str_raw, concat(".expect(\"fail-closed: Optional receiver for method ", concat(method_name, " (empty Optional at runtime)\")")))
         } else { recv_str_raw }
@@ -12976,9 +12961,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let scrut_type = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
+      let is_optional = node_is_optional_type(n: rt)
       if is_optional {
-        authored_name_at(source_indices: scope.type_env.source_indices, node: with_required_cardinality(n: rt))
+        authored_name_at(source_indices: scope.type_env.source_indices, node: extract_optional_inner_node(n: rt))
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
@@ -13312,10 +13297,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         true
       } else {
         match texpr.inferred {
-          Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+          Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
           _ =>
             match map_get(scope.locals, n) {
-              Present { value: binding } => binding.resolved.return_cardinality == CardOptional
+              Present { value: binding } => node_is_optional_type(n: binding.resolved)
               Absent => false
             }
         }
@@ -13344,20 +13329,20 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
               true
             } else {
               match texpr.inferred {
-                Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+                Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
                 _ => false
               }
             }
           _ =>
             match texpr.inferred {
-              Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+              Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
               _ => false
             }
         }
       }
     _ =>
       match texpr.inferred {
-        Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+        Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
         _ => false
       }
   }
@@ -13719,7 +13704,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || node_is_optional_type(n: resolved_type))
       let rust_tn = if optional_variant {
         rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
@@ -14004,7 +13989,7 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
 
 fn is_optional_typed_expr(e: Node) -> Bool {
   match e.inferred {
-    Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    Present { value: Resolved { node: rt } } => node_is_optional_type(n: rt)
     _ => false
   }
 }
@@ -14029,7 +14014,7 @@ fn is_optional_typed_expr(e: Node) -> Bool {
 // be one word and never a splice. Two consumers, one reason: a string is an atom to both of them even
 // though its carrier is a sequence.
 fn type_node_is_ordered_element_run(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.return_cardinality != CardOptional
+  !node_is_optional_type(n: n)
     && node_is_element_collection(n: n, source_indices: source_indices)
     && !node_is_set_collection(n: n, source_indices: source_indices)
     && !is_rust_string_like(n: n, source_indices: source_indices)
@@ -14101,8 +14086,8 @@ fn is_string_comparison(op: BinOp, left: Node, right: Node, source_indices: Map<
 fn is_string_typed_expr(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
-      let is_optional = rt.return_cardinality == CardOptional
-      let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
+      let is_optional = node_is_optional_type(n: rt)
+      let inner = if is_optional { extract_optional_inner_node(n: rt) } else { rt }
       is_rust_string_like(n: inner, source_indices: source_indices)
     _ => false
   }
@@ -14260,9 +14245,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let tco_scrut_type = match s.inferred {
         Present { value: Resolved { node: rt } } =>
-          let is_optional = rt.return_cardinality == CardOptional
+          let is_optional = node_is_optional_type(n: rt)
           if is_optional {
-            authored_name_at(source_indices: frame.scope.type_env.source_indices, node: with_required_cardinality(n: rt))
+            authored_name_at(source_indices: frame.scope.type_env.source_indices, node: extract_optional_inner_node(n: rt))
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
@@ -14617,15 +14602,14 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                       Absent => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
                     }
                   } else {
-                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: extract_optional_inner_node(n: tn)), source_indices: source_indices)
                   }
                 _ =>
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
               }
-              match ch.return_cardinality {
-                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
-                _ => raw
-              }
+              if node_is_optional_type(n: resolved_type(n: ch)) {
+                concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+              } else { raw }
             )
             let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
             let result_body = concat("(", field_names |> join(separator: ", "), ")")
@@ -15198,7 +15182,7 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
 fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let argv = transport.children
   let optional_params = op_node.params
-    |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
+    |> filter(p => node_is_optional_type(n: param_node_type_expr(n: p)))
     |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
   let list_params = op_node.params
     |> filter(p => shell_argv_param_is_word_list(param: p, source_indices: source_indices))
@@ -17987,10 +17971,10 @@ fn emit_subcommand_field(param: Node, source_indices: Map<String, NewlineIndex>,
 }
 
 fn emit_cli_param_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = node_is_optional_type(n: n)
   let has_structure = n.connective != NoConnective
   if is_optional {
-    concat("Option<", emit_cli_param_type_node(n: with_required_cardinality(n: n), source_indices: source_indices), ">")
+    concat("Option<", emit_cli_param_type_node(n: extract_optional_inner_node(n: n), source_indices: source_indices), ">")
   } else if has_structure {
     "String"
   } else if n.children |> count == 0 {

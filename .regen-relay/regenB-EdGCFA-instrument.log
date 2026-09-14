@@ -1,0 +1,181 @@
+/home/briansrls/eager-raven-113/regenB.EdGCFA/optional-root-next.patch: OK
+PATCH_APPLIED relay=9a3c4e23dd5a34ee29a55fae4b8f4fbd38e3f543
+SEED_STATE mirrors_from=MAIN_COMMITTED(ed853cf430e8004b937b9017ca1fb6742901c00e) sources=ed853cf430e8004b937b9017ca1fb6742901c00e+optional-root-next.patch
+A  dag/test/claim/optional_application_comparison_witness_test.dag
+A  dag/test/claim/optional_representation_witness_test.dag
+M  src/v1/04_access.dag
+M  src/v1/04_emit_info.dag
+M  src/v1/04_infer.dag
+M  src/v1/04_lookup.dag
+M  src/v1/04_method.dag
+M  src/v1/04_patterns.dag
+M  src/v1/04_resolve.dag
+M  src/v1/04_types.dag
+M  src/v1/05_emit_rust.dag
+M  src/v1/stage0/src/bin/infer_semantics_witness.rs
+Running as unit: run-r345a5bd7f93b490cbe51171b201ad784.scope; invocation ID: 3401d42f6ea04b379daf0ec2fcc53f2f
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.9
+   Compiling cc v1.2.62
+   Compiling syn v2.0.117
+   Compiling version_check v0.9.5
+   Compiling serde_core v1.0.228
+   Compiling libc v0.2.186
+   Compiling typenum v1.20.1
+   Compiling cfg-if v1.0.4
+   Compiling synstructure v0.13.2
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde v1.0.228
+   Compiling serde_derive v1.0.228
+   Compiling yoke v0.8.2
+   Compiling object v0.37.3
+   Compiling zerovec-derive v0.11.3
+   Compiling memchr v2.8.0
+   Compiling zerovec v0.11.6
+   Compiling displaydoc v0.2.5
+   Compiling ar_archive_writer v0.5.1
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.149
+   Compiling tinystr v0.8.3
+   Compiling psm v0.1.31
+   Compiling bitmaps v2.1.0
+   Compiling im v15.1.0
+   Compiling stacker v0.1.24
+   Compiling litemap v0.8.2
+   Compiling writeable v0.6.3
+   Compiling rand_core v0.6.4
+   Compiling itoa v1.0.18
+   Compiling rand_xoshiro v0.6.0
+   Compiling icu_locale_core v2.2.0
+   Compiling sized-chunks v0.6.5
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling generic-array v0.14.7
+   Compiling icu_properties_data v2.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_normalizer_data v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling ring v0.17.14
+   Compiling zeroize v1.8.2
+   Compiling unicode-properties v0.1.4
+   Compiling rustls-pki-types v1.14.1
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_runtime)
+   Compiling smallvec v1.15.1
+   Compiling subtle v2.6.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_std_core)
+   Compiling getrandom v0.2.17
+   Compiling crc32fast v1.5.0
+   Compiling untrusted v0.9.0
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling idna_adapter v1.2.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling adler2 v2.0.1
+   Compiling percent-encoding v2.3.2
+   Compiling simd-adler32 v0.3.9
+   Compiling rustls v0.23.40
+   Compiling hashbrown v0.17.1
+   Compiling colorchoice v1.0.5
+   Compiling anstyle-query v1.1.5
+   Compiling equivalent v1.0.2
+   Compiling anstyle v1.0.14
+   Compiling anstream v1.0.0
+   Compiling indexmap v2.14.0
+   Compiling miniz_oxide v0.8.9
+   Compiling form_urlencoded v1.2.2
+   Compiling digest v0.10.7
+   Compiling idna v1.1.0
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_extdeps_languages)
+   Compiling rustls-webpki v0.103.13
+   Compiling webpki-roots v1.0.7
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling strsim v0.11.1
+   Compiling once_cell v1.21.4
+   Compiling log v0.4.29
+   Compiling heck v0.5.0
+   Compiling clap_lex v1.1.0
+   Compiling winnow v0.7.15
+   Compiling toml_write v0.1.2
+   Compiling toml_edit v0.22.27
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling webpki-roots v0.26.11
+   Compiling flate2 v1.1.9
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_v1_artifact)
+   Compiling url v2.5.8
+   Compiling cpufeatures v0.2.17
+   Compiling base64 v0.22.1
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0)
+   Compiling ureq v2.12.1
+   Compiling sha2 v0.10.9
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_v1_infer)
+   Compiling clap v4.6.1
+   Compiling toml v0.8.23
+   Compiling hmac v0.12.1
+   Compiling hex v0.4.3
+   Compiling lazy_static v1.5.0
+    Finished `release` profile [optimized] target(s) in 8m 05s
+memory-cgroup-bind: not requested
+◐ started round.seed_build
+✓ round.seed_build done in 4 minutes
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 19 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 26 seconds
+✓ compile.normalize done in 681ms
+✓ compile.reconcile done in 43 seconds
+✓ compile.analyses done in 646ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 26 seconds
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 11ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 110ms
+◐ started regen.digest
+✓ regen.digest done in 26 seconds
+required-regen: elapsed_ms=438762 first_generation_equal=false planned=155 executed=155 adjudicated=155 declared_divergent=1 [main.rs]
+◐ started round.install
+◐ started round.rebuild_from_installed
+✓ round.rebuild_from_installed done in 13 seconds
+✓ round.install done in 37 seconds
+regen-round-cost: refused: stage seed build refused; checkpoint restored: refusal: cargo build (round.rebuild_from_installed) failed with exit status: 101 — last lines:
+   Compiling v1-compiler v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0)
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/eager-raven-113/regenB.EdGCFA/repo/src/v1/stage0_v1_infer)
+error[E0382]: borrow of moved value: `resolved`
+    --> src/v1/stage0_v1_infer/src/../../stage0/src/v1_compiler_infer_resolve.rs:1986:29
+     |
+1967 | pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
+     |                                                   -------- move occurs because `resolved` has type `Rc<Node>`, which does not implement the `Copy` trait
+...
+1981 |                 inferred: Some(Rc::new(InferredNode::Resolved { node: resolved })),
+     |                                                                       -------- value moved here
+...
+1986 |                 properties: resolved.properties.clone(),
+     |                             ^^^^^^^^ value borrowed here after move
+     |
+     = note: borrow occurs due to deref coercion to `Node`
+help: clone the value to increment its reference count
+     |
+1981 |                 inferred: Some(Rc::new(InferredNode::Resolved { node: resolved.clone() })),
+     |                                                                               ++++++++
+
+For more information about this error, try `rustc --explain E0382`.
+error: could not compile `v1-stage0-v1-infer` (lib) due to 1 previous error

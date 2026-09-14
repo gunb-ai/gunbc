@@ -35,9 +35,9 @@ pub use crate::std_types::{
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
+use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::CompilerDiagnostic::{
-    AlgebraApplicationEvidenceUnavailable, InternalError,
+    AlgebraApplicationEvidenceUnavailable, InternalError, TypeArgumentArityMismatch,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
@@ -50,11 +50,10 @@ pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
-    error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
-    is_kernel_type, kernel_span, leaf_node_with_span, make_error_node, make_expr_error_node,
-    make_expr_node, make_param_node, no_span, none_type, param_node_type_expr,
-    qualified_last_segment, string_type, type_name_compatible, unit_type,
-    with_optional_cardinality, with_required_cardinality,
+    error_type, find_child_named, float_type, generic_param_name_at, has_inferred, int_type,
+    is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span, make_error_node,
+    make_expr_error_node, make_expr_node, make_param_node, no_span, none_type,
+    param_node_type_expr, qualified_last_segment, string_type, type_name_compatible, unit_type,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData,
@@ -64,6 +63,158 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn substitute_type_slots(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    substitute_type_slots_scoped(
+        n.clone(),
+        slot_bindings.clone(),
+        decl_name.clone(),
+        source_indices.clone(),
+        false,
+    )
+}
+
+pub fn substitute_type_slots_scoped(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bind_type_variables: bool,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let tv_slot = if bind_type_variables.clone() {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    v1_rt::map_get(&slot_bindings, tv_id.clone())
+                }
+                _ => std::option::Option::None,
+            }
+        } else {
+            std::option::Option::None
+        };
+        if (tv_slot.clone() != std::option::Option::None) {
+            return tv_slot.clone().unwrap();
+        }
+        let is_slot = (((((n.children.clone().len() as i64) == 0)
+            && (n.connective.clone() == Connective::NoConnective))
+            && (n.body.clone() == std::option::Option::None))
+            && (n.inferred.clone() == std::option::Option::None));
+        if is_slot.clone() {
+            match v1_rt::map_get(
+                &slot_bindings,
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+            ) {
+                Some(concrete) => concrete.clone(),
+                std::option::Option::None => n.clone(),
+            }
+        } else {
+            {
+                let new_children = Rc::new({
+                    let mut __result = Vec::new();
+                    for child in n.children.clone().iter().cloned() {
+                        __result.push(
+                            if (crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                child.clone(),
+                            ) == decl_name.clone())
+                            {
+                                {
+                                    let substituted_args = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for arg in child.children.clone().iter().cloned() {
+                                            __result.push(substitute_type_slots_scoped(
+                                                arg.clone(),
+                                                slot_bindings.clone(),
+                                                decl_name.clone(),
+                                                source_indices.clone(),
+                                                bind_type_variables.clone(),
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    Rc::new(Node {
+                                        occurrence_identity: child.occurrence_identity.clone(),
+                                        name: child.name.clone(),
+                                        span: child.span.clone(),
+                                        ident_span: child.ident_span.clone(),
+                                        children: substituted_args.clone(),
+                                        connective: child.connective.clone(),
+                                        params: child.params.clone(),
+                                        inferred: child.inferred.clone(),
+                                        return_cardinality: child.return_cardinality.clone(),
+                                        uses: child.uses.clone(),
+                                        body: child.body.clone(),
+                                        transport: child.transport.clone(),
+                                        properties: child.properties.clone(),
+                                        type_annotation: child.type_annotation.clone(),
+                                        is_self_recursive: child.is_self_recursive.clone(),
+                                        has_non_tail_self_call: child
+                                            .has_non_tail_self_call
+                                            .clone(),
+                                        match_pattern: child.match_pattern.clone(),
+                                        module_item_kind: child.module_item_kind.clone(),
+                                        expr_data: child.expr_data.clone(),
+                                        ident: None,
+                                    })
+                                }
+                            } else {
+                                substitute_type_slots_scoped(
+                                    child.clone(),
+                                    slot_bindings.clone(),
+                                    decl_name.clone(),
+                                    source_indices.clone(),
+                                    bind_type_variables.clone(),
+                                )
+                            },
+                        );
+                    }
+                    __result
+                });
+                let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: substitute_type_slots_scoped(
+                                rt.clone(),
+                                slot_bindings.clone(),
+                                decl_name.clone(),
+                                source_indices.clone(),
+                                bind_type_variables.clone(),
+                            ),
+                        }))
+                    }
+                    _ => n.inferred.clone(),
+                };
+                Rc::new(Node {
+                    occurrence_identity: n.occurrence_identity.clone(),
+                    name: n.name.clone(),
+                    span: n.span.clone(),
+                    ident_span: n.ident_span.clone(),
+                    children: new_children.clone(),
+                    connective: n.connective.clone(),
+                    params: n.params.clone(),
+                    inferred: new_inferred.clone(),
+                    return_cardinality: n.return_cardinality.clone(),
+                    uses: n.uses.clone(),
+                    body: n.body.clone(),
+                    transport: n.transport.clone(),
+                    properties: n.properties.clone(),
+                    type_annotation: n.type_annotation.clone(),
+                    is_self_recursive: n.is_self_recursive.clone(),
+                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                    match_pattern: n.match_pattern.clone(),
+                    module_item_kind: n.module_item_kind.clone(),
+                    expr_data: n.expr_data.clone(),
+                    ident: None,
+                })
+            }
+        }
+    })
+}
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
@@ -640,6 +791,250 @@ pub struct KernelTypeBuild {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+pub fn kernel_optional_type_node() -> Rc<Node> {
+    {
+        let element = crate::v1_std_core::leaf_node_with_span(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "T".to_string(),
+            crate::v1_std_core::kernel_span("T".to_string()),
+        );
+        let parameter = crate::v1_std_core::make_param_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "T".to_string(),
+            element.clone(),
+            std::option::Option::None,
+            crate::v1_std_core::kernel_span("T".to_string()),
+            crate::v1_std_core::kernel_span("T".to_string()),
+        );
+        let present_value_field = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "value".to_string(),
+            span: crate::v1_std_core::kernel_span("value".to_string()),
+            ident_span: Some(crate::v1_std_core::kernel_span("value".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: element.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let present_variant = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Present".to_string(),
+            span: crate::v1_std_core::kernel_span("Present".to_string()),
+            ident_span: Some(crate::v1_std_core::kernel_span("Present".to_string())),
+            children: Rc::new(vec![present_value_field.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let absent_variant = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Absent".to_string(),
+            span: crate::v1_std_core::kernel_span("Absent".to_string()),
+            ident_span: Some(crate::v1_std_core::kernel_span("Absent".to_string())),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "Optional".to_string(),
+            ident: std::option::Option::None,
+            span: crate::v1_std_core::kernel_span("Optional".to_string()),
+            ident_span: Some(crate::v1_std_core::kernel_span("Optional".to_string())),
+            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
+            connective: Connective::Disj,
+            params: Rc::new(vec![parameter.clone()]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })
+    }
+}
+
+pub fn optional_application_node(
+    owner: Rc<Node>,
+    element: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    {
+        let parameter = owner.params.clone().first().cloned();
+        let slots = match parameter.clone() {
+            Some(p) => v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone()),
+                element.clone(),
+            ),
+            std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        };
+        let expansion = substitute_type_slots(
+            owner.clone(),
+            slots.clone(),
+            crate::v1_std_core::authored_name_at(source_indices.clone(), owner.clone()),
+            source_indices.clone(),
+        );
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: owner.name.clone(),
+            ident: owner.ident.clone(),
+            span: owner.span.clone(),
+            ident_span: owner.ident_span.clone(),
+            children: Rc::new(vec![element.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: expansion.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: owner.uses.clone(),
+            body: owner.body.clone(),
+            transport: owner.transport.clone(),
+            properties: owner.properties.clone(),
+            type_annotation: owner.type_annotation.clone(),
+            is_self_recursive: owner.is_self_recursive.clone(),
+            has_non_tail_self_call: owner.has_non_tail_self_call.clone(),
+            match_pattern: owner.match_pattern.clone(),
+            module_item_kind: owner.module_item_kind.clone(),
+            expr_data: owner.expr_data.clone(),
+        })
+    }
+}
+
+pub fn make_optional_type(element: Rc<Node>) -> Rc<Node> {
+    optional_application_node(
+        kernel_optional_type_node(),
+        element.clone(),
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+    )
+}
+
+pub fn apply_optional_owner(
+    owner: Rc<Node>,
+    element: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<KernelTypeBuild> {
+    if ((owner.params.clone().len() as i64) != 1) {
+        Rc::new(KernelTypeBuild {
+            ty: error_type(),
+            diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
+                    type_name: crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        owner.clone(),
+                    ),
+                    supplied: 1,
+                    declared: (owner.params.clone().len() as i64),
+                    span: span.clone(),
+                }),
+                module_name.clone(),
+            )]),
+        })
+    } else {
+        if (owner.connective.clone() != Connective::Disj) {
+            Rc::new(KernelTypeBuild {
+                ty: error_type(),
+                diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::InternalError {
+                        message: "Optional owner is not a coproduct".to_string(),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                )]),
+            })
+        } else {
+            Rc::new(KernelTypeBuild {
+                ty: optional_application_node(
+                    owner.clone(),
+                    element.clone(),
+                    source_indices.clone(),
+                ),
+                diagnostics: Rc::new(vec![]),
+            })
+        }
+    }
+}
+
+pub fn optional_type_application(mut n: Rc<Node>) -> Option<Rc<Node>> {
+    loop {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: owner, .. }) => {
+                if ((((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 1))
+                    && (owner.connective.clone() == Connective::Disj))
+                    && crate::v1_std_core::type_name_compatible(
+                        owner.name.clone(),
+                        "Optional".to_string(),
+                    ))
+                {
+                    break Some(n.clone());
+                } else {
+                    {
+                        let __tco_0 = owner.clone();
+                        n = __tco_0;
+                        continue;
+                    }
+                }
+            }
+            _ => {
+                break std::option::Option::None;
+            }
+        }
+    }
+}
+
+pub fn node_is_optional_type(n: Rc<Node>) -> bool {
+    (optional_type_application(n.clone()) != std::option::Option::None)
+}
+
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -1179,7 +1574,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: make_optional_type(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1875,7 +2270,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: make_optional_type(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -2208,8 +2603,6 @@ pub fn node_type_shape(
                         {
                             let __is_container =
                                 node_is_element_collection(n.clone(), source_indices.clone());
-                            let is_optional =
-                                (n.return_cardinality.clone() == Cardinality::CardOptional);
                             let is_map =
                                 node_is_keyed_collection(n.clone(), source_indices.clone());
                             if __is_container.clone() {
@@ -2236,49 +2629,31 @@ pub fn node_type_shape(
                                     )
                                 }
                             } else {
-                                if is_optional.clone() {
-                                    {
-                                        let inner_shape = node_type_shape(
-                                            crate::v1_std_core::with_required_cardinality(
-                                                n.clone(),
-                                            ),
-                                            source_indices.clone(),
-                                        );
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "Optional(".to_string(),
-                                                inner_shape.clone(),
-                                            ),
-                                            ")".to_string(),
-                                        )
-                                    }
+                                if is_map.clone() {
+                                    "Map(...)".to_string()
                                 } else {
-                                    if is_map.clone() {
-                                        "Map(...)".to_string()
-                                    } else {
-                                        if ((n.children.clone().len() as i64) > 0) {
+                                    if ((n.children.clone().len() as i64) > 0) {
+                                        v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "Node(".to_string(),
-                                                            n_name.clone(),
-                                                        ),
-                                                        "<".to_string(),
+                                                        "Node(".to_string(),
+                                                        n_name.clone(),
                                                     ),
-                                                    node_type_shape_argument_list(
-                                                        n.children.clone(),
-                                                        source_indices.clone(),
-                                                    ),
+                                                    "<".to_string(),
                                                 ),
-                                                ">)".to_string(),
-                                            )
-                                        } else {
-                                            v1_rt::concat(
-                                                v1_rt::concat("Node(".to_string(), n_name.clone()),
-                                                ")".to_string(),
-                                            )
-                                        }
+                                                node_type_shape_argument_list(
+                                                    n.children.clone(),
+                                                    source_indices.clone(),
+                                                ),
+                                            ),
+                                            ">)".to_string(),
+                                        )
+                                    } else {
+                                        v1_rt::concat(
+                                            v1_rt::concat("Node(".to_string(), n_name.clone()),
+                                            ")".to_string(),
+                                        )
                                     }
                                 }
                             }
@@ -2290,12 +2665,84 @@ pub fn node_type_shape(
     })
 }
 
-pub fn node_type_compatible(
-    mut left: Rc<Node>,
-    mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+pub fn type_application_arguments_match(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    compare: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
 ) -> bool {
-    loop {
+    if ((left.children.clone().len() as i64) != (right.children.clone().len() as i64)) {
+        false
+    } else {
+        {
+            let left_slots = is_declared_container_alias_spelling(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone()),
+            );
+            let right_slots = is_declared_container_alias_spelling(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()),
+            );
+            {
+                let mut __all = true;
+                for pair in Rc::new(
+                    left.children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if !(match right
+                        .children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
+                        Some(right_child) => {
+                            let left_argument = if left_slots.clone() {
+                                child_type_node(pair.1.clone())
+                            } else {
+                                pair.1.clone()
+                            };
+                            let right_argument = if right_slots.clone() {
+                                child_type_node(right_child.clone())
+                            } else {
+                                right_child.clone()
+                            };
+                            compare(left_argument.clone(), right_argument.clone())
+                        }
+                        std::option::Option::None => false,
+                    }) {
+                        __all = false;
+                        break;
+                    }
+                }
+                __all
+            }
+        }
+    }
+}
+
+pub fn is_type_application_pair(left: Rc<Node>, right: Rc<Node>) -> bool {
+    (((((left.connective.clone() == Connective::NoConnective)
+        && (right.connective.clone() == Connective::NoConnective))
+        && ((left.params.clone().len() as i64) == 0))
+        && ((right.params.clone().len() as i64) == 0))
+        && (((left.children.clone().len() as i64) > 0)
+            || ((right.children.clone().len() as i64) > 0)))
+}
+
+pub fn node_type_compatible(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -2316,164 +2763,47 @@ pub fn node_type_compatible(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_is_unit = is_unit_like(right.clone());
-        let left_is_unit = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
-            break true;
+            true
         } else {
             if (left_tv.clone() || right_tv.clone()) {
-                break true;
+                true
             } else {
-                if (left_opt.clone() && right_is_unit.clone()) {
-                    break true;
-                } else {
-                    if (left_is_unit.clone() && right_opt.clone()) {
-                        break true;
-                    } else {
-                        let left_is_container =
-                            node_is_element_collection(left.clone(), source_indices.clone());
-                        let right_is_container =
-                            node_is_element_collection(right.clone(), source_indices.clone());
-                        if (left_is_container.clone() && right_is_container.clone()) {
-                            if (canonical_template_name(left.clone(), source_indices.clone())
-                                != canonical_template_name(right.clone(), source_indices.clone()))
-                            {
-                                break false;
-                            } else {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_ch) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_ch) => {
-                                                let left_el = child_type_node(left_ch.clone());
-                                                let right_el = child_type_node(right_ch.clone());
-                                                let left_el_is_unit = is_unit_like(left_el.clone());
-                                                let right_el_is_unit =
-                                                    is_unit_like(right_el.clone());
-                                                if (left_el_is_unit.clone()
-                                                    || right_el_is_unit.clone())
-                                                {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                            std::option::Option::None => {
-                                                break true;
-                                            }
-                                        }
-                                    }
-                                    std::option::Option::None => {
-                                        break true;
-                                    }
-                                }
-                            }
+                if is_type_application_pair(left.clone(), right.clone()) {
+                    {
+                        let left_head =
+                            canonical_template_name(left.clone(), source_indices.clone());
+                        let right_head =
+                            canonical_template_name(right.clone(), source_indices.clone());
+                        if !crate::v1_std_core::type_name_compatible(
+                            left_head.clone(),
+                            right_head.clone(),
+                        ) {
+                            false
                         } else {
-                            if (((((canonical_template_name(
+                            type_application_arguments_match(
                                 left.clone(),
-                                source_indices.clone(),
-                            ) == canonical_template_name(
                                 right.clone(),
                                 source_indices.clone(),
-                            )) && (crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                left.clone(),
-                            ) != crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                right.clone(),
-                            ))) && ((left.children.clone().len() as i64) == 1))
-                                && ((right.children.clone().len() as i64) == 1))
-                                && (is_declared_container_alias_spelling(
-                                    crate::v1_std_core::authored_name_at(
+                                |a, b| {
+                                    node_type_compatible(
+                                        a.clone(),
+                                        b.clone(),
                                         source_indices.clone(),
-                                        left.clone(),
-                                    ),
-                                ) || is_declared_container_alias_spelling(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        right.clone(),
-                                    ),
-                                )))
-                            {
-                                match left.children.clone().first().cloned() {
-                                    Some(left_ch) => {
-                                        match right.children.clone().first().cloned() {
-                                            Some(right_ch) => {
-                                                let left_el = child_type_node(left_ch.clone());
-                                                let right_el = child_type_node(right_ch.clone());
-                                                if (is_unit_like(left_el.clone())
-                                                    || is_unit_like(right_el.clone()))
-                                                {
-                                                    break true;
-                                                } else {
-                                                    {
-                                                        let __tco_0 = left_el.clone();
-                                                        let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                            std::option::Option::None => {
-                                                break true;
-                                            }
-                                        }
-                                    }
-                                    std::option::Option::None => {
-                                        break true;
-                                    }
-                                }
-                            } else {
-                                if (left_opt.clone() && right_opt.clone()) {
-                                    let left_inner =
-                                        crate::v1_std_core::with_required_cardinality(left.clone());
-                                    let right_inner = crate::v1_std_core::with_required_cardinality(
-                                        right.clone(),
-                                    );
-                                    let left_inner_is_unit = is_unit_like(left_inner.clone());
-                                    let right_inner_is_unit = is_unit_like(right_inner.clone());
-                                    if (left_inner_is_unit.clone() || right_inner_is_unit.clone()) {
-                                        break true;
-                                    } else {
-                                        {
-                                            let __tco_0 = left_inner.clone();
-                                            let __tco_1 = right_inner.clone();
-                                            left = __tco_0;
-                                            right = __tco_1;
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    if (left_opt.clone() || right_opt.clone()) {
-                                        break false;
-                                    } else {
-                                        break crate::v1_std_core::type_name_compatible(
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                left.clone(),
-                                            ),
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            ),
-                                        );
-                                    }
-                                }
-                            }
+                                    )
+                                },
+                            )
                         }
                     }
+                } else {
+                    crate::v1_std_core::type_name_compatible(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone()),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()),
+                    )
                 }
             }
         }
-    }
+    })
 }
 
 pub fn prefer_specific_type(
@@ -2483,7 +2813,7 @@ pub fn prefer_specific_type(
 ) -> Rc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
-        let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_is_optional = node_is_optional_type(left.clone());
         let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
@@ -2499,15 +2829,15 @@ pub fn prefer_specific_type(
         } else {
             if left_is_optional.clone() {
                 {
-                    let left_is_unit = is_unit_like(left.clone());
-                    left_is_unit.clone()
+                    let inner = extract_optional_inner_node(left.clone());
+                    is_unit_like(inner.clone())
                 }
             } else {
                 false
             }
         };
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
-        let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_is_optional = node_is_optional_type(right.clone());
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
             (left_norm_name.clone()
                 == crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()))
@@ -2570,10 +2900,6 @@ pub fn node_type_equals(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_is_unit_eq = is_unit_like(right.clone());
-        let left_is_unit_eq = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
             true
         } else {
@@ -2583,27 +2909,7 @@ pub fn node_type_equals(
                 if (left_tv.clone() || right_tv.clone()) {
                     false
                 } else {
-                    if (left_opt.clone() && right_is_unit_eq.clone()) {
-                        true
-                    } else {
-                        if (left_is_unit_eq.clone() && right_opt.clone()) {
-                            true
-                        } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                node_type_equals_core(
-                                    crate::v1_std_core::with_required_cardinality(left.clone()),
-                                    crate::v1_std_core::with_required_cardinality(right.clone()),
-                                    source_indices.clone(),
-                                )
-                            } else {
-                                node_type_equals_core(
-                                    left.clone(),
-                                    right.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                        }
-                    }
+                    node_type_equals_core(left.clone(), right.clone(), source_indices.clone())
                 }
             }
         }
@@ -2627,232 +2933,170 @@ pub fn node_type_equals_core(
         let left_name = crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
         let right_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone());
-        if (left_leaf.clone() && right_leaf.clone()) {
-            crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+        if is_type_application_pair(left.clone(), right.clone()) {
+            if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone()) {
+                false
+            } else {
+                type_application_arguments_match(
+                    left.clone(),
+                    right.clone(),
+                    source_indices.clone(),
+                    |a, b| node_type_equals(a.clone(), b.clone(), source_indices.clone()),
+                )
+            }
         } else {
-            if (left_struct.clone() && right_struct.clone()) {
-                if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
-                {
-                    false
-                } else {
-                    if ((left.connective.clone() == Connective::Conj)
-                        != (right.connective.clone() == Connective::Conj))
-                    {
+            if (left_leaf.clone() && right_leaf.clone()) {
+                crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+            } else {
+                if (left_struct.clone() && right_struct.clone()) {
+                    if !crate::v1_std_core::type_name_compatible(
+                        left_name.clone(),
+                        right_name.clone(),
+                    ) {
                         false
                     } else {
-                        if ((left.children.clone().len() as i64)
-                            != (right.children.clone().len() as i64))
+                        if ((left.connective.clone() == Connective::Conj)
+                            != (right.connective.clone() == Connective::Conj))
                         {
                             false
                         } else {
+                            if ((left.children.clone().len() as i64)
+                                != (right.children.clone().len() as i64))
                             {
-                                let mut __all = true;
-                                for pair in Rc::new(
-                                    left.children
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .enumerate()
-                                        .map(|(i, v)| (i as i64, v))
-                                        .collect::<Vec<_>>(),
-                                )
-                                .iter()
-                                .cloned()
+                                false
+                            } else {
                                 {
-                                    if !(match right
-                                        .children
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .skip(pair.0.clone() as usize)
-                                        .next()
+                                    let mut __all = true;
+                                    for pair in Rc::new(
+                                        left.children
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .enumerate()
+                                            .map(|(i, v)| (i as i64, v))
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .iter()
+                                    .cloned()
                                     {
-                                        Some(right_child) => node_type_equals(
-                                            pair.1.clone(),
-                                            right_child.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                        std::option::Option::None => false,
-                                    }) {
-                                        __all = false;
-                                        break;
+                                        if !(match right
+                                            .children
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(pair.0.clone() as usize)
+                                            .next()
+                                        {
+                                            Some(right_child) => node_type_equals(
+                                                pair.1.clone(),
+                                                right_child.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                            std::option::Option::None => false,
+                                        }) {
+                                            __all = false;
+                                            break;
+                                        }
                                     }
+                                    __all
                                 }
-                                __all
                             }
                         }
                     }
-                }
-            } else {
-                if (left_leaf.clone() && right_struct.clone()) {
-                    crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
                 } else {
-                    if (left_struct.clone() && right_leaf.clone()) {
+                    if (left_leaf.clone() && right_struct.clone()) {
                         crate::v1_std_core::type_name_compatible(
                             left_name.clone(),
                             right_name.clone(),
                         )
                     } else {
-                        {
-                            let left_is_container =
-                                node_is_element_collection(left.clone(), source_indices.clone());
-                            let right_is_container =
-                                node_is_element_collection(right.clone(), source_indices.clone());
-                            if (left_is_container.clone() && right_is_container.clone()) {
-                                if (left_name.clone() != right_name.clone()) {
+                        if (left_struct.clone() && right_leaf.clone()) {
+                            crate::v1_std_core::type_name_compatible(
+                                left_name.clone(),
+                                right_name.clone(),
+                            )
+                        } else {
+                            if (((left.params.clone().len() as i64) > 0)
+                                && ((right.params.clone().len() as i64) > 0))
+                            {
+                                if ((left.params.clone().len() as i64)
+                                    != (right.params.clone().len() as i64))
+                                {
                                     false
                                 } else {
-                                    match left.children.clone().first().cloned() {
-                                        Some(left_ch) => {
-                                            match right.children.clone().first().cloned() {
-                                                Some(right_ch) => node_type_equals(
-                                                    child_type_node(left_ch.clone()),
-                                                    child_type_node(right_ch.clone()),
-                                                    source_indices.clone(),
-                                                ),
-                                                std::option::Option::None => false,
+                                    {
+                                        let params_eq = {
+                                            let mut __all = true;
+                                            for pair in Rc::new(
+                                                left.params
+                                                    .clone()
+                                                    .iter()
+                                                    .cloned()
+                                                    .enumerate()
+                                                    .map(|(i, v)| (i as i64, v))
+                                                    .collect::<Vec<_>>(),
+                                            )
+                                            .iter()
+                                            .cloned()
+                                            {
+                                                if !(match right
+                                                    .params
+                                                    .clone()
+                                                    .iter()
+                                                    .cloned()
+                                                    .skip(pair.0.clone() as usize)
+                                                    .next()
+                                                {
+                                                    Some(right_param) => node_type_equals(
+                                                        crate::v1_std_core::param_node_type_expr(
+                                                            pair.1.clone(),
+                                                        ),
+                                                        crate::v1_std_core::param_node_type_expr(
+                                                            right_param.clone(),
+                                                        ),
+                                                        source_indices.clone(),
+                                                    ),
+                                                    std::option::Option::None => false,
+                                                }) {
+                                                    __all = false;
+                                                    break;
+                                                }
+                                            }
+                                            __all
+                                        };
+                                        if (params_eq.clone() == false) {
+                                            false
+                                        } else {
+                                            match left.inferred.clone().as_deref().cloned() {
+                                                Some(InferredNode::Resolved {
+                                                    node: left_ret,
+                                                    ..
+                                                }) => {
+                                                    match right.inferred.clone().as_deref().cloned()
+                                                    {
+                                                        Some(InferredNode::Resolved {
+                                                            node: right_ret,
+                                                            ..
+                                                        }) => node_type_equals(
+                                                            left_ret.clone(),
+                                                            right_ret.clone(),
+                                                            source_indices.clone(),
+                                                        ),
+                                                        std::option::Option::None => false,
+                                                        _ => false,
+                                                    }
+                                                }
+                                                std::option::Option::None => {
+                                                    (right.inferred.clone()
+                                                        == std::option::Option::None)
+                                                }
+                                                _ => false,
                                             }
                                         }
-                                        std::option::Option::None => false,
                                     }
                                 }
                             } else {
-                                {
-                                    let both_maps = (node_is_keyed_collection(
-                                        left.clone(),
-                                        source_indices.clone(),
-                                    ) && node_is_keyed_collection(
-                                        right.clone(),
-                                        source_indices.clone(),
-                                    ));
-                                    if both_maps.clone() {
-                                        if (((left.children.clone().len() as i64) == 2)
-                                            && ((right.children.clone().len() as i64) == 2))
-                                        {
-                                            match left.children.clone().first().cloned() {
-                                                Some(left_first) => {
-                                                    match right.children.clone().first().cloned() {
-                                                        Some(right_first) => match left
-                                                            .children
-                                                            .clone()
-                                                            .iter()
-                                                            .cloned()
-                                                            .skip(1 as usize)
-                                                            .next()
-                                                        {
-                                                            Some(left_second) => match right
-                                                                .children
-                                                                .clone()
-                                                                .iter()
-                                                                .cloned()
-                                                                .skip(1 as usize)
-                                                                .next()
-                                                            {
-                                                                Some(right_second) => {
-                                                                    (node_type_equals(
-                                                                        child_type_node(
-                                                                            left_first.clone(),
-                                                                        ),
-                                                                        child_type_node(
-                                                                            right_first.clone(),
-                                                                        ),
-                                                                        source_indices.clone(),
-                                                                    ) && node_type_equals(
-                                                                        child_type_node(
-                                                                            left_second.clone(),
-                                                                        ),
-                                                                        child_type_node(
-                                                                            right_second.clone(),
-                                                                        ),
-                                                                        source_indices.clone(),
-                                                                    ))
-                                                                }
-                                                                std::option::Option::None => false,
-                                                            },
-                                                            std::option::Option::None => false,
-                                                        },
-                                                        std::option::Option::None => false,
-                                                    }
-                                                }
-                                                std::option::Option::None => false,
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        if (((left.params.clone().len() as i64) > 0)
-                                            && ((right.params.clone().len() as i64) > 0))
-                                        {
-                                            if ((left.params.clone().len() as i64)
-                                                != (right.params.clone().len() as i64))
-                                            {
-                                                false
-                                            } else {
-                                                {
-                                                    let params_eq = {
-                                                        let mut __all = true;
-                                                        for pair in Rc::new(
-                                                            left.params
-                                                                .clone()
-                                                                .iter()
-                                                                .cloned()
-                                                                .enumerate()
-                                                                .map(|(i, v)| (i as i64, v))
-                                                                .collect::<Vec<_>>(),
-                                                        )
-                                                        .iter()
-                                                        .cloned()
-                                                        {
-                                                            if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
-    Some(right_param) => node_type_equals(crate::v1_std_core::param_node_type_expr(pair.1.clone()), crate::v1_std_core::param_node_type_expr(right_param.clone()), source_indices.clone()),
-    std::option::Option::None => false,
-}) { __all = false; break; }
-                                                        }
-                                                        __all
-                                                    };
-                                                    if (params_eq.clone() == false) {
-                                                        false
-                                                    } else {
-                                                        match left
-                                                            .inferred
-                                                            .clone()
-                                                            .as_deref()
-                                                            .cloned()
-                                                        {
-                                                            Some(InferredNode::Resolved {
-                                                                node: left_ret,
-                                                                ..
-                                                            }) => match right
-                                                                .inferred
-                                                                .clone()
-                                                                .as_deref()
-                                                                .cloned()
-                                                            {
-                                                                Some(InferredNode::Resolved {
-                                                                    node: right_ret,
-                                                                    ..
-                                                                }) => node_type_equals(
-                                                                    left_ret.clone(),
-                                                                    right_ret.clone(),
-                                                                    source_indices.clone(),
-                                                                ),
-                                                                std::option::Option::None => false,
-                                                                _ => false,
-                                                            },
-                                                            std::option::Option::None => {
-                                                                (right.inferred.clone()
-                                                                    == std::option::Option::None)
-                                                            }
-                                                            _ => false,
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                }
+                                false
                             }
                         }
                     }
@@ -2985,7 +3229,9 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitInt { value: _, .. } => int_type(),
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitNull => {
+            make_optional_type(type_variable_node("optional_element".to_string()))
+        }
         LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
@@ -3028,22 +3274,12 @@ pub fn method_receiver_element_node(
 }
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
-        } else {
-            if ((n.name.clone() == "Optional".to_string())
-                && ((n.children.clone().len() as i64) == 1))
-            {
-                match n.children.clone().first().cloned() {
-                    Some(inner) => inner.clone(),
-                    std::option::Option::None => n,
-                }
-            } else {
-                n
-            }
-        }
+    match optional_type_application(n.clone()) {
+        Some(application) => match application.children.clone().first().cloned() {
+            Some(inner) => inner.clone(),
+            std::option::Option::None => error_type(),
+        },
+        std::option::Option::None => n.clone(),
     }
 }
 

@@ -7,12 +7,11 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError,
   ErrorNode, make_error_node, diagnostic_to_message,
   InternalError,
-  with_optional_cardinality,
-
   unit_type, string_type, int_type
 }
 
 import v1.compiler.infer_types {
+  make_optional_type,
   resolved_type, normalize_access_type_node,
   node_type_equals, node_is_keyed_collection,
   node_is_element_collection, for_each_element_type_node
@@ -80,14 +79,14 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
       Present { value: parts } =>
         let key_diags = if node_type_equals(left: parts.key_type, right: normed_index, source_indices: source_indices) { [] }
         else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
-        access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
+        access_result(inferred: make_optional_type(element: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
       Absent =>
         if node_is_keyed_collection(n: normed, source_indices: source_indices) {
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
         } else if is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed)) && node_is_element_collection(n: normed, source_indices: source_indices) && index_is_int {
           let elem = for_each_element_type_node(n: normed, source_indices: source_indices)
-          access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
+          access_result(inferred: make_optional_type(element: elem), diagnostics: [], span: span, fallback_message: "list index access")
         } else {
           let diags = [access_error(message: "indexing is only supported for String, keyed collection, and list values", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")

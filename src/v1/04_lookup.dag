@@ -23,11 +23,10 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
+  with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
-  CardOptional,
   error_type
 }
 
@@ -38,6 +37,9 @@ import std.algebra {
 }
 
 import v1.compiler.infer_types {
+  extract_optional_inner_node,
+  make_optional_type,
+  node_is_optional_type,
   child_type_node,
   nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
@@ -679,9 +681,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
       ResolvedFormal {
         parameter_identity: param_node_name_at(n: p, source_indices: type_env.source_indices),
         declared_type: declared_type,
-        declaration_bound_conformance: preserve_outer_optional_cardinality(
-          outer: declared_type,
-          inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
+        declaration_bound_conformance: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path),
         substitution_basis: declaration_substitution_basis(
           n: declared_type, env: declaration_env,
           generic_names: concat(tp_names, map_keys(declaration_generic_names)))
@@ -786,15 +786,18 @@ fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
   }
 }
 
+// Bounded migration divergence: preserve the former idempotent optional lookup.
+// Nested Optional is admitted here only after pattern elimination and the emitter
+// are proven on nested results; no other result producer inherits this flatten.
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = node_is_optional_type(n: n)
   if is_optional {
-    let inner = with_required_cardinality(n: n)
+    let inner = extract_optional_inner_node(n: n)
     if field_name == "value" {
       Present { value: inner }
     } else {
       match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: with_optional_cardinality(n: inner_result) }
+        Present { value: inner_result } => Present { value: if node_is_optional_type(n: inner_result) { inner_result } else { make_optional_type(element: inner_result) } }
         Absent => none
       }
     }
@@ -810,7 +813,7 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
                 Present { value: child } => child_type_node(ch: child)
                 Absent => nominal_type_ref(name: "V")
               }
-              Present { value: with_optional_cardinality(n: value_child) }
+              Present { value: if node_is_optional_type(n: value_child) { value_child } else { make_optional_type(element: value_child) } }
             } else {
               Present { value: child_type_node(ch: field_child) }
             }
@@ -871,9 +874,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
-  if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
+  if node_is_optional_type(n: normed) { normed }
+  else if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      Present { value: Resolved { node: target } } => resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen)
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
@@ -885,7 +889,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
+            resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
           }
         _ => normed
       }
@@ -898,7 +902,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
+            resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
           }
         Absent => normed
       }
@@ -951,7 +955,7 @@ fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
-  let normed_opt = normed.return_cardinality == CardOptional
+  let normed_opt = node_is_optional_type(n: normed)
   if field == "value" && normed_opt {
     Present { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if normed_opt {
@@ -1007,14 +1011,17 @@ fn product_field_result_type(field: Node) -> Node? {
   }
 }
 
+// Bounded migration divergence: preserve the former idempotent optional lookup.
+// Nested Optional is admitted here only after pattern elimination and the emitter
+// are proven on nested results; no other result producer inherits this flatten.
 fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   if authored_name_at(source_indices: source_indices, node: product) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
-        if (raw.return_cardinality == CardOptional) {
+        if (node_is_optional_type(n: raw)) {
           Present { value: raw }
         } else {
-          Present { value: with_optional_cardinality(n: raw) }
+          Present { value: make_optional_type(element: raw) }
         }
       Absent => none
     }
