@@ -20,7 +20,7 @@ import std.measure { hardware_thread_count }
 import std.scoped_authorization { AttemptIdentity }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, work_for,
   OutputObligation, OutputArtifactObligation, DeclaredOutputObligations,
@@ -229,9 +229,9 @@ fn canary_work() -> Work<NonEmptyStr> {
   work_for(
     principal: "gunbc" as NonEmptyStr,
     contract: WorkContract {
-      program: "gunbc.fabric-m0.canary:1",
+      execution: MaterializedProgram { program: "gunbc.fabric-m0.canary:1", source: "source:1", runtime_closure: "runtime:1" },
       steps: [WorkStep { step_id: "fabric-m0-canary", resumability: ReceiptSatisfiable }],
-      source: "source:1", inputs: "inputs:1", runtime_closure: "runtime:1",
+      inputs: "inputs:1",
       effect_contract: "effects:1", output_contract: "outputs:1",
       output_obligations: DeclaredOutputObligations { required: [canary_object()] },
     },

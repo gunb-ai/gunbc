@@ -1,6 +1,6 @@
 module product.training.resolution
 
-import product.fabric.work {
+import product.fabric.work { MaterializedProgram,
   Work, WorkContract, ExecutionRequirements, WorkStep, ReceiptSatisfiable, work_for,
   declared_artifact_obligations,
 }
@@ -478,11 +478,9 @@ fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract 
   let m = training_resolved_manifest(evidence: evidence)
   let contract_id = serialize_content_hash(hash: m.output_contract)
   WorkContract {
-    program: "gunbc-training-run-low-rank-adaptation",
+    execution: MaterializedProgram { program: "gunbc-training-run-low-rank-adaptation", source: serialize_content_hash(hash: m.dataset_manifest), runtime_closure: serialize_content_hash(hash: m.trainer_closure) },
     steps: [WorkStep { step_id: "train", resumability: ReceiptSatisfiable }],
-    source: serialize_content_hash(hash: m.dataset_manifest),
     inputs: training_manifest_reference(m: m),
-    runtime_closure: serialize_content_hash(hash: m.trainer_closure),
     effect_contract: "training-write-checkpoints-and-adapter",
     output_contract: contract_id,
     output_obligations: declared_artifact_obligations(ids: ["training-low-rank-adapter"]),

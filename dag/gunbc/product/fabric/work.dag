@@ -223,12 +223,35 @@ type WorkStep {
 // the obligation roster. output_obligations is the structured roster the work
 // owes; identity material includes it, so changing what is owed changes the
 // work key without stuffing the roster into the contract name.
+// WHAT EXECUTES THE WORK IS ONE OF TWO THINGS, AND THE CONTRACT USED TO ADMIT ONLY THE FIRST.
+//
+// A materialized program is identified by what it consumes: the program, the source manifest and the
+// runtime closure are the answer-changing facts, so they are identity. An offered service is a
+// different request: the caller asks an interface for a result and does not name, and cannot know
+// before selection, the implementation that will answer. Forcing a service request through the
+// program shape made the requester's identity depend on the SUPPLIER's realization -- a serving turn
+// could not construct Work until the selected engine's loaded weights, tokenizer and runtime were
+// observed, which put identity beneath supplier enumeration and refused every turn (DESIGN 3:
+// interface, realization and policy are three facts). Realization facts of an offered service are
+// offer provenance and admission policy; a demand that genuinely requires one states it as a
+// requirement rather than every service request inheriting it.
+//
+// The arm is part of identity material, so a program and a service sharing every other field are
+// never the same Work.
+type ServiceInterfaceRef = NonEmptyStr where brand("ServiceInterfaceRef")
+
+type WorkExecution
+  = MaterializedProgram {
+      program: ProgramRef,
+      source: SourceManifestRef,
+      runtime_closure: ArtifactManifestRef,
+    }
+  | OfferedService { interface: ServiceInterfaceRef }
+
 type WorkContract {
-  program: ProgramRef
+  execution: WorkExecution
   steps: List<WorkStep>
-  source: SourceManifestRef
   inputs: ArtifactManifestRef
-  runtime_closure: ArtifactManifestRef
   effect_contract: EffectContractRef
   output_contract: OutputContractRef
   output_obligations: DeclaredOutputObligations
@@ -423,13 +446,20 @@ fn resolve_output_obligations(
   }
 }
 
+fn work_execution_material(execution: WorkExecution) -> NonEmptyStr {
+  match execution {
+    MaterializedProgram { program, source, runtime_closure } =>
+      concat("materialized-program", "\u{1d}", program, "\u{1d}", source, "\u{1d}", runtime_closure)
+    OfferedService { interface } =>
+      concat("offered-service", "\u{1d}", interface)
+  }
+}
+
 fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
   concat(
-    contract.program, "\u{1f}",
+    work_execution_material(execution: contract.execution), "\u{1f}",
     work_steps_material(steps: contract.steps), "\u{1f}",
-    contract.source, "\u{1f}",
     contract.inputs, "\u{1f}",
-    contract.runtime_closure, "\u{1f}",
     contract.effect_contract, "\u{1f}",
     contract.output_contract, "\u{1f}",
     output_obligations_material(declared: contract.output_obligations), "\u{1f}",
@@ -561,6 +591,17 @@ fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
   )
 }
 
+// The work key is derived from the semantic contract alone. Excluded, each for
+// the same reason - it changes how work is scheduled or attempted, never what
+// answer the work promises: priority, queue position, chosen host, cache
+// presence, attempt number, resource prediction, monetary quote, budget
+// account, reservation price. Including any of them forks one computation into
+// many identities and destroys the deduplication the key exists to provide.
+// Conversely a property that can change the ANSWER - toolchain, architecture,
+// available effects - belongs in the runtime closure or effect contract and
+// therefore DOES participate. The test is not whether a fact is important; it
+// is whether two runs differing only in that fact could legitimately produce
+// different output.
 fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
   serialize_content_hash(
     hash: content_hash_of_value(
@@ -582,19 +623,3 @@ fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequ
     requirements: requirements,
   }
 }
-
-// The work key is derived from the semantic contract alone. Excluded, each for
-// the same reason - it changes how work is scheduled or attempted, never what
-// answer the work promises: priority, queue position, chosen host, cache
-// presence, attempt number, resource prediction, monetary quote, budget
-// account, reservation price. Including any of them forks one computation into
-// many identities and destroys the deduplication the key exists to provide.
-// Conversely a property that can change the ANSWER - toolchain, architecture,
-// available effects - belongs in the runtime closure or effect contract and
-// therefore DOES participate. The test is not whether a fact is important; it
-// is whether two runs differing only in that fact could legitimately produce
-// different output.
-fn work_contract_source(contract: WorkContract) -> SourceManifestRef {
-  contract.source
-}
-
