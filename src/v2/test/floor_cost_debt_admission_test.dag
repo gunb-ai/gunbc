@@ -14,7 +14,7 @@ import gunbc.floor_cost_distribution {
 }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,14 +26,25 @@ fn ceiling() -> Millisecond {
   millisecond(count: 500)
 }
 
+// THE STEP COUNT THESE FIXTURES CARRY IS INCIDENTAL AND IS DECLARED AS SUCH (gunbc#11366 Phase 1).
+// Every witness in this file exercises the CPU half -- the margin, the ceiling, the censoring
+// discriminator -- so the count is present because the arm requires one and not because any
+// assertion here reads it. When Phase 2 denominates this gate in eval steps these fixtures gain a
+// step parameter and the value stops being incidental; saying so now is what keeps a later reader
+// from mistaking an arbitrary figure for a measured one.
 fn observed(cpu_ms: Int) -> ClaimCostReading {
-  ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms) }
+  ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms), eval_steps: fixture_incidental_steps() }
+}
+
+fn fixture_incidental_steps() -> EvalStepCount {
+  eval_step_count(count: 1000)
 }
 
 fn censored(cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond) -> ClaimCostReading {
   RightCensoredCpuReading {
     cpu_lower_bound_ms: cpu_lower_bound_ms,
     censoring_ceiling_ms: censoring_ceiling_ms,
+    eval_steps_before_censor: fixture_incidental_steps(),
   }
 }
 
@@ -95,7 +106,7 @@ fn standing_censored(
 test fn a_bound_with_no_ceiling_is_refused_and_does_not_fabricate_a_ceiling() -> Bool {
   let standing = floor_cost_debt_row(
     identity: "fixture.bound_no_ceiling",
-    reading: CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: millisecond(count: 514) },
+    reading: CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: millisecond(count: 514), eval_steps_before_censor: fixture_incidental_steps() },
     ceiling_ms: ceiling(),
     verdict: FloorCostDebtNeverReachedAVerdict,
   )
