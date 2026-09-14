@@ -51,7 +51,7 @@ data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 
 // THE ONE SURVIVING string_eq CLONE IN v2.lens, AND IT IS NOT A DIFFERENT CONCEPT -- it is
 // byte-identical to v2.std.text string_eq, and collapsing it is the same one-line delete that
-// retired the twelve others. It stays because the collapse was ATTEMPTED HERE AND MEASURED, and
+// retired the rest of the cohort. It stays because the collapse was ATTEMPTED HERE AND MEASURED, and
 // the premise behind "one delete plus an import" is false for this file specifically.
 //
 // THIS MODULE DECLARES NO IMPORTS AT ALL. Every name it uses -- dedupe_snoc, tokenize,

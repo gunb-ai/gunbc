@@ -1816,8 +1816,10 @@ pub struct TransitionAdmission {
 /// recording it once, and a cohort header carrying an already-satisfied trigger is how the wrong
 /// rows get retired on the next roster touch (§4b(3)).
 ///
-/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared NINE
-/// times, byte-identical, across `v2.lens`. Those nine are deleted and an authority is landed in
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared
+/// byte-identical in every `v2.lens` module that needed it. This change deletes those bodies --
+/// the delta is read from the diff, `git diff origin/main...HEAD -- '*.dag' | grep '^-fn
+/// [a-z_]*string_eq'`, not from a count transcribed here -- and lands an authority in
 /// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
 /// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
 /// `string_eq` is the `eq` argument to `contains`.
@@ -1828,14 +1830,14 @@ pub struct TransitionAdmission {
 /// consumer's own copy is now answered by the shared one. That is a relocation, not an
 /// `AuthoredReferenceResolution`.
 ///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. THE NINE DELETED BODIES WERE
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. EVERY DELETED BODY WAS
 /// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
 /// it denoted at the base. A body differing anywhere would have made this a semantic change
-/// wearing a relocation's name, which is what this adjudication exists to rule out, so all nine
-/// were compared before the collapse rather than assumed equal from the shared spelling.
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so each was
+/// compared before the collapse rather than assumed equal from the shared spelling.
 ///
-/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than the
-/// nine copies this change deletes.
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than what
+/// this change deletes.
 ///
 /// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
 /// enumeration in this file is a transcription that rots -- and the first attempt at one was
@@ -1847,12 +1849,13 @@ pub struct TransitionAdmission {
 /// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
 /// concept. `v2.std.text` is the authority; every other hit is a fork of it.
 ///
-/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: four survivors are in `v2.lens`
-/// itself -- `grammar_coverage`, `lens_module_gate`, `fn_index_depth_agreement`,
-/// `module_impact_query` -- all byte-identical, all under NICKNAMED spellings. So this change
-/// does not clear even its own stated scope: it collapsed the copies spelled exactly `string_eq`
-/// and left the ones spelled otherwise, which is §3's NICKNAME surviving precisely because a
-/// name-shaped search does not find it.
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: survivors under NICKNAMED spellings,
+/// byte-identical to the authority but invisible to a search for the exact name. That is §3's
+/// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
+/// frontier below is adjudicated by that command and not by a roll call in this file. Each
+/// survivor states its own retention at its declaration; `v2.lens` retains one, annotated at
+/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` with the measured obstacle
+/// and its trigger.
 ///
 /// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
 /// against a list this file keeps: the frontier closes when the command above returns exactly ONE
