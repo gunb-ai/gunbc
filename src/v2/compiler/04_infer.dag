@@ -56,12 +56,11 @@ import v2.std.inhabitance {
   application_argument_does_not_inhabit_diagnostic,
   application_positional_arity_mismatch_diagnostic,
   declared_type_inhabitance,
+  inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
-  undecidable_formal_unresolved,
-  undecidable_generic_formal,
-  undecidable_optional_carrier
+  undecidable_formal_unresolved
 }
 import v2.std.diagnostic {
   Diagnostic,
@@ -1612,29 +1611,13 @@ fn infer_inhabitance_undecidable_accepted(
   }
 }
 
-fn infer_formal_declared_undecidable(
-  declared: Node
-) -> Optional<InhabitanceUndecidableReason> {
-  match declared.kind {
-    TypeNode { connective: Cardinality } =>
-      Present { value: undecidable_optional_carrier() }
-    TypeNode { connective: Instantiation } =>
-      Present { value: undecidable_generic_formal() }
-    TypeNode { connective: Atom { identity: _ } } => Absent
-    TypeNode { connective: Conj } => Absent
-    TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Arrow } => Absent
-    ComputationNode { behavior: _ } => Absent
-  }
-}
-
 fn infer_judge_application_argument(
   application: Node,
   entries: List<InferredFactsEntry>,
   formal: InhabitanceFormal,
   arg: Node
 ) -> Outcome<Bool> {
-  match infer_formal_declared_undecidable(declared: formal.declared) {
+  match inhabitance_node_undecidable_reason(n: formal.declared) {
     Present { value: reason } =>
       infer_inhabitance_undecidable_accepted(
         application: application,
