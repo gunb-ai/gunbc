@@ -12373,7 +12373,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 item_registry: lam_scope.item_registry.clone(),
                 caller_decl_name: lam_scope.caller_decl_name.clone(),
                 lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                in_flight_lambda_param_names: v1_rt::concat(lam_scope.in_flight_lambda_param_names.clone(), lam_params.clone()),
+                in_flight_lambda_param_names: v1_rt::concat(
+                    lam_scope.in_flight_lambda_param_names.clone(),
+                    lam_params.clone(),
+                ),
             });
             let body_result =
                 infer_expr(lam_body.clone(), body_scope.clone(), body_expected.clone());
@@ -13021,11 +13024,8 @@ pub fn is_never_constrained_enclosing_generic_base(
                 }
                 __found
             };
-            if !in_enclosing.clone() {
-                false
-            } else {
-                !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone())
-            }
+            (in_enclosing.clone()
+                && !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone()))
         }
         _ => false,
     }
