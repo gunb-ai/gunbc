@@ -19,6 +19,8 @@ import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locu
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import std.types { NonEmptyStr }
 import v2.std.machine {
   Byte,
   MachineWidth,
@@ -1390,4 +1392,17 @@ fn integer_int_magnitude_to_decimal_string(value: Int) -> String {
   } else {
     concat(integer_int_magnitude_to_decimal_string(value: rest), digit)
   }
+}
+
+// THE CONTENT IDENTITY OF AN Int, at cost proportional to its digits. The digests already in the
+// corpus that take an integer are unary -- v2.std.node byte_limb_hash_peano_digest (one
+// combine_hash per unit, one shared tag for every value outside 0..255) and the byte-offset cache
+// key built on it -- so a consumer hashing arbitrary integers either paid the magnitude or
+// collided. The canonical decimal spelling is injective over Int (a leading "-" only for
+// negatives, no leading zeros), so its content atom is too.
+fn integer_int_content_digest(value: Int) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "integer-int-decimal",
+    payload: content_hash_atom(value: integer_int_to_decimal_string(value: value) as NonEmptyStr)
+  )
 }

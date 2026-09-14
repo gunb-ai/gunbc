@@ -101,8 +101,7 @@ import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, conta
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
-import std.content_hash { content_hash_atom }
-import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.integer { integer_int_content_digest }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -591,24 +590,14 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
-// ONE ATOM PER INTEGER AND PER LEXEME, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The previous body
-// hashed every lexeme codepoint, and every token offset, through the unary byte-limb digest: one
-// combine_hash (a hex-string format and an allocation) per unit of the value, so a codepoint near
-// 100 cost ~100 steps. On the native route that token-stream digest was 28% of the process (perf,
-// bounded K=16 root, 2026-09-14) -- about half of context -- and parse_table_subject is its only
-// reader. The unary digest also maps EVERY value above 255 to one out-of-range tag, so token
-// offsets and memo positions (almost always above 255) collided and the subject law's "full stream
-// content-address" was not one. The decimal atom is injective over Int and the text atom over
-// strings (the constant prefix keeps the empty lexeme non-empty); both hash bytes the host
-// already holds, so they are realization-stable.
-fn parse_int_digest(value: Int) -> Hash {
-  content_hash_atom(value: concat("parse_int_digest_decimal:", integer_int_to_decimal_string(value: value)) as NonEmptyStr)
-}
-
-fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
-  content_hash_atom(value: concat("parse_lexeme_digest_text:", lexeme) as NonEmptyStr)
-}
-
+// ONE DIGEST PER TOKEN FIELD, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The stream digest used to
+// send both offsets and every lexeme codepoint through the single-byte-limb digest: unary in the
+// value (a codepoint near 100 cost ~100 combine_hash calls), and one shared tag for every value
+// above 255. On the native route that made the eager fill in parse_table_for_production_analyzed
+// 28% of the process (perf --children, bounded K=16 root, 2026-09-14), and it made offsets past
+// byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
+// (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
+// through the Int content authority and the lexeme through its interned symbol.
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   fold_list(
     xs: all_tokens,
@@ -623,10 +612,10 @@ fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
           ),
           b: combine_hash(
             a: combine_hash(
-              a: parse_int_digest(value: tok.start),
-              b: parse_int_digest(value: tok.end)
+              a: integer_int_content_digest(value: tok.start),
+              b: integer_int_content_digest(value: tok.end)
             ),
-            b: parse_lexeme_digest(lexeme: tok.lexeme)
+            b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: tok.lexeme))
           )
         )
       )
@@ -689,7 +678,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
     b: combine_hash(
-      a: parse_int_digest(value: key.position),
+      a: integer_int_content_digest(value: key.position),
       b: symbol_identity_digest(sym: key.production)
     )
   )
