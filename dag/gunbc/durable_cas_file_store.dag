@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
-  FilesystemFailureKind, FilesystemOtherFailure, filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  FilesystemFailureKind, filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
 }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -203,6 +203,7 @@ type CasSlotProbe
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
   | ProbedBeyondBound { bound: Int }
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
+  | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
 
 data cas_max_generation_probe: Int = 4096
 
@@ -240,8 +241,8 @@ fn cas_probe_from_exact(
       }
     FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
       ProbedUnreadable { generation: generation, kind: k }
-    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } =>
-      ProbedUnreadable { generation: generation, kind: FilesystemOtherFailure }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
+      ProbedReadKindUnrecognized { generation: generation, observed: o }
   }
 }
 
@@ -258,6 +259,7 @@ fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
       }
     ProbedBeyondBound { bound: _ } => CasReadableAbsent
     ProbedUnreadable { generation: _, kind: _ } => CasReadableAbsent
+    ProbedReadKindUnrecognized { generation: _, observed: _ } => CasReadableAbsent
   }
 }
 
@@ -267,6 +269,15 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
       CasObservedUnreadable {
         cause: CasUnreadableMalformed {
           detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+        }
+      }
+    ProbedReadKindUnrecognized { generation: g, observed: o } =>
+      CasObservedUnreadable {
+        cause: CasUnreadableMalformed {
+          detail: concat(
+            concat("generation ", cas_generation_count(g: g) as String),
+            concat(" read failure kind unrecognized: ", o),
+          ) as NonEmptyStr
         }
       }
     ProbedUnreadable { generation: g, kind: k } =>
@@ -384,36 +395,6 @@ fn cas_occupied_publication_outcome(
   }
 }
 
-// THE FORBIDDEN WIDEN, KEPT AS A TYPED SPECIMEN rather than as production.
-// If cas_outcome_from_create is mutated to classify every failed publication
-// as contention, the store-refusal control comparing against this fold goes
-// red. It is not called from file_compare_and_set.
-fn cas_outcome_from_create_widening_every_failure_to_contention(
-  attempt: CasAttempt<NonEmptyStr>,
-  created: FilesystemCreateNew,
-  post: CasSlotObservation<NonEmptyStr>,
-) -> CasOutcome<NonEmptyStr> {
-  match created {
-    FilesystemCreated { path: _ } =>
-      CasCommitted {
-        committed: CasSlotVersion { generation: cas_generation_first(), content: attempt.proposed_content, value: attempt.proposed }
-      }
-    FilesystemCreateTargetOccupied { path: _ } =>
-      CasPreconditionFailed { expected: attempt.expected, observed: cas_readable_from_observation(post: post) }
-    FilesystemCreateRefused { path: _, kind: _, error: _ } =>
-      CasPreconditionFailed { expected: attempt.expected, observed: cas_readable_from_observation(post: post) }
-    FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } =>
-      CasPreconditionFailed { expected: attempt.expected, observed: cas_readable_from_observation(post: post) }
-  }
-}
-
-fn cas_readable_from_observation(post: CasSlotObservation<NonEmptyStr>) -> CasReadableSlot<NonEmptyStr> {
-  match post {
-    CasObservedReadable { readable: r } => r
-    CasObservedUnreadable { cause: _ } => CasReadableAbsent
-  }
-}
-
 // The store-owned compare-and-set. It reads attempt.key itself; no caller
 // supplies an observation, which is what closes the key-relation obligation.
 //
@@ -429,6 +410,15 @@ fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasO
       CasStoreRefused {
         cause: CasUnreadableMalformed {
           detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+        }
+      }
+    ProbedReadKindUnrecognized { generation: g, observed: o } =>
+      CasStoreRefused {
+        cause: CasUnreadableMalformed {
+          detail: concat(
+            concat("generation ", cas_generation_count(g: g) as String),
+            concat(" read failure kind unrecognized: ", o),
+          ) as NonEmptyStr
         }
       }
     ProbedUnreadable { generation: g, kind: k } =>

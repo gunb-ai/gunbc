@@ -22,7 +22,7 @@ data consumer_relies_on_incidental_realization_property: RecurringFailureMode = 
 
     "CEILING: structurally guaranteed for the internal bind of CAS to WriteCreateNew once acceptance refuses a consumer of WriteOwnerOnly for exclusive complete publication; external crash durability remains outside the modeled guarantee. NEXT TRIGGER: a publication contract that includes parent-directory sync, with executed evidence, or acceptance that refuses WriteOwnerOnly as a CAS publication primitive.",
 
-    "DISPOSITION: production CAS publication uses WriteCreateNew. The discriminating RED and the retired-construction mutation control stay enrolled (DESIGN 4b(4)). gunbc.fabric_control_plane still consumes file_compare_and_set; successful CellReserved and race ReservationLost are unchanged in meaning. Torn generations at the slot path are no longer a WriteOwnerOnly leftover wearing a commit.",
+    "DISPOSITION: production CAS publication uses WriteCreateNew. The discriminating RED stays enrolled (DESIGN 4b(4)); the retired construction is a #[cfg(test)] specimen in the rust suite, not a production declaration. gunbc.fabric_control_plane still consumes file_compare_and_set; successful CellReserved and race ReservationLost are unchanged in meaning. Torn generations at the slot path are no longer a WriteOwnerOnly leftover wearing a commit.",
 
     "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster.",
   ],

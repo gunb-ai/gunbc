@@ -12,7 +12,8 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
 
     "SPECIMEN, REPAIRED (silent-stag-307): cas_commit_at previously mapped every unsuccessful WriteOwnerOnly to CasPreconditionFailed via cas_probe_as_readable, including ProbedBeyondBound-as-absent. Publication now folds Filesystem.WriteCreateNew through filesystem_create_new. CasPreconditionFailed is emitted only for FilesystemCreateTargetOccupied together with a readable winner. Permission, other, unrecognized kinds, and occupied-with-no-readable-winner are CasStoreRefused. No error string is parsed. Observe uses cas_probe_as_observation, which preserves unreadability.",
 
-    "EXECUTED, hermetic classification fold (floor run 34797864081): test.claim.durable_cas_file_store_witness a_permission_refused_create_is_store_refused_not_contention, occupied_create_with_no_readable_winner_is_store_refused_not_contention, occupied_create_with_a_readable_winner_is_precondition_failed, and classifying_every_failed_publication_as_contention_turns_the_store_refusal_control_red. Those four mock the filesystem; they are not the composed path.",
+    "EXECUTED, hermetic classification fold (floor run 34797864081): test.claim.durable_cas_file_store_witness a_permission_refused_create_is_store_refused_not_contention, occupied_create_with_no_readable_winner_is_store_refused_not_contention, and occupied_create_with_a_readable_winner_is_precondition_failed. Those three mock the filesystem; they are not the composed path. A fourth row on the same run compared the production fold against a deliberately widening fold shipped as an importable production declaration in the same module; the program-author ruling on gunbc#11335 struck that fold (DESIGN 4b(4) keeps the RED against the real fold enrolled, never a second, intentionally false decision authority beside it), and a branch-local mutation of cas_outcome_from_create is how discrimination is demonstrated.",
+    "SIBLING ARM, same class, found by the same ruling: cas_probe_from_exact reclassified FilesystemExactPathKindUnrecognized as ProbedUnreadable { kind: FilesystemOtherFailure }, reporting a vocabulary mismatch between realization and interface as an ordinary recognized host failure -- the catch-all the filesystem authority says an unrecognized kind name must never map to. It now carries ProbedReadKindUnrecognized { generation, observed } and projects to CasStoreRefused / CasObservedUnreadable with CasUnreadableMalformed; the hermetic control is test.claim.durable_cas_file_store_witness an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other.",
 
     "EXECUTED, filesystem publication layer (BuildBuddy amd64): cargo test --release -p v1-compiler --lib write_file_create_new (11 tests), including a_write_failure_after_creation_leaves_no_target_behind (post-staging RLIMIT_FSIZE) and direct_final_path_open_then_write_leaves_a_target_when_the_write_fails. Publication, not classification.",
 
@@ -31,9 +32,9 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
 
   evidence: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create_widening_every_failure_to_contention"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_probe_from_exact"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "a_permission_refused_create_is_store_refused_not_contention"),
-    decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "classifying_every_failed_publication_as_contention_turns_the_store_refusal_control_red"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution"),
   ],

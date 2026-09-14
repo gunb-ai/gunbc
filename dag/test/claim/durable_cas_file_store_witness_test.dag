@@ -6,17 +6,17 @@ import std.durable_compare_and_set {
   CasAttempt, CasExpectation, ExpectSlotAbsent, cas_attempt,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasSlotVersion, CasSlotObservation,
-  CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused,
-  cas_generation_count,
+  CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused, CasUnreadableMalformed, CasUnreadableContentMissing,
+  cas_generation_count, cas_generation_first,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
-  FilesystemPermissionDenied, FilesystemOtherFailure,
+  FilesystemPermissionDenied, FilesystemExactPathKindUnrecognized,
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   admit_cas_attempt, cas_file_slot_path,
-  cas_outcome_from_create, cas_outcome_from_create_widening_every_failure_to_contention,
+  cas_outcome_from_create, cas_probe_from_exact, cas_probe_as_observation,
 }
 
 // Evidence for the pure half of the file-backed CAS store. What is DELIBERATELY
@@ -259,16 +259,21 @@ test fn an_unrecognized_create_kind_is_store_refused_not_contention() -> Bool {
   )
 }
 
-test fn classifying_every_failed_publication_as_contention_turns_the_store_refusal_control_red() -> Bool {
-  let attempt = honest_absent(payload: "state-A")
-  let created = FilesystemCreateRefused { path: "/cas/slot-a.1", kind: FilesystemOtherFailure, error: "ENOSPC" }
-  let post = empty_observation()
-  let production = cas_outcome_from_create(attempt: attempt, target: 1, created: created, post: post)
-  let widened = cas_outcome_from_create_widening_every_failure_to_contention(attempt: attempt, created: created, post: post)
-  outcome_is_store_refused(o: production)
-    && match widened {
-      CasPreconditionFailed { expected: _, observed: _ } => true
-      CasCommitted { committed: _ } => false
-      CasStoreRefused { cause: _ } => false
-    }
+test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> Bool {
+  let probe = cas_probe_from_exact(
+    root: "/cas",
+    key: "slot-a",
+    generation: cas_generation_first(),
+    previous: "unread",
+    exact: FilesystemExactPathKindUnrecognized { path: "/cas/slot-a.1", observed: "weird", error: "ignored text" },
+  )
+  match cas_probe_as_observation(probe: probe) {
+    CasObservedUnreadable { cause: c } =>
+      match c {
+        CasUnreadableMalformed { detail: _ } => true
+        CasUnreadableReadRefused { detail: _ } => false
+        CasUnreadableContentMissing { referenced: _ } => false
+      }
+    CasObservedReadable { readable: _ } => false
+  }
 }
