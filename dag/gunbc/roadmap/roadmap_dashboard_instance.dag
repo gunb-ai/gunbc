@@ -1019,7 +1019,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     root: srv1_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18081,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+    source_anchor_ref: "refs/heads/integration/srv1-lab-2026-09-14" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
   )
