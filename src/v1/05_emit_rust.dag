@@ -16530,13 +16530,13 @@ fn emit_candidate_compile_host_method(params: String) -> String {
     "        match &run.disposition {\n",
     "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n",
     "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n",
-    "                std::process::exit(v1_compiler::gunbc_cli_dispatch_surface::compile_cli_exit_not_executed() as i32);\n",
+    "                std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_not_executed() as i32);\n",
     "            }\n",
     "            cli_run::CompileDisposition::Refused { phase, cause } => {\n",
     "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
     "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n",
     "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n",
-    "                std::process::exit(v1_compiler::gunbc_cli_dispatch_surface::compile_cli_exit_refused() as i32);\n",
+    "                std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_refused() as i32);\n",
     "            }\n",
     "            cli_run::CompileDisposition::Completed { emitted_count } => {\n",
     "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
@@ -16550,7 +16550,7 @@ fn emit_candidate_compile_host_method(params: String) -> String {
     "                    total_diagnostics += emission.result.diagnostics.len();\n",
     "                }\n",
     "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n",
-    "                std::process::exit(v1_compiler::gunbc_cli_dispatch_surface::compile_cli_exit_completed() as i32);\n",
+    "                std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_completed() as i32);\n",
     "            }\n",
     "        }\n",
     "    }\n")
@@ -17798,7 +17798,8 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
       "    byte_to_line_col, source_line_at, NewlineIndex,\n",
       "    CompilerDiagnostic,\n",
       "}", ";\n",
-      "use ", crate_name, "::cli_run;\n")
+      "use ", crate_name, "::cli_run;\n",
+      "use ", crate_name, "::gunbc_cli_dispatch_surface;\n")
   } else {
     base
   }
