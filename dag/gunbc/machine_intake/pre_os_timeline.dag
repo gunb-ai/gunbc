@@ -255,7 +255,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL snapshot is not a console span") } },
       cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac) PreOsSelSnapshot => [] } _ => [] },
       boot: match milestones {
-        ObservationRefused { cause: _ } => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+        ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
         ObservationEstablished { observed: value } => pre_os_assessment_refusal(assessment: pre_os_boot_assessment(milestones: value))
       }, training: match configuration {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
