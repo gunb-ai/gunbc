@@ -2,6 +2,7 @@ module test.claim.spark_managed_grant_reconcile_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.systemd { systemd_binary_directory }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   EnableLingerForOwnAccount,
@@ -10,6 +11,8 @@ import gunbc.spark.managed_access_bootstrap {
   SparkGrantInstallBasis,
   InstallBasisAbsent,
   OperatorAcceptedUnresolvedDisclosureRisk,
+  spark_managed_grant_install_basis,
+  spark_install_basis_accepts_risk_for,
   spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_population,
   spark_managed_grant_argv,
@@ -367,12 +370,14 @@ fn fixture_accepted_risk() -> SparkGrantInstallBasis {
 
 // THE RED: WITH NO PRECONDITION, THE INSPECT GRANT IS NOT IN THE INSTALL SET, over the measured
 // listing where it is the one grant not held. It is reported withheld with its typed cause and the
-// host stays unconverged. Merging the grant installs nothing by itself.
+// host stays unconverged. Merging the grant installs nothing by itself. This control is driven with
+// an explicit absent basis: the production row carried InstallBasisAbsent until the operator's
+// 2026-09-14 acceptance, and the production half of this witness moved to
+// the_production_basis_admits_inspect_on_accepted_risk below when that row changed.
 test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Bool {
   let o = GrantEnumerated { listing: srv6_listing_after }
   spark_managed_grants_to_install_under(outcome: o, basis: InstallBasisAbsent).length() == 0
-    && spark_managed_grants_to_install(outcome: o).length() == 0
-    && all(spark_managed_grants_withheld(outcome: o), w => match w {
+    && all(spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent), w => match w {
          GrantInstallWithheld { grant: g, obligation: ob } =>
            ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
              && match g {
@@ -385,9 +390,52 @@ test fn without_an_install_basis_inspect_is_absent_from_the_install_set() -> Boo
          GrantInstallStandingUnobserved { grant: _, cause: _ } => false
          GrantInstallNotNeeded => false
        })
-    && spark_managed_grants_withheld(outcome: o).length() == 1
+    && spark_managed_grants_withheld_under(outcome: o, basis: InstallBasisAbsent).length() == 1
     && !spark_managed_grants_converged(outcome: o)
-    && string_contains(spark_managed_grant_report(host: "srv6", outcome: o), "install=withheld")
+}
+
+// THE PRODUCTION ROW AFTER THE OPERATOR'S 2026-09-14 ACCEPTANCE. Over the measured listing the inspect
+// grant is now IN the install set through the production basis, admitted on accepted risk with the
+// disclosure obligation still attached, and nothing is withheld. The actor is the operator's fleet
+// login and the decision names the pinned pair container, so the row is attributable and scoped.
+test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool {
+  let o = GrantEnumerated { listing: srv6_listing_after }
+  let installing = spark_managed_grants_to_install(outcome: o)
+  installing.length() == 1
+    && all(installing, g => match g {
+         InspectServingContainer { container: c } => c as String == "gunbc-spark-pair"
+         RebootThisHost => false
+         EnableLingerForOwnAccount { subject: _ } => false
+       })
+    && spark_managed_grants_withheld(outcome: o).length() == 0
+    && any(spark_grant_install_admissions_under(outcome: o, basis: spark_managed_grant_install_basis), a => match a {
+         GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: b } =>
+           ob as String == spark_inspect_grant_disclosure_unestablished_obligation as String
+             && match b {
+                  OperatorAcceptedUnresolvedDisclosureRisk { actor: who, decided_on: when, accepted_for: _ } =>
+                    who as String == fleet_bootstrap_principal_login() as String && when as String == "2026-09-14"
+                  InstallBasisAbsent => false
+                }
+         GrantInstallAdmitted { grant: _ } => false
+         GrantInstallWithheld { grant: _, obligation: _ } => false
+         GrantInstallStandingUnobserved { grant: _, cause: _ } => false
+         GrantInstallNotNeeded => false
+       })
+    && string_contains(spark_managed_grant_report(host: "srv6", outcome: o), "install=admitted-on-accepted-risk")
+}
+
+// THE ACCEPTANCE DOES NOT WIDEN. The production basis names one grant; a data-bearing grant it does not
+// name -- the same verb over a different container -- is not accepted by it, so a future grant row
+// cannot ride in on this decision.
+test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool {
+  spark_install_basis_accepts_risk_for(
+    basis: spark_managed_grant_install_basis,
+    grant: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
+  ) == false
+    && spark_install_basis_accepts_risk_for(
+         basis: spark_managed_grant_install_basis,
+         grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
+       )
 }
 
 // THE PRECONDITION IS THE ONLY THING THAT MOVES IT, and it does not move the dataless grants: from the
