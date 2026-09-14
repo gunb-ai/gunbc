@@ -1236,32 +1236,42 @@ test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
     && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
 }
 
-// THE POSITIVE CONTROLS FOR THE PLANTED FAMILY, SEPARATED BECAUSE THEY COST WHAT THE LIVE FIELD COSTS.
-// The three planted claims assert that a broken join is NAMED; this asserts the join SUCCEEDS for the
-// real wire against the real roster, and that the live field is established -- without which all three
-// negatives could be passing because that join never succeeds at all.
+// THE POSITIVE CONTROL FOR THE PLANTED FAMILY. The three planted claims assert that a BROKEN join is
+// named; this asserts the join SUCCEEDS for the real wire against the real roster. Without it all
+// three negatives could be passing because that join never succeeds at all.
 //
-// MEASURED, WHICH IS WHY IT IS ITS OWN CLAIM: its two siblings cost 11,619 and 11,662 eval steps and
-// this one cost 109,495 while carrying the same planted conjuncts, so the ~98,000 difference is
-// `establish_serving_candidate_field` over the live 24-candidate field. Attaching a live-field control
-// to a fixture claim made the fixture claim cost what the live field costs, which is the interface
-// confusion the operator's ruling is about: one witness, one interface.
+// THE LIVE FIELD'S ESTABLISHMENT IS SUPPLIED HERE AND EXECUTED THERE, which is the strengthened
+// obligation applied rather than evaded: a boundary may be supplied in any number of claims so long as
+// SOME claim still runs it for real, and the execution that may never be removed is the product root.
 //
-// IT IS NOT DEDUPLICATED AGAINST `v4_1_field_is_complete_over_every_shape_the_fleet_admits`, which
-// asserts the same establishment, BECAUSE THAT CLAIM DOES NOT APPEAR IN required_floor_claim_cost --
-// 63 test fns are declared in this module and 28 executed. Deleting a live assertion on the grounds
-// that another claim covers it, when that claim may not be running, is how coverage disappears
-// silently. The duplication is deliberate until the non-execution is understood.
-test fn the_real_sm12_wire_joins_and_the_live_v4_1_field_is_established() -> Bool {
-  match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
-    ServingFieldEstablished => true
-    ServingFieldUnestablished { causes: _ } => false
+// THE IMPLICATION IS EXACT AND CHECKABLE FROM TWO BODIES, not asserted. This claim used to call
+// `establish_serving_candidate_field(field: deepseek_v4_1_candidate_field)` for ~98,000 of its 108,443
+// eval steps. That function IS `establish_serving_candidate_field_over(field, routed_candidates(field))`
+// -- and `select_over_routed` makes THAT SAME CALL WITH THE SAME ARGUMENTS as its first act, returning
+// `ServingDeploymentSelectionRefused` on `ServingFieldUnestablished`. So
+// `the_live_v4_1_serving_decision_excludes_every_admissible_candidate`, which asserts
+// `NoFeasibleServingDeployment` and returns FALSE on the refused arm, cannot pass unless the live field
+// is established. The establishment was being computed twice and asserted twice.
+//
+// WHY THIS IS NOT THE MISTAKE MADE EARLIER ON THIS BRANCH. A previous decomposition supplied BOTH
+// halves -- behaviour over a designed field, inhabitance with no decision -- and left ZERO executions
+// of the live decision, which a reviewer caught. Here one execution survives BY CONSTRUCTION: the
+// product root is untouched, and if it is ever deleted this claim's supplied boundary loses its
+// warrant. That is the pairing the rule requires, and the execution that carries it is the claim
+// `the_live_v4_1_serving_decision_excludes_every_admissible_candidate` in this module.
+//
+// NAMED AS A SYMBOL RATHER THAN AS A GREP, AND THAT IS NOT PEDANTRY -- THE GREP DOES NOT WORK. Two
+// annotations in this file, including this one, discuss that call by quoting it, so a count of the
+// pattern reports THREE where one execution exists, and it would still report TWO if the product root
+// were deleted. A guard fooled by prose about the guard cannot detect the regression it exists for,
+// which is section 3's cite-the-symbol rule earning its keep: the claim's name is reachable from the
+// namespace tree and a quoted string in a comment is not.
+test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool {
+  match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
   }
-    && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
-      Sm12KvLayoutAdmitted { policy: k } =>
-        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
-      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
-    }
 }
 
 // THE ASSERTION IS AN IDENTITY JOIN, NOT A CARDINALITY. A first cut asserted `count(built) == 3`
