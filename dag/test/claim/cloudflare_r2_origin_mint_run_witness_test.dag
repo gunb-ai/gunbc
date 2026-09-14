@@ -82,7 +82,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   ObserveCustodyContainer, CustodyContainerNotNeeded,
   r2_mint_container_not_required_reason,
   r2_mint_receipt_path_in, r2_mint_receipt_glob_in, r2_mint_receipt_scope,
-  r2_mint_receipt_dir_root,
+  r2_mint_receipt_dir_root, r2_mint_receipt_dir,
   R2MintReceiptAttemptScoped, R2MintReceiptUnscoped,
   bootstrap_burden_text,
   origin_read_pin_is_exact,
@@ -641,7 +641,7 @@ test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bo
     request: witness_write_request(),
   )
   let this_attempt_dir = concat(
-    r2_mint_receipt_dir_root,
+    r2_mint_receipt_dir_root, r2_mint_receipt_dir,
     concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "2"), "/"))
   string_contains(s: stale, pattern: "-mint-receipt.txt")
     && !string_contains(s: stale, pattern: this_attempt_dir)
@@ -653,7 +653,7 @@ test fn a_previous_attempts_receipt_is_not_matched_by_this_attempts_glob() -> Bo
 test fn an_unscoped_receipt_lies_outside_every_attempt_glob() -> Bool {
   let unscoped = r2_mint_receipt_path_in(scope: R2MintReceiptUnscoped, request: witness_write_request())
   let attempt_dir = concat(
-    r2_mint_receipt_dir_root,
+    r2_mint_receipt_dir_root, r2_mint_receipt_dir,
     concat(r2_mint_receipt_scope(run_id: "34824976188", run_attempt: "1"), "/"))
   !string_contains(s: unscoped, pattern: attempt_dir)
 }
@@ -669,4 +669,24 @@ test fn the_uploaded_glob_pins_the_attempt_and_wildcards_only_the_bucket() -> Bo
   string_contains(s: g, pattern: "34824976188-2/")
     && string_contains(s: g, pattern: "*")
     && !string_contains(s: g, pattern: "34824976188-1/")
+}
+
+// ── THE RECEIPT PATH IS NESTED, WHICH IS WHY THE DIRECTORY IS A PRECONDITION ──────────────────
+// Filesystem.Write is realized as bare std::fs::write and does not create parents (review 66170).
+// Before attempt scoping the receipt sat directly in /tmp, which always exists; scoping it under
+// /tmp/r2-mint-receipts/<run>-<attempt>/ made the write depend on a directory nobody created, and on
+// a workflow run BOTH identity variables are always set, so every mint took the nested path.
+//
+// This probe pins the fact that makes the mkdir load-bearing: the directory a scoped receipt needs
+// is strictly deeper than the root, so it cannot be assumed to exist. It goes red if someone
+// flattens the path back and leaves the ensure in place looking like ceremony, or removes the
+// nesting reasoning while keeping the nesting.
+test fn a_scoped_receipt_needs_a_directory_deeper_than_the_root() -> Bool {
+  let scoped = r2_mint_receipt_dir(
+    scope: R2MintReceiptAttemptScoped { scope: r2_mint_receipt_scope(run_id: "34843927208", run_attempt: "1") },
+  )
+  let root = r2_mint_receipt_dir(scope: R2MintReceiptUnscoped)
+  string_contains(s: scoped, pattern: root)
+    && scoped != root
+    && string_contains(s: scoped, pattern: "34843927208-1/")
 }

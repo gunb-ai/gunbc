@@ -1022,6 +1022,40 @@ fn r2_mint_receipt_glob_in(scope: R2MintReceiptScope, profile: R2OriginTokenProf
 // THE SCOPE THIS RUN IS IN, READ FROM THE RUNNER'S OWN ENVIRONMENT. Both variables are set by GitHub
 // on every runner; requiring BOTH means a half-populated environment scopes nothing rather than
 // scoping to a partial identity that a later attempt could collide with.
+// THE RECEIPT DIRECTORY IS A PRECONDITION OF THE MINT, NOT A STEP BESIDE THE WRITE, and the reason
+// is this PR's own thesis applied to the repair it just made. Filesystem.Write is realized as bare
+// std::fs::write, which does NOT create parents, so scoping the receipt under
+// /tmp/r2-mint-receipts/<run>-<attempt>/ made the write fail with ENOENT on every workflow run --
+// both GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT are always set there, so every mint took the nested
+// path (review 66170).
+//
+// THE CONSEQUENCE WAS THE WORST ONE AVAILABLE, which is why this is established BEFORE the Create
+// rather than checked beside the write. After a SUCCESSFUL store the failed receipt turned
+// ExitSuccess into a failure; the origin pin is a declaration edit, so origin_credential_already_pinned
+// stays false, and a re-dispatch would spend ANOTHER non-idempotent AccountTokens.Create. A safety
+// repair that manufactures a double-mint path is worse than the hazard it closed.
+//
+// Ensuring it ahead of the Create means a filesystem that cannot hold the receipt refuses with
+// NOTHING SPENT -- the same ordering the custody container now has, for the same reason.
+type R2MintReceiptDirStanding
+  = R2MintReceiptDirReady
+  | R2MintReceiptDirRefused { cause: NonEmptyStr }
+
+fn ensure_r2_mint_receipt_dir(scope: R2MintReceiptScope) -> R2MintReceiptDirStanding {
+  let dir = r2_mint_receipt_dir(scope: scope)
+  let made = shell.Mkdir.Parents(path: dir as FilePath)
+  if made.success {
+    R2MintReceiptDirReady
+  } else {
+    R2MintReceiptDirRefused {
+      cause: join([
+        "THE RECEIPT DIRECTORY COULD NOT BE CREATED AT ", dir,
+        ", so a mint would have nowhere to record the token id it may need revoked (mkdir -p refused; extdeps.shell Mkdir.Parents reports only exit status, so there is no errno to carry here)",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
 fn r2_mint_receipt_scope_for_this_run() -> R2MintReceiptScope {
   match shell.Env.Get(name: r2_mint_receipt_run_id_env).value {
     Absent => R2MintReceiptUnscoped
@@ -1112,6 +1146,10 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit use
         Absent =>
           exit_failure(reason: "THE CUSTODY CONTAINER WAS NOT OBSERVED FOR A RUN THAT WOULD WRITE ONE, NOTHING CREATED: the mint asked for the observation and the bracket returned none, so this run cannot show the destination exists and will not spend a Create to find out")
         Present { value: container } =>
+      match ensure_r2_mint_receipt_dir(scope: r2_mint_receipt_scope_for_this_run()) {
+        R2MintReceiptDirRefused { cause: dir_cause } =>
+          exit_failure(reason: concat(dir_cause as String, " -- NOTHING CREATED"))
+        R2MintReceiptDirReady =>
       match mint_r2_origin_token(
         account_id: account_id,
         request: request,
@@ -1150,6 +1188,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit use
               }
             }
           }
+      }
       }
       }
   }
