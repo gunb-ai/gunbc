@@ -40,6 +40,10 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
             relay_emit: nanosecond(0),
+            bisect_row_accumulation: nanosecond(0),
+            bisect_loop_setup: nanosecond(0),
+            bisect_arm_exit: nanosecond(0),
+            bisect_driver_tail: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -69,6 +73,10 @@ fn reconciled_parent_passes() {
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
             relay_emit: nanosecond(0),
+            bisect_row_accumulation: nanosecond(0),
+            bisect_loop_setup: nanosecond(0),
+            bisect_arm_exit: nanosecond(0),
+            bisect_driver_tail: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
