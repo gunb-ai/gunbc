@@ -21,8 +21,10 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
 // private held-unit receipts. The nearer precedent disagrees in practice: the DIMM connector
 // observation is a per-unit operator report and it is public. This module follows the precedent it
 // is copied from and states the divergence so a reviewer can move it rather than discover it. What
-// is here is chassis STRUCTURE an operator saw from outside the machine, not an inventory of what
-// is installed in it.
+// is here is chassis STRUCTURE an operator reported, not an inventory of what is installed in it.
+// The 2026-09-14 report is an INTERIOR one and the arms below moved accordingly; the module stayed
+// public because the precedent above is about the kind of fact, not about which panel it was seen
+// through.
 // THE UNIT IS NOT RE-DECLARED. gunbc.machine_intake_mtcollins1_dimm_connector_observation already
 // names this machine through its intake receipt; a second DeclarationRef literal pointing at the
 // same access observation would be one fact with two authors (DESIGN section 3). Imported instead,
@@ -30,10 +32,17 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
 
 // THE DISTINCTION THIS MODULE EXISTS TO HOLD. An APERTURE is a hole in the rear panel. A RISER
 // ASSEMBLY is the bracket, connector and retention hardware behind it. A chassis ships with
-// apertures whether or not risers are fitted -- that is what a blanking plate is for. The operator
-// saw the rear panel; nobody has yet reported the inside. Collapsing the two would convert a
-// platform capacity into a unit fact, which is the same error as reading "this DIMM type is
-// supported" into "this population will train".
+// apertures whether or not risers are fitted -- that is what a blanking plate is for. Collapsing the
+// two would convert a platform capacity into a unit fact, which is the same error as reading "this
+// DIMM type is supported" into "this population will train".
+//
+// THE DISTINCTION EARNED ITS KEEP ON 2026-09-14 AND THIS IS THE RECEIPT. The operator answered "the
+// bays are not occupied", which is an answer to OCP BAY OCCUPANCY and is not an answer about riser
+// cages at all: a position can be unoccupied AND unfitted (blanking plate, nothing to plug into) or
+// unoccupied BUT fitted (empty cage, ready for a card), and those give OPPOSITE verdicts for the
+// candidate card. Applying that one sentence to both arms would have been exactly the collapse above.
+// The narrower question was asked separately and answered separately, and the two arms below carry
+// the two answers rather than one answer twice.
 type RearApertureReport {
   aperture_count: Nat
   aperture_note: NonEmptyStr
@@ -82,22 +91,23 @@ type MtCollinsExpansionOperatorObservation {
 data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
   unit: observed_unit,
   chassis_height: rack_unit(count: 1),
-  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 13 },
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
   observer: "operator",
-  relay_message: "Operator report relayed in the session dashboard to eager-owl-205 on 2026-09-13; no message id was retained at the time of writing, which is itself worth recording rather than inventing one.",
-  method: "Operator report of the rear panel of Foxconn Mt. Collins unit 1, relayed in the session dashboard. No interior inspection was reported and none was performed by this session.",
+  relay_message: "Operator report relayed in the session dashboard to zesty-lark-21 on 2026-09-14, superseding the 2026-09-13 rear-panel-only report relayed to eager-owl-205. The earlier relay carried no message id; this one is msg-thread zesty-lark-21, recorded rather than invented.",
+  method: "Operator report of the INTERIOR of Foxconn Mt. Collins unit 1, relayed in the session dashboard. The operator additionally supplied two publicly published photographs of the same model, which he states are identical to his unit; those photographs are corroborating imagery of the MODEL and are not an observation of this unit. Every per-unit arm below rests on the operator's report of his own machine, and the photographs are cited beside it rather than in place of it - a published photograph of a model cannot establish the configuration of one chassis, which is the platform-to-unit collapse this module exists to prevent. The two photographs, recorded here so the question is not re-trodden: front/interior-forward https://drive.google.com/file/d/1rUjixGZ3lVyGDAhHezD06pF747LbfQE4/view and interior-rear https://drive.google.com/file/d/1qiPuuxLgj-VI02kDUtGUfCX3SGMLJqVI/view . They are carried as located text in this receipt rather than as an extdeps declaration, because an extdeps row nothing reads is a declaration with no consumer, and because they are published imagery of a MODEL and so could never have been the authority for a per-unit arm. One apparent discrepancy is recorded rather than smoothed: the front photograph shows populated drive bays while this unit was reported driveless for the PXE netboot route. The operator states the bays hold EMPTY CARRIERS, which reconciles the two.",
   rear_apertures: RearApertureReport {
     aperture_count: 2,
     aperture_note: "Two large horizontal rear apertures, consistent in position and orientation with the platform's two full-height half-length expansion positions. An aperture is what the rear panel exposes; it is not a report that a riser occupies it.",
   },
-  riser_occupancy: RiserPositionsUnobserved {
-    settled_by: "An interior report of whether a riser cage with a PCIe edge connector is fitted behind each aperture, or whether the positions are empty behind a blanking plate.",
+  riser_occupancy: RiserPositionsFitted {
+    positions: 1,
+    evidence: "Operator report, 2026-09-14: of the two rear expansion positions, ONE carries a riser cage with a PCIe slot and the OTHER carries a blanking plate. The count is therefore one fitted position, not two - the platform's 'up to 2x FHHL' upper bound is not reached by this chassis. THE OPERATOR'S SENTENCE WAS 'they have a riser cage w/ a pcie slot, and a blanking plate', and the reading taken here is one of each across the two positions; the alternative reading, two fitted cages behind a shared blanking plate, would give positions 2 and a second attachment point. The reading is stated so it can be corrected by the operator in one word rather than inferred silently from the count.",
   },
   ocp_physical_variant: OcpPhysicalVariantUnresolved {
     settled_by: "A close photograph of the empty OCP bay and its connector on this unit, or the 1U service-guide mechanical drawing. The 1U product brief establishes the generation and is silent on the physical variant.",
   },
-  ocp_bay_occupancy: OcpBayOccupancyUnobserved {
-    settled_by: "An interior or rear-bay report of whether the OCP 3.0 bay holds a card. BMC sensors naming an OCP zone were read on 2026-09-06 and name a slot rather than its occupancy.",
+  ocp_bay_occupancy: OcpBayEmpty {
+    evidence: "Operator report, 2026-09-14: the OCP 3.0 bay on this unit is NOT occupied. This settles occupancy only. It does not settle the physical variant of the bay connector, which remains unresolved below - an empty bay is the condition under which the variant becomes observable, not an observation of it.",
   },
 }
 
