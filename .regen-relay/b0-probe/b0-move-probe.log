@@ -1,0 +1,24 @@
+◐ started compile.frontend
+✓ compile.frontend done in 2ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 2ms
+✓ compile.analyses done in 0ms
+◐ started compile.emit
+✓ compile.emit done in 4ms
+CASE baseline diagnostics=[] ownership=[OwnershipProof { func_name: "build", bindings: {"item": BindingUsage { name: "item", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Projected, site: ".child", span_start: 223 }, EdgeClassification { kind: Projected, site: ".text", span_start: 241 }, EdgeClassification { kind: Projected, site: ".other", span_start: 259 }, EdgeClassification { kind: Read, site: "read", span_start: 159 }] }, "early": BindingUsage { name: "early", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Read, site: "read", span_start: 120 }] }}, decisions: [Unclassified { binding: "item", reason: "no consumers found" }, Unclassified { binding: "early", reason: "no consumers found" }], fold_acc_unwrap: [] }]
+◐ started compile.frontend
+✓ compile.frontend done in 0ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 1ms
+✓ compile.analyses done in 0ms
+◐ started compile.emit
+✓ compile.emit done in 3ms
+CASE move_first diagnostics=[] ownership=[OwnershipProof { func_name: "build", bindings: {"early": BindingUsage { name: "early", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Read, site: "read", span_start: 119 }, EdgeClassification { kind: Read, site: "read", span_start: 144 }] }, "item": BindingUsage { name: "item", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Consumed, site: "return", span_start: 134 }, EdgeClassification { kind: Projected, site: ".child", span_start: 247 }, EdgeClassification { kind: Projected, site: ".text", span_start: 265 }, EdgeClassification { kind: Projected, site: ".other", span_start: 283 }, EdgeClassification { kind: Read, site: "read", span_start: 183 }] }}, decisions: [Unclassified { binding: "early", reason: "no consumers found" }, SoleOwner { binding: "item", site: "return" }], fold_acc_unwrap: [] }]
+◐ started compile.frontend
+✓ compile.frontend done in 0ms
+✓ compile.normalize done in 0ms
+✓ compile.reconcile done in 1ms
+✓ compile.analyses done in 0ms
+◐ started compile.emit
+✓ compile.emit done in 3ms
+CASE borrow_first diagnostics=[] ownership=[OwnershipProof { func_name: "build", bindings: {"item": BindingUsage { name: "item", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Consumed, site: "return", span_start: 134 }, EdgeClassification { kind: Projected, site: ".child", span_start: 247 }, EdgeClassification { kind: Projected, site: ".text", span_start: 265 }, EdgeClassification { kind: Projected, site: ".other", span_start: 283 }, EdgeClassification { kind: Read, site: "read", span_start: 200 }] }, "early": BindingUsage { name: "early", binding_kind: Some(LocalValueBinding), consumers: [EdgeClassification { kind: Read, site: "read", span_start: 119 }, EdgeClassification { kind: Read, site: "read", span_start: 144 }] }}, decisions: [SoleOwner { binding: "item", site: "return" }, Unclassified { binding: "early", reason: "no consumers found" }], fold_acc_unwrap: [] }]

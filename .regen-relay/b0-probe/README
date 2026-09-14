@@ -1,0 +1,5 @@
+seed: regenB0.SJqrpc rebuilt fixed-point compiler (ed853 + ownership join)
+probe: b_move_probe.rs from relay 9ce3cc31eda, built as example against that seed
+rustc: --edition 2021 --crate-type lib -L target/release/deps --extern im=<deps rlib> on move-<case>-3.rs
+results: baseline exit=0, move_first exit=0, borrow_first exit=0
+emitted: move_first child: Some(item.clone()) / text: item.text.clone(); borrow_first text: item.text.clone() / child: Some(item.clone())
