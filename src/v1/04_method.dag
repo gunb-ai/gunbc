@@ -18,10 +18,10 @@ import v1.std.core {
   Required,
   NoExprData,
   ErrorNode,
-  no_span, with_optional_cardinality,
-  unit_type, bool_type, string_type, hash_type, int_type
+  no_span, unit_type, bool_type, string_type, hash_type, int_type
 }
 import v1.compiler.infer_types {
+  make_optional_type,
   make_container_type, make_map_type,
   make_kernel_record_type, make_kernel_record_field
 }
@@ -277,7 +277,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "scan_string_end": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
   "scan_to_eol": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
   "skip_horizontal_ws": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }], returns: int_type },
-  "parse_int": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: int_type) },
+  "parse_int": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: make_optional_type(element: int_type) },
   "char_at": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pos", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "substring": derived_signature(names: ["s", "start", "end"], method: "substring", returns: string_type),
   "from_code_point": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: string_type },
@@ -304,13 +304,13 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "rc_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: AlgebraTypeVariable { id: "rc_subject" } }, BuiltinParam { name: "b", ty: AlgebraTypeVariable { id: "rc_subject" } }], returns: bool_type },
   "rc_vec_ptr_eq": BuiltinSignature { params: [BuiltinParam { name: "a", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }, BuiltinParam { name: "b", ty: ContainerOf { source: Named { name: "List" }, element: AlgebraTypeVariable { id: "rc_subject" } } }], returns: bool_type },
   "set_contains": BuiltinSignature { params: [BuiltinParam { name: "set", ty: ContainerOf { source: Named { name: "Set" }, element: AlgebraTypeVariable { id: "set_elem" } } }, BuiltinParam { name: "item", ty: AlgebraTypeVariable { id: "set_elem" } }], returns: bool_type },
-  "lookup": derived_signature(names: ["m", "key"], method: "lookup", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
-  "map_get": derived_signature(names: ["m", "key"], method: "map_get", returns: with_optional_cardinality(n: type_variable_node(id: "map_value"))),
-  "Some": BuiltinSignature { params: [BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "some_inner" } }], returns: with_optional_cardinality(n: type_variable_node(id: "some_inner")) },
+  "lookup": derived_signature(names: ["m", "key"], method: "lookup", returns: make_optional_type(element: type_variable_node(id: "map_value"))),
+  "map_get": derived_signature(names: ["m", "key"], method: "map_get", returns: make_optional_type(element: type_variable_node(id: "map_value"))),
+  "Some": BuiltinSignature { params: [BuiltinParam { name: "value", ty: AlgebraTypeVariable { id: "some_inner" } }], returns: make_optional_type(element: type_variable_node(id: "some_inner")) },
   "map_keys": derived_signature(names: ["m"], method: "map_keys", returns: list_of_type_variable(id: "collection_element")),
   "sorted_map_keys": BuiltinSignature { params: [BuiltinParam { name: "m", ty: AlgebraTypeVariable { id: "map_subject" } }], returns: list_of_type_variable(id: "collection_element") },
   "map_values": derived_signature(names: ["m"], method: "map_values", returns: list_of_type_variable(id: "collection_element")),
-  "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: with_optional_cardinality(n: type_variable_node(id: "collection_element"))),
+  "get": derived_signature_in(profile: FreeMonoidCollectionProfile, names: ["xs", "index"], method: "get", returns: make_optional_type(element: type_variable_node(id: "collection_element"))),
   "reverse": derived_signature(names: ["xs"], method: "reverse", returns: list_of_type_variable(id: "collection_element")),
   "list_push": derived_signature(names: ["xs", "item"], method: "list_push", returns: list_of_type_variable(id: "collection_element")),
   "hash_combine": BuiltinSignature { params: [BuiltinParam { name: "a", ty: NamedTemplate { name: "Hash" } }, BuiltinParam { name: "b", ty: NamedTemplate { name: "Hash" } }], returns: hash_type },

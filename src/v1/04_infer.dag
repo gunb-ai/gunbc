@@ -82,7 +82,6 @@ import v1.std.core {
   binop_left, binop_right,
   make_transport_node, local_transport_node,
   Text, Interpolation,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -93,6 +92,9 @@ import v1.std.core {
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
+  make_optional_type,
+  node_is_optional_type,
+  kernel_optional_type_node, apply_optional_owner,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
   kernel_profile_lookup,
@@ -202,6 +204,7 @@ import v1.compiler.infer_service {
   service_op_entry
 }
 import v1.compiler.infer_patterns {
+  expand_scrut_type_for_variant_lookup,
   NodeLookupResult, PatternSubject,
   lookup_variant_in_type, lookup_field_in_variant,
   pattern_subject_from_inferred, pattern_subject_from_node,
@@ -461,6 +464,11 @@ type FieldRecursionResult {
   element_type: String
 }
 
+// The production collect_item_inductive_fields route over module_items(module.module)
+// is syntax-only: it uses authored cardinality to choose the recursion shape and
+// returns RecursionShape/element spelling, never resolved type evidence. This helper
+// can read field_node.inferred; the admission belongs to that pre-resolution caller
+// route, not to every possible input. Keep the route on the future syntax carrier.
 fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
   let type_expr = match field_node.inferred {
     Present { value: Resolved { node: rt } } => rt
@@ -674,20 +682,11 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
 // ConvergeVerdict alike). Re-targeting would leave the returned parent_enum naming one
 // coproduct while the inferred type named another.
 //
-// CARDINALITY: optionality is NOT a wrapper type here — `BinOp?` is a BinOp node whose
-// return_cardinality is CardOptional (00_core with_optional_cardinality), so a head-name
-// comparison alone cannot see it. For `binop: Mod` against an expected `BinOp?` the head
-// IS "BinOp" and the arm IS found, but the constructor's own type is BinOp and the
-// optionality is a coercion the emitter performs; adopting the expected node makes the
-// value look already-optional, the wrap is skipped, and `binop: BinOp::Mod` is emitted
-// where `Some(BinOp::Mod)` is owed. So adoption additionally requires the expected node
-// to be Required: the variant must belong to the coproduct at the expected type's OWN
-// level (Absent IS an arm of Optional) rather than being reached through a coercion.
-// Both halves were caught by the self-host fixed point re-emitting v1's own sources,
-// not by reasoning about them — a head-only check and then a name+identity check each
-// passed every other measurement while still dropping the wrapper.
-fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node) -> Node {
-  match expected {
+// Canonical Optional is an owner application. Expected-type adoption still names
+// the bound owner itself: an Optional<BinOp> is not the owner of BinOp.Mod.
+// Bare Optional arms use the same checked application producer as Present literals.
+fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node, span: SourceSpan) -> KernelTypeBuild {
+  let selected = match expected {
     Present { value: exp } =>
       if exp.return_cardinality == Required
         && owner_name != "" {
@@ -703,6 +702,10 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
       } else { fallback }
     Absent => fallback
   }
+  if selected.connective == Disj && type_name_compatible(a: owner_name, b: "Optional") {
+    apply_optional_owner(owner: selected, element: type_variable_node(id: "optional_element"),
+      source_indices: scope.type_env.source_indices, module_name: scope.module_name, span: span)
+  } else { KernelTypeBuild { ty: selected, diagnostics: [] } }
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
@@ -784,7 +787,7 @@ fn declared_field_is_required(sf: Node) -> Bool {
     Present { value: Resolved { node: rt } } => rt
     _ => field_node_type_expr(n: sf)
   }
-  sf_type.return_cardinality != CardOptional && sf.body == none
+  !node_is_optional_type(n: sf_type) && sf.body == none
 }
 
 // A BARE VARIANT NAME IN EXPRESSION POSITION IS A CONSTRUCTION SUPPLYING ZERO FIELDS. When
@@ -1179,7 +1182,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
 data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
 
 fn declared_return_type_node(item: Node) -> Node {
-  preserve_outer_optional_cardinality(outer: item, inner: resolved_type(n: item))
+  resolved_type(n: item)
 }
 
 fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1237,12 +1240,12 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
 // mismatch, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
 // forbids a fabricated success.
 fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  if declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional {
+  if node_is_optional_type(n: declared) || node_is_optional_type(n: produced) {
     false
   } else {
-    let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
+    let declared_required = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: declared)) {
       Present { value: resolved } => resolved
-      Absent => with_required_cardinality(n: declared)
+      Absent => extract_optional_inner_node(n: declared)
     }
     kernel_value_declared_type_mismatch(
       formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
@@ -1331,14 +1334,14 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   }
 }
 
-data declared_type_conformance_note: String = "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through preserve_outer_optional_cardinality, the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. THE GATE WAS FIRST WRITTEN AS SCALAR-ONLY AND THAT WAS TOO NARROW, which review found before any consumer did: a plain shape excludes a List, so a declared List<Int> whose body produced a List<String> was indistinguishable from a conforming declaration and compiled clean, and calling that state UNJUDGED in prose did not model it (codex review 45398). The widening is the SAME argument, not an exception to it — a container of a ground kernel scalar has no alias, brand, coproduct, anonymous-literal or cardinality representation standing between the two sides either, so a difference in the element name is a real difference exactly as a difference in a scalar name is. conformance_ground_type therefore admits a ground kernel scalar OR a Required, non-keyed element collection whose element is one, and the whole dag + src/v2 corpus stays clean under it, which is the same instrument that found the four false-positive classes above. The discriminating control was run against the PRIOR compiler rather than reasoned about: `fn f() -> List<Int> { [\"a\", \"b\"] }` with `data d: List<String> = [1, 2]` compiles with exit 0 on the pre-widening binary and refuses with two located mismatches on this one. EVERYTHING STILL WIDER IS UNJUDGED, AND IN THIS PR UNJUDGED IS A SILENCE — a deliberate narrowing, not an oversight. It is worth stating why the opposite was tried first: an unproven declaration returning an empty diagnostic list is byte-for-byte indistinguishable in the output from a proven-conforming one, so the absence of a check reads as the presence of a proof (codex review 45500). Making it a counted DeclaredTypeConformanceUnjudged advisory answered that objection and raised a larger one — an advisory does not stop a wrong program, so a proven-wrong program still emitted with a number beside it (codex reviews 45647, 45695, 45711, 45777). That advisory measured the frontier at 1566 declarations whole-tree and is EXCLUDED here (codex review 45767), because the branch could not be made to refuse safely either — see conformance_unjudged_live_hole_note for the executed witness and the five measured attempts. So this branch returns [] for the unjudged case, which is byte-for-byte what origin/main does, and this PR's contribution to conformance is exactly the REFUSALS it can prove: ground kernel scalars and ground element collections. Nothing about the unjudged class is worse than main; it is simply not addressed here, and it lands with the identity capability rather than beside it. IT WAS FIRST MEASURED AT 3005 AND THAT NUMBER WAS WRONG, which matters because the count is the whole bound: nearly half of it was one type compared against ITSELF at two expansion depths (a declaration naming T versus a body producing T's expanded body), so the frontier was reported almost twice its true size — see conformance_expansion_depth_note. An inflated frontier is not a conservative error; it hides the residue that genuinely cannot be decided underneath pairs that were never in doubt. It fires only where the declared and produced SHAPES DIFFER, because identical shapes have nothing to prove and counting them would bury the signal under declarations nobody doubts — the residue that matters is exactly the set where a mismatch could hide. Each numbered class above is a promotion trigger, and each promotion should be visible as a drop in that count. Keyed collections are deliberately not admitted yet — the key and value axes need their own corpus measurement, and guessing that the element argument transfers is precisely the move this note refuses elsewhere. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access."
+data declared_type_conformance_note: String = "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through  the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. THE GATE WAS FIRST WRITTEN AS SCALAR-ONLY AND THAT WAS TOO NARROW, which review found before any consumer did: a plain shape excludes a List, so a declared List<Int> whose body produced a List<String> was indistinguishable from a conforming declaration and compiled clean, and calling that state UNJUDGED in prose did not model it (codex review 45398). The widening is the SAME argument, not an exception to it — a container of a ground kernel scalar has no alias, brand, coproduct, anonymous-literal or cardinality representation standing between the two sides either, so a difference in the element name is a real difference exactly as a difference in a scalar name is. conformance_ground_type therefore admits a ground kernel scalar OR a Required, non-keyed element collection whose element is one, and the whole dag + src/v2 corpus stays clean under it, which is the same instrument that found the four false-positive classes above. The discriminating control was run against the PRIOR compiler rather than reasoned about: `fn f() -> List<Int> { [\"a\", \"b\"] }` with `data d: List<String> = [1, 2]` compiles with exit 0 on the pre-widening binary and refuses with two located mismatches on this one. EVERYTHING STILL WIDER IS UNJUDGED, AND IN THIS PR UNJUDGED IS A SILENCE — a deliberate narrowing, not an oversight. It is worth stating why the opposite was tried first: an unproven declaration returning an empty diagnostic list is byte-for-byte indistinguishable in the output from a proven-conforming one, so the absence of a check reads as the presence of a proof (codex review 45500). Making it a counted DeclaredTypeConformanceUnjudged advisory answered that objection and raised a larger one — an advisory does not stop a wrong program, so a proven-wrong program still emitted with a number beside it (codex reviews 45647, 45695, 45711, 45777). That advisory measured the frontier at 1566 declarations whole-tree and is EXCLUDED here (codex review 45767), because the branch could not be made to refuse safely either — see conformance_unjudged_live_hole_note for the executed witness and the five measured attempts. So this branch returns [] for the unjudged case, which is byte-for-byte what origin/main does, and this PR's contribution to conformance is exactly the REFUSALS it can prove: ground kernel scalars and ground element collections. Nothing about the unjudged class is worse than main; it is simply not addressed here, and it lands with the identity capability rather than beside it. IT WAS FIRST MEASURED AT 3005 AND THAT NUMBER WAS WRONG, which matters because the count is the whole bound: nearly half of it was one type compared against ITSELF at two expansion depths (a declaration naming T versus a body producing T's expanded body), so the frontier was reported almost twice its true size — see conformance_expansion_depth_note. An inflated frontier is not a conservative error; it hides the residue that genuinely cannot be decided underneath pairs that were never in doubt. It fires only where the declared and produced SHAPES DIFFER, because identical shapes have nothing to prove and counting them would bury the signal under declarations nobody doubts — the residue that matters is exactly the set where a mismatch could hide. Each numbered class above is a promotion trigger, and each promotion should be visible as a drop in that count. Keyed collections are deliberately not admitted yet — the key and value axes need their own corpus measurement, and guessing that the element argument transfers is precisely the move this note refuses elsewhere. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access."
 
 fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  let expected_resolved = match lookup_type_for(env: env, node: with_required_cardinality(n: expected)) {
+  let expected_resolved = match lookup_type_for(env: env, node: extract_optional_inner_node(n: expected)) {
     Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: expected)
+    Absent => extract_optional_inner_node(n: expected)
   }
-  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_resolved.connective == Disj
+  let expected_is_optional_coproduct = node_is_optional_type(n: expected) && expected_resolved.connective == Disj
   let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
   expected_is_optional_coproduct && got_is_string
 }
@@ -1363,22 +1366,22 @@ fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source
 // which is the check s precision frontier and not a failure arm.
 
 fn field_declared_type_is_identified(ft: Node, scope: InferScope) -> Bool {
-  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+  let required = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: ft)) {
     Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: ft)
+    Absent => extract_optional_inner_node(n: ft)
   }
   authored_name_at(source_indices: scope.type_env.source_indices, node: required) != ""
 }
 
 fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
-  let required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: ft)) {
+  let required = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: ft)) {
     Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: ft)
+    Absent => extract_optional_inner_node(n: ft)
   }
   let expanded = expand_scrut_type_for_variant_lookup(scrut_node: required, env: scope.type_env)
   let declares_none_variant = expanded.connective == Disj
     && has_child_named(n: expanded, name: "None", source_indices: scope.type_env.source_indices)
-  ft.return_cardinality == CardOptional || declares_none_variant
+  node_is_optional_type(n: ft) || declares_none_variant
 }
 
 fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
@@ -1417,11 +1420,11 @@ fn bare_none_field_construction_diags(
 }
 
 fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
-  let inner = match lookup_type_for(env: env, node: with_required_cardinality(n: ft)) {
+  let inner = match lookup_type_for(env: env, node: extract_optional_inner_node(n: ft)) {
     Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: ft)
+    Absent => extract_optional_inner_node(n: ft)
   }
-  ft.return_cardinality == CardOptional && inner.connective == Disj
+  node_is_optional_type(n: ft) && inner.connective == Disj
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
@@ -1548,7 +1551,7 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
   let te = field_node_type_expr(n: sf)
   if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
     match sf.inferred {
-      Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+      Present { value: Resolved { node: rt } } => rt
       _ => te
     }
   } else { te }
@@ -2539,8 +2542,8 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
   let arm_name = authored_name_at(source_indices: source_indices, node: arm_type)
   if coproduct_name_is_kernel_or_optional_carrier(name: unified_name)
     || coproduct_name_is_kernel_or_optional_carrier(name: arm_name)
-    || unified_arm_type.return_cardinality == CardOptional
-    || arm_type.return_cardinality == CardOptional
+    || node_is_optional_type(n: unified_arm_type)
+    || node_is_optional_type(n: arm_type)
     || type_name_compatible(a: unified_name, b: arm_name) {
     false
   } else {
@@ -2808,7 +2811,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
     equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false)
   } else {
     let peeled = normalize_access_type_node(n: n)
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
+    if node_is_optional_type(n: peeled) || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
       equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -3054,11 +3057,11 @@ fn structured_application_lit_is_declared_optional_variant(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  let formal_resolved = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: formal)) {
+  let formal_resolved = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: formal)) {
     Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: formal)
+    Absent => extract_optional_inner_node(n: formal)
   }
-  if formal.return_cardinality == CardOptional && (lit_name == "Present" || lit_name == "Absent") {
+  if node_is_optional_type(n: formal) && (lit_name == "Present" || lit_name == "Absent") {
     true
   } else {
     has_child_named(n: formal_resolved, name: lit_name, source_indices: source_indices)
@@ -3627,7 +3630,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
-  let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let either_optional = node_is_optional_type(n: declared) || node_is_optional_type(n: produced)
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
     _ => false
@@ -3853,7 +3856,7 @@ fn nominal_product_inhabitance_refusal(
 fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
   let source_indices = scope.type_env.source_indices
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+  if name == "" || node_is_optional_type(n: n) || type_node_is_callable(n: n)
     || is_kernel_type(name: name)
     || qualified_last_segment(name: name) == "Optional"
     || node_is_element_collection(n: n, source_indices: source_indices)
@@ -3994,7 +3997,7 @@ fn applied_type_argument_conflicts(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  if declared_arg.return_cardinality == CardOptional || produced_arg.return_cardinality == CardOptional
+  if node_is_optional_type(n: declared_arg) || node_is_optional_type(n: produced_arg)
     || applied_type_argument_is_nested_application(n: declared_arg, scope: scope)
     || applied_type_argument_is_nested_application(n: produced_arg, scope: scope)
     || type_node_is_callable(n: declared_arg) || type_node_is_callable(n: produced_arg) {
@@ -4118,7 +4121,7 @@ fn coproduct_payload_where_parent_required(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  let either_optional = formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional
+  let either_optional = node_is_optional_type(n: formal) || node_is_optional_type(n: actual)
   if either_optional || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
     false
   } else {
@@ -4746,7 +4749,7 @@ fn direct_call_arg_type_mismatch(
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
+  let substitution_is_optional = node_is_optional_type(n: substitution_basis)
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
   if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
@@ -5108,7 +5111,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
             Present { value: Resolved { node: receiver_type } } =>
               match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
                 Present { value: value_type } =>
-                  with_optional_cardinality(n: value_type)
+                  make_optional_type(element: value_type)
                 Absent => resolve_builtin_call_type(name: func_name)
               }
             _ => resolve_builtin_call_type(name: func_name)
@@ -5529,9 +5532,9 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional
+      let source_is_optional = node_is_optional_type(n: src_node)
         || qualified_last_segment(name: source_name) == "Optional"
-      let target_is_optional = target_type.return_cardinality == CardOptional
+      let target_is_optional = node_is_optional_type(n: target_type)
       if source_is_optional && !target_is_optional {
         [make_error_node(
           diagnostic: OptionalCastNotEliminated {
@@ -5566,7 +5569,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
@@ -5580,16 +5583,13 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
-          let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
-          let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
-          let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
+          let owner = expand_scrut_type_for_variant_lookup(scrut_node: resolved_scrut_node, env: scope.type_env)
+          let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: owner)
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
-          if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
-            Present { value: "Optional" }
-          } else if witness_container_subject {
+          if witness_container_subject {
             Present { value: "Witness" }
           } else {
-            let is_coproduct = resolved_scrut_node.connective == Disj
+            let is_coproduct = owner.connective == Disj
             if is_coproduct {
               Present { value: scrutinee_name }
             } else { none }
@@ -6168,7 +6168,7 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
   match expected {
     Absent => LiteralBoundaryPlain
     Present { value: exp } =>
-      if exp.return_cardinality == CardOptional {
+      if node_is_optional_type(n: exp) {
         LiteralBoundaryPlain
       } else {
         match type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env) {
@@ -6392,17 +6392,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
           match scope_parent {
             Present { value: scope_enum } =>
+              let variant_result = variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved, span: span)
               InferResult {
                 typed: make_named_expr_node(
                   occurrence_identity: texpr.occurrence_identity,
                   name: name,
                   expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                   children: [],
-                  inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
+                  inferred: Present { value: Resolved { node: variant_result.ty } },
                   span: span,
                   name_span: span
                 ),
-                diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                diagnostics: concat(variant_result.diagnostics, variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name)))
               }
             Absent =>
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
@@ -6446,32 +6447,34 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
                   match scope_parent {
                     Present { value: scope_enum } =>
+                      let variant_result = variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved, span: span)
                       InferResult {
                         typed: make_named_expr_node(
                           occurrence_identity: texpr.occurrence_identity,
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                           children: [],
-                          inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
+                          inferred: Present { value: Resolved { node: variant_result.ty } },
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                        diagnostics: concat(variant_result.diagnostics, variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name)))
                       }
                     Absent =>
                       match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
                         Present { value: exp_enum } =>
+                          let variant_result = variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum), scope: scope, fallback: exp_enum, span: span)
                           InferResult {
                             typed: make_named_expr_node(
                               occurrence_identity: texpr.occurrence_identity,
                               name: name,
                               expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                               children: [],
-                              inferred: Present { value: Resolved { node: exp_enum } },
+                              inferred: Present { value: Resolved { node: variant_result.ty } },
                               span: span,
                               name_span: span
                             ),
-                            diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                            diagnostics: concat(variant_result.diagnostics, variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum }))
                           }
                         Absent =>
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
@@ -6492,17 +6495,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
                   match expected_variant_enum {
                     Present { value: exp_enum } =>
+                      let variant_result = variant_reference_inferred_node(expected: expected, name: name, owner_name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum), scope: scope, fallback: exp_enum, span: span)
                       InferResult {
                         typed: make_named_expr_node(
                           occurrence_identity: texpr.occurrence_identity,
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                           children: [],
-                          inferred: Present { value: Resolved { node: exp_enum } },
+                          inferred: Present { value: Resolved { node: variant_result.ty } },
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                        diagnostics: concat(variant_result.diagnostics, variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum }))
                       }
                     Absent =>
                       let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
@@ -8277,11 +8281,11 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
   } else {
     let next_name = carrier_name
 
-    let is_optional = structural.return_cardinality == CardOptional
+    let is_optional = node_is_optional_type(n: structural)
     if is_optional {
-      let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, seen: seen)
+      let expanded_inner = expand_alias_chain_for_field_access(n: extract_optional_inner_node(n: structural), env: env, module_name: module_name, seen: seen)
       NodeResolveResult {
-        resolved: with_optional_cardinality(n: expanded_inner.resolved),
+        resolved: make_optional_type(element: expanded_inner.resolved),
         diagnostics: concat(own_diags, expanded_inner.diagnostics)
       }
     } else {
@@ -8632,7 +8636,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = match sf.inferred {
-          Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
+          Present { value: Resolved { node: rt } } => rt
           _ => field_node_type_expr(n: sf)
         }
         Present { value: ft }
@@ -8650,7 +8654,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let field_expected = match field_declared_type {
       Present { value: ft } =>
-        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+        if ft.ident_span != none || type_node_is_callable(n: ft) || node_is_optional_type(n: ft) || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
           Present { value: ft }
         } else { none }
       Absent => none
@@ -8675,7 +8679,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           source_indices: scope.type_env.source_indices,
           env: scope.type_env
         ) {
-          let expected_for_shape = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
+          let expected_for_shape = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: expected_node)) {
             Present { value: resolved } => resolved
             Absent => expected_node
           }
@@ -8686,9 +8690,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             module_name: scope.module_name
           )]
         } else {
-          let expected_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
+          let expected_required = match lookup_type_for(env: scope.type_env, node: extract_optional_inner_node(n: expected_node)) {
             Present { value: resolved } => resolved
-            Absent => with_required_cardinality(n: expected_node)
+            Absent => extract_optional_inner_node(n: expected_node)
           }
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
@@ -8707,7 +8711,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               span: ar_typed.span,
               module_name: scope.module_name
             )]
-          } else if expected_node.return_cardinality != CardOptional
+          } else if !node_is_optional_type(n: expected_node)
             && coproduct_payload_where_parent_required(
               formal: formal_peeled, actual: actual_peeled, scope: scope) {
             [type_mismatch_error(
@@ -8840,13 +8844,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node = if is_present_ctor {
+    let resolved_node_result = if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
+      let owner = match interned_owner { Present { value: declared } => declared  Absent => raw_resolved }
       match val_field {
-        Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
-        Absent => raw_resolved
+        Present { value: val_fir } => apply_optional_owner(owner: owner,
+          element: resolved_type(n: val_fir.infer_result.typed), source_indices: scope.type_env.source_indices,
+          module_name: scope.module_name, span: span)
+        Absent => KernelTypeBuild { ty: raw_resolved, diagnostics: [] }
       }
-    } else { raw_resolved }
+    } else { KernelTypeBuild { ty: raw_resolved, diagnostics: [] } }
+    let resolved_node = resolved_node_result.ty
     let type_diags = match effective_lookup {
       Present { value: _ } => []
       Absent => [make_error_node(
@@ -8868,7 +8876,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(resolved_node_result.diagnostics, concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags))
     }
   }
 }
@@ -12898,10 +12906,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
 
@@ -13069,10 +13074,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
@@ -13660,9 +13662,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
           ResolvedFormal {
             parameter_identity: param_node_name_at(n: p, source_indices: env.source_indices),
             declared_type: declared_type,
-            declaration_bound_conformance: preserve_outer_optional_cardinality(
-              outer: declared_type,
-              inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
+            declaration_bound_conformance: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name),
             substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
           }
         }) },
@@ -14579,10 +14579,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)

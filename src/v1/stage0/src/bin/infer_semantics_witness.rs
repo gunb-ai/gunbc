@@ -22,17 +22,17 @@ use v1_compiler::v1_compiler_infer_patterns::{self, NodeLookupStatus};
 use v1_compiler::v1_compiler_infer_resolve::resolve_node;
 use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
 use v1_compiler::v1_compiler_infer_types::{
-    bare_map_node, is_fully_resolved, node_is_keyed_collection, node_type_compatible,
-    nominal_type_ref, resolved_type, type_resolution_verdict, TypeResolutionVerdict,
+    bare_map_node, is_fully_resolved, make_optional_type, node_is_keyed_collection,
+    node_type_compatible, nominal_type_ref, resolved_type, type_resolution_verdict,
+    TypeResolutionVerdict,
 };
 use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
     authored_container_spelling_verdict, build_newline_index, default_ident_span,
-    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
-    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
-    Node, SourceSpan,
+    leaf_node_with_span, make_arm_node, no_span, Cardinality, CompilerDiagnostic, Connective,
+    ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
 };
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -716,8 +716,10 @@ fn valid_map_index_preserves_optional_value_type() {
         .as_ref()
     {
         InferredNode::Resolved { node, .. } => {
-            assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert_eq!(node.name, "Optional");
+            assert_eq!(node.return_cardinality, Cardinality::Required);
+            assert_eq!(node.children.len(), 1);
+            assert_eq!(node.children[0].name, "Int");
         }
         other => panic!("expected resolved return type, got {:?}", other),
     }
@@ -766,7 +768,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 }
 
 fn optional_pattern_lookup_rejects_some_variant() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(make_optional_type(
         leaf_node("String".to_string()),
     ));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -785,7 +787,7 @@ fn optional_pattern_lookup_rejects_some_variant() {
 }
 
 fn optional_pattern_lookup_resolves_present_variant() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(make_optional_type(
         leaf_node("String".to_string()),
     ));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -857,7 +859,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
     });
-    let optional_inner_sum = Rc::new(Node {
+    let optional_inner_sum = make_optional_type(Rc::new(Node {
         occurrence_identity: Rc::new(
             v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
         ),
@@ -869,7 +871,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         connective: Connective::Disj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::CardOptional,
+        return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -880,7 +882,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
-    });
+    }));
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
@@ -904,7 +906,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
 
 fn optional_present_absent_patterns_keep_canonical_names() {
     let scope = empty_infer_scope();
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(make_optional_type(
         leaf_node("String".to_string()),
     ));
 
@@ -967,7 +969,7 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
 }
 
 fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children() {
-    let applied_optional = applied_generic_type_node("Optional", leaf_node("Bool".to_string()));
+    let applied_optional = make_optional_type(leaf_node("Bool".to_string()));
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_optional);
     let present_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject.clone(),
@@ -1001,8 +1003,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
 }
 
 fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
-        "Optional",
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_node(make_optional_type(
         leaf_node("Bool".to_string()),
     ));
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -1054,7 +1055,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             leaf_node("Absent".to_string()),
             leaf_node("Present".to_string()),
         ],
-        Cardinality::CardOptional,
+        Cardinality::Required,
     );
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
 
@@ -1077,7 +1078,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
 
 fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        make_optional_type(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1108,7 +1109,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
 
 fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        make_optional_type(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1139,7 +1140,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
 
 fn optional_match_exhaustiveness_accepts_present_and_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String".to_string())),
+        make_optional_type(leaf_node("String".to_string())),
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
@@ -1404,17 +1405,10 @@ fn structural_method_first_on_list_returns_optional_element() {
     .as_ref()
     .expect("first must resolve on List<Int>")
     .clone();
-    assert_eq!(
-        result.result_type.name, "Int",
-        "first on List<Int> should return Int"
-    );
-    assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "first should return Optional"
-    );
+    assert_eq!(result.result_type.name, "Optional");
+    assert_eq!(result.result_type.return_cardinality, Cardinality::Required);
+    assert_eq!(result.result_type.children.len(), 1);
+    assert_eq!(result.result_type.children[0].name, "Int");
 }
 
 fn structural_method_count_on_list_returns_int() {
@@ -1512,17 +1506,10 @@ fn structural_method_get_on_map_returns_optional_value() {
     .as_ref()
     .expect("get must resolve on Map<String,Int>")
     .clone();
-    assert_eq!(
-        result.result_type.name, "Int",
-        "get on Map<String,Int> should return Int"
-    );
-    assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "get should return Optional"
-    );
+    assert_eq!(result.result_type.name, "Optional");
+    assert_eq!(result.result_type.return_cardinality, Cardinality::Required);
+    assert_eq!(result.result_type.children.len(), 1);
+    assert_eq!(result.result_type.children[0].name, "Int");
 }
 
 fn structural_method_keys_on_map_returns_list_of_key_type() {
@@ -1842,8 +1829,10 @@ fn map_index_with_correct_key_type_succeeds() {
     );
     match result.inferred.as_ref().map(|i| i.as_ref()) {
         Some(InferredNode::Resolved { node }) => {
-            assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert_eq!(node.name, "Optional");
+            assert_eq!(node.return_cardinality, Cardinality::Required);
+            assert_eq!(node.children.len(), 1);
+            assert_eq!(node.children[0].name, "Int");
         }
         other => panic!("expected Resolved(Int?), got {:?}", other),
     }
@@ -2125,8 +2114,356 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
     }
 }
 
+// Consumer: the Optional replacement migration's resolved-producer boundary.
+// Feed authored syntax through compile_to_resolved; a hand-built application
+// would not discriminate the old CardOptional result from the root cut.
+fn authored_optional_field_resolves_to_instantiated_owner_application() {
+    let result =
+        compile_dag_resolved("module optional_root.authored\ntype Sample { value: Int? }\n");
+    let errors: std::vec::Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "authored Optional resolution refused: {errors:?}"
+    );
+    let graph = result.graph.as_ref().expect("resolved graph");
+    let module = graph
+        .modules
+        .iter()
+        .find(|m| {
+            v1_compiler::v1_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "optional_root.authored"
+        })
+        .expect("authored module");
+    let sample = lookup_type_by_name(module.type_env.clone(), "Sample".to_string())
+        .expect("Sample declaration");
+    let field = sample
+        .children
+        .iter()
+        .find(|f| f.name == "value")
+        .expect("value field");
+    let ty = resolved_type(field.clone());
+    assert_eq!(
+        ty.return_cardinality,
+        Cardinality::Required,
+        "authored T? must not escape as resolved CardOptional"
+    );
+    assert_eq!(ty.connective, Connective::NoConnective);
+    assert_eq!(
+        ty.children.len(),
+        1,
+        "Optional application has one ordered argument"
+    );
+    assert_eq!(ty.children[0].name, "Int");
+    let owner = match ty.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => node,
+        other => panic!("application needs instantiated owner payload: {other:?}"),
+    };
+    assert_eq!(owner.connective, Connective::Disj);
+    assert_eq!(owner.name, "Optional");
+    let present = owner
+        .children
+        .iter()
+        .find(|v| v.name == "Present")
+        .expect("Present arm");
+    let value = present
+        .children
+        .iter()
+        .find(|f| f.name == "value")
+        .expect("Present.value");
+    assert_eq!(
+        resolved_type(value.clone()).name,
+        "Int",
+        "payload substitutes the argument"
+    );
+}
+
+// Consumer: lookup_field_type_node's declared, bounded idempotent lookup.
+fn optional_lookup_keeps_one_optional_layer_for_optional_field() {
+    let result = compile_dag_resolved(
+        "module optional_root.flatten\ntype Inner { count: Int? }\ntype Outer { inner: Inner? }\n",
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| !v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+        "lookup source must resolve"
+    );
+    let module = result
+        .graph
+        .as_ref()
+        .expect("resolved graph")
+        .modules
+        .iter()
+        .find(|m| {
+            v1_compiler::v1_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "optional_root.flatten"
+        })
+        .expect("lookup module");
+    let outer = lookup_type_by_name(module.type_env.clone(), "Outer".to_string()).expect("Outer");
+    let inner = resolved_type(
+        outer
+            .children
+            .iter()
+            .find(|f| f.name == "inner")
+            .expect("inner field")
+            .clone(),
+    );
+    let found = v1_compiler_infer_lookup::lookup_field_type_node(
+        inner,
+        "count".to_string(),
+        result.source_indices.clone(),
+    )
+    .expect("count lookup");
+    assert_eq!(found.return_cardinality, Cardinality::Required);
+    assert_eq!(found.name, "Optional");
+    assert_eq!(found.children.len(), 1);
+    assert_eq!(
+        found.children[0].name, "Int",
+        "lookup deliberately flattens only its already-Optional result"
+    );
+}
+
+// Consumer: resolve_node_bounded's ordinary generic-application arity refusal.
+fn authored_optional_wrong_arity_refuses() {
+    let result = compile_dag_resolved(
+        "module optional_root.arity\ntype Sample { value: Optional<Int, String> }\n",
+    );
+    assert!(
+        result.diagnostics.iter().any(|d| matches!(
+            d.diagnostic.as_ref(),
+            CompilerDiagnostic::ArityMismatch {
+                expected: 1,
+                got: 2,
+                ..
+            }
+        )),
+        "Optional must refuse two arguments at its single-parameter owner: {:?}",
+        result.diagnostics
+    );
+}
+
+// Consumer: apply_optional_owner's malformed-owner refusal, independent of
+// the authored wrong-arity source control. A non-coproduct cannot supply arms.
+fn optional_application_rejects_non_coproduct_owner() {
+    let mut owner = v1_compiler::v1_compiler_infer_types::kernel_optional_type_node();
+    Rc::make_mut(&mut owner).connective = Connective::Conj;
+    let result = v1_compiler::v1_compiler_infer_types::apply_optional_owner(
+        owner,
+        leaf_node("Int".to_string()),
+        empty_source_indices(),
+        "test".to_string(),
+        zero_span(),
+    );
+    assert!(result.diagnostics.iter().any(|d| matches!(d.diagnostic.as_ref(),
+        CompilerDiagnostic::InternalError { message, .. } if message == "Optional owner is not a coproduct"
+    )), "malformed owner must refuse at the producer");
+}
+
+// Consumer: node_type_compatible must preserve the element-mismatch refusal
+// when inference stops producing CardOptional. Shared owner spelling is insufficient.
+fn optional_application_rejects_mismatched_element() {
+    assert!(
+        !node_type_compatible(
+            make_optional_type(leaf_node("Int".to_string())),
+            make_optional_type(leaf_node("String".to_string())),
+            empty_source_indices(),
+        ),
+        "Optional<Int> and Optional<String> must remain incompatible"
+    );
+}
+
+// Consumers: both comparison relations' shared positional application rule.
+// These pairs exercise the real Optional producer and main's collection slots.
+fn application_comparison_checks_all_arguments_and_arity() {
+    let optional_int = make_optional_type(leaf_node("Int".to_string()));
+    let optional_string = make_optional_type(leaf_node("String".to_string()));
+    let map_int = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let map_string = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("String".to_string()),
+    );
+    let mut wrong_arity = optional_int.clone();
+    Rc::make_mut(&mut Rc::make_mut(&mut wrong_arity).children)
+        .push_back(leaf_node("String".to_string()));
+    let pairs = [
+        (
+            "Optional identical",
+            optional_int.clone(),
+            optional_int.clone(),
+            true,
+        ),
+        (
+            "Optional element mismatch",
+            optional_int.clone(),
+            optional_string.clone(),
+            false,
+        ),
+        (
+            "Optional arity mismatch",
+            optional_int.clone(),
+            wrong_arity,
+            false,
+        ),
+        ("Map identical", map_int.clone(), map_int.clone(), true),
+        ("Map value mismatch", map_int, map_string, false),
+        (
+            "List element mismatch",
+            container_node("List".to_string(), leaf_node("Int".to_string())),
+            container_node("List".to_string(), leaf_node("String".to_string())),
+            false,
+        ),
+        (
+            "nested Optional mismatch",
+            make_optional_type(optional_int),
+            make_optional_type(optional_string),
+            false,
+        ),
+    ];
+    for (name, left, right, expected) in pairs {
+        assert_eq!(
+            node_type_compatible(left.clone(), right.clone(), empty_source_indices()),
+            expected,
+            "compatible: {name}"
+        );
+        assert_eq!(
+            v1_compiler::v1_compiler_infer_types::node_type_equals(
+                left,
+                right,
+                empty_source_indices()
+            ),
+            expected,
+            "equals: {name}"
+        );
+    }
+}
+
+// Consumer: resolve_node_bounded's finite recursive-field path must still send
+// authored optional syntax through the same ingestion boundary.
+fn recursive_generic_optional_field_uses_canonical_application() {
+    let result = compile_dag_resolved(
+        "module optional_root.recursive\ntype Chain<T> = End | Link { next: Chain<T>? }\n",
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| !v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+        "recursive declaration must resolve: {:?}",
+        result.diagnostics
+    );
+    let module = result
+        .graph
+        .as_ref()
+        .expect("resolved graph")
+        .modules
+        .iter()
+        .find(|m| {
+            v1_compiler::v1_std_core::authored_name_at(
+                result.source_indices.clone(),
+                m.module.clone(),
+            ) == "optional_root.recursive"
+        })
+        .expect("recursive module");
+    let chain = lookup_type_by_name(module.type_env.clone(), "Chain".to_string()).expect("Chain");
+    let link = chain
+        .children
+        .iter()
+        .find(|v| v.name == "Link")
+        .expect("Link");
+    let next = link
+        .children
+        .iter()
+        .find(|f| f.name == "next")
+        .expect("next field");
+    let ty = resolved_type(next.clone());
+    assert_eq!(ty.return_cardinality, Cardinality::Required);
+    assert_eq!(ty.name, "Optional");
+    assert_eq!(ty.children.len(), 1);
+    assert_eq!(ty.children[0].name, "Chain");
+}
+
+// Consumer: the ownership fold must retain the constructor branch's whole-value Read.
+// Both authored field orders conservatively clone until per-path last-use evidence exists.
+fn branch_read_prevents_record_move_before_projection() {
+    for fields in [
+        "child: Present { value: item }, text: item.text",
+        "text: item.text, child: Present { value: item }",
+    ] {
+        let source = format!(
+            "module ownership_branch_probe\n\
+             type Item {{ child: Item? text: String other: String }}\n\
+             fn build(item: Item, stop: Bool, choose: Bool) -> Item {{\n\
+               if stop {{ return item }}\n\
+               if choose {{ Item {{ {fields}, other: \"\" }} }}\n\
+               else {{ Item {{ child: item.child, text: item.text, other: item.other }} }}\n\
+             }}"
+        );
+        let result = compile_dag(&source);
+        assert_no_diagnostics(&result);
+        let proof = result
+            .ownership
+            .iter()
+            .find(|proof| proof.func_name == "build")
+            .unwrap();
+        let params = ["item".to_string(), "stop".to_string(), "choose".to_string()]
+            .into_iter()
+            .collect::<im::OrdSet<_>>();
+        let movable =
+            v1_compiler::v1_compiler_ownership::build_movable_set(proof.clone(), Rc::new(params));
+        assert!(
+            !movable.contains("item"),
+            "branch Read disappeared for {fields}"
+        );
+    }
+}
+
 fn main() -> ExitCode {
     let tests: &[(&str, fn())] = &[
+        (
+            "branch_read_prevents_record_move_before_projection",
+            branch_read_prevents_record_move_before_projection,
+        ),
+        (
+            "recursive_generic_optional_field_uses_canonical_application",
+            recursive_generic_optional_field_uses_canonical_application,
+        ),
+        (
+            "application_comparison_checks_all_arguments_and_arity",
+            application_comparison_checks_all_arguments_and_arity,
+        ),
+        (
+            "optional_application_rejects_mismatched_element",
+            optional_application_rejects_mismatched_element,
+        ),
+        (
+            "optional_application_rejects_non_coproduct_owner",
+            optional_application_rejects_non_coproduct_owner,
+        ),
+        (
+            "optional_lookup_keeps_one_optional_layer_for_optional_field",
+            optional_lookup_keeps_one_optional_layer_for_optional_field,
+        ),
+        (
+            "authored_optional_wrong_arity_refuses",
+            authored_optional_wrong_arity_refuses,
+        ),
+        (
+            "authored_optional_field_resolves_to_instantiated_owner_application",
+            authored_optional_field_resolves_to_instantiated_owner_application,
+        ),
         (
             "call_target_scope_map_disagreement_is_classified_as_missing_binding",
             call_target_scope_map_disagreement_is_classified_as_missing_binding,
