@@ -1,11 +1,14 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item, list_starts_with, skip }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import v2.compiler.self_host.emitter_producer_provenance {
+  RealizedEmitterClosure
+}
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -18,6 +21,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import v2.std.text { CharAbsent, CharFound, char_eq, string_head }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -467,20 +471,37 @@ type NativeRouteMalformedControl
 // THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
 // only that this path held no file while the native spawns ran; the stronger property — no v1
 // emitter or interpreter reachable at all, the closure admitted by native ancestry — is
-// OldRouteAbsentByConstruction, which the native ancestry acquisition lane introduces together
-// with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
-// arm can assert the stronger fact instead, at which point this arm deletes rather than being
-// relabelled.
+// OldRouteAbsentByConstruction. Production mint of that arm is a declared frontier
+// (`native_route_old_route_absent_by_construction_production_frontier`): generation 0's producer
+// is the seed, so claiming AbsentByConstruction on the genesis store would be a fabricated
+// native closure. DISSOLVE-ON: that frontier's trigger fires and every consumer of this
+// window arm asserts the stronger fact instead, at which point this arm deletes rather than
+// being relabelled.
 // THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
 // module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
 // stating this one only in a `//` block would leave the condition invisible to every Accepted
 // program, which is the same defect one file over.
-data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — the native ancestry acquisition lane lands a producer that establishes OldRouteAbsentByConstruction (no v1 emitter or interpreter reachable at all, the closure admitted by native ancestry). At that point every consumer of this arm asserts the stronger fact and this arm DELETES rather than being relabelled: the two say different things, and keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — delete this arm when OldRouteAbsentByConstruction is minted on the production native-lane receipt from an admitted native producer closure of a SucceedsNative generation, EXECUTED (native_route_old_route_absent_by_construction_production_frontier). Until then the window arms are the production observation. The two say different things: keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+
+// PRODUCTION CONSUMER of OldRouteAbsentByConstruction (review 64952, DESIGN §3c). The arm is
+// folded by native_route_old_route_closed and by v2.test.v2_native_route fixture receipts. The
+// emitted decoder (05_emit_rust native-lane host facts) still matches only withdrawn /
+// not_present_at_window. TRIGGER: that decoder grows the arm AND write_host_facts emits
+// disposition absent_by_construction carrying a v2_emitter-admitted closure of a SucceedsNative
+// generation, EXECUTED. Unbound: binding this row to a declaration would report fired on the
+// day the row was written.
+data native_route_old_route_absent_by_construction_production_frontier: DissolutionCondition = unbound_dissolution(description: "production mint of OldRouteAbsentByConstruction: emitted native-lane decoder and host facts emit the arm from a SucceedsNative generation whose produced_by_execution_of is the named parent artifact, EXECUTED rather than fixtured. Until then this arm does not close native_route_old_route_closed (a v2_emitter_closure_admission ProducerMintAdmitted is a negative module-path filter and names the same modules as the interpreted door-run; review 66062). The live receipt uses the window arms.")
+
+// MIXED DIGEST FAMILIES ON NativeRouteReceipt (review 65524, DESIGN section 4c).
+// preparation_seed_identity is sha512 of GenesisFromSeed.seed_binary; executable_identity is
+// sha256 of the acquired compiler. One reader, two hash families. THE DISSOLVE-ON IS THIS ROW.
+data native_route_receipt_digest_family_unification_frontier: DissolutionCondition = unbound_dissolution(description: "unify NativeRouteReceipt.preparation_seed_identity and executable_identity onto one content-hash family (the genesis store's sha512, or one modeled HashFamily both fields inhabit), EXECUTED: admission or identity comparison consumes both as that family. Unbound: the trigger is that unification executing, not deleting a comment. NOT satisfied by leaving mixed hex strings under one String type, by hashing one field twice, or by minting a second reader.")
 
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteNotPresentAtWindow { expected_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
+  | OldRouteAbsentByConstruction { admitted_native_producer_closure: RealizedEmitterClosure }
   | OldRouteControlAbsent
 
 // THE EMITTED COMPILER'S BUILD, AS A RECEIPT RATHER THAN AS A SIDE EFFECT OF ONE. Before this row
@@ -490,9 +511,11 @@ type NativeRouteOldRouteControl
 // toolchain action defaults RUSTFLAGS to `-D warnings`, a workstation exports none, and the same
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
-// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
-// (never inherited -- the value is the repository's own row, gunbc.repo_self_warning_policy
-// repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
+// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that
+// spawn (never inherited -- gunbc.repo_self_warning_policy repo_self_warning_denial_rustflags
+// is the warning-denial prefix; a remapped genesis concatenates --remap-path-prefix, and the
+// receipt records that observed string rather than synthesizing the denial row alone -- review
+// 65922),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a
 // wrapper would be evidence about a build that did not happen), that executable's
@@ -512,14 +535,17 @@ type NativeRouteEmittedBuild {
   warning_count: Int
 }
 
-// THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
-// seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
-// native bootstrap); the emitted closure's identity; the executed binary's path AND content
-// identity (route identity is observed, never synthesized from the intended command); the
-// DERIVED universe; the module → source-path relation over the universe's modules (the context
-// reclassification's join key, carried so admission can re-ask the join, not trust it); the
-// OBSERVED population; the per-file front-end refusals the collecting fold gathered; and every
-// control.
+// THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree;
+// `preparation_seed_identity` is the sha512 of the seed binary that executed genesis
+// (`GenesisFromSeed.seed_binary` / ancestry `seed_binary`), not the acquired generation's
+// identity and not the live `current_exe` sha256 this field previously carried; the executed
+// binary's `executable_identity` is still sha256 of the acquired compiler
+// (`native_route_receipt_digest_family_unification_frontier`); the emitted closure's
+// identity; the executed binary's path AND content identity (route identity is observed, never
+// synthesized from the intended command); the DERIVED universe; the module → source-path
+// relation over the universe's modules (the context reclassification's join key, carried so
+// admission can re-ask the join, not trust it); the OBSERVED population; the per-file front-end
+// refusals the collecting fold gathered; and every control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -858,19 +884,28 @@ fn native_route_malformed_control_holds(receipt: NativeRouteReceipt) -> Bool {
   }
 }
 
+// Not v2_emitter_closure_admission. That fold is a negative module-path filter; the
+// interpreted door-run closure is ProducerMintAdmitted and names the same modules as a
+// native compile (v2.compiler.self_host.ancestry, review 66062). Nativeness is
+// SucceedsNative executed bytes. Until native_route_old_route_absent_by_construction_production_frontier
+// the OldRouteAbsentByConstruction arm does not close this clause.
 fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
+    OldRouteAbsentByConstruction { admitted_native_producer_closure: _ } =>
+      false
     OldRouteControlAbsent => false
   }
 }
 
 // The build clauses read the emitted-build receipt and nothing else: rustc named itself; the
-// RUSTFLAGS the lane set are exactly the repository's denial row (equality, not containment --
-// a flag string that carries the denial plus something else is a different build environment
-// and the receipt must say so); and the build completed with status 0 and no warning header.
+// RUSTFLAGS the lane set are the denial row, or the denial row then ONE remap-path-prefix flag
+// (equality of the denial prefix, then a nonempty suffix that is that flag's assignment and
+// contains no later token -- a string that carries the denial plus something other than that
+// single remap is a different build environment and the receipt must say so); and the build
+// completed with status 0 and no warning header.
 fn native_route_emitted_build_rustc_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.emitted_build.rustc_identity != ""
 }
@@ -879,8 +914,26 @@ fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Boo
   receipt.emitted_build.compiler_path != ""
 }
 
+fn rustflags_suffix_has_later_token(suffix: String) -> Bool {
+  match string_head(s: " ") {
+    CharFound { value: space } =>
+      any(xs: suffix, predicate: fn(c) { char_eq(a: c, b: space) })
+    CharAbsent => false
+  }
+}
+
+fn native_route_rustflags_are_denial_then_remap(flags: String) -> Bool {
+  let prefix = concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=")
+  let suffix = skip(xs: flags, n: length(xs: prefix))
+  list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
+    && !is_empty(xs: suffix)
+    && !rustflags_suffix_has_later_token(suffix: suffix)
+}
+
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
-  receipt.emitted_build.rustflags == repo_self_warning_denial_rustflags()
+  let flags = receipt.emitted_build.rustflags
+  flags == repo_self_warning_denial_rustflags()
+    || native_route_rustflags_are_denial_then_remap(flags: flags)
 }
 
 fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {

@@ -13,46 +13,47 @@ import std.types { Bool, List, NonEmptyStr, String }
 // THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (DESIGN §5). Neither
 // obligation was created by the change that registers it: the artifact-axis
 // incompleteness was DISCOVERED by measurement on gunbc#8181, and the frontier
-// numerator's inability to distinguish producers is a property of the disposition
-// carrier as it already stands. They are registered here so that documenting
-// previously hidden debt never reads as creating it — the incentive that would
-// otherwise keep it hidden.
+// numerator's inability to distinguish producers is a property of the
+// disposition carrier as it already stands. They are registered here so that documenting
+// previously hidden debt never reads as creating it.
 //
-// They are registered rather than left in a session ledger for one blunt reason: an
-// archived session takes its unregistered obligations with it, and both of these
-// survive the lane that found them.
+// They are registered rather than left in a session ledger because an archived
+// session takes its unregistered obligations with it, and both of these survive
+// the lane that found them.
 //
-// Neither is on the critical path to the first frontier flip. Artifact-axis
-// sensitivity is already fail-closed in the direction that matters — false
-// invalidation, never false agreement — so a first flip may proceed by pinning the
-// build directory. The producer-provenance obligation gates DECLARING n/27, not
-// producing it, and the numerator is 0 with nothing currently able to promote.
+// Neither is on the critical path to the first frontier flip. The producer-provenance
+// obligation gates DECLARING n/27, not producing it, and the numerator is 0 with
+// nothing currently able to promote.
+//
+// artifact_axis_omits_build_path WAS DELETED after review 65547 because genesis
+// passes --remap-path-prefix and NamedBuildConfiguration hashes BuildPathTreatment.
+// review 65873 restored it: those are the declared remedies, not executed evidence
+// that remapped bytes agree across directories. build_path_treatment_digest hashes
+// remap_prefix_to and not remap_prefix_from, so two hosts now AGREE on
+// build_configuration while bytes may still embed distinct paths — false agreement,
+// the unsafe direction of the original claim_at_risk. The row stays until a
+// two-directory remapped control observes identical bytes.
 type PromotionObligation {
   subject: DeclarationRef
   claim_at_risk: NonEmptyStr
   condition: DissolutionCondition
 }
 
-// THE SIX DECLARED AXES DO NOT DETERMINE THE ARTIFACT. A Rust debug binary embeds its
-// build directory, so identical source built in two directories yields different bytes
-// while every declared axis agrees; the same directory rebuilt yields byte-identical
-// output (measured by hand twice, gunbc#8181). The identity therefore identifies a
-// generation UP TO BUILD LOCATION.
-//
-// The condition is UNBOUND deliberately. Two honest remedies exist — remap the path out
-// of the emitted artifact, or name build path in build_configuration — and neither has
-// a declaration to bind to yet. Binding it to a decl nobody has designed would be a
-// checkable trigger impersonating a decision; unbound prose that cannot report itself
-// fired is the honest arm here.
+// THE SIX DECLARED AXES PLUS A NAMED TREATMENT STILL DO NOT DETERMINE THE ARTIFACT
+// BY EXECUTED EVIDENCE. A Rust debug binary embeds its build directory (measured
+// gunbc#8181). Genesis passes --remap-path-prefix and the build-configuration axis
+// hashes BuildPathTreatment; that names the treatment, it does not prove the bytes.
+// The remapped digest omits remap_prefix_from, so two hosts with the same canonical
+// prefix agree on GenerationIdentity even if remap left path in the artifact.
 data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
   subject: decl_field_ref(
     module_path: "v2.compiler.self_host.generation",
     decl_name: "GenerationIdentity",
     field_name: "build_configuration"
   ),
-  claim_at_risk: "Two generations agreeing on all six declared axes may still produce different artifact bytes, so artifact-digest equality across hosts or workspaces is not a reproducibility oracle." as NonEmptyStr,
+  claim_at_risk: "Two generations agreeing on the declared axes including BuildPathRemapped { remap_prefix_to } may still produce different artifact bytes if remap does not strip every path occurrence, so artifact-digest equality across hosts is not a reproducibility oracle. The previous gap was fail-closed (false invalidation); hashing only remap_prefix_to is fail-open until remapped two-directory bytes match." as NonEmptyStr,
   condition: unbound_dissolution(
-    description: "🟡 dissolve-on: EITHER the emitted artifact is built with the path remapped out (making the declared axes an actual determinant of the bytes), OR build path is named as a component of build_configuration (making the axis tell the truth about what it covers). Papering over it inside a comparison is not one of the remedies." as NonEmptyStr
+    description: "dissolve-on: an executed two-directory control — same source, two build directories, --remap-path-prefix to one canonical prefix — observes identical artifact bytes, and a discriminating RED fails when remap is omitted. Unbound: the trigger is that pair executing. NOT satisfied by naming BuildPathTreatment on NamedBuildConfiguration, by passing the cargo flag, by hashing remap_prefix_to, or by deleting this row. The obligation stays until that control, asserting otherwise is rung inflation (DESIGN section 4b meta-obligation 1, review 65873)." as NonEmptyStr
   ),
 }
 

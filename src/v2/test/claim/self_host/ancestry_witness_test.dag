@@ -27,9 +27,16 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
+  BuildPathPinned,
+  BuildPathRemapped,
+  BuildPathTreatment,
+  BuildPathUnresolved,
   GeneratedArtifactIdentity,
   GenerationIdentity,
+  NamedBuildConfiguration,
   ObservedArtifactDigest,
+  build_configuration_axis_digest,
+  build_path_treatment_digest,
   generation_identity_agrees,
   observed_artifact_digest
 }
@@ -60,10 +67,6 @@ import v2.compiler.self_host.ancestry {
   ancestry_successor_parent_generation_negative,
   genesis_already_executed,
   genesis_candidate_is_not_a_genesis,
-  BuildPathPinned,
-  BuildPathRemapped,
-  BuildPathUnresolved,
-  BuildPathTreatment,
   GenesisAdmitted,
   GenesisExecuted,
   GenesisFromSeed,
@@ -872,4 +875,56 @@ test fn ancestor_identity_moving_on_an_axis_is_no_longer_current() -> Bool {
           right: anc_identity(artifact: anc_artifact(hex: anc_other_hex))
         )
   }
+}
+
+test fn remapping_is_part_of_build_configuration_identity() -> Bool {
+  let unspecified = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: BuildPathUnresolved
+    }
+  )
+  let remapped = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-a",
+        remap_prefix_to: "/gunbc/remap/build"
+      }
+    }
+  )
+  let remapped_other_host = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-b",
+        remap_prefix_to: "/gunbc/remap/build"
+      }
+    }
+  )
+  let remapped_other_to = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-a",
+        remap_prefix_to: "/gunbc/remap/other"
+      }
+    }
+  )
+  unspecified != remapped
+    && remapped == remapped_other_host
+    && remapped != remapped_other_to
+}
+
+test fn remapped_and_pinned_do_not_share_build_path_digest() -> Bool {
+  let remapped = build_path_treatment_digest(
+    treatment: BuildPathRemapped {
+      remap_prefix_from: "build_path_pinned",
+      remap_prefix_to: "/build/dir"
+    }
+  )
+  let pinned = build_path_treatment_digest(
+    treatment: BuildPathPinned { directory: "/build/dir" }
+  )
+  remapped != pinned
 }

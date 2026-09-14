@@ -271,6 +271,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
     let mut v2_native_route_mode = false;
+    let mut v2_native_genesis_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -355,6 +356,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             // receipt minted here and one minted by the deleted lane cannot be two facts.
             "--v2-native-route" => {
                 v2_native_route_mode = true;
+            }
+            "--v2-native-genesis" => {
+                v2_native_genesis_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -1275,6 +1279,24 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
+    }
+
+    if v2_native_genesis_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        eprintln!(
+            "v2-native-genesis: one-time V1SeedEmitter → NativeGeneration 0 (operator-invoked; not a required lane)"
+        );
+        return match v1_compiler::cli_run::run_native_genesis(&roots) {
+            Ok(()) => Ok(ExitCode::SUCCESS),
+            Err(e) => {
+                eprintln!("v2-native-genesis: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
     }
 
     if v2_native_route_mode {
