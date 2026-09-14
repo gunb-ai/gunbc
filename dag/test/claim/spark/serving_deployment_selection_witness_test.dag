@@ -1673,6 +1673,40 @@ test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> 
          })
 }
 
+// THE PRODUCT ROOT, RESTORED, AND ITS COST IS THE POINT RATHER THAN A PROBLEM.
+//
+// THE DECOMPOSITION DELETED THIS AND I DID NOT NOTICE. Splitting the live claim into a BEHAVIOUR half
+// over a one-topology designed field and an INHABITANCE half that runs no decision left NOTHING
+// executing `select_serving_deployment(input: deepseek_v4_1_decision_input)` -- main executes it three
+// times, this branch executed it zero. The cost fell partly because the execution the brief requires
+// was gone, which is DESIGN section 5's specification-without-execution arriving one layer up:
+// inhabitance checks the producer emits the right SHAPE, and a behaviour claim over supplied inputs
+// checks the fold, and NEITHER of them runs the real decision. Found by review 66368.
+//
+// THE BRIEF NAMES THIS AS A REQUIREMENT, not a nice-to-have: the serving consumer must obtain the
+// result THROUGH the route integration, and removing that integration must make a PRODUCT-ROOT control
+// fail. A claim over a designed field cannot fail for that reason -- its field is not the product's.
+//
+// SO THIS IS EXPECTED TO EXCEED THE NEW-WITNESS EVAL-STEP BUDGET, and that is the honest state rather
+// than something to engineer away. Roughly 188,000 of its cost is the select_serving_deployment call
+// on the live 24-candidate field; the assertions over the result are a rounding error beside it. A
+// product-root claim over a live decision costs what the decision costs, and buying a green gate by
+// deleting the only execution of the product root is not a cost reduction, it is coverage deletion
+// wearing one.
+test fn the_live_v4_1_serving_decision_excludes_every_admissible_candidate() -> Bool {
+  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+    NoFeasibleServingDeployment { causes: cs } =>
+      count(cs) > 0
+        && causes_name_axis(cs: cs, axis: ax_component_route)
+        && all(deepseek_v4_1_candidate_field.candidates,
+             k => causes_name_axis(cs: cs, axis: k.identity))
+    ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
+    ServingDeploymentSelected { selected: _ } => false
+    ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
+    ServingDeploymentSelectionRefused { defects: _ } => false
+  }
+}
+
 test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
   let f = deepseek_v4_1_decision_input.field
   declaration_ref_eq(a: f.identity, b: deepseek_v4_1_candidate_field.identity)
@@ -1698,12 +1732,17 @@ test fn the_live_v4_1_decision_input_inhabits_the_real_subject() -> Bool {
 // TP8 it does not. That is the whole reason topology is part of this question, and it is why the
 // operator's TP4 Group A verdict is NOT a fact about the checkpoint in general.
 //
-// AND THIS IS WHY THE PRODUCT-ROOT WITNESS ABOVE STILL REPORTS AN EVIDENCE NEED rather than an infeasible
-// field. The live domain enumerates every tp from 1 to the fleet host count, so candidates at TP5 and
-// above survive the memory screen on their own arithmetic. What would exclude THEM is host admissibility
-// -- four hosts hold this subject's deployment -- and that is the separately outstanding host-commitment
-// integration, not something this cut may settle privately. So the scoped negative is exactly that:
-// scoped, per candidate, and the field-wide answer remains open for a reason this change names.
+// WHAT THIS PARAGRAPH USED TO SAY, AND WHY IT IS NOW FALSE. It read: the product-root witness still
+// reports an EVIDENCE NEED rather than an infeasible field, because the live domain enumerates every tp
+// from 1 to the fleet host count and candidates at TP5 and above survive the memory screen on their own
+// arithmetic -- what would exclude THEM is host admissibility, separately outstanding.
+//
+// THAT HOST-ADMISSIBILITY INTEGRATION LANDED (#11308) AND THIS BRANCH MERGED IT. The domain is now the
+// subject's ADMISSIBLE host set, which holds four hosts, so TP5 through TP8 do not exist to survive
+// anything. Every shape that remains is excluded, and the product-root witness reports
+// NoFeasibleServingDeployment rather than an evidence need. The anticipated exclusion became the actual
+// one, which is the outcome the old text predicted -- and kept asserting the prediction after it came
+// true. Review 66368 found it; it is the same expired-premise class this branch filed twice.
 fn v41_candidate_at_tp(tp: Nat, replicas: Nat, name: String) -> DeploymentCandidate {
   cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
 }

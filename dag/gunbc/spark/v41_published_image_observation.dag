@@ -193,17 +193,6 @@ data v41_published_engram_placement_observation: PublishedImageObservation = v41
   instrument: "site-packages layer extracted from the registry API and read directly, the same instrument as the registry.py reading above" as NonEmptyStr,
 )
 
-// THE PREDICATE A ROUTE AUTHORITY JOINS ON, so the decisive fact is a type and not a substring of the
-// prose above. It is deliberately three-valued at the source: an unread image must not be able to
-// reach this function at all, which is why there is no arm here for "not looked at" -- that state is
-// the absence of an observation row, and it is the route authority's own unobserved arm.
-fn image_offers_storage_backed_engram(m: ImageEngramPlacementMechanism) -> Bool {
-  match m {
-    EngramPlacementStorageBacked { setting: _, how: _ } => true
-    EngramPlacementMemoryBackedOnly { setting: _, allocation: _, absent_capabilities: _ } => false
-    EngramPlacementSettingsAbsent { searched: _ } => false
-  }
-}
 
 // HOW THE ABSENCE READS TO A HUMAN, carried as a rendering of the fields rather than as a second
 // sentence that could drift from them.
