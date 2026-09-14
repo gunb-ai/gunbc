@@ -63,6 +63,8 @@ data call_preservation_lambda_arg_source: String = "module m\n\nfn apply(f: fn(I
 
 data call_preservation_match_arm_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller(b: Bool) -> Int { match b { true => g(x: 1), false => 0 } }\n"
 
+data call_preservation_list_arg_source: String = "module m\n\nfn g(xs: List<Int>) -> Int { 0 }\n\nfn caller() -> Int { g(xs: [1, 2]) }\n"
+
 type CallPreservationProducerShape
   = SoleBodyIdentCall
   | PostfixDottedCall
@@ -291,6 +293,20 @@ fn match_arm_call_preserved() -> Bool {
     Present { value: root } =>
       (call_arity_named(root: root, callee: ^g) == 1)
         && !tree_has_lbrace_operator(root: root)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_fat_arrow)
+        && !call_args_include_punct(root: root, callee: ^g, punct: ^dag_token_fat_arrow)
+  }
+}
+
+fn list_arg_call_preserved() -> Bool {
+  match normalize_unprepared(src: call_preservation_list_arg_source, file: ^call_pres_list) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^g) == 1)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_lbracket)
+        && !tree_has_punct_call_operator(root: root, punct: ^dag_token_rbracket)
+        && !call_args_include_punct(root: root, callee: ^g, punct: ^dag_token_lbracket)
+        && !call_args_include_punct(root: root, callee: ^g, punct: ^dag_token_rbracket)
   }
 }
 
@@ -383,7 +399,13 @@ test fn fold_fn_form_after_call_preservation_is_loop_not_surface() -> Bool {
 test fn fold_arrow_form_after_call_preservation_is_not_surface() -> Bool {
   match fold_ingest_has_surface(src: fold_arrow_form_snippet, file: ^fold_arrow_surf) {
     Absent => false
-    Present { value: surface } => !surface
+    Present { value: surface } =>
+      !surface
+        && match normalize_unprepared(src: fold_arrow_form_snippet, file: ^fold_arrow_punct) {
+          Absent => false
+          Present { value: root } =>
+            !tree_has_punct_call_operator(root: root, punct: ^dag_token_fat_arrow)
+        }
   }
 }
 
@@ -609,4 +631,8 @@ test fn call_preservation_lambda_argument_keeps_outer_call() -> Bool {
 
 test fn call_preservation_match_arm_keeps_callee_and_arg() -> Bool {
   match_arm_call_preserved()
+}
+
+test fn call_preservation_list_arg_does_not_use_bracket_tokens_as_call() -> Bool {
+  list_arg_call_preserved()
 }

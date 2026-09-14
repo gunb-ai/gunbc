@@ -2292,6 +2292,21 @@ fn dag_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
+fn dag_lex_delimiter_token(sym: Symbol) -> Bool {
+  dag_lex_token_symbol(sym: sym) && (
+    (sym == ^dag_token_lbrace)
+      || (sym == ^dag_token_rbrace)
+      || (sym == ^dag_token_lparen)
+      || (sym == ^dag_token_rparen)
+      || (sym == ^dag_token_lbracket)
+      || (sym == ^dag_token_rbracket)
+      || (sym == ^dag_token_comma)
+      || (sym == ^dag_token_colon)
+      || (sym == ^dag_token_fat_arrow)
+      || (sym == ^dag_token_arrow)
+  )
+}
+
 fn dag_sync_tokens() -> List<Symbol> {
   [
     ^dag_token_kw_module,
@@ -4531,7 +4546,15 @@ fn dag_round_trip_lex_ready() -> Bool {
   dag_lex_token_symbol(sym: ^dag_token_eq) &&
   dag_lex_token_symbol(sym: ^dag_token_lparen) &&
   dag_lex_token_symbol(sym: ^dag_token_rparen) &&
-  dag_lex_token_symbol(sym: ^dag_token_arrow)
+  dag_lex_token_symbol(sym: ^dag_token_arrow) &&
+  dag_lex_token_symbol(sym: ^dag_token_lbracket) &&
+  dag_lex_token_symbol(sym: ^dag_token_rbracket) &&
+  dag_lex_token_symbol(sym: ^dag_token_fat_arrow) &&
+  dag_lex_delimiter_token(sym: ^dag_token_lbracket) &&
+  dag_lex_delimiter_token(sym: ^dag_token_rbracket) &&
+  dag_lex_delimiter_token(sym: ^dag_token_fat_arrow) &&
+  dag_lex_delimiter_token(sym: ^dag_token_arrow) &&
+  !dag_lex_delimiter_token(sym: ^dag_token_plus)
 }
 
 fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {

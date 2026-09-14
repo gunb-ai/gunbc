@@ -27,6 +27,7 @@ import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
   dag_lex_token_symbol,
+  dag_lex_delimiter_token,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
   dag_match_arm_node,
@@ -812,19 +813,10 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_surface_punct_token(id: Symbol) -> Bool {
-  (id == ^dag_token_lbrace)
-    || (id == ^dag_token_rbrace)
-    || (id == ^dag_token_lparen)
-    || (id == ^dag_token_rparen)
-    || (id == ^dag_token_comma)
-    || (id == ^dag_token_colon)
-}
-
 fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      if body_lower_surface_punct_token(id: id) {
+      if dag_lex_delimiter_token(sym: id) {
         optional_absent()
       } else if dag_lex_token_symbol(sym: id) {
         optional_present(
@@ -1199,7 +1191,7 @@ fn body_lower_search_call_spine(
     Present { value: pair } =>
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
         Present { value: left_id } =>
-          if body_lower_surface_punct_token(id: left_id) {
+          if dag_lex_delimiter_token(sym: left_id) {
             body_lower_search_call_spine(node: pair.right, at: at)
           } else {
             at(stripped)
@@ -2444,7 +2436,7 @@ fn body_lower_arg_comma_split_left_ok(node: Node) -> Bool {
   match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
     Absent => false
     Present { value: id } =>
-      if body_lower_surface_punct_token(id: id) {
+      if dag_lex_delimiter_token(sym: id) {
         false
       } else if (id == ^dag_token_kw_fn)
         || (id == ^dag_token_kw_match)
@@ -2547,7 +2539,7 @@ fn body_lower_named_arg_value_optional(arg_capture: Node) -> Outcome<Optional<No
 fn body_lower_node_is_punct_atom(node: Node) -> Bool {
   match node_atom_identity_optional(node: node) {
     Absent => false
-    Present { value: id } => body_lower_surface_punct_token(id: id)
+    Present { value: id } => dag_lex_delimiter_token(sym: id)
   }
 }
 
@@ -2870,7 +2862,7 @@ fn body_lower_ident_callee_optional(left: Node) -> Optional<Node> {
       match node_atom_identity_optional(node: callee) {
         Absent => optional_absent()
         Present { value: id } =>
-          if body_lower_surface_punct_token(id: id) {
+          if dag_lex_delimiter_token(sym: id) {
             optional_absent()
           } else if dag_lex_token_symbol(sym: id) {
             optional_absent()
