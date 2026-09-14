@@ -15,9 +15,6 @@ import gunbc.roadmap_authority {
   RoadmapAcceptanceEventHistoryLoadRefused,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
   withheld_node_ids_from_live_history,
   WithheldNodeIdsProjected,
   WithheldNodeIdsProjectionRefused,
@@ -38,6 +35,7 @@ import gunbc.roadmap_authority {
   ProjectedRoadmapDependencyEdgesProjectionRefused,
   startable_nodes_missing_closing_contract_for_accepted,
   frontier_sets_from_events,
+  frontier_sets_from_live_history,
   FrontierSetsProjected,
   FrontierSetsProjectionRefused,
 }
@@ -155,9 +153,9 @@ fn active_edges() -> List<RoadmapEdge> {
 }
 
 fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: ids, withheld: _ } => Present { value: ids }
+    FrontierSetsProjectionRefused { detail: _ } => Absent
   }
 }
 
@@ -580,7 +578,7 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
         AcceptanceRecorded { receipt: receipt },
       ])) {
         FrontierSetsProjectionRefused { detail } =>
-          detail == join(["live-receipt-on-superseded-line:", "entry-graph-union-construction"], "")
+          detail == concat("live-receipt-on-superseded-line:", "entry-graph-union-construction")
         FrontierSetsProjected { accepted: _, withheld: _ } => false
       }
   }
@@ -1117,24 +1115,20 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match live_withheld_node_ids() {
-        Absent => false
-        Present { value: withheld } =>
-          match projected_roadmap_dependency_edges_projection() {
-            ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-              fold(
-                active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
-                init: true,
-                f: fn(acc, edge) {
-                  acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-                }
-              )
-            ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-          }
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(
+            active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+            init: true,
+            f: fn(acc, edge) {
+              acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+            }
+          )
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
       }
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+    FrontierSetsProjectionRefused { detail: _ } => false
   }
 }
 

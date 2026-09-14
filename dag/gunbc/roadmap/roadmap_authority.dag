@@ -3166,16 +3166,6 @@ fn roadmap_acceptance_history_integrity_holds() -> Bool {
 // load-bearing: weaken the decision arm so an undecided value satisfies the contract and the
 // contract stays green while only the control reds.
 
-type AcceptedRoadmapNodesProjection
-  = AcceptedRoadmapNodesProjected { nodes: List<RoadmapNode> }
-  | AcceptedRoadmapNodesProjectionRefused { detail: String }
-
-type AcceptedRoadmapNodeIdsProjection
-  = AcceptedRoadmapNodeIdsProjected { ids: List<RoadmapNodeId> }
-  | AcceptedRoadmapNodeIdsProjectionRefused { detail: String }
-
-// withheld rides next to accepted so a caller-supplied plan is not re-read from the public
-// carrier (the same law the forecast fold already states for accepted).
 type RoadmapAuthorityProjection
   = RoadmapAuthorityProjected {
       doc: RoadmapDocument,
@@ -3183,40 +3173,6 @@ type RoadmapAuthorityProjection
       withheld: List<RoadmapNodeId>,
     }
   | RoadmapAuthorityProjectionRefused { detail: String }
-
-fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
-  match frontier_sets_from_live_history() {
-    FrontierSetsProjectionRefused { detail: detail } =>
-      AcceptedRoadmapNodesProjectionRefused { detail: detail }
-    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
-      AcceptedRoadmapNodesProjected {
-        nodes: declared_roadmap_nodes() |> filter(n => accepted |> any(a => a == n.node)),
-      }
-  }
-}
-
-fn accepted_roadmap_node_ids_projection_from_carrier_text(text: String) -> AcceptedRoadmapNodeIdsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
-      AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match frontier_sets_from_events(events: events) {
-        FrontierSetsProjectionRefused { detail: detail } =>
-          AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
-        FrontierSetsProjected { accepted: accepted, withheld: _ } =>
-          AcceptedRoadmapNodeIdsProjected { ids: accepted }
-      }
-  }
-}
-
-fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
-  match frontier_sets_from_live_history() {
-    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
-      AcceptedRoadmapNodeIdsProjected { ids: accepted }
-    FrontierSetsProjectionRefused { detail: detail } =>
-      AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
-  }
-}
 
 // One load of the carrier produces both frontier halves. Callers that need accepted AND withheld
 // consume this, never a pair of independent live projections. FrontierSetsProjected is admitted

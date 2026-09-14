@@ -8,9 +8,6 @@ import gunbc.roadmap_authority {
   roadmap_acceptance_receipts_from_carrier_text,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
-  accepted_roadmap_node_ids_projection_from_carrier_text,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
   withheld_node_ids_from_carrier_text,
   WithheldNodeIdsProjected,
   WithheldNodeIdsProjectionRefused,
@@ -133,7 +130,7 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_non_empty_prior_prefix_law_catches_deletion_without_seal_coedit()
     && witness_changed_history_empty_prior_bypass_admits_deletion_observed_prior_refuses()
     && witness_digest_field_mutation_without_revocation_refuses_prefix()
-    && witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses()
+    && witness_authority_projection_refuses_when_receipts_projection_refuses()
     && witness_receipts_projection_refuses_when_history_load_refuses()
     && witness_withheld_projection_refuses_when_history_load_refuses()
     && witness_unreadable_carrier_text_refuses_load_with_line_parse_detail()
@@ -332,15 +329,15 @@ test fn witness_unreadable_carrier_text_refuses_load_with_line_parse_detail() ->
   }
 }
 
-test fn witness_accepted_node_ids_projection_refuses_when_receipts_projection_refuses() -> Bool {
+test fn witness_authority_projection_refuses_when_receipts_projection_refuses() -> Bool {
   match roadmap_acceptance_receipts_from_carrier_text(text: unreadable_carrier_text_fixture) {
     RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
     RoadmapAcceptanceReceiptsProjectionRefused { detail: receipt_detail } =>
-      match accepted_roadmap_node_ids_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
-        AcceptedRoadmapNodeIdsProjected { ids: _ } => false
-        AcceptedRoadmapNodeIdsProjectionRefused { detail: node_detail } =>
-          node_detail == receipt_detail
-            && string_contains(s: node_detail, pattern: "line 1:")
+      match roadmap_authority_projection_from_carrier_text(text: unreadable_carrier_text_fixture) {
+        RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
+        RoadmapAuthorityProjectionRefused { detail: authority_detail } =>
+          authority_detail == receipt_detail
+            && string_contains(s: authority_detail, pattern: "line 1:")
       }
   }
 }
