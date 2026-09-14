@@ -668,6 +668,42 @@ fn analyze_lowered_transform_call(
   analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
 }
 
+// A FOLD-FAMILY CALL THAT LOWERED TO A TRANSFORM IS A FOLD SITE THE SEAM DID NOT RESOLVE. Since
+// gunbc#11322 the body producer carries a call whose step is passed BY NAME -- `fold(xs, init: 0,
+// f: step)` -- to the normalized tree as Transform [ fold, xs, 0, step ]: the callee identity is
+// the first positional child, exactly as v2.std.node_query node_is_call reads it, and
+// v2.compiler.fold_lowering fold_call_lowering answered FoldCallStepFormUnresolved for it, so no
+// seam Loop exists and no carrier is bound. Before this arm the site fell into the ordinary
+// lowered-call classification under whatever combiner `fold` is not registered as, and was
+// absent from the census: gunbc.recurring_failure_mode fold_shape_visible_to_no_lens.
+//
+// WHAT THIS ARM DOES AND DELIBERATELY DOES NOT DO. It counts the site and refuses
+// ^fold_accumulator_unread at it, typed and located, and walks the children under iteration with
+// the carriers it was handed -- no new carrier. It does NOT read a step from the operands. The
+// operands are positional with the named-argument LABELS erased by the lowering, and the seed
+// binds actuals by label in any source order, so which operand fills the callee's step slot is not
+// a fact this tree carries; reading the last one would be the source-order-equals-declaration-order
+// assumption, and reading the one that happens to resolve to an Arrow member would be the
+// first-plausible-ident fabrication the fold lowering itself refuses. Resolving the step is the
+// second half of the capability and waits on the label reaching the Transform; until then the
+// honest answer is the refusal the lens always carried for this case, now reachable.
+fn analyze_lowered_fold_call(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  analyze_children(
+    n: node,
+    carriers: carriers,
+    bindings: bindings,
+    iterating: true,
+    here: Cons {
+      head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
+      tail: std.algebra.Empty
+    }
+  )
+}
+
 fn analyze_absent_primary_expr(
   node: Node,
   carriers: List<Symbol>,
@@ -680,13 +716,17 @@ fn analyze_absent_primary_expr(
     ComputationNode { behavior: Transform } =>
       match lowered_transform_combiner_optional(node: node) {
         Present { value: combiner } =>
-          analyze_lowered_transform_call(
-            node: node,
-            combiner: combiner,
-            carriers: carriers,
-            bindings: bindings,
-            iterating: iterating
-          )
+          if v2.compiler.fold_lowering.fold_family_head(sym: combiner) {
+            analyze_lowered_fold_call(node: node, carriers: carriers, bindings: bindings)
+          } else {
+            analyze_lowered_transform_call(
+              node: node,
+              combiner: combiner,
+              carriers: carriers,
+              bindings: bindings,
+              iterating: iterating
+            )
+          }
         Absent =>
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
@@ -811,6 +851,18 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
         }
       } else {
         1
+      }
+    ComputationNode { behavior: Transform } =>
+      // A fold-family call the seam left as a Transform (see analyze_lowered_fold_call): a site,
+      // never a bound carrier.
+      match lowered_transform_combiner_optional(node: n) {
+        Present { value: combiner } =>
+          if v2.compiler.fold_lowering.fold_family_head(sym: combiner) {
+            if bound_only { 0 } else { 1 }
+          } else {
+            0
+          }
+        Absent => 0
       }
     _ => 0
   }
