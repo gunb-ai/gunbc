@@ -1,0 +1,541 @@
+module product.data_class
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsUnread }
+import product.data_category {
+  PersonalIdentity, BuildOutput,
+  personal_identity_ref, build_output_ref,
+}
+
+// WHY THIS MODULE EXISTS. Operator direction 2026-09-13: "i just want real compliance modeling and
+// relation to our actual data types ... like can we have a literal PII type wrapper". std.types
+// already carried ONE such wrapper, Secret (nominal_opaque = String): a name that says "handle
+// this differently" for exactly one category. This module is that idea generalised over a category
+// axis -- one carrier, Classified<C, T>, over the open-by-row markers of product.data_category --
+// rather than a sibling wrapper per category (DESIGN 2: one axis, not N types). And it is the
+// repair of the anemic case beside Secret: std.types Email is `type Email = String`, a bare alias
+// with no boundary at all, so an email is a String with a nickname. extdeps.auth.oidc
+// OidcStandardClaims carries one; gunbc.principal_projection is where those claims enter our
+// program, and that boundary now mints Classified<PersonalIdentity, OidcStandardClaims> instead of
+// carrying the raw carrier onward. Email itself is left standing as upstream vocabulary (the
+// OIDC schema names it), not as a second, weaker authority for handling.
+//
+// DESIGN 4b SAYS A WRAPPER IS COSMETIC UNTIL CONSTRUCTION AND ACCEPTANCE ENFORCE THE DISTINCTION,
+// so this module is organised around the two enforcement points and states, per point, what the
+// compiler actually refuses today -- measured, not asserted (the landing PR body carries the rung
+// table; the executing evidence is test.claim.data_class_refusal_probe_witness and
+// test.claim.data_class_admission_witness).
+//
+// CONSTRUCTION. Classified is sole_constructor: only this module can build one, and the mints it
+// exports are one per CATEGORY, each admit_callers-sealed to the ingest boundaries that classify
+// as they construct. There is deliberately no classify(value, category): a generic classifier is a
+// place where a value is labelled by whoever is holding it, and the label would then be a claim
+// rather than a fact about where the value came from. Adding a boundary is adding a decl to the
+// admit_callers list of the category it produces -- a row, reviewed as one.
+//
+// NO PAYLOAD IS READABLE OUTSIDE THIS MODULE (parent ruling msg_144d9121, point 1). The language
+// confines CONSTRUCTION of a sole_constructor record to its definer; it does not confine field
+// projection, so a `value: T` field would be a general unwrap spelled `.value`. The payload is
+// therefore held behind a function that takes a DataRevealKey, and DataRevealKey is a
+// sole_constructor record this module never exports a mint for. Outside this module the field is
+// visible and uncallable: a helper returning T from a Classified<C, T> has to construct a key, and
+// that construction is SoleConstructorViolation -- the same executed wall the guarantee probe
+// corpus establishes for every sealed record (sole_constructor_cross_module_class). That is a
+// capability model, not a trick: revealing classified data requires a capability only the
+// admission fold holds -- and the fold admits only against a DataHandlingMap that is itself a
+// sealed authority (see the map note), so the policy it reveals under cannot be authored by the
+// caller either. What remains open is the posture argument (CompliancePostureRevision is an open
+// record of product.fabric.provider_route); it can only make an admitting row STALE, never admit
+// one, so it is not a reveal route.
+//
+// ACCEPTANCE. The only ways a value leaves its category are (1) the admitted effect, which takes a
+// DataEffectPermit minted by admit_data_effect and by nothing else, and (2) the typed erasure,
+// Redacted<C>, which keeps the category and the erasure standing and drops the payload. Every
+// other operation is label-preserving: classified_map returns Classified<C, U>, and a serialisation
+// changes representation, never permission.
+//
+// WHAT THE TYPE ARGUMENT C ESTABLISHES TODAY, STATED SO IT IS NOT OVER-READ. On the emitted-Rust
+// path distinct markers render distinctly (test.claim.phantom_marker_type_argument_identity_witness
+// and the Classified instance of it in test.claim.data_class_marker_identity_witness), so a
+// Classified<PersonalIdentity, T> handed to a Sink<JobLog> is a rustc type error THERE. On the
+// interpretation path the checker does not yet judge marker identity at generic argument
+// positions (gunbc.recurring_failure_mode generic_application_admits_distinct_unit_variant_arguments;
+// the bare-marker sibling is filed by this change as
+// direct_generic_application_admits_a_distinct_phantom_argument), so that hand-off COMPILES there.
+// This module does not paper over that: every Classified and every Sink carries the marker's
+// DeclarationRef as a runtime witness, admit_data_effect compares them FIRST, and the
+// disagreement refuses as CategoryDisagreesWithSink -- rung 1 on that path, held by a fold that is
+// executed by the admission witness, with the compile-time probe enrolled as an expecting-red
+// hole that flips to a permanent regression control when the checker's wall lands.
+
+// THE KEY. Fieldless, sealed, and deliberately WITHOUT a mint function: an exported
+// reveal_key() would be callable from any module and would be the unwrap. Its one construction is
+// inline in admitted_seed, and its whole content is that only this module can write it.
+type DataRevealKey sole_constructor { }
+
+// THE CARRIER. `category` is the runtime witness of C (product.data_category names the only
+// spellings); `reveal` is the payload behind the key. The carrier holds a function, so it is never
+// compared with == (std.algebra's function-bearing equality wall) and it has no serialised form of
+// its own -- a serialisation is a classified_map to Classified<C, Bytes>, not an unwrap.
+type Classified<C, T> sole_constructor {
+  category: DeclarationRef
+  reveal: fn(DataRevealKey) -> T
+}
+
+// THERE IS NO seal(category, value) AND NO unseal(c) IN THIS MODULE, EVEN PRIVATELY. A module-level
+// function is callable from any importer, so a generic seal would be the classify-anything the
+// note above refuses and a generic unseal would be the unwrap. Each mint spells its own
+// construction; the one reveal is inline in admitted_seed.
+
+// THE MINTS, ONE PER CATEGORY WITH A BOUNDARY. A category with no boundary in this tree has no
+// mint: a mint nothing may call is a declaration nothing consumes (DESIGN 3c), and a category is
+// given its mint by the change that lands its first boundary. The admitted callers are the
+// boundaries, by declaration:
+//   PersonalIdentity -- gunbc.principal_projection oidc_projection, where an OIDC ID token's
+//     standard claims (email, email_verified, name) enter our program.
+//   BuildOutput -- gunbc.fabric_m0_origin_commit job_output_bytes, where a job's produced file
+//     enters the commit path toward the durable origin.
+fn classify_personal_identity<T>(value: T) -> Classified<PersonalIdentity, T>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.principal_projection", decl_name: "oidc_projection"),
+  ]
+  = Classified { category: personal_identity_ref(), reveal: fn(k) { value } }
+
+fn classify_build_output<T>(value: T) -> Classified<BuildOutput, T>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fabric_m0_origin_commit", decl_name: "job_output_bytes"),
+  ]
+  = Classified { category: build_output_ref(), reveal: fn(k) { value } }
+
+// LABEL-PRESERVING TRANSFORMATION. The result carries the same category witness and the same C;
+// the payload is transformed under the key and re-sealed, so a projection, a serialisation or a
+// hash of a classified value is itself classified. An unsupported transformation is not spelled
+// here at all: there is no arm that drops the label, so it cannot be reached by accident.
+fn classified_map<C, T, U>(c: Classified<C, T>, f: fn(T) -> U) -> Classified<C, U> {
+  Classified { category: c.category, reveal: fn(k) { f(c.reveal(k)) } }
+}
+
+fn classified_category<C, T>(c: Classified<C, T>) -> DeclarationRef {
+  c.category
+}
+
+// THE EXIT BY ERASURE. Reuses the shape gunbc.review_sheet_projection's DerivedErasureMark gives a
+// lawful deletion (gunbc#11097): a caller-supplied, located decision, recorded as a standing the
+// next pass can read, never a silent row drop. Redacted<C> keeps the category and the standing
+// and holds NO payload -- there is no field to reveal -- so what leaves the category is the fact
+// that something of this class was here and was erased on a named basis.
+type DataErasureStanding
+  = ErasureApplied { basis: DeclarationRef }
+
+type Redacted<C> sole_constructor {
+  category: DeclarationRef
+  erasure: DataErasureStanding
+}
+
+fn redact<C, T>(c: Classified<C, T>, basis: DeclarationRef) -> Redacted<C> {
+  Redacted { category: c.category, erasure: ErasureApplied { basis: basis } }
+}
+
+// THE SINKS. A sink is a typed destination, sealed so that its category witness and its kind are
+// set by this module's mints and not by the caller. The sink is where the dimensions the marker
+// does NOT carry live (parent ruling msg_144d9121, point 4): purpose and recipient are typed here
+// and travel onto the permit, so "which class" and "to whom, for what" stay separate facts.
+//
+// DurableOrigin names its ProviderRoute because the same class is admissible on one route and
+// refused on another; the map row for a durable write names the route it admits. The other four
+// are destinations whose route is the sink kind itself.
+type SinkKind
+  = DurableOrigin { route: ProviderRoute }
+  | LogChannel
+  | Telemetry
+  | SheetCell
+  | SupportExport
+
+type Sink<C> sole_constructor {
+  category: DeclarationRef
+  kind: SinkKind
+  purpose: DeclarationRef
+  recipient: DeclarationRef
+}
+
+// THE CATEGORY WITNESS A SINK MINT TAKES. It binds the runtime reference to the marker type once,
+// in this module, so a sink for BuildOutput cannot be minted carrying PersonalIdentity's
+// reference. One row per category with a sink consumer -- BuildOutput for the fabric write, and
+// PersonalIdentity for the payload-fidelity witness, which admits the OIDC claims through the
+// fold because the permit is the only place a payload can be read back and compared; a category
+// gets its witness with its first sink, exactly as it gets its mint with its first
+// boundary (DESIGN 3c, review 65204). Likewise only the two sink mints with a caller exist:
+// durable_origin_sink (the fabric write) and log_channel_sink (the enrolled log-channel probe);
+// the Telemetry, SheetCell and SupportExport KINDS stay, because the map rows the private lane
+// authors name them, and their mints arrive with their first consumer.
+type DataCategoryWitness<C> sole_constructor {
+  category: DeclarationRef
+}
+
+fn personal_identity_category() -> DataCategoryWitness<PersonalIdentity> {
+  DataCategoryWitness { category: personal_identity_ref() }
+}
+
+fn build_output_category() -> DataCategoryWitness<BuildOutput> {
+  DataCategoryWitness { category: build_output_ref() }
+}
+
+fn durable_origin_sink<C>(
+  category: DataCategoryWitness<C>,
+  route: ProviderRoute,
+  purpose: DeclarationRef,
+  recipient: DeclarationRef,
+) -> Sink<C> {
+  Sink { category: category.category, kind: DurableOrigin { route: route }, purpose: purpose, recipient: recipient }
+}
+
+fn log_channel_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef, recipient: DeclarationRef) -> Sink<C> {
+  Sink { category: category.category, kind: LogChannel, purpose: purpose, recipient: recipient }
+}
+
+// THE MAP, SHAPE ONLY. The public fabric never enumerates private policy: this tree declares what
+// a row IS, and the rows themselves are values the caller supplies, exactly as
+// product.fabric.provider_admission takes its RouteScopeSanction roster. A row admits ONE
+// (category, sink kind[, route]) pair under ONE posture revision; re-posturing does not silently
+// re-admit anything. retention and lawful_basis are open references into the authoring lane's
+// rows (gunbc-private strategy.data_map) and deliberately NOT typed values here: that lane's
+// retention is a coproduct three of whose four arms are not periods, and none of its periods is
+// ratified, so a typed slot here would be an empty box inviting an unratified commitment.
+// THE OPERATION THE EFFECT PERFORMS, typed on the row and the permit so a permit to store is not
+// a permit to transmit.
+type DataOperation
+  = StoreDurably
+  | Transmit
+
+// A ROW ADMITS THE EFFECT'S DIMENSIONS, NOT ONLY ITS DESTINATION (parent ruling on review of
+// bdac46f52). Purpose limitation and recipient are the compliance facts this model exists to
+// carry, so a row names the PURPOSES, RECIPIENTS and OPERATIONS it admits for its
+// (category, sink kind[, route]); the fold matches the sink's purpose and recipient and the
+// requested operation against them, and the permit then carries all three as ADMITTED facts
+// rather than as whatever the caller wrote on the sink. Purposes and recipients are open
+// DeclarationRefs into the authoring lane's rows: gunbc-private strategy.data_map's
+// ProcessingPurpose rows are what a row's purposes CITE, and its recipients are that lane's
+// transfer counterparties. The fold judges purposes by reference identity; it never eliminates
+// that coproduct's arms, so that lane's "never matched" frontier on ProcessingPurpose is not
+// retired by this consumer. An empty list admits nothing -- there is no wildcard arm.
+type DataHandlingRow {
+  category: DeclarationRef
+  sink: SinkKind
+  purposes: List<DeclarationRef>
+  recipients: List<DeclarationRef>
+  operations: List<DataOperation>
+  retention: DeclarationRef
+  lawful_basis: DeclarationRef
+  posture: CompliancePostureRevision
+}
+
+// THE MAP IS A SEALED AUTHORITY, NOT A VALUE THE CALLER WRITES (review 65282). With the map an
+// open record, the "only the fold can reveal" claim was false one hop out: any importer could
+// author a one-row map admitting its own category to its own sink, hand the same posture as
+// active, and read the payload off the permit -- a caller-authored policy is exactly the "proceed
+// as if the refusal had not fired" toggle DESIGN 5 forbids. So DataHandlingMap is sole_constructor
+// and its one mint is admit_callers-sealed to the declarations that ARE policy authorities: the
+// private data map (gunbc-private strategy.data_map, whose rows are the product's policy and which
+// this tree names but cannot see), and the admission witness's own sealed fixture builder, which
+// is in turn admit_callers-sealed to the witness tests that exercise the fold. A module outside
+// that list that spells the record refuses as SoleConstructorViolation and one that calls the mint
+// refuses as ConstructorCallAdmissionRefused; both are enrolled in
+// test.probe.self_authored_map_probe. The empty public map below is constructed in this module.
+type DataHandlingMap sole_constructor {
+  authority: DeclarationRef
+  rows: List<DataHandlingRow>
+}
+
+fn data_handling_map(authority: DeclarationRef, rows: List<DataHandlingRow>) -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_map"),
+  ]
+  = DataHandlingMap { authority: authority, rows: rows }
+
+// THE PUBLIC MAP IS EMPTY, WHICH IS THE FAIL-CLOSED DEFAULT AND NOT A PLACEHOLDER. A run in this
+// tree with no private rows admits no data effect at all: the fabric canary refuses with
+// CategoryUnmapped naming this authority until it is run with the private map. There is no
+// permit-everything arm and no "public dev map" with rows, because a row here would be policy
+// authored in the tree that is forbidden to author it.
+fn public_fabric_map_authority() -> DeclarationRef {
+  decl_ref(module_path: "product.data_class", decl_name: "public_fabric_map")
+}
+
+fn public_fabric_map() -> DataHandlingMap {
+  DataHandlingMap { authority: public_fabric_map_authority(), rows: [] }
+}
+
+// THE POSTURE THE PUBLIC TREE HAS IS THE REVISION OF ITS EMPTY MAP. A caller in this tree needs a
+// CompliancePostureRevision to reach the fold, and the honest one is derived from the only policy
+// this tree carries -- the empty roster -- rather than a zero digest fabricated to fill the slot.
+// It is never the revision any private row was authored under, so a private row handed in beside
+// it would refuse as PostureRevisionStale, which is correct: a private row is admitted only under
+// the private posture it names.
+// Its jurisdiction population is UNREAD, not enumerated: the public tree has read no posture, and
+// the Unread arm is the one that refuses rather than widens wherever a consumer does read it. The
+// fold in this module never reads it (revision equality only), so the arm is carried, not judged.
+fn public_fabric_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: public_fabric_map_authority(),
+    revision: content_hash_of_value(value: "product.data_class public_fabric_map rows:0" as NonEmptyStr),
+    permitted_jurisdictions: PermittedJurisdictionsUnread { obligation: public_fabric_map_authority() },
+    jurisdiction_drop_enrollments: [],
+  }
+}
+
+// THE PERMIT, SEALED. Only admit_data_effect mints one. It carries the revealed payload -- the
+// permit IS the admitted exit, and the effect that takes it is the reader -- beside every fact the
+// decision read, so an auditor holding a permit can re-derive it: category, sink (kind, purpose,
+// recipient -- each matched against the admitting row, so they are admitted facts, not the
+// caller's labels), operation (likewise), the map authority, the posture revision, and the retention and
+// lawful-basis references of the row that admitted it.
+type DataEffectPermit<C, T> sole_constructor {
+  category: DeclarationRef
+  sink: Sink<C>
+  operation: DataOperation
+  value: T
+  map_authority: DeclarationRef
+  posture: ContentHash
+  retention: DeclarationRef
+  lawful_basis: DeclarationRef
+}
+
+// EVERY REFUSAL NAMES ITS REMEDY. CategoryDisagreesWithSink is the runtime form of the marker
+// wall (see the module note); the rest are the map's answers in remedy order: add the category to
+// the map, add a row for this sink, name this route on the row, re-evaluate under the active
+// posture.
+type DataEffectRefusal
+  = CategoryDisagreesWithSink { classified: DeclarationRef, sink: DeclarationRef }
+  | CategoryUnmapped { category: DeclarationRef, map: DeclarationRef }
+  | SinkNotPermittedForCategory { category: DeclarationRef, sink: SinkKind }
+  | RouteNotPermittedForCategory { category: DeclarationRef, route: ProviderRoute }
+  | PurposeNotPermittedForSink { category: DeclarationRef, sink: SinkKind, purpose: DeclarationRef }
+  | RecipientNotPermittedForSink { category: DeclarationRef, sink: SinkKind, recipient: DeclarationRef }
+  | OperationNotPermittedForSink { category: DeclarationRef, sink: SinkKind, operation: DataOperation }
+  | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
+
+type DataEffectAdmission<C, T>
+  = DataEffectAdmitted { permit: DataEffectPermit<C, T> }
+  | DataEffectRefused { cause: DataEffectRefusal }
+
+// A row matches a sink when its kind is the same kind and, for a durable origin, the same route.
+// That is structural equality on SinkKind -- a coproduct whose only payload is a ProviderRoute of
+// three DeclarationRefs, no function member anywhere -- so it is `==`, admitted by the checker's
+// equality wall, and not a hand-rolled walk of the same arms (DESIGN 2: net concepts must not
+// grow by re-invention). Classified, by contrast, holds a fn and is never compared.
+fn sink_kind_matches(row: SinkKind, sink: SinkKind) -> Bool {
+  row == sink
+}
+
+// Same family: two durable origins on different routes are the same KIND of sink, which is what
+// separates "no durable row at all" from "a durable row on another route" in the refusal.
+fn sink_kind_same_family(row: SinkKind, sink: SinkKind) -> Bool {
+  match row {
+    DurableOrigin { route: _ } =>
+      match sink {
+        DurableOrigin { route: _ } => true
+        other => false
+      }
+    other => row == sink
+  }
+}
+
+fn rows_for_category(handling_map: DataHandlingMap, category: DeclarationRef) -> List<DataHandlingRow> {
+  filter(handling_map.rows, r => declaration_ref_eq(a: r.category, b: category))
+}
+
+fn posture_is_current(evaluated: CompliancePostureRevision, active: CompliancePostureRevision) -> Bool {
+  evaluated.revision == active.revision
+}
+
+fn category_refusals<C, T>(classified: Classified<C, T>, sink: Sink<C>) -> List<DataEffectRefusal> {
+  if declaration_ref_eq(a: classified.category, b: sink.category) {
+    []
+  } else {
+    [CategoryDisagreesWithSink { classified: classified.category, sink: sink.category }]
+  }
+}
+
+fn map_refusals<C>(
+  sink: Sink<C>,
+  handling_map: DataHandlingMap,
+  by_category: List<DataHandlingRow>,
+  same_family: List<DataHandlingRow>,
+  matched: List<DataHandlingRow>,
+) -> List<DataEffectRefusal> {
+  if count(by_category) == 0 {
+    [CategoryUnmapped { category: sink.category, map: handling_map.authority }]
+  } else if count(same_family) == 0 {
+    [SinkNotPermittedForCategory { category: sink.category, sink: sink.kind }]
+  } else if count(matched) == 0 {
+    match sink.kind {
+      DurableOrigin { route: r } => [RouteNotPermittedForCategory { category: sink.category, route: r }]
+      other => [SinkNotPermittedForCategory { category: sink.category, sink: sink.kind }]
+    }
+  } else {
+    []
+  }
+}
+
+// THE EFFECT DIMENSIONS, IN REMEDY ORDER: name the purpose on the row, name the recipient, name
+// the operation. Each is judged over the rows that already matched the destination, so a
+// refusal here says exactly which dimension the policy has not admitted for this sink.
+fn dimension_refusals<C>(
+  sink: Sink<C>,
+  operation: DataOperation,
+  matched: List<DataHandlingRow>,
+  by_purpose: List<DataHandlingRow>,
+  by_recipient: List<DataHandlingRow>,
+  by_operation: List<DataHandlingRow>,
+) -> List<DataEffectRefusal> {
+  if count(matched) == 0 {
+    []
+  } else if count(by_purpose) == 0 {
+    [PurposeNotPermittedForSink { category: sink.category, sink: sink.kind, purpose: sink.purpose }]
+  } else if count(by_recipient) == 0 {
+    [RecipientNotPermittedForSink { category: sink.category, sink: sink.kind, recipient: sink.recipient }]
+  } else if count(by_operation) == 0 {
+    [OperationNotPermittedForSink { category: sink.category, sink: sink.kind, operation: operation }]
+  } else {
+    []
+  }
+}
+
+fn posture_refusals(
+  matched: List<DataHandlingRow>,
+  current: List<DataHandlingRow>,
+  active: CompliancePostureRevision,
+) -> List<DataEffectRefusal> {
+  if count(matched) > 0 && count(current) == 0 {
+    [PostureRevisionStale {
+      evaluated: map(matched, r => r.posture.revision),
+      active: active.revision,
+    }]
+  } else {
+    []
+  }
+}
+
+// THE ONE ADMISSION FOLD. Same construction as product.fabric.provider_admission admit_provider_use:
+// the refusal list is concatenated in remedy order and folded with the admitted permit as the
+// seed, so the seed is the honest answer to "what if nothing refused", every refusal is built by a
+// producer that matched the condition causing it, and the FIRST refusal is the one reported. The
+// payload is revealed exactly here, into the permit, and nowhere else.
+//
+// It reads the posture by revision equality only. It never reads the posture's jurisdiction
+// population and has no default-permit arm.
+fn admit_data_effect<C, T>(
+  classified: Classified<C, T>,
+  sink: Sink<C>,
+  operation: DataOperation,
+  handling_map: DataHandlingMap,
+  posture: CompliancePostureRevision,
+) -> DataEffectAdmission<C, T> {
+  let by_category = rows_for_category(handling_map: handling_map, category: sink.category)
+  let same_family = filter(by_category, r => sink_kind_same_family(row: r.sink, sink: sink.kind))
+  let matched = filter(same_family, r => sink_kind_matches(row: r.sink, sink: sink.kind))
+  let by_purpose = filter(matched, r => declaration_ref_in_list(target: sink.purpose, refs: r.purposes))
+  let by_recipient = filter(by_purpose, r => declaration_ref_in_list(target: sink.recipient, refs: r.recipients))
+  let by_operation = filter(by_recipient, r => any(r.operations, o => o == operation))
+  let current = filter(by_operation, r => posture_is_current(evaluated: r.posture, active: posture))
+  let refusals = concat(
+    category_refusals(classified: classified, sink: sink),
+    concat(
+      map_refusals(sink: sink, handling_map: handling_map, by_category: by_category, same_family: same_family, matched: matched),
+      concat(
+        dimension_refusals(sink: sink, operation: operation, matched: matched, by_purpose: by_purpose, by_recipient: by_recipient, by_operation: by_operation),
+        posture_refusals(matched: by_operation, current: current, active: posture),
+      ),
+    ),
+  )
+  fold(
+    refusals,
+    init: admitted_seed(classified: classified, sink: sink, operation: operation, handling_map: handling_map, posture: posture, current: current),
+    f: fn(acc, c) {
+      match acc {
+        DataEffectAdmitted { permit } => DataEffectRefused { cause: c }
+        DataEffectRefused { cause } => acc
+      }
+    },
+  )
+}
+
+// THE SEED IS BUILT FROM THE ADMITTING ROWS, so its retention and lawful-basis references are the
+// row's own and not invented. IT IS SEALED TO THE FOLD: a module-level function is callable from
+// any importer, and this one reveals the payload into a permit, so left open it would be both the
+// unwrap and a permit mint that skips every refusal (review 65175). admit_callers names
+// admit_data_effect and nothing else; the call from anywhere else refuses as
+// ConstructorCallAdmissionRefused, enrolled in test.probe.data_effect_permit_forged_probe. When no row is current the seed is never the answer -- a refusal
+// precedes it in the fold -- and the references it carries are taken from the first current row
+// or, absent one, from the map authority itself, which is the only reference that is always true
+// of this decision.
+fn admitted_seed<C, T>(
+  classified: Classified<C, T>,
+  sink: Sink<C>,
+  operation: DataOperation,
+  handling_map: DataHandlingMap,
+  posture: CompliancePostureRevision,
+  current: List<DataHandlingRow>,
+) -> DataEffectAdmission<C, T>
+  admit_callers: [
+    decl_ref(module_path: "product.data_class", decl_name: "admit_data_effect"),
+  ]
+{
+  let retention = match current |> first {
+    Present { value: r } => r.retention
+    Absent => handling_map.authority
+  }
+  let lawful_basis = match current |> first {
+    Present { value: r } => r.lawful_basis
+    Absent => handling_map.authority
+  }
+  DataEffectAdmitted {
+    permit: DataEffectPermit {
+      category: classified.category,
+      sink: sink,
+      operation: operation,
+      value: classified.reveal(DataRevealKey { }),
+      map_authority: handling_map.authority,
+      posture: posture.revision,
+      retention: retention,
+      lawful_basis: lawful_basis,
+    },
+  }
+}
+
+// DECLARED FRONTIERS (DESIGN 3c): consumers that land in a named later change, each with the
+// trigger that retires its row, so nothing here is dangling silently. Enrolled in
+// gunbc.census_closure_frontier census_closure_frontier_row_groups so gunbc.dissolution_census
+// folds them like every sibling frontier group (review 65204).
+data data_class_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.data_category", decl_name: "SourceAndBuildInput"),
+    reason: "the fabric's job INPUT bytes have no ingest boundary in this tree yet: product.fabric.work WorkContract.inputs is an ArtifactManifestRef and no M0 module stages input bytes for a job, so there is no function at which a customer's source could be classified as it is read. The output half landed (gunbc.fabric_m0_origin_commit job_output_bytes); the input half is a category with a marker and no mint",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the M0 module that fetches a job's input manifest members from the durable origin into the job's working tree. TRIGGER: that module's staging function returns Classified<SourceAndBuildInput, _> for each staged member through an admit_callers-sealed classify_source_and_build_input mint added to product.data_class, and the job's compute step takes the classified members. SUFFICIENT FOR deleting this row. NOT satisfied by a witness minting the value, nor by classifying the readback of an OUTPUT, which is a BuildOutput"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.data_category", decl_name: "MeteringTelemetry"),
+    reason: "the metering usage receipt (gunbc#11177 HardwareThreadMinute usage receipt, open at this writing) is the named first producer for MeteringTelemetry and the Telemetry sink's first consumer; it is not on main, so neither a classify_metering_telemetry mint nor a Telemetry admission has a production caller here",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_usage_receipt's receipt producer, once gunbc#11177 lands. TRIGGER: that producer returns Classified<MeteringTelemetry, _> through a sealed mint and the telemetry emission takes a DataEffectPermit from admit_data_effect for a Telemetry sink. SUFFICIENT FOR deleting this row. NOT satisfied by the receipt type merging without its emission taking the permit"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.data_category", decl_name: "CiSecret"),
+    reason: "CiSecret, JobLog, SupportCommunication and AbuseAndSanctionsRecord are markers with no boundary and no sink in this tree (JobLog is imported by the enrolled log-channel probe as a phantom Sink<JobLog> argument, which typechecks and executes nothing): their consumers are the private description rows of gunbc-private strategy.data_map that cite them by DeclarationRef, which this tree cannot see. In public they are declared identities with no mint, no witness and no permit -- the honest state of a category that exists in policy before it exists in code",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first ingest boundary for each -- a CI secret entering a job's environment (CiSecret), a job's stdout/stderr entering the log channel (JobLog), a support message entering the operator's tooling (SupportCommunication), a screening result entering provider admission (AbuseAndSanctionsRecord). TRIGGER, per marker: an admit_callers-sealed classify_<category> mint in product.data_class with a production boundary as its admitted caller. SUFFICIENT FOR deleting that marker from this row; the row deletes when all four have mints. NOT satisfied by the private citation alone"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "canary_ending_under"),
+    reason: "the canary's PUT is reachable only under a data-handling map with rows, and the public map is empty by design, so from this tree canary_ending refuses CategoryUnmapped and the PUT-reaching entry canary_ending_under has no caller here: its consumer is a run under the private map",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a gunbc-private entry that calls canary_ending_under with the map minted by strategy.data_map data_handling_map_rows and its posture. TRIGGER: that entry exists and its recipe is recorded beside the canary's. SUFFICIENT FOR deleting this row. NOT satisfied by a public row admitting BuildOutput, which would be policy authored in the tree forbidden to author it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.data_class", decl_name: "redact"),
+    reason: "the erasure exit is exercised by test.claim.fabric.data_class_admission_witness and has no production caller: nothing in this tree renders a classified value into a log line, a job ending or a sheet, which is where a Redacted<C> stands in for the payload",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the first production renderer that carries a projection holding a Classified value into text -- gunbc.principal_projection's consumer rendering a principal, or the fabric job ending rendering its committed outputs. TRIGGER: that renderer calls redact and renders the Redacted<C> where it would otherwise have rendered the payload. SUFFICIENT FOR deleting this row"),
+  ),
+]

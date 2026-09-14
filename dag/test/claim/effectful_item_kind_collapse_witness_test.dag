@@ -1,0 +1,97 @@
+module test.claim.effectful_item_kind_collapse_witness_test
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// ENROLLED EVIDENCE for the FuncItem -> FnItem collapse (DESIGN section 3: one concept, one
+// name) and for the two facts that collapse made observable. `ItemKind.FuncItem` was the node
+// model's shadow of the deleted `func` spelling; its only distinguishing content was that the
+// registry projection (`v1.compiler.infer` build_item_info) hardcoded is_self_recursive and
+// has_non_tail_self_call false for every effectful item, and that the zero-parameter branch of
+// infer_item -- the branch a `func` with no parameters landed in -- rebuilt the typed node with
+// `uses: []`, extended no scope with the declared resources, and hardcoded the same two fields.
+// After the collapse one arm builds every function's ItemInfo and one branch of infer_item types
+// every function with a body, so the typed node and the registry answer the same question the
+// same way. Neither of those facts is visible from a green over the existing corpus: no corpus
+// module both declares a zero-parameter effectful function that reads its resource and is emitted
+// to Rust, and no corpus module carries an effectful self-call. These fixtures are the
+// constructed RED / control pairs, per DESIGN section 4b(4).
+//
+// THE ZERO-PARAMETER PAIR. `zpe_reads_resource` declares `uses net` and returns `net.id`, so the
+// resource must be BOUND in the body's scope for the compile to carry no blocking diagnostic, and
+// the emitted Rust signature must carry the resource parameter (`net: &`), which emit_func_params
+// renders from the typed node's `uses` and from nothing else. Before this change the first arm
+// refused (`net` unbound: the zero-parameter branch extended no scope) and the second emitted a
+// signature with no resource parameter while the registry said the item was effectful -- two
+// contradictory observations of one declaration. MUTATION BAR: restore `uses: []` on the
+// zero-parameter typed node and both arms go RED; restore the scope omission alone and the first
+// goes RED.
+//
+// THE RECURSION PAIR. emit_func_def renders every effectful declaration as `async fn` and never
+// consults is_tco_eligible or is_self_recursive, so an effectful self-call reached the target
+// verbatim and rustc refused it (E0733) AFTER `gunbc compile` had reported success. That is the
+// fabricated-plausible-output failure of DESIGN section 5, and it was unreachable by any refusal
+// keyed on the registry, because the registry said every effectful item was non-recursive.
+// `EffectfulSelfRecursionUnrealized` is now raised at the Rust emitter boundary from the SAME
+// registry read the pure path's TCO decision consumes. Both the tail and the non-tail shape are
+// refused: the effectful path realizes neither. MUTATION BAR: restore `is_self_recursive: false`
+// in build_item_info (in v1_compiler_infer.rs -- these fixtures are compiled by the SEED BINARY,
+// so the mutation must be made in the mirror, exactly as
+// generic_effectful_declaration_wall_witness_test records) and both refusal arms go RED while the
+// control stays green; delete the diagnostics fold in emit_rust and the same happens.
+//
+// THE CONTROL is the same shape with the self-call replaced by a call to a pure helper, which is
+// the realization the diagnostic text recommends: it compiles clean and emits. A refusal that
+// fired on every effectful declaration would pass both refusal arms and FAIL this one.
+//
+// COVERAGE BOUND. These arms reach the emitted TEXT and the diagnostic census; none invokes
+// rustc. The E0733 claim above is rustc's documented rule, cited as the reason the refusal
+// exists, not measured here.
+
+data zpe_reads_resource_source: String = "module zpe_reads_resource\n\ntype ZpeNet \{\n  id: Int\n}\n\nfn zpe_read() -> Int\n  uses net: ZpeNet\n\{\n  net.id\n}\n"
+
+data efr_tail_source: String = "module efr_tail\n\ntype EfrNet \{\n  id: Int\n}\n\nfn efr_count_down(n: Int) -> Int\n  uses net: EfrNet\n\{\n  if n == 0 \{ net.id } else \{ efr_count_down(n: n - 1) }\n}\n"
+
+data efr_non_tail_source: String = "module efr_non_tail\n\ntype EfrNet \{\n  id: Int\n}\n\nfn efr_sum_down(n: Int) -> Int\n  uses net: EfrNet\n\{\n  if n == 0 \{ net.id } else \{ n + efr_sum_down(n: n - 1) }\n}\n"
+
+data efr_control_source: String = "module efr_control\n\ntype EfrNet \{\n  id: Int\n}\n\nfn efr_pure_sum(n: Int) -> Int \{\n  if n == 0 \{ 0 } else \{ n + efr_pure_sum(n: n - 1) }\n}\n\nfn efr_effectful_total(n: Int) -> Int\n  uses net: EfrNet\n\{\n  net.id + efr_pure_sum(n: n)\n}\n"
+
+// NOT-RUNNABLE IS NOT ZERO: -1 satisfies neither the == 0 control nor the == 1 refusal.
+fn eik_blocking_count(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+// TOTAL over every blocking class is exact here because each fixture imports nothing, so its
+// closure is itself (see generic_effectful_declaration_wall_witness_test for why that matters).
+fn eik_total_blocking(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_zero_parameter_effectful_declaration_binds_its_resource() -> Bool {
+  eik_total_blocking(source: zpe_reads_resource_source) == 0
+}
+
+test fn a_zero_parameter_effectful_declaration_emits_its_resource_parameter() -> Bool {
+  compile_dag_rust_emit_check(zpe_reads_resource_source, "src/zpe_reads_resource.rs", ["net: &"], [])
+}
+
+test fn an_effectful_tail_self_call_is_refused_at_the_rust_emitter() -> Bool {
+  eik_blocking_count(source: efr_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
+}
+
+test fn an_effectful_non_tail_self_call_is_refused_at_the_rust_emitter() -> Bool {
+  eik_blocking_count(source: efr_non_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
+}
+
+test fn an_effectful_declaration_calling_a_pure_recursive_helper_is_admitted() -> Bool {
+  eik_total_blocking(source: efr_control_source) == 0
+    && compile_dag_rust_emit_check(efr_control_source, "src/efr_control.rs", ["net: &"], ["compile_error!"])
+}

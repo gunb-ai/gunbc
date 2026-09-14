@@ -585,7 +585,10 @@ fn s_facts_execution_unread(route: ProviderRoute) -> ProviderRouteFacts {
     route: route,
     contract_terms: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_contract_terms"),
     data_paths: ProviderDataPathClosure {
-      execution: ProviderPathUnread { obligation: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_read_obligation") },
+      execution: ProviderPathUnread {
+        obligation: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_read_obligation"),
+        consulted: [],
+      },
       durable_storage: s_located(),
       backups: s_located(),
       logs: s_located(),
