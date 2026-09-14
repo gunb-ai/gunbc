@@ -23,7 +23,7 @@ module test.probe.branded_path_segment_forgery_probe
 
 import std.types { String }
 import gunbc.merge_admission_subject { WalkAttemptId }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshAttemptIdentity }
+import gunbc.fleet_known_hosts_anchor { FleetSshAttemptIdentity }
 
 data forged_attempt_id_escapes_its_directory: WalkAttemptId = "../../etc" as WalkAttemptId
 
