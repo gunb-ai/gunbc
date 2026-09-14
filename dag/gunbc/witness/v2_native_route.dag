@@ -21,7 +21,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
-import v2.std.text { char_eq }
+import v2.std.text { CharAbsent, CharFound, char_eq, string_head }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -914,12 +914,20 @@ fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Boo
   receipt.emitted_build.compiler_path != ""
 }
 
+fn rustflags_suffix_has_later_token(suffix: String) -> Bool {
+  match string_head(s: " ") {
+    CharFound { value: space } =>
+      any(xs: suffix, predicate: fn(c) { char_eq(a: c, b: space) })
+    CharAbsent => false
+  }
+}
+
 fn native_route_rustflags_are_denial_then_remap(flags: String) -> Bool {
   let prefix = concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=")
   let suffix = skip(xs: flags, n: length(xs: prefix))
   list_starts_with(xs: flags, prefix: prefix, eq: char_eq)
     && !is_empty(xs: suffix)
-    && !string_contains(s: suffix, pattern: " ")
+    && !rustflags_suffix_has_later_token(suffix: suffix)
 }
 
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {

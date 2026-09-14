@@ -1804,21 +1804,12 @@ pub struct TransitionAdmission {
 /// present at the base; #11182 merged, the seven inventory-evidence TargetChanged rows were
 /// deleted on main, and this roster's next touch does not resurrect them.
 ///
-/// gunbc#11193 remains from main: the `extdeps_external_authority_anchor` leaf in
-/// `extdeps.realization.artifact_store_fs`. What follows after that row is this PR's own
-/// gunbc#11056 BuildPathTreatment relocation set (eighteen TargetChanged bindings). Those
+/// gunbc#11193 is gone from this roster: the `extdeps_external_authority_anchor` leaf in
+/// `extdeps.realization.artifact_store_fs` already binds that target at the base (consumed by
+/// its own merge). The floor owed deletion on this file's next touch. What remains is this
+/// PR's gunbc#11056 BuildPathTreatment relocation set (eighteen TargetChanged bindings). Those
 /// rows go when this PR merges.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11193 artifact_store_fs anchor leaf narrows to its own declaration",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.realization.artifact_store_fs",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &["extdeps.realization.artifact_store_fs"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     // gunbc#11056 BuildPathTreatment relocation (2026-09-13). The coproduct and its three
     // constructors moved from v2.compiler.self_host.ancestry to v2.compiler.self_host.generation
     // so NativeGeneration.build_path_treatment and GenerationIdentity.build_configuration hash
