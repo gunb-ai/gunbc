@@ -96,6 +96,8 @@ import gunbc.roadmap_model {
   acceptance_history_extends_prior,
   acceptance_history_chain_digest,
   project_live_acceptance_receipts,
+  LiveAcceptanceReceiptsReplayed,
+  LiveAcceptanceReceiptsReplayRefused,
   drop_first_acceptance_event,
   roadmap_parent_ids,
   is_top_level,
@@ -415,7 +417,7 @@ test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
   let prior = live_acceptance_event_history()
   let receipt = first(
-    project_live_acceptance_receipts(history: prior)
+    replayed_live_or_empty(history: prior)
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   let reopened = concat(prior, [
@@ -428,7 +430,7 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
     },
   ])
   let accepted = declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: project_live_acceptance_receipts(history: reopened), rn: n))
+    |> filter(n => node_accepted(receipts: replayed_live_or_empty(history: reopened), rn: n))
     |> map(n => n.node)
   let withheld = node_ids_held_off_active_frontier(history: reopened)
   active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
@@ -466,7 +468,7 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
   let victims = declared_node(id: "namespace-occurrence-transport")
   let prior = live_acceptance_event_history()
   let receipt = first(
-    project_live_acceptance_receipts(history: prior)
+    replayed_live_or_empty(history: prior)
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   count(victims) == 1
@@ -654,7 +656,7 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   let prior = live_acceptance_event_history()
   let receipt = first(
-    project_live_acceptance_receipts(history: prior)
+    replayed_live_or_empty(history: prior)
       |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   let current = concat(prior, [
@@ -1154,3 +1156,23 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
       }
   }
 }
+
+// Turning a refusal into an empty list is the exact shape of the defect this change removes at
+// the producer, so this helper needs its reason stated rather than assumed. It preserves, for the
+// pre-existing call sites below, the behaviour they already had before this change: they read a
+// bare list and could not distinguish a refusal from an empty result. Every one of those call
+// sites is a NEGATIVE assertion ("this node is not accepted", "this receipt is not live"), which
+// an empty list satisfies vacuously.
+// THIS IS NOT ASSERTED TO BE SAFE, and an executing probe says it currently is not: the histories
+// these witnesses build derive from a carrier fixture that does not load, so the projected list is
+// empty and those assertions pass vacuously today. That is a pre-existing condition of the fixture
+// which this change neither introduces nor repairs, and it is reported separately rather than
+// widened into this one. Do not lift this helper out of test scope, and do not add a new caller:
+// a new assertion written against it would be vacuous for the same reason.
+fn replayed_live_or_empty(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
+  match project_live_acceptance_receipts(history: history) {
+    LiveAcceptanceReceiptsReplayed { live: live } => live
+    LiveAcceptanceReceiptsReplayRefused => []
+  }
+}
+

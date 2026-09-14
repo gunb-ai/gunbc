@@ -1,11 +1,13 @@
 module test.claim.roadmap_receipt_continuity_acceptance
 
 import std.types { NonEmptyStr }
+import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_authority {
   declared_roadmap_nodes,
   nid,
   roadmap_acceptance_receipts_from_carrier_text,
+  acceptance_receipts_projection_from_events,
   RoadmapAcceptanceReceiptsProjected,
   RoadmapAcceptanceReceiptsProjectionRefused,
   withheld_node_ids_from_carrier_text,
@@ -38,6 +40,8 @@ import gunbc.roadmap_model {
   acceptance_history_integrity_holds,
   acceptance_history_extends_prior,
   project_live_acceptance_receipts,
+  LiveAcceptanceReceiptsReplayed,
+  LiveAcceptanceReceiptsReplayRefused,
   drop_first_acceptance_event,
   node_accepted,
   AcceptanceRecorded,
@@ -45,6 +49,8 @@ import gunbc.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   RoadmapAcceptanceEvent,
   RoadmapAcceptanceReceipt,
+  RedControlExecuted,
+  HandbackDelivered,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -62,7 +68,7 @@ fn fixture_history() -> List<RoadmapAcceptanceEvent> {
 
 fn namespace_occurrence_transport_receipt() -> RoadmapAcceptanceReceipt {
   first(
-    project_live_acceptance_receipts(history: fixture_history())
+    replayed_live_or_empty(history: fixture_history())
       |> filter(r => r.node == nid(s: "namespace-occurrence-transport")),
   )
 }
@@ -137,6 +143,8 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
     && witness_missing_carrier_prevents_silent_empty_authority_projection()
     && witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
+    && witness_unreplayable_history_refuses_receipts_projection()
+    && witness_replayable_empty_live_set_still_projects_affirmatively()
 }
 
 test fn witness_deleted_history_event_refuses() -> Bool {
@@ -207,7 +215,7 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
     && all(victims, n => {
       let receipt = namespace_occurrence_transport_receipt()
       let wrong_digest = first(
-        project_live_acceptance_receipts(history: fixture_history())
+        replayed_live_or_empty(history: fixture_history())
           |> filter(r => r.node != receipt.node),
       ).criteria_digest
       let planted = RoadmapAcceptanceReceipt {
@@ -230,7 +238,7 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
         }
       )
       !node_accepted(
-        receipts: project_live_acceptance_receipts(history: history),
+        receipts: replayed_live_or_empty(history: history),
         rn: n,
       )
     })
@@ -245,7 +253,7 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
   )
     && acceptance_history_extends_prior(prior: prior, current: history)
     && !(
-      project_live_acceptance_receipts(history: history)
+      replayed_live_or_empty(history: history)
         |> any(r => r.node == nid(s: "namespace-occurrence-transport"))
     )
 }
@@ -383,4 +391,86 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
       }
       RoadmapAuthorityProjectionRefused { detail: _ } => false
     }
+}
+
+// Turning a refusal into an empty list is the exact shape of the defect this change removes at
+// the producer, so this helper needs its reason stated rather than assumed. It preserves, for the
+// pre-existing call sites below, the behaviour they already had before this change: they read a
+// bare list and could not distinguish a refusal from an empty result. Every one of those call
+// sites is a NEGATIVE assertion ("this node is not accepted", "this receipt is not live"), which
+// an empty list satisfies vacuously.
+// THIS IS NOT ASSERTED TO BE SAFE, and an executing probe says it currently is not: the histories
+// these witnesses build derive from a carrier fixture that does not load, so the projected list is
+// empty and those assertions pass vacuously today. That is a pre-existing condition of the fixture
+// which this change neither introduces nor repairs, and it is reported separately rather than
+// widened into this one. Do not lift this helper out of test scope, and do not add a new caller:
+// a new assertion written against it would be vacuous for the same reason.
+fn replayed_live_or_empty(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
+  match project_live_acceptance_receipts(history: history) {
+    LiveAcceptanceReceiptsReplayed { live: live } => live
+    LiveAcceptanceReceiptsReplayRefused => []
+  }
+}
+
+// A receipt built here rather than projected from the carrier fixture, so the discriminating pair
+// below does not rest on a fixture whose load state it is not testing.
+fn standalone_receipt() -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: nid(s: "namespace-occurrence-transport"),
+    criteria_digest: content_hash_atom(value: "replay-discriminator" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap_receipt_continuity_acceptance",
+      witness_fn: "witness_unreplayable_history_refuses_receipts_projection",
+      executed_on: "2026-09-14",
+    },
+    handback: HandbackDelivered {
+      first_artifact: "dag/gunbc/roadmap/roadmap_model.dag",
+      further_artifacts: [],
+    },
+    accepted_by: "operator",
+    accepted_on: "2026-09-14",
+  }
+}
+
+// A lone revocation naming a receipt that no earlier event recorded. Replay cannot apply it, so
+// there is no live receipt set to report -- distinct from a history that replays to nothing live.
+fn unreplayable_history() -> List<RoadmapAcceptanceEvent> {
+  [exact_revocation_for(receipt: standalone_receipt())]
+}
+
+// The same receipt recorded and then exactly revoked: replay SUCCEEDS and the live set is empty.
+fn replayable_empty_live_history() -> List<RoadmapAcceptanceEvent> {
+  let receipt = standalone_receipt()
+  [AcceptanceRecorded { receipt: receipt }, exact_revocation_for(receipt: receipt)]
+}
+
+// THE DISCRIMINATING PAIR. Both histories yield an empty live receipt list under the pre-repair
+// producer, so before this change both projected RoadmapAcceptanceReceiptsProjected { receipts: [] }
+// and nothing could tell them apart. They are asserted here through
+// acceptance_receipts_projection_from_events, which is the single arm BOTH authority wrappers
+// call, so this is evidence about the arm each of them routes through.
+test fn witness_unreplayable_history_refuses_receipts_projection() -> Bool {
+  match project_live_acceptance_receipts(history: unreplayable_history()) {
+    LiveAcceptanceReceiptsReplayed { live: _ } => false
+    LiveAcceptanceReceiptsReplayRefused =>
+      match acceptance_receipts_projection_from_events(events: unreplayable_history()) {
+        RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
+        RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+          string_contains(s: detail, pattern: "replay refused")
+      }
+  }
+}
+
+test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool {
+  match project_live_acceptance_receipts(history: replayable_empty_live_history()) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } =>
+      count(live) == 0
+        && match acceptance_receipts_projection_from_events(
+          events: replayable_empty_live_history(),
+        ) {
+          RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+          RoadmapAcceptanceReceiptsProjected { receipts: receipts } => count(receipts) == 0
+        }
+  }
 }
