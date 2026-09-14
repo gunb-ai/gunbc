@@ -2473,7 +2473,16 @@ thread_local! {
     /// exactly as a parameterised one is — an entry stored under the EMPTY argument row would
     /// serve a stale value the moment the carrier changed, which is the defect this map exists
     /// to make unwritable.
-    static CROSS_CLAIM_IMPLICIT_CARRY: RefCell<HashMap<usize, Rc<PreparedEffectInputCarry>>> =
+    ///
+    /// IT HOLDS THE ACQUISITION NODE AND NOT THE CARRY, and the difference is a real stale serve
+    /// rather than a style preference: an earlier cut stored a CLONE of the carry here, so
+    /// re-binding the acquisition to a different content left this map pointing at the old value,
+    /// the key stayed the same, and the producer was SERVED a value derived from the PREVIOUS
+    /// carrier. Its own control caught it before this landed
+    /// (`a_changed_carrier_content_is_not_served_the_value_derived_from_the_old_one`). One
+    /// authority for the carried value — the acquisition's binding — read through at every key
+    /// derivation.
+    static CROSS_CLAIM_IMPLICIT_CARRY: RefCell<HashMap<usize, usize>> =
         RefCell::new(HashMap::new());
 }
 
@@ -2548,20 +2557,19 @@ pub fn install_carried_input_producer(
     producer_node: &Rc<Node>,
     acquisition_node: &Rc<Node>,
 ) -> Result<(), String> {
-    let carry = CROSS_CLAIM_PREPARED_INPUT
-        .with(|m| {
-            m.borrow()
-                .get(&(Rc::as_ptr(acquisition_node) as usize))
-                .cloned()
-        })
-        .ok_or_else(|| {
-            "the carried input named by this row is not installed; acquire it first".to_string()
-        })?;
+    if !prepared_effect_input_is_bound(acquisition_node) {
+        return Err(
+            "the carried input named by this row is not installed; acquire it first".to_string(),
+        );
+    }
     CROSS_CLAIM_IMPLICIT_CARRY.with(|m| {
-        m.borrow_mut()
-            .insert(Rc::as_ptr(producer_node) as usize, carry);
+        m.borrow_mut().insert(
+            Rc::as_ptr(producer_node) as usize,
+            Rc::as_ptr(acquisition_node) as usize,
+        );
     });
     keep_cross_claim_fn(producer_node);
+    keep_cross_claim_fn(acquisition_node);
     Ok(())
 }
 
@@ -2577,8 +2585,12 @@ fn prepared_input_for(fn_node: &Rc<Node>) -> Option<Rc<PreparedEffectInputCarry>
     CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).cloned())
 }
 
+/// The CURRENT carried value a producer's key depends on, read through its acquisition's binding
+/// rather than from a snapshot taken at install.
 fn implicit_carry_for(fn_node: &Rc<Node>) -> Option<Rc<PreparedEffectInputCarry>> {
-    CROSS_CLAIM_IMPLICIT_CARRY.with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).cloned())
+    let acquisition = CROSS_CLAIM_IMPLICIT_CARRY
+        .with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).copied())?;
+    CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow().get(&acquisition).cloned())
 }
 
 /// The KEY ARGUMENT ROW for a call: the caller's own arguments, except that a nullary call of a

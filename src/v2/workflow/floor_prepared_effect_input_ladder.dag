@@ -130,10 +130,10 @@ fn producer_demand(producer: String, claim: String) -> FrameDemand {
 // field names the instrument that re-derives the real one.
 fn carried_input_demands(rows: List<CarriedInputWarmRow>, inputs: List<PreparedEffectInput>) -> List<FrameDemand> {
   concat(
-    fold(inputs, init: [], f: fn(acc, input) {
+    fold(inputs, init: [], f: fn(acc, prepared) {
       concat(acc, [
-        acquisition_demand(acquisition: input.acquisition, claim: "claim-a"),
-        acquisition_demand(acquisition: input.acquisition, claim: "claim-b")
+        acquisition_demand(acquisition: prepared.acquisition, claim: "claim-a"),
+        acquisition_demand(acquisition: prepared.acquisition, claim: "claim-b")
       ])
     }),
     fold(rows, init: [], f: fn(acc, row) {
