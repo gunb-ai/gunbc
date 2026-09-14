@@ -3,6 +3,7 @@ module test.claim.dag_compile_clean_perturb_receipts
 import tools.dag_compile_clean_transport {
   SubjectGreen,
   SubjectRed,
+  OutputWriteRefused,
   RefusedBeforeSubject,
   dcc_cli_not_executed_phase,
   dcc_compile_staged_outside_workspace_root,
@@ -49,6 +50,7 @@ test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
     RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_root_admission_precheck_phase
     SubjectGreen => false
     SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
   }
 }
 
@@ -64,6 +66,7 @@ test fn outside_workspace_root_invoke_is_cli_not_executed() -> Bool {
     RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
     SubjectGreen => false
     SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
   }
 }
 
@@ -74,6 +77,7 @@ test fn under_workspace_root_green_fixture_reaches_subject() -> Bool {
   ) {
     SubjectGreen => true
     SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }

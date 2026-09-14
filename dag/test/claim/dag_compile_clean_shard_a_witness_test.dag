@@ -1,7 +1,7 @@
 module test.claim.dag_compile_clean_shard_a_witness
 
 import tools.dag_compile_clean_shard_transport { single_module_shard_compile_typed, shard_a_exemplar_entry_path }
-import tools.dag_compile_clean_transport { SubjectGreen, SubjectRed, RefusedBeforeSubject }
+import tools.dag_compile_clean_transport { SubjectGreen, SubjectRed, OutputWriteRefused, RefusedBeforeSubject }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -30,6 +30,7 @@ test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
   match single_module_shard_compile_typed(entry_rel_path: shard_a_exemplar_entry_path) {
     SubjectGreen => true
     SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }

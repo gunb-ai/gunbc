@@ -3,6 +3,7 @@ module test.claim.dag_compile_clean_report_coproduct
 import tools.dag_compile_clean_transport {
   SubjectGreen,
   SubjectRed,
+  OutputWriteRefused,
   RefusedBeforeSubject,
   dcc_cli_not_executed_phase,
   dcc_compile_report_from_bin,
@@ -44,6 +45,7 @@ test fn dcc_report_classifies_refused_exit_as_subject_red() -> Bool {
   ) {
     SubjectRed => true
     SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }
@@ -57,6 +59,7 @@ test fn dcc_report_classifies_not_executed_exit_as_refused_before_subject() -> B
     RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
     SubjectRed => false
     SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
   }
 }
 
@@ -79,6 +82,7 @@ test fn refused_exit_is_subject_red_even_when_cause_names_workspace_root() -> Bo
   ) {
     SubjectRed => true
     SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }
@@ -92,6 +96,7 @@ test fn unknown_nonzero_exit_is_refused_before_subject() -> Bool {
     RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_instrument_earlier_phase
     SubjectRed => false
     SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
   }
 }
 
@@ -103,21 +108,33 @@ test fn completed_exit_is_subject_green() -> Bool {
   ) {
     SubjectGreen => true
     SubjectRed => false
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }
 
-test fn output_write_refused_exit_is_not_cli_not_executed() -> Bool {
+test fn output_write_refused_exit_is_its_own_arm() -> Bool {
   match dcc_compile_report_from_bin(
     exit_code: compile_cli_exit_output_write_refused,
     stdout: "",
     stderr: "gunbc compile: output write refused: could not write /tmp/out/src/a.rs: Permission denied"
   ) {
-    RefusedBeforeSubject { earlier_phase: p, cause: _ } =>
-      !(p == dcc_cli_not_executed_phase) && p == dcc_instrument_earlier_phase
+    OutputWriteRefused { cause: _ } => true
     SubjectRed => false
     SubjectGreen => false
+    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
+}
+
+test fn expected_failure_does_not_hold_on_output_write_refused() -> Bool {
+  !dcc_subject_expectation_holds(
+    report: dcc_compile_report_from_bin(
+      exit_code: compile_cli_exit_output_write_refused,
+      stdout: "",
+      stderr: "gunbc compile: output write refused: disk"
+    ),
+    expect_success: false
+  )
 }
 
 test fn not_executed_status_is_not_output_write_status() -> Bool {

@@ -10,6 +10,7 @@ import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.cli_dispatch_surface {
   compile_cli_exit_completed,
   compile_cli_exit_not_executed,
+  compile_cli_exit_output_write_refused,
   compile_cli_exit_refused
 }
 import gunbc.output_policy { OutcomeIsData }
@@ -22,12 +23,14 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // --source-root is decided BEFORE WitnessBin.Run: std.effect_grant position_under over
 // std.filesystem_path_grant absolute_path_position (construction — the compiler is not invoked
 // for a path the relation already refuses). WitnessBin.Run.exit_code is then classified on
-// compile_cli_exit_* for NotExecuted phases only the compiler can decide. ExpectFailure never
-// holds on RefusedBeforeSubject.
+// compile_cli_exit_*. ExpectFailure never holds on RefusedBeforeSubject or OutputWriteRefused.
+// OutputWriteRefused is post-subject (emit succeeded; the disk refused the tree) and must not
+// inhabit RefusedBeforeSubject.
 
 type DccCompileReport
   = SubjectGreen
   | SubjectRed
+  | OutputWriteRefused { cause: String }
   | RefusedBeforeSubject { earlier_phase: String, cause: String }
 
 data dcc_stage_template_suffix: String = "/target/dcc_stage_XXXXXX"
@@ -41,13 +44,16 @@ fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -
     SubjectGreen
   } else if exit_code == compile_cli_exit_refused {
     SubjectRed
+  } else if exit_code == compile_cli_exit_output_write_refused {
+    OutputWriteRefused { cause: concat(stdout, stderr) }
+  } else if exit_code == compile_cli_exit_not_executed {
+    RefusedBeforeSubject {
+      earlier_phase: dcc_cli_not_executed_phase,
+      cause: concat(stdout, stderr)
+    }
   } else {
     RefusedBeforeSubject {
-      earlier_phase: if exit_code == compile_cli_exit_not_executed {
-        dcc_cli_not_executed_phase
-      } else {
-        dcc_instrument_earlier_phase
-      },
+      earlier_phase: dcc_instrument_earlier_phase,
       cause: concat(stdout, stderr)
     }
   }
@@ -57,6 +63,7 @@ fn dcc_compile_report_arm(report: DccCompileReport) -> String {
   match report {
     SubjectGreen => "SubjectGreen"
     SubjectRed => "SubjectRed"
+    OutputWriteRefused { cause: _ } => "OutputWriteRefused"
     RefusedBeforeSubject { earlier_phase: p, cause: _ } => concat("RefusedBeforeSubject:", p)
   }
 }
@@ -80,6 +87,7 @@ fn dcc_subject_expectation_holds(report: DccCompileReport, expect_success: Bool)
   match report {
     SubjectGreen => expect_success
     SubjectRed => !expect_success
+    OutputWriteRefused { cause: _ } => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
 }
@@ -154,6 +162,7 @@ fn run_clean_tree_compile_typed() -> Bool {
       ) {
         SubjectGreen => cleaned.success
         SubjectRed => false
+        OutputWriteRefused { cause: _ } => false
         RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
       }
     } else {
