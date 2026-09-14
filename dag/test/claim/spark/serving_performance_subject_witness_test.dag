@@ -1,0 +1,342 @@
+module test.claim.spark.serving_performance_subject_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, KvBf16 }
+import extdeps.nvidia.nccl {
+  NcclRealizedTransport, NcclTransportSocket, NcclTransportIbVerbs, NcclTransportUnread,
+  nccl_network_name_socket, nccl_network_name_ib,
+}
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, Glm53NativeFp8, DeepseekV4FlashIq3sSplit,
+  ServingRuntime, GunbcSparkrunVllmDs4Gb10, Gitcommit90Sm121Exl3,
+  ServingTopology, SparkPairTp2, FourSparkTp4,
+}
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectUnestablished,
+  ServingSubjectJoin, SameSubject, DifferentSubject, SubjectIncomparable,
+  ServingSubjectAxis, AxisCheckpoint, AxisRuntime, AxisTopology, AxisContextCeiling,
+  AxisBatchBudget, AxisKvCacheDtype, AxisCollectiveTransport,
+  ControlledComparison, ControlledOnAxis, ComparisonIsARepeat, ComparisonUncontrolled, ComparisonNotPossible,
+  serving_subject_axes, serving_subject_axis_wire, serving_subject_reads,
+  serving_subject_standing_reads, controlled_comparison, serving_subject_differing_axes,
+}
+import gunbc.spark.prefill_batch_sweep { spark_group_a_batch_arm_subject, spark_group_a_depth_rate_subject }
+import gunbc.spark.tensor_parallel_comparison { spark_group_a_topology_cut }
+
+// THE FIXTURES CARRY NO FLEET FACTS. Every subject below is authored here, so a row reds because
+// the RULE changed and never because a measurement moved underneath it. The two bound fleet rows
+// are asserted separately at the end, where moving underneath IS the thing being checked.
+data fx_socket: NcclRealizedTransport = NcclTransportSocket {
+  network_name: nccl_network_name_socket,
+  read_from: "fixture" as NonEmptyStr,
+}
+
+data fx_ib: NcclRealizedTransport = NcclTransportIbVerbs {
+  network_name: nccl_network_name_ib,
+  read_from: "fixture" as NonEmptyStr,
+}
+
+data fx_unread: NcclRealizedTransport = NcclTransportUnread { because: "fixture" as NonEmptyStr }
+
+// THE DEEPSEEK-ERA MEASUREMENT PROFILE, as the two measurement modules describe theirs.
+data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
+  checkpoint: DeepseekV4FlashIq3sSplit,
+  runtime: GunbcSparkrunVllmDs4Gb10,
+  topology: FourSparkTp4,
+  context_ceiling: token_count(count: 131072),
+  max_num_batched_tokens: 2048,
+  kv_cache_dtype: KvFp8,
+  collective_transport: fx_socket
+    )
+
+// THE LIVE QUESTION'S PROFILE: GLM-5.3-Flash, community SM121 runtime, group B, TP=4. Every axis but
+// topology and budget differs from the measurement profile above, which is the whole point.
+data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
+  checkpoint: Glm53NativeFp8,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: FourSparkTp4,
+  context_ceiling: token_count(count: 262144),
+  max_num_batched_tokens: 2048,
+  kv_cache_dtype: KvFp8,
+  collective_transport: fx_socket
+    )
+
+fn join_is_different(j: ServingSubjectJoin) -> Bool {
+  match j {
+    DifferentSubject { axes: _, left: _, right: _ } => true
+    SameSubject => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+fn join_is_same(j: ServingSubjectJoin) -> Bool {
+  match j {
+    SameSubject => true
+    DifferentSubject { axes: _, left: _, right: _ } => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+fn join_is_incomparable(j: ServingSubjectJoin) -> Bool {
+  match j {
+    SubjectIncomparable { because: _ } => true
+    SameSubject => false
+    DifferentSubject { axes: _, left: _, right: _ } => false
+  }
+}
+
+fn join_names_axis(j: ServingSubjectJoin, a: ServingSubjectAxis) -> Bool {
+  match j {
+    DifferentSubject { axes: axes, left: _, right: _ } =>
+      (axes as String).contains(serving_subject_axis_wire(a: a) as String)
+    SameSubject => false
+    SubjectIncomparable { because: _ } => false
+  }
+}
+
+// ── THE DISCRIMINATING RED: A DEEPSEEK COEFFICIENT MAY NOT ANSWER A GLM QUESTION ───────────────
+//
+// This is the failure the two measurement modules describe in prose and could not refuse. If the
+// join ever answers SameSubject here, a rate measured on a retiring checkpoint is licensed for a
+// decision about the live one.
+test fn w_a_deepseek_measurement_does_not_read_for_a_glm_decision() -> Bool {
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_glm_group_b)
+  join_is_different(j: j)
+    && join_names_axis(j: j, a: AxisCheckpoint)
+    && join_names_axis(j: j, a: AxisRuntime)
+    && join_names_axis(j: j, a: AxisContextCeiling)
+}
+
+// THE REFUSAL NAMES ONLY THE AXES THAT MOVED. A refusal that listed every axis would be true and
+// useless -- it would send the reader back to diffing the records by eye, which is the work this
+// type exists to do.
+test fn w_the_refusal_does_not_name_axes_that_agree() -> Bool {
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_glm_group_b)
+  !join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisBatchBudget)
+}
+
+// ── THE POSITIVE CONTROL: A SUBJECT READS FOR ITSELF ───────────────────────────────────────────
+//
+// Without this the refusal above is satisfied by a join that refuses everything, which would be a
+// wall that admits nothing and therefore carries no information.
+test fn w_a_subject_reads_for_itself() -> Bool {
+  join_is_same(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: fx_deepseek_tp4))
+    && length(serving_subject_differing_axes(left: fx_deepseek_tp4, right: fx_deepseek_tp4)) == 0
+}
+
+// ── EVERY AXIS IS LOAD-BEARING, ONE AT A TIME ──────────────────────────────────────────────────
+//
+// The roster is folded by the join, so an axis added to the subject without an arm in the roster
+// would be invisible. This walks each axis and asserts that moving it alone is detected and named,
+// which is what makes the exhaustive match a wall rather than a checklist.
+test fn w_moving_the_topology_alone_is_detected_and_named() -> Bool {
+  let moved = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: SparkPairTp2,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
+    kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
+    collective_transport: fx_deepseek_tp4.collective_transport
+    )
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisTopology) && !join_names_axis(j: j, a: AxisCheckpoint)
+}
+
+test fn w_moving_the_batch_budget_alone_is_detected_and_named() -> Bool {
+  let moved = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: fx_deepseek_tp4.topology,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: 16384,
+    kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
+    collective_transport: fx_deepseek_tp4.collective_transport
+    )
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisBatchBudget)
+}
+
+test fn w_moving_the_kv_dtype_alone_is_detected_and_named() -> Bool {
+  let moved = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: fx_deepseek_tp4.topology,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
+    kv_cache_dtype: KvBf16,
+    collective_transport: fx_deepseek_tp4.collective_transport
+    )
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: moved)
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisKvCacheDtype)
+}
+
+// ── THE TRANSPORT AXIS: SOCKET AGAINST RDMA IS A REAL DIFFERENCE, UNREAD IS NOT AN AGREEMENT ───
+//
+// This is the brief's live question in miniature. A socket measurement and an RDMA decision are
+// DIFFERENT subjects, which is what makes the RDMA comparison a comparison rather than a re-read.
+test fn w_socket_and_rdma_are_different_subjects() -> Bool {
+  let on_ib = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: fx_deepseek_tp4.topology,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
+    kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
+    collective_transport: fx_ib
+    )
+  let j = serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: on_ib)
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisCollectiveTransport)
+}
+
+// THE ABSORBING-FALLBACK ARM, REFUSED. An unread transport must not compare EQUAL to a read one:
+// NCCL falls back to Socket silently, so "nobody looked" and "these agree" are different facts and
+// collapsing them would license quoting a socket number for an RDMA arm.
+test fn w_an_unread_transport_is_incomparable_and_never_equal() -> Bool {
+  let unread = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: fx_deepseek_tp4.topology,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
+    kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
+    collective_transport: fx_unread
+    )
+  join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: fx_deepseek_tp4))
+    && join_is_incomparable(j: serving_subject_reads(measurement_subject: fx_deepseek_tp4, decision_subject: unread))
+    && join_is_incomparable(j: serving_subject_reads(measurement_subject: unread, decision_subject: unread))
+}
+
+// ── AN UNESTABLISHED STANDING REFUSES RATHER THAN GUESSING ─────────────────────────────────────
+test fn w_an_unestablished_standing_refuses_and_says_what_would_settle_it() -> Bool {
+  let unestablished = SubjectUnestablished {
+    missing: "tensor-parallel topology" as NonEmptyStr,
+    believed: "fixture belief" as NonEmptyStr,
+    would_settle: "fixture remedy" as NonEmptyStr,
+  }
+  let established = SubjectEstablished { subject: fx_deepseek_tp4 }
+  match serving_subject_standing_reads(measurement: unestablished, decision: established) {
+    SubjectIncomparable { because: b } =>
+      (b as String).contains("tensor-parallel topology") && (b as String).contains("fixture remedy")
+    SameSubject => false
+    DifferentSubject { axes: _, left: _, right: _ } => false
+  }
+}
+
+// ── THE CONTROLLED-COMPARISON WITNESS ──────────────────────────────────────────────────────────
+//
+// A one-axis cut is what makes an attribution a comparison rather than a coincidence, and a cut
+// that has drifted onto two axes attributes to the wrong one.
+fn is_controlled_on(c: ControlledComparison, a: ServingSubjectAxis) -> Bool {
+  match c {
+    ControlledOnAxis { axis: got } =>
+      (serving_subject_axis_wire(a: got) as String) == (serving_subject_axis_wire(a: a) as String)
+    ComparisonIsARepeat => false
+    ComparisonUncontrolled { axes: _ } => false
+    ComparisonNotPossible { because: _ } => false
+  }
+}
+
+test fn w_a_one_axis_cut_is_controlled_and_names_that_axis() -> Bool {
+  let on_ib = serving_performance_subject(
+    checkpoint: fx_deepseek_tp4.checkpoint,
+    runtime: fx_deepseek_tp4.runtime,
+    topology: fx_deepseek_tp4.topology,
+    context_ceiling: fx_deepseek_tp4.context_ceiling,
+    max_num_batched_tokens: fx_deepseek_tp4.max_num_batched_tokens,
+    kv_cache_dtype: fx_deepseek_tp4.kv_cache_dtype,
+    collective_transport: fx_ib
+    )
+  is_controlled_on(
+    c: controlled_comparison(left: SubjectEstablished { subject: fx_deepseek_tp4 }, right: SubjectEstablished { subject: on_ib }),
+    a: AxisCollectiveTransport)
+}
+
+// TWO AXES IS NOT A CUT. fx_glm_group_b differs from the DeepSeek profile on checkpoint, runtime and
+// ceiling at once, so no attribution to any one of them is available from that pair.
+test fn w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed() -> Bool {
+  match controlled_comparison(
+    left: SubjectEstablished { subject: fx_deepseek_tp4 },
+    right: SubjectEstablished { subject: fx_glm_group_b }) {
+    ComparisonUncontrolled { axes: axes } =>
+      (axes as String).contains("checkpoint") && (axes as String).contains("runtime")
+    ControlledOnAxis { axis: _ } => false
+    ComparisonIsARepeat => false
+    ComparisonNotPossible { because: _ } => false
+  }
+}
+
+test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool {
+  match controlled_comparison(
+    left: SubjectEstablished { subject: fx_deepseek_tp4 },
+    right: SubjectEstablished { subject: fx_deepseek_tp4 }) {
+    ComparisonIsARepeat => true
+    ControlledOnAxis { axis: _ } => false
+    ComparisonUncontrolled { axes: _ } => false
+    ComparisonNotPossible { because: _ } => false
+  }
+}
+
+// ── THE AXIS ROSTER IS POPULATED, so the fold cannot quietly become an empty list that makes every
+// pair of subjects read as the same subject.
+test fn w_the_axis_roster_covers_every_field_of_the_subject() -> Bool {
+  length(serving_subject_axes) == 7
+}
+
+// ── THE TWO BOUND FLEET ROWS RESOLVE AS THEIR MODULES CLAIM ────────────────────────────────────
+//
+// These are the rows that make this type CONSUMED rather than declared, and unlike the fixtures
+// above they are SUPPOSED to move when a measurement is re-taken. Each asserts the standing its own
+// module states in prose, so the prose and the value cannot drift apart.
+test fn w_the_batch_arms_subject_is_unestablished_on_topology() -> Bool {
+  match spark_group_a_batch_arm_subject {
+    SubjectUnestablished { missing: m, believed: _, would_settle: w } =>
+      (m as String).contains("topology") && (w as String).contains("794afae389e44952a9049452c0619620")
+    SubjectEstablished { subject: _ } => false
+  }
+}
+
+// THE MODULE HOLDS TWO SUBJECTS, AND THIS IS THE ROW THAT SAYS SO. The depth law and the batch arms
+// may not be read as one population: the join refuses, and it refuses for the stated reason rather
+// than by accident of some other axis.
+test fn w_the_depth_law_does_not_read_for_the_batch_arms() -> Bool {
+  join_is_incomparable(
+    j: serving_subject_standing_reads(
+      measurement: spark_group_a_depth_rate_subject,
+      decision: spark_group_a_batch_arm_subject))
+}
+
+// THE TOPOLOGY CUT IS NOT YET A CONTROLLED CUT, and the module says so rather than claiming the
+// attribution its prose describes. This row flips to ControlledOnAxis the moment NCCL's verdict is
+// read on a relaunch of either arm -- at which point it becomes the regression control that the
+// cut stayed one-axis, and it does not retire.
+test fn w_the_topology_cut_is_not_possible_while_the_transport_is_unread() -> Bool {
+  match spark_group_a_topology_cut {
+    ComparisonNotPossible { because: b } => (b as String).contains("transport")
+    ControlledOnAxis { axis: _ } => false
+    ComparisonIsARepeat => false
+    ComparisonUncontrolled { axes: _ } => false
+  }
+}
+
+test fn w_all_serving_performance_subject_claims_hold() -> Bool {
+  w_a_deepseek_measurement_does_not_read_for_a_glm_decision()
+    && w_the_refusal_does_not_name_axes_that_agree()
+    && w_a_subject_reads_for_itself()
+    && w_moving_the_topology_alone_is_detected_and_named()
+    && w_moving_the_batch_budget_alone_is_detected_and_named()
+    && w_moving_the_kv_dtype_alone_is_detected_and_named()
+    && w_socket_and_rdma_are_different_subjects()
+    && w_an_unread_transport_is_incomparable_and_never_equal()
+    && w_an_unestablished_standing_refuses_and_says_what_would_settle_it()
+    && w_a_one_axis_cut_is_controlled_and_names_that_axis()
+    && w_a_multi_axis_pair_is_uncontrolled_rather_than_attributed()
+    && w_two_identical_subjects_are_a_repeat_and_not_a_cut()
+    && w_the_axis_roster_covers_every_field_of_the_subject()
+    && w_the_batch_arms_subject_is_unestablished_on_topology()
+    && w_the_depth_law_does_not_read_for_the_batch_arms()
+    && w_the_topology_cut_is_not_possible_while_the_transport_is_unread()
+}

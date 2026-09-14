@@ -59,6 +59,39 @@ fn serving_topology_rank_count(t: ServingTopology) -> Nat {
   }
 }
 
+// ── THE CANONICAL PROJECTION OF EACH AXIS, WHICH IS WHERE EQUALITY IS DECIDED ─────────────────
+//
+// One place knows the variants and the wire is that place -- the idiom gunbc.spark.serving_subject
+// states for ServingSubject and gunbc.spark.cell_role for its own coproduct. These exist because a
+// consumer that needs to ask whether two serving measurements describe one configuration must not
+// spell the comparison as a per-variant match of its own: a second match over these variants is a
+// second authority on what distinguishes them, and it goes stale silently the moment a checkpoint
+// or runtime is added here. gunbc.spark.serving_performance_subject is that consumer.
+fn serving_checkpoint_wire(c: ServingCheckpoint) -> NonEmptyStr {
+  match c {
+    Glm53NativeFp8 => "glm-5.3-flash-native-fp8" as NonEmptyStr
+    Glm53Exl3_205 => "glm-5.3-flash-exl3-2.05" as NonEmptyStr
+    Glm53Nvfp4CompressedTensors => "glm-5.3-flash-nvfp4-compressed-tensors" as NonEmptyStr
+    DeepseekV4FlashIq3sSplit => "deepseek-v4-flash-iq3s-split" as NonEmptyStr
+  }
+}
+
+fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
+  match r {
+    GunbcSparkrunVllmDs4Gb10 => "gunbc-sparkrun-vllm-ds4-gb10" as NonEmptyStr
+    Gitcommit90Sm121Exl3 => "gitcommit90-sm121-exl3" as NonEmptyStr
+    Tonyd2wildSm121Nvfp4 => "tonyd2wild-sm121-nvfp4" as NonEmptyStr
+  }
+}
+
+fn serving_topology_wire(t: ServingTopology) -> NonEmptyStr {
+  match t {
+    SingleSparkTp1 => "tp1" as NonEmptyStr
+    SparkPairTp2 => "tp2" as NonEmptyStr
+    FourSparkTp4 => "tp4" as NonEmptyStr
+  }
+}
+
 // ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
 // 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
 // of this and the rank count, and stating the aggregate directly would hide which half moved.

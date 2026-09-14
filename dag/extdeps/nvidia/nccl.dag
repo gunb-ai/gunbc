@@ -89,3 +89,43 @@ fn nccl_roce_gid_selection_env(s: NcclRoceGidSelection) -> List<NcclEnvAssignmen
     ]
   }
 }
+
+// ── WHICH TRANSPORT A COMMUNICATOR ACTUALLY BUILT, WHICH NCCL ITSELF ANNOUNCES ──────────────────
+//
+// WHY THIS IS A SEPARATE FACT FROM THE ENVIRONMENT THAT ASKED FOR IT. The env assignments above --
+// and gunbc.spark.pair_serving_observed's CollectiveTransportEnvObserved -- record what the launch
+// REQUESTED. They do not record what NCCL BUILT, and the gap between the two is the whole reason
+// this type exists: NCCL falls back to Socket silently whenever the IB path is unavailable, and a
+// launch whose NCCL_IB_* variables are all set correctly still runs on TCP if the container carries
+// no /dev/infiniband node or no CAP_IPC_LOCK. Reading the request and reporting the transport is the
+// authority substitution extdeps.vllm.server refuses for version strings, in a second place.
+//
+// NCCL PUBLISHES THE VERDICT ITSELF, once per communicator init, as the `NCCL INFO ... Using network
+// <name>` line. That line is the producer, and it is the only thing here entitled to answer.
+//
+// THE FALLBACK ARM IS NOT ATTRIBUTED, AND THAT IS DELIBERATE. `NcclTransportSocket` says the verdict
+// line named Socket and nothing else. WHY it named Socket -- an absent device node, a missing
+// capability, a GID table with no matching entry, a driver that did not load -- is a separate
+// question with its own evidence, and folding a guess into this constructor would make an
+// unestablished cause indistinguishable from a read one. A consumer that wants the cause reads the
+// container's device and capability observations and says so; it does not get the cause from here.
+type NcclRealizedTransport
+  = NcclTransportIbVerbs { network_name: NonEmptyStr, read_from: NonEmptyStr }
+  | NcclTransportSocket { network_name: NonEmptyStr, read_from: NonEmptyStr }
+  | NcclTransportUnread { because: NonEmptyStr }
+
+// THE PROJECTION IS THE EQUALITY, as everywhere else a coproduct is compared. The unread arm
+// projects to a name no verdict line can produce, so an unread transport can never compare EQUAL to
+// a read one: two subjects whose transport nobody looked at are not thereby the same subject.
+fn nccl_realized_transport_wire(t: NcclRealizedTransport) -> NonEmptyStr {
+  match t {
+    NcclTransportIbVerbs { network_name: n, read_from: _ } => n
+    NcclTransportSocket { network_name: n, read_from: _ } => n
+    NcclTransportUnread { because: _ } => "<transport-unread>" as NonEmptyStr
+  }
+}
+
+// The literal NCCL emits for each of the two networks it builds on this fleet, so a reader that has
+// the log line does not have to guess which spelling the verdict uses.
+data nccl_network_name_socket: NonEmptyStr = "Socket" as NonEmptyStr
+data nccl_network_name_ib: NonEmptyStr = "IB" as NonEmptyStr

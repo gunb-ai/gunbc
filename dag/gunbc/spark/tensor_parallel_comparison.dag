@@ -4,6 +4,15 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8 }
+import extdeps.nvidia.nccl { NcclRealizedTransport, NcclTransportUnread }
+import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2, FourSparkTp4 }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectUnestablished,
+  ControlledComparison, ControlledOnAxis, ComparisonIsARepeat, ComparisonUncontrolled, ComparisonNotPossible,
+  controlled_comparison,
+}
 
 // ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
 //
@@ -17,13 +26,12 @@ import std.measure { TokenCount, token_count, token_count_value }
 // numbers established, which is stated in prose beside each one; the numbers themselves are facts
 // about a profile, not about the fleet.
 //
-// THESE ROWS DO NOT YET CARRY THAT SUBJECT STRUCTURALLY, and that is a known gap rather than an
-// oversight. A measurement should name its model artifact, tokenizer, runtime, KV policy, topology
-// and speculative policy in a type, so a row from one profile cannot be joined to a decision about
-// another -- the same defect gunbc.spark.vllm_serving_launch exists to prevent for process
-// incarnations, one level up. The type belongs with the serving-observation substrate rather than
-// beside these measurements, so it is named here as an obligation and deliberately not coined: a
-// second profile authority is exactly the fork this lane has already made once.
+// THAT SUBJECT IS NOW CARRIED STRUCTURALLY. The obligation this paragraph used to declare -- a type
+// naming the model artifact, runtime, KV policy and topology, so a row from one profile cannot be
+// joined to a decision about another -- is discharged at
+// gunbc.spark.serving_performance_subject ServingPerformanceSubject, coined once for both
+// measurement modules rather than twice. The rows below bind to it at the bottom of this file, and
+// what the binding refuses is stated there rather than promised here.
 
 // ── TP=4 AGAINST TP=2 ON ONE HEAD, EVERYTHING ELSE HELD ───────────────────────────────────────
 //
@@ -369,3 +377,46 @@ data spark_group_a_topology_standing: TopologyStanding = TopologyNotFungibleMayB
   confirmed: "TP=4 over-shards prefill for this profile: TP=2 is 25.4% cheaper per computed token and 34% higher in prefill throughput, matched at 131,072 context and a 2048 batch budget. Normalised to four Sparks, two TP=2 replicas are about 2.68x the aggregate prefill and 1.49x the aggregate decode throughput of one TP=4 replica, for about 25% less aggregate KV rather than 63% less" as NonEmptyStr,
   before_a_profile: "three gates, none of them cleared: repeat the arms to earn an interval on the 25.4% and a within-topology numerical envelope; establish whether TP=2 admits the production 1,048,576 ceiling at all, by allocator block population and an actual maximum-context request rather than a printed pool size; and decide which topology is closer to the intended model semantics, which a stable difference alone does not settle. The mechanism inside the step is also unidentified -- collectives, shard geometry, expert partition, kernel shapes and reduction order all moved together -- so no communicator or executor replacement is earned by this result" as NonEmptyStr,
 }
+
+// ── THE TWO ARMS AS SUBJECTS, AND THE CUT AS A FOLD OVER THEM ─────────────────────────────────
+//
+// THIS MODULE'S CENTRAL CLAIM IS THAT ONE AXIS MOVED. It is stated in the opening paragraph as a
+// list of nine things held constant, and a list in prose is exactly the thing that goes stale when
+// a tenth is added. Bound as subjects, the claim is `controlled_comparison` returning
+// ControlledOnAxis with the axis named, and an arm that quietly drifts on a second axis stops
+// being describable as this cut.
+//
+// THE CONTEXT CEILING IS 131,072 IN BOTH ARMS, which the opening paragraph flags as a deliberate
+// choice rather than the production ceiling. It is carried from the arm rows rather than restated,
+// so a change to either arm moves the subject with it.
+//
+// THE TRANSPORT IS UNREAD ON BOTH SIDES, AND THAT IS NOT A DETAIL HERE. This is the module that
+// establishes a cross-topology numerical divergence and refuses substitution on it; the collective
+// path is the one subsystem a tensor-parallel degree change most obviously moves, and nothing in
+// this acquisition read NCCL's verdict line on either arm. Because both sides are unread, the
+// comparison below resolves to ComparisonNotPossible rather than to the topology cut it claims --
+// which is the honest answer: the two arms were not established to share a transport, and if they
+// did not, the degree is not the only axis that moved.
+fn topology_arm_subject(a: TopologyArm) -> ServingPerformanceSubjectStanding {
+  SubjectEstablished {
+    subject: serving_performance_subject(
+      checkpoint: DeepseekV4FlashIq3sSplit,
+      runtime: GunbcSparkrunVllmDs4Gb10,
+      topology: if a.tensor_parallel_size == 2 { SparkPairTp2 } else { FourSparkTp4 },
+      context_ceiling: a.context_ceiling,
+      max_num_batched_tokens: a.max_num_batched_tokens,
+      kv_cache_dtype: KvFp8,
+      collective_transport: NcclTransportUnread {
+        because: "this acquisition never read NCCL's `Using network` verdict line on either arm; a tensor-parallel degree change moves the collective path, so an unread transport leaves a second axis unaccounted for" as NonEmptyStr,
+      }
+    ),
+  }
+}
+
+data spark_group_a_tp4_subject: ServingPerformanceSubjectStanding = topology_arm_subject(a: spark_group_a_tp4_arm)
+data spark_group_a_tp2_subject: ServingPerformanceSubjectStanding = topology_arm_subject(a: spark_group_a_tp2_arm)
+
+// THE CUT ITSELF, DERIVED. Today this reads ComparisonNotPossible because the transport is unread
+// on both sides. Reading NCCL's verdict on a relaunch of either arm is what turns it into
+// ControlledOnAxis { AxisTopology }; nothing else here needs to change for that to happen.
+data spark_group_a_topology_cut: ControlledComparison = controlled_comparison(left: spark_group_a_tp4_subject, right: spark_group_a_tp2_subject)
