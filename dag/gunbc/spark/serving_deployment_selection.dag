@@ -1001,8 +1001,9 @@ fn native_quality_holds(c: DeploymentCandidate) -> Bool {
 
 // OPERATOR 2026-09-11: "we are not doing any redundancy right now". That is replica_count == 1,
 // evaluated as a constraint against the candidate's topology fact, not a score and not a
-// hand-pruned field. Tensor-parallel WIDTH is not this constraint -- it is the weight-fit axis
-// against spark_fleet_snapshot, and must come out of select_realization rather than be written.
+// hand-pruned field. Tensor-parallel WIDTH is not this constraint -- it is decided by the weight-fit
+// axis (bytes per rank against the subject's FleetSnapshot) and the host-fit axis (ranks against
+// its admissible identities), and must come out of select_realization rather than be written.
 fn no_redundancy_holds(c: DeploymentCandidate) -> Bool {
   c.topology.replica_count == 1
 }
