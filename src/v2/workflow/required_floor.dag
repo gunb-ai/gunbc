@@ -1,6 +1,6 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Cons, Empty, contains }
 import v2.std.collection { List }
 import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt }
@@ -1225,7 +1225,7 @@ fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
 // `nested_membership_scan_where_a_map_primitive_exists` and owned by the primitive's lane, not a
 // fact every future author must route around.
 fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
-  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup`, PrimitiveContracts already imported by 78 dag/ modules -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact. BEFORE REDUCING ANYTHING, CHECK WHETHER THE COST IS THIS IDENTITY'S AT ALL: if the same eval_steps has been observed cheap on a quiet run and expensive here, and neighbouring claims in the module moved with it, the charge is contention billed as CPU rather than this claim's work -- see gunbc.rung_drop floor_cost_cpu_regression_at_constant_eval_steps, which carries that class and the series that established it. A step count that did not move is the discriminator." as NonEmptyStr
+  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup` -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact. READ THE COST CAVEAT BEFORE YOU DO, BECAUSE IT IS CURRENTLY THE LARGER RISK: `map_insert` has no bulk constructor, so building the map is an insert fold whose REALIZED cost is quadratic in the host, and this lane measured a map-backed specimen at far MORE CPU than the nested scan it replaced while performing FEWER eval steps. That means the swap can pass this eval-step ceiling and breach the WALL deadline, which is the one limit still armed. The defect is the primitive's, filed at `gunbc.recurring_failure_mode` `nested_membership_scan_where_a_map_primitive_exists` and owned by its lane -- but until it is repaired the swap is not unconditionally safe, and measuring the wall clock after it is part of the remedy rather than an afterthought. BEFORE REDUCING ANYTHING, CHECK WHETHER THE COST IS THIS IDENTITY'S AT ALL: if the same eval_steps has been observed cheap on a quiet run and expensive here, and neighbouring claims in the module moved with it, the charge is contention billed as CPU rather than this claim's work -- see gunbc.rung_drop floor_cost_cpu_regression_at_constant_eval_steps, which carries that class and the series that established it. A step count that did not move is the discriminator." as NonEmptyStr
 }
 
 // WHETHER ONE CLAIM'S PERFORMED WORK IS INSIDE THE CEILING.
@@ -1467,22 +1467,10 @@ fn grandfather_population_has_duplicate(population: List<String>) -> Bool {
   match population {
     Empty {} => false
     Cons { head: h, tail: t } =>
-      if string_in_grandfather_population(needle: h, population: t) {
+      if contains(xs: t, item: h, eq: fn(a, b) { a == b }) {
         true
       } else {
         grandfather_population_has_duplicate(population: t)
-      }
-  }
-}
-
-fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
-  match population {
-    Empty {} => false
-    Cons { head: h, tail: t } =>
-      if needle == h {
-        true
-      } else {
-        string_in_grandfather_population(needle: needle, population: t)
       }
   }
 }
@@ -1500,7 +1488,11 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   match preemption {
     CooperativelyPollable => true
     OpaqueHostCallUnbounded { operation: op } =>
-      string_in_grandfather_population(needle: op, population: opaque_host_call_grandfather_population())
+      contains(
+        xs: opaque_host_call_grandfather_population(),
+        item: op,
+        eq: fn(a, b) { a == b },
+      )
   }
 }
 

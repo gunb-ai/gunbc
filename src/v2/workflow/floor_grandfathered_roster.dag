@@ -1,11 +1,12 @@
 module v2.workflow.floor_grandfathered_roster
 
-import v2.std.algebra { Cons, Empty, list_flat_map, length }
+import v2.std.algebra { Cons, Empty, list_flat_map, length, contains }
 import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
 import std.types { NonEmptyStr }
 
@@ -818,6 +819,31 @@ fn grandfathered_in_chunks(name: String, chunks: List<List<String>>) -> Bool {
   }
 }
 
+// THE HOT SCAN KEEPS ITS OWN DESCENT, AND THAT IS DECLARED RATHER THAN LEFT TO BE NOTICED
+// (review 65778). `v2.std.algebra` `contains` is the canonical membership surface and the two COLD
+// membership tests in this module now consume it. This one does not, and the reason is a defect in
+// the primitive rather than a preference here: `contains` delegates to `any`, which folds through
+// `fold_list` and does NOT short-circuit, so it visits every row even after the answer is known.
+// This descent stops at the hit -- measured on this roster at 8,066 eval steps for a member and
+// 43,583 for a non-member, against a per-claim ceiling this module's own consumer declares.
+//
+// THE DISPOSITION IS THE ONE THIS LANE ARGUES FOR ELSEWHERE, WHICH IS WHY IT IS STATED AND NOT
+// USED AS A LICENCE. `gunbc.recurring_failure_mode` `nested_membership_scan_where_a_map_primitive_exists`
+// says in terms that the repair is ONE REPAIR IN THE PRIMITIVE RATHER THAN A RULE IN EVERY
+// CONSUMER, and DESIGN section 6 says to root-cause to the language layer because a local
+// subsystem patch is the forked-logic trap. A hand-rolled descent in every hot consumer IS that
+// trap; retaining exactly one, with its cost measured and its exit named, is the bounded form.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: `v2.std.algebra` `any` stops traversing once a
+// predicate has answered true -- at which point `contains` short-circuits, this function is
+// DELETED, and `grandfathered_in_chunks` calls the canonical surface directly (DESIGN section
+// 4b(4), dissolution on climb). A trigger naming a faster chunk size, a memoised roster, or a
+// second short-circuiting helper beside this one does NOT discharge it: each keeps a second
+// membership spelling, which is the condition being retired.
+data grandfathered_membership_descent_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: v2.std.algebra any short-circuits its traversal, so v2.std.algebra contains answers without visiting every element and this module deletes grandfathered_in_chunk in favour of it. BLOCKED ON A PRIMITIVE REALIZATION DEFECT, NOT ON PLUMBING: any folds through fold_list today and visits the whole list after the answer is known, which on this 3,795-row roster is the difference between 8,066 and 43,583 eval steps per claim against a ceiling this lane declares. The two cold membership tests in this module already consume contains; this is the single retained exception and it exists so the corpus carries ONE hand-rolled descent rather than one per hot consumer. Owner of the primitive defect: whoever owns v2.std.algebra; owner of this row: the required-floor ceiling lane, currently smart-heron-867. Related realization defect in the sibling primitive: gunbc.recurring_failure_mode nested_membership_scan_where_a_map_primitive_exists." as NonEmptyStr,
+)
+
 fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {
   match rows {
     Empty {} => false
@@ -888,7 +914,7 @@ fn first_addition(current: List<String>, proposed: List<String>) -> Optional<Str
   match proposed {
     Empty {} => optional_absent()
     Cons { head: p, tail: rest } =>
-      if string_in_rows(name: p, rows: current) {
+      if contains(xs: current, item: p, eq: fn(a, b) { a == b }) {
         first_addition(current: current, proposed: rest)
       } else {
         optional_present(value: p)
@@ -907,7 +933,7 @@ fn first_undisposed_removal(
   match current {
     Empty {} => optional_absent()
     Cons { head: c, tail: rest } =>
-      if string_in_rows(name: c, rows: proposed) {
+      if contains(xs: proposed, item: c, eq: fn(a, b) { a == b }) {
         first_undisposed_removal(current: rest, proposed: proposed, removals: removals)
       } else {
         if removal_names(identity: c, removals: removals) {
@@ -915,18 +941,6 @@ fn first_undisposed_removal(
         } else {
           optional_present(value: c)
         }
-      }
-  }
-}
-
-fn string_in_rows(name: String, rows: List<String>) -> Bool {
-  match rows {
-    Empty {} => false
-    Cons { head: r, tail: rest } =>
-      if r == name {
-        true
-      } else {
-        string_in_rows(name: name, rows: rest)
       }
   }
 }
