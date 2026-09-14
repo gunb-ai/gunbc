@@ -43,10 +43,25 @@ type AbuseAndSanctionsRecord
 // generic_application_admits_distinct_unit_variant_arguments and its bare-marker sibling), so
 // every Classified value and every Sink also carries the marker's declaration reference, and the
 // admission fold compares those. These are the only spellings of the references; a consumer that
-// needs one imports it rather than re-spelling the module path. Only the references with a
-// consumer exist (PersonalIdentity and BuildOutput, read by their mints); a marker gains its reference function with its first mint or sink, so no
-// function here is a declaration nothing reads (DESIGN 3c, review 65204).
+// needs one imports it rather than re-spelling the module path. A marker gains its reference
+// function with its FIRST MINT OR SINK, so no function here is a declaration nothing reads
+// (DESIGN 3c, review 65204). PersonalIdentity and BuildOutput earned theirs from their mints. The
+// remaining six earn theirs from the first SINK: gunbc-private strategy.data_map binds one marker
+// per description row and hands it to product.data_class admit_data_effect, which compares marker
+// identity -- so without these the private rows would have to re-spell the module path, forking the
+// only spelling this annotation exists to keep single (DESIGN 3).
+//
+// THIS SENTENCE PREVIOUSLY SAID ONLY TWO REFERENCES EXIST, and it stood above two while the corpus
+// needed eight. Prose asserting what the code contradicts rots silently because no Accepted program
+// can read it (DESIGN 4c); the count is gone from this annotation for that reason -- the functions
+// below are the census.
 data data_category_module_path: String = "product.data_category"
 
 fn personal_identity_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "PersonalIdentity") }
 fn build_output_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "BuildOutput") }
+fn source_and_build_input_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SourceAndBuildInput") }
+fn ci_secret_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "CiSecret") }
+fn job_log_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "JobLog") }
+fn metering_telemetry_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "MeteringTelemetry") }
+fn support_communication_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SupportCommunication") }
+fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "AbuseAndSanctionsRecord") }
