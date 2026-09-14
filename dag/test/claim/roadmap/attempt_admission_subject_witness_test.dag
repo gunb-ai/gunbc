@@ -1,0 +1,243 @@
+module test.claim.attempt_admission_subject_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.content_hash { Sha1Digest, Sha1DigestHex, content_hash_eq_structural }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_eq }
+import gunbc.merge_admission_subject { parse_git_object_id_wire }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap_execution_contract {
+  ExecutionContract, ExecutionContractUnspecified, PathsUnrestricted, CargoFmtValidation,
+  PublicWorktreeLayout, PinnedPublicPlusLocalRoot,
+}
+import gunbc.roadmap_dispatch_destination {
+  AttemptAdmissionSubject, AttemptSubjectAdmission, AttemptSubjectAdmitted, AttemptSubjectRefused,
+  AttemptSubjectInputMissing, AttemptSubjectDestinationUnobserved, AttemptSubjectSealStale,
+  AttemptSubjectRevisionInvalid, AdmittedBaseRevision, AdmittedPublicRevision,
+  AdmittedGreen, AdmittedDespiteRed,
+  DestinationIdentity, DispatchDestinationResolved, DispatchDestinationMissing,
+  DestinationPrivacyObserved, DestinationPrivacyUnobserved,
+  DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
+  admit_attempt_subject, join_attempt_subject, attempt_admission_subject_identity,
+}
+
+data fixture_node: RoadmapNodeIdentity = "rnfx_ADMISSIONSUBJECT000000001" as RoadmapNodeIdentity
+
+// Controlled inputs, not live repository observations. Every changed axis below is authorable;
+// the expected location is supplied by the witness, not derived from the production projection.
+fn fixture_admission(change: String) -> AttemptSubjectAdmission {
+  let base_id = parse_git_object_id_wire(raw: if change == "invalid_base" { "sha1:x" }
+    else if change == "base_revision" { "sha1:2222222222222222222222222222222222222222" }
+    else if change == "sha256" { "sha256:1111111111111111111111111111111111111111111111111111111111111111" }
+    else { "sha1:1111111111111111111111111111111111111111" })
+  let base = match base_id {
+    Absent => none
+    Present { value: revision } =>
+      if change == "missing_base" { none } else { Present { value: AdmittedBaseRevision {
+        revision: revision,
+        admitted_by: if change == "admitted_by" { "second operator" } else { "fixture operator" },
+        admitted_on: if change == "admitted_on" { "2026-09-15" } else { "2026-09-14" },
+      } } }
+  }
+  let public_revision = if change == "missing_public" { none } else {
+    parse_git_object_id_wire(raw: if change == "public_revision" { "sha1:4444444444444444444444444444444444444444" }
+      else { "sha1:3333333333333333333333333333333333333333" })
+  }
+  let standing = if change == "missing_standing" { none }
+    else if change == "standing" { Present { value: AdmittedDespiteRed {
+      witnesses_run: "fixture run", observed_on: "2026-09-14",
+      red_cause: "fixture failure", why_unreachable: "fixture isolation", revisit_when: "fixture boundary changes",
+    } } }
+    else { Present { value: AdmittedGreen { witnesses_run: "fixture run", observed_on: "2026-09-14" } } }
+  let destination = if change == "missing_destination" { DispatchDestinationMissing { reason: "fixture read failed" } }
+    else { DispatchDestinationResolved { identity: DestinationIdentity {
+      owner: "fixture",
+      name: if change == "destination" { "other" } else { "target" },
+      full_name: if change == "destination" { "fixture/other" } else { "fixture/target" },
+      privacy: if change == "missing_privacy" { DestinationPrivacyUnobserved } else { DestinationPrivacyObserved { private: true } },
+      default_branch: if change == "missing_branch" { DestinationDefaultBranchUnobserved }
+        else { DestinationDefaultBranchObserved { branch: if change == "branch" { "release" } else if change == "empty_branch" { "" } else { "main" } } },
+    } } }
+  admit_attempt_subject(
+    node: if change == "node" { "rnfx_ADMISSIONSUBJECT000000002" as RoadmapNodeIdentity } else { fixture_node },
+    destination: destination,
+    base: base,
+    public_revision: public_revision,
+    public_standing: standing,
+    execution: if change == "missing_execution" { ExecutionContractUnspecified }
+      else { ExecutionContract {
+        validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted,
+        source_roots: if change == "source_roots" { PublicWorktreeLayout }
+          else { PinnedPublicPlusLocalRoot { public_prefix: "public" } },
+      } },
+  )
+}
+
+fn fixture_missing(change: String, expected: NonEmptyStr) -> Bool {
+  match fixture_admission(change: change) {
+    AttemptSubjectAdmitted { subject: _ } => false
+    AttemptSubjectRefused { node, cause } =>
+      (node as String) == (fixture_node as String) && match cause {
+        AttemptSubjectInputMissing { field } => field == expected
+        _ => false
+      }
+  }
+}
+
+fn fixture_stale(change: String, expected: NonEmptyStr) -> Bool {
+  match fixture_admission(change: "unchanged") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject: sealed } =>
+      match fixture_admission(change: change) {
+        AttemptSubjectRefused { node: _, cause: _ } => false
+        AttemptSubjectAdmitted { subject: current } =>
+          !content_hash_eq_structural(
+            left: attempt_admission_subject_identity(subject: sealed),
+            right: attempt_admission_subject_identity(subject: current),
+          ) && match join_attempt_subject(sealed: sealed, current: AttemptSubjectAdmitted { subject: current }) {
+            AttemptSubjectAdmitted { subject: _ } => false
+            AttemptSubjectRefused { node, cause } =>
+              (node as String) == (fixture_node as String) && match cause {
+                AttemptSubjectSealStale { field, sealed: before, current: after } =>
+                  field == expected && before != after
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+test fn unchanged_subject_admits() -> Bool {
+  match fixture_admission(change: "unchanged") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject } =>
+      match join_attempt_subject(sealed: subject, current: fixture_admission(change: "unchanged")) {
+        AttemptSubjectRefused { node: _, cause: _ } => false
+        AttemptSubjectAdmitted { subject: joined } =>
+          content_hash_eq_structural(left: attempt_admission_subject_identity(subject: subject), right: attempt_admission_subject_identity(subject: joined))
+      }
+  }
+}
+
+test fn sha256_admits_without_becoming_sha1() -> Bool {
+  match fixture_admission(change: "sha256") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject } =>
+      match join_attempt_subject(sealed: subject, current: fixture_admission(change: "sha256")) {
+        AttemptSubjectRefused { node: _, cause: _ } => false
+        AttemptSubjectAdmitted { subject: _ } => fixture_stale(change: "sha256", expected: "base_revision")
+      }
+  }
+}
+
+test fn moved_standing_refuses_the_join() -> Bool {
+  match fixture_admission(change: "unchanged") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject: green } =>
+      match fixture_admission(change: "standing") {
+        AttemptSubjectRefused { node: _, cause: _ } => false
+        AttemptSubjectAdmitted { subject: red } =>
+          git_object_id_eq(left: green.base.revision, right: red.base.revision)
+            && git_object_id_eq(left: green.public_revision.revision, right: red.public_revision.revision)
+            && fixture_stale(change: "standing", expected: "public_revision_standing")
+      }
+  }
+}
+
+test fn each_other_sealed_axis_moves_identity_and_refuses() -> Bool {
+  fixture_stale(change: "node", expected: "node")
+    && fixture_stale(change: "destination", expected: "destination")
+    && fixture_stale(change: "branch", expected: "destination")
+    && fixture_stale(change: "base_revision", expected: "base_revision")
+    && fixture_stale(change: "admitted_by", expected: "admitted_by")
+    && fixture_stale(change: "admitted_on", expected: "admitted_on")
+    && fixture_stale(change: "public_revision", expected: "public_revision")
+    && fixture_stale(change: "source_roots", expected: "source_roots")
+}
+
+test fn missing_inputs_refuse_at_the_node_and_field() -> Bool {
+  fixture_missing(change: "missing_base", expected: "base_revision")
+    && fixture_missing(change: "invalid_base", expected: "base_revision")
+    && fixture_missing(change: "missing_public", expected: "public_revision")
+    && fixture_missing(change: "missing_standing", expected: "public_revision_standing")
+    && fixture_missing(change: "missing_execution", expected: "execution_contract")
+}
+
+test fn unobserved_destination_never_defaults_to_gunbc() -> Bool {
+  all(["missing_destination", "missing_privacy", "missing_branch", "empty_branch"], change =>
+    match fixture_admission(change: change) {
+      AttemptSubjectAdmitted { subject: _ } => false
+      AttemptSubjectRefused { node, cause } =>
+        (node as String) == (fixture_node as String) && match cause {
+          AttemptSubjectDestinationUnobserved { reason } => (reason as String) != ""
+          _ => false
+        }
+    })
+}
+
+test fn missing_current_standing_refuses_the_join() -> Bool {
+  match fixture_admission(change: "unchanged") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject } =>
+      match join_attempt_subject(sealed: subject, current: fixture_admission(change: "missing_standing")) {
+        AttemptSubjectAdmitted { subject: _ } => false
+        AttemptSubjectRefused { node, cause } =>
+          (node as String) == (fixture_node as String) && match cause {
+            AttemptSubjectInputMissing { field } => field == "public_revision_standing"
+            _ => false
+          }
+      }
+  }
+}
+
+// A dynamic cast is an authorable route around the nominal digest type. These controls reach
+// the acceptance boundary with that value; they do not just test the Git decoder in isolation.
+fn raw_sha1(text: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: text as Sha1DigestHex } }
+}
+
+fn raw_revision_subject(subject: AttemptAdmissionSubject, raw: GitObjectId, public: Bool) -> AttemptAdmissionSubject {
+  AttemptAdmissionSubject {
+    node: subject.node, destination: subject.destination,
+    base: AdmittedBaseRevision {
+      revision: if public { subject.base.revision } else { raw },
+      admitted_by: subject.base.admitted_by, admitted_on: subject.base.admitted_on,
+    },
+    public_revision: AdmittedPublicRevision {
+      revision: if public { raw } else { subject.public_revision.revision }, standing: subject.public_revision.standing,
+    },
+    sealed_source_roots: subject.sealed_source_roots,
+  }
+}
+
+fn raw_revision_refuses(text: String, public: Bool) -> Bool {
+  match fixture_admission(change: "unchanged") {
+    AttemptSubjectRefused { node: _, cause: _ } => false
+    AttemptSubjectAdmitted { subject } =>
+      let forged = raw_revision_subject(subject: subject, raw: raw_sha1(text: text), public: public)
+      let current = AttemptSubjectAdmitted { subject: forged }
+      let minted = admit_attempt_subject(
+        node: forged.node, destination: DispatchDestinationResolved { identity: forged.destination },
+        base: Present { value: forged.base }, public_revision: Present { value: forged.public_revision.revision },
+        public_standing: Present { value: forged.public_revision.standing },
+        execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: forged.sealed_source_roots },
+      )
+      all([minted, join_attempt_subject(sealed: subject, current: current), join_attempt_subject(sealed: forged, current: current)], result =>
+        match result {
+          AttemptSubjectAdmitted { subject: _ } => false
+          AttemptSubjectRefused { node, cause } =>
+            (node as String) == (fixture_node as String) && match cause {
+              AttemptSubjectRevisionInvalid { field } => field == if public { "public_revision" } else { "base_revision" }
+              _ => false
+            }
+        })
+  }
+}
+
+test fn raw_digest_paths_refuse_at_mint_and_join() -> Bool {
+  all([
+    "x",
+    "gggggggggggggggggggggggggggggggggggggggg",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+  ], text => raw_revision_refuses(text: text, public: false) && raw_revision_refuses(text: text, public: true))
+}

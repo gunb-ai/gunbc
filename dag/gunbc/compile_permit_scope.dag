@@ -221,9 +221,15 @@ fn fleet_cancellation_standing(
 //
 // So the production binding calls a function with no safe arm. Fixtures keep the full fold, because
 // section 4b requires the discriminating RED and its positive control to be authorable as source
-// handed to the compiler by a fixture; the restriction belongs on the production path alone. The
-// stage-two PR that adds a real observer adds it together with its observed output, in the shape
-// gunbc.host_hygiene_reaper_observe already uses for typed systemctl and filesystem reads.
+// handed to the compiler by a fixture; the restriction belongs on the production path alone.
+//
+// THE OBSERVER LIVES IN gunbc.compile_permit_scope_observe. It reads Environment/After/Wants through
+// the one systemctl-show handler and returns HostCompileCancellationStanding. This production row does
+// NOT call it: hermetic emit of witnesses.yml would then classify ssh.Session.ExecPortableWords mock
+// stdout as a host realization, and a mock that happened to look like CARGO_BUILD_JOBS would mint
+// Safe. Wet observation is observe_fleet_compile_cancellation_standing in that module; YAML follows
+// this row, which stays NotSafe until
+// a later change binds a non-mockable observed set that still cannot construct Safe by authoring.
 //
 // A note the eventual boundary owes: an active-unit readback alone cannot establish server
 // reclamation, because reclaim-on-client-death is a property of the pool's behaviour rather than of

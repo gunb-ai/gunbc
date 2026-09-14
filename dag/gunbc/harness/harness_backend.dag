@@ -1,11 +1,16 @@
 module gunbc.harness.harness_backend
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, Timestamp }
 import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
+import std.measure { Second, second, second_count }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
+  serving_availability_bracketing_read,
+}
 import extdeps.vllm.metrics {
   VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason,
   vllm_metric_name, vllm_waiting_reason_label, vllm_waiting_reason_capacity,
@@ -51,6 +56,24 @@ import extdeps.languages.json.parse {
 // that is one GET away and answerable by us.
 
 data harness_models_path: String = "/v1/models"
+
+// HOW LONG A PROBE OF A SERVING FRONT DOOR MAY TAKE, AS HARNESS POLICY. Both probes are small GETs on
+// the site LAN (/v1/models and /metrics), measured sub-second on group A; the bound exists so that an
+// engine which accepts the connection and never answers stops being a candidate instead of holding
+// the roster gate, dispatch selection and placement open with no deadline at all -- which is what
+// the unbounded GET these probes used to make did. The number is this consumer's patience, not a
+// fact about vLLM (extdeps.http.client GetWithin takes it as an input for that reason).
+data harness_front_door_probe_bound: Second = second(count: 10)
+
+fn harness_bounded_get(url: String) -> HarnessBoundedRead {
+  let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  HarnessBoundedRead { body: read.body, success: read.success }
+}
+
+type HarnessBoundedRead {
+  body: String
+  success: Bool
+}
 
 // THE URL IS BUILT FROM THE ROUTE'S OWN ENDPOINT, port included. It used to be built from the
 // address plus one global port row, which made a second route on a second port unreachable without
@@ -105,7 +128,7 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
         "route is reachable but advertises no model this harness is admitted to ask; it advertises: ", a,
       ], "")
     HarnessBackendUnreachable { url: u } =>
-      join(["backend did not answer ", u], "")
+      join(["backend did not answer successfully within ", to_string(second_count(s: harness_front_door_probe_bound)), "s: ", u], "")
     HarnessBackendUnreadable { cause: c } =>
       join(["backend answered but the model list was unreadable: ", c], "")
   }
@@ -130,7 +153,7 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
 // like an Ollama daemon with an empty store, and both have answered this probe on this fleet.
 fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStanding {
   let url = harness_models_url(endpoint: endpoint)
-  let read = http.Client.Get(url: url as NonEmptyStr)
+  let read = harness_bounded_get(url: url)
   if !read.success {
     HarnessBackendUnreachable { url: url }
   } else {
@@ -150,6 +173,22 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
       }
     }
   }
+}
+
+// WHAT THE MODELS PROBE ESTABLISHED ABOUT THE FRONT DOOR, AND NOTHING ABOUT ADMISSION. Serving and
+// model-not-admitted are both answers; whether this harness may use the model is decided separately.
+fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead {
+  match standing {
+    HarnessBackendServing { model: _, unit: _, readback: _ } => FrontDoorAnswered
+    HarnessBackendModelNotAdmitted { advertised: _ } => FrontDoorAnswered
+    HarnessBackendUnreachable { url: u } => FrontDoorDidNotAnswer { url: u as NonEmptyStr, bound: harness_front_door_probe_bound }
+    HarnessBackendUnreadable { cause: c } => FrontDoorAnswerUnreadable { cause: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
 }
 
 // THE ROSTER IS OBSERVED ONE ROUTE AT A TIME AND THE ANSWER KEEPS BOTH HALVES. An earlier fold
@@ -456,7 +495,7 @@ type HarnessEngineReading {
 fn harness_observe_engine(endpoint: ServingRouteEndpoint) -> HarnessEngineReading {
   let url = harness_metrics_url(endpoint: endpoint)
   let group = endpoint.group
-  let read = http.Client.Get(url: url as NonEmptyStr)
+  let read = harness_bounded_get(url: url)
   if !read.success {
     HarnessEngineReading {
       queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },

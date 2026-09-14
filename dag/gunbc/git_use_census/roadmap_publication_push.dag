@@ -1,0 +1,22 @@
+module gunbc.git_use_census.roadmap_publication_push
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.git_use_authority { GitUseRow, ParsedDagGitDependency, ClassifiedGitUse, GitProposalReviewPublication, DeclaredLegacyGitUse }
+
+data roadmap_publication_push: GitUseRow = GitUseRow {
+  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_publish_actuate", decl_name: "publish_attempt"),
+
+  surface: ParsedDagGitDependency { imported_module: "extdeps.git" as NonEmptyStr },
+
+  classification: ClassifiedGitUse {
+    role: GitProposalReviewPublication,
+    authorization: DeclaredLegacyGitUse {
+      retirement_capability: "This call site executes a projector that deterministically renders one exact native candidate, advances its projection ref under an expected-old Git generation, and idempotently creates or updates one PR with independent read-back. Merely declaring that projector does not retire this authorization." as NonEmptyStr
+    }
+  },
+
+  bridge_disposition: "git.Core.PushRefInRepo currently publishes the authoritative Git attempt branch. Replace this call site's authority with a deterministic projection of one immutable native integration candidate; bind native and Git identities by a mapping. Import the independently read-back GitHub merge as the next native baseline before reporting Landed." as NonEmptyStr,
+
+  cutover_disposition: "The exact-parent native target advance decides landing. This call site's Git publication becomes a compatibility projection of that committed candidate; projection failure leaves the native commit intact and records projection repair pending." as NonEmptyStr,
+}
