@@ -1,0 +1,390 @@
+module gunbc.fabric_m0_origin_helper
+
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { FilesystemEntryNameAdmitted, FilesystemEntryNameRefused, admit_filesystem_entry_name }
+import gunbc.fleet_posix_accounts { PosixSudoGrant, SudoRunAsLogin, NopasswdGrantListCheck }
+import gunbc.fabric_m0_origin_readback {
+  OriginPutOutcome, OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
+  OriginFetchOutcome, OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
+  OriginReadingOutcome, OriginReadingTaken, OriginReadingUnavailable,
+  read_origin_staged_file, origin_reading_digest, origin_reading_path,
+}
+import gunbc.fabric_m0_origin_filesystem {
+  FilesystemOriginRoot, content_addressed_origin_key, origin_staging_directory, put_filesystem_origin_object, fetch_filesystem_origin_object,
+}
+import gunbc.fabric_m0_origin_host { fabric_origin_principal_name, fabric_origin_root_path, FabricOriginConvergeStep, FabricOriginPrivileged, FabricOriginSyncDirectory }
+import gunbc.executor_privileged_operation { EnsureOwnedDirectory }
+import gunbc.fleet_ssh_locus { fleet_automation_principal_login }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_invoke { InvocationArgument, invocation_argument_name, gunbc_run_transport_argv }
+
+// THE ONE DOOR ACROSS THE ORIGIN'S 0700 BOUNDARY.
+//
+// The origin tree belongs to a no-login service identity, so nothing that logs in can reach it directly,
+// and that is deliberate. A fleet login principal crosses it by exactly one route: sudo, restricted to
+// ONE helper path and to ONE target account (the fabric-origin principal, never root and never any other
+// user), running ONE of a closed set of operations. The helper can do nothing the operations below do not
+// name - it cannot delete, overwrite, list, or read an arbitrary path - so the grant confers exactly that
+// set and no identity beyond it.
+//
+// BYTES CROSS OUTSIDE THE TREE. A transfer lands in handoff/incoming/ under the helper root, never in
+// the origin's staging/, and a fetch exports into handoff/outgoing/; both are named by an admitted entry
+// name, so no argument can name a path. The origin tree stays at 0700 and is never made group-writable.
+//
+// THE DIGEST DECIDES, NOT THE TRANSFER. A put names the SHA-256 it expects; the helper takes its own
+// reading of a private copy of the handoff through the sole reading mint and refuses before any origin
+// effect when the two differ. The object key is derived from the expected digest here - the caller does not supply a key
+// beside the digest, so the two can never disagree.
+//
+// WHAT IS MODELED AND WHAT IS NOT. The operation vocabulary, its argv, its admission, the grant, and the
+// host-side put and stage logic are modeled and exercised. How the helper executable at its path is built
+// and installed - a pinned gunbc invocation of the entries below - is host convergence that has not been
+// authored, and nothing here installs or runs it on a host.
+
+data fabric_origin_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-fabric-origin"
+data fabric_origin_handoff_root: NonEmptyStr = "/var/lib/gunbc-fabric-handoff"
+
+fn fabric_origin_handoff_incoming_path() -> NonEmptyStr {
+  join([fabric_origin_handoff_root as String, "/incoming"], "") as NonEmptyStr
+}
+
+fn fabric_origin_handoff_outgoing_path() -> NonEmptyStr {
+  join([fabric_origin_handoff_root as String, "/outgoing"], "") as NonEmptyStr
+}
+
+// THE HANDOFF DIRECTORIES, AS HOST INTENT. Each direction is writable by exactly one side and readable by
+// the other through its group: incoming/ belongs to the automation login with the fabric-origin group,
+// outgoing/ to the fabric-origin account with the automation group, both 0750, beneath a root-owned
+// 0755 parent. Neither is inside the origin tree, and the origin tree's own 0700 is untouched. The plan is
+// data; nothing here runs it, and a file created by either side is readable through the group only
+// under a umask that leaves group read, which the helper's installation must fix.
+fn fabric_origin_handoff_converge_plan() -> List<FabricOriginConvergeStep> {
+  [
+    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_root, owner: "root", group: "root", mode: "0755" } },
+    FabricOriginSyncDirectory { path: "/var/lib" },
+    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_incoming_path(), owner: fleet_automation_principal_login, group: fabric_origin_principal_name, mode: "0750" } },
+    FabricOriginPrivileged { operation: EnsureOwnedDirectory { path: fabric_origin_handoff_outgoing_path(), owner: fabric_origin_principal_name, group: fleet_automation_principal_login, mode: "0750" } },
+    FabricOriginSyncDirectory { path: fabric_origin_handoff_root },
+  ]
+}
+
+// THE GRANT a login principal needs, and nothing wider: this helper path, as the fabric-origin account.
+fn fabric_origin_helper_sudo_grant() -> PosixSudoGrant {
+  PosixSudoGrant {
+    command_path: fabric_origin_helper_path,
+    run_as: SudoRunAsLogin { login: fabric_origin_principal_name },
+    probe: NopasswdGrantListCheck,
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Operations and their admission.
+
+type HandoffName {
+  name: NonEmptyStr
+}
+
+type FabricOriginHelperOperation
+  = HelperPutFromHandoff { handoff: HandoffName, expected: Sha256Digest }
+  | HelperStageForFetch { expected: Sha256Digest, export: HandoffName }
+
+type HelperOperationAdmission
+  = HelperOperationAdmitted { operation: FabricOriginHelperOperation }
+  | HelperOperationRefused { cause: NonEmptyStr }
+
+fn admit_handoff_name(name: String) -> HandoffName? {
+  match admit_filesystem_entry_name(name: name) {
+    FilesystemEntryNameAdmitted(_) => Present { value: HandoffName { name: name as NonEmptyStr } }
+    FilesystemEntryNameRefused { name: _, cause: _ } => Absent
+  }
+}
+
+// THE HELPER'S ARGUMENTS ARE WORDS FROM A LOGIN PRINCIPAL AND ARE ADMITTED AS SUCH: the verb is one of
+// two, a digest must be 64 lower-hex digits, and a handoff name must be a single directory-entry name.
+// Anything else refuses before the helper touches a file.
+fn admit_helper_operation(words: List<String>) -> HelperOperationAdmission {
+  match words |> first {
+    Absent => HelperOperationRefused { cause: "the helper was given no operation" }
+    Present { value: verb } =>
+      if count(words) != 3 {
+        HelperOperationRefused { cause: join(["the helper takes exactly an operation and two arguments; got ", to_string(value: count(words)), " words"], "") as NonEmptyStr }
+      } else {
+        let a = match words |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+        let b = match words |> skip(n: 2) |> first { Present { value: v } => v  Absent => "" }
+        if verb == "put" {
+          match admit_handoff_name(name: a) {
+            Absent => HelperOperationRefused { cause: join(["handoff name '", a, "' is not a single directory-entry name"], "") as NonEmptyStr }
+            Present { value: handoff } => match sha256_hex_digest(hex: b) {
+              Absent => HelperOperationRefused { cause: join(["'", b, "' is not a 64-digit lower-hex SHA-256"], "") as NonEmptyStr }
+              Present { value: digest } => HelperOperationAdmitted { operation: HelperPutFromHandoff { handoff: handoff, expected: digest } }
+            }
+          }
+        } else if verb == "stage" {
+          match sha256_hex_digest(hex: a) {
+            Absent => HelperOperationRefused { cause: join(["'", a, "' is not a 64-digit lower-hex SHA-256"], "") as NonEmptyStr }
+            Present { value: digest } => match admit_handoff_name(name: b) {
+              Absent => HelperOperationRefused { cause: join(["export name '", b, "' is not a single directory-entry name"], "") as NonEmptyStr }
+              Present { value: export } => HelperOperationAdmitted { operation: HelperStageForFetch { expected: digest, export: export } }
+            }
+          }
+        } else {
+          HelperOperationRefused { cause: join(["the helper has no operation '", verb, "'; it performs only put and stage"], "") as NonEmptyStr }
+        }
+      }
+  }
+}
+
+// THE THREE WORDS OF AN ADMITTED OPERATION, stated once: the sudo argv and the gunbc run arguments behind
+// the helper path both project from here, and admit_helper_operation reads the same order back.
+type FabricOriginHelperWords {
+  operation: String
+  first: String
+  second: String
+}
+
+fn fabric_origin_helper_words(operation: FabricOriginHelperOperation) -> FabricOriginHelperWords {
+  match operation {
+    HelperPutFromHandoff { handoff, expected } => FabricOriginHelperWords { operation: "put", first: handoff.name as String, second: expected.hex as String }
+    HelperStageForFetch { expected, export } => FabricOriginHelperWords { operation: "stage", first: expected.hex as String, second: export.name as String }
+  }
+}
+
+// The argv a login principal runs, through sudo, for an admitted operation.
+fn fabric_origin_helper_argv(operation: FabricOriginHelperOperation) -> List<String> {
+  let w = fabric_origin_helper_words(operation: operation)
+  [fabric_origin_helper_path as String, w.operation, w.first, w.second]
+}
+
+// ---------------------------------------------------------------------------------------------
+// Host-side logic, run as the fabric-origin principal.
+
+type HelperIngressRefusal
+  = HelperIngressUnreadable { cause: NonEmptyStr }
+  | HelperIngressDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
+
+type HelperPutOutcome
+  = HelperIngressRefused { refusal: HelperIngressRefusal }
+  | HelperPutPerformed { outcome: OriginPutOutcome }
+
+// PURE: whether the ingress reading licenses the origin put at all. A mismatch or an unreadable handoff
+// never reaches the origin; Absent is the one answer that lets the put run.
+fn helper_ingress_refusal(reading: OriginReadingOutcome, expected: Sha256Digest) -> HelperIngressRefusal? {
+  match reading {
+    OriginReadingUnavailable { staged_path: _, cause } => Present { value: HelperIngressUnreadable { cause: cause } }
+    OriginReadingTaken { reading: r } =>
+      if content_hash_eq_cryptographic(left: expected, right: origin_reading_digest(reading: r)) {
+        none
+      } else {
+        Present { value: HelperIngressDigestMismatch { expected: expected, observed: origin_reading_digest(reading: r) } }
+      }
+  }
+}
+
+// THE DIGEST IS TAKEN OF A COPY NOBODY ELSE CAN WRITE. The login principal owns handoff/incoming/, so
+// it could replace the handoff file between a hash and the origin's own copy of it. The helper first
+// copies the handoff into a private file under the origin's 0700 staging directory, hashes that, and
+// puts from that - so the bytes judged are the bytes installed. The private copy is removed afterwards,
+// the same way the filesystem put removes its own staged file.
+fn helper_put_from_handoff(root: FilesystemOriginRoot, incoming: NonEmptyStr, handoff: HandoffName, expected: Sha256Digest) -> HelperPutOutcome {
+  let handoff_path = join([incoming as String, "/", handoff.name as String], "")
+  let private = shell.Mktemp.FileInDirectory(dir: origin_staging_directory(root: root) as FilePath)
+  if !private.success {
+    HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["no private ingress copy could be created under ", origin_staging_directory(root: root)], "") as NonEmptyStr } }
+  } else {
+    let copy_path = trim(private.path as String)
+    let outcome = if !shell.Copy.File(source: handoff_path as FilePath, destination: copy_path as FilePath).success {
+      HelperIngressRefused { refusal: HelperIngressUnreadable { cause: join(["the handoff at ", handoff_path, " could not be copied into staging"], "") as NonEmptyStr } }
+    } else {
+      match helper_ingress_refusal(reading: read_origin_staged_file(staged_path: copy_path as NonEmptyStr), expected: expected) {
+        Present { value: refusal } => HelperIngressRefused { refusal: refusal }
+        Absent => HelperPutPerformed { outcome: put_filesystem_origin_object(root: root, local_path: copy_path as FilePath, key: content_addressed_origin_key(digest: expected)) }
+      }
+    }
+    let removed = shell.Remove.FileForce(path: copy_path)
+    outcome
+  }
+}
+
+type HelperStageOutcome
+  = HelperStagedForExport { export_path: NonEmptyStr, fetch: OriginFetchOutcome }
+  | HelperNothingToExport { fetch: OriginFetchOutcome }
+  | HelperExportFailed { fetch: OriginFetchOutcome, cause: NonEmptyStr }
+
+// A stage fetches through the filesystem origin - which stabilizes the object and reads its own copy -
+// and then places that copy in the outgoing handoff for a login principal to transfer. The export is
+// fsynced so a transfer never reads a name whose bytes were not yet written.
+fn helper_stage_for_fetch(root: FilesystemOriginRoot, outgoing: NonEmptyStr, expected: Sha256Digest, export: HandoffName) -> HelperStageOutcome {
+  let fetch = fetch_filesystem_origin_object(root: root, key: content_addressed_origin_key(digest: expected))
+  match fetch {
+    OriginObjectAbsent { key: _ } => HelperNothingToExport { fetch: fetch }
+    OriginFetchUnavailable { key: _, cause: _ } => HelperNothingToExport { fetch: fetch }
+    OriginObjectStaged { key: _, reading } => {
+      let export_path = join([outgoing as String, "/", export.name as String], "")
+      if !shell.Copy.File(source: origin_reading_path(reading: reading) as FilePath, destination: export_path as FilePath).success {
+        HelperExportFailed { fetch: fetch, cause: join(["the staged object could not be copied to ", export_path], "") as NonEmptyStr }
+      } else if !shell.Sync.Path(path: export_path as FilePath).success {
+        HelperExportFailed { fetch: fetch, cause: join(["the export at ", export_path, " could not be fsynced"], "") as NonEmptyStr }
+      } else {
+        HelperStagedForExport { export_path: export_path as NonEmptyStr, fetch: fetch }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The host entry.
+
+type FabricOriginHelperRun
+  = HelperRunRefused { cause: NonEmptyStr }
+  | HelperRanPut { outcome: HelperPutOutcome }
+  | HelperRanStage { outcome: HelperStageOutcome }
+
+// WHAT THE HELPER EXECUTABLE RUNS, AND ALL IT RUNS: admit the words, then one operation over the fixed
+// origin root and the fixed handoff directories. No word reaches a path except as an admitted entry name
+// beneath those directories.
+fn run_fabric_origin_helper(words: List<String>) -> FabricOriginHelperRun {
+  let root = FilesystemOriginRoot { root: fabric_origin_root_path as FilePath }
+  match admit_helper_operation(words: words) {
+    HelperOperationRefused { cause } => HelperRunRefused { cause: cause }
+    HelperOperationAdmitted { operation } => match operation {
+      HelperPutFromHandoff { handoff, expected } =>
+        HelperRanPut { outcome: helper_put_from_handoff(root: root, incoming: fabric_origin_handoff_incoming_path(), handoff: handoff, expected: expected) }
+      HelperStageForFetch { expected, export } =>
+        HelperRanStage { outcome: helper_stage_for_fetch(root: root, outgoing: fabric_origin_handoff_outgoing_path(), expected: expected, export: export) }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The process boundary.
+
+// THE HELPER'S EXIT IS A CLOSED TABLE, because the login principal on the far side of sudo sees only an
+// exit status and the controller must not collapse an absent object into an unreadable one: the first
+// licenses a copy from the other host, the second licenses nothing. The codes avoid 1 and 2 (general
+// and usage errors any wrapper may produce), 126 and 127 (the shell's cannot-execute and not-found) and
+// 255 (ssh's own failure), so a code in this table was produced by the helper and by nothing in between.
+type FabricOriginHelperExit
+  = HelperExitDone
+  | HelperExitObjectAbsent
+  | HelperExitRefused
+  | HelperExitIndeterminate
+
+fn fabric_origin_helper_exit_code(e: FabricOriginHelperExit) -> Int {
+  match e {
+    HelperExitDone => 0
+    HelperExitObjectAbsent => 10
+    HelperExitRefused => 11
+    HelperExitIndeterminate => 12
+  }
+}
+
+// THE CONTROLLER'S READING OF A STATUS. Any code outside the table is indeterminate: it was not the
+// helper speaking, so it says nothing about the origin.
+fn fabric_origin_helper_exit_of_code(code: Int) -> FabricOriginHelperExit {
+  if code == 0 { HelperExitDone }
+  else if code == 10 { HelperExitObjectAbsent }
+  else if code == 11 { HelperExitRefused }
+  else { HelperExitIndeterminate }
+}
+
+fn fabric_origin_helper_exit(run: FabricOriginHelperRun) -> FabricOriginHelperExit {
+  match run {
+    HelperRunRefused { cause: _ } => HelperExitRefused
+    HelperRanPut { outcome } => match outcome {
+      HelperIngressRefused { refusal } => match refusal {
+        HelperIngressDigestMismatch { expected: _, observed: _ } => HelperExitRefused
+        HelperIngressUnreadable { cause: _ } => HelperExitIndeterminate
+      }
+      HelperPutPerformed { outcome: put } => match put {
+        OriginObjectStored { key: _ } => HelperExitDone
+        OriginObjectAlreadyPresent { key: _ } => HelperExitDone
+        OriginPutRefused { key: _, cause: _ } => HelperExitRefused
+        OriginPutOutcomeUnknown { key: _, cause: _ } => HelperExitIndeterminate
+      }
+    }
+    HelperRanStage { outcome } => match outcome {
+      HelperStagedForExport { export_path: _, fetch: _ } => HelperExitDone
+      HelperExportFailed { fetch: _, cause: _ } => HelperExitIndeterminate
+      HelperNothingToExport { fetch } => match fetch {
+        OriginObjectAbsent { key: _ } => HelperExitObjectAbsent
+        OriginFetchUnavailable { key: _, cause: _ } => HelperExitIndeterminate
+        OriginObjectStaged { key: _, reading: _ } => HelperExitIndeterminate
+      }
+    }
+  }
+}
+
+fn fabric_origin_helper_run_reason(run: FabricOriginHelperRun) -> String {
+  match run {
+    HelperRunRefused { cause } => cause as String
+    HelperRanPut { outcome } => match outcome {
+      HelperIngressRefused { refusal } => match refusal {
+        HelperIngressDigestMismatch { expected, observed } => join(["the handoff is ", observed.hex as String, ", not the named ", expected.hex as String, "; the origin was not touched"], "")
+        HelperIngressUnreadable { cause } => join(["the handoff could not be read: ", cause as String], "")
+      }
+      HelperPutPerformed { outcome: put } => match put {
+        OriginObjectStored { key } => join(["stored ", key as String], "")
+        OriginObjectAlreadyPresent { key } => join(["already present ", key as String], "")
+        OriginPutRefused { key, cause } => join(["put of ", key as String, " refused: ", cause as String], "")
+        OriginPutOutcomeUnknown { key, cause } => join(["put of ", key as String, " unknown: ", cause as String], "")
+      }
+    }
+    HelperRanStage { outcome } => match outcome {
+      HelperStagedForExport { export_path, fetch: _ } => join(["staged for export at ", export_path as String], "")
+      HelperExportFailed { fetch: _, cause } => cause as String
+      HelperNothingToExport { fetch } => match fetch {
+        OriginObjectAbsent { key } => join(["the origin holds no ", key as String], "")
+        OriginFetchUnavailable { key, cause } => join(["fetch of ", key as String, " unavailable: ", cause as String], "")
+        OriginObjectStaged { key, reading: _ } => join(["fetch of ", key as String, " staged but was not exported"], "")
+      }
+    }
+  }
+}
+
+// THE gunbc run ENTRY the installed helper executes. Named arguments arrive as strings, so the three
+// words are taken as three parameters and admitted exactly as argv words would be.
+fn fabric_origin_helper_cli(operation: String, first: String, second: String) -> ProcessExit {
+  let run = run_fabric_origin_helper(words: [operation, first, second])
+  match fabric_origin_helper_exit(run: run) {
+    HelperExitDone => ExitSuccess
+    HelperExitObjectAbsent => ExitFailure { code: fabric_origin_helper_exit_code(e: HelperExitObjectAbsent), reason: fabric_origin_helper_run_reason(run: run) }
+    HelperExitRefused => ExitFailure { code: fabric_origin_helper_exit_code(e: HelperExitRefused), reason: fabric_origin_helper_run_reason(run: run) }
+    HelperExitIndeterminate => ExitFailure { code: fabric_origin_helper_exit_code(e: HelperExitIndeterminate), reason: fabric_origin_helper_run_reason(run: run) }
+  }
+}
+
+data fabric_origin_helper_entry: String = "dag/gunbc/fabric/fabric_m0_origin_helper.dag"
+data fabric_origin_helper_function: String = "fabric_origin_helper_cli"
+
+// THE gunbc run ARGV behind the helper path, over the source roots the installation pins. The words of
+// an admitted operation become the entry's three named arguments through gunbc.cli_invoke's typed pair;
+// the three names are this module's literals, and a name that failed admission would be a defect here,
+// so it answers Absent rather than rendering fewer arguments.
+fn fabric_origin_helper_run_argv(source_roots: List<String>, operation: FabricOriginHelperOperation) -> List<String>? {
+  let words = fabric_origin_helper_words(operation: operation)
+  match invocation_argument_name(raw: "operation") {
+    Absent => none
+    Present { value: n0 } => match invocation_argument_name(raw: "first") {
+      Absent => none
+      Present { value: n1 } => match invocation_argument_name(raw: "second") {
+        Absent => none
+        Present { value: n2 } => Present {
+          value: gunbc_run_transport_argv(
+            source_roots: source_roots,
+            entry: fabric_origin_helper_entry,
+            function: fabric_origin_helper_function,
+            arguments: [
+              InvocationArgument { name: n0, value: words.operation },
+              InvocationArgument { name: n1, value: words.first },
+              InvocationArgument { name: n2, value: words.second },
+            ],
+            claim_run: false,
+          ),
+        }
+      }
+    }
+  }
+}

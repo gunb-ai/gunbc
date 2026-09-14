@@ -35,11 +35,12 @@ import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackA
 // THIS IS A RECEIPT FOR ONE ATTEMPT, NOT LIVE STANDING. The answer describes the readbacks it was given;
 // a later health or repair decision takes fresh per-host observations.
 //
-// RUNG, STATED. The placement on a readback is supplied by whoever took it; this module refuses
-// inconsistent bindings but cannot tell a correctly labelled readback from a mislabelled one. The
-// binding becomes a construction guarantee when the per-host fetch - fetch, copy back to the controller,
-// digest there - is the only thing that can mint a bound readback; until that transport lands, the class
-// "a readback labelled with the wrong placement" is mitigatable, not prevented.
+// RUNG, STATED. HostBoundOriginReadback is sealed: its production mint is
+// gunbc.fabric_m0_origin_remote fabric_origin_remote_readback, which derives the SSH target from the
+// placement, has the helper stage the object on that host, copies it back and takes the controller's own
+// reading - so a production readback cannot carry a placement it was not taken at. The one other
+// admitted caller is this module's witness fixture. What is not established is that the route has run
+// against a host; that needs the helper installed, which is not authorized.
 
 type OriginPairRole
   = OriginPrimary
@@ -69,11 +70,18 @@ fn placement_label(p: FabricOriginPlacement) -> String {
   join([origin_pair_role_name(role: p.role), " ", p.host as String], "")
 }
 
-type HostBoundOriginReadback {
+type HostBoundOriginReadback sole_constructor {
   placement: FabricOriginPlacement
   key: NonEmptyStr
   readback: OriginReadback
 }
+
+fn host_bound_origin_readback_seal(placement: FabricOriginPlacement, key: NonEmptyStr, readback: OriginReadback) -> HostBoundOriginReadback
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fabric_m0_origin_remote", decl_name: "fabric_origin_remote_readback"),
+    decl_ref(module_path: "test.claim.fabric_m0_origin_pair_witness_test", decl_name: "at_key"),
+  ]
+  = HostBoundOriginReadback { placement: placement, key: key, readback: readback }
 
 type OriginReplicaDeficiency
   = OriginReplicaHasNoCopy

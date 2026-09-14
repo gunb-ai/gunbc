@@ -1,0 +1,75 @@
+module extdeps.ssh.scp
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE OpenSSH scp(1) CLIENT, modeled as its own upstream subject. It is not a channel request of RFC
+// 4254 (extdeps.ssh.session) and not the ssh_config(5) option vocabulary (extdeps.ssh.client_options),
+// although it accepts that vocabulary through -o and -F exactly as ssh(1) does.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/scp.1"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ssh.scp",
+      decl_name: "ssh.Scp",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// scp(1): options, then SOURCE ... TARGET, where an operand naming a remote file is `host:path` and a
+// local operand containing a colon before any slash is read as remote. The direction of a copy is
+// therefore the order of the two operands, not an option, so one operation carries both directions and
+// the caller's shaper decides which operand is remote. `--` ends option processing (getopt), so no
+// operand can be read as an option.
+fn shape_scp_operands(source: String, target: String) -> List<String> {
+  ["--", source, target]
+}
+
+fn scp_remote_operand(host: NonEmptyStr, path: NonEmptyStr) -> String {
+  join([host as String, ":", path as String], "")
+}
+
+type ScpCopyResult {
+  exit_code: Int
+  success: Bool
+  stderr: String
+}
+
+// scp exits 0 on success and >0 if an error occurs (scp(1) EXIT STATUS). A zero exit is the client's
+// report that the copy completed; it is not an observation of the far side's bytes.
+service ssh.Scp {
+  operation CopyPortableWords {
+    input { client_args: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["scp", client_args]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "scp copy failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stderr: "" } "hermetic ssh.Scp.CopyPortableWords"
+    }
+  }
+}
+
+fn scp_copy_portable_words(client_args: List<String>) -> ScpCopyResult {
+  let result = ssh.Scp.CopyPortableWords(client_args: client_args)
+  ScpCopyResult { exit_code: result.exit_code, success: result.success, stderr: result.stderr }
+}

@@ -1,0 +1,109 @@
+module test.claim.fleet_scp_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.ssh.scp { ScpCopyResult }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, portable_remote_words, shape_fleet_ssh_exec }
+import gunbc.fleet_scp {
+  FleetScpDirection, FleetScpCopyTo, FleetScpCopyFrom,
+  FleetScpCopyOutcome, FleetScpCopyNotAttempted, FleetScpCopyRanAndReportedSuccess, FleetScpCopyRanAndFailed,
+  fleet_scp_local_path, fleet_scp_remote_path, shape_fleet_scp_copy, fleet_scp_copy, fleet_scp_copy_outcome,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+// CONTROLS FOR THE FLEET COPY, hermetic: the copy and the exec leg carry identical client words from one
+// context, the operand order is the direction, every inadmissible input refuses before a process runs,
+// and a client exit is classified into the arm that names it as a report. What these do NOT establish
+// is that scp reached any host; that is a wet run's evidence.
+
+fn context() -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_hermetic_witness_fixture()
+}
+
+fn automation() -> SshTarget {
+  SshTarget { endpoint: "srv1" as NonEmptyStr, principal: "gunbc-automation" as NonEmptyStr }
+}
+
+fn arm(o: FleetScpCopyOutcome) -> String {
+  match o {
+    FleetScpCopyNotAttempted { cause: _ } => "not_attempted"
+    FleetScpCopyRanAndReportedSuccess { direction: _, local: _, remote: _ } => "reported_success"
+    FleetScpCopyRanAndFailed { direction: _, exit_code: _, stderr: _ } => "failed"
+  }
+}
+
+fn tail_words(xs: List<String>, n: Int) -> String {
+  join(xs |> skip(n: count(xs) - n), " ")
+}
+
+fn head_words(xs: List<String>, n: Int) -> String {
+  join(xs |> take(n: count(xs) - n), " ")
+}
+
+test fn the_copy_and_the_exec_leg_carry_the_same_client_words() -> Bool {
+  match context() {
+    Absent => false
+    Present { value: c } => match portable_remote_words(raws: ["true"]) {
+      Absent => false
+      Present { value: words } => match fleet_scp_local_path(raw: "/tmp/object") {
+        Absent => false
+        Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/gunbc-fabric-handoff/incoming/a.blob") {
+          Absent => false
+          Present { value: r } => {
+            let exec = shape_fleet_ssh_exec(context: c, target: automation(), words: words)
+            let copy = shape_fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyTo, local: l, remote: r)
+            head_words(xs: exec, n: 3) == head_words(xs: copy, n: 3) && head_words(xs: copy, n: 3) != ""
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn the_operand_order_is_the_direction() -> Bool {
+  match context() {
+    Absent => false
+    Present { value: c } => match fleet_scp_local_path(raw: "/tmp/object") {
+      Absent => false
+      Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/gunbc-fabric-handoff/outgoing/a.export") {
+        Absent => false
+        Present { value: r } =>
+          tail_words(xs: shape_fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyTo, local: l, remote: r), n: 3)
+            == "-- /tmp/object srv1:/var/lib/gunbc-fabric-handoff/outgoing/a.export"
+          && tail_words(xs: shape_fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyFrom, local: l, remote: r), n: 3)
+            == "-- srv1:/var/lib/gunbc-fabric-handoff/outgoing/a.export /tmp/object"
+      }
+    }
+  }
+}
+
+test fn inadmissible_copies_are_not_attempted() -> Bool {
+  match context() {
+    Absent => false
+    Present { value: c } =>
+      arm(o: fleet_scp_copy(context: c, target: SshTarget { endpoint: "srv1" as NonEmptyStr, principal: fleet_bootstrap_principal_login() }, direction: FleetScpCopyTo, local: "/tmp/object", remote: "/var/lib/x")) == "not_attempted"
+        && arm(o: fleet_scp_copy(context: c, target: SshTarget { endpoint: "fe80::1" as NonEmptyStr, principal: "gunbc-automation" as NonEmptyStr }, direction: FleetScpCopyTo, local: "/tmp/object", remote: "/var/lib/x")) == "not_attempted"
+        && arm(o: fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyTo, local: "host:object", remote: "/var/lib/x")) == "not_attempted"
+        && arm(o: fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyTo, local: "/tmp/object", remote: "relative/x")) == "not_attempted"
+        && arm(o: fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyTo, local: "/tmp/object", remote: "/var/lib/x;rm")) == "not_attempted"
+  }
+}
+
+test fn an_admitted_copy_reaches_the_transport_under_the_hermetic_mock() -> Bool {
+  match context() {
+    Absent => false
+    Present { value: c } => arm(o: fleet_scp_copy(context: c, target: automation(), direction: FleetScpCopyFrom, local: "/tmp/object", remote: "/var/lib/x")) == "reported_success"
+  }
+}
+
+test fn a_nonzero_client_exit_is_a_failed_copy_not_a_report_of_success() -> Bool {
+  match fleet_scp_local_path(raw: "/tmp/object") {
+    Absent => false
+    Present { value: l } => match fleet_scp_remote_path(raw: "/var/lib/x") {
+      Absent => false
+      Present { value: r } =>
+        arm(o: fleet_scp_copy_outcome(direction: FleetScpCopyTo, local: l, remote: r, result: ScpCopyResult { exit_code: 1, success: false, stderr: "scp: /var/lib/x: Permission denied" })) == "failed"
+          && arm(o: fleet_scp_copy_outcome(direction: FleetScpCopyTo, local: l, remote: r, result: ScpCopyResult { exit_code: 0, success: true, stderr: "" })) == "reported_success"
+    }
+  }
+}

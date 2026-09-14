@@ -1,0 +1,208 @@
+module test.claim.fabric_m0_origin_helper_witness_test
+
+import extdeps.shell
+import extdeps.crypto.hash
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_posix_accounts { SudoRunAsAny, SudoRunAsLogin, sudo_run_as_sudoers_spec }
+import gunbc.fabric_m0_origin_readback {
+  OriginObjectStored, OriginObjectAlreadyPresent, OriginPutRefused, OriginPutOutcomeUnknown,
+  OriginObjectStaged, OriginObjectAbsent, OriginFetchUnavailable,
+}
+import gunbc.fabric_m0_origin_filesystem { FilesystemOriginRoot }
+import gunbc.fabric_m0_origin_host { fabric_origin_principal_name }
+import gunbc.fabric_m0_origin_helper {
+  fabric_origin_helper_sudo_grant, fabric_origin_helper_argv, fabric_origin_helper_path,
+  HandoffName, FabricOriginHelperOperation, HelperPutFromHandoff, HelperStageForFetch,
+  HelperOperationAdmission, HelperOperationAdmitted, HelperOperationRefused, admit_helper_operation,
+  HelperPutOutcome, HelperIngressRefusal, HelperIngressUnreadable, HelperIngressDigestMismatch, HelperIngressRefused, HelperPutPerformed, helper_put_from_handoff,
+  FabricOriginHelperRun, HelperRunRefused, HelperRanPut, HelperRanStage, run_fabric_origin_helper,
+  FabricOriginHelperExit, HelperExitDone, HelperExitObjectAbsent, HelperExitRefused, HelperExitIndeterminate,
+  fabric_origin_helper_exit_code, fabric_origin_helper_exit_of_code, fabric_origin_helper_run_argv,
+  HelperStageOutcome, HelperStagedForExport, HelperNothingToExport, HelperExportFailed, helper_stage_for_fetch,
+}
+
+// CONTROLS FOR THE FABRIC-ORIGIN HELPER, run with real effects against a throwaway tree (claim_batch
+// --wet): the grant is narrowed to one path and one target account, the argument admission refuses
+// anything but the two operations over a digest and an entry name, a put whose handoff bytes differ from
+// the named digest never reaches the origin, and a stage exports the origin's stabilized copy. Each test
+// builds /tmp/gunbc_fshelper.* with a converged origin root and handoff directories and removes it. What
+// these do NOT establish is how the helper executable is installed or that sudo enforces the grant on a
+// host.
+
+fn digest_of(path: FilePath) -> Sha256Digest? {
+  let observed = crypto.Sha256Sum.File(path: path as String)
+  match sha256sum_line_digest(line: observed.line) {
+    Absent => Absent
+    Present { value: d } => sha256_hex_digest(hex: d.hex as String)
+  }
+}
+
+fn base() -> String {
+  let b = trim(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fshelper.XXXXXX").path as String)
+  let made = shell.Mkdir.Parents(path: join([b, "/root/objects/sha256"], "") as FilePath).success
+    && shell.Mkdir.Parents(path: join([b, "/root/staging"], "") as FilePath).success
+    && shell.Mkdir.Parents(path: join([b, "/handoff/incoming"], "") as FilePath).success
+    && shell.Mkdir.Parents(path: join([b, "/handoff/outgoing"], "") as FilePath).success
+  if made { b } else { "" }
+}
+
+fn root_of(b: String) -> FilesystemOriginRoot { FilesystemOriginRoot { root: join([b, "/root"], "") as FilePath } }
+fn incoming(b: String) -> NonEmptyStr { join([b, "/handoff/incoming"], "") as NonEmptyStr }
+fn outgoing(b: String) -> NonEmptyStr { join([b, "/handoff/outgoing"], "") as NonEmptyStr }
+
+fn admitted_arm(a: HelperOperationAdmission) -> String {
+  match a {
+    HelperOperationAdmitted { operation } => match operation {
+      HelperPutFromHandoff { handoff: _, expected: _ } => "put"
+      HelperStageForFetch { expected: _, export: _ } => "stage"
+    }
+    HelperOperationRefused { cause: _ } => "refused"
+  }
+}
+
+data hex: String = "e06a945171c115274945744f65948a07f52e16f2e06a945171c115274945744f"
+
+test fn the_helper_grant_is_one_path_as_the_fabric_origin_account_and_never_all() -> Bool {
+  let g = fabric_origin_helper_sudo_grant()
+  (g.command_path as String) == (fabric_origin_helper_path as String)
+    && sudo_run_as_sudoers_spec(r: g.run_as) == join(["(", fabric_origin_principal_name as String, ")"], "")
+    && sudo_run_as_sudoers_spec(r: g.run_as) != sudo_run_as_sudoers_spec(r: SudoRunAsAny)
+}
+
+test fn only_put_and_stage_over_a_digest_and_an_entry_name_are_admitted() -> Bool {
+  admitted_arm(a: admit_helper_operation(words: ["put", "attempt-1.blob", hex])) == "put"
+    && admitted_arm(a: admit_helper_operation(words: ["stage", hex, "attempt-1.export"])) == "stage"
+    && admitted_arm(a: admit_helper_operation(words: ["rm", "attempt-1.blob", hex])) == "refused"
+    && admitted_arm(a: admit_helper_operation(words: ["put", "../../etc/passwd", hex])) == "refused"
+    && admitted_arm(a: admit_helper_operation(words: ["put", "attempt-1.blob", "E06A"])) == "refused"
+    && admitted_arm(a: admit_helper_operation(words: ["put", "attempt-1.blob"])) == "refused"
+    && admitted_arm(a: admit_helper_operation(words: ["stage", hex, "sub/dir"])) == "refused"
+}
+
+test fn the_argv_carries_only_the_admitted_words() -> Bool {
+  match admit_helper_operation(words: ["put", "attempt-1.blob", hex]) {
+    HelperOperationAdmitted { operation } => join(fabric_origin_helper_argv(operation: operation), " ") == join([fabric_origin_helper_path as String, "put attempt-1.blob", hex], " ")
+    HelperOperationRefused { cause: _ } => false
+  }
+}
+
+test fn a_handoff_whose_bytes_differ_from_the_named_digest_never_reaches_the_origin_by_real_execution() -> Bool {
+  let b = base()
+  let good = join([b, "/good.txt"], "")
+  let w1 = Filesystem.Write(path: good, content: "the bytes the caller meant\n")
+  let w2 = Filesystem.Write(path: join([incoming(b: b) as String, "/attempt-1.blob"], ""), content: "different bytes on the wire\n")
+  let verdict = match digest_of(path: good as FilePath) {
+    Absent => false
+    Present { value: d } =>
+      match helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), handoff: HandoffName { name: "attempt-1.blob" }, expected: d) {
+        HelperIngressRefused { refusal } => match refusal {
+          HelperIngressDigestMismatch { expected: _, observed: _ } => {
+            let objects = Filesystem.List(path: join([b, "/root/objects/sha256"], ""))
+            let staging = Filesystem.List(path: join([b, "/root/staging"], ""))
+            objects.success && trim(objects.entries) == "" && staging.success && trim(staging.entries) == ""
+          }
+          HelperIngressUnreadable { cause: _ } => false
+        }
+        HelperPutPerformed { outcome: _ } => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: b)
+  b != "" && verdict && removed.success
+}
+
+test fn a_matching_handoff_is_put_and_then_staged_for_export_by_real_execution() -> Bool {
+  let b = base()
+  let blob = join([incoming(b: b) as String, "/attempt-1.blob"], "")
+  let w = Filesystem.Write(path: blob, content: "workflow bytes\n")
+  let verdict = match digest_of(path: blob as FilePath) {
+    Absent => false
+    Present { value: d } => {
+      let put = helper_put_from_handoff(root: root_of(b: b), incoming: incoming(b: b), handoff: HandoffName { name: "attempt-1.blob" }, expected: d)
+      let staged = helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), expected: d, export: HandoffName { name: "attempt-1.export" })
+      let put_ok = match put {
+        HelperPutPerformed { outcome } => match outcome {
+          OriginObjectStored { key: _ } => true
+          OriginObjectAlreadyPresent { key: _ } => false
+          OriginPutRefused { key: _, cause: _ } => false
+          OriginPutOutcomeUnknown { key: _, cause: _ } => false
+        }
+        HelperIngressRefused { refusal: _ } => false
+      }
+      let export_ok = match staged {
+        HelperStagedForExport { export_path, fetch: _ } => match digest_of(path: export_path as FilePath) {
+          Present { value: e } => (e.hex as String) == (d.hex as String)
+          Absent => false
+        }
+        HelperNothingToExport { fetch: _ } => false
+        HelperExportFailed { fetch: _, cause: _ } => false
+      }
+      put_ok && export_ok
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: b)
+  b != "" && verdict && removed.success
+}
+
+test fn staging_an_object_the_origin_does_not_hold_exports_nothing_by_real_execution() -> Bool {
+  let b = base()
+  let arm = match sha256_hex_digest(hex: hex) {
+    Absent => "no_digest"
+    Present { value: d } => match helper_stage_for_fetch(root: root_of(b: b), outgoing: outgoing(b: b), expected: d, export: HandoffName { name: "attempt-1.export" }) {
+      HelperNothingToExport { fetch } => match fetch {
+        OriginObjectAbsent { key: _ } => "absent"
+        OriginFetchUnavailable { key: _, cause: _ } => "unavailable"
+        OriginObjectStaged { key: _, reading: _ } => "staged"
+      }
+      HelperStagedForExport { export_path: _, fetch: _ } => "exported"
+      HelperExportFailed { fetch: _, cause: _ } => "export_failed"
+    }
+  }
+  let exported = Filesystem.List(path: outgoing(b: b) as String)
+  let removed = shell.Remove.RecursiveForce(path: b)
+  b != "" && arm == "absent" && exported.success && trim(exported.entries) == "" && removed.success
+}
+
+test fn the_host_entry_refuses_an_unadmitted_operation_before_any_effect() -> Bool {
+  let arm = match run_fabric_origin_helper(words: ["put", "/var/lib/gunbc-fabric-origin/objects/sha256/x", hex]) {
+    HelperRunRefused { cause: _ } => "refused"
+    HelperRanPut { outcome: _ } => "put"
+    HelperRanStage { outcome: _ } => "stage"
+  }
+  arm == "refused"
+}
+
+fn exit_name(e: FabricOriginHelperExit) -> String {
+  match e {
+    HelperExitDone => "done"
+    HelperExitObjectAbsent => "absent"
+    HelperExitRefused => "refused"
+    HelperExitIndeterminate => "indeterminate"
+  }
+}
+
+test fn every_helper_exit_round_trips_and_a_foreign_status_is_indeterminate() -> Bool {
+  exit_name(e: fabric_origin_helper_exit_of_code(code: fabric_origin_helper_exit_code(e: HelperExitDone))) == "done"
+    && exit_name(e: fabric_origin_helper_exit_of_code(code: fabric_origin_helper_exit_code(e: HelperExitObjectAbsent))) == "absent"
+    && exit_name(e: fabric_origin_helper_exit_of_code(code: fabric_origin_helper_exit_code(e: HelperExitRefused))) == "refused"
+    && exit_name(e: fabric_origin_helper_exit_of_code(code: fabric_origin_helper_exit_code(e: HelperExitIndeterminate))) == "indeterminate"
+    && exit_name(e: fabric_origin_helper_exit_of_code(code: 1)) == "indeterminate"
+    && exit_name(e: fabric_origin_helper_exit_of_code(code: 255)) == "indeterminate"
+}
+
+test fn the_helper_runs_its_entry_with_the_admitted_words_as_named_arguments() -> Bool {
+  match admit_helper_operation(words: ["stage", hex, "attempt-1.export"]) {
+    HelperOperationRefused { cause: _ } => false
+    HelperOperationAdmitted { operation } => match fabric_origin_helper_run_argv(source_roots: ["dag", "src/v2"], operation: operation) {
+      Absent => false
+      Present { value: argv } => join(argv, " ") == join([
+        "run --source-root dag --source-root src/v2 --entry dag/gunbc/fabric/fabric_m0_origin_helper.dag --function fabric_origin_helper_cli --arg operation=stage --arg first=",
+        hex,
+        " --arg second=attempt-1.export",
+      ], "")
+    }
+  }
+}

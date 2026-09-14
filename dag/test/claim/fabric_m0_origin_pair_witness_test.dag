@@ -13,7 +13,7 @@ import gunbc.fabric_m0_origin_pair {
   OriginReplicaDeficiency, OriginReplicaHasNoCopy, OriginReplicaUnobservable,
   OriginPairDurability, OriginPairDurable, OriginPairReplicaDeficient, OriginPairPrimaryUnobservable,
   OriginPairPrimaryMissing, OriginPairNotInstalled, OriginPairRefused,
-  origin_pair_durability, origin_pair_is_durable,
+  origin_pair_durability, origin_pair_is_durable, host_bound_origin_readback_seal,
 }
 import gunbc.fabric_m0_origin_host { fabric_origin_primary_placement, fabric_origin_replica_placement }
 
@@ -53,8 +53,12 @@ fn expected_digest() -> Sha256Digest? {
   }
 }
 
+fn at_key(placement: FabricOriginPlacement, k: NonEmptyStr, readback: OriginReadback) -> HostBoundOriginReadback {
+  host_bound_origin_readback_seal(placement: placement, key: k, readback: readback)
+}
+
 fn at(placement: FabricOriginPlacement, readback: OriginReadback) -> HostBoundOriginReadback {
-  HostBoundOriginReadback { placement: placement, key: key(), readback: readback }
+  at_key(placement: placement, k: key(), readback: readback)
 }
 
 fn judge(p: HostBoundOriginReadback, r: HostBoundOriginReadback) -> OriginPairDurability? {
@@ -102,7 +106,7 @@ test fn a_reading_from_a_host_outside_the_pair_is_refused() -> Bool {
 }
 
 test fn readbacks_about_different_keys_are_refused() -> Bool {
-  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: HostBoundOriginReadback { placement: replica(), key: "sha256/def" as NonEmptyStr, readback: confirmed(path: fixture_object) })) == "refused"
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at_key(placement: replica(), k: "sha256/def" as NonEmptyStr, readback: confirmed(path: fixture_object)))) == "refused"
 }
 
 test fn a_missing_replica_copy_names_srv2_and_is_distinct_from_an_unobservable_one() -> Bool {

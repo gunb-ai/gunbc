@@ -1,0 +1,194 @@
+module gunbc.fabric_m0_origin_remote
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.fleet_scp {
+  FleetScpCopyTo, FleetScpCopyFrom, FleetScpCopyOutcome,
+  FleetScpCopyNotAttempted, FleetScpCopyRanAndReportedSuccess, FleetScpCopyRanAndFailed, fleet_scp_copy,
+}
+import gunbc.fabric_m0_origin_readback {
+  OriginReadingTaken, OriginReadingUnavailable, read_origin_staged_file, origin_reading_digest,
+}
+import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
+import gunbc.fabric_m0_origin_filesystem { content_addressed_origin_key }
+import gunbc.fabric_m0_origin_host { fabric_origin_principal_name, fabric_origin_primary_placement, fabric_origin_replica_placement }
+import gunbc.fabric_m0_origin_pair {
+  FabricOriginPlacement, HostBoundOriginReadback, OriginPairDurability, host_bound_origin_readback_seal, origin_pair_durability,
+}
+import gunbc.fabric_m0_origin_helper {
+  HandoffName, FabricOriginHelperOperation, HelperPutFromHandoff, HelperStageForFetch,
+  FabricOriginHelperExit, HelperExitDone, HelperExitObjectAbsent, HelperExitRefused, HelperExitIndeterminate,
+  fabric_origin_helper_argv, fabric_origin_helper_exit_of_code,
+  fabric_origin_handoff_incoming_path, fabric_origin_handoff_outgoing_path,
+}
+
+// THE CONTROLLER'S SIDE OF ONE ORIGIN HOST: put an object there, and read it back from there.
+//
+// Every leg runs as the fleet automation principal over the sealed SSH context. Payload bytes cross by
+// gunbc.fleet_scp into the handoff directories; the origin itself is reached only through sudo to the
+// fabric-origin account running the helper (gunbc.fabric_m0_origin_helper), and the helper's closed exit
+// table is the only thing read from that leg.
+//
+// A READBACK IS MINTED HERE AND NOWHERE ELSE. gunbc.fabric_m0_origin_pair HostBoundOriginReadback is
+// sealed and admits this module's readback as its production caller: the helper stages the object on
+// that host, scp copies the export back, and the controller takes its own reading of the copy. Only
+// that reading confirms. The placement on the readback is the one the SSH target was derived from, so
+// a readback cannot be labelled with a host it was not taken at.
+//
+// HANDOFF NAMES ARE THE DIGEST. The incoming file is <hex>.blob and the export <hex>.export, so a retry
+// of one object reuses one name and the handoff directories hold at most one file per object - bounded
+// residue, never removed by M0, and never trusted: every put re-hashes a private copy and every
+// readback re-hashes the copy it brought back.
+//
+// NOTHING HERE HAS RUN AGAINST A HOST. The helper is not installed, the handoff directories and the
+// sudo grant are host intent that has not been converged, and every witness is hermetic.
+
+type HostOriginPutOutcome
+  = HostPutNotAttempted { placement: FabricOriginPlacement, cause: NonEmptyStr }
+  | HostPutCopyFailed { placement: FabricOriginPlacement, exit_code: Int, stderr: String }
+  | HostPutHelperUnreached { placement: FabricOriginPlacement, cause: NonEmptyStr }
+  | HostPutHelperExited { placement: FabricOriginPlacement, helper_exit: FabricOriginHelperExit }
+
+fn host_origin_put_completed(o: HostOriginPutOutcome) -> Bool {
+  match o {
+    HostPutNotAttempted { placement: _, cause: _ } => false
+    HostPutCopyFailed { placement: _, exit_code: _, stderr: _ } => false
+    HostPutHelperUnreached { placement: _, cause: _ } => false
+    HostPutHelperExited { placement: _, helper_exit } => match helper_exit {
+      HelperExitDone => true
+      HelperExitObjectAbsent => false
+      HelperExitRefused => false
+      HelperExitIndeterminate => false
+    }
+  }
+}
+
+fn digest_handoff_name(expected: Sha256Digest, suffix: String) -> HandoffName {
+  HandoffName { name: join([expected.hex as String, suffix], "") as NonEmptyStr }
+}
+
+fn fabric_origin_helper_sudo_argv(operation: FabricOriginHelperOperation) -> List<String> {
+  concat(["sudo", "-n", "-u", fabric_origin_principal_name as String], fabric_origin_helper_argv(operation: operation))
+}
+
+fn placement_target(placement: FabricOriginPlacement) -> SshTarget {
+  fleet_locus_ssh_target(host: placement.host)
+}
+
+type HelperLeg
+  = HelperLegUnreached { cause: NonEmptyStr }
+  | HelperLegExited { helper_exit: FabricOriginHelperExit, result: SshSessionExecResult }
+
+fn run_helper_leg(context: FleetSshExecutionContext, placement: FabricOriginPlacement, operation: FabricOriginHelperOperation) -> HelperLeg {
+  match typed_argv_exec_over_fleet_ssh(target: placement_target(placement: placement), context: context, argv: fabric_origin_helper_sudo_argv(operation: operation)) {
+    TypedArgvExecRefused { reason } => HelperLegUnreached { cause: reason as NonEmptyStr }
+    TypedArgvExecConverged { result } => HelperLegExited { helper_exit: fabric_origin_helper_exit_of_code(code: result.exit_code), result: result }
+  }
+}
+
+fn fabric_origin_remote_put(
+  context: FleetSshExecutionContext,
+  placement: FabricOriginPlacement,
+  local_object: NonEmptyStr,
+  expected: Sha256Digest,
+) -> HostOriginPutOutcome {
+  match read_origin_staged_file(staged_path: local_object) {
+    OriginReadingUnavailable { staged_path: _, cause } => HostPutNotAttempted { placement: placement, cause: join(["the local object could not be read: ", cause as String], "") as NonEmptyStr }
+    OriginReadingTaken { reading } =>
+      if !content_hash_eq_cryptographic(left: expected, right: origin_reading_digest(reading: reading)) {
+        HostPutNotAttempted { placement: placement, cause: join(["the local object is ", origin_reading_digest(reading: reading).hex as String, ", not the expected ", expected.hex as String], "") as NonEmptyStr }
+      } else {
+        let handoff = digest_handoff_name(expected: expected, suffix: ".blob")
+        let remote = join([fabric_origin_handoff_incoming_path() as String, "/", handoff.name as String], "")
+        match fleet_scp_copy(context: context, target: placement_target(placement: placement), direction: FleetScpCopyTo, local: local_object as String, remote: remote) {
+          FleetScpCopyNotAttempted { cause } => HostPutNotAttempted { placement: placement, cause: cause }
+          FleetScpCopyRanAndFailed { direction: _, exit_code, stderr } => HostPutCopyFailed { placement: placement, exit_code: exit_code, stderr: stderr }
+          FleetScpCopyRanAndReportedSuccess { direction: _, local: _, remote: _ } =>
+            match run_helper_leg(context: context, placement: placement, operation: HelperPutFromHandoff { handoff: handoff, expected: expected }) {
+              HelperLegUnreached { cause } => HostPutHelperUnreached { placement: placement, cause: cause }
+              HelperLegExited { helper_exit, result: _ } => HostPutHelperExited { placement: placement, helper_exit: helper_exit }
+            }
+        }
+      }
+  }
+}
+
+// PURE: the readback a helper stage leg and a copy-back license, before the controller's own reading.
+fn staged_readback_without_copy(leg: HelperLeg) -> OriginReadback? {
+  match leg {
+    HelperLegUnreached { cause } => Present { value: ReadbackUnknown { cause: cause } }
+    HelperLegExited { helper_exit, result } => match helper_exit {
+      HelperExitDone => none
+      HelperExitObjectAbsent => Present { value: ReadbackAbsent }
+      HelperExitRefused => Present { value: ReadbackUnknown { cause: join(["the helper refused the stage: ", result.stderr], "") as NonEmptyStr } }
+      HelperExitIndeterminate => Present { value: ReadbackUnknown { cause: join(["the helper stage was indeterminate (exit ", to_string(value: result.exit_code), "): ", result.stderr], "") as NonEmptyStr } }
+    }
+  }
+}
+
+fn fabric_origin_remote_readback(
+  context: FleetSshExecutionContext,
+  placement: FabricOriginPlacement,
+  expected: Sha256Digest,
+  local_directory: NonEmptyStr,
+) -> HostBoundOriginReadback {
+  let export = digest_handoff_name(expected: expected, suffix: ".export")
+  let leg = run_helper_leg(context: context, placement: placement, operation: HelperStageForFetch { expected: expected, export: export })
+  let readback = match staged_readback_without_copy(leg: leg) {
+    Present { value: r } => r
+    Absent => {
+      let local = join([local_directory as String, "/", placement.host as String, ".", export.name as String], "")
+      let remote = join([fabric_origin_handoff_outgoing_path() as String, "/", export.name as String], "")
+      match fleet_scp_copy(context: context, target: placement_target(placement: placement), direction: FleetScpCopyFrom, local: local, remote: remote) {
+        FleetScpCopyNotAttempted { cause } => ReadbackUnknown { cause: cause }
+        FleetScpCopyRanAndFailed { direction: _, exit_code, stderr } => ReadbackUnknown { cause: join(["the export could not be copied back (exit ", to_string(value: exit_code), "): ", stderr], "") as NonEmptyStr }
+        FleetScpCopyRanAndReportedSuccess { direction: _, local: _, remote: _ } => match read_origin_staged_file(staged_path: local as NonEmptyStr) {
+          OriginReadingTaken { reading } => ReadbackConfirmed { reading: reading }
+          OriginReadingUnavailable { staged_path: _, cause } => ReadbackUnknown { cause: join(["the copied-back export could not be read: ", cause as String], "") as NonEmptyStr }
+        }
+      }
+    }
+  }
+  host_bound_origin_readback_seal(placement: placement, key: content_addressed_origin_key(digest: expected), readback: readback)
+}
+
+// ONE PUT ACROSS THE PAIR, AND ITS RECEIPT. srv1 is the sole writer, so the replica is written only after
+// the primary's helper reported the object stored; a replica written ahead of its primary would create
+// the reversed repair state on purpose. Both hosts are then read back whatever the puts said, and the
+// pair judgement over those two readbacks - never the put outcomes - is the durability answer.
+type FabricOriginPairPutReceipt {
+  primary_put: HostOriginPutOutcome
+  replica_put: HostOriginPutOutcome
+  primary_readback: HostBoundOriginReadback
+  replica_readback: HostBoundOriginReadback
+  durability: OriginPairDurability
+}
+
+fn fabric_origin_pair_put(
+  context: FleetSshExecutionContext,
+  local_object: NonEmptyStr,
+  expected: Sha256Digest,
+  local_directory: NonEmptyStr,
+) -> FabricOriginPairPutReceipt {
+  let primary = fabric_origin_primary_placement
+  let replica = fabric_origin_replica_placement
+  let primary_put = fabric_origin_remote_put(context: context, placement: primary, local_object: local_object, expected: expected)
+  let replica_put = if host_origin_put_completed(o: primary_put) {
+    fabric_origin_remote_put(context: context, placement: replica, local_object: local_object, expected: expected)
+  } else {
+    HostPutNotAttempted { placement: replica, cause: "the replica is written only after the primary reports the object stored" }
+  }
+  let primary_readback = fabric_origin_remote_readback(context: context, placement: primary, expected: expected, local_directory: local_directory)
+  let replica_readback = fabric_origin_remote_readback(context: context, placement: replica, expected: expected, local_directory: local_directory)
+  FabricOriginPairPutReceipt {
+    primary_put: primary_put,
+    replica_put: replica_put,
+    primary_readback: primary_readback,
+    replica_readback: replica_readback,
+    durability: origin_pair_durability(admitted_primary: primary, admitted_replica: replica, primary: primary_readback, replica: replica_readback, expected: expected),
+  }
+}

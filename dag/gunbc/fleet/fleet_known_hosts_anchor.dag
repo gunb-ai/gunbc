@@ -706,10 +706,13 @@ fn shape_fleet_ssh_password_exec(
   shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
 }
 
-fn shape_fleet_ssh_exec(
+// THE KEY-SESSION CLIENT WORDS, derived once from the sealed context and shared by every OpenSSH client
+// that takes the ssh_config vocabulary: the exec leg below and gunbc.fleet_scp. A copy that derived its
+// own options could trust a different anchor or offer a different credential than the exec leg it is
+// paired with.
+fn fleet_ssh_key_session_client_words(
   context: FleetSshExecutionContext,
   target: SshTarget,
-  words: PortableRemoteWords,
 ) -> List<String> {
   let config_suppression = openssh_suppress_ambient_configuration_options()
   let derived = concat(
@@ -724,10 +727,18 @@ fn shape_fleet_ssh_exec(
     ),
   )
   concat(
-    concat(
-      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
-      serialize_ssh_client_options(options: derived),
-    ),
+    flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+    serialize_ssh_client_options(options: derived),
+  )
+}
+
+fn shape_fleet_ssh_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  concat(
+    fleet_ssh_key_session_client_words(context: context, target: target),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
   )
 }

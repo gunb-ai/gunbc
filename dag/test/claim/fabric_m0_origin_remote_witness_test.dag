@@ -1,0 +1,82 @@
+module test.claim.fabric_m0_origin_remote_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
+import gunbc.fabric_m0_origin_host { fabric_origin_primary_placement }
+import gunbc.fabric_m0_origin_helper {
+  HandoffName, HelperPutFromHandoff, FabricOriginHelperExit, HelperExitDone, HelperExitObjectAbsent, HelperExitRefused, HelperExitIndeterminate,
+}
+import gunbc.fabric_m0_origin_remote {
+  HostOriginPutOutcome, HostPutNotAttempted, HostPutCopyFailed, HostPutHelperUnreached, HostPutHelperExited,
+  HelperLeg, HelperLegUnreached, HelperLegExited,
+  fabric_origin_helper_sudo_argv, fabric_origin_remote_put, staged_readback_without_copy, host_origin_put_completed,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+// CONTROLS FOR THE CONTROLLER'S HOST LEGS, hermetic and pure only. What a hermetic run can NOT show is the
+// readback's copy-back path: the crypto mock prints one digest for any path, present or not, so a
+// copied-back export that never arrived would read as confirmed under it. That arm's evidence is a run
+// against an installed helper, which is not authorized; nothing here stands in for it.
+
+data zeros: String = "0000000000000000000000000000000000000000000000000000000000000000"
+
+fn context() -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_hermetic_witness_fixture()
+}
+
+fn exec_result(code: Int) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: code, success: code == 0, stdout: "", stderr: "helper said so" }
+}
+
+fn readback_arm(r: OriginReadback?) -> String {
+  match r {
+    Absent => "needs_copy_back"
+    Present { value: v } => match v {
+      ReadbackConfirmed { reading: _ } => "confirmed"
+      ReadbackAbsent => "absent"
+      ReadbackUnknown { cause: _ } => "unknown"
+    }
+  }
+}
+
+test fn the_helper_is_reached_only_through_sudo_to_the_fabric_origin_account() -> Bool {
+  match sha256_hex_digest(hex: zeros) {
+    Absent => false
+    Present { value: d } =>
+      join(fabric_origin_helper_sudo_argv(operation: HelperPutFromHandoff { handoff: HandoffName { name: "x.blob" }, expected: d }), " ")
+        == join(["sudo -n -u gunbc-fabric-origin /opt/gunbc/bin/gunbc-fabric-origin put x.blob", zeros], " ")
+  }
+}
+
+test fn only_a_stage_the_helper_reported_done_goes_on_to_a_copy_back() -> Bool {
+  readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitDone, result: exec_result(code: 0) })) == "needs_copy_back"
+    && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitObjectAbsent, result: exec_result(code: 10) })) == "absent"
+    && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitRefused, result: exec_result(code: 11) })) == "unknown"
+    && readback_arm(r: staged_readback_without_copy(leg: HelperLegExited { helper_exit: HelperExitIndeterminate, result: exec_result(code: 255) })) == "unknown"
+    && readback_arm(r: staged_readback_without_copy(leg: HelperLegUnreached { cause: "not portable" })) == "unknown"
+}
+
+test fn a_local_object_that_is_not_the_expected_digest_is_never_sent() -> Bool {
+  match context() {
+    Absent => false
+    Present { value: c } => match sha256_hex_digest(hex: zeros) {
+      Absent => false
+      Present { value: d } => match fabric_origin_remote_put(context: c, placement: fabric_origin_primary_placement, local_object: "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt", expected: d) {
+        HostPutNotAttempted { placement: _, cause: _ } => true
+        HostPutCopyFailed { placement: _, exit_code: _, stderr: _ } => false
+        HostPutHelperUnreached { placement: _, cause: _ } => false
+        HostPutHelperExited { placement: _, helper_exit: _ } => false
+      }
+    }
+  }
+}
+
+test fn only_a_helper_that_reported_the_object_stored_completes_a_put() -> Bool {
+  host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitDone })
+    && !host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitIndeterminate })
+    && !host_origin_put_completed(o: HostPutHelperExited { placement: fabric_origin_primary_placement, helper_exit: HelperExitRefused })
+    && !host_origin_put_completed(o: HostPutCopyFailed { placement: fabric_origin_primary_placement, exit_code: 1, stderr: "" })
+}

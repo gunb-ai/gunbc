@@ -77,6 +77,8 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.runner_host_file_converge_witness_test", decl_name: "the_apply_route_refuses_what_the_host_did_not_report"),
     decl_ref(module_path: "test.claim.fleet_bootstrap_principal_session_witness", decl_name: "witness_leg_stdout"),
     decl_ref(module_path: "test.claim.fleet_bootstrap_principal_session_witness", decl_name: "a_missing_password_session_binary_refuses_before_the_transport"),
+    decl_ref(module_path: "test.claim.fleet_scp_witness_test", decl_name: "context"),
+    decl_ref(module_path: "test.claim.fabric_m0_origin_remote_witness_test", decl_name: "context"),
   ]
 {
   match fixture_attempt() {
