@@ -1,0 +1,184 @@
+diff --git a/dag/gunbc/recurring_failure_mode/ownership_branch_join_discards_whole_value_read.dag b/dag/gunbc/recurring_failure_mode/ownership_branch_join_discards_whole_value_read.dag
+index 4e654b63fcb..01880f1d2ff 100644
+--- a/dag/gunbc/recurring_failure_mode/ownership_branch_join_discards_whole_value_read.dag
++++ b/dag/gunbc/recurring_failure_mode/ownership_branch_join_discards_whole_value_read.dag
+@@ -10,8 +10,8 @@ data ownership_branch_join_discards_whole_value_read: RecurringFailureMode = Rec
+     "INVALID STATE: ownership.max_usage_by_fan_out selects a branch usage list with more projections and discards another branch's whole-value Read. build_movable_set then admits a move while another use still needs the value.",
+     "HARM AND FOUND RUNG: emit_var_ref emits a move into a constructor before a subsequent projection; rustc refuses E0382. The defect is loudly mitigated by the target borrow check, not silently accepted.",
+     "REPAIR: max_usage_by_fan_out retains missing Read evidence from either binding usage, deduplicating shared-prefix reads and keeping Projected distinct. The emitter carries no new rule. Corpus-grain prevention is mechanical through the required regen-fixed-point phase, which re-derives the committed stage0 mirrors and refuses divergence.",
+-    "FIXTURE EVIDENCE: test.claim.ownership_branch_read_witness_test retains the Read-survival, Projected-before-Consumed and whole-Read controls on the src/v1-rooted claim_batch route. The compile_sources move probe compiles emitted baseline and both constructor orders on the rebuilt seed, with conservative clones. These fixture-grain seed witnesses were executed at landing but have no required executing owner today; they are not enrolled in required CI.",
+-    "NEXT-RUNG HARNESS TRIGGER: a required phase in an existing lane that executes src/v1-rooted claims and compiles authored-source fixtures with the seed. The missing harness is the next-rung trigger, not a permanent ceiling. Witness roots remain dag and src/v2; adding the compiler root for one fixture would widen the floor's subject.",
++    "FIXTURE EVIDENCE: ownership_branch_read Rust integration tests call the emitted ownership mirror with the same three BindingUsage fixtures and compile_sources on the authored move probe. cargo test -p v1-compiler --test ownership_branch_read executes them directly. Required clippy --all-targets compiles them, but no CI step runs them; gunbc.rung_drop.rust_unit_tests_off_the_merge_path declares that execution drop.",
++    "NEXT-RUNG HARNESS TRIGGER: a required phase in an existing lane that executes seed-rooted claims and writes same-identity, candidate-bound terminals into the disposition receipt. The fixture controls return to .dag when that capability lands. The missing harness is the next-rung trigger, not a permanent ceiling. Work item node://adhoc-babdd2de-8db, owned by eager-raven-113, carries this model-first harness in an existing lane and dissolves with v1 deletion. Witness roots remain dag and src/v2; adding the compiler root for one fixture would widen the floor's subject.",
+     "COST RESIDUE: Read is non-tail residue in the existing ownership model, so both constructor orders conservatively clone. This is bounded cost, not a correctness gap. Its separate next-rung capability is per-path last-use evidence at the ownership fold.",
+   ],
+   evidence: [],
+diff --git a/src/v1/stage0/tests/ownership_branch_read.rs b/src/v1/stage0/tests/ownership_branch_read.rs
+new file mode 100644
+index 00000000000..c1ada64b6ea
+--- /dev/null
++++ b/src/v1/stage0/tests/ownership_branch_read.rs
+@@ -0,0 +1,124 @@
++//! Ownership branch-join controls on the emitted seed.
++//! Execute: cargo test -p v1-compiler --test ownership_branch_read.
++//! Required clippy --all-targets compiles this target; no CI step executes it.
++//! The declared drop is gunbc.rung_drop.rust_unit_tests_off_the_merge_path.
++//! Return the fixtures to .dag when a required seed-rooted claim phase supplies
++//! same-identity, candidate-bound terminals to the disposition receipt.
++
++use std::rc::Rc;
++use v1_compiler::v1_compiler_artifact::RenderTarget;
++use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
++use v1_compiler::v1_compiler_ownership::{
++    build_movable_set, max_usage_by_fan_out, BindingUsage, EdgeClassification, EdgeKind,
++    OwnershipProof,
++};
++
++fn usage(edges: &[(EdgeKind, &str, i64)]) -> Rc<BindingUsage> {
++    Rc::new(BindingUsage {
++        name: "item".into(),
++        binding_kind: None,
++        consumers: Rc::new(
++            edges
++                .iter()
++                .map(|(kind, site, span)| {
++                    Rc::new(EdgeClassification {
++                        kind: *kind,
++                        site: (*site).into(),
++                        span_start: *span,
++                    })
++                })
++                .collect(),
++        ),
++    })
++}
++
++fn movable(binding: Rc<BindingUsage>) -> bool {
++    let proof = Rc::new(OwnershipProof {
++        func_name: "fixture".into(),
++        bindings: Rc::new(im::hashmap! { "item".into() => binding }),
++        decisions: Rc::new(im::Vector::new()),
++        fold_acc_unwrap: Rc::new(im::Vector::new()),
++    });
++    build_movable_set(proof, Rc::new(im::ordset! { "item".into() })).contains("item")
++}
++
++#[test]
++fn branch_read_survives_larger_projection_path() {
++    use EdgeKind::{Consumed, Projected, Read};
++    let read_path = usage(&[(Consumed, "return", 1), (Read, "read", 2)]);
++    let projection_path = usage(&[
++        (Consumed, "return", 1),
++        (Projected, ".a", 3),
++        (Projected, ".b", 4),
++    ]);
++    assert!(!movable(max_usage_by_fan_out(read_path, projection_path)));
++}
++
++#[test]
++fn projected_before_consumed_stays_movable() {
++    use EdgeKind::{Consumed, Projected};
++    let path = usage(&[(Projected, ".a", 1), (Consumed, "return", 2)]);
++    assert!(movable(max_usage_by_fan_out(path.clone(), path)));
++}
++
++#[test]
++fn whole_read_then_consume_stays_non_movable() {
++    use EdgeKind::{Consumed, Read};
++    let path = usage(&[(Read, "read", 1), (Consumed, "return", 2)]);
++    assert!(!movable(max_usage_by_fan_out(path.clone(), path)));
++}
++
++#[test]
++fn authored_constructor_orders_emit_clones() {
++    for (case, early, fields) in [
++        (
++            "baseline",
++            "",
++            "child: Present { value: item }, text: item.text",
++        ),
++        (
++            "move_first",
++            "if early { return item }",
++            "child: Present { value: item }, text: item.text",
++        ),
++        (
++            "borrow_first",
++            "if early { return item }",
++            "text: item.text, child: Present { value: item }",
++        ),
++    ] {
++        let source = format!(
++            "module move_probe\ntype Item {{ child: Item? text: String other: String }}\n\
++             fn build(item: Item, early: Bool) -> Item {{ {early} if early {{\
++             Item {{ {fields}, other: \"\" }} }} else {{\
++             Item {{ child: item.child, text: item.text, other: item.other }} }} }}"
++        );
++        let result = compile_sources(
++            Rc::new(im::vector![Rc::new(SourceFile {
++                path: "move_probe.dag".into(),
++                content: source
++            })]),
++            RenderTarget::Rust,
++        );
++        assert!(
++            result.diagnostics.is_empty(),
++            "{case}: {:?}",
++            result.diagnostics
++        );
++        let module = result
++            .files
++            .iter()
++            .find(|file| file.content.contains("pub fn build("))
++            .expect("emitted probe module");
++        assert!(
++            module.content.contains("child: Some(item.clone())"),
++            "{case}: {}",
++            module.content
++        );
++        assert!(
++            module.content.contains("text: item.text.clone()"),
++            "{case}: {}",
++            module.content
++        );
++    }
++}
+diff --git a/src/v1/test/claim/ownership_branch_read_witness_test.dag b/src/v1/test/claim/ownership_branch_read_witness_test.dag
+deleted file mode 100644
+index a0ec47c6a49..00000000000
+--- a/src/v1/test/claim/ownership_branch_read_witness_test.dag
++++ /dev/null
+@@ -1,33 +0,0 @@
+-module test.claim.ownership_branch_read_witness_test
+-
+-import std.types { Bool }
+-import v1.compiler.ownership { BindingUsage, EdgeClassification, OwnershipProof, Read, Consumed, Projected, max_usage_by_fan_out, build_movable_set }
+-
+-// Execution: claim_batch with source roots dag, src/v2 and src/v1 runs these fixture controls.
+-// Fixture-grain seed witnesses have no required executing owner today. These claims and the
+-// authored-source move probe were executed at landing, but are not enrolled in required CI.
+-// Trigger: a required phase that executes src/v1-rooted claims and compiles authored fixtures
+-// with the seed. The existing required regen-fixed-point phase covers corpus-grain mirrors.
+-// Consumer: build_movable_set at the branch join; this executes the lower-fan-out Read RED.
+-test fn branch_read_survives_larger_projection_path() -> Bool {
+-  let read_path = BindingUsage { name: "item", binding_kind: none, consumers: [EdgeClassification { kind: Consumed, site: "return", span_start: 1 }, EdgeClassification { kind: Read, site: "read", span_start: 2 }] }
+-  let projection_path = BindingUsage { name: "item", binding_kind: none, consumers: [EdgeClassification { kind: Consumed, site: "return", span_start: 1 }, EdgeClassification { kind: Projected, site: ".a", span_start: 3 }, EdgeClassification { kind: Projected, site: ".b", span_start: 4 }] }
+-  let joined = max_usage_by_fan_out(a: read_path, b: projection_path)
+-  let proof = OwnershipProof { func_name: "fixture", bindings: map_insert(empty_map(), "item", joined), decisions: [], fold_acc_unwrap: [] }
+-  set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), "item")), "item") == false
+-}
+-
+-// Consumer: the same move decision retains Projected-before-Consumed without whole-value Read.
+-test fn projected_before_consumed_stays_movable() -> Bool {
+-  let usage = BindingUsage { name: "item", binding_kind: none, consumers: [EdgeClassification { kind: Projected, site: ".a", span_start: 1 }, EdgeClassification { kind: Consumed, site: "return", span_start: 2 }] }
+-  let proof = OwnershipProof { func_name: "fixture", bindings: map_insert(empty_map(), "item", max_usage_by_fan_out(a: usage, b: usage)), decisions: [], fold_acc_unwrap: [] }
+-  set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), "item")), "item")
+-}
+-
+-// Consumer: the existing conservative whole-read contract also holds after a repeated join.
+-test fn whole_read_then_consume_stays_non_movable() -> Bool {
+-  let usage = BindingUsage { name: "item", binding_kind: none, consumers: [EdgeClassification { kind: Read, site: "read", span_start: 1 }, EdgeClassification { kind: Consumed, site: "return", span_start: 2 }] }
+-  let joined = max_usage_by_fan_out(a: usage, b: usage)
+-  let proof = OwnershipProof { func_name: "fixture", bindings: map_insert(empty_map(), "item", joined), decisions: [], fold_acc_unwrap: [] }
+-  set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), "item")), "item") == false
+-}
