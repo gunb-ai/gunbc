@@ -45,6 +45,11 @@ type PciDeviceId = NonEmptyStr where brand("PciDeviceId")
 // adapter carry the same vendor and device id at different addresses, so a model keyed on the pair
 // alone cannot tell one port from two. Kept as its own brand rather than folded into an observation
 // record so the distinction survives every consumer.
+// 🟡 Cross-rendering equivalence remains unestablished. Owner: the runner hardware
+// observation and first-boot receipt modules (hw-first-host). The typed, rostered
+// gunbc.guarantee_stall.pci_address_rendering_equivalence_stall names the required
+// grammar, executable host-scoped join and discriminating controls that retire
+// this debt. Raw string inequality is not evidence of different PCI functions.
 type PciAddress = NonEmptyStr where brand("PciAddress")
 
 // THE CLASS IS WHAT THE ENUMERATION SAYS THE FUNCTION IS FOR, and it is the field a population
