@@ -186,6 +186,14 @@ fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
   UndecidableArgumentTypeNotDerived
 }
 
+fn undecidable_optional_carrier() -> InhabitanceUndecidableReason {
+  UndecidableOptionalCarrier
+}
+
+fn undecidable_generic_formal() -> InhabitanceUndecidableReason {
+  UndecidableGenericFormal
+}
+
 fn inhabitance_undecidable_reason_symbol(
   reason: InhabitanceUndecidableReason
 ) -> Symbol {
