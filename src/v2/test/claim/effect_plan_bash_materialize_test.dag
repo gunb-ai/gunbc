@@ -26,33 +26,57 @@ import v2.std.operation_argv {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.orchestration {
+  And,
   Continue,
+  ExitZero,
+  ExprCmdSubst,
   ExprLit,
+  ExprVarRef,
   FailFast,
+  IntNe,
+  LogMatches,
   ModeledList,
-  StrEq
+  Not,
+  Or,
+  Run,
+  StrEmpty,
+  StrEq,
+  StrNonempty
 }
 import v2.workflow.effect_plan_bash_materialize {
   ArgumentContainsNul,
   BashBoundOperationInvocation,
+  CallCalleeEmpty,
   EffectPlanBashEncoded,
   EffectPlanBashEncodingAccepted,
   EffectPlanBashMaterialization,
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
+  EffectPlanBashRefusalCause,
+  ElseBranch,
+  ExitZeroRunPredicate,
+  IfBranchEmpty,
+  IntNeOperandNotDecimalInteger,
+  LogMatchesPredicate,
+  NestedBranchRefused,
   OperationArgvRefused,
+  PredicateOperandCarriesShellSpelling,
+  ShellNameInvalid,
+  ThenBranch,
   UnsupportedCall,
   UnsupportedEffectPlanStep,
   UnsupportedFailurePolicy,
   UnsupportedFor,
   UnsupportedIf,
   UnsupportedLet,
+  UnsupportedPredicate,
   UnsupportedRetry,
   UnsupportedWhile,
   bash_bind_operation_invocation,
   bash_bind_operation_invocation_host_env_executable,
   effect_plan_bash_encode,
-  effect_plan_bash_materialize
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -477,16 +501,14 @@ fn unsupported_step_refuses(
   }
 }
 
-test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
+// For, While and Retry are the arms nothing demands; they keep refusing with their unchanged
+// causes, and this control pins that the If/Let/Call climb did not widen to them.
+test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes() -> Bool {
   let predicate = StrEq { lhs: "a", rhs: "a" }
   unsupported_step_refuses(
-    step: If { cond: predicate, then_: empty_plan(), else_: Absent },
-    expected: UnsupportedIf
+    step: For { binder: ^item, over: ModeledList { items: Empty }, body: empty_plan() },
+    expected: UnsupportedFor
   )
-    && unsupported_step_refuses(
-      step: For { binder: ^item, over: ModeledList { items: Empty }, body: empty_plan() },
-      expected: UnsupportedFor
-    )
     && unsupported_step_refuses(
       step: While { cond: predicate, body: empty_plan() },
       expected: UnsupportedWhile
@@ -495,14 +517,475 @@ test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
       step: Retry { body: empty_plan(), escalations: Empty, on_exhausted: empty_plan() },
       expected: UnsupportedRetry
     )
-    && unsupported_step_refuses(
-      step: Let { name: "x", value: ExprLit { spelling: "x" } },
-      expected: UnsupportedLet
+}
+
+// Permanent regression controls (DESIGN 4b(4)): these three assertions were the expecting-red
+// probes for UnsupportedIf / UnsupportedLet / UnsupportedCall. The wall landed, so each flips to
+// asserting the arm MATERIALIZES and that the retained refusal kind is no longer produced for it.
+fn step_materializes(
+  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>
+) -> Bool {
+  match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {
+    EffectPlanBashMaterialized { source: source } => source != ""
+    EffectPlanBashMaterializationRefused { refusal: _ } => false
+  }
+}
+
+fn call_step(callee: String, args: List<String>) -> v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation> {
+  Call { callee: callee, args: args }
+}
+
+fn call_plan(callee: String, args: List<String>) -> EffectPlan<BashBoundOperationInvocation> {
+  fail_fast_plan(steps: [call_step(callee: callee, args: args)])
+}
+
+test fn effect_plan_bash_if_let_call_no_longer_refuse_as_unsupported() -> Bool {
+  let retired_if = UnsupportedIf
+  let retired_let = UnsupportedLet
+  let retired_call = UnsupportedCall
+  retired_if != retired_let
+    && retired_let != retired_call
+    && step_materializes(
+      step: If {
+        cond: StrEq { lhs: "a", rhs: "a" },
+        then_: call_plan(callee: "true", args: []),
+        else_: Absent
+      }
     )
-    && unsupported_step_refuses(
-      step: Call { callee: "x", args: [] },
-      expected: UnsupportedCall
+    && step_materializes(step: Let { name: "x", value: ExprLit { spelling: "x" } })
+    && step_materializes(step: call_step(callee: "x", args: []))
+}
+
+fn refuses_at_step_with(
+  plan: EffectPlan<BashBoundOperationInvocation>,
+  step_index: Int,
+  matches: fn(EffectPlanBashRefusalCause) -> Bool
+) -> Bool {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      refusal.step_index == step_index
+        && refusal.operation == Absent
+        && matches(refusal.cause)
+    _ => false
+  }
+}
+
+// ---- Let ----
+
+test fn effect_plan_bash_let_lit_var_and_cmdsubst_emit_through_the_assign_rows() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      Let { name: "TOOL", value: ExprLit { spelling: "id" } },
+      Let { name: "ALIAS", value: ExprVarRef { name: "TOOL" } },
+      Let { name: "FOUND", value: ExprCmdSubst { callee: "printf", args: ["%s", "id"] } }
+    ]),
+    expected: "TOOL='id' && ALIAS=\"$TOOL\" && FOUND=$('printf' '%s' 'id')"
+  )
+}
+
+test fn effect_plan_bash_let_value_with_shell_metacharacters_round_trips_quoted() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      Let { name: "V", value: ExprLit { spelling: "a'b; $(id) `id` \"x\" \\" } }
+    ]),
+    expected: "V='a'\\''b; $(id) `id` \"x\" \\'"
+  )
+}
+
+test fn effect_plan_bash_RED_let_name_that_is_not_a_shell_name_refuses() -> Bool {
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      Let { name: "X; id", value: ExprLit { spelling: "v" } }
+    ]),
+    step_index: 0,
+    matches: fn(cause) {
+      match cause {
+        ShellNameInvalid { name: "X; id" } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        Let { name: "OK", value: ExprVarRef { name: "$(id)" } }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          ShellNameInvalid { name: "$(id)" } => true
+          _ => false
+        }
+      }
     )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        Let { name: "1X", value: ExprLit { spelling: "v" } }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          ShellNameInvalid { name: "1X" } => true
+          _ => false
+        }
+      }
+    )
+}
+
+test fn effect_plan_bash_RED_let_value_with_nul_refuses_typed() -> Bool {
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      Do { effect: id_invocation(operation: "Uid") },
+      Let { name: "V", value: ExprLit { spelling: "a\u{0000}b" } }
+    ]),
+    step_index: 1,
+    matches: fn(cause) {
+      match cause {
+        ArgumentContainsNul { argument_index: 0 } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        Let { name: "V", value: ExprCmdSubst { callee: "printf", args: ["%s", "a\u{0000}b"] } }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          ArgumentContainsNul { argument_index: 2 } => true
+          _ => false
+        }
+      }
+    )
+}
+
+// ---- Call ----
+
+test fn effect_plan_bash_call_emits_the_command_row_with_every_arg_one_quoted_word() -> Bool {
+  emitted_source_is(
+    plan: call_plan(callee: "run_one", args: ["dag/x.dag", "f g"]),
+    expected: "'run_one' 'dag/x.dag' 'f g'"
+  )
+}
+
+test fn effect_plan_bash_call_arg_with_shell_metacharacters_round_trips_quoted() -> Bool {
+  emitted_source_is(
+    plan: call_plan(callee: "printf", args: ["%s", "a; $(id) `id` | x > y"]),
+    expected: "'printf' '%s' 'a; $(id) `id` | x > y'"
+  )
+}
+
+test fn effect_plan_bash_RED_call_callee_is_a_name_never_a_command_line() -> Bool {
+  emitted_source_is(
+    plan: call_plan(callee: "id -u; printf PWN", args: []),
+    expected: "'id -u; printf PWN'"
+  )
+    && refuses_at_step_with(
+      plan: call_plan(callee: "", args: ["x"]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          CallCalleeEmpty => true
+          _ => false
+        }
+      }
+    )
+    && refuses_at_step_with(
+      plan: call_plan(callee: "f", args: ["ok", "a\u{0000}b"]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          ArgumentContainsNul { argument_index: 2 } => true
+          _ => false
+        }
+      }
+    )
+}
+
+// ---- If ----
+
+fn then_plan() -> EffectPlan<BashBoundOperationInvocation> {
+  call_plan(callee: "printf", args: ["then"])
+}
+
+fn else_plan() -> EffectPlan<BashBoundOperationInvocation> {
+  call_plan(callee: "printf", args: ["else"])
+}
+
+test fn effect_plan_bash_if_comparison_predicates_emit_through_the_test_bracket_and_if_rows() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      If { cond: StrEq { lhs: "a", rhs: "b" }, then_: then_plan(), else_: Absent }
+    ]),
+    expected: "if '[' 'a' '=' 'b' ']'; then 'printf' 'then'; fi"
+  )
+    && emitted_source_is(
+      plan: fail_fast_plan(steps: [
+        If { cond: StrEmpty { operand: "" }, then_: then_plan(), else_: Present { value: else_plan() } }
+      ]),
+      expected: "if '[' '-z' '' ']'; then 'printf' 'then'; else 'printf' 'else'; fi"
+    )
+    && emitted_source_is(
+      plan: fail_fast_plan(steps: [
+        If { cond: StrNonempty { operand: "x" }, then_: then_plan(), else_: Absent }
+      ]),
+      expected: "if '[' '-n' 'x' ']'; then 'printf' 'then'; fi"
+    )
+    && emitted_source_is(
+      plan: fail_fast_plan(steps: [
+        If { cond: IntNe { lhs: "1", rhs: "-2" }, then_: then_plan(), else_: Absent }
+      ]),
+      expected: "if '[' '1' '-ne' '-2' ']'; then 'printf' 'then'; fi"
+    )
+}
+
+test fn effect_plan_bash_if_not_and_or_compose_through_the_grammar_operators() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      If {
+        cond: Not { inner: StrEq { lhs: "a", rhs: "b" } },
+        then_: then_plan(),
+        else_: Absent
+      }
+    ]),
+    expected: "if ! '[' 'a' '=' 'b' ']'; then 'printf' 'then'; fi"
+  )
+    && emitted_source_is(
+      plan: fail_fast_plan(steps: [
+        If {
+          cond: And { lhs: StrNonempty { operand: "x" }, rhs: StrEq { lhs: "a", rhs: "a" } },
+          then_: then_plan(),
+          else_: Absent
+        }
+      ]),
+      expected: "if '[' '-n' 'x' ']' && '[' 'a' '=' 'a' ']'; then 'printf' 'then'; fi"
+    )
+    && emitted_source_is(
+      plan: fail_fast_plan(steps: [
+        If {
+          cond: Or { lhs: StrEmpty { operand: "x" }, rhs: StrEq { lhs: "a", rhs: "a" } },
+          then_: then_plan(),
+          else_: Absent
+        }
+      ]),
+      expected: "if '[' '-z' 'x' ']' || '[' 'a' '=' 'a' ']'; then 'printf' 'then'; fi"
+    )
+}
+
+test fn effect_plan_bash_if_branch_is_the_same_fail_fast_fold_and_sequences_with_neighbours() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      Let { name: "X", value: ExprLit { spelling: "1" } },
+      If {
+        cond: StrEq { lhs: "a", rhs: "a" },
+        then_: fail_fast_plan(steps: [
+          call_step(callee: "printf", args: ["one"]),
+          call_step(callee: "printf", args: ["two"])
+        ]),
+        else_: Absent
+      },
+      Do { effect: id_invocation(operation: "Uid") }
+    ]),
+    expected: "X='1' && if '[' 'a' '=' 'a' ']'; then 'printf' 'one' && 'printf' 'two'; fi && 'id' '-u'"
+  )
+}
+
+test fn effect_plan_bash_if_operand_with_metacharacters_is_one_quoted_word() -> Bool {
+  emitted_source_is(
+    plan: fail_fast_plan(steps: [
+      If {
+        cond: StrEq { lhs: "a; printf PWN", rhs: "a; printf PWN" },
+        then_: then_plan(),
+        else_: Absent
+      }
+    ]),
+    expected: "if '[' 'a; printf PWN' '=' 'a; printf PWN' ']'; then 'printf' 'then'; fi"
+  )
+}
+
+test fn effect_plan_bash_RED_if_operand_carrying_shell_spelling_refuses_not_quotes() -> Bool {
+  let then_ = then_plan()
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      If { cond: StrEq { lhs: "\"$X\"", rhs: "abc" }, then_: then_, else_: Absent }
+    ]),
+    step_index: 0,
+    matches: fn(cause) {
+      match cause {
+        PredicateOperandCarriesShellSpelling { operand: "\"$X\"" } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        Do { effect: id_invocation(operation: "Uid") },
+        If { cond: StrNonempty { operand: "`id`" }, then_: then_, else_: Absent }
+      ]),
+      step_index: 1,
+      matches: fn(cause) {
+        match cause {
+          PredicateOperandCarriesShellSpelling { operand: "`id`" } => true
+          _ => false
+        }
+      }
+    )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        If { cond: StrEq { lhs: "it's", rhs: "x" }, then_: then_, else_: Absent }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          PredicateOperandCarriesShellSpelling { operand: "it's" } => true
+          _ => false
+        }
+      }
+    )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        If { cond: Not { inner: StrEq { lhs: "a", rhs: "b\\c" } }, then_: then_, else_: Absent }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          PredicateOperandCarriesShellSpelling { operand: "b\\c" } => true
+          _ => false
+        }
+      }
+    )
+}
+
+test fn effect_plan_bash_RED_int_ne_non_integer_literal_refuses() -> Bool {
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      If { cond: IntNe { lhs: "a", rhs: "1" }, then_: then_plan(), else_: Absent }
+    ]),
+    step_index: 0,
+    matches: fn(cause) {
+      match cause {
+        IntNeOperandNotDecimalInteger { operand: "a" } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        If { cond: IntNe { lhs: "1", rhs: "-" }, then_: then_plan(), else_: Absent }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          IntNeOperandNotDecimalInteger { operand: "-" } => true
+          _ => false
+        }
+      }
+    )
+}
+
+test fn effect_plan_bash_RED_exit_zero_and_log_matches_predicates_refuse_typed() -> Bool {
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      If {
+        cond: ExitZero { run: Run { command: "true", env: Empty, redirect: Absent, capture: Absent } },
+        then_: then_plan(),
+        else_: Absent
+      }
+    ]),
+    step_index: 0,
+    matches: fn(cause) {
+      match cause {
+        UnsupportedPredicate { kind: ExitZeroRunPredicate } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        If {
+          cond: LogMatches { source: "log", pattern: "x" },
+          then_: then_plan(),
+          else_: Absent
+        }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          UnsupportedPredicate { kind: LogMatchesPredicate } => true
+          _ => false
+        }
+      }
+    )
+}
+
+test fn effect_plan_bash_RED_if_branches_refuse_when_empty_or_refused_inside() -> Bool {
+  refuses_at_step_with(
+    plan: fail_fast_plan(steps: [
+      If { cond: StrEq { lhs: "a", rhs: "a" }, then_: empty_plan(), else_: Absent }
+    ]),
+    step_index: 0,
+    matches: fn(cause) {
+      match cause {
+        IfBranchEmpty { branch: ThenBranch } => true
+        _ => false
+      }
+    }
+  )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        If { cond: StrEq { lhs: "a", rhs: "a" }, then_: then_plan(), else_: Present { value: empty_plan() } }
+      ]),
+      step_index: 0,
+      matches: fn(cause) {
+        match cause {
+          IfBranchEmpty { branch: ElseBranch } => true
+          _ => false
+        }
+      }
+    )
+    && refuses_at_step_with(
+      plan: fail_fast_plan(steps: [
+        Do { effect: id_invocation(operation: "Uid") },
+        If {
+          cond: StrEq { lhs: "a", rhs: "a" },
+          then_: fail_fast_plan(steps: [
+            call_step(callee: "true", args: []),
+            For { binder: ^item, over: ModeledList { items: Empty }, body: empty_plan() }
+          ]),
+          else_: Absent
+        }
+      ]),
+      step_index: 1,
+      matches: fn(cause) {
+        match cause {
+          NestedBranchRefused { branch: ThenBranch, refusal: inner } =>
+            inner.step_index == 1
+              && match inner.cause {
+                UnsupportedEffectPlanStep { kind: UnsupportedFor } => true
+                _ => false
+              }
+          _ => false
+        }
+      }
+    )
+}
+
+test fn effect_plan_bash_new_refusal_arms_render_totally() -> Bool {
+  match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [
+    If {
+      cond: StrEq { lhs: "a", rhs: "a" },
+      then_: fail_fast_plan(steps: [
+        Let { name: "X", value: ExprLit { spelling: "1" } },
+        If { cond: StrEq { lhs: "$Y", rhs: "a" }, then_: then_plan(), else_: Absent }
+      ]),
+      else_: Absent
+    }
+  ])) {
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      effect_plan_bash_refusal_label(refusal: refusal)
+        == "step 0: NestedBranchRefused:Then:step 1: PredicateOperandCarriesShellSpelling:$Y"
+    _ => false
+  }
 }
 
 test fn effect_plan_bash_empty_fail_fast_plan_is_total() -> Bool {

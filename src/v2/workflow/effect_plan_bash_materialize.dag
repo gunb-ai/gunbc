@@ -2,10 +2,21 @@ module v2.workflow.effect_plan_bash_materialize
 
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_assign_var,
   bash_build_command,
   bash_build_command_from_lits,
   bash_build_command_words_from_lits_suffix,
   bash_build_command_words_single,
+  bash_build_if,
+  bash_build_if_else,
+  bash_build_negation,
+  bash_build_or_else,
+  bash_build_stmt_list_single,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
   bash_build_word_var
 }
 import v2.std.algebra {
@@ -50,13 +61,28 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.orchestration {
+  And,
   Continue,
+  ExitZero,
+  Expr,
+  ExprCmdSubst,
+  ExprLit,
+  ExprVarRef,
   FailFast,
-  FailurePolicy
+  FailurePolicy,
+  IntNe,
+  LogMatches,
+  Not,
+  Or,
+  Predicate,
+  StrEmpty,
+  StrEq,
+  StrNonempty
 }
 import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
+import extdeps.posix.shell_command_language { posix_name_ok }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 
 // Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash
@@ -68,7 +94,9 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 // bash_build_word_var for pin-rustup prelude paths such as CARGO_BIN — without fusing transport
 // policy into the generic invocation substrate (DESIGN §3). FailFast is the Bash grammar's &&
 // relation. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate
-// step.
+// step. If, Let and Call lower through the same grammar rows (test bracket, assign, command,
+// if/if-else) for gunbc-private#60, whose shell steps are carried as strings until this transport
+// accepts them; For, While and Retry keep refusing, since nothing demands them.
 
 type BashShellExecutablePosition
   = DeclarationLiteral
@@ -139,12 +167,46 @@ type EffectPlanBashUnsupportedStep
   | UnsupportedLet
   | UnsupportedCall
 
+// UnsupportedIf / UnsupportedLet / UnsupportedCall are retained as arms: each is a permanent
+// regression control in effect_plan_bash_materialize_test (DESIGN 4b(4)) asserting the encoder no
+// longer PRODUCES it, and the label fold stays total over the coproduct.
+
+type EffectPlanBashIfBranch
+  = ThenBranch
+  | ElseBranch
+
+// The two Predicate arms whose operands are not values: ExitZero carries a Run whose command is a
+// raw shell string (the anemic leaf std.effect_plan names), and LogMatches realizes as a grep argv
+// whose flag policy has no argv authority yet (extdeps.tools.grep is a tool row only). Both refuse
+// with their kind; nothing demands them (gunbc-private#60 needs comparison predicates).
+
+type EffectPlanBashUnsupportedPredicate
+  = ExitZeroRunPredicate
+  | LogMatchesPredicate
+
+// Predicate operands are Strings, and the Pipeline string tier (05_emit_orchestration) reads them as
+// raw shell spellings -- authors there write lhs: "\"$X\"". This transport reads an operand as a
+// VALUE and single-quotes it, so the same spelling would compare the four literal characters
+// instead of expanding X: a silent meaning fork (DESIGN 3). Operands carrying any of the POSIX
+// quoting or expansion characters therefore refuse with PredicateOperandCarriesShellSpelling
+// rather than being quoted. That is over-prohibition of a quotable literal, bounded to these five
+// characters and loud; it dissolves when Predicate carries Expr operands (ExprLit | ExprVarRef |
+// ExprCmdSubst) so that a variable reference is a typed arm and a literal is unambiguous.
+data effect_plan_bash_predicate_operand_shell_spelling_chars: String = "$`\"'\\"
+
 type EffectPlanBashRefusalCause
   = UnsupportedFailurePolicy { policy: FailurePolicy }
   | UnsupportedEffectPlanStep { kind: EffectPlanBashUnsupportedStep }
   | OperationArgvRefused { cause: ArgvRefusalCause }
   | ArgumentContainsNul { argument_index: Int }
   | BashGrammarEmissionRefused { diagnostics: NonEmptyDiagnostics }
+  | UnsupportedPredicate { kind: EffectPlanBashUnsupportedPredicate }
+  | PredicateOperandCarriesShellSpelling { operand: String }
+  | IntNeOperandNotDecimalInteger { operand: String }
+  | ShellNameInvalid { name: String }
+  | CallCalleeEmpty
+  | IfBranchEmpty { branch: EffectPlanBashIfBranch }
+  | NestedBranchRefused { branch: EffectPlanBashIfBranch, refusal: EffectPlanBashRefusal }
 
 type EffectPlanBashRefusal {
   step_index: Int
@@ -267,13 +329,12 @@ fn effect_plan_bash_encode_step(
         bound: bound,
         step_index: step_index
       )
-    If { cond: _, then_: _, else_: _ } =>
-      effect_plan_bash_refuse(
-        step_index: step_index,
-        operation: Absent,
-        cause: UnsupportedEffectPlanStep {
-          kind: UnsupportedIf
-        }
+    If { cond: cond, then_: then_, else_: else_ } =>
+      effect_plan_bash_encode_if(
+        cond: cond,
+        then_: then_,
+        else_: else_,
+        step_index: step_index
       )
     For { binder: _, over: _, body: _ } =>
       effect_plan_bash_refuse(
@@ -299,22 +360,455 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedRetry
         }
       )
-    Let { name: _, value: _ } =>
+    Let { name: name, value: value } =>
+      effect_plan_bash_encode_let(name: name, value: value, step_index: step_index)
+    Call { callee: callee, args: args } =>
+      effect_plan_bash_encode_call(callee: callee, args: args, step_index: step_index)
+  }
+}
+
+// ---- Let ----------------------------------------------------------------------------------
+//
+// Let binds a shell variable. The name renders unquoted in `name=...` and later as "$name", so it
+// must be a POSIX name (XBD 3.235: letters, digits, underscore, no leading digit); anything else
+// refuses, since a name is the one position the quoting authority cannot cover. The value goes
+// through the same word grammar the Do arm uses: ExprLit is a single-quoted lit word, ExprVarRef is
+// the grammar's "$name" var word (its name is checked the same way), ExprCmdSubst is $( command )
+// over lit words. NUL is the one byte no quoting can carry and refuses as it does for argv.
+// posix_name_ok is the POSIX name rule's one home (extdeps.posix.shell_command_language), read
+// here rather than respelled (DESIGN 3).
+
+fn effect_plan_bash_shell_name_checked(
+  name: String,
+  step_index: Int,
+  accepted: EffectPlanBashEncodeResult
+) -> EffectPlanBashEncodeResult {
+  if posix_name_ok(name: name) {
+    accepted
+  } else {
+    effect_plan_bash_refuse(
+      step_index: step_index,
+      operation: Absent,
+      cause: ShellNameInvalid { name: name }
+    )
+  }
+}
+
+fn effect_plan_bash_lits_nul_checked(
+  lits: List<String>,
+  step_index: Int,
+  accepted: EffectPlanBashEncodeResult
+) -> EffectPlanBashEncodeResult {
+  match effect_plan_bash_argv_nul_index(argv: lits, index: 0) {
+    Present { value: argument_index } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: Absent,
-        cause: UnsupportedEffectPlanStep {
-          kind: UnsupportedLet
-        }
+        cause: ArgumentContainsNul { argument_index: argument_index }
       )
-    Call { callee: _, args: _ } =>
-      effect_plan_bash_refuse(
+    Absent => accepted
+  }
+}
+
+fn effect_plan_bash_accept_statement(statement: Node) -> EffectPlanBashEncodeResult {
+  EffectPlanBashEncodingAccepted {
+    encoding: EffectPlanBashEncoded { statement: statement }
+  }
+}
+
+fn effect_plan_bash_command_words(callee: String, args: List<String>) -> List<String> {
+  concat([callee], args)
+}
+
+fn effect_plan_bash_encode_let(
+  name: String,
+  value: Expr,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  effect_plan_bash_shell_name_checked(
+    name: name,
+    step_index: step_index,
+    accepted: match value {
+      ExprLit { spelling: spelling } =>
+        effect_plan_bash_lits_nul_checked(
+          lits: [spelling],
+          step_index: step_index,
+          accepted: effect_plan_bash_accept_statement(
+            statement: bash_build_assign_lit(name: name, text: spelling)
+          )
+        )
+      ExprVarRef { name: source } =>
+        effect_plan_bash_shell_name_checked(
+          name: source,
+          step_index: step_index,
+          accepted: effect_plan_bash_accept_statement(
+            statement: bash_build_assign_var(name: name, var_name: source)
+          )
+        )
+      ExprCmdSubst { callee: callee, args: args } =>
+        effect_plan_bash_callee_checked(
+          callee: callee,
+          args: args,
+          step_index: step_index,
+          accepted: effect_plan_bash_accept_statement(
+            statement: bash_build_assign(
+              name: name,
+              value: bash_build_word_cmdsubst(
+                body: bash_build_command_from_lits(
+                  lits: effect_plan_bash_command_words(callee: callee, args: args)
+                )
+              )
+            )
+          )
+        )
+    }
+  )
+}
+
+// ---- Call ---------------------------------------------------------------------------------
+//
+// Call names a shell function (or command) by its literal name and passes each arg as one
+// single-quoted word: the same command production the Do arm emits, with the callee as argv[0]. A
+// callee is never interpreted as a command LINE -- "f x" is the two-character-named callee and
+// fails as command-not-found rather than running f. An empty callee is a plan that calls nothing
+// and refuses before the grammar sees it.
+
+fn effect_plan_bash_callee_checked(
+  callee: String,
+  args: List<String>,
+  step_index: Int,
+  accepted: EffectPlanBashEncodeResult
+) -> EffectPlanBashEncodeResult {
+  if callee == "" {
+    effect_plan_bash_refuse(
+      step_index: step_index,
+      operation: Absent,
+      cause: CallCalleeEmpty
+    )
+  } else {
+    effect_plan_bash_lits_nul_checked(
+      lits: effect_plan_bash_command_words(callee: callee, args: args),
+      step_index: step_index,
+      accepted: accepted
+    )
+  }
+}
+
+fn effect_plan_bash_encode_call(
+  callee: String,
+  args: List<String>,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  effect_plan_bash_callee_checked(
+    callee: callee,
+    args: args,
+    step_index: step_index,
+    accepted: effect_plan_bash_accept_statement(
+      statement: bash_build_command_from_lits(
+        lits: effect_plan_bash_command_words(callee: callee, args: args)
+      )
+    )
+  )
+}
+
+// ---- If -----------------------------------------------------------------------------------
+//
+// If tests a Predicate and runs one of two nested plans. The comparison arms lower to the grammar's
+// test-bracket command with every operand a single-quoted lit word; Not / And / Or are the
+// grammar's negation / && / || over the operand statements (the serializer groups mixed operators).
+// Each branch is encoded by the same fold as the top-level plan, so FailFast inside a branch is the
+// same && relation, and a refusal inside a branch surfaces at the If step's index wrapped as
+// NestedBranchRefused with the inner refusal (its step_index is branch-relative). An empty branch
+// has no bash spelling (`then ; fi` is a syntax error) and refuses as IfBranchEmpty.
+
+fn effect_plan_bash_string_has_char_from(
+  s: String,
+  chars: String,
+  i: Int,
+  n: Int
+) -> Bool {
+  if i >= n {
+    false
+  } else if string_contains(s: chars, pattern: char_at(s: s, pos: i)) {
+    true
+  } else {
+    effect_plan_bash_string_has_char_from(s: s, chars: chars, i: i + 1, n: n)
+  }
+}
+
+fn effect_plan_bash_operand_carries_shell_spelling(operand: String) -> Bool {
+  effect_plan_bash_string_has_char_from(
+    s: operand,
+    chars: effect_plan_bash_predicate_operand_shell_spelling_chars,
+    i: 0,
+    n: string_length(s: operand)
+  )
+}
+
+fn effect_plan_bash_decimal_digits_from(s: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else if string_contains(s: "0123456789", pattern: char_at(s: s, pos: i)) {
+    effect_plan_bash_decimal_digits_from(s: s, i: i + 1, n: n)
+  } else {
+    false
+  }
+}
+
+// `[ a -ne b ]` on a non-integer prints an error and takes the ELSE branch with status 2, which is
+// a wrong answer wearing a diagnostic; so an IntNe literal operand must be a decimal integer.
+fn effect_plan_bash_decimal_integer_ok(s: String) -> Bool {
+  let n = string_length(s: s)
+  if n == 0 {
+    false
+  } else if char_at(s: s, pos: 0) == "-" {
+    n > 1 && effect_plan_bash_decimal_digits_from(s: s, i: 1, n: n)
+  } else {
+    effect_plan_bash_decimal_digits_from(s: s, i: 0, n: n)
+  }
+}
+
+fn effect_plan_bash_operands_checked(
+  operands: List<String>,
+  step_index: Int,
+  accepted: EffectPlanBashPredicateEncoding
+) -> EffectPlanBashPredicateEncoding {
+  match list_head(xs: operands) {
+    HeadAbsent => accepted
+    HeadFound { value: operand } =>
+      if effect_plan_bash_operand_carries_shell_spelling(operand: operand) {
+        effect_plan_bash_predicate_refuse(
+          step_index: step_index,
+          cause: PredicateOperandCarriesShellSpelling { operand: operand }
+        )
+      } else {
+        match list_tail(xs: operands) {
+          TailAbsent => accepted
+          TailFound { tail: rest } =>
+            effect_plan_bash_operands_checked(
+              operands: rest,
+              step_index: step_index,
+              accepted: accepted
+            )
+        }
+      }
+  }
+}
+
+// A predicate always yields one statement or refuses; it has no empty encoding, so it carries its
+// own result type rather than EffectPlanBashEncodeResult's EffectPlanBashEmpty arm.
+type EffectPlanBashPredicateEncoding
+  = PredicateEncoded { statement: Node }
+  | PredicateRefused { refusal: EffectPlanBashRefusal }
+
+fn effect_plan_bash_predicate_refuse(
+  step_index: Int,
+  cause: EffectPlanBashRefusalCause
+) -> EffectPlanBashPredicateEncoding {
+  PredicateRefused {
+    refusal: EffectPlanBashRefusal {
+      step_index: step_index,
+      operation: Absent,
+      cause: cause
+    }
+  }
+}
+
+fn effect_plan_bash_test_words(words: List<String>) -> Node {
+  bash_build_test_bracket(
+    words: fold(words, init: [], f: fn(acc, w) { concat(acc, [bash_build_word_lit(text: w)]) })
+  )
+}
+
+fn effect_plan_bash_encode_test(
+  operands: List<String>,
+  words: List<String>,
+  step_index: Int
+) -> EffectPlanBashPredicateEncoding {
+  match effect_plan_bash_argv_nul_index(argv: operands, index: 0) {
+    Present { value: argument_index } =>
+      effect_plan_bash_predicate_refuse(
         step_index: step_index,
-        operation: Absent,
-        cause: UnsupportedEffectPlanStep {
-          kind: UnsupportedCall
+        cause: ArgumentContainsNul { argument_index: argument_index }
+      )
+    Absent =>
+      effect_plan_bash_operands_checked(
+        operands: operands,
+        step_index: step_index,
+        accepted: PredicateEncoded {
+          statement: effect_plan_bash_test_words(words: words)
         }
       )
+  }
+}
+
+fn effect_plan_bash_encode_predicate_pair(
+  lhs: Predicate,
+  rhs: Predicate,
+  step_index: Int,
+  join: fn(Node, Node) -> Node
+) -> EffectPlanBashPredicateEncoding {
+  match effect_plan_bash_encode_predicate(predicate: lhs, step_index: step_index) {
+    PredicateRefused { refusal: refusal } => PredicateRefused { refusal: refusal }
+    PredicateEncoded { statement: left } =>
+      match effect_plan_bash_encode_predicate(predicate: rhs, step_index: step_index) {
+        PredicateRefused { refusal: refusal } => PredicateRefused { refusal: refusal }
+        PredicateEncoded { statement: right } =>
+          PredicateEncoded { statement: join(left, right) }
+      }
+  }
+}
+
+fn effect_plan_bash_encode_predicate(
+  predicate: Predicate,
+  step_index: Int
+) -> EffectPlanBashPredicateEncoding {
+  match predicate {
+    ExitZero { run: _ } =>
+      effect_plan_bash_predicate_refuse(
+        step_index: step_index,
+        cause: UnsupportedPredicate { kind: ExitZeroRunPredicate }
+      )
+    LogMatches { source: _, pattern: _ } =>
+      effect_plan_bash_predicate_refuse(
+        step_index: step_index,
+        cause: UnsupportedPredicate { kind: LogMatchesPredicate }
+      )
+    StrEq { lhs: lhs, rhs: rhs } =>
+      effect_plan_bash_encode_test(
+        operands: [lhs, rhs],
+        words: [lhs, "=", rhs],
+        step_index: step_index
+      )
+    StrEmpty { operand: operand } =>
+      effect_plan_bash_encode_test(
+        operands: [operand],
+        words: ["-z", operand],
+        step_index: step_index
+      )
+    StrNonempty { operand: operand } =>
+      effect_plan_bash_encode_test(
+        operands: [operand],
+        words: ["-n", operand],
+        step_index: step_index
+      )
+    IntNe { lhs: lhs, rhs: rhs } =>
+      if !effect_plan_bash_decimal_integer_ok(s: lhs) {
+        effect_plan_bash_predicate_refuse(
+          step_index: step_index,
+          cause: IntNeOperandNotDecimalInteger { operand: lhs }
+        )
+      } else if !effect_plan_bash_decimal_integer_ok(s: rhs) {
+        effect_plan_bash_predicate_refuse(
+          step_index: step_index,
+          cause: IntNeOperandNotDecimalInteger { operand: rhs }
+        )
+      } else {
+        effect_plan_bash_encode_test(
+          operands: [lhs, rhs],
+          words: [lhs, "-ne", rhs],
+          step_index: step_index
+        )
+      }
+    Not { inner: inner } =>
+      match effect_plan_bash_encode_predicate(predicate: inner, step_index: step_index) {
+        PredicateRefused { refusal: refusal } => PredicateRefused { refusal: refusal }
+        PredicateEncoded { statement: statement } =>
+          PredicateEncoded { statement: bash_build_negation(inner: statement) }
+      }
+    And { lhs: lhs, rhs: rhs } =>
+      effect_plan_bash_encode_predicate_pair(
+        lhs: lhs,
+        rhs: rhs,
+        step_index: step_index,
+        join: fn(l, r) { bash_build_and_then(left: l, right: r) }
+      )
+    Or { lhs: lhs, rhs: rhs } =>
+      effect_plan_bash_encode_predicate_pair(
+        lhs: lhs,
+        rhs: rhs,
+        step_index: step_index,
+        join: fn(l, r) { bash_build_or_else(left: l, right: r) }
+      )
+  }
+}
+
+type EffectPlanBashBranchEncoding
+  = BranchEncoded { body: Node }
+  | BranchRefused { refusal: EffectPlanBashRefusal }
+
+fn effect_plan_bash_encode_branch(
+  plan: EffectPlan<BashBoundOperationInvocation>,
+  branch: EffectPlanBashIfBranch,
+  step_index: Int
+) -> EffectPlanBashBranchEncoding {
+  match effect_plan_bash_encode(plan: plan) {
+    EffectPlanBashEncodingRefused { refusal: inner } =>
+      BranchRefused {
+        refusal: EffectPlanBashRefusal {
+          step_index: step_index,
+          operation: Absent,
+          cause: NestedBranchRefused { branch: branch, refusal: inner }
+        }
+      }
+    EffectPlanBashEncodingAccepted { encoding: encoding } =>
+      match encoding {
+        EffectPlanBashEmpty =>
+          BranchRefused {
+            refusal: EffectPlanBashRefusal {
+              step_index: step_index,
+              operation: Absent,
+              cause: IfBranchEmpty { branch: branch }
+            }
+          }
+        EffectPlanBashEncoded { statement: statement } =>
+          BranchEncoded { body: bash_build_stmt_list_single(stmt: statement) }
+      }
+  }
+}
+
+fn effect_plan_bash_encode_if(
+  cond: Predicate,
+  then_: EffectPlan<BashBoundOperationInvocation>,
+  else_: Optional<EffectPlan<BashBoundOperationInvocation>>,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  match effect_plan_bash_encode_predicate(predicate: cond, step_index: step_index) {
+    PredicateRefused { refusal: refusal } =>
+      EffectPlanBashEncodingRefused { refusal: refusal }
+    PredicateEncoded { statement: cond_statement } =>
+      match effect_plan_bash_encode_branch(
+        plan: then_,
+        branch: ThenBranch,
+        step_index: step_index
+      ) {
+        BranchRefused { refusal: refusal } =>
+          EffectPlanBashEncodingRefused { refusal: refusal }
+        BranchEncoded { body: then_body } =>
+          match else_ {
+            Absent =>
+              effect_plan_bash_accept_statement(
+                statement: bash_build_if(cond: cond_statement, body: then_body)
+              )
+            Present { value: else_plan } =>
+              match effect_plan_bash_encode_branch(
+                plan: else_plan,
+                branch: ElseBranch,
+                step_index: step_index
+              ) {
+                BranchRefused { refusal: refusal } =>
+                  EffectPlanBashEncodingRefused { refusal: refusal }
+                BranchEncoded { body: else_body } =>
+                  effect_plan_bash_accept_statement(
+                    statement: bash_build_if_else(
+                      cond: cond_statement,
+                      then_body: then_body,
+                      else_body: else_body
+                    )
+                  )
+              }
+          }
+      }
   }
 }
 
@@ -429,6 +923,43 @@ fn effect_plan_bash_cause_label(cause: EffectPlanBashRefusalCause) -> String {
       concat("ArgumentContainsNul:", to_string(argument_index))
     BashGrammarEmissionRefused { diagnostics: _ } =>
       "BashGrammarEmissionRefused"
+    UnsupportedPredicate { kind: kind } =>
+      concat(
+        "UnsupportedPredicate:",
+        effect_plan_bash_unsupported_predicate_label(kind: kind)
+      )
+    PredicateOperandCarriesShellSpelling { operand: operand } =>
+      concat("PredicateOperandCarriesShellSpelling:", operand)
+    IntNeOperandNotDecimalInteger { operand: operand } =>
+      concat("IntNeOperandNotDecimalInteger:", operand)
+    ShellNameInvalid { name: name } => concat("ShellNameInvalid:", name)
+    CallCalleeEmpty => "CallCalleeEmpty"
+    IfBranchEmpty { branch: branch } =>
+      concat("IfBranchEmpty:", effect_plan_bash_if_branch_label(branch: branch))
+    NestedBranchRefused { branch: branch, refusal: inner } =>
+      concat(
+        concat(
+          concat("NestedBranchRefused:", effect_plan_bash_if_branch_label(branch: branch)),
+          ":"
+        ),
+        effect_plan_bash_refusal_label(refusal: inner)
+      )
+  }
+}
+
+fn effect_plan_bash_unsupported_predicate_label(
+  kind: EffectPlanBashUnsupportedPredicate
+) -> String {
+  match kind {
+    ExitZeroRunPredicate => "ExitZero"
+    LogMatchesPredicate => "LogMatches"
+  }
+}
+
+fn effect_plan_bash_if_branch_label(branch: EffectPlanBashIfBranch) -> String {
+  match branch {
+    ThenBranch => "Then"
+    ElseBranch => "Else"
   }
 }
 

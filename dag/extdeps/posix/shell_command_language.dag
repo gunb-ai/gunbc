@@ -139,3 +139,42 @@ fn posix_single_quote(spelling: String) -> String {
     )
   )
 }
+
+// IEEE 1003.1-2017 XBD 3.235 (Name): 'In the shell command language, a word consisting solely of
+// underscores, digits, and alphabetics from the portable character set. The first character of a
+// name is not a digit.' This is the one position a shell emitter cannot protect by quoting -- a
+// variable name renders bare in `name=value` and inside "$name" -- so an emitter that binds or
+// references a variable must refuse anything outside this rule rather than emit it. The alphabets
+// are the portable character set's, and the rule lives here beside posix_single_quote for the same
+// reason that one does: it is a POSIX shell command language fact with one cited authority, and
+// v2.extdeps.languages.bash_orch_if bash_path_ident_ok reads it rather than respelling it.
+
+data posix_name_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+data posix_name_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
+
+fn posix_name_char_ok(ch: String, first: Bool) -> Bool {
+  if first {
+    string_length(s: ch) == 1 && string_contains(s: posix_name_start_alphabet, pattern: ch)
+  } else {
+    string_length(s: ch) == 1 && string_contains(s: posix_name_continue_alphabet, pattern: ch)
+  }
+}
+
+fn posix_name_ok_at(name: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else if !posix_name_char_ok(ch: char_at(s: name, pos: i), first: i == 0) {
+    false
+  } else {
+    posix_name_ok_at(name: name, i: i + 1, n: n)
+  }
+}
+
+fn posix_name_ok(name: String) -> Bool {
+  let n = string_length(s: name)
+  if n == 0 {
+    false
+  } else {
+    posix_name_ok_at(name: name, i: 0, n: n)
+  }
+}

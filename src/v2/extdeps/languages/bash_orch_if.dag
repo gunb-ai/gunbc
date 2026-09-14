@@ -42,37 +42,11 @@ import v2.extdeps.languages.bash_orch_tier2 {
 }
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
-data bash_path_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
-data bash_path_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
 
-fn bash_path_ident_char_ok(ch: String, first: Bool) -> Bool {
-  if first {
-    string_length(s: ch) == 1 && string_contains(s: bash_path_ident_start_alphabet, pattern: ch)
-  } else {
-    string_length(s: ch) == 1 && string_contains(s: bash_path_ident_continue_alphabet, pattern: ch)
-  }
-}
-
-fn bash_path_ident_ok_at(name: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    let ch = char_at(s: name, pos: i)
-    if !bash_path_ident_char_ok(ch: ch, first: i == 0) {
-      false
-    } else {
-      bash_path_ident_ok_at(name: name, i: i + 1, n: n)
-    }
-  }
-}
-
+// The POSIX name rule (XBD 3.235) is read from extdeps.posix.shell_command_language posix_name_ok;
+// this is the bash_orch_if-facing name for the same fact, kept so its callers do not change.
 fn bash_path_ident_ok(name: String) -> Bool {
-  let n = string_length(s: name)
-  if n == 0 {
-    false
-  } else {
-    bash_path_ident_ok_at(name: name, i: 0, n: n)
-  }
+  posix_name_ok(name: name)
 }
 
 fn bash_dirname_ascent_target_ok(target: String) -> Bool {
