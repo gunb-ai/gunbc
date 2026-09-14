@@ -773,9 +773,12 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
 }
 
 pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
-    batch.iter().cloned().fold(false, |acc: bool, r: _| {
-        (acc || (runnable_step_label(r.clone()) == target.clone()))
-    })
+    batch
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, r: Rc<Runnable>| {
+            (acc || (runnable_step_label(r.clone()) == target.clone()))
+        })
 }
 
 pub fn schedule_generates_same_batch_count<S>(

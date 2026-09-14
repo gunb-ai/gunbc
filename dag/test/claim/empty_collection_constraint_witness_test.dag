@@ -118,3 +118,22 @@ data inferred_optional_pattern_preserves_argument_source: String = "module probe
 test fn inferred_optional_pattern_preserves_argument() -> Bool {
   callback_compiles_clean(source: inferred_optional_pattern_preserves_argument_source)
 }
+
+// variant_owner_application literal absence is covered by none_present_branch_binds.
+// This authored generic record constructor complements inferred_optional_pattern_preserves_argument.
+
+data generic_variant_pattern_preserves_argument_source: String = "module probe_generic_variant_pattern\nimport std.types { Int, Bool, List }\ntype Item { children: List<Int> }\ntype Choice<T> = Got { value: T } | Missing\nfn asks() -> Bool {\n let candidate = Got { value: Item { children: [1] } }\n match candidate { Got { value: chosen } => count(chosen.children) == 1 Missing => false }\n}\n"
+
+test fn generic_variant_pattern_preserves_argument() -> Bool {
+  callback_compiles_clean(source: generic_variant_pattern_preserves_argument_source)
+}
+
+// Exact arity refuses an authored zero-parameter Optional owner at the literal producer.
+data optional_owner_arity_source: String = "module probe_optional_owner_arity\nimport std.types { Int }\ntype Optional = Present { value: Int } | Absent\nfn asks() -> Optional { none }\n"
+
+test fn optional_owner_arity_refuses() -> Bool {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(optional_owner_arity_source), wanted: "TypeArgumentArityMismatch") {
+    Present { value: n } => n > 0
+    Absent => false
+  }
+}

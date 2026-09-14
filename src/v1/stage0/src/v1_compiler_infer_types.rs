@@ -2920,7 +2920,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitInt { value: _, .. } => int_type(),
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitNull => type_variable_node("empty_optional_element".to_string()),
         LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
