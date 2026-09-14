@@ -606,6 +606,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
       function: "under_workspace_root_green_fixture_reaches_subject",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_shard_a_witness", function: "compile_clean_partition_boundary_matches_compile_clean_source_roots" },
+      entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag",
+      function: "compile_clean_partition_boundary_matches_compile_clean_source_roots",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_shard_a_witness", function: "compile_clean_shard_verdict_compose_laws_hold" },
+      entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag",
+      function: "compile_clean_shard_verdict_compose_laws_hold",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_shard_a_witness", function: "compile_clean_shard_verdict_compose_RED_on_injected_failure" },
+      entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag",
+      function: "compile_clean_shard_verdict_compose_RED_on_injected_failure",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_shard_a_witness", function: "compile_clean_shard_a_exemplar_compile_green" },
+      entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag",
+      function: "compile_clean_shard_a_exemplar_compile_green",
+      expectation: ExpectedToHold {}
     }
   ]
 }

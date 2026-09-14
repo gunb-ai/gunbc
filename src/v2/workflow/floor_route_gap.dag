@@ -141,8 +141,6 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.dag_collect_fingerprint_witness_test.dag_collect_fingerprint_witness_keystone_holds",
       tail: Cons {
-      head: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green",
-      tail:  Cons {
       head: "test.claim.diagnostics_test.diagnostics_constructor_owner_walls_hold",
       tail: Cons {
       head: "test.claim.diagnostics_test.diagnostics_empty_list_context_holds",
@@ -977,9 +975,10 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// Fixture compile-clean perturb receipts: hermetic first gap is Mktemp DirWithTemplate
-// (Dir for the enrolled outside-root RED). Enrolled as the same triple as chunk_09:
-// this expectation, WetScheduledClaim rows, LocalRepoWetLane exclusion.
+// Fixture compile-clean perturb receipts and the shard-A exemplar compile: hermetic
+// first gap is Mktemp DirWithTemplate (Dir for the enrolled outside-root RED).
+// Enrolled as the same triple as chunk_09: this expectation, WetScheduledClaim
+// rows, LocalRepoWetLane exclusion.
 fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.perturb_optional_skew_fixture_red_holds", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -995,6 +994,8 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_does_not_satisfy_expected_failure", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_invoke_is_cli_not_executed", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
   }
   }
