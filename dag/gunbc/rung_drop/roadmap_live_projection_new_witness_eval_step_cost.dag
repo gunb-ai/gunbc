@@ -1,0 +1,43 @@
+module gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 4b(3) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
+// One row, one authority: this file, landing as its own PR. gunbc#11365, gunbc#11371 and
+// gunbc#11303 cite it; they do not copy it. Not a re-derivation or raising of 72,300. Not cost-debt: no identity is
+// withheld from execution. The runner list below is membership for the cost-gate skip only;
+// eval_steps stay measured and recorded on every run for all four.
+
+data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> = [
+  "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges",
+  "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt",
+  "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal",
+  "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection",
+]
+
+data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over four live-roadmap projection identities: they still execute, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+
+  declared: "2026-09-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "THIS IS NOT COST-DEBT: no identity is withheld from execution, which is the distinction the landing-side chat drew when it refused cost-debt for gunbc#10994's tripwire. 72,300 is not re-derived or raised; floor_cost_debt refuses ceiling tuning by name and the new-witness tier remains operator policy. THE FALSIFIER HAS NOT RUN AS OF THIS DECLARATION: sleek-hawk-250's controlled reading does not exist yet, so the dominance claim below is HYPOTHESISED, not measured. sleek-hawk-250's partition attributes ~69% of the #10994 witness to roadmap_authority_projection; the same per-claim projection is the hypothesised dominant cost of these four; if the controlled reading on witness_dispatch_never_presents_empty_frontier_on_authority_refusal shows the projection does NOT dominate, this trigger is wrong and the row is amended before any citing PR lands again. Restoration is the loaded roadmap history consumed as a prepared effect input so no per-claim projection is paid",
+    },
+    population: [
+      "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges: 318227 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
+      "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt: 226622 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
+      "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal: 441871 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
+      "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection: 370743 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
+    ],
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) loaded roadmap history consumed as a prepared effect input (dashboard work item adhoc-5ecec982-c23; gentle-ram-506's lane) so no per-claim projection is paid; WHAT adhoc-5ecec982-c23 MUST BE SUFFICIENT FOR: a required-floor claim does not re-pay the live roadmap projection per claim because that history is already a prepared effect input. (ii) AND each of the four identities measured under 72,300 eval_steps on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the four under budget without the prepared-input capability does not retire the row; landing the capability without those four under 72,300 on the acceptance path does not retire it either. 72,300 is not raised to retire this row",
+  }
+}

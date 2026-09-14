@@ -5983,6 +5983,52 @@ pub fn run_required_floor(
         }
         out
     };
+    // DECLARED 4b(3) DROP `roadmap_live_projection_new_witness_eval_step_cost`: lowers ONLY the
+    // eval-step COST GATE for four named identities. They still EXECUTE on every run that plans
+    // them; eval_steps are still MEASURED AND RECORDED (WitnessExecutionOccurrence / claim_cost);
+    // a semantic red still blocks. Not grandfathering, not cost-debt (no identity withheld),
+    // not a skip of measurement. Empty or wrong-size decode refuses rather than applying a glob.
+    let eval_step_cost_drop: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost.roadmap_live_projection_new_witness_eval_step_cost_identities",
+            false,
+        )
+        .map_err(|e| format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value)).map_err(|e| {
+            format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}")
+        })?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "roadmap_live_projection_new_witness_eval_step_cost_identities: \
+                             duplicate identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "roadmap_live_projection_new_witness_eval_step_cost_identities: expected \
+                         a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        if out.len() != 4 {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=EvalStepCostDropPopulationNotExactFour \
+                 gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost \
+                 identities decoded to {} names; the declared drop is bounded to exactly four \
+                 identities by name.",
+                out.len()
+            ));
+        }
+        out
+    };
     // MEASURE-TYPED SINCE THE BUDGETS BECAME `EvalStepCount`, so they are read with the Measure
     // reader rather than the bare-Int one. `floor_required_int` demands a bare `Int` and would
     // refuse the single-field record a `std.measure` carrier arrives as -- loudly, which is the
@@ -7527,8 +7573,13 @@ pub fn run_required_floor(
         // quantised by whichever poll stopped it and is a lower bound on nothing anyone asked
         // about; that row is already reported through `interrupted_before_verdict`, and adding a
         // budget sentence to it would report the same occurrence twice under two remedies.
+        //
+        // THE 4b(3) DROP SKIPS ONLY THIS GATE. Membership here does not skip execution and does
+        // not skip the claim_cost row above — eval_steps stay observed and recorded. Skipping
+        // measurement would not be this drop.
         if matches!(terminality, ClaimTerminality::VerdictReached { .. })
             && receipt.eval_steps > claim.eval_step_budget
+            && !eval_step_cost_drop.contains(&claim.qualified)
         {
             // WHICH TIER REFUSED, NAMED IN THE SENTENCE THAT BLOCKS. The two are different facts
             // with different remedies: a grandfathered row over 500ms-equivalent has grown past the
