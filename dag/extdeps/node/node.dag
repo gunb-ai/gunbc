@@ -14,7 +14,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Node.js v22.23.2 CLI contract. The installed node must be on PATH; this operation
 // neither provisions it nor enforces an installed version. env reports a missing node
 // as a nonzero exit, so the caller receives success: false without a fallback.
-service Node {
+service node.Runtime {
   operation RunFile {
     input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
     output {

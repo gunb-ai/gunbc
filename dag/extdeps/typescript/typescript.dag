@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // tools.emit_host_transport.emit_host_ts_compilation_missing_trigger.
 // tsc may emit JavaScript while reporting type diagnostics and exiting nonzero:
 // success describes the exit, never the existence or absence of emitted files.
-service TypeScript {
+service typescript.Compiler {
   operation Compile {
     input { workdir: FilePath, source_path: FilePath, out_dir: FilePath, target: String, module: String }
     output {
