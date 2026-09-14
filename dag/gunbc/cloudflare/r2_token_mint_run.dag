@@ -159,11 +159,19 @@ type R2OriginTokenProfile
   = R2OriginObjectRead
   | R2OriginObjectWrite
 
-fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: DurableOriginBucket) -> String {
+// THE PROFILE'S NAME SUFFIX IS ITS OWN FACT, because two things need it and only one of them has a
+// bucket: the token NAME is bucket + suffix, and the receipt GLOB is prefix + wildcard + suffix,
+// built where no bucket is in scope. Spelling "-object-write" in both places is the §3 fork that
+// makes a rename silent in exactly one of them.
+fn r2_origin_token_name_suffix(profile: R2OriginTokenProfile) -> String {
   match profile {
-    R2OriginObjectRead => join([bucket.bucket_name as String, "-object-read"], "")
-    R2OriginObjectWrite => join([bucket.bucket_name as String, "-object-write"], "")
+    R2OriginObjectRead => "-object-read"
+    R2OriginObjectWrite => "-object-write"
   }
+}
+
+fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: DurableOriginBucket) -> String {
+  join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
 }
 
 fn r2_origin_token_secret_id(profile: R2OriginTokenProfile) -> NonEmptyStr {
@@ -925,8 +933,31 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: Durab
 // BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet_converge_workflow
 // uploads /tmp/r2-*-object-write-mint-receipt.txt with always(), and an orphan receipt written
 // somewhere else would be invisible to exactly the run it was written for.
+// THE FILENAME CONVENTION IS ONE FACT AND THE UPLOADER READS IT RATHER THAN RE-SPELLING IT.
+// review 66010 caught the half of this I had missed: the emitted glob avoided re-spelling the
+// BUCKET name, which my annotation defended, while hand-spelling the "/tmp/r2-" prefix and the
+// "-mint-receipt.txt" suffix -- exactly the parts this module owns. That drift would be SILENT by
+// construction: the upload step is if-no-files-found: warn, so renaming the path here would lose
+// the orphan receipt in precisely the run where a live unheld Cloudflare credential exists and its
+// id is the only thing that makes the damage recoverable.
+data r2_mint_receipt_path_prefix: String = "/tmp/r2-"
+
+data r2_mint_receipt_path_suffix: String = "-mint-receipt.txt"
+
 fn r2_mint_receipt_path(request: CreateAccountTokenRequest) -> String {
-  join(["/tmp/r2-", request.name, "-mint-receipt.txt"], "")
+  join([r2_mint_receipt_path_prefix, request.name, r2_mint_receipt_path_suffix], "")
+}
+
+// THE GLOB THE EMITTED UPLOADER USES, DERIVED FROM THE SAME THREE PARTS. The wildcard stands for the
+// bucket name, which is not knowable where the workflow is emitted; everything around it is read
+// from the declarations above, so one edit moves the producer and the uploader together.
+fn r2_mint_receipt_glob(profile: R2OriginTokenProfile) -> String {
+  join([
+    r2_mint_receipt_path_prefix,
+    "*",
+    r2_origin_token_name_suffix(profile: profile),
+    r2_mint_receipt_path_suffix,
+  ], "")
 }
 
 fn r2_orphan_receipt_content(

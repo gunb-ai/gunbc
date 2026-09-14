@@ -14,6 +14,7 @@ import extdeps.github.actions {
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
+import gunbc.cloudflare.r2_token_mint_run { r2_mint_receipt_glob, R2OriginObjectWrite }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
@@ -1149,6 +1150,11 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
   }
 }
 
+// THE GLOB IS NOW DERIVED, NOT HAND-SPELLED, AND THE EARLIER ANNOTATION DEFENDED ONLY HALF OF IT.
+// It argued the wildcard avoids re-spelling the bucket name -- true -- while the prefix and suffix
+// around it were typed here and owned by gunbc.cloudflare.r2_token_mint_run (review 66010). Both
+// ends now come from r2_mint_receipt_glob, so a rename of the producer's path moves this with it.
+//
 // THE RECEIPT IS UPLOADED WITH always() AND ITS PATH IS A GLOB. always(), because a mint that
 // created a token and then failed to store it is the run whose receipt matters most and the run
 // that fails -- and that arm now WRITES one: gunbc.cloudflare.r2_token_mint_run
@@ -1168,7 +1174,7 @@ fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "r2-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: "/tmp/r2-*-object-write-mint-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob(profile: R2OriginObjectWrite))),
       kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
