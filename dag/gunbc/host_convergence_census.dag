@@ -90,6 +90,7 @@ type HostConvergenceCensusRow {
 type HostConvergenceCensusRefusal
   = DuplicateDeclaration { identity: DeclarationRef }
   | RetainCurrentIntendedMismatch { identity: DeclarationRef }
+  | BindIntendedTargetMismatch { identity: DeclarationRef }
   | SelfSuccessor { identity: DeclarationRef }
 
 type HostConvergenceCensus
@@ -217,14 +218,24 @@ fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRef
       none
     }
   } else {
-    match disposition_successor(d: row.disposition) {
-      Present { value: succ } =>
-        if declaration_ref_eq(a: row.identity, b: succ) {
+    match row.disposition {
+      BindToAuthority { target: t } =>
+        if declaration_ref_eq(a: row.identity, b: t) {
+          Present { value: SelfSuccessor { identity: row.identity } }
+        } else {
+          if !declaration_ref_eq(a: row.intended_authority, b: t) {
+            Present { value: BindIntendedTargetMismatch { identity: row.identity } }
+          } else {
+            none
+          }
+        }
+      ReplaceAndDelete { successor: s } =>
+        if declaration_ref_eq(a: row.identity, b: s) {
           Present { value: SelfSuccessor { identity: row.identity } }
         } else {
           none
         }
-      Absent => none
+      _ => none
     }
   }
 }
@@ -538,7 +549,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     current_authority: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_srv1"),
     intended_authority: fleet_plan(),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: fleet_apply() },
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_srv1_wet"),
   ),
   census_row(
@@ -748,7 +759,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
     intended_authority: fleet_plan(),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential") },
+    disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
   ),
   census_row(
