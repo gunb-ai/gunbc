@@ -21,6 +21,12 @@ import gunbc.roadmap_authority {
   withheld_node_ids_from_live_history,
   WithheldNodeIdsProjected,
   WithheldNodeIdsProjectionRefused,
+  active_roadmap_nodes_projection,
+  ActiveRoadmapNodesProjected,
+  ActiveRoadmapNodesProjectionRefused,
+  active_roadmap_edges_projection,
+  ActiveRoadmapEdgesProjected,
+  ActiveRoadmapEdgesProjectionRefused,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
@@ -130,25 +136,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
 fn active_nodes() -> List<RoadmapNode> {
-  match live_accepted_node_ids() {
-    Present { value: accepted } =>
-      match live_withheld_node_ids() {
-        Present { value: withheld } =>
-          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
-        Absent => []
-      }
-    Absent => []
+  match active_roadmap_nodes_projection() {
+    ActiveRoadmapNodesProjectionRefused { detail: _ } => []
+    ActiveRoadmapNodesProjected { nodes: nodes } => nodes
   }
 }
 fn active_edges() -> List<RoadmapEdge> {
-  match live_accepted_node_ids() {
-    Present { value: accepted } =>
-      match live_withheld_node_ids() {
-        Present { value: withheld } =>
-          active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
-        Absent => []
-      }
-    Absent => []
+  match active_roadmap_edges_projection() {
+    ActiveRoadmapEdgesProjectionRefused { detail: _ } => []
+    ActiveRoadmapEdgesProjected { edges: edges } => edges
   }
 }
 

@@ -168,20 +168,24 @@ type ReceiptNodeMatchVerdict
   | LiveReceiptOnSupersededLine { node: RoadmapNodeId }
   | ReceiptDoesNotMatchNode
 
+fn node_line_is_superseded(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
+    PlainLine { content: _ } => false
+    SupersededLine { by: _, content: _ } => true
+    TicketLine { done: _, ticket: _ } => false
+  }
+}
+
 fn receipt_node_match_verdict(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> ReceiptNodeMatchVerdict {
   if !(r.node == rn.node) {
     ReceiptDoesNotMatchNode
   } else {
-    match rn.line {
-      SupersededLine { by: _, content: _ } => LiveReceiptOnSupersededLine { node: rn.node }
-      DerivableLine { prs: _, title: _, description: _ } =>
-        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
-      AuthoredLine { done: _, content: _ } =>
-        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
-      PlainLine { content: _ } =>
-        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
-      TicketLine { done: _, ticket: _ } =>
-        if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
+    if node_line_is_superseded(rn: rn) {
+      LiveReceiptOnSupersededLine { node: rn.node }
+    } else {
+      if receipt_matches_node(r: r, rn: rn) { ReceiptMatchesNode } else { ReceiptDoesNotMatchNode }
     }
   }
 }
@@ -641,16 +645,6 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
   match replay_acceptance_history(events: history) {
     Present { value: state } => state.live
     Absent => []
-  }
-}
-
-fn node_line_is_superseded(rn: RoadmapNode) -> Bool {
-  match rn.line {
-    DerivableLine { prs: _, title: _, description: _ } => false
-    AuthoredLine { done: _, content: _ } => false
-    PlainLine { content: _ } => false
-    SupersededLine { by: _, content: _ } => true
-    TicketLine { done: _, ticket: _ } => false
   }
 }
 

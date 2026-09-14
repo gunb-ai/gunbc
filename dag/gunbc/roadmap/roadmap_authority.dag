@@ -3226,11 +3226,40 @@ fn withheld_node_ids_from_events(events: List<RoadmapAcceptanceEvent>) -> Withhe
   }
 }
 
-fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
+// One load of the carrier produces both frontier halves. Callers that need accepted AND withheld
+// consume this, never a pair of independent live projections.
+type FrontierSetsProjection
+  = FrontierSetsProjected { accepted: List<RoadmapNodeId>, withheld: List<RoadmapNodeId> }
+  | FrontierSetsProjectionRefused { detail: String }
+
+fn frontier_sets_from_events(events: List<RoadmapAcceptanceEvent>) -> FrontierSetsProjection {
+  match withheld_node_ids_from_events(events: events) {
+    WithheldNodeIdsProjectionRefused { detail: detail } =>
+      FrontierSetsProjectionRefused { detail: detail }
+    WithheldNodeIdsProjected { ids: withheld } =>
+      FrontierSetsProjected {
+        accepted: accepted_node_ids_from_receipts(
+          receipts: project_live_acceptance_receipts(history: events),
+        ),
+        withheld: withheld,
+      }
+  }
+}
+
+fn frontier_sets_from_live_history() -> FrontierSetsProjection {
   match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      withheld_node_ids_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+      FrontierSetsProjectionRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      frontier_sets_from_events(events: events)
+  }
+}
+
+fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: _, withheld: withheld } =>
+      WithheldNodeIdsProjected { ids: withheld }
+    FrontierSetsProjectionRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
   }
 }
@@ -3262,33 +3291,23 @@ type ActiveRoadmapEdgesProjection
   | ActiveRoadmapEdgesProjectionRefused { detail: String }
 
 fn active_roadmap_nodes_projection() -> ActiveRoadmapNodesProjection {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapNodesProjectionRefused { detail: detail }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          ActiveRoadmapNodesProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          ActiveRoadmapNodesProjected {
-            nodes: active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
-          }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      ActiveRoadmapNodesProjected {
+        nodes: active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
       }
   }
 }
 
 fn active_roadmap_edges_projection() -> ActiveRoadmapEdgesProjection {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       ActiveRoadmapEdgesProjectionRefused { detail: detail }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          ActiveRoadmapEdgesProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          ActiveRoadmapEdgesProjected {
-            edges: active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
-          }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      ActiveRoadmapEdgesProjected {
+        edges: active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
       }
   }
 }
@@ -3539,33 +3558,23 @@ fn closing_contract_task_pairs_for_accepted(
 }
 
 fn closing_contract_task_pairs_projection() -> ClosingContractTaskPairsProjection {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskPairsProjectionRefused { detail: detail }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          ClosingContractTaskPairsProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          ClosingContractTaskPairsProjected {
-            pairs: closing_contract_task_pairs_for_accepted(accepted: accepted, withheld: withheld),
-          }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      ClosingContractTaskPairsProjected {
+        pairs: closing_contract_task_pairs_for_accepted(accepted: accepted, withheld: withheld),
       }
   }
 }
 
 fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjection {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       ClosingContractTaskEdgesProjectionRefused { detail: detail }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          ClosingContractTaskEdgesProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          ClosingContractTaskEdgesProjected {
-            edges: closing_contract_task_edges_for_accepted(accepted: accepted, withheld: withheld),
-          }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      ClosingContractTaskEdgesProjected {
+        edges: closing_contract_task_edges_for_accepted(accepted: accepted, withheld: withheld),
       }
   }
 }
@@ -3580,17 +3589,12 @@ type ProjectedRoadmapDependencyEdgesProjection
 // dependencies that the authority derives from acceptance state.
 
 fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match withheld_node_ids_from_live_history() {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          ProjectedRoadmapDependencyEdgesProjected {
-            edges: projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
-          }
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      ProjectedRoadmapDependencyEdgesProjected {
+        edges: projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
       }
   }
 }
@@ -3745,12 +3749,10 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match withheld_node_ids_from_events(events: events) {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
+      match frontier_sets_from_events(events: events) {
+        FrontierSetsProjectionRefused { detail: detail } =>
           RoadmapAuthorityProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          let receipts = project_live_acceptance_receipts(history: events)
-          let accepted = accepted_node_ids_from_receipts(receipts: receipts)
+        FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
           RoadmapAuthorityProjected {
             doc: RoadmapDocument {
               preamble: preamble(),
@@ -3771,29 +3773,22 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
 }
 
 fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      match withheld_node_ids_from_events(events: events) {
-        WithheldNodeIdsProjectionRefused { detail: detail } =>
-          RoadmapAuthorityProjectionRefused { detail: detail }
-        WithheldNodeIdsProjected { ids: withheld } =>
-          let receipts = project_live_acceptance_receipts(history: events)
-          let accepted = accepted_node_ids_from_receipts(receipts: receipts)
-          RoadmapAuthorityProjected {
-            doc: RoadmapDocument {
-              preamble: preamble(),
-              lead_lanes: [],
-              sections: [active_section_for_acceptance(
-                focus: roadmap_focus_selection,
-                accepted: accepted,
-                withheld: withheld,
-              )],
-            },
+    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
+      RoadmapAuthorityProjected {
+        doc: RoadmapDocument {
+          preamble: preamble(),
+          lead_lanes: [],
+          sections: [active_section_for_acceptance(
+            focus: roadmap_focus_selection,
             accepted: accepted,
             withheld: withheld,
-          }
+          )],
+        },
+        accepted: accepted,
+        withheld: withheld,
       }
   }
 }
