@@ -108,6 +108,7 @@ type FleetPosixAccountKey
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
   | FleetAccountNotificationService
+  | FleetAccountFabricOrigin
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -573,6 +574,13 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_notification_service_sudo_grants(),
       }
+    FleetAccountFabricOrigin =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_fabric_origin_sudo_grants(),
+      }
   }
 }
 
@@ -621,6 +629,15 @@ fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
 // own config, and writes its own state directory; none of that needs sudo, and the account is
 // declared empty so a future grant is a visible edit to this function rather than a roster append.
 fn fleet_posix_notification_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+// EMPTY BY CONSTRUCTION. This principal is the sole writer beneath a fabric blob origin root
+// (gunbc.fabric_m0_origin_host): it installs objects into directories that host convergence has
+// already created and owned by it. Installing an object is a hard link inside its own tree, which
+// needs no privilege, and a grant of any shape would let the writer of immutable evidence change the
+// host that holds it.
+fn fleet_posix_fabric_origin_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -893,6 +910,19 @@ fn notification_service_realization_standing(host: HostIdentity) -> ServicePrinc
   }
 }
 
+// THE FABRIC ORIGIN'S REALIZATION IS PERSISTENT because its files outlive every run: installed objects
+// are owned by the principal's uid, and a supervisor-managed dynamic identity would get a different
+// uid each start, so yesterday's objects would not be its own today. The uid is host-assigned by
+// useradd --system at first converge, so the standing is AccountUnallocated until an observation
+// records what the host chose.
+fn fabric_origin_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  PersistentServiceAccount {
+    allocation: AccountUnallocated {
+      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountFabricOrigin },
+    },
+  }
+}
+
 // TOTAL PER-ACCOUNT ACCESSORS for the principals whose accounts WERE observed, so the question
 // "what is this account" has an answer that needs no host parameter and no optional. Callers
 // asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
@@ -989,6 +1019,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
     FleetAccountNotificationService => PrincipalRequiresHostScope { principal: key }
+    FleetAccountFabricOrigin => PrincipalRequiresHostScope { principal: key }
   }
 }
 

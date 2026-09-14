@@ -1,0 +1,102 @@
+module gunbc.fabric_m0_origin_host
+
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_posix_accounts { FleetAccountFabricOrigin, fleet_posix_nologin_shell_path }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSystemAccount,
+}
+import gunbc.fabric_m0_origin_filesystem { FilesystemOriginRoot }
+import gunbc.fabric_m0_origin_pair { OriginPairRole, OriginPrimary, OriginReplica }
+
+// WHERE THE M0 FABRIC BLOB ORIGIN LIVES ON A HOST, AND WHAT HOST CONVERGENCE MUST ESTABLISH BEFORE ANY
+// OBJECT IS WRITTEN. gunbc.fabric_m0_origin_filesystem creates no directory and refuses a root that is
+// not already real; this module is the host intent that discharges that obligation.
+//
+// THE ROOT IS DERIVED, NEVER SUPPLIED. One fixed, normalized spelling - no trailing separator, no
+// relative segment - so no caller can name the origin a second way, and FilesystemOriginRoot is built
+// here from the placement rather than accepted as an operator string. A second spelling of one root
+// would be a second origin as far as every path comparison is concerned.
+//
+// THE SERVICE PRINCIPAL IS THE ONLY WRITER BENEATH THE ROOT. Every directory is owned by
+// gunbc.fleet_posix_accounts FleetAccountFabricOrigin with mode 0700, so no other unprivileged account
+// can create, replace or relink anything in the tree. That is the host-binding obligation the
+// filesystem realization names for the observation-to-effect window it cannot close itself, and it is
+// why reads of the origin run as the principal rather than as whoever connected.
+//
+// DIRECTORIES ARE CREATED OUTERMOST FIRST, AND EACH CREATION IS FOLLOWED BY AN FSYNC OF ITS PARENT. A
+// directory whose name was never synced in its parent can vanish in a crash with everything beneath it,
+// so creating objects/sha256/ without syncing objects/ would make every later object install durable
+// inside a directory that is not. The plan is data; nothing here runs it.
+//
+// M0 PLACEMENT: srv1 is the primary and sole admitted writer; srv2 is the synchronous replica. There is
+// no promotion or failover in this module, and the pair durability judgement
+// (gunbc.fabric_m0_origin_pair) refuses any pair that is not exactly one of each on distinct hosts.
+
+data fabric_origin_principal_name: NonEmptyStr = "gunbc-fabric-origin"
+data fabric_origin_root_path: NonEmptyStr = "/var/lib/gunbc-fabric-origin"
+data fabric_origin_root_parent_path: NonEmptyStr = "/var/lib"
+data fabric_origin_directory_mode: NonEmptyStr = "0700"
+
+type FabricOriginPlacement {
+  host: HostIdentity
+  role: OriginPairRole
+}
+
+data fabric_origin_primary_placement: FabricOriginPlacement = FabricOriginPlacement { host: operator_host_srv1, role: OriginPrimary }
+data fabric_origin_replica_placement: FabricOriginPlacement = FabricOriginPlacement { host: operator_host_srv2, role: OriginReplica }
+
+fn fabric_origin_root(placement: FabricOriginPlacement) -> FilesystemOriginRoot {
+  FilesystemOriginRoot { root: fabric_origin_root_path as FilePath }
+}
+
+fn fabric_origin_objects_path() -> NonEmptyStr {
+  join([fabric_origin_root_path as String, "/objects"], "") as NonEmptyStr
+}
+
+fn fabric_origin_content_path() -> NonEmptyStr {
+  join([fabric_origin_root_path as String, "/objects/sha256"], "") as NonEmptyStr
+}
+
+fn fabric_origin_staging_path() -> NonEmptyStr {
+  join([fabric_origin_root_path as String, "/staging"], "") as NonEmptyStr
+}
+
+// ONE STEP OF HOST CONVERGENCE. A privileged operation reuses gunbc.executor_privileged_operation's
+// closed vocabulary and its argv, precondition and sudoers projections; a directory fsync is its own
+// step because it needs no privilege - fsync on a directory needs only that it can be opened for reading
+// - and so it is not a sudo grant.
+type FabricOriginConvergeStep
+  = FabricOriginPrivileged { operation: ExecutorPrivilegedOperation }
+  | FabricOriginSyncDirectory { path: NonEmptyStr }
+
+fn owned_directory(path: NonEmptyStr) -> FabricOriginConvergeStep {
+  FabricOriginPrivileged {
+    operation: EnsureOwnedDirectory {
+      path: path,
+      owner: fabric_origin_principal_name,
+      group: fabric_origin_principal_name,
+      mode: fabric_origin_directory_mode,
+    },
+  }
+}
+
+fn fabric_origin_converge_plan(placement: FabricOriginPlacement) -> List<FabricOriginConvergeStep> {
+  [
+    FabricOriginPrivileged { operation: EnsureSystemAccount { login: fabric_origin_principal_name, shell: fleet_posix_nologin_shell_path } },
+    owned_directory(path: fabric_origin_root_path),
+    FabricOriginSyncDirectory { path: fabric_origin_root_parent_path },
+    owned_directory(path: fabric_origin_objects_path()),
+    FabricOriginSyncDirectory { path: fabric_origin_root_path },
+    owned_directory(path: fabric_origin_content_path()),
+    FabricOriginSyncDirectory { path: fabric_origin_objects_path() },
+    owned_directory(path: fabric_origin_staging_path()),
+    FabricOriginSyncDirectory { path: fabric_origin_root_path },
+  ]
+}
+
+// The argv a sync step runs, the same command extdeps.shell shell.Sync.Path models.
+fn fabric_origin_sync_argv(path: NonEmptyStr) -> List<NonEmptyStr> {
+  ["sync" as NonEmptyStr, "--" as NonEmptyStr, path]
+}
