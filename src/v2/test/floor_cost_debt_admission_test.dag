@@ -129,6 +129,10 @@ test fn an_observed_row_at_325ms_cannot_enter_the_cost_debt_roster() -> Bool {
         cpu_lower_bound_ms: _,
         censoring_ceiling_ms: _,
       } => false
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => false
     }
 }
 
@@ -187,6 +191,10 @@ test fn a_1ms_censored_reading_against_the_500ms_ceiling_is_refused() -> Bool {
         cpu_lower_bound_ms: b,
         censoring_ceiling_ms: c,
       } => millisecond_count(m: b) == 1 && millisecond_count(m: c) == 1
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => false
     }
 }
 

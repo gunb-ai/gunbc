@@ -184,6 +184,10 @@ fn floor_cost_debt_admit_attempts(
         cpu_lower_bound_ms: _,
         censoring_ceiling_ms: _,
       } => acc
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => acc
     }
   }))
 }
