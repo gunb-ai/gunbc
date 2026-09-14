@@ -1,6 +1,6 @@
 module gunbc.spark.serving_usage_stats_observe
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
 import extdeps.docker.cli {
   DockerEnvAssignment,
   DockerContainerInspectNamedEnv,
@@ -8,8 +8,7 @@ import extdeps.docker.cli {
   docker_container_inspect_named_env_from_stdout,
 }
 import extdeps.vllm.usage_stats {
-  VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
-  UsageStatsLaunchUnread, UsageStatsEnvMalformed,
+  VllmUsageStatsLaunchStanding, UsageStatsLaunchUnread, UsageStatsEnvMalformed,
   VllmUsageStatsEnvAssignment, VllmDoNotTrackMarkerStanding, DoNotTrackMarkerUnread,
   vllm_usage_stats_inspect_env_names, vllm_usage_stats_standing_from_effective_config,
 }
@@ -42,11 +41,6 @@ fn docker_assignments_as_vllm(assignments: List<DockerEnvAssignment>) -> List<Vl
   map(assignments, a => VllmUsageStatsEnvAssignment { name: a.name, value: a.value })
 }
 
-fn spark_usage_stats_projection_holds_only_requested_names(assignments: List<DockerEnvAssignment>) -> Bool {
-  let allowed = vllm_usage_stats_inspect_env_names()
-  !any(assignments, a => !any(allowed, n => (n as String) == (a.name as String)))
-}
-
 fn spark_serving_usage_stats_from_inspect(
   launch: VllmServingLaunch,
   inspect_stdout: String,
@@ -61,8 +55,6 @@ fn spark_serving_usage_stats_from_inspect(
     DockerContainerInspectNamedEnv { id: id, assignments: asg } =>
       if (id as String) != (launch.container_id as String) {
         UsageStatsLaunchUnread { obligation: spark_usage_stats_container_id_mismatch_obligation }
-      } else if !spark_usage_stats_projection_holds_only_requested_names(assignments: asg) {
-        UsageStatsEnvMalformed { cause: "named-env projection returned a name this decoder does not request" as NonEmptyStr }
       } else {
         vllm_usage_stats_standing_from_effective_config(
           assignments: docker_assignments_as_vllm(assignments: asg),
