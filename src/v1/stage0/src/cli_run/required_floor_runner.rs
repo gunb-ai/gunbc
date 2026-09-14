@@ -1559,10 +1559,20 @@ pub(crate) fn enrolment_margin_standing_for(
             // clock fusion of exactly the shape `std.measure` `measure_clock_basis_note` exists to
             // forbid: two magnitudes read from different clocks compared as if they were one.
             //
-            // `NotMeasured` IS THE HONEST ARM AND NOT A DEGRADATION. Both arms block identically,
-            // and what this row's CPU reading actually is — a lower bound with no ceiling it can be
-            // compared against — is what `NotMeasured`'s cause says. Nothing is widened: the
-            // enrolment question stays unanswered and the row stays refused.
+            // SO THE ARM IS `BoundWithoutCeiling`, WHICH IS NEITHER OF ITS NEIGHBOURS. There IS a
+            // reading, so `NotMeasured`'s remedy — "produce a measurement" — is the wrong
+            // instruction; and there is no CPU ceiling, so `CeilingCensored` has nothing to report
+            // beside the bound. Collapsing into either one loses the remedy, which is what the
+            // modeled authority says in terms and what this arm's own doc records.
+            //
+            // AN EARLIER REVISION OF THIS PARAGRAPH ARGUED THE OPPOSITE AND SURVIVED THE FIX THAT
+            // REFUTED IT (review 65863). It read "`NotMeasured` IS THE HONEST ARM AND NOT A
+            // DEGRADATION", which was this host's reasoning BEFORE review 65264 — the review that
+            // found the collapse had left the model's arm with no producer on the acceptance path.
+            // It sat directly above the expression that repaired it, arguing for the exact collapse
+            // the repair removed, so a later reader could have restored the defect believing the
+            // comment. Nothing is widened either way: the enrolment question stays unanswered and
+            // the row stays refused.
             EnrolmentMarginStanding::BoundWithoutCeiling {
                 cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
             }
