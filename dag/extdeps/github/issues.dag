@@ -2,6 +2,7 @@ module extdeps.github.issues
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
+import std.string_type { String }
 import std.types { NonEmptyStr, Timestamp, Secret }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
