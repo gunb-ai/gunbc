@@ -28,9 +28,10 @@ import v2.std.node {
   Instantiation,
   Named,
   Node,
-  NodeKind,
+  Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  node_synthetic
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
@@ -86,6 +87,15 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
       evidence: declared
     }
   }
+}
+
+fn inhabitance_cardinality_type(inner: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      Edge { label: Positional, target: inner }
+    ]
+  )
 }
 
 fn inhabitance_node_undecidable_reason(

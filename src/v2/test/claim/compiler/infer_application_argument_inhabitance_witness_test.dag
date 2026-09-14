@@ -1,6 +1,11 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
 
 import v2.compiler.infer { infer }
+import v2.std.inhabitance {
+  inhabitance_cardinality_type,
+  inhabitance_node_undecidable_reason,
+  inhabitance_undecidable_reason_symbol
+}
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
   dag_int_literal_fixture_one,
@@ -16,9 +21,8 @@ import v2.std.diagnostic {
   Rejected,
   Some
 }
-import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 import v2.std.node {
-  Cardinality,
   ComputationNode,
   Conj,
   Edge,
@@ -109,14 +113,8 @@ fn inhabitance_optional_formal_tree() -> Node {
   inhabitance_apply(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_opt,
-      declared: node_synthetic(
-        kind: TypeNode { connective: Cardinality },
-        children: [
-          Edge {
-            label: Positional,
-            target: dag_type_atom_node(identity: ^dag_binding_type_int)
-          }
-        ]
+      declared: inhabitance_cardinality_type(
+        inner: dag_type_atom_node(identity: ^dag_binding_type_int)
       )
     ),
     arg: dag_int_literal_fixture_one()
@@ -209,6 +207,19 @@ test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
         d: d,
         reason: ^inhabitance_undecidable_generic_formal
       )
+  }
+}
+
+test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
+  match inhabitance_node_undecidable_reason(
+    n: inhabitance_cardinality_type(
+      inner: dag_type_atom_node(identity: ^dag_binding_type_int)
+    )
+  ) {
+    Absent => false
+    Present { value: reason } =>
+      inhabitance_undecidable_reason_symbol(reason: reason)
+        == ^inhabitance_undecidable_optional_carrier
   }
 }
 
