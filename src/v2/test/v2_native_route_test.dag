@@ -1169,6 +1169,33 @@ test fn rustflags_without_the_exact_denial_are_refused() -> Bool {
   )
 }
 
+// THE REMAP ARM IS DENIAL THEN ONE FLAG, nothing after. Prefix-match alone would admit
+// `--remap-path-prefix=a=b -C opt-level=3` as denial-then-remap (review 65967).
+test fn rustflags_that_are_the_denial_then_one_remap_are_admitted() -> Bool {
+  native_route_admitted(admission: native_route_admission(receipt: receipt_with_build(
+    build: emitted_build_with(
+      rustflags: concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=a=b"),
+      rustc_identity: "rustc 1.93.0",
+      exit_status: 0,
+      warning_count: 0
+    )
+  )))
+}
+
+test fn rustflags_that_are_the_denial_then_remap_then_another_flag_are_refused() -> Bool {
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt_with_build(
+      build: emitted_build_with(
+        rustflags: concat(repo_self_warning_denial_rustflags(), " --remap-path-prefix=a=b -C opt-level=3"),
+        rustc_identity: "rustc 1.93.0",
+        exit_status: 0,
+        warning_count: 0
+      )
+    )),
+    cause_name: "emitted_build_warnings_not_denied"
+  )
+}
+
 test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool {
   let warned = native_route_admission(receipt: receipt_with_build(
     build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 1)
