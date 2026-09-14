@@ -1,9 +1,14 @@
 module gunbc.spark.vllm_incarnation_provenance
 
 import std.types { String, NonEmptyStr, List, Bool, Secret }
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_of_value }
+import std.content_hash {
+  ContentHash, Sha256Hash, sha256_hex_digest, content_hash_of_value, serialize_content_hash,
+}
 import gunbc.serving.incarnation_provenance {
   ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation, CoordinateUnestablished,
+  ServingCoordinate, CoordinateContent, CoordinateAbsent,
+  RuntimeManifestResolved, RuntimeManifestUnestablished,
+  RuntimeImageAxis, serving_runtime_coordinate,
   ServingSourceEvidenceRung, RevisionAddressedUpstreamVerification,
   ServingSourceResolution, ServingRuntimeResolution,
   resolve_serving_source, resolve_serving_runtime,
@@ -36,7 +41,7 @@ import gunbc.spark.device_memory_envelope {
   glm_native_tp4_launch_plan, glm_native_tp4_nodes, glm_native_device_memory_policy,
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt,
 }
-import gunbc.spark.serving_arm_launch { ArmNodeRosterRefused, ArmNodesResolved }
+import gunbc.spark.serving_arm_launch { ArmNodeRosterRefused, ArmNodesResolved, ArmLaunchPlan, ArmNodeLaunch }
 import gunbc.spark.native_rank_observer { observe_rank_utilization_basis_points }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.serving.incarnation_provenance { ServingTurnExecutionClosure }
@@ -303,14 +308,14 @@ func observe_runtime_image(
 }
 
 func observe_serving_runtime(
-  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr,
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, container: NonEmptyStr, plan: ArmLaunchPlan,
 ) -> ServingRuntimeResolution
   uses net: Network
 {
   resolve_serving_runtime(
     runtime_image: observe_runtime_image(ctx: ctx, host: host, container: container),
     runtime_extensions: CoordinateAbsentByObservation,
-    runtime_configuration: CoordinateAbsentByObservation,
+    runtime_configuration: observe_semantic_runtime_configuration(plan: plan),
   )
 }
 
@@ -430,7 +435,7 @@ func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
         snapshot_dir: glm_native_snapshot_dir, repo: glm_native_repo,
         revision: glm_native_revision, container: glm_native_container)
       let runtime = observe_serving_runtime(
-        ctx: ctx, host: glm_native_provenance_host, container: glm_native_container)
+        ctx: ctx, host: glm_native_provenance_host, container: glm_native_container, plan: plan)
       match observe_launch_identity(
         ctx: ctx, host: glm_native_provenance_host,
         container: glm_native_container, endpoint: glm_native_endpoint,
@@ -565,6 +570,45 @@ fn incarnation_deployment_obligations(acceptance: DeploymentAcceptance, ranks_re
   }
 }
 
+// ── THE ACCEPTANCE AND THE MANIFESTS MUST DESCRIBE ONE THING ──────────────────────────────────
+//
+// OBSERVED IN THE SAME TRANSACTION IS NOT THE SAME AS JOINED. The acceptance carries the image every
+// rank is running and the model path they were launched against; the runtime manifest carries an image
+// this module read separately. Storing both and comparing neither would admit a provenance whose
+// acceptance describes one image and whose runtime closure names another -- each fact true, the
+// conjunction false, which is the shape of every defect this vertical exists to prevent.
+//
+// THE COMPARISON IS EXACT BECAUSE BOTH SIDES RENDER THE SAME WAY. The readback reads the container's
+// .Image, which is "sha256:<hex>"; the runtime coordinate is a Sha256Hash whose serialization is
+// "sha256:<hex>". No normalization is invented to make them meet.
+fn runtime_image_agreement(receipt_image: NonEmptyStr, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
+  match runtime {
+    RuntimeManifestUnestablished { obligations: _ } => []
+    RuntimeManifestResolved { manifest: m } =>
+      match serving_runtime_coordinate(m: m, axis: RuntimeImageAxis) {
+        CoordinateAbsent => [
+          "the accepted deployment names an image and the runtime closure observed none" as NonEmptyStr,
+        ]
+        CoordinateContent { hash: h } =>
+          if (serialize_content_hash(hash: h) as String) == (receipt_image as String) { [] } else {
+            [join([
+              "the accepted deployment runs image ", receipt_image as String,
+              " and the runtime closure was observed from ", serialize_content_hash(hash: h) as String,
+            ], "") as NonEmptyStr]
+          }
+      }
+  }
+}
+
+fn acceptance_image_obligations(acceptance: DeploymentAcceptance, runtime: ServingRuntimeResolution) -> List<NonEmptyStr> {
+  match acceptance {
+    DeploymentRejected { deviations: _ } => []
+    DeploymentUnverified { unknowns: _ } => []
+    DeploymentUnverifiable { cause: _ } => []
+    DeploymentAccepted { receipt: r } => runtime_image_agreement(receipt_image: r.image_digest, runtime: runtime)
+  }
+}
+
 fn bind_incarnation(
   launch: VllmEndpointProcessLaunch,
   acceptance: DeploymentAcceptance,
@@ -572,7 +616,9 @@ fn bind_incarnation(
   source: ServingSourceResolution,
   runtime: ServingRuntimeResolution,
 ) -> VllmIncarnationOutcome {
-  let deployment_obligations = incarnation_deployment_obligations(acceptance: acceptance, ranks_required: ranks_required)
+  let deployment_obligations = concat(
+    incarnation_deployment_obligations(acceptance: acceptance, ranks_required: ranks_required),
+    acceptance_image_obligations(acceptance: acceptance, runtime: runtime))
   match seal_serving_execution_closure(source: source, runtime: runtime, receipt: vllm_incarnation_receipt) {
     ExecutionClosureUnestablished { obligations: os } =>
       IncarnationUnestablished { obligations: concat(deployment_obligations, os) }
@@ -885,5 +931,103 @@ func observe_checkpoint_across_ranks(
     } else {
       checkpoint_revision_reading(repo: repo, revision: revision)
     }
+  }
+}
+
+
+// ── THE SEMANTIC RUNTIME CONFIGURATION, AS A CLOSED PROJECTION OVER THE ACCEPTED LAUNCH ────────
+//
+// runtime_configuration WAS AbsentByObservation AND THAT WAS A PLACEHOLDER, NOT A MEASUREMENT. It was
+// written to make the manifest total, and it said "no runtime configuration outside the image" about a
+// launch whose own argv carries the KV cache numeric policy and the parsers that shape every reply. As
+// written, the same image and the same source with a different kv-cache dtype produced one Work.
+//
+// THE ROSTER IS CLOSED AND EACH MEMBER IS CLASSIFIED DELIBERATELY. Hashing the whole argv would sweep
+// in the endpoint, the master address, the node rank and the memory fraction -- realization facts that
+// must NOT change a semantic identity, or every restart on a different port would mint new Work. What
+// is in: the KV cache dtype (a numeric policy), the tool-call and reasoning parsers (they change what a
+// reply IS, not merely how fast it arrives), auto tool choice, and the tensor-parallel degree, which
+// changes reduction order and therefore numerics.
+//
+// WHAT IS DELIBERATELY OUT, AND WHY IT IS A JUDGEMENT RATHER THAN AN OVERSIGHT: max-model-len and the
+// scheduler bounds are capability limits -- a request inside them computes the same answer -- and the
+// memory fraction governs how much KV fits, not what a token is. Prefix caching is excluded on the
+// ruling already recorded in gunbc.serving.turn_demand: the warm prefix is an internal subcomputation
+// of one step and no fabric permission governs it.
+type SemanticRuntimeFlag
+  = KvCacheDtypeFlag
+  | ToolCallParserFlag
+  | ReasoningParserFlag
+  | AutoToolChoiceFlag
+  | TensorParallelFlag
+
+fn semantic_runtime_flags() -> List<SemanticRuntimeFlag> {
+  [KvCacheDtypeFlag, ToolCallParserFlag, ReasoningParserFlag, AutoToolChoiceFlag, TensorParallelFlag]
+}
+
+fn semantic_runtime_flag_wire(f: SemanticRuntimeFlag) -> NonEmptyStr {
+  match f {
+    KvCacheDtypeFlag => "--kv-cache-dtype" as NonEmptyStr
+    ToolCallParserFlag => "--tool-call-parser" as NonEmptyStr
+    ReasoningParserFlag => "--reasoning-parser" as NonEmptyStr
+    AutoToolChoiceFlag => "--enable-auto-tool-choice" as NonEmptyStr
+    TensorParallelFlag => "--tensor-parallel-size" as NonEmptyStr
+  }
+}
+
+// A VALUELESS FLAG IS PRESENT OR ABSENT AND A VALUED FLAG CARRIES ITS OPERAND. Rendering both as the
+// same kind of string would make "--enable-auto-tool-choice" indistinguishable from a flag whose value
+// happened to be the empty string.
+fn semantic_runtime_flag_takes_value(f: SemanticRuntimeFlag) -> Bool {
+  match f {
+    AutoToolChoiceFlag => false
+    KvCacheDtypeFlag => true
+    ToolCallParserFlag => true
+    ReasoningParserFlag => true
+    TensorParallelFlag => true
+  }
+}
+
+fn argv_value_after(argv: List<String>, flag: String) -> String {
+  match argv.first() {
+    Absent => ""
+    Present { value: head } =>
+      if head == flag {
+        match argv.skip(n: 1).first() { Absent => "" Present { value: v } => v }
+      } else {
+        argv_value_after(argv: argv.skip(n: 1), flag: flag)
+      }
+  }
+}
+
+fn argv_has_word(argv: List<String>, word: String) -> Bool {
+  count(filter(argv, w => w == word)) != 0
+}
+
+fn semantic_runtime_flag_material(argv: List<String>, f: SemanticRuntimeFlag) -> NonEmptyStr {
+  let name = semantic_runtime_flag_wire(f: f) as String
+  if semantic_runtime_flag_takes_value(f: f) {
+    join([name, "\u{1f}", argv_value_after(argv: argv, flag: name)], "") as NonEmptyStr
+  } else {
+    join([name, "\u{1f}", if argv_has_word(argv: argv, word: name) { "present" } else { "absent" }], "") as NonEmptyStr
+  }
+}
+
+fn semantic_runtime_material(argv: List<String>) -> NonEmptyStr {
+  join(
+    map(semantic_runtime_flags(), f => semantic_runtime_flag_material(argv: argv, f: f) as String),
+    "\u{1e}") as NonEmptyStr
+}
+
+// THE COORDINATE IS READ FROM THE ACCEPTED PLAN'S ENGINE ARGV, which the readback has already compared
+// against every rank -- so this projects a value the deployment was proven to be running, rather than a
+// value this module read separately and hoped matched.
+fn observe_semantic_runtime_configuration(plan: ArmLaunchPlan) -> ServingCoordinateReading {
+  match plan_lines(plan: plan).first() {
+    Absent => CoordinateUnestablished {
+      obligation: "the accepted plan names no line, so no runtime configuration could be projected" as NonEmptyStr,
+    }
+    Present { value: l } =>
+      CoordinateObserved { hash: content_hash_of_value(value: semantic_runtime_material(argv: l.engine_argv)) }
   }
 }
