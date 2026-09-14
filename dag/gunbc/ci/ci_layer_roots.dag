@@ -714,9 +714,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "dag_compile_clean_seam_witness_test.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_tempdir_write_reason,
-    dissolution: excl_local_repo_wet_dissolve},
+    classification: BinWitnessWet,
+    reason: excl_bin_wet_reason,
+    dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "test/claim/diagnostics_test.dag",
     classification: BinWitnessWet,
@@ -1446,6 +1446,12 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "perturb_dag_shell_primary_corpus_green_holds",
     reason: "Corpus-grain leg: dag_shell_primary_precedence compiles extdeps.shell against the full compile-clean pool; decomposed off the per-PR row with cross_tree_import",
     dissolution: unbound_dissolution(description: "dag_shell_primary_precedence gains a scoped fixture realization under bin_witness_wet_per_row_wall_budget_seconds on a measured run; then re-enroll per-PR or keep on falsifier cadence consciously")
+  },
+  RehomedBinWetRow {
+    entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag",
+    function: "cross_shard_seam_preservation_holds_on_live_tree",
+    reason: "Live-tree seam standing is a whole-tree PrimaryRoot of a staged dag copy (monolith control). On a runner without GUNBC_MEMORY_BUDGET_BYTES that is WholeCorpusCompileBudgetUnreadable / compile_cli_exit_not_executed — RefusedBeforeSubject, not a subject verdict. Not a required-floor identity. Algebra stays per-PR as cross_shard_seam_algebra_holds.",
+    dissolution: unbound_dissolution(description: "the compile CLI carries earlier_phase machine-readably and whole-corpus admission is readable on the runner class that executes this identity — then re-enroll per-PR consciously, or keep off the required floor if the monolith remains a budget-unreadable PrimaryRoot there")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag",
