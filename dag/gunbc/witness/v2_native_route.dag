@@ -884,16 +884,16 @@ fn native_route_malformed_control_holds(receipt: NativeRouteReceipt) -> Bool {
   }
 }
 
+// Not v2_emitter_closure_admission. That fold is a negative module-path filter; the
+// interpreted door-run closure is ProducerMintAdmitted and names the same modules as a
+// native compile (v2.compiler.self_host.ancestry, review 66062). Nativeness is
+// SucceedsNative executed bytes. Until native_route_old_route_absent_by_construction_production_frontier
+// the OldRouteAbsentByConstruction arm does not close this clause.
 fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
-    // Not v2_emitter_closure_admission. That fold is a negative module-path filter; the
-    // interpreted door-run closure is ProducerMintAdmitted and names the same modules as a
-    // native compile (v2.compiler.self_host.ancestry, review 66062). Nativeness is
-    // SucceedsNative executed bytes. Until native_route_old_route_absent_by_construction_production_frontier
-    // this arm does not close the clause.
     OldRouteAbsentByConstruction { admitted_native_producer_closure: _ } =>
       false
     OldRouteControlAbsent => false
