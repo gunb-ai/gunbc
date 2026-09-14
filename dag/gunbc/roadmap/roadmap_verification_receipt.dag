@@ -1019,6 +1019,7 @@ fn verification_subject_json(subject: VerificationSubject) -> JsonValue {
   ])
 }
 
+fn verification_modeled_command_json(
   command: ModeledValidationCommand,
 ) -> JsonValue {
   json_object(members: [
