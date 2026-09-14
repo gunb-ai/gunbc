@@ -1,7 +1,5 @@
 module test.claim.roadmap_receipt_continuity_acceptance
 
-// These projections call active_roadmap_*_for_accepted.
-
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_authority {

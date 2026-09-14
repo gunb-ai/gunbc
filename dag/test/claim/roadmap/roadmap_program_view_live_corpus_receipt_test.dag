@@ -29,7 +29,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // excluded from per-PR discovery. Business algebra stays on planted fixtures in
 // test.claim.roadmap_program_view_witness.
 
-// Consumes projected_roadmap_dependency_edges_projection, which walks map-backed active edges.
 test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool {
   match roadmap_acceptance_receipts() {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
