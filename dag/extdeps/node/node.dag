@@ -1,0 +1,42 @@
+module extdeps.node
+
+import std.types { FilePath, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nodejs.org/api/cli.html"
+  }
+}
+
+// Node.js execution. RunFile mirrors go.Toolchain.RunFile and python.Interpreter.RunFile — node
+// executes the script at the given path with cwd anchored at workdir, returning captured
+// stdout/stderr to the caller. The node binary must be on PATH; if absent the operation fails and
+// the caller sees success: false. This is by design (see $5: conditional provisioning is a widen —
+// the operation refuses rather than downloading a tarball and continuing; the
+// emit_host_node_bootstrap_script carrier this module retires from the run_ts_smoke path was
+// exactly that widen — a pinned nodejs.org tarball fetched at run time). As in go and python, the
+// program name is PATH-resolved deliberately (extdeps.exec.command
+// program_spelling_is_an_observation_claim: an absolute path is a filesystem observation this
+// repository has not made about the host), and no version row is declared: a version string pinned
+// where nothing adjudicates it is the version-rot class the run_go_smoke migration removed. The
+// operation name follows the trigger that demanded it: "a node execution operation (like
+// go.Toolchain.RunFile or python.Interpreter.RunFile) to run the compiled output".
+service node.Toolchain {
+  operation RunFile {
+    input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "node", "{script_path}", args] }
+    exit {
+      0 => Unit
+      nonzero => String "node script exited nonzero"
+    }
+  }
+}

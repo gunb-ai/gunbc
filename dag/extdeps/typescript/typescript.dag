@@ -1,0 +1,46 @@
+module extdeps.typescript
+
+import std.types { FilePath, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/tsconfig"
+  }
+}
+
+// TypeScript compilation. Compile invokes the tsc compiler DIRECTLY on PATH — never npx, so no
+// package is fetched at run time (see $5: the npx -y -p typescript@5.9.2 argv the run_ts_smoke
+// heredoc carried was a runtime network fetch, the same widen class as toolchain provisioning).
+// When tsc is absent the operation fails and the caller sees success: false — the compile authority
+// refuses rather than reaching for the registry, exactly as the toolchain operations refuse rather
+// than provisioning. tsc compiles the .ts entry to .js under out_dir; target and module_kind are
+// the emitted-module semantics the caller pins, named inputs instead of bash literals so the
+// choice is visible to review. As in go and python, the program name is PATH-resolved deliberately
+// (extdeps.exec.command program_spelling_is_an_observation_claim) and no version row is declared:
+// a version string pinned where nothing adjudicates it is the version-rot class the run_go_smoke
+// migration removed — the compile flags, not a compiler version, carry the semantics here.
+service typescript.Compiler {
+  operation Compile {
+    input {
+      workdir: FilePath,
+      entry_path: FilePath,
+      target: String = "ES2022",
+      module_kind: String = "commonjs",
+      out_dir: String = "."
+    }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "tsc", "--target", "{target}", "--module", "{module_kind}", "--outDir", "{out_dir}", "{entry_path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "tsc exited nonzero"
+    }
+  }
+}
