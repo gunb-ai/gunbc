@@ -1,0 +1,465 @@
+module gunbc.native_prepare_shard
+
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import v2.std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.interval { degenerate_interval }
+import std.measure {
+  HardwareThreadCount, ByteSize, byte_size, hardware_thread_count, hardware_thread_count_value, Nano,
+}
+import std.realization {
+  LocalChildProcess, LocalInProcess, RealizedStep, Recompute,
+}
+import std.realization_schedule { cost_account_predicted_zero }
+import std.realization_width {
+  process_memory_aware_spawn_width, shard_count_positive, width_fold_objective_goals,
+}
+import std.effects { ExecuteEffect, ReadEffect }
+import std.content_hash { content_hash_atom }
+import std.pareto { AxisReading, ParetoEntry, SelectionAxis, LowerIsBetter }
+import std.decision {
+  HardConstraint, UniqueSurvivorRequired, SelectedWithin, NoFeasibleRealization,
+  SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
+  CandidateFieldUnestablished, DecisionVariable, ContextParameter, DecisionConstraint,
+  ObjectiveTerm, ObjectiveMeasure, ChoiceDomain, DecisionSubject, DecisionRegion,
+  DecisionAssessment, VariesAlong, MonotoneDecreasing, ConstraintSatisfied, ParameterBound,
+  PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
+  select_realization,
+}
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// Fork-after-context prepare sharding. Width envelope is std.realization_width
+// process_memory_aware_spawn_width. Width choice is std.decision.select_realization.
+// Workers are std.realization.Placement.LocalChildProcess. WorkOperation is not extended.
+// Instrument: scratch/deep-cat-655-span-bisect@5b41958d07d9 [native-module-residual].
+// Merge transport: one RUNNER_TEMP file per worker, digest-joined; missing/malformed refuses.
+// Assignment: contiguous slices over stable module-identity order (named; shared by W=1 and W=N).
+// Named merge step: prepare_shard_merge. Slice 2 named step: context_shard_reduce (modeled only).
+
+data prepare_shard_merge_step_name: NonEmptyStr = "prepare_shard_merge" as NonEmptyStr
+data context_shard_reduce_step_name: NonEmptyStr = "context_shard_reduce" as NonEmptyStr
+
+type Slice2ContextMapReduceStanding
+  = ModeledAwaitingSlice1ThreeArmReceipt { named_step: NonEmptyStr }
+
+data slice2_context_map_reduce_standing: Slice2ContextMapReduceStanding = ModeledAwaitingSlice1ThreeArmReceipt {
+  named_step: context_shard_reduce_step_name
+}
+
+type PreparePlacementArm
+  = InProcessSerial
+  | LocalChildProcessWidth { width: Int }
+
+fn prepare_worker_realized_step() -> RealizedStep<Nano> {
+  RealizedStep {
+    shape: ExecuteEffect,
+    placement: LocalChildProcess,
+    materialization: Recompute,
+    cost: cost_account_predicted_zero()
+  }
+}
+
+fn prepare_merge_read_step() -> RealizedStep<Nano> {
+  RealizedStep {
+    shape: ReadEffect,
+    placement: LocalInProcess,
+    materialization: Recompute,
+    cost: cost_account_predicted_zero()
+  }
+}
+
+fn prepare_spawn_envelope(
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_job_peak: ByteSize,
+  pids_budget: Int,
+  procs_per_job: Int,
+  conservative_fallback_width: Int,
+  module_count: Int
+) -> Int {
+  let process_width = hardware_thread_count_value(
+    t: process_memory_aware_spawn_width(
+      hardware_threads: hardware_threads,
+      memory_budget: memory_budget,
+      per_job_peak: per_job_peak,
+      pids_budget: pids_budget,
+      procs_per_job: procs_per_job,
+      conservative_fallback_width: conservative_fallback_width
+    )
+  )
+  let demand = shard_count_positive(shard_count: module_count)
+  if process_width < demand { process_width } else { demand }
+}
+
+type WidthAdmission
+  = WidthAdmitted { width: Int }
+  | WidthExceedsEnvelope { requested: Int, envelope: Int }
+
+fn admit_requested_width(requested: Int, envelope: Int) -> WidthAdmission {
+  if requested <= 0 {
+    WidthExceedsEnvelope { requested: requested, envelope: envelope }
+  } else {
+    if requested > envelope {
+      WidthExceedsEnvelope { requested: requested, envelope: envelope }
+    } else {
+      WidthAdmitted { width: requested }
+    }
+  }
+}
+
+data id_prepare_width_subject: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_subject")
+data id_prepare_width_field: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_field")
+data id_prepare_width_var: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_var")
+data id_prepare_width_term: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_term")
+data id_prepare_width_constraint: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_constraint")
+data id_prepare_width_param: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_param")
+data id_prepare_width_region: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_region")
+data id_prepare_width_domain: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_domain")
+data id_prepare_width_objective: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_objective")
+data id_prepare_width_coupling: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_coupling")
+data id_prepare_width_evidence: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_evidence")
+data id_prepare_width_policy: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "prepare_width_policy")
+data ax_prepare_wall: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "ax_prepare_wall")
+data ax_prepare_peak_memory: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "ax_prepare_peak_memory")
+data id_width_candidate: DeclarationRef = decl_ref(module_path: "gunbc.native_prepare_shard", decl_name: "id_width_candidate")
+
+data prepare_width_physical_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunbc.invalid/native-prepare-shard/width-envelope" },
+}
+
+data prepare_width_var: DecisionVariable = DecisionVariable { identity: id_prepare_width_var }
+data prepare_width_term: ObjectiveTerm = ObjectiveTerm {
+  identity: id_prepare_width_term,
+  ground: CitedToAuthority { authority: prepare_width_physical_authority },
+}
+data prepare_width_constraint_cell: DecisionConstraint = DecisionConstraint { identity: id_prepare_width_constraint }
+data prepare_width_param_cell: ContextParameter = ContextParameter { identity: id_prepare_width_param }
+data prepare_width_region: DecisionRegion = DecisionRegion { identity: id_prepare_width_region }
+
+data prepare_width_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: id_prepare_width_objective,
+  goal: LowerIsBetter,
+  terms: [prepare_width_term],
+}
+
+data prepare_width_domain: ChoiceDomain = ChoiceDomain {
+  identity: id_prepare_width_domain,
+  variables: [prepare_width_var],
+}
+
+data prepare_width_subject: DecisionSubject = DecisionSubject {
+  identity: id_prepare_width_subject,
+  question: "which HardwareThreadCount to spawn for native prepare on this host" as NonEmptyStr,
+  parameters: [prepare_width_param_cell],
+  constraints: [prepare_width_constraint_cell],
+  objective: prepare_width_objective,
+  choice_domain: prepare_width_domain,
+}
+
+fn prepare_width_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: prepare_width_subject,
+    sensitivities: [
+      VariesAlong {
+        term: id_prepare_width_term,
+        variable: id_prepare_width_var,
+        region: prepare_width_region,
+        relation: MonotoneDecreasing,
+        coupling: CitedToAuthority { authority: prepare_width_physical_authority },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied {
+        constraint: id_prepare_width_constraint,
+        evidence: "envelope from process_memory_aware_spawn_width" as NonEmptyStr,
+      },
+    ],
+    parameters: [
+      ParameterBound {
+        parameter: id_prepare_width_param,
+        evidence: "pinned quiet-host subject" as NonEmptyStr,
+      },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_prepare_width_term] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        FleetObservedCoupling {
+          receipt: id_prepare_width_coupling,
+          term: id_prepare_width_term,
+          variable: id_prepare_width_var,
+          subject: id_prepare_width_subject,
+        },
+      ],
+    },
+  }
+}
+
+fn prepare_width_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_prepare_wall, goal: LowerIsBetter },
+    SelectionAxis { identity: ax_prepare_peak_memory, goal: LowerIsBetter },
+  ]
+}
+
+fn prepare_width_entry(requested: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id_width_candidate,
+    display_label: "requested prepare width" as NonEmptyStr,
+    readings: [
+      AxisReading { axis: ax_prepare_wall, interval_micro: degenerate_interval(point: requested) },
+      AxisReading { axis: ax_prepare_peak_memory, interval_micro: degenerate_interval(point: requested) },
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn envelope_constraint(envelope: Int) -> HardConstraint {
+  HardConstraint {
+    identity: id_prepare_width_constraint,
+    axis: ax_prepare_wall,
+    bound_micro: envelope,
+  }
+}
+
+type PrepareWidthSelection
+  = PrepareWidthSelected { width: Int }
+  | PrepareWidthRefusedAboveEnvelope { requested: Int, envelope: Int }
+
+fn select_prepare_width(requested: Int, envelope: Int) -> PrepareWidthSelection {
+  match admit_requested_width(requested: requested, envelope: envelope) {
+    WidthExceedsEnvelope { requested: r, envelope: e } =>
+      PrepareWidthRefusedAboveEnvelope { requested: r, envelope: e }
+    WidthAdmitted { width: w } =>
+      match select_realization(
+        assessment: prepare_width_assessment(),
+        candidate_field_identity: id_prepare_width_field,
+        field: [prepare_width_entry(requested: w)],
+        axes: prepare_width_axes(),
+        constraints: [envelope_constraint(envelope: envelope)],
+        constraint_authority: id_prepare_width_constraint,
+        policy: UniqueSurvivorRequired { identity: id_prepare_width_policy },
+        evidence_snapshot: id_prepare_width_evidence,
+      ) {
+        SelectedWithin { candidate: _, receipt: _ } => PrepareWidthSelected { width: w }
+        NoFeasibleRealization { causes: _, scope: _ } =>
+          PrepareWidthRefusedAboveEnvelope { requested: requested, envelope: envelope }
+        SelectionNeedsEvidence { needs: _ } =>
+          PrepareWidthRefusedAboveEnvelope { requested: requested, envelope: envelope }
+        SelectionNeedsPolicy { survivors: _ } =>
+          PrepareWidthRefusedAboveEnvelope { requested: requested, envelope: envelope }
+        RealizationSelectionRefused { defects: _ } =>
+          PrepareWidthRefusedAboveEnvelope { requested: requested, envelope: envelope }
+        CandidateFieldUnestablished { causes: _ } =>
+          PrepareWidthRefusedAboveEnvelope { requested: requested, envelope: envelope }
+      }
+  }
+}
+
+fn width_fold_goals_are_the_two_lower_is_better_axes() -> Bool {
+  (width_fold_objective_goals() |> count) == 2
+}
+
+type TakeState { taken: List<String>, seen: Int }
+
+fn take_n(xs: List<String>, n: Int) -> List<String> {
+  (xs |> fold(init: TakeState { taken: [], seen: 0 }, f: (st, x) =>
+    if st.seen >= n {
+      st
+    } else {
+      TakeState { taken: concat(st.taken, [x]), seen: st.seen + 1 }
+    }
+  )).taken
+}
+
+fn drop_n(xs: List<String>, n: Int) -> List<String> {
+  (xs |> fold(init: TakeState { taken: [], seen: 0 }, f: (st, x) =>
+    if st.seen < n {
+      TakeState { taken: st.taken, seen: st.seen + 1 }
+    } else {
+      TakeState { taken: concat(st.taken, [x]), seen: st.seen + 1 }
+    }
+  )).taken
+}
+
+fn shard_len(n: Int, width: Int, i: Int) -> Int {
+  let extra = n % width
+  let base = n / width
+  if i < extra { base + 1 } else { base }
+}
+
+fn shard_start(n: Int, width: Int, i: Int) -> Int {
+  let extra = n % width
+  let base = n / width
+  if i < extra {
+    i * (base + 1)
+  } else {
+    extra * (base + 1) + (i - extra) * base
+  }
+}
+
+fn slice_at(ids: List<String>, start: Int, len: Int) -> List<String> {
+  take_n(xs: drop_n(xs: ids, n: start), n: len)
+}
+
+type AssignmentBuild { shards: List<List<String>>, index: Int }
+
+fn contiguous_slices(ordered_ids: List<String>, width: Int) -> List<List<String>> {
+  let w = shard_count_positive(shard_count: width)
+  let n = ordered_ids |> count
+  (ints_from(start: 0, end: w) |> fold(init: [], f: (acc, i) =>
+    concat(acc, [slice_at(ids: ordered_ids, start: shard_start(n: n, width: w, i: i), len: shard_len(n: n, width: w, i: i))])
+  ))
+}
+
+fn ints_from(start: Int, end: Int) -> List<Int> {
+  if start >= end {
+    []
+  } else {
+    concat([start], ints_from(start: start + 1, end: end))
+  }
+}
+
+type NamedPayload {
+  identity: String
+  payload: String
+}
+
+type MergeJoin
+  = MergeEquivalent
+  | MergeRefusedAdded { identity: String }
+  | MergeRefusedRemoved { identity: String }
+  | MergeRefusedChanged { identity: String }
+  | MergeRefusedDuplicate { identity: String }
+
+fn payloads_for(rows: List<NamedPayload>, identity: String) -> List<String> {
+  map(filter(rows, r => r.identity == identity), r => r.payload)
+}
+
+fn join_one(serial: List<NamedPayload>, merged: List<NamedPayload>, identity: String) -> MergeJoin {
+  let s = payloads_for(rows: serial, identity: identity)
+  let m = payloads_for(rows: merged, identity: identity)
+  let sc = s |> count
+  let mc = m |> count
+  if sc > 1 {
+    MergeRefusedDuplicate { identity: identity }
+  } else {
+    if mc > 1 {
+      MergeRefusedDuplicate { identity: identity }
+    } else {
+      if sc == 0 {
+        if mc == 0 {
+          MergeEquivalent
+        } else {
+          MergeRefusedAdded { identity: identity }
+        }
+      } else {
+        if mc == 0 {
+          MergeRefusedRemoved { identity: identity }
+        } else {
+          if (s |> fold(init: "", f: (a, x) => x)) == (m |> fold(init: "", f: (a, x) => x)) {
+            MergeEquivalent
+          } else {
+            MergeRefusedChanged { identity: identity }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn identities_of(rows: List<NamedPayload>) -> List<String> {
+  map(rows, r => r.identity)
+}
+
+fn unique_append(acc: List<String>, id: String) -> List<String> {
+  if (filter(acc, x => x == id) |> count) == 0 {
+    concat(acc, [id])
+  } else {
+    acc
+  }
+}
+
+fn union_identities(serial: List<NamedPayload>, merged: List<NamedPayload>) -> List<String> {
+  concat(identities_of(rows: serial), identities_of(rows: merged)) |> fold(init: [], f: unique_append)
+}
+
+fn bidirectional_identity_payload_join(serial: List<NamedPayload>, merged: List<NamedPayload>) -> MergeJoin {
+  union_identities(serial: serial, merged: merged) |> fold(init: MergeEquivalent, f: (acc, id) =>
+    match acc {
+      MergeEquivalent => join_one(serial: serial, merged: merged, identity: id)
+      MergeRefusedAdded { identity: i } => MergeRefusedAdded { identity: i }
+      MergeRefusedRemoved { identity: i } => MergeRefusedRemoved { identity: i }
+      MergeRefusedChanged { identity: i } => MergeRefusedChanged { identity: i }
+      MergeRefusedDuplicate { identity: i } => MergeRefusedDuplicate { identity: i }
+    }
+  )
+}
+
+type WorkerArtifactStanding
+  = WorkerArtifactOk { worker: Int, digest: String, payload: String }
+  | WorkerArtifactMissing { path: String }
+  | WorkerArtifactMalformed { path: String }
+  | WorkerArtifactDigestMismatch { declared: String, observed: String }
+
+fn payload_digest(payload: String) -> String {
+  (content_hash_atom(value: payload as NonEmptyStr)).digest as String
+}
+
+fn standing_from_declared(path: String, declared: String, body: String?) -> WorkerArtifactStanding {
+  match body {
+    Absent => WorkerArtifactMissing { path: path }
+    Present { value: bytes } =>
+      if bytes == "" {
+        WorkerArtifactMalformed { path: path }
+      } else {
+        let observed = payload_digest(payload: bytes)
+        if declared == "" {
+          WorkerArtifactMalformed { path: path }
+        } else {
+          if declared == observed {
+            WorkerArtifactOk { worker: 0, digest: observed, payload: bytes }
+          } else {
+            WorkerArtifactDigestMismatch { declared: declared, observed: observed }
+          }
+        }
+      }
+  }
+}
+
+type ResidualAccount
+  = ResidualOk { residual: Int }
+  | ResidualNegative { parent: Int, named_children: Int }
+  | ResidualMissingMeter
+  | ResidualUnmatched { identity: String }
+
+fn checked_residual(parent: Int, named_children: Int) -> ResidualAccount {
+  if named_children > parent {
+    ResidualNegative { parent: parent, named_children: named_children }
+  } else {
+    ResidualOk { residual: parent - named_children }
+  }
+}
+
+fn named_module_local_children(
+  prepare_nanos: Int,
+  eval_nanos: Int,
+  row_accumulation_nanos: Int,
+  arm_exit_nanos: Int,
+  release_nanos: Int,
+  meter_nanos: Int
+) -> Int {
+  prepare_nanos + eval_nanos + row_accumulation_nanos + arm_exit_nanos + release_nanos + meter_nanos
+}
+
+fn prepare_parent_reconcile(parent: Int, fixed: Int, module_parents: Int) -> ResidualAccount {
+  let accounted = fixed + module_parents
+  checked_residual(parent: parent, named_children: accounted)
+}
+
+type ThreeArmAcceptance
+  = InProcessSerialArm
+  | ChildProcessWidth1
+  | ChildProcessWidthN { width: Int }

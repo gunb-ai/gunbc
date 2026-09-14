@@ -41,6 +41,7 @@ pub enum NativeDriverExclusiveRowKey {
     ExclusiveRowSerialization,
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
+    ExclusivePrepareShardMerge,
 }
 
 pub fn native_driver_exclusive_row_keys() -> Rc<Vec<NativeDriverExclusiveRowKey>> {
@@ -54,6 +55,7 @@ pub fn native_driver_exclusive_row_keys() -> Rc<Vec<NativeDriverExclusiveRowKey>
         NativeDriverExclusiveRowKey::ExclusiveRowSerialization,
         NativeDriverExclusiveRowKey::ExclusiveModuleRelease,
         NativeDriverExclusiveRowKey::ExclusiveRelayEmit,
+        NativeDriverExclusiveRowKey::ExclusivePrepareShardMerge,
     ])
 }
 
@@ -70,6 +72,9 @@ pub fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> Str
         NativeDriverExclusiveRowKey::ExclusiveRowSerialization => "row_serialization".to_string(),
         NativeDriverExclusiveRowKey::ExclusiveModuleRelease => "module_release".to_string(),
         NativeDriverExclusiveRowKey::ExclusiveRelayEmit => "relay_emit".to_string(),
+        NativeDriverExclusiveRowKey::ExclusivePrepareShardMerge => {
+            "prepare_shard_merge".to_string()
+        }
     }
 }
 

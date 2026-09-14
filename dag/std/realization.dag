@@ -101,6 +101,7 @@ type Placement
   | LocalFilesystem
   | RemoteNetwork
   | LocalAccelerator
+  | LocalChildProcess
 
 type Materialization = Recompute | Memoize | Share
 

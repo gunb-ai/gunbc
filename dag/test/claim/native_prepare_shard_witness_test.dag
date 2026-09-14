@@ -1,0 +1,206 @@
+module test.claim.native_prepare_shard_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { hardware_thread_count, byte_size }
+import std.realization { LocalChildProcess }
+import gunbc.native_prepare_shard {
+  contiguous_slices,
+  bidirectional_identity_payload_join,
+  NamedPayload,
+  MergeEquivalent,
+  MergeRefusedAdded,
+  MergeRefusedRemoved,
+  MergeRefusedChanged,
+  MergeRefusedDuplicate,
+  standing_from_declared,
+  WorkerArtifactMissing,
+  WorkerArtifactMalformed,
+  WorkerArtifactDigestMismatch,
+  WorkerArtifactOk,
+  payload_digest,
+  checked_residual,
+  ResidualOk,
+  ResidualNegative,
+  named_module_local_children,
+  prepare_parent_reconcile,
+  select_prepare_width,
+  PrepareWidthSelected,
+  PrepareWidthRefusedAboveEnvelope,
+  prepare_spawn_envelope,
+  prepare_worker_realized_step,
+  prepare_shard_merge_step_name,
+  context_shard_reduce_step_name,
+  slice2_context_map_reduce_standing,
+  ModeledAwaitingSlice1ThreeArmReceipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn contiguous_slices_are_intervals_over_stable_order() -> Bool {
+  contiguous_slices(ordered_ids: ["a", "b", "c", "d", "e", "f", "g"], width: 3)
+    == [["a", "b", "c"], ["d", "e"], ["f", "g"]]
+}
+
+test fn width_one_is_the_same_assignment_function() -> Bool {
+  contiguous_slices(ordered_ids: ["a", "b", "c"], width: 1) == [["a", "b", "c"]]
+}
+
+test fn merge_join_equivalent_is_bidirectional() -> Bool {
+  let rows = [
+    NamedPayload { identity: "m.a", payload: "p1" },
+    NamedPayload { identity: "m.b", payload: "p2" },
+  ]
+  match bidirectional_identity_payload_join(serial: rows, merged: rows) {
+    MergeEquivalent => true
+    MergeRefusedAdded { identity: _ } => false
+    MergeRefusedRemoved { identity: _ } => false
+    MergeRefusedChanged { identity: _ } => false
+    MergeRefusedDuplicate { identity: _ } => false
+  }
+}
+
+test fn merge_join_refuses_added() -> Bool {
+  match bidirectional_identity_payload_join(
+    serial: [NamedPayload { identity: "m.a", payload: "p1" }],
+    merged: [
+      NamedPayload { identity: "m.a", payload: "p1" },
+      NamedPayload { identity: "m.b", payload: "p2" },
+    ]
+  ) {
+    MergeRefusedAdded { identity: id } => id == "m.b"
+    MergeEquivalent => false
+    MergeRefusedRemoved { identity: _ } => false
+    MergeRefusedChanged { identity: _ } => false
+    MergeRefusedDuplicate { identity: _ } => false
+  }
+}
+
+test fn merge_join_refuses_removed() -> Bool {
+  match bidirectional_identity_payload_join(
+    serial: [
+      NamedPayload { identity: "m.a", payload: "p1" },
+      NamedPayload { identity: "m.b", payload: "p2" },
+    ],
+    merged: [NamedPayload { identity: "m.a", payload: "p1" }]
+  ) {
+    MergeRefusedRemoved { identity: id } => id == "m.b"
+    MergeEquivalent => false
+    MergeRefusedAdded { identity: _ } => false
+    MergeRefusedChanged { identity: _ } => false
+    MergeRefusedDuplicate { identity: _ } => false
+  }
+}
+
+test fn merge_join_refuses_changed() -> Bool {
+  match bidirectional_identity_payload_join(
+    serial: [NamedPayload { identity: "m.a", payload: "p1" }],
+    merged: [NamedPayload { identity: "m.a", payload: "p9" }]
+  ) {
+    MergeRefusedChanged { identity: id } => id == "m.a"
+    MergeEquivalent => false
+    MergeRefusedAdded { identity: _ } => false
+    MergeRefusedRemoved { identity: _ } => false
+    MergeRefusedDuplicate { identity: _ } => false
+  }
+}
+
+test fn merge_join_refuses_duplicate() -> Bool {
+  match bidirectional_identity_payload_join(
+    serial: [
+      NamedPayload { identity: "m.a", payload: "p1" },
+      NamedPayload { identity: "m.a", payload: "p1" },
+    ],
+    merged: [NamedPayload { identity: "m.a", payload: "p1" }]
+  ) {
+    MergeRefusedDuplicate { identity: id } => id == "m.a"
+    MergeEquivalent => false
+    MergeRefusedAdded { identity: _ } => false
+    MergeRefusedRemoved { identity: _ } => false
+    MergeRefusedChanged { identity: _ } => false
+  }
+}
+
+test fn missing_worker_artifact_refuses() -> Bool {
+  match standing_from_declared(path: "/tmp/missing.json", declared: "deadbeef", body: none) {
+    WorkerArtifactMissing { path: p } => p == "/tmp/missing.json"
+    WorkerArtifactOk { worker: _, digest: _, payload: _ } => false
+    WorkerArtifactMalformed { path: _ } => false
+    WorkerArtifactDigestMismatch { declared: _, observed: _ } => false
+  }
+}
+
+test fn malformed_worker_artifact_refuses() -> Bool {
+  match standing_from_declared(path: "/tmp/empty.json", declared: "deadbeef", body: some("")) {
+    WorkerArtifactMalformed { path: p } => p == "/tmp/empty.json"
+    WorkerArtifactOk { worker: _, digest: _, payload: _ } => false
+    WorkerArtifactMissing { path: _ } => false
+    WorkerArtifactDigestMismatch { declared: _, observed: _ } => false
+  }
+}
+
+test fn digest_mismatch_refuses() -> Bool {
+  let payload = "rows"
+  let observed = payload_digest(payload: payload)
+  match standing_from_declared(path: "/tmp/w.json", declared: "not-the-digest", body: some(payload)) {
+    WorkerArtifactDigestMismatch { declared: d, observed: o } => (d == "not-the-digest") && (o == observed)
+    WorkerArtifactOk { worker: _, digest: _, payload: _ } => false
+    WorkerArtifactMissing { path: _ } => false
+    WorkerArtifactMalformed { path: _ } => false
+  }
+}
+
+test fn residual_refuses_when_named_children_exceed_parent() -> Bool {
+  let children = named_module_local_children(
+    prepare_nanos: 10,
+    eval_nanos: 10,
+    row_accumulation_nanos: 10,
+    arm_exit_nanos: 10,
+    release_nanos: 10,
+    meter_nanos: 10
+  )
+  match checked_residual(parent: 50, named_children: children) {
+    ResidualNegative { parent: p, named_children: c } => (p == 50) && (c == 60)
+    ResidualOk { residual: _ } => false
+    ResidualMissingMeter => false
+    ResidualUnmatched { identity: _ } => false
+  }
+}
+
+test fn prepare_parent_refuses_when_not_nested() -> Bool {
+  match prepare_parent_reconcile(parent: 10, fixed: 8, module_parents: 8) {
+    ResidualNegative { parent: p, named_children: c } => (p == 10) && (c == 16)
+    ResidualOk { residual: _ } => false
+    ResidualMissingMeter => false
+    ResidualUnmatched { identity: _ } => false
+  }
+}
+
+test fn width_above_envelope_refuses() -> Bool {
+  let envelope = prepare_spawn_envelope(
+    hardware_threads: hardware_thread_count(8),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 24,
+    procs_per_job: 3,
+    conservative_fallback_width: 1,
+    module_count: 100
+  )
+  match select_prepare_width(requested: envelope + 1, envelope: envelope) {
+    PrepareWidthRefusedAboveEnvelope { requested: r, envelope: e } => (r == envelope + 1) && (e == envelope)
+    PrepareWidthSelected { width: _ } => false
+  }
+}
+
+test fn worker_placement_is_local_child_process() -> Bool {
+  prepare_worker_realized_step().placement == LocalChildProcess
+}
+
+test fn merge_step_is_named_prepare_shard_merge() -> Bool {
+  prepare_shard_merge_step_name == "prepare_shard_merge" as NonEmptyStr
+}
+
+test fn slice2_is_modeled_and_waits() -> Bool {
+  match slice2_context_map_reduce_standing {
+    ModeledAwaitingSlice1ThreeArmReceipt { named_step: s } => s == context_shard_reduce_step_name
+  }
+}

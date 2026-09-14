@@ -1,6 +1,6 @@
 module gunbc.accelerator_demo_plan
 
-import std.realization { LocalAccelerator }
+import std.realization { LocalAccelerator, LocalChildProcess }
 
 
 type ElementwiseFoldClass
@@ -167,6 +167,7 @@ fn witness_integer_demo_plan_has_local_accelerator_placement() -> Bool {
         LocalInProcess => false
         LocalFilesystem => false
         RemoteNetwork => false
+        LocalChildProcess => false
       }
     Refused { reason: _ } => false
   }

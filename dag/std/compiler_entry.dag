@@ -176,6 +176,7 @@ type NativeDriverExclusiveRowKey
   | ExclusiveRowSerialization
   | ExclusiveModuleRelease
   | ExclusiveRelayEmit
+  | ExclusivePrepareShardMerge
 
 // THE ROSTER IS THE ONE PLACE A ROW IS ADDED. A key absent here is absent from every constructed
 // collection, from the sum and from the serialized partition line at once, so the roster and the
@@ -191,6 +192,7 @@ fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
     ExclusiveRowSerialization,
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
+    ExclusivePrepareShardMerge,
   ]
 }
 
@@ -208,6 +210,7 @@ fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> String 
     ExclusiveRowSerialization => "row_serialization"
     ExclusiveModuleRelease => "module_release"
     ExclusiveRelayEmit => "relay_emit"
+    ExclusivePrepareShardMerge => "prepare_shard_merge"
   }
 }
 

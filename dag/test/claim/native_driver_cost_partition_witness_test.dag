@@ -13,6 +13,7 @@ import std.compiler_entry {
   ExclusiveRowSerialization,
   ExclusiveModuleRelease,
   ExclusiveRelayEmit,
+  ExclusivePrepareShardMerge,
   NativeDriverCostOverAttributed,
   NativeDriverCostReconciled,
   NativeDriverCostRemainderExceedsTolerance,
@@ -41,6 +42,7 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 0)
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
     }
   })
 }
@@ -79,6 +81,7 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -104,6 +107,7 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -141,6 +145,7 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -166,6 +171,7 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -196,6 +202,7 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -220,6 +227,7 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
         ExclusiveRowSerialization => nanosecond(count: 0)
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -286,6 +294,7 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 158600186)
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
     }
   })
 }
@@ -302,6 +311,7 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
       ExclusiveRowSerialization => nanosecond(count: 0)
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
+      ExclusivePrepareShardMerge => nanosecond(count: 0)
     }
   })
 }

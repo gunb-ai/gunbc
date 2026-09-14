@@ -25,6 +25,7 @@ fn render_placement(placement: std.realization.Placement) -> String {
     LocalInProcess => "LocalInProcess"
     LocalFilesystem => "LocalFilesystem"
     RemoteNetwork => "RemoteNetwork"
+    LocalChildProcess => "LocalChildProcess"
   }
 }
 
