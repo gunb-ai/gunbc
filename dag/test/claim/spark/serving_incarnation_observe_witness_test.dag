@@ -81,17 +81,24 @@ test fn a_non_numeric_sample_refuses() -> Bool {
 // far more exponent digits than client_python's integer-digit-count renderer ever writes -- must
 // REFUSE, not fall through as a fabricated near-zero reading admitted into the identity join
 // (review 66252, DESIGN 5). The compensating-guard-plus-sentinel this replaced admitted it as 0.1.
+fn a_prometheus_sample_refuses(field: String) -> Bool {
+  match prometheus_sample_value_reading(field: field) {
+    SampleValueUnreadable { lexeme: _ } => true
+    SampleValueExact { value: _ } => false
+    SampleValueNotFinite { lexeme: _ } => false
+  }
+}
+
+// THE MANY-DIGIT EXPONENTS, AND the three-digit exponents whose decimal_pow10 would overflow i64:
+// e+999 (10^999 wraps to a fabricated finite reading) and e-999 (fraction_digits 1000, overflow in
+// the identity equality) both refuse now that the bound is on i64 magnitude, not digit count
+// (review 66357).
 test fn a_huge_exponent_sample_refuses_rather_than_fabricating() -> Bool {
-  match prometheus_sample_value_reading(field: "1e-99999999999999999999") {
-    SampleValueUnreadable { lexeme: _ } => true
-    SampleValueExact { value: _ } => false
-    SampleValueNotFinite { lexeme: _ } => false
-  }
-  && match prometheus_sample_value_reading(field: "1e999999") {
-    SampleValueUnreadable { lexeme: _ } => true
-    SampleValueExact { value: _ } => false
-    SampleValueNotFinite { lexeme: _ } => false
-  }
+  a_prometheus_sample_refuses(field: "1e-99999999999999999999")
+    && a_prometheus_sample_refuses(field: "1e999999")
+    && a_prometheus_sample_refuses(field: "1e+999")
+    && a_prometheus_sample_refuses(field: "1e-999")
+    && a_prometheus_sample_refuses(field: "123456789e18")
 }
 
 // ── THE HOST FACTS DECODE ────────────────────────────────────────────────────────────────────────

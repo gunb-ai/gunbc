@@ -2,6 +2,7 @@ module extdeps.prometheus.client
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_multiply, CheckedIntReady, CheckedIntOverflow }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -151,7 +152,16 @@ fn prometheus_scan_lexeme(body: String) -> SampleLexemeScan {
 // left open: `1e-99999999999999999999` off a /metrics endpoint refuses rather than being admitted as
 // a fabricated 0.1 into the identity join, and DESIGN 4d's "do not assert as deduced what is only
 // inferred" is honoured because the bound is enforced rather than assumed.
+// THE BOUND IS ON MAGNITUDE THE i64 ARITHMETIC CARRIES, NOT ON DIGIT COUNT. std.decimal decimal_pow10
+// is plain `10 * ...` over Int, and Int is i64 in the seed, so 10^18 is the largest power of ten it
+// represents (10^19 overflows). An exponent or a resulting scale beyond that cannot be carried, and a
+// digit-count bound (three digits admits e+999, whose decimal_pow10 wraps to a fabricated finite
+// value) does not catch it. So the exponent's ABSOLUTE VALUE is bounded to prometheus_pow10_exponent_bound
+// and anything beyond refuses; the string-length pre-check only keeps parse_int off an absurdly long
+// numeral before the magnitude test runs. The renderer writes the integer-digit count (a small
+// number), so no well-behaved sample is ever refused by this.
 data prometheus_exponent_max_digits: Int = 3
+data prometheus_pow10_exponent_bound: Int = 18
 
 type PrometheusExponentRead
   = ExponentValue { value: Int }
@@ -166,7 +176,14 @@ fn prometheus_signed_exponent(scan: SampleLexemeScan) -> PrometheusExponentRead 
   } else {
     match parse_int(s: scan.exponent_text) {
       Absent => ExponentUnreadable
-      Present { value: e } => ExponentValue { value: if scan.exponent_sign_negative { 0 - e } else { e } }
+      Present { value: e } => {
+        let signed = if scan.exponent_sign_negative { 0 - e } else { e }
+        if signed > prometheus_pow10_exponent_bound || signed < 0 - prometheus_pow10_exponent_bound {
+          ExponentOutOfRange
+        } else {
+          ExponentValue { value: signed }
+        }
+      }
     }
   }
 }
@@ -185,10 +202,20 @@ fn prometheus_exact_from_scan(lexeme: String, negative: Bool, scan: SampleLexeme
             let scale = scan.fraction_digits - exponent
             let units = if negative { 0 - magnitude } else { magnitude }
             if scale < 0 {
-              match admit_exact_decimal(units: units * decimal_pow10(exponent: 0 - scale), fraction_digits: 0) {
-                ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
-                ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
+              if (0 - scale) > prometheus_pow10_exponent_bound {
+                SampleValueUnreadable { lexeme: lexeme }
+              } else {
+                match checked_int_multiply(a: units, b: decimal_pow10(exponent: 0 - scale)) {
+                  CheckedIntOverflow { cause: _ } => SampleValueUnreadable { lexeme: lexeme }
+                  CheckedIntReady { value: scaled_units } =>
+                    match admit_exact_decimal(units: scaled_units, fraction_digits: 0) {
+                      ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
+                      ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
+                    }
+                }
               }
+            } else if scale > prometheus_pow10_exponent_bound {
+              SampleValueUnreadable { lexeme: lexeme }
             } else {
               match admit_exact_decimal(units: units, fraction_digits: scale) {
                 ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }

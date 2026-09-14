@@ -3,6 +3,7 @@ module gunbc.spark.serving_incarnation_observe
 import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_multiply, CheckedIntReady, CheckedIntOverflow }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
@@ -216,8 +217,20 @@ fn host_read_failure_text(stderr: String?) -> String {
 // They are equal exactly when units * ticks == (btime * ticks + starttime) * 10^scale. Both sides
 // are integers, so no division and no rounding occur. The units side is about 1.8e11 * 100 at
 // today's epoch and a two-digit tick rate; the substrate Int carries it.
+// BOTH SIDES ARE INTEGER PRODUCTS THAT CAN EXCEED i64 for an out-of-range exported decimal, so they
+// are formed with checked multiplication: an overflow is NOT a match (a value whose magnitude outruns
+// the carrier cannot be the start instant of a real process), it is `false`, never a wrapped equality
+// that fabricates one. The prometheus reader already bounds exported.fraction_digits to the i64-safe
+// pow10 range, so decimal_pow10 here does not itself wrap.
 fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: Int, ticks_per_second: Int, start_ticks: Int) -> Bool {
-  exported.units * ticks_per_second == (boot_epoch_seconds * ticks_per_second + start_ticks) * decimal_pow10(exponent: exported.fraction_digits)
+  match checked_int_multiply(a: exported.units, b: ticks_per_second) {
+    CheckedIntOverflow { cause: _ } => false
+    CheckedIntReady { value: lhs } =>
+      match checked_int_multiply(a: boot_epoch_seconds * ticks_per_second + start_ticks, b: decimal_pow10(exponent: exported.fraction_digits)) {
+        CheckedIntOverflow { cause: _ } => false
+        CheckedIntReady { value: rhs } => lhs == rhs
+      }
+  }
 }
 
 type BoundProcess {
