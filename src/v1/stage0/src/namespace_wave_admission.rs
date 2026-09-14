@@ -1771,8 +1771,7 @@ pub struct TransitionAdmission {
 /// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
 /// header paragraph went with them rather than being left describing an empty subject, which is the
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
-/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
-/// relocation set alone.
+/// exists is worse than no prose, because it reads as coverage.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
@@ -1800,15 +1799,12 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
-/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
-/// not because the array was being emptied. #11156 is at base; the inventory evidence
-/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
-/// identity - so these seven still admit a real delta and deleting them would refuse a live
-/// transition rather than discharge a dead one.
-/// RETIRED (2026-09-14): required floor run 34820233317 measured the #11193
-/// artifact_store_fs anchor candidate-set transition as CONSUMED at its base.
-/// This roster touch deletes that spent permission; its source repair and witnesses remain.
+/// THE ROSTER IS EMPTY AGAIN, which is its resting state. The #11182 relocation rows that an
+/// earlier revision of this block described as surviving are no longer here either; that claim
+/// was already stale on main, where the array held one row, and it is repaired now because this
+/// is the roster's own next touch. The distinction the paragraph above draws still holds and is
+/// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
+/// the array was being emptied.
 // DISSOLUTION: #11177's merge consumes its two process_identity_eq binding admissions.
 // This follow-up deletes those permissions after that merge; the relocation witnesses remain.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
