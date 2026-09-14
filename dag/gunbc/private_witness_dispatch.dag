@@ -144,7 +144,7 @@ fn private_witness_dispatch_step() -> Step {
     env: Present { value: private_witness_dispatch_step_env() },
     working_directory: none,
     if_condition: Present { value: private_witness_dispatch_if() },
-    continue_on_error: none,
+    continue_on_error: Present { value: true },
     timeout_minutes: none
   }
 }

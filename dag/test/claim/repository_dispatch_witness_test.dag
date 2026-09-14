@@ -9,7 +9,7 @@ import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
 }
-import gunbc.witness_floor_workflow { required_lanes_aggregate_job }
+import gunbc.witness_floor_workflow { required_lanes_aggregate_job, build_lane_job }
 import gunbc.private_witness_dispatch {
   private_witness_dispatch_script,
   private_witness_dispatch_step_name,
@@ -117,14 +117,34 @@ fn step_if_or_empty(s: Step) -> String {
   }
 }
 
-test fn aggregate_job_hosts_push_only_private_dispatch() -> Bool {
-  let job = required_lanes_aggregate_job()
-  fold(job.steps, init: false, f: fn(acc, s) {
+fn step_continue_on_error(s: Step) -> Bool {
+  match s {
+    RunStep {
+      name: _, id: _, run: _, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error, timeout_minutes: _
+    } =>
+      match continue_on_error { Present { value } => value  Absent => false }
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error, timeout_minutes: _
+    } =>
+      match continue_on_error { Present { value } => value  Absent => false }
+  }
+}
+
+test fn build_lane_hosts_push_only_private_dispatch_that_cannot_red_the_floor() -> Bool {
+  let hosted = fold(build_lane_job().steps, init: false, f: fn(acc, s) {
     acc || (
       step_name_or_empty(s: s) == private_witness_dispatch_step_name
         && step_if_or_empty(s: s) == private_witness_dispatch_if()
+        && step_continue_on_error(s: s)
     )
-  }) && string_contains(s: private_witness_dispatch_if(), pattern: "github.event_name == 'push'")
+  })
+  let absent_from_aggregate = !fold(required_lanes_aggregate_job().steps, init: false, f: fn(acc, s) {
+    acc || step_name_or_empty(s: s) == private_witness_dispatch_step_name
+  })
+  hosted && absent_from_aggregate
+    && string_contains(s: private_witness_dispatch_if(), pattern: "github.event_name == 'push'")
     && string_contains(
       s: github_actions_secret_expression(secret_name: private_witness_dispatch_token.secret),
       pattern: concat("secrets.", private_witness_dispatch_token.secret as String)

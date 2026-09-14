@@ -61,7 +61,7 @@ import gunbc.ci_heal_credential {
   ci_regen_heal_if,
   ci_heal_job_permissions
 }
-import gunbc.private_witness_dispatch { private_witness_dispatch_step }
+import gunbc.private_witness_dispatch { private_witness_dispatch_step, private_witness_dispatch_step_name }
 import gunbc.ci_spec {
   gunbc_ci_heal_regen_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -1905,6 +1905,11 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
+      WitnessFloorBoundStep {
+        step: private_witness_dispatch_step(),
+        role: capability_neutral,
+        step_name: private_witness_dispatch_step_name,
+      },
     ])),
   )
 }
@@ -2747,7 +2752,7 @@ fn required_lanes_aggregate_job() -> Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: [required_lanes_aggregate_step(), private_witness_dispatch_step()],
+    steps: [required_lanes_aggregate_step()],
     needs: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) { lane.job_id }),
     env: none,
     outputs: none,
