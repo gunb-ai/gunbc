@@ -1771,8 +1771,11 @@ pub struct TransitionAdmission {
 /// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
 /// header paragraph went with them rather than being left describing an empty subject, which is the
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
-/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
-/// relocation set alone.
+/// exists is worse than no prose, because it reads as coverage. The #11182 relocation set that
+/// remained below has since been retired the same way and by the same rule -- its transition
+/// reached base, the required floor reported all seven CONSUMED, and the wall charged their
+/// deletion to this roster's next touch, which gunbc#11306 was. Its header paragraph went with
+/// them. What remains below is the gunbc#11306 repository-visibility set alone.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
@@ -1800,12 +1803,6 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
-/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
-/// not because the array was being emptied. #11156 is at base; the inventory evidence
-/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
-/// identity - so these seven still admit a real delta and deleting them would refuse a live
-/// transition rather than discharge a dead one.
 /// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
 /// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
 /// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
@@ -1833,81 +1830,6 @@ pub struct TransitionAdmission {
 /// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
 /// that trigger, not by reinterpreting it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    // gunbc#11182 inventory evidence authority relocation: InventoryLotEvidence and the
-    // admission fold moved from product.printed_chassis.filament_supply to product.inventory
-    // so the Spark procurement lots and filament supply inhabit one inventory evidence
-    // authority; a second copy would fork it (DESIGN section 3). These seven measured
-    // bindings follow their canonical owner. Retire when that relocation is present at base.
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/AllLedgersAdmitted",
-        subject: AdmissionSubject::Binding {
-            module: "product.printed_chassis.filament_supply",
-            in_declaration: "assess_filament_supply",
-            spelling: "AllLedgersAdmitted",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/InventoryLotEvidence",
-        subject: AdmissionSubject::Binding {
-            module: "product.printed_chassis.filament_supply",
-            in_declaration: "assess_filament_supply",
-            spelling: "InventoryLotEvidence",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/LedgerEvidenceRefused",
-        subject: AdmissionSubject::Binding {
-            module: "product.printed_chassis.filament_supply",
-            in_declaration: "assess_filament_supply",
-            spelling: "LedgerEvidenceRefused",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/admit_ledger_evidence",
-        subject: AdmissionSubject::Binding {
-            module: "product.printed_chassis.filament_supply",
-            in_declaration: "assess_filament_supply",
-            spelling: "admit_ledger_evidence",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: fs_assess/InventoryLotEvidence",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.filament_supply_assessment_witness_test",
-            in_declaration: "fs_assess",
-            spelling: "InventoryLotEvidence",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: fs_evidence/InventoryLotEvidence",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.filament_supply_assessment_witness_test",
-            in_declaration: "fs_evidence",
-            spelling: "InventoryLotEvidence",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11182 inventory evidence authority relocation: w_a_lot_whose_catalog_was_never_read_still_establishes_the_candidate/InventoryLotEvidence",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.filament_supply_assessment_witness_test",
-            in_declaration: "w_a_lot_whose_catalog_was_never_read_still_establishes_the_candidate",
-            spelling: "InventoryLotEvidence",
-            expected_candidates: &["product.inventory"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
