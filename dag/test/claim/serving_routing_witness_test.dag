@@ -171,7 +171,7 @@ fn w_ready(standing: HarnessBackendStanding) -> Bool {
     HarnessBackendUnreachable { url: _ } => false
     HarnessBackendUnreadable { cause: _ } => false
   }
-  admitted && (match spark_serving_readiness_of(availability: availability, launch: launch) {
+  admitted && (match spark_serving_readiness_of(verdict: availability, launch: launch) {
     ServingObserved { ready_at: _, receipt: _ } => true
     ServingUnobserved { obligation: _ } => false
   })

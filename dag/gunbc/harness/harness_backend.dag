@@ -8,7 +8,7 @@ import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
 import gunbc.serving.serving_availability {
-  ServingAvailability, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
+  ServingAvailability, ServingAvailabilityVerdict, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
   serving_availability_bracketing_read,
 }
 import extdeps.vllm.metrics {
@@ -187,7 +187,7 @@ fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead 
 }
 
 // THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
-fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingAvailability {
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingAvailabilityVerdict {
   serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
 }
 

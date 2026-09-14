@@ -53,6 +53,16 @@ type ServingAvailability
       cause: NonEmptyStr
     }
 
+// THE EVALUATED VERDICT, SEALED. ServingAvailability is a coproduct a caller can write, and a
+// sole_constructor wall on coproduct variants is not enforced on the .dag path (DESIGN §4b), so the
+// verdict consumers accept is this record around it, which only this module's evaluators mint. A caller
+// that wants an offer must hold one of these, and can only get one by performing the reads below.
+// Raw evidence -- FrontDoorRead, a launch observation -- stays freely constructible; it is input, not
+// a conclusion.
+type ServingAvailabilityVerdict sole_constructor {
+  reading: ServingAvailability
+}
+
 // WHAT THE TRANSPORT ESTABLISHES, AND NOTHING STRONGER. A bounded GET reports one Bool, which cannot
 // tell a silent socket from a refused connection or an HTTP 500, so the front-door arm says exactly
 // what was seen -- no successful answer inside the bound -- and does not claim the engine is hung.
@@ -99,8 +109,8 @@ fn serving_availability_after_launch_read(
   expected: VllmEndpointProcessLaunch,
   observation: VllmEndpointProcessLaunchObservation,
   now: Timestamp,
-) -> ServingAvailability {
-  match observation {
+) -> ServingAvailabilityVerdict {
+  ServingAvailabilityVerdict { reading: match observation {
     LaunchUnobserved { group: _, obligation: o } =>
       ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
     LaunchObserved { launch: current, receipt: r } =>
@@ -114,7 +124,7 @@ fn serving_availability_after_launch_read(
           receipt: r,
         }
       }
-  }
+  } }
 }
 
 // A FRONT-DOOR READ BRACKETED BY TWO LAUNCH READS. The launch is read before and after the front door;
@@ -127,16 +137,16 @@ fn serving_availability_bracketing_read(
   front_door: FrontDoorRead,
   after: VllmEndpointProcessLaunchObservation,
   now: Timestamp,
-) -> ServingAvailability {
+) -> ServingAvailabilityVerdict {
   match front_door {
     FrontDoorDidNotAnswer { url: u, bound: b } =>
-      ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b }, receipt: "gunbc.serving.front-door-read" as ObservationReceiptRef }
+      ServingAvailabilityVerdict { reading: ServingUnavailable { endpoint: endpoint, observed_at: now, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: u, bound: b }, receipt: "gunbc.serving.front-door-read" as ObservationReceiptRef } }
     FrontDoorAnswerUnreadable { cause: c } =>
-      ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: c }
+      ServingAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: c } }
     FrontDoorAnswered =>
       match before {
         LaunchUnobserved { group: _, obligation: o } =>
-          ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+          ServingAvailabilityVerdict { reading: ServingAvailabilityUnread { endpoint: endpoint, attempted_at: now, cause: o } }
         LaunchObserved { launch: first, receipt: _ } =>
           serving_availability_after_launch_read(endpoint: endpoint, expected: first, observation: after, now: now)
       }

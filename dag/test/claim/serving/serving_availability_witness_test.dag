@@ -16,7 +16,7 @@ import gunbc.harness.harness_backend {
   harness_route_availability, harness_observe_replica, harness_observe_engine, harness_front_door_probe_bound,
 }
 import gunbc.serving.serving_availability {
-  ServingAvailability, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
+  ServingAvailability, ServingAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread,
   FrontDoorDidNotAnswerSuccessfullyWithinBound, EndpointProcessReplaced,
   serving_availability_after_launch_read,
 }
@@ -47,31 +47,31 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
   LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
 }
 
-fn w_is_unread(a: ServingAvailability) -> Bool {
-  match a {
+fn w_is_unread(a: ServingAvailabilityVerdict) -> Bool {
+  match a.reading {
     ServingAvailable { endpoint: _, launch: _, observed_at: _, receipt: _ } => false
     ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } => false
     ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => true
   }
 }
 
-fn w_available_from(a: ServingAvailability, field: String) -> Bool {
-  match a {
+fn w_available_from(a: ServingAvailabilityVerdict, field: String) -> Bool {
+  match a.reading {
     ServingAvailable { endpoint: _, launch: l, observed_at: _, receipt: _ } => (vllm_endpoint_process_launch_key(launch: l) as String).contains(field)
     ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } => false
     ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } => false
   }
 }
 
-fn w_ready_for(a: ServingAvailability, launch: VllmEndpointProcessLaunch) -> Bool {
-  match spark_serving_readiness_of(availability: a, launch: launch) {
+fn w_ready_for(a: ServingAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> Bool {
+  match spark_serving_readiness_of(verdict: a, launch: launch) {
     ServingObserved { ready_at: _, receipt: _ } => true
     ServingUnobserved { obligation: _ } => false
   }
 }
 
-fn w_obligation_for(a: ServingAvailability, launch: VllmEndpointProcessLaunch) -> String {
-  match spark_serving_readiness_of(availability: a, launch: launch) {
+fn w_obligation_for(a: ServingAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> String {
+  match spark_serving_readiness_of(verdict: a, launch: launch) {
     ServingObserved { ready_at: _, receipt: _ } => ""
     ServingUnobserved { obligation: o } => o as String
   }
@@ -82,7 +82,7 @@ fn w_obligation_for(a: ServingAvailability, launch: VllmEndpointProcessLaunch) -
 test fn a_front_door_bracketed_by_one_launch_is_available_from_that_launch_and_ready_for_it() -> Bool {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
   w_available_from(a: a, field: "1789300000.12")
-    && (match spark_serving_readiness_of(availability: a, launch: w_launch(field: "1789300000.12")) {
+    && (match spark_serving_readiness_of(verdict: a, launch: w_launch(field: "1789300000.12")) {
       ServingObserved { ready_at: t, receipt: _ } => t == w_now
       ServingUnobserved { obligation: _ } => false
     })
@@ -94,7 +94,7 @@ test fn a_front_door_bracketed_by_one_launch_is_available_from_that_launch_and_r
 // on A's answer, which is exactly the pairing this witness exists to refuse.
 test fn a_restart_between_the_launch_reads_is_not_available_and_no_offer_on_the_new_process_is_ready() -> Bool {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789399999.50"), now: w_now)
-  (match a {
+  (match a.reading {
     ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: e, observed: o }, receipt: _ } =>
       (vllm_endpoint_process_launch_key(launch: e) as String).contains("1789300000.12")
         && (vllm_endpoint_process_launch_key(launch: o) as String).contains("1789399999.50")
@@ -118,7 +118,7 @@ test fn readiness_refuses_an_availability_reading_from_a_different_endpoint_proc
 // the transport established: no successful answer inside the bound.
 test fn a_front_door_that_did_not_answer_within_the_bound_is_unavailable_and_not_ready() -> Bool {
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: HarnessBackendUnreachable { url: "http://192.168.1.225:30000/v1/models" }, after: w_seen(field: "1789300000.12"), now: w_now)
-  (match a {
+  (match a.reading {
     ServingUnavailable { endpoint: _, observed_at: _, cause: FrontDoorDidNotAnswerSuccessfullyWithinBound { url: _, bound: b }, receipt: _ } =>
       second_count(s: b) == second_count(s: harness_front_door_probe_bound)
     ServingUnavailable { endpoint: _, observed_at: _, cause: EndpointProcessReplaced { expected: _, observed: _ }, receipt: _ } => false
