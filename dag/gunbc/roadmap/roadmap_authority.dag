@@ -5,7 +5,8 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { NonEmptyStr }
+import std.types { Map, NonEmptyStr }
+import v2.std.collection { Absent, Present, empty_map, map_insert, map_lookup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -3263,12 +3264,26 @@ fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjectio
   }
 }
 
+fn roadmap_node_id_membership_map(ids: List<RoadmapNodeId>) -> Map<RoadmapNodeId, Bool> {
+  ids |> fold(init: empty_map(), f: (acc, id) => map_insert(m: acc, key: id, value: true))
+}
+
+fn roadmap_node_id_in_map(m: Map<RoadmapNodeId, Bool>, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: m, key: id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn active_roadmap_nodes_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapNode> {
+  let accepted_map = roadmap_node_id_membership_map(ids: accepted)
+  let withheld_map = roadmap_node_id_membership_map(ids: withheld)
   declared_roadmap_nodes() |> filter(n =>
-    !(accepted |> any(a => a == n.node)) && !(withheld |> any(w => w == n.node))
+    !roadmap_node_id_in_map(m: accepted_map, id: n.node)
+      && !roadmap_node_id_in_map(m: withheld_map, id: n.node)
   )
 }
 
@@ -3604,11 +3619,14 @@ fn active_roadmap_edges_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapEdge> {
+  let accepted_map = roadmap_node_id_membership_map(ids: accepted)
+  let withheld_map = roadmap_node_id_membership_map(ids: withheld)
   declared_roadmap_edges() |> filter(e =>
-    !(accepted |> any(a => a == e.child))
-      && !(accepted |> any(a => a == e.parent))
-      && !(withheld |> any(w => w == e.child))
-      && !(withheld |> any(w => w == e.parent)))
+    !roadmap_node_id_in_map(m: accepted_map, id: e.child)
+      && !roadmap_node_id_in_map(m: accepted_map, id: e.parent)
+      && !roadmap_node_id_in_map(m: withheld_map, id: e.child)
+      && !roadmap_node_id_in_map(m: withheld_map, id: e.parent)
+  )
 }
 
 fn preamble() -> List<MarkdownBlock> {
