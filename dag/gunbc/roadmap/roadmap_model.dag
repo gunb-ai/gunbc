@@ -659,12 +659,16 @@ fn live_receipt_join_declared_node(
     if count(found) > 1 {
       LiveReceiptJoinsAmbiguousDeclaredNode { node: r.node }
     } else {
-      match receipt_node_match_verdict(r: r, rn: first(found)) {
-        ReceiptMatchesNode => LiveReceiptsJoinDeclared
-        LiveReceiptOnSupersededLine { node: node } =>
-          LiveReceiptJoinsSupersededLine { node: node }
-        ReceiptDoesNotMatchNode =>
-          LiveReceiptDoesNotMatchDeclaredNode { node: r.node }
+      match first(found) {
+        Absent => LiveReceiptJoinsUndeclaredNode { node: r.node }
+        Present { value: rn } =>
+          match receipt_node_match_verdict(r: r, rn: rn) {
+            ReceiptMatchesNode => LiveReceiptsJoinDeclared
+            LiveReceiptOnSupersededLine { node: node } =>
+              LiveReceiptJoinsSupersededLine { node: node }
+            ReceiptDoesNotMatchNode =>
+              LiveReceiptDoesNotMatchDeclaredNode { node: r.node }
+          }
       }
     }
   }
@@ -718,10 +722,14 @@ fn join_remains_superseded_to_declared_line(
     if count(found) > 1 {
       RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node }
     } else {
-      if node_line_is_superseded(rn: first(found)) {
-        RemainsSupersededRevocationsJoined
-      } else {
-        RemainsSupersededRevocationOnNonSupersededNode { node: node }
+      match first(found) {
+        Absent => RemainsSupersededRevocationOnUndeclaredNode { node: node }
+        Present { value: rn } =>
+          if node_line_is_superseded(rn: rn) {
+            RemainsSupersededRevocationsJoined
+          } else {
+            RemainsSupersededRevocationOnNonSupersededNode { node: node }
+          }
       }
     }
   }
