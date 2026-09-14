@@ -2431,6 +2431,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active_large(
+      identity: "rn_7TQK2WNE9XB4MHVJ0RDCPL5FA6",
+      id: "fleet-spark-collective-transport",
+      owner: "fleet",
+      path: "dag/gunbc/spark/collective_transport.dag",
+      t: fields(
+        headline: "Serve the four-rank model over the fabric it was bought for, and prove which one it used",
+        boundary: "The four ranks of the native GLM deployment reach each other over RDMA rather than TCP sockets, because the containers are created with the verbs devices, the memory-locking policy and the capability that make RDMA possible at all. Which transport the engine actually chose is read from the engine's own verdict, and the container's creation state is read back from the daemon and compared against the plan that rendered it. Acceptance needs both: a log that says RDMA over a container nobody can recreate is not a deployment this repository owns.",
+        displaced_cost: "The deployment was accepted as healthy on 2026-09-14 while every rank was on TCP sockets, because the reader mistook the RDMA plugin's own banner for a device selection. That acceptance minted a provenance receipt over a deployment that is now withdrawn, and the serving throughput has never been compared against the transport it is actually using.",
+        first_slice: "The plan renders the container spec; the readback compares the spec against what the daemon kept; the engine's verdict line decides the transport. Then, in order: a no-weight four-rank collective preflight inside the cutover transaction, a socket throughput baseline captured before anything is mutated, one authorized live cutover, a fresh provenance receipt over the relaunched deployment, and the same workload replayed so socket and RDMA are compared rather than assumed.",
+        red_control: "A container created without the verbs device nodes is refused however good its log looks. A log naming RDMA is refused when the creation state cannot be reproduced from the plan. A rank whose communicators disagree about the network is unread rather than resolved by log order. A throughput number measured on one transport may not be quoted for the other.",
+        out_of_scope: "No model change and no engine version change in the same motion. Group A adopts this transport authority only after the branch merges. Per-request latency attribution from aggregate engine metrics is refused, not approximated.",
+        handback: "The four ranks running on RDMA from a plan that renders their creation state, the readback accepting them on both the verdict and the creation state, a valid provenance receipt over that deployment, and the same workload measured on both transports with the difference stated."
+      )
+    ),
+
     ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
@@ -2740,6 +2756,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "judgment-model-selection-and-specialization", parent: "judgment-mechanical-review-service"),
     edge(child: "judgment-model-selection-and-specialization", parent: "fleet-spark-inference-serving"),
     edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
+    edge(child: "fleet-spark-collective-transport", parent: "fleet-spark-inference-serving"),
 
     edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
