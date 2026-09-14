@@ -159,17 +159,14 @@ fn bash_bind_operation_invocation_host_env_executable(
 
 data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
+// UnsupportedIf / UnsupportedLet / UnsupportedCall were arms here until the If / Let / Call climb
+// (gunbc-private#60 trigger); the climb deleted them as obsoleted production machinery (DESIGN
+// 4b(4)) and their former expecting-red assertions stay enrolled in
+// effect_plan_bash_materialize_test as the permanent regression control that each arm materializes.
 type EffectPlanBashUnsupportedStep
-  = UnsupportedIf
-  | UnsupportedFor
+  = UnsupportedFor
   | UnsupportedWhile
   | UnsupportedRetry
-  | UnsupportedLet
-  | UnsupportedCall
-
-// UnsupportedIf / UnsupportedLet / UnsupportedCall are retained as arms: each is a permanent
-// regression control in effect_plan_bash_materialize_test (DESIGN 4b(4)) asserting the encoder no
-// longer PRODUCES it, and the label fold stays total over the coproduct.
 
 type EffectPlanBashIfBranch
   = ThenBranch
@@ -886,12 +883,9 @@ fn effect_plan_bash_unsupported_step_label(
   kind: EffectPlanBashUnsupportedStep
 ) -> String {
   match kind {
-    UnsupportedIf => "If"
     UnsupportedFor => "For"
     UnsupportedWhile => "While"
     UnsupportedRetry => "Retry"
-    UnsupportedLet => "Let"
-    UnsupportedCall => "Call"
   }
 }
 

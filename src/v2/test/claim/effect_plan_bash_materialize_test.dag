@@ -63,12 +63,9 @@ import v2.workflow.effect_plan_bash_materialize {
   PredicateOperandCarriesShellSpelling,
   ShellNameInvalid,
   ThenBranch,
-  UnsupportedCall,
   UnsupportedEffectPlanStep,
   UnsupportedFailurePolicy,
   UnsupportedFor,
-  UnsupportedIf,
-  UnsupportedLet,
   UnsupportedPredicate,
   UnsupportedRetry,
   UnsupportedWhile,
@@ -520,8 +517,8 @@ test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes(
 }
 
 // Permanent regression controls (DESIGN 4b(4)): these three assertions were the expecting-red
-// probes for UnsupportedIf / UnsupportedLet / UnsupportedCall. The wall landed, so each flips to
-// asserting the arm MATERIALIZES and that the retained refusal kind is no longer produced for it.
+// probes for UnsupportedIf / UnsupportedLet / UnsupportedCall. The wall landed, the arms deleted
+// with it, and each probe flips to asserting the step MATERIALIZES.
 fn step_materializes(
   step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>
 ) -> Bool {
@@ -540,18 +537,13 @@ fn call_plan(callee: String, args: List<String>) -> EffectPlan<BashBoundOperatio
 }
 
 test fn effect_plan_bash_if_let_call_no_longer_refuse_as_unsupported() -> Bool {
-  let retired_if = UnsupportedIf
-  let retired_let = UnsupportedLet
-  let retired_call = UnsupportedCall
-  retired_if != retired_let
-    && retired_let != retired_call
-    && step_materializes(
-      step: If {
-        cond: StrEq { lhs: "a", rhs: "a" },
-        then_: call_plan(callee: "true", args: []),
-        else_: Absent
-      }
-    )
+  step_materializes(
+    step: If {
+      cond: StrEq { lhs: "a", rhs: "a" },
+      then_: call_plan(callee: "true", args: []),
+      else_: Absent
+    }
+  )
     && step_materializes(step: Let { name: "x", value: ExprLit { spelling: "x" } })
     && step_materializes(step: call_step(callee: "x", args: []))
 }
