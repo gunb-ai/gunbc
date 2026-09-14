@@ -510,7 +510,8 @@ fn gunbc_runner_unit_fragment_for_host(host: HostIdentity) -> RunnerUnitTextRend
 // User= from deploy.unit_user, the job-user env, the CI sccache instance env, and the job user's
 // rootless docker endpoint only when runner_job_user_xdg_runtime_uid is CitedToAuthority. The
 // production figure is TranscribedUncited; depriv then refuses so converge cannot overwrite live
-// depriv.conf from a bet. The fragment still names deploy.runner_user, not root.
+// depriv.conf from a bet, and the fragment is withheld with it. When both land, fragment User=
+// is deploy.runner_user, not root.
 //
 // ONE AUTHORITY, TWO ARTIFACTS. The teardown pair comes from runner_unit_teardown_directives, the
 // same function the fragment render uses. The `70-` prefix sorts after every numbered drop-in the

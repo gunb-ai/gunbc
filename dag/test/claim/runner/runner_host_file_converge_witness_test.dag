@@ -183,12 +183,13 @@ test fn production_desired_population_withholds_uncited_depriv_and_still_deliver
   match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 3
-        && length(w) == 1
+      length(fs) == 2
+        && length(w) == 2
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "TranscribedUncited"))
+        && any(w, x => (x.subject as String) == "runner-unit-fragment")
         && any(fs, f => (f.subject as String) == "runner-teardown-dropin")
         && any(fs, f => (f.subject as String) == "needrestart-runner-deferral")
-        && any(fs, f => (f.subject as String) == "runner-unit-fragment")
+        && !any(fs, f => (f.subject as String) == "runner-unit-fragment")
         && !any(fs, f => (f.subject as String) == "runner-depriv-dropin")
   }
 }

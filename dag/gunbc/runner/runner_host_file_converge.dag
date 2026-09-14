@@ -91,8 +91,10 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // TEARDOWN AND NEEDRESTART STILL REACH THE FLEET WHEN DEPRIV CANNOT. Those two files are the orphan
 // class; neither is sufficient alone, and neither depends on the job-user docker uid. Depriv is a
 // per-file refusal while runner_job_user_xdg_runtime_uid is TranscribedUncited: it is withheld
-// (counted, not written) so live depriv.conf is not overwritten from a bet. The fragment still
-// names deploy.runner_user, not root.
+// (counted, not written) so live depriv.conf is not overwritten from a bet. The fragment waits
+// with it: installing the unit file without a modeled depriv drop-in would be correct only on
+// hosts that still happen to carry a hand-placed depriv.conf. Fragment User= is still
+// deploy.runner_user, not root, when the figure is CitedToAuthority and both files land.
 //
 // WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
@@ -181,7 +183,7 @@ fn runner_host_files_with_optional_depriv(
 ) -> List<RunnerHostFileDesired> {
   let tail = runner_host_teardown_and_needrestart(prefix: prefix)
   match depriv {
-    Absent => concat([runner_host_fragment_file(fragment: fragment)], tail)
+    Absent => tail
     Present { value: text } =>
       concat(
         [runner_host_fragment_file(fragment: fragment), runner_host_depriv_file(depriv: text)],
@@ -218,6 +220,10 @@ fn runner_host_file_desired_population_from_uid_figure(
                       RunnerHostFileWithheld {
                         subject: "runner-depriv-dropin" as NonEmptyStr,
                         cause: r,
+                      },
+                      RunnerHostFileWithheld {
+                        subject: "runner-unit-fragment" as NonEmptyStr,
+                        cause: "runner_host_file_converge: fragment waits until depriv can be authored; writing the unit file without that drop-in is only correct if an unread depriv.conf happens to exist" as NonEmptyStr,
                       },
                     ],
                   }
