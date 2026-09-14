@@ -877,6 +877,11 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   )
 }
 
+// 2-scm-native-authority-program records an OPERATOR-RULED PROGRAM (2026-09-13): native SCM becomes
+// the authority for authoring, proposals, integration and history; Git/GitHub become compatibility
+// projections. It was dispatched as six sequential dashboard tickets, and the 2026-09-14 wind-down
+// left it mid-stack, so the node carries what remains at the grain actually established. The ticket
+// briefs and rulings live on the dashboard and are not restated here.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active_sized(
@@ -996,6 +1001,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
       )
     ), e: scm_p1_proof_kernel_execution_contract()),
+    active_sized(
+      identity: "rn_Y7LUBUZ2A4MWRN2XJI5F4ZGBMY",
+      id: "2-scm-native-authority-program",
+      owner: "source-intent",
+      path: "docs/plans/native-scm-cas-fit-and-consumer-cut.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Finish the native-SCM authority program: the two CAS slot consumers, then the Git import wall and bridge cutover",
+        boundary: "Landed or queued at the 2026-09-14 wind-down: ticket 1 (gunbc#11317: git-use census ledger, typed bridge/native modes, CAS payload-fit ruling, the consumer cut) and ticket 2 (gunbc#11335: WriteCreateNew publication, CasPreconditionFailed/CasStoreRefused split, and at its current head the program-author ruling's two blockers already struck -- the widening fold deleted, FilesystemExactPathKindUnrecognized carried as ProbedReadKindUnrecognized and refused as CasUnreadableMalformed). What remains, in the cut's order: the repository-target generation slot and the workspace stage/base slot as consumers of std.durable_compare_and_set through gunbc.durable_cas_file_store admit_cas_attempt and file_compare_and_set with independent read-back; the Git import wall with an executing gate on a real lane; the bridge-mode cutover. The provider's honesty residual carries forward unchanged: exclusive complete VISIBILITY of a generation file is established, crash-durable directory metadata is outside the modeled guarantee, and the new unrecognized-read arm has a hermetic control and no wet receipt.",
+        displaced_cost: "While Git stays the hidden authority, every native refusal has a fallback that makes the PR the source of truth exactly when the native path is under stress, and the SCM domain model in gunbc.scm.* stays without a production authoring, submission or landing route.",
+        first_slice: "Declare the repository-target generation slot and drive it end to end on the local-repo wet lane: immutable object put-if-absent, durable independent verification of the referenced closure, slot payload encoding, admit_cas_attempt, file_compare_and_set, independent read-back, composed transition standing -- including a second writer against a stale generation.",
+        red_control: "A second writer against a stale generation names the observed winner and never commits; a store that cannot write is CasStoreRefused, never a lost race; an in-memory object-table insertion cannot stand in for put-if-absent publication; no SCM-local Applied/Stale/Missing sum restates CasOutcome; a git or GitHub import outside the named bootstrap, projector and declared legacy adapters refuses on the required lane.",
+        out_of_scope: "No Git removal before the import wall executes on a required lane; no SCM-local safe-write helper beside extdeps.filesystem.rust_realization; no equating a PR number or git SHA with native identity; no native Landed reportable in bridge mode before the GitHub merge is independently read back.",
+        handback: "Return the two slot consumer carriers with wet receipts for both subjects including contention and independent workspaces, the executing import wall with its discriminating RED, and the exact bridge-cutover work still absent."
+      )
+    ),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -2673,6 +2695,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
     edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
+    edge(child: "2-scm-native-authority-program", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
