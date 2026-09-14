@@ -24,6 +24,10 @@ import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 // const is quarry for past shrinks (53, 314, …). Do not transcribe a census of
 // retired labels here — that is how the paragraph rotted.
 //
+// #11347 landed a const row on main (artifact_store_fs anchor leaf). That row is
+// the sibling file whose stem is the relocation identity
+// extdeps_realization_artifact_store_fs_extdeps_external_authority_anchor.
+//
 // INHERITANCE FROM IN-FLIGHT CONST PRs. #11306 (vivid-stag-90) may land first with
 // six TargetChanged rows, label "repository visibility unifies onto its resource
 // module (gunbc#11306)", expected declarer extdeps.github.repository, at:

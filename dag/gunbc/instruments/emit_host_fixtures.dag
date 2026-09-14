@@ -10,8 +10,12 @@ data go_stdout_fixture_source: String = "package main\nimport \"os\"\nfunc main(
 
 data ts_host_fixture_prefix: String = "// @ts-nocheck\nfunction add(x: number, y: number): number { return x + y; }\n"
 
+data ts_host_fixture_left_operand: Int = 2
+data ts_host_fixture_right_operand: Int = 3
+data ts_host_fixture_expected_sum: Int = ts_host_fixture_left_operand + ts_host_fixture_right_operand
+
 data ts_host_fixture_harness_suffix: String = "
-const __gunbc_r = add(2, 3);
+const __gunbc_r = add({ts_host_fixture_left_operand}, {ts_host_fixture_right_operand});
 const __gunbc_b = Buffer.alloc(4);
 __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
