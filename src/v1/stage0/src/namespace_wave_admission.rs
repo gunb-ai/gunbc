@@ -1778,8 +1778,8 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
 /// exists is worse than no prose, because it reads as coverage. The #11182 relocation set that
 /// followed them is gone on the same trigger: #11182 is present at base and its seven rows reported
-/// CONSUMED ADMISSION. What remains below is the gunbc#11193 anchor row and gunbc#10729's SCM
-/// re-home set.
+/// CONSUMED ADMISSION, and the gunbc#11193 anchor row went the same way when the floor on
+/// gunbc#10729 reported it CONSUMED. What remains below is gunbc#10729's SCM re-home set alone.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
@@ -1807,43 +1807,7 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE gunbc#11193 ROW (first below; the gunbc#10729 SCM re-home rows follow it): the `extdeps_external_authority_anchor` leaf in
-/// `extdeps.realization.artifact_store_fs` narrows from two candidates to that module's own.
-///
-/// WHAT PRODUCED THE DELTA. The `AmbiguousBareNameRead` wall refused `Filesystem` read bare by that
-/// module, and prescribed naming the authority: `import extdeps.filesystem.filesystem_io
-/// { Filesystem }`. The import had been BRACE-LESS, which binds nothing for the refused name and
-/// widens every leaf in the module's candidate sets -- so naming it also removed `filesystem_io`'s
-/// own `extdeps_external_authority_anchor` from that leaf's candidates. The anchor motion is a
-/// consequence of the prescribed repair, not a second change riding along with it.
-///
-/// WHY THIS DOES NOT CHANGE WHICH DECLARATION THE SPELLING DENOTES, which is the claim the comment
-/// above makes of every row here and the reason this one belongs under it. The spelling occurs
-/// EXACTLY ONCE in that module -- line 22, its own `data` declaration -- and nothing reads it:
-/// neither of the module's two importers (`test.claim.artifact_store_fs_witness`,
-/// `v2.test.claim.manual.emit_source_store_test`) imports the anchor, and the only other corpus
-/// references to that leaf are a `decl_name` STRING in `std.citation` and a different module's
-/// anchor imported by `test.claim.ilm4926_designation_witness` from
-/// `extdeps.cpu_attachment.ilm4926`. So the base two-candidate set sat at a DECLARATION SITE WITH
-/// NO REFERENCE anywhere in the closure: there was no denotation to move, only a candidate count
-/// that a brace-less import had inflated.
-///
-/// I DID NOT ESTABLISH WHICH CANDIDATE THE BASE RESOLUTION PICKED, and this row does not need it.
-/// The two declarations differ materially -- this module's anchor cites the repository's own
-/// `dag/extdeps/realization` tree, `filesystem_io`'s cites the POSIX `write` specification -- so had
-/// anything referenced the leaf the question would have mattered and would have needed the resolver
-/// run rather than reasoned about. Nothing references it, so the question does not arise.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11193 artifact_store_fs anchor leaf narrows to its own declaration",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.realization.artifact_store_fs",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &["extdeps.realization.artifact_store_fs"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
