@@ -233,14 +233,6 @@ fn native_driver_exclusive_rows(
   }
 }
 
-// A ZERO BASE FOR FIXTURES WHOSE SUBJECT IS THE ARITHMETIC AND NOT THE ROW SET. It is deliberately
-// NOT the default: if every fixture built from zeros and overrode a few keys, a newly added row
-// would be absorbed as zero by all of them, no witness would exercise it, and the row would land
-// untested while the suite stayed green -- the absorbing-fallback shape (section 5) moved into the
-// fixtures. Witnesses whose subject IS a row's presence construct exhaustively instead.
-fn native_driver_exclusive_rows_zero() -> NativeDriverExclusiveRows {
-  native_driver_exclusive_rows(measure: fn(_k) { nanosecond(count: 0) })
-}
 
 type NativeDriverCostAccounting
   = NativeDriverCostReconciled { residual: Nanosecond, tolerance: Nanosecond }
