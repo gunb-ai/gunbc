@@ -877,6 +877,11 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   )
 }
 
+// 2-scm-native-authority-program records an OPERATOR-RULED PROGRAM (2026-09-13): native SCM becomes
+// the authority for authoring, proposals, integration and history; Git/GitHub become compatibility
+// projections. It was dispatched as six sequential dashboard tickets, and the 2026-09-14 wind-down
+// left it mid-stack, so the node carries what remains at the grain actually established. The ticket
+// briefs and rulings live on the dashboard and are not restated here.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active_sized(
@@ -996,11 +1001,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
       )
     ), e: scm_p1_proof_kernel_execution_contract()),
-    // OPERATOR-RULED PROGRAM, 2026-09-13: native SCM becomes the authority for authoring, proposals,
-    // integration and history; Git/GitHub become compatibility projections. It was dispatched as six
-    // sequential dashboard tickets, and the 2026-09-14 wind-down left it mid-stack. This node is the
-    // roadmap's record of what remains, at the grain that was actually established: the ticket briefs
-    // and rulings live on the dashboard and are not restated here.
     active_sized(
       identity: "rn_Y7LUBUZ2A4MWRN2XJI5F4ZGBMY",
       id: "2-scm-native-authority-program",
