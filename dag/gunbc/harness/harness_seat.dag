@@ -53,7 +53,10 @@ import gunbc.spark.serving_offer {
   SparkServingRoute, DeclaredUnitDigestUnavailable, spark_pair_head_unit_digest_unavailable_obligation,
   spark_serving_incarnation_unobserved_obligation,
 }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
+import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
+import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
+import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread,
@@ -487,29 +490,49 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // is called with them, and bind_candidate has everything it compares.
 //
 // THE REALIZATION THE HARNESS OFFERS IS BUILT IN ONE PLACE, so a witness can drive the route standing
-// through exactly what production passes. It states two absences, and both are real on this path:
-// no incarnation observation binds the answering endpoint to an engine launch, and no SHA-256 of the
-// rendered head unit exists to compare a launch's unit digest with. So in production the route
-// standing returns ServingRouteServiceUnidentified with ServiceIncarnationUnobserved, and
-// test.claim.spark.spark_serving_offer_route_witness_test drives harness_serving_route and asserts
-// that constructor.
-fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
+// through exactly what production passes. The incarnation standing is an ARGUMENT: production takes
+// it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
+// below), reading the group's head host over the fleet key session at the same instant the endpoint
+// launch was read, and a witness hands in a fixture observation to drive the arms past the
+// incarnation refusal. One absence remains real on this path and is stated where it is passed: no
+// SHA-256 of the rendered head unit exists to compare a launch's unit digest with, so a route with an
+// observed incarnation stops at ServiceDeclaredUnitDigestUnavailable until that digest exists.
+fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
     readback: readback,
     endpoint: launch,
-    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+    incarnation: incarnation,
   }
 }
 
-fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRoute {
+fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRoute {
   spark_serving_route_standing(
-    realization: harness_serving_realization(group: group, launch: launch, readback: readback),
+    realization: harness_serving_realization(group: group, launch: launch, readback: readback, incarnation: incarnation),
     declared_unit: DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation },
   )
 }
 
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, standing: HarnessBackendStanding, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+// THE INCARNATION READ, TAKEN PER CANDIDATE. The fleet context is prepared once per bind (in
+// harness_bind_seat) and a refused context is carried here as the incarnation's obligation rather
+// than as a bind refusal: the harness can still enumerate and diagnose routes without host access,
+// it just cannot name the service, and the route standing says exactly that. A group with no
+// desired head host has nothing to observe and says so.
+fn harness_incarnation_standing(access: FleetSshContextPreparation, group: FabricGroup, launch: VllmEndpointProcessLaunch) -> EndpointIncarnationStanding {
+  match access {
+    FleetSshContextRefused { cause: c } =>
+      EndpointIncarnationUnobserved { obligation: join([spark_serving_incarnation_unobserved_obligation as String, " -- this bind holds no fleet ssh context: ", c], "") as NonEmptyStr }
+    FleetSshContextReady { context: context, receipt: _ } =>
+      match spark_pair_group_head_host(group: group) {
+        Absent =>
+          EndpointIncarnationUnobserved { obligation: join(["gunbc.spark.pair_serving_desired names no ready head host for ", fabric_group_wire(g: group) as String, ", so there is no host to observe the incarnation on"], "") as NonEmptyStr }
+        Present { value: head } =>
+          endpoint_incarnation_standing(reading: observe_endpoint_incarnation(context: context, group: group, head: head, endpoint: launch))
+      }
+  }
+}
+
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, standing: HarnessBackendStanding, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs, incarnation: EndpointIncarnationStanding) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -519,7 +542,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     isolation: serving_isolation_profile(),
     seats: seats as Int,
     readiness: harness_serving_readiness(standing: standing, now: now),
-    route: harness_serving_route(group: group, launch: launch, readback: readback),
+    route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: incarnation),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
@@ -551,7 +574,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, access: FleetSshContextPreparation) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -572,7 +595,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
               standing: standing, model: observed_model, unit: observed_unit,
               readback: observed_readback,
               seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-              layout: layout, now: now,
+              layout: layout, now: now, access: access,
             )
           }
         _ =>
@@ -599,6 +622,7 @@ fn harness_add_serving_candidate(
   seats: Nat,
   layout: EventLogLayout,
   now: EpochSecs,
+  access: FleetSshContextPreparation,
 ) -> HarnessCandidates {
   let group = endpoint.group
   let engine = harness_observe_engine(endpoint: endpoint)
@@ -616,7 +640,7 @@ fn harness_add_serving_candidate(
       )
       match admission {
         AdmissibleForClass { class: _, receipt: _ } =>
-          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now)
+          harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, standing: standing, readback: readback, requirement: requirement, seats: seats, now: now, incarnation: harness_incarnation_standing(access: access, group: group, launch: launch))
         InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
           harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
         InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
@@ -648,9 +672,9 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
-fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>) -> HarnessCandidates {
+fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation) -> HarnessCandidates {
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now))
+    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now, access: access))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
@@ -823,11 +847,11 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
   }
 }
 
-fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> PlacementRound {
+fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
     Absent => {
-      let collected = harness_collect_candidates(class: class, requirement: requirement, layout: layout, now: now, excluded: acc.excluded)
+      let collected = harness_collect_candidates(class: class, requirement: requirement, layout: layout, now: now, excluded: acc.excluded, access: access)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
       match select_supply(
@@ -890,8 +914,9 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
       match now_epoch_seconds() {
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
+          let access = prepare_fleet_ssh_agent_context(attempt_raw: attempt as String)
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false }, f: (acc, round) =>
-            harness_placement_round(acc: acc, class: class, requirement: requirement, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round))
+            harness_placement_round(acc: acc, class: class, requirement: requirement, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access))
           match placed.done {
             Present { value: b } => b
             Absent =>

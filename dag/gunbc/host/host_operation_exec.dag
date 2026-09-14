@@ -5,6 +5,10 @@ import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.tools.hostname
 import extdeps.linux.cgroup_v2
+import extdeps.linux.procfs
+import extdeps.procps.pgrep
+import extdeps.posix.getconf
+import extdeps.crypto.hash
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -113,6 +117,12 @@ type HostOperation =
   | CgroupListChildren { cgroup_path: NonEmptyStr }
   | CgroupReadInterfaceFile { file_path: NonEmptyStr }
   | CgroupPathIsDirectory { path: NonEmptyStr }
+  | ProcfsReadStat
+  | ProcfsReadPidStat { pid: NonEmptyStr }
+  | ProcfsReadPidCgroup { pid: NonEmptyStr }
+  | PgrepFullCommandLine { pattern: NonEmptyStr }
+  | GetconfClockTicksPerSecond
+  | Sha256SumFile { path: NonEmptyStr }
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -199,6 +209,42 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         path: cgroup_v2_operation_path,
         service: cgroup_v2_operation_service,
         operation: "PathIsDirectory",
+      },
+      bindings: [operation_argv_bind_text(name: "path", text: p as String)],
+    )
+    ProcfsReadStat => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadStat"),
+      bindings: [],
+    )
+    ProcfsReadPidStat { pid: p } => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadPidStat"),
+      bindings: [operation_argv_bind_text(name: "pid", text: p as String)],
+    )
+    ProcfsReadPidCgroup { pid: p } => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadPidCgroup"),
+      bindings: [operation_argv_bind_text(name: "pid", text: p as String)],
+    )
+    PgrepFullCommandLine { pattern: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: pgrep_operation_path,
+        service: pgrep_operation_service,
+        operation: "MatchFullCommandLine",
+      },
+      bindings: [operation_argv_bind_text(name: "pattern", text: p as String)],
+    )
+    GetconfClockTicksPerSecond => bind_operation_invocation(
+      at: OperationRef {
+        path: getconf_operation_path,
+        service: getconf_operation_service,
+        operation: "ClockTicksPerSecond",
+      },
+      bindings: [],
+    )
+    Sha256SumFile { path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: sha256sum_operation_path,
+        service: sha256sum_operation_service,
+        operation: "File",
       },
       bindings: [operation_argv_bind_text(name: "path", text: p as String)],
     )
@@ -292,6 +338,30 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = linux.CgroupV2.PathIsDirectory(path: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
+    ProcfsReadStat => {
+      let result = linux.Procfs.ReadStat()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadPidStat { pid: p } => {
+      let result = linux.Procfs.ReadPidStat(pid: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadPidCgroup { pid: p } => {
+      let result = linux.Procfs.ReadPidCgroup(pid: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    PgrepFullCommandLine { pattern: p } => {
+      let result = procps.Pgrep.MatchFullCommandLine(pattern: p)
+      HostOperationObserved { stdout: result.pids, success: result.success, stderr: none }
+    }
+    GetconfClockTicksPerSecond => {
+      let result = posix.Getconf.ClockTicksPerSecond()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    Sha256SumFile { path: p } => {
+      let result = crypto.Sha256Sum.File(path: p as String)
+      HostOperationObserved { stdout: result.line, success: result.success, stderr: Present { value: result.stderr } }
+    }
   }
 }
 
@@ -362,6 +432,22 @@ data hostname_operation_service: String = "os.Hostname"
 
 data cgroup_v2_operation_path: String = "dag/extdeps/linux/cgroup_v2.dag"
 data cgroup_v2_operation_service: String = "linux.CgroupV2"
+data procfs_operation_path: String = "dag/extdeps/linux/procfs.dag"
+data procfs_operation_service: String = "linux.Procfs"
+data pgrep_operation_path: String = "dag/extdeps/procps/pgrep.dag"
+data pgrep_operation_service: String = "procps.Pgrep"
+data getconf_operation_path: String = "dag/extdeps/posix/getconf.dag"
+data getconf_operation_service: String = "posix.Getconf"
+data sha256sum_operation_path: String = "dag/extdeps/crypto/hash.dag"
+data sha256sum_operation_service: String = "crypto.Sha256Sum"
+
+fn procfs_operation_ref(operation: String) -> OperationRef {
+  OperationRef {
+    path: procfs_operation_path,
+    service: procfs_operation_service,
+    operation: operation,
+  }
+}
 
 fn systemctl_operation_ref(operation: String) -> OperationRef {
   OperationRef {
