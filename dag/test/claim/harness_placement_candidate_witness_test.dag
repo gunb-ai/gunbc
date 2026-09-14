@@ -1,0 +1,365 @@
+module test.claim.harness_placement_candidate_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String, EpochSecs }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, ServingRoute, ServingRouteResolved, ServingRouteUnresolved, serving_route }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+  vllm_endpoint_process_launch_key,
+}
+import gunbc.spark.vllm_incarnation_provenance {
+  VllmServingIncarnationProvenance, VllmIncarnationOutcome, IncarnationBound, IncarnationUnestablished,
+  IncarnationProvenanceSupply, ProvenancePopulationRead, ProvenancePopulationUnread,
+  observe_native_incarnation, incarnation_supply_unbuilt,
+}
+import gunbc.harness.harness_seat {
+  HarnessPlacement, HarnessCandidates, HarnessCandidate,
+  harness_bind_candidate, harness_placement_of,
+  ServingModelRequirement, AnyAdmittedModel,
+}
+import gunbc.harness.harness_placement_work {
+  HarnessWorkerSession, HarnessInteractiveSession,
+}
+import gunbc.harness.harness_backend { HarnessBackendStanding, HarnessBackendServing }
+import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding, ModelsRouteDocumentUnreadable }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Glm53FlashOnVllm }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
+import product.fabric.identity { fabric_identity_eq }
+import product.fabric.work {
+  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import std.measure { hardware_thread_count }
+import gunbc.serving.turn_demand {
+  ServingTurnRequest, ServingTurnExecution, TurnExecutionBound,
+  TurnWorkBound, TurnWorkUnestablished, serving_turn_work, serving_turn_requirements,
+  serving_turn_source_unestablished,
+}
+import test.claim.spark.native_incarnation_fixture {
+  IncarnationWorld, InstalledSnapshot, faithful_world, world_of, world_port, fixture_launch, fixture_start,
+  fixture_ranks, fixture_installed_everywhere, fixture_revision, fixture_snapshot_names,
+  fixture_runtime_image, DirectoryListed,
+}
+import gunbc.fleet_intent_network { operator_host_srv11 }
+
+// ── THE PRODUCT ROOT: A CANDIDATE EXISTS ONLY FOR A LAUNCH WHOSE INCARNATION WAS OBSERVED ─────
+//
+// EVERY IDENTITY HERE IS A PRODUCT OF THE ROUTE AND NOT OF THIS FIXTURE. The provenance rows come from
+// running the observation transaction over the authored world in
+// test.claim.spark.native_incarnation_fixture; the placement Work and Demand come from
+// gunbc.harness.harness_seat harness_placement_of; the permit comes from the first-party admission
+// producer; and the CandidateOffer is sealed by product.fabric.selection bind_candidate, which no
+// fixture can call for a shape it invented. What this module authors is the WORLD -- which launch is
+// answering, which rows the supply carries -- and nothing that would be believed downstream.
+
+data t_actor: NonEmptyStr = "worker:/session-home/probe" as NonEmptyStr
+data t_attempt: NonEmptyStr = "worker:/session-home/probe@events-1" as NonEmptyStr
+data t_now: EpochSecs = 1789282026
+
+fn t_provenance() -> VllmIncarnationOutcome {
+  observe_native_incarnation(port: world_port(w: faithful_world()), attempt: "placement-fixture-attempt" as NonEmptyStr)
+}
+
+fn t_launch() -> VllmEndpointProcessLaunch? {
+  match fixture_launch(start: fixture_start) {
+    LaunchUnobserved { group: _, obligation: _ } => none
+    LaunchObserved { launch: l, receipt: _ } => Present { value: l }
+  }
+}
+
+fn t_other_launch() -> VllmEndpointProcessLaunch? {
+  match fixture_launch(start: "1.78929999999e+09") {
+    LaunchUnobserved { group: _, obligation: _ } => none
+    LaunchObserved { launch: l, receipt: _ } => Present { value: l }
+  }
+}
+
+fn t_endpoint() -> ServingRouteEndpoint? {
+  match serving_route(group: FabricGroupB) {
+    ServingRouteUnresolved { group: _, obligation: _ } => none
+    ServingRouteResolved { endpoint: e, ceiling: _ } => Present { value: e }
+  }
+}
+
+// THE READBACK ARM IS THE ONE THIS BINDER NEVER READS. harness_bind_candidate consumes the standing
+// only through harness_serving_readiness, which asks whether the route was observed SERVING; the models
+// readback beside it belongs to the model screen that already ran. An unreadable document here would be
+// a different refusal one step earlier, and this row is not about that step.
+fn t_standing() -> HarnessBackendStanding {
+  HarnessBackendServing {
+    model: "glm-5.3-flash" as NonEmptyStr,
+    unit: Glm53FlashOnVllm,
+    readback: ModelsRouteDocumentUnreadable { cause: "this fixture does not exercise the models readback" as NonEmptyStr },
+  }
+}
+
+// THE LEASE IS AN INPUT THE CALLER DECLARES, and the envelope hashes its duration and release law, so a
+// fixture policy is an authored REQUEST rather than an identity this module invents.
+data t_policy: LeasePolicy = LeasePolicy { maximum_duration_seconds: 1800, release_law: QuiescenceRequired }
+
+fn t_placement(supply: IncarnationProvenanceSupply) -> HarnessPlacement {
+  let base = harness_placement_of(
+    subject: HarnessWorkerSession, class: BatchQualityTolerant, requirement: AnyAdmittedModel,
+    shape: OpenAiChatCompletionsShape, actor: t_actor, attempt: t_attempt, policy: t_policy, now: t_now)
+  HarnessPlacement { work: base.work, demand: base.demand, provenance: supply }
+}
+
+fn t_empty_candidates() -> HarnessCandidates {
+  HarnessCandidates { candidates: [], notes: [], retryable: false }
+}
+
+// THE BINDING RUNS THE REAL BINDER over the route the enrollment resolves, the launch the world is
+// answering with, and the placement the harness derived.
+fn t_bind(supply: IncarnationProvenanceSupply, launch: VllmEndpointProcessLaunch?) -> HarnessCandidates {
+  match t_endpoint() {
+    Absent => t_empty_candidates()
+    Present { value: endpoint } =>
+      match launch {
+        Absent => t_empty_candidates()
+        Present { value: l } =>
+          harness_bind_candidate(
+            acc: t_empty_candidates(),
+            placement: t_placement(supply: supply),
+            group: FabricGroupB,
+            endpoint: endpoint,
+            launch: l,
+            standing: t_standing(),
+            model: "glm-5.3-flash" as NonEmptyStr,
+            unit: Glm53FlashOnVllm,
+            requirement: AnyAdmittedModel,
+            seats: 1,
+            now: t_now,
+          )
+      }
+  }
+}
+
+fn t_supply_of(rows: List<VllmServingIncarnationProvenance>) -> IncarnationProvenanceSupply {
+  ProvenancePopulationRead { rows: rows, receipt: "test.claim.harness_placement_candidate_witness" }
+}
+
+fn t_rows() -> List<VllmServingIncarnationProvenance> {
+  match t_provenance() {
+    IncarnationUnestablished { obligations: _ } => []
+    IncarnationBound { provenance: p } => [p]
+  }
+}
+
+fn noted(c: HarnessCandidates, pattern: String) -> Bool {
+  any(c.notes, n => string_contains(s: n, pattern: pattern))
+}
+
+// ── 1. EXACT LAUNCH + EXACT PROVENANCE -> A REAL CandidateOffer ───────────────────────────────
+//
+// THE CANDIDATE'S PERMIT IS ASSERTED AGAINST THE PLACEMENT'S OWN IDENTITIES, which is what says the
+// admission that produced it was evaluated FOR this work and this demand rather than for some pair the
+// binder happened to hold.
+test fn an_observed_incarnation_binds_a_real_candidate() -> Bool {
+  let placement = t_placement(supply: t_supply_of(rows: t_rows()))
+  let bound = t_bind(supply: t_supply_of(rows: t_rows()), launch: t_launch())
+  count(bound.candidates) == 1
+    && fold(bound.candidates, init: true, f: (acc, c) =>
+         acc
+           && fabric_identity_eq(left: c.offer.permit.work, right: placement.work.id)
+           && fabric_identity_eq(left: c.offer.permit.demand, right: placement.demand.id)
+           && fabric_identity_eq(left: c.offer.permit.offer, right: c.offer.offer.id))
+}
+
+// ── 1b. THE POSITIVE IS PROVENANCE-DEPENDENT AT ITS SOURCE ───────────────────────────────────
+//
+// THE MUTATION THE REVIEW ASKED FOR, EXPRESSED AS AN INPUT RATHER THAN AS AN EDIT. The world is the
+// faithful one except that one planned rank cannot verify the snapshot, so the observation transaction
+// refuses and the supply carries no row -- and the candidate that row would have licensed does not
+// exist. A defect in what the incarnation producer establishes reaches the product root.
+fn t_unverified_rows() -> List<VllmServingIncarnationProvenance> {
+  let world = world_of(
+    launch_before: fixture_launch(start: fixture_start),
+    launch_after: fixture_launch(start: fixture_start),
+    ranks: fixture_ranks(),
+    installed: filter(fixture_installed_everywhere(revision: fixture_revision), i => (i.host as String) != (operator_host_srv11 as String)),
+    listing: DirectoryListed { names: fixture_snapshot_names },
+    bytes_salt: "",
+    configuration_text: "{}",
+    image_host: operator_host_srv9,
+    image: fixture_runtime_image(),
+  )
+  match observe_native_incarnation(port: world_port(w: world), attempt: "placement-fixture-attempt" as NonEmptyStr) {
+    IncarnationUnestablished { obligations: _ } => []
+    IncarnationBound { provenance: p } => [p]
+  }
+}
+
+test fn an_unestablished_incarnation_licenses_no_candidate() -> Bool {
+  count(t_unverified_rows()) == 0
+    && count(t_rows()) == 1
+    && count(t_bind(supply: t_supply_of(rows: t_unverified_rows()), launch: t_launch()).candidates) == 0
+}
+
+// ── 2. SAME LAUNCH, NO PROVENANCE ROW -> NO CANDIDATE ─────────────────────────────────────────
+//
+// THE POPULATION WAS READ AND THIS LAUNCH IS NOT IN IT, which is a different state from no producer
+// being reachable, and the note says which.
+test fn a_launch_with_no_provenance_row_binds_no_candidate() -> Bool {
+  let bound = t_bind(supply: t_supply_of(rows: []), launch: t_launch())
+  count(bound.candidates) == 0 && noted(c: bound, pattern: "carries no incarnation for launch")
+}
+
+// ── 3. PROVENANCE NAMES ANOTHER LAUNCH -> NO CANDIDATE ────────────────────────────────────────
+test fn provenance_for_another_launch_binds_no_candidate() -> Bool {
+  let bound = t_bind(supply: t_supply_of(rows: t_rows()), launch: t_other_launch())
+  count(bound.candidates) == 0 && noted(c: bound, pattern: "carries no incarnation for launch")
+}
+
+// ── 4. TWO ROWS FOR ONE LAUNCH IS A CONTRADICTION -> NO CANDIDATE ─────────────────────────────
+test fn two_provenance_rows_for_one_launch_bind_no_candidate() -> Bool {
+  let bound = t_bind(supply: t_supply_of(rows: concat(t_rows(), t_rows())), launch: t_launch())
+  count(bound.candidates) == 0 && noted(c: bound, pattern: "provenance rows claim launch")
+}
+
+// ── 5. NO PRODUCER IS REACHABLE -> NO CANDIDATE, AND THE TRIGGER IS NAMED ─────────────────────
+//
+// THIS IS PRODUCTION'S STANDING TODAY. The refusal must not read like an empty population: what a
+// reader has to go and do is build the delivery path, not observe this engine.
+test fn an_unbuilt_provenance_producer_binds_no_candidate_and_names_its_trigger() -> Bool {
+  let bound = t_bind(supply: incarnation_supply_unbuilt(), launch: t_launch())
+  count(bound.candidates) == 0
+    && noted(c: bound, pattern: "no incarnation provenance producer is reachable")
+    && noted(c: bound, pattern: "no durable store delivers sealed incarnation provenance")
+}
+
+// ── 6. AN UNREAD POPULATION IS NOT AN EMPTY ONE ───────────────────────────────────────────────
+test fn an_unread_provenance_population_binds_no_candidate() -> Bool {
+  let bound = t_bind(
+    supply: ProvenancePopulationUnread { cause: "the provenance store did not answer" as NonEmptyStr },
+    launch: t_launch())
+  count(bound.candidates) == 0 && noted(c: bound, pattern: "the provenance store did not answer")
+}
+
+// ── 7. ONE PLACEMENT IS ONE WORK AND ONE DEMAND, WHATEVER THE ROSTER OFFERS ───────────────────
+//
+// select_supply RANKS CANDIDATES AGAINST EACH OTHER, so candidates carrying different Work identities
+// are not alternatives for one request. Two bindings under one placement must therefore name one Work
+// and one Demand -- and a placement for a DIFFERENT session envelope must name a different Work, or the
+// envelope would not be in the identity at all.
+test fn candidates_of_one_placement_share_one_work_and_demand() -> Bool {
+  let supply = t_supply_of(rows: t_rows())
+  let first = t_bind(supply: supply, launch: t_launch())
+  let second = t_bind(supply: supply, launch: t_launch())
+  match first.candidates.first() {
+    Absent => false
+    Present { value: a } =>
+      match second.candidates.first() {
+        Absent => false
+        Present { value: b } =>
+          fabric_identity_eq(left: a.offer.permit.work, right: b.offer.permit.work)
+            && fabric_identity_eq(left: a.offer.permit.demand, right: b.offer.permit.demand)
+      }
+  }
+}
+
+test fn a_different_session_envelope_is_a_different_placement_work() -> Bool {
+  let worker = harness_placement_of(
+    subject: HarnessWorkerSession, class: BatchQualityTolerant, requirement: AnyAdmittedModel,
+    shape: OpenAiChatCompletionsShape, actor: t_actor, attempt: t_attempt, policy: t_policy, now: t_now)
+  let interactive = harness_placement_of(
+    subject: HarnessInteractiveSession, class: InteractiveQualitySensitive, requirement: AnyAdmittedModel,
+    shape: OpenAiChatCompletionsShape, actor: t_actor, attempt: t_attempt, policy: t_policy, now: t_now)
+  (worker.work.id.key as String) != (interactive.work.id.key as String)
+    && (worker.demand.id.key as String) != (interactive.demand.id.key as String)
+}
+
+// AND TWO ATTEMPTS FOR ONE ENVELOPE ARE ONE WORK AND TWO DEMANDS. The attempt is a Demand coordinate:
+// putting it in the Work would mint a new Work per placement and make the fabric's deduplication
+// meaningless, while leaving it out of the Demand would make two concurrent sessions one request.
+test fn two_attempts_share_one_work_and_hold_two_demands() -> Bool {
+  let first = harness_placement_of(
+    subject: HarnessWorkerSession, class: BatchQualityTolerant, requirement: AnyAdmittedModel,
+    shape: OpenAiChatCompletionsShape, actor: t_actor, attempt: t_attempt, policy: t_policy, now: t_now)
+  let second = harness_placement_of(
+    subject: HarnessWorkerSession, class: BatchQualityTolerant, requirement: AnyAdmittedModel,
+    shape: OpenAiChatCompletionsShape, actor: t_actor, attempt: "worker:/session-home/probe@events-2" as NonEmptyStr,
+    policy: t_policy, now: t_now)
+  (first.work.id.key as String) == (second.work.id.key as String)
+    && (first.demand.id.key as String) != (second.demand.id.key as String)
+}
+
+
+// ── THE TURN CONSUMER: THE SEAT PINS A LAUNCH, AND THE TURN IS KEYED ON WHAT IT LOADED ────────
+//
+// TWO GRAINS, ONE VERTICAL. The placement above acquires a seat on an exact launch; a request sent
+// through that seat is its own Work, identified by the model package the launch was observed to have
+// loaded and by the request's own inputs. This is where gunbc.serving.turn_demand belongs -- after the
+// seat, never as the identity used to obtain one.
+fn t_turn_requirements() -> ExecutionRequirements {
+  serving_turn_requirements(
+    capacity_class: ControlPlaneCapacity,
+    capabilities: "gunbc.capabilities.spark-serving.any-admitted-serving-model" as CapabilityManifestRef,
+    trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
+  )
+}
+
+fn t_turn_request(execution: ServingTurnExecution) -> ServingTurnRequest {
+  ServingTurnRequest {
+    execution: execution,
+    inputs: "gunbc.harness.probe-turn.fixed-prompt" as ArtifactManifestRef,
+    effect_contract: "gunbc.serving.turn-effects" as EffectContractRef,
+    output_contract: "gunbc.serving.turn-output" as OutputContractRef,
+  }
+}
+
+fn t_turn_work_key(rows: List<VllmServingIncarnationProvenance>) -> String {
+  match rows.first() {
+    Absent => "no-provenance"
+    Present { value: p } =>
+      match serving_turn_work(
+        principal: "gunbc" as NonEmptyStr,
+        request: t_turn_request(execution: TurnExecutionBound { closure: p.execution }),
+        requirements: t_turn_requirements(),
+      ) {
+        TurnWorkUnestablished { obligation: _ } => "unestablished"
+        TurnWorkBound { work: w } => w.id.key as String
+      }
+  }
+}
+
+// THE SEATED LAUNCH'S OWN PROVENANCE MINTS THE TURN WORK, and the placement Work is a different
+// identity: one asks for a seat, the other asks for an answer.
+test fn a_seated_launch_mints_turn_work_distinct_from_its_placement_work() -> Bool {
+  let placement = t_placement(supply: t_supply_of(rows: t_rows()))
+  let bound = t_bind(supply: t_supply_of(rows: t_rows()), launch: t_launch())
+  let turn_key = t_turn_work_key(rows: t_rows())
+  count(bound.candidates) == 1
+    && turn_key != "no-provenance"
+    && turn_key != "unestablished"
+    && turn_key != (placement.work.id.key as String)
+}
+
+// REMOVE THE EXACT EXECUTION CLOSURE AND THE TURN HAS NO IDENTITY. This is the turn layer's half of
+// the review's mutation: the seat may still be granted, and the request that would run under it cannot
+// be named until something observed what the engine loaded.
+test fn a_turn_without_an_observed_closure_is_unestablished() -> Bool {
+  match serving_turn_work(
+    principal: "gunbc" as NonEmptyStr,
+    request: t_turn_request(execution: serving_turn_source_unestablished()),
+    requirements: t_turn_requirements(),
+  ) {
+    TurnWorkBound { work: _ } => false
+    TurnWorkUnestablished { obligation: o } => string_contains(s: o as String, pattern: "no observation establishes the exact model package")
+  }
+}
+
+// AND A PLACEMENT WHOSE INCARNATION WAS NEVER ESTABLISHED HAS NO TURN EITHER, which is the same defect
+// reaching both layers from one cause rather than two independent checks agreeing.
+test fn an_unestablished_incarnation_leaves_both_layers_without_identity() -> Bool {
+  count(t_bind(supply: t_supply_of(rows: t_unverified_rows()), launch: t_launch()).candidates) == 0
+    && t_turn_work_key(rows: t_unverified_rows()) == "no-provenance"
+}

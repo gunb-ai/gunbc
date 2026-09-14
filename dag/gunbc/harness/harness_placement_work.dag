@@ -1,0 +1,270 @@
+module gunbc.harness.harness_placement_work
+
+import std.types { String, Bool, NonEmptyStr, List, Timestamp }
+import std.nat { Nat }
+import std.measure { money_amount_micro }
+import std.content_hash {
+  serialize_content_hash, as_content_hash_structural, content_hash_combine_structural,
+  content_hash_tagged_structural, content_hash_atom,
+}
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
+  EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
+  ExecutionRequirements, work_for,
+}
+import product.fabric.demand {
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, ObservationReceiptRef, BudgetAccountId,
+}
+import product.capacity.lease { LeasePolicy, release_law_wire }
+import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_class_wire }
+import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+
+// ── WHAT THE HARNESS ACTUALLY PLACES ──────────────────────────────────────────────────────────
+//
+// A SEAT IS NOT A TURN, AND MODELLING IT AS ONE WOULD FABRICATE THE IDENTITY EVERY RECEIPT IS KEYED
+// ON. gunbc.harness.harness_seat acquires ONE seat and hands back a URL and a release capability:
+// gunbc.harness.harness_cli's worker then runs a whole multi-round task under it, and its interactive
+// entry hands the seat to a session it never sees the prompt of. gunbc.serving.turn_demand models the
+// other thing -- one streamed inference turn, whose identity is the model package that answered it.
+// The harness frontier said placement was waiting for a ServingTurnWork; that was written before the
+// two grains were separated, and it named the wrong Work (operator ruling, 2026-09-14).
+//
+// SO THIS MODULE MODELS THE OPERATION THE PLACEMENT PATH PERFORMS: acquire one serving seat satisfying
+// a declared session envelope. The turn Work is unchanged and belongs AFTER placement, at the request
+// boundary, where an exact prompt and an exact launch provenance both exist.
+//
+// AND THE TASK'S OWN REQUEST IS NOT THE WORK EITHER. Keying a seat on a hash of the roadmap brief would
+// assert that the serving provider performs the task -- the tools, the edits, the verification -- when
+// what it provides is a seat the harness drives.
+
+// THE SESSION KIND IS A WORK COORDINATE; THE SESSION INSTANCE IS NOT. What changes the SEAT is which
+// kind of session asks for it -- a reader watching tokens arrive is a different request from a batch
+// worker. Which worktree, which verdict file and which attempt are facts about WHO is asking and are
+// carried by the Demand; putting the attempt in the Work would mint a new Work per placement and make
+// the fabric's deduplication meaningless (operator ruling: the attempt is a Demand coordinate, and the
+// satisfaction policy -- not a fresh Work -- is what forces a fresh grant).
+type HarnessPlacementSubject
+  = HarnessWorkerSession
+  | HarnessReviewSession
+  | HarnessAuditSession
+  | HarnessInteractiveSession
+  | HarnessProbeSession
+
+fn harness_placement_subject_wire(s: HarnessPlacementSubject) -> NonEmptyStr {
+  match s {
+    HarnessWorkerSession => "worker-session" as NonEmptyStr
+    HarnessReviewSession => "review-session" as NonEmptyStr
+    HarnessAuditSession => "audit-session" as NonEmptyStr
+    HarnessInteractiveSession => "interactive-session" as NonEmptyStr
+    HarnessProbeSession => "probe-session" as NonEmptyStr
+  }
+}
+
+fn harness_wire_shape_wire(shape: HarnessWireShape) -> NonEmptyStr {
+  match shape {
+    AnthropicMessagesShape => "anthropic-messages" as NonEmptyStr
+    OpenAiChatCompletionsShape => "openai-chat-completions" as NonEmptyStr
+  }
+}
+
+// ── THE PROGRAM, AND THE TWO COORDINATES A PLACEMENT HAS NO ARTIFACT FOR ──────────────────────
+//
+// A PLACEMENT CONSUMES NO MODEL PACKAGE AND RUNS NO RUNTIME IMAGE, so `source` and `runtime_closure`
+// have no artifact to name. They are not dropped -- WorkContract has no absent arm and an identity
+// missing a coordinate is an identity that collides -- so both are projections of ONE declared fact:
+// the revision of what this program MEANS. A change to the placement contract's semantics is a
+// deliberate bump of that row, and both coordinates move together because they are two renderings of
+// it rather than two literals that could drift apart.
+//
+// THE HAND-BUMP IS AN OBLIGATION AND IT IS NAMED: this is the weak half of the model, exactly as
+// gunbc.harness.harness_seat's partition suffix is. ITS TRIGGER: the seat protocol carries its own
+// declared identity (a versioned pool/lease contract), at which point the runtime coordinate derives
+// from that identity and the source coordinate from the envelope schema, and this row deletes.
+data harness_placement_program: ProgramRef = "gunbc.harness.serving-session-placement" as ProgramRef
+
+data harness_placement_contract_revision: NonEmptyStr = "gunbc.harness.serving-session-placement.2026-09-14" as NonEmptyStr
+
+fn harness_placement_source_ref() -> SourceManifestRef {
+  join(["contract:", harness_placement_contract_revision as String], "") as SourceManifestRef
+}
+
+fn harness_placement_runtime_ref() -> ArtifactManifestRef {
+  join(["seat-protocol:", harness_placement_contract_revision as String], "") as ArtifactManifestRef
+}
+
+data harness_placement_effect_contract: EffectContractRef = "gunbc.harness.serving-seat-acquisition" as EffectContractRef
+data harness_placement_output_contract: OutputContractRef = "gunbc.harness.serving-seat-grant" as OutputContractRef
+
+// ONE STEP WITH OPAQUE EFFECTS. Acquiring a seat appends to a shared capacity ledger and leaves a
+// reference that only an explicit release retires; an interrupted attempt is not resumable from any
+// checkpoint this fabric holds, and no idempotency key makes a second acquire safe under a ceiling of
+// one. The release law the pool is reconstructed under is part of the runtime coordinate above.
+fn harness_placement_steps() -> List<WorkStep> {
+  [WorkStep {
+    step_id: "acquire-serving-seat" as NonEmptyStr,
+    resumability: OpaqueEffects { reason: "a seat acquisition appends to a shared capacity ledger and is retired only by an explicit release, so an interrupted attempt has effects no terminal receipt describes" as NonEmptyStr },
+  }]
+}
+
+// WHAT A PLACEMENT OWES: one terminal grant. It is terminal rather than an artifact obligation because
+// the deliverable is the grant itself -- an endpoint on an exact launch plus the capability to release
+// it -- and not a content-addressed file some later step materializes.
+fn harness_placement_output_obligations() -> DeclaredOutputObligations {
+  declared_terminal_obligations(ids: ["serving-seat-grant" as NonEmptyStr])
+}
+
+// ── THE ENVELOPE: THE FACTS THAT CHANGE WHICH SEAT IS BEING ASKED FOR ─────────────────────────
+//
+// EVERY FIELD HERE ALTERS THE REQUEST. The session kind and the wire shape decide what the seat must
+// speak; the co-tenancy class decides which pool and which law admits it; the lease's maximum duration
+// is how long the requester asks to hold it; the data-handling profile is the posture the seat is
+// admitted under. What is NOT here is anything the fabric already carries in ExecutionRequirements --
+// capability, trust domain, isolation, shape, capacity class -- because work_identity_material digests
+// those beside the contract, and a second spelling would be one fact in the key twice.
+//
+// AND THE FIELDS ARE HASHED SEPARATELY RATHER THAN JOINED. A separator frames a field only if the
+// field's type excludes it, and a profile reference is an unconstrained NonEmptyStr.
+type HarnessPlacementEnvelope {
+  subject: HarnessPlacementSubject
+  shape: HarnessWireShape
+  class: ServingCoTenancyClass
+  lease: LeasePolicy
+  data_handling_profile: DeclarationRef
+}
+
+fn harness_placement_inputs_ref(envelope: HarnessPlacementEnvelope) -> ArtifactManifestRef {
+  serialize_content_hash(hash: as_content_hash_structural(structural: content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "session" as NonEmptyStr, payload: content_hash_atom(value: harness_placement_subject_wire(s: envelope.subject))),
+      right: content_hash_tagged_structural(tag: "wire-shape" as NonEmptyStr, payload: content_hash_atom(value: harness_wire_shape_wire(shape: envelope.shape))),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "co-tenancy-class" as NonEmptyStr, payload: content_hash_atom(value: serving_co_tenancy_class_wire(c: envelope.class))),
+      right: content_hash_combine_structural(
+        left: content_hash_tagged_structural(tag: "lease" as NonEmptyStr, payload: content_hash_atom(value: join([to_string(envelope.lease.maximum_duration_seconds), "/", release_law_wire(law: envelope.lease.release_law)], "") as NonEmptyStr)),
+        right: content_hash_tagged_structural(tag: "data-handling-profile" as NonEmptyStr, payload: content_hash_atom(value: declaration_ref_display_key(ref: envelope.data_handling_profile) as NonEmptyStr)),
+      ),
+    ),
+  ))) as ArtifactManifestRef
+}
+
+fn harness_placement_contract(envelope: HarnessPlacementEnvelope) -> WorkContract {
+  WorkContract {
+    program: harness_placement_program,
+    steps: harness_placement_steps(),
+    source: harness_placement_source_ref(),
+    inputs: harness_placement_inputs_ref(envelope: envelope),
+    runtime_closure: harness_placement_runtime_ref(),
+    effect_contract: harness_placement_effect_contract,
+    output_contract: harness_placement_output_contract,
+    output_obligations: harness_placement_output_obligations(),
+  }
+}
+
+// THE KEY IS NOT DERIVED HERE. work_for is the fabric's public constructor and the only place a work
+// key comes from.
+fn harness_placement_work(envelope: HarnessPlacementEnvelope, requirements: ExecutionRequirements) -> Work<NonEmptyStr> {
+  work_for(principal: "gunbc" as NonEmptyStr, contract: harness_placement_contract(envelope: envelope), requirements: requirements)
+}
+
+// ── THE DEMAND: WHO IS ASKING, FOR WHICH PLACEMENT, AND UNDER WHAT TERMS ──────────────────────
+//
+// A PLACEMENT REQUEST IS SEALED SO ITS IDENTITY CANNOT BE ASSEMBLED FROM PARTS THAT NEVER MET. The key
+// is derived from every coordinate the request carries, so a demand naming another actor, another
+// attempt, another session or another Work is a different demand by construction -- and no caller can
+// cast a string into a DemandKey and have the fabric treat it as one.
+//
+// THE PRINCIPAL IS CONCRETE HERE AND THAT IS DELIBERATE. product.fabric.identity keeps P open because
+// the core must not name its principal sources; identity MATERIAL, though, has to render the principal,
+// and a generic P has no rendering. This module is the harness's own product layer, its principal is
+// its actor string, and a later principal type brings its own rendering with it.
+type HarnessPlacementRequest sole_constructor {
+  actor: NonEmptyStr
+  attempt: NonEmptyStr
+  envelope: HarnessPlacementEnvelope
+  work: FabricIdentity<NonEmptyStr, WorkKey>
+  origin: ObservationReceiptRef
+  submitted_at: Timestamp
+  admission: AdmissionTerms
+}
+
+// OWNED HARDWARE QUOTES ZERO AND THE DEMAND MUST MEET IT. gunbc.spark.serving_offer records the pairing
+// from the other side: a reservation price below every offer refuses them all, so a serving demand's
+// buy terms are zero against that zero. The maximum buy order is zero for the same reason and not as a
+// placeholder -- no meter starts when a turn lands on a Spark this operator owns.
+data harness_placement_budget_account: BudgetAccountId = "gunbc.harness" as BudgetAccountId
+
+fn harness_placement_admission_terms() -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: none,
+    buy: BuyTerms {
+      budget_account: harness_placement_budget_account,
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 0),
+    },
+  }
+}
+
+// A SEAT IS NEVER SATISFIED BY A PREVIOUS SESSION'S RECEIPT. Each session needs its own grant on a
+// named launch, which is what makes a fresh attempt required and step reuse refused; the step is
+// opaque-effect, so nothing may be satisfied from a previous execution of it.
+fn harness_placement_satisfaction() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: false,
+    new_attempt_required: true,
+    step_reuse_permitted: false,
+  }
+}
+
+fn harness_placement_request(
+  actor: NonEmptyStr,
+  attempt: NonEmptyStr,
+  envelope: HarnessPlacementEnvelope,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  origin: ObservationReceiptRef,
+  submitted_at: Timestamp,
+) -> HarnessPlacementRequest {
+  HarnessPlacementRequest {
+    actor: actor,
+    attempt: attempt,
+    envelope: envelope,
+    work: work,
+    origin: origin,
+    submitted_at: submitted_at,
+    admission: harness_placement_admission_terms(),
+  }
+}
+
+fn harness_placement_demand_key(request: HarnessPlacementRequest) -> DemandKey {
+  serialize_content_hash(hash: as_content_hash_structural(structural: content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_tagged_structural(tag: "actor" as NonEmptyStr, payload: content_hash_atom(value: request.actor)),
+      right: content_hash_tagged_structural(tag: "attempt" as NonEmptyStr, payload: content_hash_atom(value: request.attempt)),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_tagged_structural(tag: "session" as NonEmptyStr, payload: content_hash_atom(value: harness_placement_subject_wire(s: request.envelope.subject))),
+        right: content_hash_tagged_structural(tag: "work" as NonEmptyStr, payload: content_hash_atom(value: request.work.key as NonEmptyStr)),
+      ),
+      right: content_hash_combine_structural(
+        left: content_hash_tagged_structural(tag: "origin" as NonEmptyStr, payload: content_hash_atom(value: request.origin as NonEmptyStr)),
+        right: content_hash_tagged_structural(tag: "submitted-at" as NonEmptyStr, payload: content_hash_atom(value: request.submitted_at as NonEmptyStr)),
+      ),
+    ),
+  ))) as DemandKey
+}
+
+fn harness_placement_demand(request: HarnessPlacementRequest) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: request.actor, key: harness_placement_demand_key(request: request) },
+    work: request.work,
+    origin: request.origin,
+    submitted_at: request.submitted_at,
+    admission: request.admission,
+    satisfaction: harness_placement_satisfaction(),
+  }
+}

@@ -497,6 +497,13 @@ fn spark_first_party_route_facts() -> ProviderRouteFacts {
 // the permit and product.fabric.selection compares the permit against the demand and work the
 // candidate is being bound for, so a work key transcribed beside the call would refuse every real
 // placement -- and, worse, would be a work identity this module invented.
+// THE PROFILE AS A REFERENCE, so a consumer that must state which data-handling posture a request is
+// made under names this declaration rather than spelling its path a second time. The scope below reads
+// this function, so a rename moves one string.
+fn spark_own_data_handling_profile_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile")
+}
+
 fn spark_first_party_use_scope<P>(
   demand: FabricIdentity<P, DemandKey>,
   work: FabricIdentity<P, WorkKey>,
@@ -505,7 +512,7 @@ fn spark_first_party_use_scope<P>(
     demand: demand,
     work: work,
     customer_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_customer_profile"),
-    data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
+    data_handling_profile: spark_own_data_handling_profile_ref(),
     agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
     prohibited_use_disposition: spark_prohibited_use_disposition(),
     sanctions_disposition: spark_sanctions_disposition(),
@@ -518,14 +525,15 @@ fn spark_first_party_use_scope<P>(
 // another data class -- reaches the same producer and is refused by it, instead of the refusal being
 // a state only a fixture could construct.
 //
-// DECLARED FRONTIER (DESIGN section 3c). The production consumer of this function is
-// gunbc.harness.harness_seat, which cannot call it yet: product.fabric.selection bind_candidate
-// needs a demand identity and a work identity, a WorkKey comes only from product.fabric.work
-// derive_work_key, and gunbc.serving.turn_demand serving_turn_source_obligation refuses to produce
-// the source manifest that would feed it. TRIGGER: a launch receipt that reads the exact weights,
-// tokenizer and runtime closure off a running engine, SUFFICIENT FOR gunbc.serving.turn_demand
-// serving_turn_work to return TurnWorkBound for a harness turn. Until then this producer is executed
-// by test.claim.spark.spark_first_party_serving_witness_test, which exercises both arms.
+// THE FRONTIER THAT STOOD HERE IS CLOSED, AND IT NAMED THE WRONG WORK WHILE IT STOOD. It said this
+// producer could not be called because gunbc.serving.turn_demand refuses to bind a source manifest
+// for a harness turn -- but what gunbc.harness.harness_seat places is a SEAT, acquired before any
+// prompt exists and held across a whole session, so the Work it needed was never the turn's.
+// gunbc.harness.harness_placement_work models that operation, and harness_bind_candidate now calls
+// this producer with the placement's own demand and work identities for every route whose launch has
+// an observed incarnation. Both arms stay executed by
+// test.claim.spark.spark_first_party_serving_witness_test; the production path is executed by
+// test.claim.harness_placement_candidate_witness_test.
 fn spark_first_party_admission<P>(
   scope: ProviderUseScope<P>,
   offer: FabricIdentity<P, OfferKey>,

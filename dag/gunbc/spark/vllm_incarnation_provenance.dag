@@ -1012,6 +1012,73 @@ type IncarnationLookup
   | IncarnationMissing
   | IncarnationAmbiguous { matches: Nat }
 
+// ── WHAT A CONSUMER HOLDS BEFORE IT HAS A ROW, AND WHY AN EMPTY LIST WILL NOT DO ──────────────
+//
+// A CONSUMER ASKING FOR PROVENANCE CAN BE IN FIVE STATES AND ONLY ONE OF THEM CONTINUES. The supply is
+// a population fact -- is there a producer at all, could its rows be read -- and the standing is the
+// per-launch fact derived from it. Collapsing "the capability is not built" into an empty population
+// would make an unbuilt producer indistinguishable from a producer that looked and found nothing, and
+// those have opposite remedies: build the delivery path, versus observe this incarnation (operator
+// ruling, 2026-09-14).
+//
+// NOTHING DELIVERS ROWS TO A PLACEMENT PROCESS TODAY. gunbc.spark.vllm_incarnation_provenance's wet
+// entry observes one incarnation and writes a receipt file; a placement runs in another process, with
+// no durable store to read sealed provenance back from -- and re-observing per placement is not the
+// answer either, because the checkpoint verification hashes the whole revision on every rank. The
+// trigger is named on the unavailable arm rather than left as an empty list somebody reads as "none".
+type IncarnationProvenanceSupply
+  = ProvenanceProducerUnavailable { trigger: NonEmptyStr }
+  | ProvenancePopulationUnread { cause: NonEmptyStr }
+  | ProvenancePopulationRead { rows: List<VllmServingIncarnationProvenance>, receipt: ObservationReceiptRef }
+
+type IncarnationProvenanceStanding
+  = ProvenanceLocated { provenance: VllmServingIncarnationProvenance }
+  | ProvenanceNoMatch { launch: VllmEndpointProcessLaunch, receipt: ObservationReceiptRef }
+  | ProvenanceAmbiguous { launch: VllmEndpointProcessLaunch, matches: Nat, receipt: ObservationReceiptRef }
+  | ProvenanceUnavailable { trigger: NonEmptyStr }
+  | ProvenanceUnread { cause: NonEmptyStr }
+
+data incarnation_supply_unbuilt_trigger: NonEmptyStr = "no durable store delivers sealed incarnation provenance to a placement process: gunbc.spark.vllm_incarnation_provenance observes one incarnation per wet run and writes a text receipt, and a placement cannot re-observe per candidate because the checkpoint verification hashes the whole revision on every rank. The trigger is a provenance store a placement reads, keyed by the launch identity the harness already names" as NonEmptyStr
+
+fn incarnation_supply_unbuilt() -> IncarnationProvenanceSupply {
+  ProvenanceProducerUnavailable { trigger: incarnation_supply_unbuilt_trigger }
+}
+
+fn incarnation_provenance_standing(supply: IncarnationProvenanceSupply, launch: VllmEndpointProcessLaunch) -> IncarnationProvenanceStanding {
+  match supply {
+    ProvenanceProducerUnavailable { trigger: t } => ProvenanceUnavailable { trigger: t }
+    ProvenancePopulationUnread { cause: c } => ProvenanceUnread { cause: c }
+    ProvenancePopulationRead { rows: rows, receipt: r } =>
+      match incarnation_for_launch(candidates: rows, launch: launch) {
+        IncarnationFound { provenance: p } => ProvenanceLocated { provenance: p }
+        IncarnationMissing => ProvenanceNoMatch { launch: launch, receipt: r }
+        IncarnationAmbiguous { matches: n } => ProvenanceAmbiguous { launch: launch, matches: n, receipt: r }
+      }
+  }
+}
+
+fn incarnation_provenance_standing_wire(s: IncarnationProvenanceStanding) -> NonEmptyStr {
+  match s {
+    ProvenanceLocated { provenance: p } =>
+      join(["one incarnation is observed for launch ", vllm_endpoint_process_launch_key(launch: p.launch) as String], "") as NonEmptyStr
+    ProvenanceNoMatch { launch: l, receipt: r } =>
+      join([
+        "the provenance population was read (", r as String, ") and carries no incarnation for launch ",
+        vllm_endpoint_process_launch_key(launch: l) as String,
+        "; this engine's provenance must be observed before work may be placed on it",
+      ], "") as NonEmptyStr
+    ProvenanceAmbiguous { launch: l, matches: n, receipt: r } =>
+      join([
+        to_string(n), " provenance rows claim launch ", vllm_endpoint_process_launch_key(launch: l) as String,
+        " (", r as String, "), and two observations of one launch that disagree is a contradiction rather than a choice",
+      ], "") as NonEmptyStr
+    ProvenanceUnavailable { trigger: t } =>
+      join(["no incarnation provenance producer is reachable from this placement: ", t as String], "") as NonEmptyStr
+    ProvenanceUnread { cause: c } =>
+      join(["the incarnation provenance population could not be read: ", c as String], "") as NonEmptyStr
+  }
+}
+
 fn incarnation_for_launch(
   candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
 ) -> IncarnationLookup {
