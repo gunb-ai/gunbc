@@ -2,13 +2,14 @@ module test.claim.spark.v41_runtime_candidate_witness
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, NamedField, decl_field_ref }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import extdeps.gpu.types { GpuComputeCapability }
+import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vendor.nvidia { nvidia }
-import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_recipe_targeting }
-import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
+import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_deepseek_v4_1_sm12_revision, vllm_recipe_targeting }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
 import gunbc.spark.serving_deployment_selection { topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
@@ -26,11 +27,15 @@ fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
 }
 
-fn w_patch(path: String, c: String) -> List<V41EnginePatch> {
-  match v41_engine_patch(path: path as NonEmptyStr, applies_to: vllm_d2d649e6_revision, sha256_hex: w_sha(c: c).hex as String, purpose: "fixture" as NonEmptyStr) {
+fn w_patch_against(path: String, c: String, applies_to: VllmSourceRevision) -> List<V41EnginePatch> {
+  match v41_engine_patch(path: path as NonEmptyStr, applies_to: applies_to, sha256_hex: w_sha(c: c).hex as String, purpose: "fixture" as NonEmptyStr) {
     Present { value: p } => [p]
     Absent => [] as List<V41EnginePatch>
   }
+}
+
+fn w_patch(path: String, c: String) -> List<V41EnginePatch> {
+  w_patch_against(path: path, c: c, applies_to: vllm_d2d649e6_revision)
 }
 
 type WPatchSpec {
@@ -44,12 +49,12 @@ fn w_observed(pairs: List<WPatchSpec>, partition: V41EngramPartitionAuthority) -
 
 // A CONTROLLED FIXTURE WITH EVERY AXIS ESTABLISHED, so the key laws below are asserted over a keyed
 // candidate. The live candidate is deliberately unestablished and is asserted separately.
-fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat) -> V41CandidateInputs {
+fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat, wheels: List<FlashInferWheel>) -> V41CandidateInputs {
   V41CandidateInputs {
     runtime: V41RuntimeArtifactInputs {
       recipe: vllm_recipe_targeting(base: v41_candidate_recipe(), torch_cuda_arch_list: v41_candidate_recipe().torch_cuda_arch_list, max_jobs: max_jobs, nvcc_threads: 2),
       kernel_acquisition: flashinfer_0_6_18_post1,
-      kernel_wheels: flashinfer_0_6_18_post1_wheels,
+      kernel_wheels: wheels,
       patches: patches,
     },
     model_source: V41ModelSourceInputs {
@@ -61,6 +66,14 @@ fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition,
     topology: topology_shape(tensor_parallel_degree: tp, replica_count: 1),
     device: device,
   }
+}
+
+fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat) -> V41CandidateInputs {
+  w_inputs_with_wheels(patches: patches, partition: partition, route: route, tp: tp, device: device, max_jobs: max_jobs, wheels: flashinfer_0_6_18_post1_wheels)
+}
+
+fn w_wheels_named(names: List<String>) -> List<FlashInferWheel> {
+  flat_map(names, n => filter(flashinfer_0_6_18_post1_wheels, w => (w.package as String) == n))
 }
 
 fn w_two_patches() -> V41PatchPopulation {
@@ -221,4 +234,47 @@ test fn a_patch_needs_a_sha256_digest_and_the_fixtures_are_admitted() -> Bool {
       V41PatchesAbsentByObservation => false
       V41PatchesUnestablished { obligation: _ } => false
     })
+}
+
+// THE KERNEL CLOSURE IS AN EXACT PACKAGE POPULATION. A runtime carrying only flashinfer-python, or two
+// variants of one package, is not the closure upstream's Dockerfile installs, so it refuses instead of
+// keying. The complete population keys, which is what stops a mint that refuses everything.
+test fn the_kernel_population_must_be_exactly_the_three_required_packages() -> Bool {
+  let full = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let only_python = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-python"])))
+  let doubled = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: concat(flashinfer_0_6_18_post1_wheels, w_wheels_named(names: ["flashinfer-cubin"]))))
+  w_key(s: full, which: "runtime") != "unestablished" && w_key(s: full, which: "runtime") != "refused"
+    && w_refused_with(s: only_python, fragment: "carries no flashinfer-cubin wheel")
+    && w_refused_with(s: doubled, fragment: "more than one flashinfer-cubin wheel")
+}
+
+// A PATCH AUTHORED AGAINST ANOTHER vLLM REVISION REFUSES. Recording applies_to in the key is not the same
+// as enforcing it: the population must be applicable to the recipe's own source.
+test fn a_patch_for_a_different_revision_refuses() -> Bool {
+  let foreign = V41PatchesObserved { patches: concat(w_patch(path: "engram_storage.patch", c: "1"), w_patch_against(path: "engram_prefetch.patch", c: "2", applies_to: vllm_deepseek_v4_1_sm12_revision)), partition: PartitionByLaunchConfiguration }
+  w_refused_with(s: v41_candidate_standing(c: w_default(patches: foreign)), fragment: "07b75534")
+}
+
+// SET-LIKE POPULATIONS ARE CANONICAL. The wheels and the two sides of the partition are sets: writing
+// them in another order is the same candidate. Only the patch sequence is order-bearing, which the
+// patch-order witness above asserts in the other direction.
+test fn reordering_wheels_or_partition_members_does_not_change_the_key() -> Bool {
+  let a = v41_candidate_standing(c: w_default(patches: w_two_patches()))
+  let reversed_wheels = v41_candidate_standing(c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-jit-cache", "flashinfer-cubin", "flashinfer-python"])))
+  let reordered_partition = v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: V41EngramResidencyPartition {
+    storage_backed: ["layers.14.engram.embed.scale" as NonEmptyStr, "layers.1.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr],
+    resident: v41_candidate_partition.resident,
+  }, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6))
+  w_key(s: a, which: "runtime") == w_key(s: reversed_wheels, which: "runtime")
+    && w_key(s: a, which: "candidate") == w_key(s: reversed_wheels, which: "candidate")
+    && w_key(s: a, which: "engram") == w_key(s: reordered_partition, which: "engram")
+}
+
+// A ROUTE REFERENCE IS MODULE, DECLARATION AND FIELD. A reference naming route B's declaration in another
+// module, or one field of it, is not route B; comparing only the declaration name admitted both.
+test fn a_route_reference_that_differs_in_module_or_field_is_not_the_admitted_route() -> Bool {
+  let foreign_module = DeclarationRef { module_path: "scratch.impostor" as NonEmptyStr, decl_name: engram_route_b_identity.decl_name, field: engram_route_b_identity.field }
+  let field_of_b = decl_field_ref(module_path: engram_route_b_identity.module_path as String, decl_name: engram_route_b_identity.decl_name as String, field_name: "origin")
+  w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: foreign_module, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
+    && w_refused_with(s: v41_candidate_standing(c: w_inputs(patches: w_two_patches(), partition: v41_candidate_partition, route: field_of_b, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6)), fragment: "engram_route_b_host_nvme")
 }
