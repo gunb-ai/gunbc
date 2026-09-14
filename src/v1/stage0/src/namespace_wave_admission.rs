@@ -1895,7 +1895,10 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
 ];
-
+///
+/// EMPTY IS THIS ROSTER'S RESTING STATE, which main's own revision of this block says and which
+/// stays true with rows present: the six below are consumed by their own merge, and gunbc#11316 is
+/// already authored to delete them. A populated roster is a transition, never a steady state.
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
