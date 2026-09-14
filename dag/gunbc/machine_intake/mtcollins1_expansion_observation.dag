@@ -6,6 +6,7 @@ import std.algebra { Ordering, Less, Equal, Greater }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.measure { RackUnit, rack_unit }
 import extdeps.publication { SpecificationDocumentDate }
+import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications {
   MtCollins1UExpansion, mt_collins_1u_expansion,
   OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot, mt_collins_1u_ocp_slot,
@@ -22,11 +23,10 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
 // is copied from and states the divergence so a reviewer can move it rather than discover it. What
 // is here is chassis STRUCTURE an operator saw from outside the machine, not an inventory of what
 // is installed in it.
-data observed_unit: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.machine_intake_mtcollins1_access_observation",
-  decl_name: "mtcollins1_access_observation",
-  field: WholeDeclaration,
-}
+// THE UNIT IS NOT RE-DECLARED. gunbc.machine_intake_mtcollins1_dimm_connector_observation already
+// names this machine through its intake receipt; a second DeclarationRef literal pointing at the
+// same access observation would be one fact with two authors (DESIGN section 3). Imported instead,
+// so a change of unit identity moves in one place.
 
 // THE DISTINCTION THIS MODULE EXISTS TO HOLD. An APERTURE is a hole in the rear panel. A RISER
 // ASSEMBLY is the bracket, connector and retention hardware behind it. A chassis ships with
@@ -43,6 +43,15 @@ type RiserOccupancy
   = RiserPositionsFitted { positions: Nat, evidence: NonEmptyStr }
   | RiserPositionsUnobserved { settled_by: NonEmptyStr }
 
+// GENERATION AND PHYSICAL VARIANT ARE TWO FACTS. The 1U brief states "OCP 3.0 mezzanine card with
+// multi-host support" and does not state SFF or thumbscrew retention, and OCP NIC 3.0 defines SFF
+// alongside other physical variants -- so the generation does not imply the variant. Carried here
+// rather than in a consumer so a part-admission fold can cite this evidence without minting a
+// second per-unit observation. Found by quiet-swift-866 reading the brief rather than the summary.
+type OcpPhysicalVariantStanding
+  = OcpPhysicalVariantCited { variant: NonEmptyStr, authority: NonEmptyStr }
+  | OcpPhysicalVariantUnresolved { settled_by: NonEmptyStr }
+
 type OcpBayOccupancy
   = OcpBayEmpty { evidence: NonEmptyStr }
   | OcpBayPopulated { evidence: NonEmptyStr }
@@ -53,10 +62,12 @@ type MtCollinsExpansionOperatorObservation {
   chassis_height: RackUnit
   observed_on: SpecificationDocumentDate
   observer: NonEmptyStr
+  relay_message: NonEmptyStr
   method: NonEmptyStr
   rear_apertures: RearApertureReport
   riser_occupancy: RiserOccupancy
   ocp_bay_occupancy: OcpBayOccupancy
+  ocp_physical_variant: OcpPhysicalVariantStanding
 }
 
 data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
@@ -64,6 +75,7 @@ data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = M
   chassis_height: rack_unit(count: 1),
   observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 13 },
   observer: "operator",
+  relay_message: "Operator report relayed in the session dashboard to eager-owl-205 on 2026-09-13; no message id was retained at the time of writing, which is itself worth recording rather than inventing one.",
   method: "Operator report of the rear panel of Foxconn Mt. Collins unit 1, relayed in the session dashboard. No interior inspection was reported and none was performed by this session.",
   rear_apertures: RearApertureReport {
     aperture_count: 2,
@@ -71,6 +83,9 @@ data mtcollins1_expansion_observation: MtCollinsExpansionOperatorObservation = M
   },
   riser_occupancy: RiserPositionsUnobserved {
     settled_by: "An interior report of whether a riser cage with a PCIe edge connector is fitted behind each aperture, or whether the positions are empty behind a blanking plate.",
+  },
+  ocp_physical_variant: OcpPhysicalVariantUnresolved {
+    settled_by: "A close photograph of the empty OCP bay and its connector on this unit, or the 1U service-guide mechanical drawing. The 1U product brief establishes the generation and is silent on the physical variant.",
   },
   ocp_bay_occupancy: OcpBayOccupancyUnobserved {
     settled_by: "An interior or rear-bay report of whether the OCP 3.0 bay holds a card. BMC sensors naming an OCP zone were read on 2026-09-06 and name a slot rather than its occupancy.",
@@ -99,7 +114,17 @@ fn pcie_attachment_standing(observation: MtCollinsExpansionOperatorObservation) 
           platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
         }
         Equal => AttachmentPointOffered { positions: positions, basis: evidence }
-        Less => AttachmentPointOffered { positions: positions, basis: evidence }
+        Less =>
+          match nat_compare(a: positions, b: 0) {
+            Equal => AttachmentPointAbsent {
+              basis: "The report states zero fitted riser positions on this unit. The platform permits two; none are present, so nothing is offered here.",
+            }
+            Greater => AttachmentPointOffered { positions: positions, basis: evidence }
+            Less => AttachmentPointReportExceedsPlatform {
+              reported: positions,
+              platform_upper_bound: platform.full_height_half_length_gen4_x16_slots,
+            }
+          }
       }
     RiserPositionsUnobserved { settled_by: settled_by } =>
       AttachmentPointUnobserved {

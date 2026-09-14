@@ -26,6 +26,7 @@ import gunbc.machine_intake_mtcollins1_expansion_observation {
   OcpBayEmpty,
   OcpBayPopulated,
   OcpBayOccupancyUnobserved,
+  OcpPhysicalVariantUnresolved,
 }
 
 // The folds take an observation as a parameter, so a synthetic one exercises arms the held unit
@@ -40,9 +41,11 @@ data populated_bay_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExp
   chassis_height: rack_unit(count: 1),
   observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
   observer: "witness fixture",
+  relay_message: "Constructed by this witness. Not a relayed report." as NonEmptyStr,
   method: "Constructed by this witness to exercise the populated-bay arm. Not a report about any machine." as NonEmptyStr,
   rear_apertures: fixture_apertures,
   riser_occupancy: RiserPositionsUnobserved { settled_by: "fixture" as NonEmptyStr },
+  ocp_physical_variant: OcpPhysicalVariantUnresolved { settled_by: "fixture" as NonEmptyStr },
   ocp_bay_occupancy: OcpBayPopulated { evidence: "fixture: a card occupies the bay" as NonEmptyStr },
 }
 
@@ -51,10 +54,39 @@ data overreported_risers_fixture: MtCollinsExpansionOperatorObservation = MtColl
   chassis_height: rack_unit(count: 1),
   observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
   observer: "witness fixture",
+  relay_message: "Constructed by this witness. Not a relayed report." as NonEmptyStr,
   method: "Constructed by this witness to exercise the over-report arm. Not a report about any machine." as NonEmptyStr,
   rear_apertures: fixture_apertures,
   riser_occupancy: RiserPositionsFitted { positions: 3, evidence: "fixture: three reported on a two-position platform" as NonEmptyStr },
+  ocp_physical_variant: OcpPhysicalVariantUnresolved { settled_by: "fixture" as NonEmptyStr },
   ocp_bay_occupancy: OcpBayOccupancyUnobserved { settled_by: "fixture" as NonEmptyStr },
+}
+
+data zero_risers_fixture: MtCollinsExpansionOperatorObservation = MtCollinsExpansionOperatorObservation {
+  unit: observed_unit,
+  chassis_height: rack_unit(count: 1),
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 14 },
+  observer: "witness fixture",
+  relay_message: "Constructed by this witness. Not a relayed report." as NonEmptyStr,
+  method: "Constructed by this witness to exercise the zero-fitted arm. Not a report about any machine." as NonEmptyStr,
+  rear_apertures: fixture_apertures,
+  riser_occupancy: RiserPositionsFitted { positions: 0, evidence: "fixture: apertures present, no risers fitted" as NonEmptyStr },
+  ocp_physical_variant: OcpPhysicalVariantUnresolved { settled_by: "fixture" as NonEmptyStr },
+  ocp_bay_occupancy: OcpBayOccupancyUnobserved { settled_by: "fixture" as NonEmptyStr },
+}
+
+// REPAIR CONTROL (quiet-swift-866's review of this PR). The fitted branch used to return
+// Offered { positions: 0 } for a report of zero fitted risers, because zero is Less than the
+// platform bound of two. An offer of zero is not an offer -- the same shape as a populated bay
+// offering an attachment point, which review 66015 caught one arm over.
+test fn zero_fitted_risers_is_not_an_offer_of_zero() -> Bool {
+  match pcie_attachment_standing(observation: zero_risers_fixture) {
+    AttachmentPointAbsent { basis: _ } => true
+    AttachmentPointOffered { positions: _, basis: _ } => false
+    AttachmentPointOccupied { basis: _ } => false
+    AttachmentPointUnobserved { platform_upper_bound: _, settled_by: _ } => false
+    AttachmentPointReportExceedsPlatform { reported: _, platform_upper_bound: _ } => false
+  }
 }
 
 // REPAIR CONTROL (review 66015, first finding). OcpBayEmpty and OcpBayPopulated used to produce the
