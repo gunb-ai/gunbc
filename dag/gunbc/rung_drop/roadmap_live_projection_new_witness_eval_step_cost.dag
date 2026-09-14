@@ -6,16 +6,67 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 4b(3) DROP (fierce-lark-661, 2026-09-14, relayed verbatim via bright-boar-435).
 // One row, one authority: this file, landing as its own PR. gunbc#11365, gunbc#11371 and
-// gunbc#11303 cite it; they do not copy it. Not a re-derivation or raising of 72,300. Not cost-debt: no identity is
-// withheld from execution. The runner list below is membership for the cost-gate skip only;
-// eval_steps stay measured and recorded on every run for all four.
+// gunbc#11303 cite it; they do not copy it. The gate's membership list is
+// a projection of the measurement list below, not a second list; eval_steps stay measured and
+// recorded on every run for all four.
+//
+// WHY THIS IS NOT COST-DEBT: no identity is withheld from execution, which is the distinction the
+// landing-side chat drew when it refused cost-debt for gunbc#10994's tripwire. 72,300 is not
+// re-derived or raised; floor_cost_debt refuses ceiling tuning by name and the new-witness tier
+// remains operator policy.
+//
+// THE FALSIFIER HAS NOT RUN AS OF THIS DECLARATION. sleek-hawk-250's controlled reading does not
+// exist yet, so the dominance claim this row rests on is HYPOTHESISED, not measured: sleek-hawk-250's
+// partition attributes ~69% of the gunbc#10994 witness to roadmap_authority_projection, and the same
+// per-claim projection is the hypothesised dominant cost of these four. If the controlled reading on
+// witness_dispatch_never_presents_empty_frontier_on_authority_refusal shows the projection does NOT
+// dominate, this trigger is wrong and the row is amended before it retires (fierce-lark-661's
+// amendment clause). An unrun falsifier affects WHEN the drop retires, not whether landing it hides
+// a wrong answer -- the four still execute and a semantic red still blocks.
 
-data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> = [
-  "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges",
-  "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt",
-  "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal",
-  "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection",
+// SINGLE AUTHORITY FOR THE POPULATION. The four identities and their measurements are authored
+// ONCE, here. The gate's membership list and the RungDrop's population field are both DERIVED
+// from this list, so removing a row removes it from both at once -- a name cannot survive in one
+// while the other drops it (DESIGN section 3: each fact lives in exactly one place; section 4b(3)
+// bounded population). Same form as the sibling row gunbc.rung_drop.transitional_admission_exception.
+type RoadmapLiveProjectionEvalStepMeasurement {
+  identity: String
+  eval_steps: String
+}
+
+data roadmap_live_projection_new_witness_eval_step_measurements: List<RoadmapLiveProjectionEvalStepMeasurement> = [
+  RoadmapLiveProjectionEvalStepMeasurement {
+    identity: "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges",
+    eval_steps: "318227",
+  },
+  RoadmapLiveProjectionEvalStepMeasurement {
+    identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt",
+    eval_steps: "226622",
+  },
+  RoadmapLiveProjectionEvalStepMeasurement {
+    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal",
+    eval_steps: "441871",
+  },
+  RoadmapLiveProjectionEvalStepMeasurement {
+    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection",
+    eval_steps: "370743",
+  },
 ]
+
+// The gate consumes this; it is a projection of the list above, never a second list.
+data roadmap_live_projection_new_witness_eval_step_cost_identities: List<String> =
+  roadmap_live_projection_new_witness_eval_step_measurements |> map(m => m.identity)
+
+// The population field consumes this; also a projection of the same list.
+data roadmap_live_projection_new_witness_eval_step_cost_population: List<String> =
+  roadmap_live_projection_new_witness_eval_step_measurements
+    |> map(m => concat(
+      concat(m.identity, ": "),
+      concat(
+        m.eval_steps,
+        " eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
+      ),
+    ))
 
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
@@ -30,14 +81,9 @@ data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "THIS IS NOT COST-DEBT: no identity is withheld from execution, which is the distinction the landing-side chat drew when it refused cost-debt for gunbc#10994's tripwire. 72,300 is not re-derived or raised; floor_cost_debt refuses ceiling tuning by name and the new-witness tier remains operator policy. THE FALSIFIER HAS NOT RUN AS OF THIS DECLARATION: sleek-hawk-250's controlled reading does not exist yet, so the dominance claim below is HYPOTHESISED, not measured. sleek-hawk-250's partition attributes ~69% of the #10994 witness to roadmap_authority_projection; the same per-claim projection is the hypothesised dominant cost of these four; if the controlled reading on witness_dispatch_never_presents_empty_frontier_on_authority_refusal shows the projection does NOT dominate, this trigger is wrong and the row is amended before any citing PR lands again. Restoration is the loaded roadmap history consumed as a prepared effect input so no per-claim projection is paid",
+          replacement: "the loaded roadmap history consumed as a prepared effect input (adhoc-5ecec982-c23), so a required-floor claim no longer re-pays the live roadmap projection per claim",
     },
-    population: [
-      "test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges: 318227 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
-      "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt: 226622 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
-      "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal: 441871 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
-      "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection: 370743 eval_steps on run 34854812903; pre-existing unchanged identity first measured under the gunbc#11195 tier, not a regression by any PR",
-    ],
+    population: roadmap_live_projection_new_witness_eval_step_cost_population,
     restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) loaded roadmap history consumed as a prepared effect input (dashboard work item adhoc-5ecec982-c23; gentle-ram-506's lane) so no per-claim projection is paid; WHAT adhoc-5ecec982-c23 MUST BE SUFFICIENT FOR: a required-floor claim does not re-pay the live roadmap projection per claim because that history is already a prepared effect input. (ii) AND each of the four identities measured under 72,300 eval_steps on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the four under budget without the prepared-input capability does not retire the row; landing the capability without those four under 72,300 on the acceptance path does not retire it either. 72,300 is not raised to retire this row",
   }
 }

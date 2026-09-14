@@ -6018,14 +6018,18 @@ pub fn run_required_floor(
                 }
             }
         }
-        if out.len() != 4 {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=EvalStepCostDropPopulationNotExactFour \
+        // The CARDINALITY IS NOT RESTATED HERE. The declared population is the measurement list
+        // in the row, and this set is a projection of it, so a third place stating "four" would
+        // be a second authority that drifts when the row is edited (DESIGN §3). An EMPTY decode
+        // still refuses: a drop that names nobody is a skip with no declared population, which is
+        // the fail-open shape this gate exists to prevent (§5).
+        if out.is_empty() {
+            return Err(
+                "REQUIRED-FLOOR REFUSAL cause=EvalStepCostDropPopulationEmpty \
                  gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost \
-                 identities decoded to {} names; the declared drop is bounded to exactly four \
-                 identities by name.",
-                out.len()
-            ));
+                 identities decoded to zero names; a declared drop must name its population."
+                    .to_string(),
+            );
         }
         out
     };
