@@ -12,7 +12,7 @@ import gunbc.frontend_eval.attempt {
   EvalAttempt, EvalUsage, EvalArm, EvalOutcome, ArmSummary,
   LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard,
   AcceptedRepair, FrontendStillRed, TestsRed, ScopeExceeded, BudgetExhausted, TransportFailed,
-  eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted,
+  eval_arms, arm_summary, frontend_eval_report, eval_outcome_accepted, ReportRead, ReportRendered, ReportNotRendered,
 }
 import gunbc.frontend_eval.card { frontend_language_card }
 import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, mutation_site_occurrences, import_targets, module_file_path, test_fns }
@@ -118,8 +118,15 @@ test fn scope_exceeded_is_not_an_accepted_repair() -> Bool {
 }
 
 // A PARTIAL POPULATION PRINTS AS PARTIAL: 1/16 with 14 not run, never 1/2.
+fn rendered(attempts: List<EvalAttempt>) -> String {
+  match frontend_eval_report(attempts: attempts) {
+    ReportRendered { text } => text
+    ReportNotRendered { detail: _ } => ""
+  }
+}
+
 test fn report_renders_one_line_per_arm_from_rows() -> Bool {
-  let r = frontend_eval_report(attempts: fixture_attempts)
+  let r = rendered(attempts: fixture_attempts)
   contains(r, "| low_bare | 1/16 (14 not run) | 1/4 (3 not run) | 20 | 40 | 2 | 0 |")
     && contains(r, "| low_tools | 0/16 (15 not run) | not run | - | - | - | - |")
     && contains(r, "| max_bare | not run | not run | - | - | - | - |")
@@ -180,5 +187,23 @@ test fn negative_sampling_temperature_has_no_constructor() -> Bool {
       Present { value: t } => t.value == 0.7
       Absent => false
     }
+  }
+}
+
+// THE REPORT REFUSES A POPULATION IT CANNOT SUM HONESTLY: a second row for one (task, arm) cell
+// would double a numerator its denominator counts once, and a task outside the roster would add
+// cost with no task behind it. Both refuse by name instead of rendering (review 65900).
+test fn report_refuses_duplicate_cells_and_unknown_tasks() -> Bool {
+  let dup = concat(fixture_attempts, fixture_attempts)
+  let unknown = match sampling_temperature(value: 0.0) {
+    Absent => []
+    Present { value: t } => [fixture_attempt(t: t, id: "nowhere.task", class: ExpressionNesting, arm: LowEffortBare, outcome: AcceptedRepair, reasoning: 1, cycles: 1)]
+  }
+  match frontend_eval_report(attempts: dup) {
+    ReportRendered { text: _ } => false
+    ReportNotRendered { detail: d } => contains(d, "more than one attempt") && contains(d, "pareto.nesting")
+  } && match frontend_eval_report(attempts: unknown) {
+    ReportRendered { text: _ } => false
+    ReportNotRendered { detail: d } => contains(d, "not in the roster") && contains(d, "nowhere.task")
   }
 }

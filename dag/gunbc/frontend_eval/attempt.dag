@@ -144,6 +144,44 @@ fn accepted_rows(attempts: List<EvalAttempt>, arm: EvalArm) -> List<EvalAttempt>
   attempts |> filter(a => a.arm == arm && eval_outcome_accepted(outcome: a.outcome))
 }
 
+// THE POPULATION IS ADMITTED BEFORE ANYTHING IS SUMMED: exactly one row per (task, arm) and every
+// row's task in the roster. Without this, a duplicated task doubles a numerator its denominator
+// counts once, and an unknown id adds cost with no task behind it -- a fabricated mean (review 65900).
+type ReportAdmission
+  = ReportAdmitted { attempts: List<EvalAttempt> }
+  | ReportRefused { detail: String }
+
+fn task_known(a: EvalAttempt) -> Bool {
+  count(frontend_eval_tasks |> filter(t => t.id == a.task_id)) == 1
+}
+
+fn duplicate_cell(attempts: List<EvalAttempt>, a: EvalAttempt) -> Bool {
+  count(attempts |> filter(b => b.arm == a.arm && b.task_id == a.task_id)) > 1
+}
+
+fn admit_report_population(attempts: List<EvalAttempt>) -> ReportAdmission {
+  let unknown = attempts |> filter(a => task_known(a: a) == false)
+  let duplicated = attempts |> filter(a => duplicate_cell(attempts: attempts, a: a))
+  if count(unknown) > 0 {
+    ReportRefused { detail: join(["attempt names a task not in the roster: ", first_task_id(rows: unknown)], "") }
+  } else {
+    if count(duplicated) > 0 {
+      ReportRefused { detail: join(["more than one attempt for one (task, arm) cell: ", first_task_id(rows: duplicated)], "") }
+    } else {
+      ReportAdmitted { attempts: attempts }
+    }
+  }
+}
+
+fn first_task_id(rows: List<EvalAttempt>) -> String {
+  match rows |> first {
+    Present { value: a } => a.task_id as String
+    Absent => ""
+  }
+}
+
+// Over an ADMITTED population: accepted rows and accepted tasks are the same set, so the sums and
+// the denominator below describe one population.
 fn arm_summary(attempts: List<EvalAttempt>, arm: EvalArm) -> ArmSummary {
   let accepted = accepted_rows(attempts: attempts, arm: arm)
   ArmSummary {
@@ -178,8 +216,7 @@ fn mean_text(total: Int, n: Int) -> String {
   if n == 0 { "-" } else { to_string(value: total / n) }
 }
 
-fn arm_summary_line(s: ArmSummary) -> String {
-  let accepted = s.language_accepted + s.sentinel_accepted
+fn arm_summary_line(s: ArmSummary, accepted: Int) -> String {
   join([
     "| ", eval_arm_key(arm: s.arm),
     " | ", coverage_text(accepted: s.language_accepted, run: s.language_run, tasks: s.language_tasks),
@@ -195,9 +232,20 @@ fn arm_summary_line(s: ArmSummary) -> String {
 // THE REPORT IS GENERATED FROM ATTEMPT ROWS, never transcribed (DESIGN section 6: name the
 // instrument). Means are over ACCEPTED attempts only, because correctness is lexicographically
 // prior: a cheap wrong answer is not a cheaper answer.
-fn frontend_eval_report(attempts: List<EvalAttempt>) -> String {
-  join(concat([
-    "| arm | language accepted | sentinel accepted | mean reasoning tok (accepted) | mean completion tok (accepted) | mean cycles (accepted) | mean tool calls (accepted) |",
-    "|---|---|---|---|---|---|---|",
-  ], eval_arms |> map(arm => arm_summary_line(s: arm_summary(attempts: attempts, arm: arm)))), "\n")
+fn arm_line(attempts: List<EvalAttempt>, arm: EvalArm) -> String {
+  arm_summary_line(s: arm_summary(attempts: attempts, arm: arm), accepted: count(accepted_rows(attempts: attempts, arm: arm)))
+}
+
+type ReportRead
+  = ReportRendered { text: String }
+  | ReportNotRendered { detail: String }
+
+fn frontend_eval_report(attempts: List<EvalAttempt>) -> ReportRead {
+  match admit_report_population(attempts: attempts) {
+    ReportRefused { detail } => ReportNotRendered { detail: detail }
+    ReportAdmitted { attempts: admitted } => ReportRendered { text: join(concat([
+      "| arm | language accepted | sentinel accepted | mean reasoning tok (accepted) | mean completion tok (accepted) | mean cycles (accepted) | mean tool calls (accepted) |",
+      "|---|---|---|---|---|---|---|",
+    ], eval_arms |> map(arm => arm_line(attempts: admitted, arm: arm))), "\n") }
+  }
 }
