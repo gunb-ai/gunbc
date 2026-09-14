@@ -80,8 +80,9 @@ data prometheus_client_float_rendering_authority: ExternalAuthority = ExternalAu
 // property that makes the field usable as an identity: two readings are of the same launch exactly
 // when their decimals are equal. So the reading is an ExactDecimal, and the exponent form is folded
 // into the scale rather than refused -- the exclusion extdeps.languages.json.number makes for JSON
-// does not apply here, because this exponent is bounded by the renderer (it is the digit count of
-// the integer part) and cannot name a magnitude the mantissa did not carry.
+// does not apply here, because prometheus_signed_exponent BOUNDS the exponent to
+// prometheus_exponent_max_digits (the renderer writes the integer-digit count, a small number) and
+// refuses anything longer, so it cannot name a magnitude the mantissa did not carry.
 type PrometheusSampleValueReading
   = SampleValueExact { value: ExactDecimal }
   | SampleValueNotFinite { lexeme: String }
@@ -140,35 +141,62 @@ fn prometheus_scan_lexeme(body: String) -> SampleLexemeScan {
 // The scale after the exponent is folded in: fraction digits minus the exponent. A non-negative
 // result is the ExactDecimal scale directly; a negative one means the mantissa must be multiplied
 // out, which decimal_pow10 does exactly, and the scale becomes zero.
+// THE EXPONENT IS ITS OWN TYPED READING, not a sentinel. client_python's Go rendering only reaches
+// the exponent form past six integer digits and the exponent it writes is that integer-digit count,
+// so a well-behaved sample carries a two-digit exponent (process_start_time_seconds arrives as e+09).
+// The bytes this reader actually receives are NOT guaranteed to be well-behaved -- a route can hand
+// back anything -- so the boundedness the header asserts is made true BY CONSTRUCTION here: an
+// exponent whose digits exceed prometheus_exponent_max_digits, or whose digits do not parse, is a
+// typed refusal, never a value. That closes the DESIGN 5 hole a sentinel plus a compensating guard
+// left open: `1e-99999999999999999999` off a /metrics endpoint refuses rather than being admitted as
+// a fabricated 0.1 into the identity join, and DESIGN 4d's "do not assert as deduced what is only
+// inferred" is honoured because the bound is enforced rather than assumed.
+data prometheus_exponent_max_digits: Int = 3
+
+type PrometheusExponentRead
+  = ExponentValue { value: Int }
+  | ExponentUnreadable
+  | ExponentOutOfRange
+
+fn prometheus_signed_exponent(scan: SampleLexemeScan) -> PrometheusExponentRead {
+  if !scan.in_exponent {
+    ExponentValue { value: 0 }
+  } else if string_length(scan.exponent_text) > prometheus_exponent_max_digits {
+    ExponentOutOfRange
+  } else {
+    match parse_int(s: scan.exponent_text) {
+      Absent => ExponentUnreadable
+      Present { value: e } => ExponentValue { value: if scan.exponent_sign_negative { 0 - e } else { e } }
+    }
+  }
+}
+
 fn prometheus_exact_from_scan(lexeme: String, negative: Bool, scan: SampleLexemeScan) -> PrometheusSampleValueReading {
   if !scan.ok || scan.mantissa_digits == "" || (scan.in_exponent && scan.exponent_text == "") {
     SampleValueUnreadable { lexeme: lexeme }
   } else {
     match parse_int(s: scan.mantissa_digits) {
       Absent => SampleValueUnreadable { lexeme: lexeme }
-      Present { value: magnitude } => {
-        let exponent = if scan.in_exponent {
-          match parse_int(s: scan.exponent_text) {
-            Absent => 0 - 1
-            Present { value: e } => if scan.exponent_sign_negative { 0 - e } else { e }
-          }
-        } else { 0 }
-        let scale = scan.fraction_digits - exponent
-        let units = if negative { 0 - magnitude } else { magnitude }
-        if scan.in_exponent && scan.exponent_text != "" && exponent == 0 - 1 && scan.exponent_text != "1" && !scan.exponent_sign_negative {
-          SampleValueUnreadable { lexeme: lexeme }
-        } else if scale < 0 {
-          match admit_exact_decimal(units: units * decimal_pow10(exponent: 0 - scale), fraction_digits: 0) {
-            ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
-            ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
-          }
-        } else {
-          match admit_exact_decimal(units: units, fraction_digits: scale) {
-            ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
-            ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
+      Present { value: magnitude } =>
+        match prometheus_signed_exponent(scan: scan) {
+          ExponentUnreadable => SampleValueUnreadable { lexeme: lexeme }
+          ExponentOutOfRange => SampleValueUnreadable { lexeme: lexeme }
+          ExponentValue { value: exponent } => {
+            let scale = scan.fraction_digits - exponent
+            let units = if negative { 0 - magnitude } else { magnitude }
+            if scale < 0 {
+              match admit_exact_decimal(units: units * decimal_pow10(exponent: 0 - scale), fraction_digits: 0) {
+                ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
+                ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
+              }
+            } else {
+              match admit_exact_decimal(units: units, fraction_digits: scale) {
+                ExactDecimalAdmitted { canonical } => SampleValueExact { value: canonical }
+                ExactDecimalScaleRefused { observed_fraction_digits: _ } => SampleValueUnreadable { lexeme: lexeme }
+              }
+            }
           }
         }
-      }
     }
   }
 }

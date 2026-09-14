@@ -77,6 +77,23 @@ test fn a_non_numeric_sample_refuses() -> Bool {
   }
 }
 
+// THE RED FOR THE EXPONENT BOUND. A lexeme with a huge negative exponent off a /metrics endpoint --
+// far more exponent digits than client_python's integer-digit-count renderer ever writes -- must
+// REFUSE, not fall through as a fabricated near-zero reading admitted into the identity join
+// (review 66252, DESIGN 5). The compensating-guard-plus-sentinel this replaced admitted it as 0.1.
+test fn a_huge_exponent_sample_refuses_rather_than_fabricating() -> Bool {
+  match prometheus_sample_value_reading(field: "1e-99999999999999999999") {
+    SampleValueUnreadable { lexeme: _ } => true
+    SampleValueExact { value: _ } => false
+    SampleValueNotFinite { lexeme: _ } => false
+  }
+  && match prometheus_sample_value_reading(field: "1e999999") {
+    SampleValueUnreadable { lexeme: _ } => true
+    SampleValueExact { value: _ } => false
+    SampleValueNotFinite { lexeme: _ } => false
+  }
+}
+
 // ── THE HOST FACTS DECODE ────────────────────────────────────────────────────────────────────────
 
 test fn boot_time_reads_from_proc_stat() -> Bool {
