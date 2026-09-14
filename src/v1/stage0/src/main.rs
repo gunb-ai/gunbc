@@ -170,7 +170,7 @@ fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {
                 "unknown --dependency-pool-index: {} (expected strict | primary-precedence)",
                 other
             );
-            std::process::exit(1);
+            std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_usage() as i32);
         }
     }
 }
@@ -220,13 +220,13 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
                     "unknown target: {}. supported: rust, python, go, dag, rust+dag",
                     target
                 );
-                std::process::exit(1);
+                std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_usage() as i32);
             }
         }
     }
     if targets.is_empty() {
         eprintln!("error: --target must name at least one target");
-        std::process::exit(1);
+        std::process::exit(gunbc_cli_dispatch_surface::compile_cli_exit_usage() as i32);
     }
     targets
 }

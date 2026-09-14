@@ -6,6 +6,7 @@ import tools.dag_compile_clean_transport {
   OutputWriteRefused,
   RefusedBeforeSubject,
   dcc_cli_not_executed_phase,
+  dcc_cli_usage_phase,
   dcc_compile_report_from_bin,
   dcc_instrument_earlier_phase,
   dcc_root_admission_precheck_phase,
@@ -16,7 +17,8 @@ import gunbc.cli_dispatch_surface {
   compile_cli_exit_completed,
   compile_cli_exit_not_executed,
   compile_cli_exit_output_write_refused,
-  compile_cli_exit_refused
+  compile_cli_exit_refused,
+  compile_cli_exit_usage
 }
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -135,6 +137,19 @@ test fn expected_failure_does_not_hold_on_output_write_refused() -> Bool {
     ),
     expect_success: false
   )
+}
+
+test fn usage_exit_is_refused_before_subject_not_subject_red() -> Bool {
+  match dcc_compile_report_from_bin(
+    exit_code: compile_cli_exit_usage,
+    stdout: "",
+    stderr: "unknown target: zig. supported: rust, python, go, dag, rust+dag"
+  ) {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_usage_phase
+    SubjectRed => false
+    SubjectGreen => false
+    OutputWriteRefused { cause: _ } => false
+  }
 }
 
 test fn not_executed_status_is_not_output_write_status() -> Bool {

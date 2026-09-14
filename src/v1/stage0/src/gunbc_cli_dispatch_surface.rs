@@ -303,6 +303,10 @@ pub fn compile_cli_exit_refused() -> i64 {
     exit_code_general_error()
 }
 
+pub fn compile_cli_exit_usage() -> i64 {
+    2
+}
+
 pub fn compile_cli_exit_output_write_refused() -> i64 {
     3
 }

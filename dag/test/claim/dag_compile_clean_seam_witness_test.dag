@@ -9,8 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Live-tree standing is tools.dag_compile_clean_seam cross_shard_seam_preservation_standing.
-// Required-floor execution of that standing is gunbc.rung_drop.compile_clean_live_tree_seam_off_required_floor.
+// Live-tree standing and probe are deleted (gunbc.rung_drop.compile_clean_live_tree_seam_off_required_floor).
 // Algebra below is the per-PR identity.
 
 test fn cross_shard_seam_algebra_holds() -> Bool {

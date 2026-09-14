@@ -11,7 +11,8 @@ import gunbc.cli_dispatch_surface {
   compile_cli_exit_completed,
   compile_cli_exit_not_executed,
   compile_cli_exit_output_write_refused,
-  compile_cli_exit_refused
+  compile_cli_exit_refused,
+  compile_cli_exit_usage
 }
 import gunbc.output_policy { OutcomeIsData }
 import std.effect_grant { position_under }
@@ -37,6 +38,7 @@ data dcc_stage_template_suffix: String = "/target/dcc_stage_XXXXXX"
 data dcc_perturb_fixture_template_suffix: String = "/target/dcc_perturb_fixture_XXXXXX"
 data dcc_instrument_earlier_phase: String = "instrument"
 data dcc_cli_not_executed_phase: String = "not-executed"
+data dcc_cli_usage_phase: String = "usage"
 data dcc_root_admission_precheck_phase: String = "root-admission-precheck"
 
 fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -> DccCompileReport {
@@ -49,6 +51,11 @@ fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -
   } else if exit_code == compile_cli_exit_not_executed {
     RefusedBeforeSubject {
       earlier_phase: dcc_cli_not_executed_phase,
+      cause: concat(stdout, stderr)
+    }
+  } else if exit_code == compile_cli_exit_usage {
+    RefusedBeforeSubject {
+      earlier_phase: dcc_cli_usage_phase,
       cause: concat(stdout, stderr)
     }
   } else {
