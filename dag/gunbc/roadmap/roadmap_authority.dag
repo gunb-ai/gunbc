@@ -20,6 +20,10 @@ import gunbc.roadmap_model {
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
   node_ids_held_off_active_frontier,
+  remains_superseded_revocations_join,
+  RemainsSupersededRevocationsJoined,
+  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUndeclaredNode,
   node_accepted,
   project_live_acceptance_receipts,
   acceptance_history_integrity_holds,
@@ -3207,10 +3211,25 @@ type WithheldNodeIdsProjection
   = WithheldNodeIdsProjected { ids: List<RoadmapNodeId> }
   | WithheldNodeIdsProjectionRefused { detail: String }
 
+fn withheld_node_ids_from_events(events: List<RoadmapAcceptanceEvent>) -> WithheldNodeIdsProjection {
+  match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
+    RemainsSupersededRevocationsJoined =>
+      WithheldNodeIdsProjected { ids: node_ids_held_off_active_frontier(history: events) }
+    RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
+      WithheldNodeIdsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
+      }
+    RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
+      WithheldNodeIdsProjectionRefused {
+        detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
+      }
+  }
+}
+
 fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      WithheldNodeIdsProjected { ids: node_ids_held_off_active_frontier(history: events) }
+      withheld_node_ids_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
   }
@@ -3219,7 +3238,7 @@ fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
 fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjection {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      WithheldNodeIdsProjected { ids: node_ids_held_off_active_frontier(history: events) }
+      withheld_node_ids_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
   }
@@ -3601,7 +3620,7 @@ fn active_roadmap_edges_for_accepted(
 fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted minus withheld (revoked receipts whose disposition keeps a superseded node off the frontier), so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
     ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
@@ -3726,23 +3745,27 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      let receipts = project_live_acceptance_receipts(history: events)
-      let accepted = accepted_node_ids_from_receipts(receipts: receipts)
-      let withheld = node_ids_held_off_active_frontier(history: events)
-      RoadmapAuthorityProjected {
-        doc: RoadmapDocument {
-          preamble: preamble(),
-          lead_lanes: [],
-          sections: [
-            active_section_for_acceptance(
-              focus: roadmap_focus_selection,
-              accepted: accepted,
-              withheld: withheld,
-            ),
-          ],
-        },
-        accepted: accepted,
-        withheld: withheld,
+      match withheld_node_ids_from_events(events: events) {
+        WithheldNodeIdsProjectionRefused { detail: detail } =>
+          RoadmapAuthorityProjectionRefused { detail: detail }
+        WithheldNodeIdsProjected { ids: withheld } =>
+          let receipts = project_live_acceptance_receipts(history: events)
+          let accepted = accepted_node_ids_from_receipts(receipts: receipts)
+          RoadmapAuthorityProjected {
+            doc: RoadmapDocument {
+              preamble: preamble(),
+              lead_lanes: [],
+              sections: [
+                active_section_for_acceptance(
+                  focus: roadmap_focus_selection,
+                  accepted: accepted,
+                  withheld: withheld,
+                ),
+              ],
+            },
+            accepted: accepted,
+            withheld: withheld,
+          }
       }
   }
 }
@@ -3752,21 +3775,25 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
     RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      let receipts = project_live_acceptance_receipts(history: events)
-      let accepted = accepted_node_ids_from_receipts(receipts: receipts)
-      let withheld = node_ids_held_off_active_frontier(history: events)
-      RoadmapAuthorityProjected {
-        doc: RoadmapDocument {
-          preamble: preamble(),
-          lead_lanes: [],
-          sections: [active_section_for_acceptance(
-            focus: roadmap_focus_selection,
+      match withheld_node_ids_from_events(events: events) {
+        WithheldNodeIdsProjectionRefused { detail: detail } =>
+          RoadmapAuthorityProjectionRefused { detail: detail }
+        WithheldNodeIdsProjected { ids: withheld } =>
+          let receipts = project_live_acceptance_receipts(history: events)
+          let accepted = accepted_node_ids_from_receipts(receipts: receipts)
+          RoadmapAuthorityProjected {
+            doc: RoadmapDocument {
+              preamble: preamble(),
+              lead_lanes: [],
+              sections: [active_section_for_acceptance(
+                focus: roadmap_focus_selection,
+                accepted: accepted,
+                withheld: withheld,
+              )],
+            },
             accepted: accepted,
             withheld: withheld,
-          )],
-        },
-        accepted: accepted,
-        withheld: withheld,
+          }
       }
   }
 }

@@ -210,15 +210,21 @@ fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> B
 // arms.
 
 type AcceptanceNodeReopensActiveFrontier {}
+type AcceptanceNodeRemainsSuperseded {}
 
+// The revocation disposition names the FRONTIER CONSEQUENCE, not the supersession fact.
+// SupersededLine already owns terminal standing and `by`. AcceptanceNodeRemainsSuperseded is
+// deliberately payload-free: it says the revoked receipt stays off the active frontier because the
+// referenced node remains superseded. The join to that node's existing SupersededLine is the
+// wall; `by` is read from the line, never re-authored on the event.
 type AcceptanceRevocationDisposition
   = AcceptanceNodeReopensActiveFrontier
-  | AcceptanceNodeSuperseded { by: String }
+  | AcceptanceNodeRemainsSuperseded
 
 fn revocation_reopens_active_frontier(disposition: AcceptanceRevocationDisposition) -> Bool {
   match disposition {
     AcceptanceNodeReopensActiveFrontier {} => true
-    AcceptanceNodeSuperseded { by: _ } => false
+    AcceptanceNodeRemainsSuperseded {} => false
   }
 }
 
@@ -227,12 +233,12 @@ fn revocation_disposition_eq(a: AcceptanceRevocationDisposition, b: AcceptanceRe
     AcceptanceNodeReopensActiveFrontier {} =>
       match b {
         AcceptanceNodeReopensActiveFrontier {} => true
-        AcceptanceNodeSuperseded { by: _ } => false
+        AcceptanceNodeRemainsSuperseded {} => false
       }
-    AcceptanceNodeSuperseded { by: aby } =>
+    AcceptanceNodeRemainsSuperseded {} =>
       match b {
         AcceptanceNodeReopensActiveFrontier {} => false
-        AcceptanceNodeSuperseded { by: bby } => aby == bby
+        AcceptanceNodeRemainsSuperseded {} => true
       }
   }
 }
@@ -465,10 +471,10 @@ fn acceptance_revocation_disposition_digest(
         tag: "roadmap-acceptance-reopens-active-frontier-v1",
         payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
       )
-    AcceptanceNodeSuperseded { by } =>
+    AcceptanceNodeRemainsSuperseded {} =>
       content_hash_tagged_structural(
-        tag: "roadmap-acceptance-superseded-v1",
-        payload: content_hash_atom(value: by as NonEmptyStr),
+        tag: "roadmap-acceptance-remains-superseded-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeRemainsSuperseded" as NonEmptyStr),
       )
   }
 }
@@ -638,6 +644,75 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
   }
 }
 
+fn node_line_is_superseded(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
+    PlainLine { content: _ } => false
+    SupersededLine { by: _, content: _ } => true
+    TicketLine { done: _, ticket: _ } => false
+  }
+}
+
+type RemainsSupersededRevocationJoin
+  = RemainsSupersededRevocationsJoined
+  | RemainsSupersededRevocationOnNonSupersededNode { node: RoadmapNodeId }
+  | RemainsSupersededRevocationOnUndeclaredNode { node: RoadmapNodeId }
+
+fn join_remains_superseded_to_declared_line(
+  node: RoadmapNodeId,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  let found = nodes |> filter(n => n.node == node)
+  if count(found) == 0 {
+    RemainsSupersededRevocationOnUndeclaredNode { node: node }
+  } else {
+    if node_line_is_superseded(rn: first(found)) {
+      RemainsSupersededRevocationsJoined
+    } else {
+      RemainsSupersededRevocationOnNonSupersededNode { node: node }
+    }
+  }
+}
+
+fn remains_superseded_revocation_event_join(
+  event: RoadmapAcceptanceEvent,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  match event {
+    AcceptanceRecorded { receipt: _ } => RemainsSupersededRevocationsJoined
+    AcceptanceRevoked { exact_prior_receipt, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+      match disposition {
+        AcceptanceNodeReopensActiveFrontier {} => RemainsSupersededRevocationsJoined
+        AcceptanceNodeRemainsSuperseded {} =>
+          join_remains_superseded_to_declared_line(node: exact_prior_receipt.node, nodes: nodes)
+      }
+  }
+}
+
+fn remains_superseded_revocations_join(
+  history: List<RoadmapAcceptanceEvent>,
+  nodes: List<RoadmapNode>,
+) -> RemainsSupersededRevocationJoin {
+  fold(
+    history,
+    init: RemainsSupersededRevocationsJoined,
+    f: fn(acc, event) {
+      match acc {
+        RemainsSupersededRevocationOnNonSupersededNode { node: n } =>
+          RemainsSupersededRevocationOnNonSupersededNode { node: n }
+        RemainsSupersededRevocationOnUndeclaredNode { node: n } =>
+          RemainsSupersededRevocationOnUndeclaredNode { node: n }
+        RemainsSupersededRevocationsJoined =>
+          remains_superseded_revocation_event_join(event: event, nodes: nodes)
+      }
+    },
+  )
+}
+
+// Consequence fold only. Callers that admit a withheld set MUST first
+// remains_superseded_revocations_join against the declared nodes; a RemainsSuperseded arm that
+// does not join a SupersededLine is a projection refusal, not an empty withheld list.
 fn node_ids_held_off_active_frontier(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapNodeId> {
   fold(
     history,

@@ -70,6 +70,11 @@ import gunbc.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
+  AcceptanceNodeRemainsSuperseded,
+  remains_superseded_revocations_join,
+  RemainsSupersededRevocationsJoined,
+  RemainsSupersededRevocationOnNonSupersededNode,
+  RemainsSupersededRevocationOnUndeclaredNode,
   receipt_node_match_verdict,
   ReceiptMatchesNode,
   LiveReceiptOnSupersededLine,
@@ -433,6 +438,86 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
 test fn witness_revocation_frontier_disposition_discriminates() -> Bool {
   witness_superseded_revocation_does_not_reopen_active_frontier()
     && witness_reopen_revocation_returns_node_to_active_frontier()
+}
+
+test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
+  match remains_superseded_revocations_join(
+    history: live_acceptance_event_history(),
+    nodes: declared_roadmap_nodes(),
+  ) {
+    RemainsSupersededRevocationsJoined =>
+      all(
+        declared_node(id: "entry-graph-union-construction"),
+        n => match n.line {
+          SupersededLine { by: _, content: _ } => true
+          TicketLine { done: _, ticket: _ } => false
+          AuthoredLine { done: _, content: _ } => false
+          PlainLine { content: _ } => false
+          DerivableLine { prs: _, title: _, description: _ } => false
+        },
+      )
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+  }
+}
+
+test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  let prior = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: prior)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  count(victims) == 1
+    && all(victims, n =>
+      match n.line {
+        TicketLine { done: _, ticket: _ } => true
+        SupersededLine { by: _, content: _ } => false
+        AuthoredLine { done: _, content: _ } => false
+        PlainLine { content: _ } => false
+        DerivableLine { prs: _, title: _, description: _ } => false
+      }
+    )
+    && match remains_superseded_revocations_join(
+      history: concat(prior, [
+        AcceptanceRevoked {
+          exact_prior_receipt: receipt,
+          disposition: AcceptanceNodeRemainsSuperseded {},
+          reason: "fixture remains-superseded on a live ticket line must refuse" as NonEmptyStr,
+          revoked_by: "operator" as NonEmptyStr,
+          revoked_on: "2026-09-13" as NonEmptyStr,
+        },
+      ]),
+      nodes: declared_roadmap_nodes(),
+    ) {
+      RemainsSupersededRevocationOnNonSupersededNode { node } =>
+        node == tnid(s: "namespace-occurrence-transport")
+      RemainsSupersededRevocationsJoined => false
+      RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+    }
+}
+
+test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
+  match remains_superseded_revocations_join(
+    history: [
+      AcceptanceRevoked {
+        exact_prior_receipt: receipt_fixture(
+          node: "not-a-declared-roadmap-node-for-join-red",
+          digest: tchash(s: "0123456789abcdef"),
+        ),
+        disposition: AcceptanceNodeRemainsSuperseded {},
+        reason: "fixture remains-superseded on an undeclared node must refuse" as NonEmptyStr,
+        revoked_by: "operator" as NonEmptyStr,
+        revoked_on: "2026-09-13" as NonEmptyStr,
+      },
+    ],
+    nodes: declared_roadmap_nodes(),
+  ) {
+    RemainsSupersededRevocationOnUndeclaredNode { node } =>
+      node == tnid(s: "not-a-declared-roadmap-node-for-join-red")
+    RemainsSupersededRevocationsJoined => false
+    RemainsSupersededRevocationOnNonSupersededNode { node: _ } => false
+  }
 }
 
 test fn witness_accepted_parents_precede_dependents() -> Bool {
