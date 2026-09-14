@@ -12233,6 +12233,34 @@ fn namespace_structural_observation_admissions_value(
     )
 }
 
+/// ONE PROJECTION OF `CompileDiagnosticCensusRow`, CALLED BY EVERY PRODUCER OF IT.
+///
+/// Three independent hand-copies of this four-field build existed -- in
+/// `compile_diagnostic_census_value`, in `claim_scope_fixture_value`, and in
+/// `multi_module_compile_fixture_value` forty lines apart in this file -- which is §2's duplicated
+/// work and fails its own test: "net concepts must not grow by re-invention". The cost is not
+/// style. The day the `.dag` row gains a field, two of the three keep emitting the old shape and
+/// the new field arrives NULL at its first reader -- which is precisely the defect this instrument
+/// already paid for once, when a declared `diagnostics` field that no projection set killed a
+/// control with `type error: filter expects a list, got Null`.
+fn compile_diagnostic_census_row_value(
+    ctx: &InterpContext,
+    diagnostic_class: String,
+    subject_name: String,
+    blocking: bool,
+    count: i64,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("CompileDiagnosticCensusRow"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("diagnostic_class"), str_value(diagnostic_class)),
+            (ctx.sym("subject_name"), str_value(subject_name)),
+            (ctx.sym("blocking"), Value::Bool(blocking)),
+            (ctx.sym("count"), Value::Int(count)),
+        ])),
+    }
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -12245,14 +12273,14 @@ fn compile_diagnostic_census_value(
                 ctx.sym("rows"),
                 list_value(
                     rows.into_iter()
-                        .map(|r| Value::Record {
-                            type_name: ctx.sym("CompileDiagnosticCensusRow"),
-                            fields: Rc::new(sorted_fields(vec![
-                                (ctx.sym("diagnostic_class"), str_value(r.diagnostic_class)),
-                                (ctx.sym("subject_name"), str_value(r.subject_name)),
-                                (ctx.sym("blocking"), Value::Bool(r.blocking)),
-                                (ctx.sym("count"), Value::Int(r.count)),
-                            ])),
+                        .map(|r| {
+                            compile_diagnostic_census_row_value(
+                                ctx,
+                                r.diagnostic_class,
+                                r.subject_name,
+                                r.blocking,
+                                r.count,
+                            )
                         })
                         .collect::<Vec<_>>(),
                 ),
@@ -12302,17 +12330,14 @@ fn claim_scope_fixture_value(
             let rows = list_value(
                 diagnostics
                     .iter()
-                    .map(|row| Value::Record {
-                        type_name: ctx.sym("CompileDiagnosticCensusRow"),
-                        fields: Rc::new(sorted_fields(vec![
-                            (
-                                ctx.sym("diagnostic_class"),
-                                str_value(row.diagnostic_class.clone()),
-                            ),
-                            (ctx.sym("subject_name"), str_value(row.subject_name.clone())),
-                            (ctx.sym("blocking"), Value::Bool(row.blocking)),
-                            (ctx.sym("count"), Value::Int(row.count)),
-                        ])),
+                    .map(|row| {
+                        compile_diagnostic_census_row_value(
+                            ctx,
+                            row.diagnostic_class.clone(),
+                            row.subject_name.clone(),
+                            row.blocking,
+                            row.count,
+                        )
                     })
                     .collect::<Vec<_>>(),
             );
@@ -12350,14 +12375,14 @@ fn multi_module_compile_fixture_value(
     let rows = |rows: Vec<crate::cli_run::CompileDiagnosticCensusRow>| {
         list_value(
             rows.into_iter()
-                .map(|r| Value::Record {
-                    type_name: ctx.sym("CompileDiagnosticCensusRow"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("diagnostic_class"), str_value(r.diagnostic_class)),
-                        (ctx.sym("subject_name"), str_value(r.subject_name)),
-                        (ctx.sym("blocking"), Value::Bool(r.blocking)),
-                        (ctx.sym("count"), Value::Int(r.count)),
-                    ])),
+                .map(|r| {
+                    compile_diagnostic_census_row_value(
+                        ctx,
+                        r.diagnostic_class,
+                        r.subject_name,
+                        r.blocking,
+                        r.count,
+                    )
                 })
                 .collect::<Vec<_>>(),
         )

@@ -146,25 +146,28 @@ fn amb_marker_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
   )
 }
 
-// THE DISCRIMINATING RED HAS FIRED, AND THIS IS THE RECEIPT. §4b(1) requires the reported rung to
-// equal the rung established by EXECUTED evidence -- "a discriminating RED refused on the real
-// acceptance path plus an accepted positive control" -- and until this run the chain was argued in
-// prose rather than shown. Measured by building the seed twice against this same manifest, with
-// only the wall's own `if !ambiguous_reads.is_empty()` guard disabled between the two:
+// WHY THESE THREE ROWS DISCRIMINATE, which is rationale and belongs here -- and NOT a table of
+// what they returned, which does not. An earlier version of this block transcribed the two-binary
+// readings and said in its own words that "nothing re-derives it", which is §6 exactly: "a
+// transcribed number is unreachable from the thing that owns it, so it rots", and §4c's "an
+// annotation is never evidence that a machine claim holds, because no Accepted program can read
+// one". A rung resting on prose is the thing this wall exists to refuse, one level up.
 //
-//   WALL REMOVED     bare_value_read_of_an_ambiguous_name_refuses            false
-//                    the_refusal_names_a_declaring_module                    false
-//                    a_field_label_sharing_an_ambiguous_name_does_not_refuse TRUE
-//   WALL RESTORED    all three                                               true
+// THE INSTRUMENT, NAMED SO ANYONE CAN RE-DERIVE IT: negate the `!ambiguous_reads.is_empty()` guard
+// in `claim_scope_for_with_memos` -- the wall's own condition and nothing else -- rebuild the seed,
+// and run these three rows against both binaries.
 //
-// So the subject row and the remedy row are keyed on the WALL and on nothing incidental -- they
-// flip with it and back -- while the negative control holds in both directions, which is what
-// separates a discriminating probe from one that merely reds when something is wrong. The
-// field-label row staying true with the wall gone is the load-bearing half: it shows the two rows
-// that moved did so because the refusal moved, not because the manifest or the fixture changed.
+// WHAT THE RUN DECIDES, stated as the predicate rather than as an outcome:
+// `bare_value_read_of_an_ambiguous_name_refuses` and `the_refusal_names_a_declaring_module` are
+// keyed on the wall and must FLIP with it, because their whole content is that the scope builder
+// refused and named a cause. `a_field_label_sharing_an_ambiguous_name_does_not_refuse` must HOLD in
+// both directions, because a field label never reaches the shared value slot and so has nothing to
+// do with the refusal. A run in which all three move together would mean the rows are keyed on the
+// manifest rather than on the wall, and the pair would establish nothing about it.
 //
-// The disabling edit is NOT in this branch and nothing re-derives it; this is a receipt about two
-// binaries, not a mechanism. Re-run it by negating that guard and running these three rows.
+// The disabling edit is a mutation of the seed, not a mode of it: there is no flag, this branch
+// does not carry one, and the next rung for this evidence is a route that makes the mutation an
+// instrument instead of a hand edit.
 
 // PINNED TO THE CAUSE, NOT TO "SOME REFUSAL". `claim_scope_was_refused` was the obvious reader
 // and is deliberately not used: gunbc#11143 deleted it as a dangling declaration, and restoring
