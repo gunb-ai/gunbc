@@ -1889,6 +1889,13 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
+    // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
+    // outlived its subject would serve a later, differently-prepared evaluation a value acquired
+    // from ANOTHER COMMIT — a stale serve the key cannot catch, because the key represents the
+    // carried content and the carried content would be exactly what is wrong.
+    CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow_mut().clear());
+    CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.set(false));
+    CROSS_CLAIM_IMPLICIT_CARRY.with(|m| m.borrow_mut().clear());
     // The retained refusal is tier state too: leaving it across a reset is how a stale path
     // outlives the store that produced it (review 57554).
     CROSS_CLAIM_LAST_UNPORTABLE.with(|c| *c.borrow_mut() = None);
@@ -2110,6 +2117,13 @@ fn try_cross_claim_pure_memo(
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return None;
     }
+    // A nullary call of a producer bound to a carried input is keyed on that input's CONTENT,
+    // so the entry a claim serves is the one preparation stored for THIS carrier and no other.
+    let carried_key_args = cross_claim_key_args(fn_node, args);
+    let args: &[(Option<String>, Value)] = match &carried_key_args {
+        Some(rows) => rows,
+        None => args,
+    };
     let args_hash = cross_claim_args_hash(ctx, args)?;
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
     // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
@@ -2213,6 +2227,13 @@ fn store_cross_claim_pure_memo(
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
     }
+    // The same substitution the lookup makes, in the same place in the fold, so a warm and a
+    // serve cannot disagree about what the key represents.
+    let carried_key_args = cross_claim_key_args(fn_node, args);
+    let args: &[(Option<String>, Value)] = match &carried_key_args {
+        Some(rows) => rows,
+        None => args,
+    };
     let Some(args_hash) = cross_claim_args_hash(ctx, args) else {
         return CrossClaimStoreOutcome::RefusedArgsNotHashable;
     };
@@ -2278,6 +2299,14 @@ fn store_cross_claim_pure_memo(
     outcome
 }
 
+/// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
+/// dispatched effect is a roster defect with its own remedy, not an evaluation failure.
+#[derive(Debug)]
+pub enum PureProducerWarmRefusal {
+    DispatchedEffect { effects: u64 },
+    Failed(String),
+}
+
 /// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
 /// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
 /// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
@@ -2285,6 +2314,351 @@ fn store_cross_claim_pure_memo(
 pub fn warm_cross_claim_pure_producer(
     ctx: &InterpContext,
     qualified_fn: &str,
+) -> Result<CrossClaimStoreOutcome, PureProducerWarmRefusal> {
+    with_active_ctx(ctx, || {
+        let fn_node = ctx
+            .lookup_fn(qualified_fn)
+            .ok_or_else(|| {
+                PureProducerWarmRefusal::Failed(format!(
+                    "no declaration named '{qualified_fn}' in this frame"
+                ))
+            })?
+            .clone();
+        let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
+        if !cross_claim_pure_admitted(&fn_node, bare) {
+            return Err(PureProducerWarmRefusal::Failed(format!(
+                "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
+            )));
+        }
+        let guard = CrossClaimFillGuard::enter(bare);
+        let env = Env::empty();
+        // THE SAME GUARD THE FOLD PATH HOLDS. The claim-time store refuses to publish a value
+        // whose evaluation dispatched an effect, because the key `(fn node, argument row)` cannot
+        // see what the effect read. The warm path stored without that guard, so an effectful
+        // nullary row rostered as a plain warm row was stored CONTENT-BLIND under the empty
+        // argument row — the key omitting an input the value depends on. A dispatch here is a
+        // roster defect (the row belongs in the prepared-effect-input rows, where the read is
+        // carried and keyed), so it stops the line rather than declining silently.
+        let effects_before = ctx.effect_dispatch_count.get();
+        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
+            .map_err(|e| PureProducerWarmRefusal::Failed(format!("{qualified_fn}: {e}")))?;
+        let effects = ctx
+            .effect_dispatch_count
+            .get()
+            .saturating_sub(effects_before);
+        if effects != 0 {
+            return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
+        }
+        Ok(store_cross_claim_pure_memo(
+            ctx,
+            &fn_node,
+            bare,
+            &[],
+            &value,
+            Some(&guard),
+        ))
+    })
+}
+
+/// ONE PREPARED EFFECT INPUT, ACQUIRED ONCE AND CARRIED.
+///
+/// The floor acquires a committed carrier's content at PREPARATION and binds it for the
+/// prepared subject's lifetime, so the pure fold over it is a warm row: nullary from the row's
+/// point of view, because the input is bound before any claim runs. This is NOT a memo of an
+/// effect. Hermetic evaluation already classifies a readonly `Filesystem.Read`/`List` of a path
+/// `hermetic_checkout_input_disposition` confirms under the checkout root as INPUT ACCESS rather
+/// than a host effect, so the value is a function of the commit the run prepared and is constant
+/// across the whole subject; anything that wall cannot confirm is refused there and is therefore
+/// never carryable here.
+///
+/// `digest` is the carried CONTENT IDENTITY, minted through the same fnv1a64 structural family
+/// as `std.content_hash.content_hash_atom` (`v1_rt::atom_identity_hash` / `hash_combine`) — not
+/// a `DefaultHasher` hex wearing that carrier. `variant` is the outermost variant name when the
+/// carried value is one, carried for the floor's phase line so a run whose carrier REFUSED is
+/// diagnosable rather than silent: the floor never reads a domain type, but it can print which
+/// arm it carried, and "all seven claims refused identically" then reads as a carrier problem
+/// instead of a corpus one.
+#[derive(Clone)]
+pub struct PreparedEffectInputCarry {
+    pub identity: String,
+    pub digest: String,
+    pub variant: Option<String>,
+    value: Value,
+}
+
+impl PreparedEffectInputCarry {
+    /// The carried value's own disposition, for the receipt: the outermost variant name, or the
+    /// value's shape when it is not a variant. Never an interpretation of what the arm MEANS.
+    pub fn disposition(&self) -> String {
+        match &self.variant {
+            Some(v) => v.clone(),
+            None => "not-a-variant".to_string(),
+        }
+    }
+}
+
+/// A structural digest over the portable form — total, like the reification it walks, so no
+/// child can be silently excluded from the identity. Field and element ORDER is part of the
+/// digest because the portable form's order is canonical (fields sort on process-global symbol
+/// identity), so two equal values digest equally and two different ones do not collide by
+/// construction of the fold rather than by luck.
+/// A symbol's spelling without a context: `Symbol` is a process-canonical `&'static str`, so a
+/// portable value's symbols are already interner-free and the digest can be taken without a
+/// frame. That is the same property that lets a stored value be served to a later claim by `Rc`
+/// clone rather than rebuilt per frame.
+fn ctx_free_symbol_text(s: &Symbol) -> String {
+    s.0.to_string()
+}
+
+fn portable_value_digest(v: &PortableValue) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let tagged =
+        |tag: &str, payload: String| hash_combine(atom_identity_hash(tag.to_string()), payload);
+    match v {
+        PortableValue::Null => atom_identity_hash("null".to_string()),
+        PortableValue::Unit => atom_identity_hash("unit".to_string()),
+        PortableValue::Bool(b) => tagged("bool", atom_identity_hash(b.to_string())),
+        PortableValue::Int(i) => tagged("int", atom_identity_hash(i.to_string())),
+        PortableValue::Float(f) => tagged("float", atom_identity_hash(format!("{f:?}"))),
+        PortableValue::Str(s) => tagged("str", atom_identity_hash(s.to_string())),
+        PortableValue::List(items) => tagged(
+            "list",
+            items
+                .iter()
+                .fold(atom_identity_hash("[]".to_string()), |acc, item| {
+                    hash_combine(acc, portable_value_digest(item))
+                }),
+        ),
+        PortableValue::Map(pairs) => tagged(
+            "map",
+            pairs
+                .iter()
+                .fold(atom_identity_hash("{}".to_string()), |acc, (k, val)| {
+                    hash_combine(
+                        acc,
+                        hash_combine(portable_value_digest(k), portable_value_digest(val)),
+                    )
+                }),
+        ),
+        PortableValue::Set(items) => tagged(
+            "set",
+            items
+                .iter()
+                .fold(atom_identity_hash("set".to_string()), |acc, item| {
+                    hash_combine(acc, atom_identity_hash(item.clone()))
+                }),
+        ),
+        PortableValue::Record { type_name, fields } => tagged(
+            "record",
+            fields.iter().fold(
+                atom_identity_hash(ctx_free_symbol_text(type_name)),
+                |acc, (name, field)| {
+                    hash_combine(
+                        acc,
+                        hash_combine(
+                            atom_identity_hash(ctx_free_symbol_text(name)),
+                            portable_value_digest(field),
+                        ),
+                    )
+                },
+            ),
+        ),
+        PortableValue::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => tagged(
+            "variant",
+            fields.iter().fold(
+                hash_combine(
+                    atom_identity_hash(ctx_free_symbol_text(type_name)),
+                    atom_identity_hash(ctx_free_symbol_text(variant_name)),
+                ),
+                |acc, (name, field)| {
+                    hash_combine(
+                        acc,
+                        hash_combine(
+                            atom_identity_hash(ctx_free_symbol_text(name)),
+                            portable_value_digest(field),
+                        ),
+                    )
+                },
+            ),
+        ),
+    }
+}
+
+thread_local! {
+    /// ACQUISITION fn node -> the value acquired once at preparation. A claim's call of that
+    /// declaration is served this value instead of re-dispatching the read. Keyed on RESOLVED
+    /// NODE IDENTITY like every other admission here, so a bare-name homonym in another module
+    /// is a different declaration and is never served.
+    static CROSS_CLAIM_PREPARED_INPUT: RefCell<HashMap<usize, Rc<PreparedEffectInputCarry>>> =
+        RefCell::new(HashMap::new());
+    /// Whether ANY prepared input is installed on this thread. `eval_call` consults the carry on
+    /// every nullary call, and a `RefCell` borrow plus a hash lookup per call is a cost-shape
+    /// defect on the interpreter's hottest path when the usual answer is "none installed" —
+    /// DESIGN section 6's bare-minimum-cost rule, which is not priced per site. A `Cell<bool>`
+    /// read answers the common case without touching the map, and is set only where the map is.
+    static CROSS_CLAIM_PREPARED_INPUT_PRESENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// PRODUCER fn node -> the carried input its value depends on, for rows whose producer
+    /// reaches the acquisition INSIDE itself (`ImplicitAcquisition`). The carried content is
+    /// folded into the key on both the warm and the serve, so such an entry is content-keyed
+    /// exactly as a parameterised one is — an entry stored under the EMPTY argument row would
+    /// serve a stale value the moment the carrier changed, which is the defect this map exists
+    /// to make unwritable.
+    ///
+    /// IT HOLDS THE ACQUISITION NODE AND NOT THE CARRY, and the difference is a real stale serve
+    /// rather than a style preference: an earlier cut stored a CLONE of the carry here, so
+    /// re-binding the acquisition to a different content left this map pointing at the old value,
+    /// the key stayed the same, and the producer was SERVED a value derived from the PREVIOUS
+    /// carrier. Its own control caught it before this landed
+    /// (`a_changed_carrier_content_is_not_served_the_value_derived_from_the_old_one`). One
+    /// authority for the carried value — the acquisition's binding — read through at every key
+    /// derivation.
+    static CROSS_CLAIM_IMPLICIT_CARRY: RefCell<HashMap<usize, usize>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Acquire one prepared effect input: evaluate the NULLARY acquisition once in `ctx`, reify its
+/// value totally, and return the carry. Every failure is typed and located and none of them has
+/// an empty default — an unreadable or absent carrier reaches this as an evaluation error or as
+/// the domain's OWN refusal arm, and in the second case the refusal is what gets carried, so
+/// every claim receives the identical typed value it would have computed for itself.
+pub fn acquire_prepared_effect_input(
+    ctx: &InterpContext,
+    qualified_fn: &str,
+) -> Result<PreparedEffectInputCarry, String> {
+    with_active_ctx(ctx, || {
+        let fn_node = ctx
+            .lookup_fn(qualified_fn)
+            .ok_or_else(|| format!("no declaration named '{qualified_fn}' in this frame"))?
+            .clone();
+        if !fn_node.params.is_empty() {
+            return Err(format!(
+                "'{qualified_fn}' takes {} parameter(s): a prepared effect input must be NULLARY, \
+                 because a carried input WITH arguments is a different concept and must not \
+                 arrive under this one",
+                fn_node.params.len()
+            ));
+        }
+        let env = Env::empty();
+        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
+            .map_err(|e| format!("{qualified_fn}: {e}"))?;
+        // TOTAL reification is the portability check AND the identity walk in one pass: a value
+        // carrying any origin-bound child refuses here, located, rather than being discovered
+        // when a later claim is handed something frame-bound.
+        let portable =
+            portable_value_from_ctx_at(ctx, &value, &mut String::new()).map_err(|r| {
+                format!(
+                    "{qualified_fn}: the acquired value is not portable at path {} (kind {})",
+                    if r.path_into_value.is_empty() {
+                        "<root>".to_string()
+                    } else {
+                        r.path_into_value.clone()
+                    },
+                    r.encountered_kind
+                )
+            })?;
+        let variant = match &value {
+            Value::Variant { variant_name, .. } => Some(ctx.resolve(*variant_name).to_string()),
+            _ => None,
+        };
+        Ok(PreparedEffectInputCarry {
+            identity: qualified_fn.to_string(),
+            digest: portable_value_digest(&portable),
+            variant,
+            value,
+        })
+    })
+}
+
+/// Bind an acquired input to its acquisition node for the prepared subject's lifetime. Cleared
+/// with the tier by `clear_cross_claim_pure_memos`, because a carry outliving its subject would
+/// serve a later, differently-prepared evaluation a value acquired from another commit.
+pub fn install_prepared_effect_input(acquisition_node: &Rc<Node>, carry: PreparedEffectInputCarry) {
+    let carry = Rc::new(carry);
+    CROSS_CLAIM_PREPARED_INPUT.with(|m| {
+        m.borrow_mut()
+            .insert(Rc::as_ptr(acquisition_node) as usize, carry);
+    });
+    CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.set(true));
+    keep_cross_claim_fn(acquisition_node);
+}
+
+/// Declare that a producer's value depends on an already-installed carried input, for the
+/// `ImplicitAcquisition` shape.
+pub fn install_carried_input_producer(
+    producer_node: &Rc<Node>,
+    acquisition_node: &Rc<Node>,
+) -> Result<(), String> {
+    if !prepared_effect_input_is_bound(acquisition_node) {
+        return Err(
+            "the carried input named by this row is not installed; acquire it first".to_string(),
+        );
+    }
+    CROSS_CLAIM_IMPLICIT_CARRY.with(|m| {
+        m.borrow_mut().insert(
+            Rc::as_ptr(producer_node) as usize,
+            Rc::as_ptr(acquisition_node) as usize,
+        );
+    });
+    keep_cross_claim_fn(producer_node);
+    keep_cross_claim_fn(acquisition_node);
+    Ok(())
+}
+
+/// Whether an acquisition node currently has a carried value bound. The tier's lifetime is one
+/// prepared subject, and this is how a caller (or a control) asks whether that is still true —
+/// the binding must be gone once the tier is cleared, or a later differently-prepared evaluation
+/// could be served a value acquired from another commit.
+pub fn prepared_effect_input_is_bound(acquisition_node: &Rc<Node>) -> bool {
+    prepared_input_for(acquisition_node).is_some()
+}
+
+fn prepared_input_for(fn_node: &Rc<Node>) -> Option<Rc<PreparedEffectInputCarry>> {
+    if !CROSS_CLAIM_PREPARED_INPUT_PRESENT.with(|p| p.get()) {
+        return None;
+    }
+    CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).cloned())
+}
+
+/// The CURRENT carried value a producer's key depends on, read through its acquisition's binding
+/// rather than from a snapshot taken at install.
+fn implicit_carry_for(fn_node: &Rc<Node>) -> Option<Rc<PreparedEffectInputCarry>> {
+    let acquisition = CROSS_CLAIM_IMPLICIT_CARRY
+        .with(|m| m.borrow().get(&(Rc::as_ptr(fn_node) as usize)).copied())?;
+    CROSS_CLAIM_PREPARED_INPUT.with(|m| m.borrow().get(&acquisition).cloned())
+}
+
+/// The KEY ARGUMENT ROW for a call: the caller's own arguments, except that a nullary call of a
+/// producer declared to depend on a carried input is keyed on that input's CONTENT. The value
+/// passed to the call is untouched — the producer is nullary and stays nullary; only the key
+/// learns what the call read.
+fn cross_claim_key_args(
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<Vec<(Option<String>, Value)>> {
+    if !args.is_empty() {
+        return None;
+    }
+    implicit_carry_for(fn_node)
+        .map(|carry| vec![(Some(carry.identity.clone()), carry.value.clone())])
+}
+
+/// Evaluate one carried-input warm row at preparation and seed the tier under its content key.
+///
+/// THE EFFECT WALL, and it is the check that separates "its only input is this carrier" from
+/// "we hope its only input is this carrier": with the carry installed, an `ImplicitAcquisition`
+/// producer's warm must dispatch NO effect. One that still reaches the world has a second input
+/// the key does not represent, so a stored value would be servable under a key that cannot see
+/// what it depended on — the stale serve this row kind exists to make unwritable. The floor
+/// refuses the row rather than storing it.
+pub fn warm_cross_claim_carried_input_producer(
+    ctx: &InterpContext,
+    qualified_fn: &str,
+    acquisition_fn: &str,
+    parameter: Option<&str>,
 ) -> Result<CrossClaimStoreOutcome, String> {
     with_active_ctx(ctx, || {
         let fn_node = ctx
@@ -2297,15 +2671,58 @@ pub fn warm_cross_claim_pure_producer(
                 "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
             ));
         }
+        let acquisition_node = ctx
+            .lookup_fn(acquisition_fn)
+            .ok_or_else(|| format!("no declaration named '{acquisition_fn}' in this frame"))?
+            .clone();
+        let carry = prepared_input_for(&acquisition_node).ok_or_else(|| {
+            format!(
+                "'{acquisition_fn}' has no acquired value installed; a carried-input warm row \
+                 must be bound to its prepared input before it is warmed"
+            )
+        })?;
+        // THE TWO SHAPES DIFFER ONLY IN WHERE THE CONTENT ENTERS THE KEY, which is exactly the
+        // distinction the roster's `CarriedInputDependence` names. `BoundParameter` passes the
+        // carried value as the producer's own argument, so the ordinary key already represents
+        // it and a claim making the same call keys identically. `ImplicitAcquisition` calls the
+        // producer nullary and lets `cross_claim_key_args` fold the carried content into the key
+        // on the warm and on every serve — one substitution, made in one place, so a warm and a
+        // serve cannot disagree about what the key represents.
+        let call_args: Vec<(Option<String>, Value)> = match parameter {
+            Some(param) => vec![(Some(param.to_string()), carry.value.clone())],
+            None => {
+                if implicit_carry_for(&fn_node).is_none() {
+                    return Err(format!(
+                        "'{qualified_fn}' has no installed carried input; an \
+                         ImplicitAcquisition row must be bound to its prepared input before it \
+                         is warmed"
+                    ));
+                }
+                Vec::new()
+            }
+        };
         let guard = CrossClaimFillGuard::enter(bare);
         let env = Env::empty();
-        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
+        let effects_before = ctx.effect_dispatch_count.get();
+        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &call_args, &env))
             .map_err(|e| format!("{qualified_fn}: {e}"))?;
+        let dispatched = ctx
+            .effect_dispatch_count
+            .get()
+            .saturating_sub(effects_before);
+        if dispatched != 0 {
+            return Err(format!(
+                "PreparedEffectInputProducerStillDispatchesEffect producer={qualified_fn} \
+                 effects={dispatched} — with its carried input installed this producer still \
+                 reached the world, so it has an input the stored key does not represent; the \
+                 row is refused rather than stored under a key that cannot see what it read"
+            ));
+        }
         Ok(store_cross_claim_pure_memo(
             ctx,
             &fn_node,
             bare,
-            &[],
+            &call_args,
             &value,
             Some(&guard),
         ))
@@ -7933,6 +8350,28 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             }
         },
     };
+
+    // A PREPARED EFFECT INPUT IS SERVED BEFORE EVERY OTHER TIER, and it sits HERE rather than in
+    // `eval_pure_named_call` for a reason that decides correctness: a declaration that reaches the
+    // world may declare `uses`, and a fn with non-empty `uses` never reaches the pure path at all.
+    // Serving it one tier down would leave exactly the acquisitions this mechanism exists for
+    // re-dispatching their read per claim while the receipt said they were carried.
+    //
+    // It is deliberately NOT the pure memo: that tier refuses to store any call that dispatched an
+    // effect, which is correct and stays. This is a different admission — a roster-declared
+    // binding, resolved to a node, installed for one prepared subject — and what it serves is the
+    // value the run already acquired from a committed checkout input, so the claim receives
+    // exactly what its own read would have returned.
+    if args.is_empty() {
+        if let Some(carry) = prepared_input_for(&fn_node) {
+            // NAMED APART IN THE LEDGER, because it is a different mechanism from a share hit and
+            // a reader counting `cross_claim_pure_share` rows must not read a carried-input serve
+            // as a rostered producer's hit. The row is still RECORDED — a carry invisible to the
+            // receipt would be a mechanism nobody could measure.
+            cross_claim_observe_hit(&format!("prepared-effect-input/{func_name}"));
+            return Ok(carry.value.clone());
+        }
+    }
 
     if let Some(result) = try_witness_evaluation_dispatch(ctx, node, &fn_node, &args, env) {
         return result;
