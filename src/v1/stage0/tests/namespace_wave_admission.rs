@@ -2301,11 +2301,11 @@ fn a_directory_row_loads_as_the_production_admission() {
 /// The fixture row, identical to `AUTHORED_LIKE_PRODUCTION` but for its follow-up.
 fn used_row(follow_up: DeletionFollowUp) -> [TransitionAdmission; 1] {
     [TransitionAdmission {
-        label: "gunbc#77777 fixture transition",
+        label: "gunbc#77777 fixture transition".to_string(),
         subject: AdmissionSubject::Binding {
-            module: "probe.consumer",
-            in_declaration: "use_it",
-            spelling: "widget",
+            module: "probe.consumer".to_string(),
+            in_declaration: "use_it".to_string(),
+            spelling: "widget".to_string(),
             expected_candidates: vec!["probe.other".to_string()],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
