@@ -110,3 +110,101 @@ fn push_before_from_event_path(path: String) -> PushBeforeObservation {
 fn push_before_sha_is_zero(sha: String) -> Bool {
   sha == zero_sha
 }
+
+// THE REF UPDATE A PUSH DELIVERS: which ref moved, to which commit, in which repository. Three
+// members of the same cited payload (`ref`, `after`, `repository.full_name`), decoded together
+// because their one consumer -- gunbc.fleet_revision_acceptance observe_default_branch_push -- asks
+// all three of one delivery, and a partial record would let it judge a ref without knowing which
+// repository it lives in. extdeps owns the wire shape only: whether the ref is the default branch,
+// and what a push to it proves, is that consumer's policy. `after` is carried as the wire text and
+// decoded to an object id by the consumer, which is where every other revision in that module is
+// decoded; a zero `after` (a branch deletion) is therefore an undecodable revision there, not a
+// state this reader invents a name for.
+type PushRefUpdate {
+  ref: String
+  after: String
+  repository_full_name: String
+}
+
+type PushRefUpdateObservation
+  = PushRefUpdateObserved { update: PushRefUpdate }
+  | PushRefUpdateMemberAbsent { member: String }
+  | PushRefUpdateMemberMalformed { member: String, detail: String }
+  | PushRefUpdateMalformed { detail: String }
+  | PushRefUpdateReadRefused { path: String, cause: String }
+
+type PushEventText
+  = PushEventTextFound { text: String }
+  | PushEventTextFailed { observation: PushRefUpdateObservation }
+
+fn push_event_required_string_at(v: JsonValue, key: String) -> PushEventText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => PushEventTextFailed { observation: PushRefUpdateMemberAbsent { member: key } }
+    JsonMemberDuplicated { count: _ } =>
+      PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is duplicated" } }
+    JsonMemberNotAnObject =>
+      PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } =>
+          if s == "" {
+            PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is the empty string" } }
+          } else {
+            PushEventTextFound { text: s }
+          }
+        JsonNull => PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is null" } }
+        JsonBool { value: _ } => PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is not a string" } }
+        JsonNumber { lexeme: _ } => PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is not a string" } }
+        JsonArray { elements: _ } => PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is not a string" } }
+        JsonObject { members: _ } => PushEventTextFailed { observation: PushRefUpdateMemberMalformed { member: key, detail: "member is not a string" } }
+      }
+  }
+}
+
+fn push_ref_update_from_event_json(text: String) -> PushRefUpdateObservation {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      PushRefUpdateMalformed { detail: concat("the push event payload is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match push_event_required_string_at(v: doc, key: "ref") {
+        PushEventTextFailed { observation: o } => o
+        PushEventTextFound { text: r } =>
+          match push_event_required_string_at(v: doc, key: "after") {
+            PushEventTextFailed { observation: o } => o
+            PushEventTextFound { text: a } =>
+              match json_object_unique_member(v: doc, key: "repository") {
+                JsonMemberAbsent => PushRefUpdateMemberAbsent { member: "repository" }
+                JsonMemberDuplicated { count: _ } =>
+                  PushRefUpdateMemberMalformed { member: "repository", detail: "member is duplicated" }
+                JsonMemberNotAnObject =>
+                  PushRefUpdateMalformed { detail: "push event payload root is not a JSON object" }
+                JsonMemberFound { value: repo } =>
+                  match push_event_required_string_at(v: repo, key: "full_name") {
+                    PushEventTextFailed { observation: o } => o
+                    PushEventTextFound { text: f } =>
+                      PushRefUpdateObserved { update: PushRefUpdate { ref: r, after: a, repository_full_name: f } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn push_ref_update_from_event_path(path: String) -> PushRefUpdateObservation {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    push_ref_update_from_event_json(text: read.content)
+  } else {
+    PushRefUpdateReadRefused { path: path, cause: read.error }
+  }
+}
+
+fn push_ref_update_observation_message(o: PushRefUpdateObservation) -> String {
+  match o {
+    PushRefUpdateObserved { update: u } => concat("push event observed for ref ", u.ref)
+    PushRefUpdateMemberAbsent { member: m } => concat("push event payload is missing a required member: ", m)
+    PushRefUpdateMemberMalformed { member: m, detail: d } => join(["push event member ", m, " is malformed: ", d], "")
+    PushRefUpdateMalformed { detail: d } => concat("push event payload is malformed: ", d)
+    PushRefUpdateReadRefused { path: p, cause: c } => join(["push event payload could not be read at ", p, ": ", c], "")
+  }
+}

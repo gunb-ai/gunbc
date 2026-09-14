@@ -258,7 +258,7 @@ data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt
 // never lands here and the collector's ssh either refuses or falls back to ambient
 // known_hosts (the exact anchor hole the pin closes for the probe). Call it FIRST and
 // carry its readback in the collect receipt, mirroring the probe entry.
-func collect_fleet_convergence_wet() -> ProcessExit {
+fn collect_fleet_convergence_wet() -> ProcessExit {
   let enroll_lines = fleet_host_key_enroll_apply()
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(

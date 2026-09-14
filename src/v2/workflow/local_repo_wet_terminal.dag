@@ -212,8 +212,23 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
+// MEMORY CAPTURE DIGEST MEMBER (2026-09-13, parent admission for gunbc#11144).
+// This is a distinct admitted effect: execute the local coreutils `sha256sum`
+// binary, supply captured text on stdin, and read its stdout and exit status.
+// It writes no files, creates no repository, and uses no network, cargo,
+// remote host or install media. It does not extend the command-v probe group.
+// Measured through claim_batch --wet before enrollment: the production content
+// verifier accepts the known-answer input and refuses changed bytes and an
+// added terminal newline under the same expected digest. Missing executable or
+// failed digest execution remains a refusal, never a fabricated hash match.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.memory_capture_real_execution_witness", function: "w_capture_digest_binds_consumed_content" },
+      entry: "dag/test/claim/host/memory_capture_real_execution_witness_test.dag",
+      function: "w_capture_digest_binds_consumed_content",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",

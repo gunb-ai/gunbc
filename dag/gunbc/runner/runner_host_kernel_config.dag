@@ -295,7 +295,7 @@ fn kernel_config_argv_text() -> String {
 // A NON-ZERO READ IS UNREADABLE, NOT EMPTY. If cat fails the stdout is "" and every presence test
 // answers no -- which the emptiness arm already refuses, but saying so from the exit code names the
 // cause instead of leaving a reader to infer it from a config that looks blank.
-func observe_built_kernel_config(path: String) -> KernelConfigVerdict
+fn observe_built_kernel_config(path: String) -> KernelConfigVerdict
   uses net: Network
 {
   let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
@@ -314,7 +314,7 @@ func observe_built_kernel_config(path: String) -> KernelConfigVerdict
 // THE REFUSAL CARRIES ITS OWN REPORT. exit_failure takes the reason, so the failing symbols and what
 // each was required for travel with the non-zero status rather than needing a separate print a
 // caller could drop.
-func verify_built_kernel_config(path: String) -> ProcessExit
+fn verify_built_kernel_config(path: String) -> ProcessExit
   uses net: Network
 {
   let verdict = observe_built_kernel_config(path: path)
@@ -329,7 +329,7 @@ func verify_built_kernel_config(path: String) -> ProcessExit
 // requiring every caller to remember where the kernel tree is.
 data runner_host_kernel_config_path: NonEmptyStr = "/var/tmp/gunbc-hostimage/linux-6.12.108/.config"
 
-func verify_runner_host_kernel_config() -> ProcessExit
+fn verify_runner_host_kernel_config() -> ProcessExit
   uses net: Network
 {
   verify_built_kernel_config(path: runner_host_kernel_config_path as String)

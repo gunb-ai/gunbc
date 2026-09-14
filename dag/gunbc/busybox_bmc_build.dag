@@ -67,7 +67,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   ]
 }
 
-func busybox_bmc_build_run() -> ProcessExit
+fn busybox_bmc_build_run() -> ProcessExit
   uses net: Network
 {
   run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalExec)

@@ -57,9 +57,9 @@ module test.claim.workflow_default_field_projection_fold_witness_test
 // the cost of a witness is a property of its fixture's import closure and that is
 // not visible from the assertion.
 
-data wdp_admitted_source: String = "module wdp_probe_admit\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.host) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
+data wdp_admitted_source: String = "module wdp_probe_admit\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfn wdp_run(target: String = wdp_cfg.host) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
 
-data wdp_refused_source: String = "module wdp_probe_refuse\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfunc wdp_run(target: String = wdp_cfg.joined) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
+data wdp_refused_source: String = "module wdp_probe_refuse\n\ntype WdpNet \{\n  id: Int\n}\n\ntype WdpCfg \{\n  host: String\n  joined: String\n}\n\ndata wdp_cfg: WdpCfg = WdpCfg \{ host: \"wdp.invalid\", joined: concat(\"wdp\", \".computed\") }\n\nfn wdp_run(target: String = wdp_cfg.joined) -> String\n  uses net: WdpNet\n\{\n  target\n}\n"
 
 // ADMITTED: the projection folds to the literal the record authored, and the
 // emitted clap default carries exactly that string. The exclusion proves the

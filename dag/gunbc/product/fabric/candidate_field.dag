@@ -1,0 +1,248 @@
+module product.fabric.candidate_field
+
+import std.types { List }
+import std.decl_ref { DeclarationRef }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseRefusal, admit_provider_use,
+}
+import product.fabric.offer_route {
+  OfferRouteRow, correspond_offer_route,
+  OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
+}
+import product.fabric.supply { SupplierOffer }
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate,
+  CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork,
+  PermitNamesAnotherDemand,
+}
+
+// THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
+// PROOF RATHER THAN A PROMISE.
+//
+// DESIGN's fabric rows already establish that compliance must not be a conjunct beside cost. What
+// was missing is a place where that ordering is a STRUCTURE rather than a convention every caller
+// re-implements. product.fabric.selection prices a List<CandidateOffer> it is handed; who decides
+// what goes in that list was answered nowhere, so each witness and each prospective consumer wrote
+// its own fold that dropped the unadmitted arms - the same judgement written N times, which DESIGN
+// section 2 prices as duplicated work and section 3 refuses as N authorities for one fact.
+//
+// This module is that one fold. THE PRODUCTION COPY IS CUT IN THE SAME CHANGE rather than left
+// standing beside it: gunbc.instruments.fabric_control_plane_live_probe's cp_probe_roster matched
+// the same seven arms and now consumes assemble_candidate_field. A consolidation that adds the
+// authority and leaves the N-th copy in place has made the fork worse, not better.
+//
+// WHAT IS NOT CUT, NAMED RATHER THAN LEFT FOR A READER TO DISCOVER, because an annotation claiming
+// more than the diff did is the defect this corpus keeps paying for. THREE WITNESS-SIDE HELPERS
+// STILL CALL bind_candidate AND HAND-MATCH THE SEVEN ARMS: d_bound in
+// test.claim.fabric.fabric_floor_dispatch_witness, t_bound and t_unadmitted_bound in
+// test.claim.fabric_selection_witness, and the equivalent in
+// test.claim.fabric.fabric_control_plane_witness.
+//
+// They are deliberately left, and the reason is a boundary rather than an exemption: they construct
+// ONE bound candidate from an admission a fixture already produced, which is a different question
+// from the one this module answers - which of N offers may enter the field, given a route roster
+// this module must consult. Routing them through assemble_candidate_field would make every ranking
+// and dispatch witness carry a route roster, a sanction roster and a use scope in order to ask a
+// question about equal-cost tie-breaks. And t_unadmitted_bound must keep calling bind_candidate
+// directly whatever else changes: ITS SUBJECT IS bind_candidate's refusal arms, so a helper that
+// routed around them would delete the test.
+//
+// TRIGGER: a witness that needs the FIELD question rather than the one-candidate question uses this
+// module, and the day a ranking fixture needs a roster for its own reasons is the day its helper
+// folds in here. Until then the shared shape between them is the seven-arm match, not the decision,
+// and consolidating on shape alone would couple tests to an authority they are not about.
+//
+// It imports NO money: not std.measure, not a currency, not an offer quote reader.
+//
+// SAY EXACTLY WHAT THAT BUYS AND NOT ONE WORD MORE, because a claim one notch stronger than its
+// evidence, sitting in an annotation, is the defect this corpus keeps having to retract. Money is
+// reachable TRANSITIVELY: SupplierOffer carries a quote and this module imports SupplierOffer, so a
+// value in scope here HAS a price hanging off it. What is absent is anything to INTERPRET it with -
+// no OfferQuote import, no accessor, no comparison. So the property is NOT "a price comparison is
+// unwritable here". It is that a price comparison here CANNOT ARRIVE QUIETLY: writing one requires
+// adding an import, and an import-list change is exactly where a reviewer looks. That is a weaker
+// wall than construction and a far stronger one than a sentence asking people not to do it, and
+// stating it at its real strength is what stops the first person who writes offer.quote in this
+// file from concluding the wall was never real.
+//
+// An offer whose use is not admitted is not ranked and beaten on price - it is not in the list the
+// ranker receives, and its absence carries a typed, located cause rather than silence.
+//
+// THE EXCLUSIONS ARE RETURNED, NOT DROPPED. A field that returned only its survivors would make
+// "nothing was admissible" indistinguishable from "nothing was offered", and would make the
+// operator's question - WHY is our cheapest route not being used - unanswerable from the decision
+// itself. Every request answers, in one arm or the other.
+
+// WHAT A CALLER BRINGS PER OFFER: the offer and the dispatch observations that price it. The
+// dispatch inputs travel with the request even though nothing here reads them, because
+// bind_candidate seals the pair and a field that admitted an offer without its inputs would have
+// moved the mismatch check to whoever assembled the candidate later.
+type FieldRequest<P> {
+  offer: SupplierOffer<P>
+  dispatch: DispatchInputs<P>
+}
+
+// ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
+// by exactly one match arm below and names a different remedy: model the route, settle which route
+// the roster means, fix the row that carried real facts onto the wrong offer, clear whatever the
+// admission's own typed cause names, or repair a permit that was carried onto the wrong subject.
+// Collapsing them would hand every one of those five back to the operator as "not admitted".
+type FieldExclusionCause<P>
+  = FieldRouteNotModeled
+  | FieldRouteAmbiguous { claimed: List<ProviderRoute> }
+  | FieldRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
+  | FieldUseRefused { cause: ProviderUseRefusal }
+  | FieldDispatchInputsNameAnotherOffer { inputs_name: FabricIdentity<P, OfferKey> }
+  | FieldPermitNamesAnotherOffer { permit_names: FabricIdentity<P, OfferKey> }
+  | FieldPermitNamesAnotherRoute
+  | FieldPermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | FieldPermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
+
+type FieldExclusion<P> {
+  offer: FabricIdentity<P, OfferKey>
+  cause: FieldExclusionCause<P>
+}
+
+type FieldEntry<P>
+  = FieldAdmitted { candidate: CandidateOffer<P> }
+  | FieldExcluded { exclusion: FieldExclusion<P> }
+
+type CandidateField<P> {
+  admitted: List<CandidateOffer<P>>
+  excluded: List<FieldExclusion<P>>
+}
+
+fn excluded_entry<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  cause: FieldExclusionCause<P>,
+) -> FieldEntry<P> {
+  FieldExcluded { exclusion: FieldExclusion { offer: offer, cause: cause } }
+}
+
+// THE ORDER IS CORRESPONDENCE, THEN ADMISSION, THEN BINDING, AND IT IS THE ONLY ORDER THAT CAN BE
+// WRITTEN. admit_provider_use cannot be called without ProviderRouteFacts, and the correspondence
+// is the only producer of them here; bind_candidate cannot be called without the admission's
+// result. So the sequence is enforced by what each step needs rather than by a comment saying to
+// run them in order - the same construction-over-validation move sole_constructor makes on the
+// permit itself.
+//
+// THE USE SCOPE IS THE CALLER'S ONE SCOPE FOR THE WHOLE FIELD, not a per-offer parameter, because
+// admission is granted FOR a demand, a work, a customer profile and a data-handling profile, and
+// those are properties of the WORK being placed rather than of whichever offer is being considered
+// for it. Letting each request carry its own scope would let an offer widen the scope it is judged
+// against, which is the supplier-declares-its-own-sanction inversion one level up from the one
+// product.fabric.offer_route refuses.
+fn field_entry<P>(
+  routes: List<OfferRouteRow<P>>,
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  request: FieldRequest<P>,
+) -> FieldEntry<P> {
+  match correspond_offer_route(
+    roster: routes, offer: request.offer.id, route: request.offer.route) {
+    OfferRouteNotModeled { offer: o } => excluded_entry(offer: o, cause: FieldRouteNotModeled)
+    OfferRouteAmbiguous { offer: o, claimed: c } =>
+      excluded_entry(offer: o, cause: FieldRouteAmbiguous { claimed: c })
+    OfferRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } =>
+      excluded_entry(
+        offer: request.offer.id,
+        cause: FieldRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr },
+      )
+    OfferRouteModeled { facts: facts } =>
+      match bind_candidate(
+        offer: request.offer,
+        dispatch: request.dispatch,
+        admission: admit_provider_use(
+          roster: sanctions,
+          facts: facts,
+          active: active,
+          scope: scope,
+          offer: request.offer.id,
+          decision_receipt: decision_receipt,
+        ),
+        demand: scope.demand,
+        work: scope.work,
+      ) {
+        CandidateBound { candidate: c } => FieldAdmitted { candidate: c }
+        DispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
+          excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
+        OfferNotAdmittedForUse { offer: o, cause: c } =>
+          excluded_entry(offer: o, cause: FieldUseRefused { cause: c })
+        PermitNamesAnotherOffer { offer: o, permit_names: n } =>
+          excluded_entry(offer: o, cause: FieldPermitNamesAnotherOffer { permit_names: n })
+        PermitNamesAnotherRoute { offer: o } =>
+          excluded_entry(offer: o, cause: FieldPermitNamesAnotherRoute)
+        PermitNamesAnotherWork { permit_work: pw, subject_work: sw } =>
+          excluded_entry(
+            offer: request.offer.id,
+            cause: FieldPermitNamesAnotherWork { permit_work: pw, subject_work: sw },
+          )
+        PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } =>
+          excluded_entry(
+            offer: request.offer.id,
+            cause: FieldPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd },
+          )
+      }
+  }
+}
+
+fn entry_candidates<P>(entry: FieldEntry<P>) -> List<CandidateOffer<P>> {
+  match entry {
+    FieldAdmitted { candidate: c } => [c]
+    FieldExcluded { exclusion: _ } => []
+  }
+}
+
+fn entry_exclusions<P>(entry: FieldEntry<P>) -> List<FieldExclusion<P>> {
+  match entry {
+    FieldAdmitted { candidate: _ } => []
+    FieldExcluded { exclusion: x } => [x]
+  }
+}
+
+// ROSTER ORDER IS PRESERVED IN BOTH LISTS, and that matters to a consumer that has not yet chosen a
+// tie policy: product.fabric.selection's StableRosterOrder arm answers with the first offer it was
+// handed, so an assembly that reordered the survivors would silently change which of two equal-cost
+// offers wins.
+//
+// THE DECISION IS TAKEN ONCE PER REQUEST AND THE TWO LISTS ARE PROJECTIONS OF IT, which is both the
+// cheaper shape and the one that cannot disagree with itself. An earlier revision folded an
+// accumulating CandidateField, rebuilding both lists with concat on every step - quadratic in the
+// roster, and DESIGN section 6's standing rule is that a proven cost-shape defect is always fixed
+// regardless of the realised n, because "n is small here" stops being true the moment the fold is
+// reused. Mapping to entries first also removes the seed the accumulator needed: there is no
+// half-built field for a later step to read, so admitted and excluded cannot drift apart or double
+// count. field_entry still runs exactly once per request.
+fn assemble_candidate_field<P>(
+  routes: List<OfferRouteRow<P>>,
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  requests: List<FieldRequest<P>>,
+) -> CandidateField<P> {
+  let entries = map(requests, request =>
+    field_entry(
+      routes: routes,
+      sanctions: sanctions,
+      active: active,
+      scope: scope,
+      decision_receipt: decision_receipt,
+      request: request,
+    ))
+  CandidateField {
+    admitted: flat_map(entries, e => entry_candidates(entry: e)),
+    excluded: flat_map(entries, e => entry_exclusions(entry: e)),
+  }
+}
