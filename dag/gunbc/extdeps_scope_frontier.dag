@@ -213,6 +213,16 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/network/dell_0r887v.dag",
+  "dag/extdeps/network/ibm_01ft753.dag",
+  "dag/extdeps/network/mcx4411a_acan.dag",
+  "dag/extdeps/network/mcx4421a_acan.dag",
+  "dag/extdeps/network/mcx4621a_acab.dag",
+  "dag/extdeps/standards/nic_attachment.dag",
+  "dag/extdeps/standards/ocp_nic_2_0.dag",
+  "dag/extdeps/standards/ocp_nic_3_0.dag",
+  "dag/extdeps/node/node.dag",
+  "dag/extdeps/typescript/typescript.dag",
   "dag/extdeps/llm/anthropic_messages_api.dag",
   "dag/extdeps/llm/anthropic_messages_api_contracts.dag",
   "dag/extdeps/bazel/bazel.dag",
@@ -529,6 +539,7 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/external_authority.dag",
   "dag/extdeps/uri.dag",
   "dag/extdeps/publication.dag",
+  "dag/extdeps/tax/statutory_rate.dag",
   "dag/extdeps/bmc/mock_corpus.dag",
   "dag/extdeps/cloud/gcp/mock_corpus.dag",
   "dag/extdeps/cron/mock_corpus.dag",
