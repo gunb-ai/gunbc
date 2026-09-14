@@ -55,7 +55,7 @@ type RankObservation sole_constructor {
   image_digest: NonEmptyStr
   model_path: NonEmptyStr
   argv: List<String>
-  selected_fabric_interface: NonEmptyStr?
+  selected_transport: NcclTransportObservation
 }
 
 fn rank_observation(
@@ -64,7 +64,7 @@ fn rank_observation(
   image_digest: NonEmptyStr,
   model_path: NonEmptyStr,
   argv: List<String>,
-  selected_fabric_interface: NonEmptyStr?,
+  selected_transport: NcclTransportObservation,
 ) -> RankObservation {
   RankObservation {
     host: host,
@@ -72,7 +72,7 @@ fn rank_observation(
     image_digest: image_digest,
     model_path: model_path,
     argv: argv,
-    selected_fabric_interface: selected_fabric_interface,
+    selected_transport: selected_transport,
   }
 }
 
@@ -173,6 +173,32 @@ fn argv_first_difference(a: List<String>, b: List<String>, position: Nat) -> Nat
   }
 }
 
+// ── THE TRANSPORT IS A BACKEND AND A DEVICE, NOT AN INTERFACE NAME ────────────────────────────
+//
+// A NETDEV NAME CANNOT SAY WHICH TRANSPORT RAN OVER IT, and reducing the observation to one meant the
+// readback could not tell RoCE from TCP on the same rail. Both NCCL backends use enp1s0f1np1: the IB
+// backend for verbs traffic with the socket only for out-of-band bootstrap, the Socket backend for
+// everything. So "the interface is the one we intended" was satisfied by the deployment that had
+// silently fallen back, which is the whole defect.
+//
+// AND THE OLD READER COULD NOT REPRESENT THE ANSWER IT WAS ABOUT TO BE GIVEN. It matched only
+// "NET/Socket : Using ...". The moment the RDMA realization lands, NCCL prints NET/IB instead, the
+// reader returns nothing, and a correct deployment reports DeploymentUnverified -- a reader whose
+// success case becomes unreadable exactly when the system is fixed. That is the same shape as a check
+// that cannot go red, one layer out, and it would have cost a weight-load cycle to discover.
+type NcclTransportObservation
+  = NcclIbTransport { hca: NonEmptyStr, oob_netdev: NonEmptyStr? }
+  | NcclSocketTransport { netdev: NonEmptyStr }
+  | NcclTransportUnread { cause: NonEmptyStr }
+
+fn nccl_transport_text(t: NcclTransportObservation) -> String {
+  match t {
+    NcclIbTransport { hca: h, oob_netdev: _ } => join(["verbs over ", h as String], "")
+    NcclSocketTransport { netdev: n } => join(["TCP sockets over ", n as String], "")
+    NcclTransportUnread { cause: c } => c as String
+  }
+}
+
 // ── ONE RANK'S DEVIATIONS ──────────────────────────────────────────────────────────────────────
 fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
   concat(concat(concat(
@@ -207,24 +233,28 @@ fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<De
     })
 }
 
+// THE REQUIRED BACKEND IS COMPARED, AND A FALLBACK IS A DEVIATION RATHER THAN A DETAIL. A rank that
+// reached the right rail through the wrong transport has not satisfied the plan: its capacity, its
+// latency and every throughput standing scoped to the intended transport are different facts. So a
+// socket-transport rank is reported as a divergence, with the transport it actually used named.
 fn rank_interface_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
-  match observed.selected_fabric_interface {
-    Absent => []
-    Present { value: iface } =>
-      if (iface as String) == (fabric_rail_interface_name as String) { [] } else {
-        [RankFabricInterfaceDiffers {
-          node_rank: desired.node.node_rank,
-          desired: fabric_rail_interface_name,
-          observed: iface,
-        }]
-      }
+  match observed.selected_transport {
+    NcclTransportUnread { cause: _ } => []
+    NcclIbTransport { hca: _, oob_netdev: _ } => []
+    NcclSocketTransport { netdev: n } =>
+      [RankFabricInterfaceDiffers {
+        node_rank: desired.node.node_rank,
+        desired: "NCCL verbs transport over the fabric rail" as NonEmptyStr,
+        observed: join(["NCCL TCP sockets over ", n as String], "") as NonEmptyStr,
+      }]
   }
 }
 
 fn rank_unknowns(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentUnknown> {
-  match observed.selected_fabric_interface {
-    Present { value: _ } => []
-    Absent => [FabricInterfaceUnread { node_rank: desired.node.node_rank }]
+  match observed.selected_transport {
+    NcclIbTransport { hca: _, oob_netdev: _ } => []
+    NcclSocketTransport { netdev: _ } => []
+    NcclTransportUnread { cause: _ } => [FabricInterfaceUnread { node_rank: desired.node.node_rank }]
   }
 }
 

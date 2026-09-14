@@ -12,7 +12,7 @@ import gunbc.spark.device_memory_envelope {
   ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
   glm_native_device_memory_policy,
 }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, sha256_hex_digest, Sha256Hash }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
@@ -36,11 +36,13 @@ import gunbc.serving.turn_demand {
 }
 import gunbc.serving.incarnation_provenance {
   ServingSourceResolution, ServingRuntimeResolution,
-  CoordinateObserved, CoordinateAbsentByObservation, RevisionAddressedUpstreamVerification,
+  ServingCoordinateReading, CoordinateObserved, CoordinateAbsentByObservation,
+  CoordinateUnestablished, RevisionAddressedUpstreamVerification,
   resolve_serving_source, resolve_serving_runtime,
   serving_execution_source_ref,
 }
 import gunbc.spark.native_deployment_readback {
+  NcclTransportObservation, NcclIbTransport, NcclSocketTransport, NcclTransportUnread,
   RankObservation, rank_observation,
   NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,
   DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
@@ -67,6 +69,11 @@ data readback_fixture_envelope: ResolvedDeviceMemoryEnvelope = ResolvedForAttemp
   attempt: "readback-witness-fixture" as NonEmptyStr,
   standings: [],
 }
+
+// THE RAIL'S HCA, NAMED ONCE. A faithful rank now reports the VERBS backend over this device, because
+// the readback compares a transport rather than a netdev name -- and both backends legitimately use the
+// same netdev, which is precisely why the old comparison was satisfied by a fallen-back deployment.
+data t_rail_hca: NonEmptyStr = "rocep1s0f1" as NonEmptyStr
 
 fn plan() -> ArmLaunchPlan {
   glm_native_tp4_launch_plan(envelope: readback_fixture_envelope)
@@ -113,7 +120,7 @@ fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
     image_digest: planned_image_for(rank: rank),
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: rank),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   )
 }
 
@@ -162,7 +169,7 @@ data one_rank_wrong_digest: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 2),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
   faithful_rank(host: operator_host_srv11, rank: 3),
 ]
@@ -185,7 +192,7 @@ data one_rank_wrong_revision: List<RankObservation> = [
     image_digest: planned_image_for(rank: 1),
     model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
     argv: planned_argv_for(rank: 1),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -225,7 +232,7 @@ data interface_unread: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0,
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
-    argv: planned_argv_for(rank: 0), selected_fabric_interface: none,
+    argv: planned_argv_for(rank: 0), selected_transport: NcclTransportUnread { cause: "the engine log printed no transport line" as NonEmptyStr },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -247,7 +254,7 @@ data interface_wrong: List<RankObservation> = [
     host: operator_host_srv9, node_rank: 0,
     image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_fabric_interface: Present { value: "wlan0" as NonEmptyStr },
+    selected_transport: NcclSocketTransport { netdev: "wlan0" as NonEmptyStr },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -311,7 +318,7 @@ data one_word_changed_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0, image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: argv_with_one_word_changed(rank: 0),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -340,7 +347,7 @@ data reordered_ranks: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv10, node_rank: 1, image_digest: planned_image_for(rank: 1), model_path: pinned_model_path,
     argv: argv_reversed(rank: 1),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
   faithful_rank(host: operator_host_srv12, rank: 2),
   faithful_rank(host: operator_host_srv11, rank: 3),
@@ -383,7 +390,7 @@ data rank_zero_twice: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
   faithful_rank(host: operator_host_srv12, rank: 2),
@@ -417,7 +424,7 @@ data an_unexpected_fifth_rank: List<RankObservation> = [
     image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
-    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+    selected_transport: NcclIbTransport { hca: t_rail_hca, oob_netdev: Present { value: fabric_rail_interface_name } },
   ),
 ]
 
@@ -455,9 +462,31 @@ fn t_source_readings(checkpoint: String) -> ServingSourceResolution {
   )
 }
 
+// THE RUNTIME IMAGE MUST BE THE IMAGE THE ACCEPTANCE NAMES, AND THIS FIXTURE USED TO DISAGREE. It
+// hashed the literal "runtime-image" while the acceptance carried the plan's real pinned reference, so
+// the two halves of the incarnation described different images -- exactly the pairing the
+// acceptance-to-runtime join refuses, and the join caught it here first. Deriving the coordinate from
+// the plan's own reference is what makes this fixture a POSITIVE control rather than a forgery that
+// happened to be green before the join existed.
+fn t_runtime_image_reading() -> ServingCoordinateReading {
+  match sha256_hex_digest(hex: strip_sha256_prefix(raw: planned_image_for(rank: 0) as String)) {
+    Absent => CoordinateUnestablished {
+      obligation: "the planned image reference is not a sha256 digest" as NonEmptyStr,
+    }
+    Present { value: d } => CoordinateObserved { hash: Sha256Hash(d) }
+  }
+}
+
+fn strip_sha256_prefix(raw: String) -> String {
+  match split(s: raw, delimiter: ":").skip(n: 1).first() {
+    Absent => raw
+    Present { value: hex } => hex
+  }
+}
+
 fn t_runtime_readings() -> ServingRuntimeResolution {
   resolve_serving_runtime(
-    runtime_image: CoordinateObserved { hash: content_hash_of_value(value: "runtime-image" as NonEmptyStr) },
+    runtime_image: t_runtime_image_reading(),
     runtime_extensions: CoordinateAbsentByObservation,
     runtime_configuration: CoordinateAbsentByObservation,
   )
