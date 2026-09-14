@@ -20,6 +20,9 @@ import gunbc.frontend_eval.experiment {
   treatment_effort_wire,
 }
 import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortMax }
+import gunbc.frontend_eval.serving_identity { RealizedServing, ObservedServing, RuntimeUnobserved, realized_serving_identity }
+import gunbc.spark.vllm_observed { vllm_models_route_readback, vllm_self_reported_version }
+import product.placement_supply { HostIdentity }
 import gunbc.frontend_eval.card { frontend_language_card }
 import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
 import std.measure { millisecond, token_count, token_count_value }
@@ -84,9 +87,23 @@ test fn model_projection_names_tasks_and_hides_the_repair() -> Bool {
     && (t.expected_lexeme == "" || contains(judge, t.expected_lexeme)))
 }
 
+fn fixture_serving(generation: Int) -> RealizedServing {
+  RealizedServing {
+    observed: ObservedServing {
+      host: "srv9" as HostIdentity, port: 30000,
+      models: vllm_models_route_readback(served_model_id: "m" as NonEmptyStr, configured_model_path: "/w" as NonEmptyStr, max_model_len: token_count(count: 8)),
+      version: vllm_self_reported_version(version_string: "0.1" as NonEmptyStr),
+      engine_generation: generation,
+    },
+    runtime: RuntimeUnobserved,
+  }
+}
+
+data fixture_answered_by: NonEmptyStr = realized_serving_identity(s: fixture_serving(generation: 1))
+
 fn fixture_cohort(t: SamplingTemperature, identity: String) -> EvalCohort {
   EvalCohort {
-    identity: identity as NonEmptyStr,
+    identity: identity as NonEmptyStr, serving: fixture_serving(generation: 1),
     model_id: "m" as NonEmptyStr, model_snapshot: "s" as NonEmptyStr, compiler_program_sha256: "c" as NonEmptyStr,
     driver_sha256: "d" as NonEmptyStr, task_set_sha256: "r" as NonEmptyStr, prompt_template_sha256: "p" as NonEmptyStr,
     clear_thinking: false, temperature: t, max_tokens: token_count(count: 1),
@@ -109,7 +126,7 @@ fn fixture_experiments() -> List<EvalExperiment> {
 
 fn fixture_attempt_with(context: ModelContextIdentity, experiment: String, id: String, arm: EvalArm, outcome: EvalOutcome, reasoning: Int, cycles: Int) -> EvalAttempt {
   EvalAttempt {
-    task_id: id as NonEmptyStr, arm: arm, experiment: experiment as NonEmptyStr,
+    task_id: id as NonEmptyStr, arm: arm, experiment: experiment as NonEmptyStr, answered_by: fixture_answered_by,
     record_sha256: "rec" as NonEmptyStr, model_context: context,
     usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: reasoning * 2), reasoning_tokens: token_count(count: reasoning) },
     cycles: cycles, tool_calls: 0, edits: 1, outcome: outcome, wall: millisecond(count: 0),
@@ -305,4 +322,19 @@ test fn control_lexeme_must_appear_in_a_diagnostic_message() -> Bool {
   refusal_names(text: "      Equals => Equal\n", lexeme: "Equals") == false
     && refusal_names(text: "x.dag:234:1: error: variant 'Equals' not found in type 'Ordering'", lexeme: "Equals")
     && refusal_names(text: "error: resolve failed for x.dag\n  cause: x.dag:1:1: error: undefined function 'interval_lower'\n", lexeme: "interval_lower")
+}
+
+// A ROW ANSWERED BY A RESTARTED ENGINE IS NOT IN THE COHORT: the same host, port, version and
+// model with a different engine generation refuses, because reasoning accounting and tool parsing
+// are the runtime's and a restart is a new runtime process (observed mid-run on the canary).
+test fn report_refuses_a_row_answered_by_another_engine_generation() -> Bool {
+  let restarted = realized_serving_identity(s: fixture_serving(generation: 2))
+  let row = EvalAttempt {
+    task_id: "pareto.labeled" as NonEmptyStr, arm: LowEffortBare, experiment: "exp-bare" as NonEmptyStr, answered_by: restarted,
+    record_sha256: "rec" as NonEmptyStr, model_context: ModelContextUnrecorded,
+    usage: EvalUsage { prompt_tokens: token_count(count: 0), completion_tokens: token_count(count: 0), reasoning_tokens: token_count(count: 0) },
+    cycles: 1, tool_calls: 0, edits: 1, outcome: AcceptedRepair, wall: millisecond(count: 0),
+  }
+  restarted != fixture_answered_by
+    && refused_with(experiments: fixture_experiments(), attempts: concat(fixture_attempts, [row]), lexeme: "serving realization")
 }

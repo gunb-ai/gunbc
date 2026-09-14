@@ -5,6 +5,7 @@ import std.measure { Millisecond, TokenCount, token_count, token_count_value, me
 import gunbc.frontend_eval.task { EvalTask, mutation_class_scored_separately, frontend_eval_tasks }
 import gunbc.frontend_eval.attempt_arm { EvalArm, eval_arm_key, eval_arms }
 import gunbc.frontend_eval.experiment { EvalCohort, EvalExperiment, ExperimentsAdmitted, ExperimentsRefused, admit_experiments, experiment_for }
+import gunbc.frontend_eval.serving_identity { realized_serving_identity }
 
 // AN ATTEMPT IS AN INDEPENDENT RECORD OF ONE RUN OF ONE TASK UNDER ONE ARM. It names the experiment
 // manifest it ran under (every identity a re-run must match lives there, once), the content hash
@@ -54,10 +55,14 @@ type ModelContextIdentity
   = ModelContextHashed { sha256: NonEmptyStr }
   | ModelContextUnrecorded
 
+// `answered_by` is the realized serving identity observed at the attempt's first request (the
+// engine generation among it), so a row answered by a restarted engine cannot sit in a cohort
+// pinned to the earlier one.
 type EvalAttempt {
   task_id: NonEmptyStr
   arm: EvalArm
   experiment: NonEmptyStr
+  answered_by: NonEmptyStr
   record_sha256: NonEmptyStr
   model_context: ModelContextIdentity
   usage: EvalUsage
@@ -101,9 +106,16 @@ fn first_task_id(rows: List<EvalAttempt>) -> String {
 }
 
 fn admit_report_population(cohort: EvalCohort, experiments: List<EvalExperiment>, attempts: List<EvalAttempt>) -> ReportAdmission {
+  let serving = realized_serving_identity(s: cohort.serving)
+  let other_engine = attempts |> filter(a => a.answered_by != serving)
   match admit_experiments(cohort: cohort, experiments: experiments) {
     ExperimentsRefused { detail } => ReportRefused { detail: detail }
-    ExperimentsAdmitted => admit_rows(experiments: experiments, attempts: attempts)
+    ExperimentsAdmitted =>
+      if count(other_engine) > 0 {
+        ReportRefused { detail: join(["attempt answered by a serving realization other than the cohort's: ", first_task_id(rows: other_engine)], "") }
+      } else {
+        admit_rows(experiments: experiments, attempts: attempts)
+      }
   }
 }
 

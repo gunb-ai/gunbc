@@ -5,6 +5,7 @@ import std.measure { TokenCount }
 import extdeps.vllm.sampling_params { SamplingTemperature }
 import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire }
 import gunbc.frontend_eval.attempt_arm { EvalArm, LowEffortBare, MaxEffortBare, LowEffortTools, LowEffortToolsCard, eval_arm_key }
+import gunbc.frontend_eval.serving_identity { RealizedServing }
 
 // ONE COHORT, FOUR TREATMENTS. Everything the arms SHARE -- which model, which snapshot, which
 // compiler judged, which driver bytes ran the loop, which task set, which prompt template, the
@@ -23,6 +24,7 @@ type ToolSurfaceIdentity
 
 type EvalCohort {
   identity: NonEmptyStr
+  serving: RealizedServing
   model_id: NonEmptyStr
   model_snapshot: NonEmptyStr
   compiler_program_sha256: NonEmptyStr
