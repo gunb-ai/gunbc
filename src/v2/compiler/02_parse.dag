@@ -522,6 +522,33 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
   }
 }
 
+fn parse_memo_stats_empty() -> ParseMemoStats {
+  ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+}
+
+// THE PARSE'S OWN MEMO ACCOUNTING, CARRIED BESIDE ITS RESULT AND NOT INSIDE IT.
+//
+// WHY NOT A FIELD ON ParseArtifact, which is the shorter change. ParseArtifact answers WHAT was
+// parsed; the memo counters answer HOW the parse was executed, which is a realization fact about
+// one run and not a property of the tree. DESIGN section 3 keeps interface and realization as two
+// facts, so putting a counter on the semantic artifact would make every consumer of a parse result
+// carry a measurement it has no use for, and would make the artifact's identity depend on how many
+// times a memo happened to be consulted.
+//
+// AND THE COUNTERS MUST SURVIVE A REFUSAL, which a field on the accepted value cannot do. The
+// expensive case this instrument exists to read is a file that spends seconds in parse and THEN
+// rejects; an Outcome's Rejected arm carries no ParseArtifact, so the stats would be lost exactly
+// where they are most wanted. This carrier holds the outcome and the accounting side by side, so
+// both arms report.
+//
+// THE UNMEASURED ENTRY POINT IS A PROJECTION OF THIS ONE, never a second parse: parse_module_prepared
+// is `.outcome` of the measured fold, so there is one implementation and no caller pays a second
+// parse to be measured.
+type ParseProductionMeasured {
+  outcome: Outcome<ParseArtifact>
+  memo: ParseMemoStats
+}
+
 fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
@@ -2671,6 +2698,20 @@ fn parse_production_prepared(
   analysis: GrammarFirstAnalysis,
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
+  parse_production_prepared_measured(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name
+  ).outcome
+}
+
+fn parse_production_prepared_measured(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol
+) -> ParseProductionMeasured {
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
@@ -2684,32 +2725,44 @@ fn parse_production_prepared(
         table: table,
         prov: prov
       ) {
-        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
           if is_empty(xs: remaining) {
             let stamped = parse_wrap_production_captured(
               production: production,
               captured: captured,
               prov: inner_prov
             )
-            Accepted {
-              value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
-              diagnostics: parse_diags_to_diagnostics(diags: diags)
+            ParseProductionMeasured {
+              outcome: Accepted {
+                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
+                diagnostics: parse_diags_to_diagnostics(diags: diags)
+              },
+              memo: parse_table_memo_stats(table: final_table)
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) }
+            ParseProductionMeasured {
+              outcome: Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) },
+              memo: parse_table_memo_stats(table: final_table)
+            }
           }
-        ParseExprRejected { diagnostics: diags, table: _ } =>
-          Rejected {
-            diagnostics: parse_diags_to_non_empty(
-              diags: diags,
-              default: parse_e1_syntax_error_diagnostic(
-                at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+        ParseExprRejected { diagnostics: diags, table: final_table } =>
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: parse_diags_to_non_empty(
+                diags: diags,
+                default: parse_e1_syntax_error_diagnostic(
+                  at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+                )
               )
-            )
+            },
+            memo: parse_table_memo_stats(table: final_table)
           }
       }
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: diagnostics_singleton(d: d) },
+        memo: parse_memo_stats_empty()
+      }
   }
 }
 
@@ -2779,41 +2832,71 @@ fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<N
   }
 }
 
+// The unmeasured door, retained for every caller that does not own a clock or a relay, and defined
+// as the projection of the measured fold rather than restated beside it.
 fn parse_module_prepared(
   tokens: TokenStream,
   prepared: PreparedGrammar,
   validation_residue: Diagnostics
 ) -> Outcome<ParseArtifact> {
+  parse_module_prepared_measured(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue
+  ).outcome
+}
+
+// A VOID GRAMMAR CONSULTS NO MEMO, so its accounting is empty rather than absent: the counters are
+// zero because nothing was looked up, which is an answer. Reporting no stats at all would make a
+// void parse indistinguishable from a parse whose stats were dropped.
+fn parse_module_prepared_measured(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics
+) -> ParseProductionMeasured {
   let ntok = token_stream_remaining_count(stream: tokens)
   match prepared {
     PreparedVoidGrammar =>
       if ntok == 0 {
-        Accepted {
-          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
-          diagnostics: validation_residue
+        ParseProductionMeasured {
+          outcome: Accepted {
+            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
+            diagnostics: validation_residue
+          },
+          memo: parse_memo_stats_empty()
         }
       } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
-          )
+        ParseProductionMeasured {
+          outcome: Rejected {
+            diagnostics: diagnostics_singleton(
+              d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
+            )
+          },
+          memo: parse_memo_stats_empty()
         }
       }
     PreparedModeled { modeled: modeled } =>
-      match parse_production_prepared(
+      let measured = parse_production_prepared_measured(
         tokens: token_stream_remaining(stream: tokens),
         validated: modeled.validated,
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start
-      ) {
+      )
+      match measured.outcome {
         Accepted { value: artifact, diagnostics: parse_diags } =>
-          Accepted {
-            value: artifact,
-            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+          ParseProductionMeasured {
+            outcome: Accepted {
+              value: artifact,
+              diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+            },
+            memo: measured.memo
           }
         Rejected { diagnostics: parse_rejected } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+            },
+            memo: measured.memo
           }
       }
   }
