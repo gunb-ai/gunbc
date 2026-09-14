@@ -2,6 +2,7 @@ module gunbc.namespace.transition_admission
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
+import std.integer { UInt32 }
 import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 
 // Directory-is-membership roster for namespace transition admissions.
@@ -58,8 +59,14 @@ type AdmissionSubject
       target_module: NonEmptyStr
     }
 
+type DeletionFollowUp
+  = NotAuthored
+  | PullRequest { number: UInt32 }
+
 type TransitionAdmission {
   label: NonEmptyStr
   subject: AdmissionSubject
   disposition: NamespaceDeltaDisposition
+  deletion_follow_up: DeletionFollowUp
+  owner_pull_request: UInt32
 }
