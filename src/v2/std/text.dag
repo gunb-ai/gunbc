@@ -82,12 +82,13 @@ fn char_eq(a: Char, b: Char) -> Bool {
 //
 // AN EARLIER WORDING OF THIS NOTE NAMED THE NARROW PATTERN '^fn string_eq' AND CALLED
 // grammar_coverage_string_eq THE renamed exception. BOTH WERE FALSE. The narrow pattern misses
-// every renamed fork, and grammar_coverage is not the only one -- the command above finds several,
-// and grammar_coverage_string_eq is the ONLY one that carries a stated retention at its own site
-// (its module declares no imports, so adding the one the collapse needs moves it into its own
-// import closure and other names stop resolving). EVERY OTHER FORK THE COMMAND FINDS IS UNDECLARED
-// RESIDUE: no reason recorded, no retention stated, nothing at its declaration saying why it is
-// still there.
+// every renamed fork, and grammar_coverage was not the only one -- the command above finds
+// several. That clone no longer exists: it was retained here on the ground that its module
+// declared no imports, and the retention was rejected because naming that module's own imports is
+// source work this change can express, which is not a dissolution trigger but a task. So
+// v2.lens.enforcement.grammar_coverage now names its import surface and calls this declaration.
+// EVERY FORK THE COMMAND STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention
+// stated, nothing at its declaration saying why it is still there.
 //
 // TRIGGER, per fork rather than for the set: a fork collapses when a change touches its module,
 // or earlier if that module's import closure already reaches v2.std.text. There is no single event

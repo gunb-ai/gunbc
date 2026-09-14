@@ -1,5 +1,17 @@
 module v2.lens.enforcement.grammar_coverage
 
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.coverage { dedupe_snoc }
+import v2.std.algebra { fold_list, length, list_append }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, symbol_identity_digest }
+import v2.std.text { String, string_eq }
+
 
 type GrammarCoverageParseVerdict
   = ParsedClean
@@ -49,44 +61,6 @@ data grammar_coverage_file_anchor: Symbol = ^grammar_coverage_file_anchor
 
 data grammar_coverage_reject_probe: Symbol = ^grammar_coverage_reject_probe
 
-// THE ONE SURVIVING string_eq CLONE IN v2.lens, AND IT IS NOT A DIFFERENT CONCEPT -- it is
-// byte-identical to v2.std.text string_eq, and collapsing it is the same one-line delete that
-// retired the rest of the cohort. It stays because the collapse was ATTEMPTED HERE AND MEASURED, and
-// the premise behind "one delete plus an import" is false for this file specifically.
-//
-// THIS MODULE DECLARES NO IMPORTS AT ALL, so every name it uses reaches its declaration through
-// the shared name slot. Adding the one import line the collapse needs moves this file's
-// resolution into its OWN IMPORT CLOSURE, and the names that fall outside that closure stop
-// resolving: the collapse was attempted and the refusal set read off the compile, which gains
-// exactly dedupe_snoc (v2.lens.coverage), tokenize (v2.compiler.tokenize) and parse_module
-// (v2.compiler.parse), each as `has no established callee identity, so its effects cannot be
-// joined`. The shape is stated rather than a count transcribed (section 6); re-derive it by
-// adding the import and compiling this module, which is the same act the trigger below closes on.
-//
-// THE RULE IS THE CLOSURE, NOT THE FILE, and this diff carries its own control for that -- a
-// correction owed to review 65902, which found the earlier phrasing ("turns on the listed-import
-// requirement for the whole file") contradicted two files away. v2.lens.fact_cardinality also had
-// zero imports at base, also gained `import v2.std.text { string_eq }` as its only import, and its
-// bare names KEPT resolving. They did because v2.std.text imports v2.std.algebra, so contains and
-// list_snoc_item are inside the closure that one import opens. The three names above are not:
-// nothing on the path from v2.std.text reaches v2.lens.coverage or v2.compiler. Same act, opposite
-// outcome, and the discriminator is where the names are declared relative to the closure -- which
-// is why fact_cardinality collapsed in this change and this file did not.
-//
-// So the honest collapse of this clone is the qualification of this module's whole surface --
-// naming v2.lens.coverage, v2.compiler.tokenize and v2.compiler.parse as the sources they already
-// resolve to -- which is a different change with a different blast radius from retiring a
-// duplicate function, and it belongs to the bare-name qualification campaign rather than to this
-// one. Doing it here under a string_eq collapse would hide a resolution-regime change inside a
-// DRY cleanup.
-//
-// TRIGGER: this clone goes when v2.lens.enforcement.grammar_coverage names its own imports. The
-// instrument is the same one the rest of this cohort was measured with: grep for `fn` followed by
-// any prefixed string_eq under src/v2/lens, which returns exactly this one.
-fn grammar_coverage_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn grammar_coverage_tree_root_for_path(path: String) -> String {
   if path.starts_with(prefix: "dag/") {
     "dag"
@@ -107,7 +81,7 @@ fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) 
       dedupe_snoc(
         acc: acc,
         item: fact.rel_path,
-        eq: grammar_coverage_string_eq
+        eq: string_eq
       )
     }
   )
@@ -366,7 +340,7 @@ fn grammar_coverage_roster_contains_path(
     xs: roster,
     empty: false,
     cons: fn(acc, p) {
-      acc || grammar_coverage_string_eq(a: p, b: path)
+      acc || string_eq(a: p, b: path)
     }
   )
 }

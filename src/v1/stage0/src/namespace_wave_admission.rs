@@ -1875,14 +1875,18 @@ pub struct TransitionAdmission {
 /// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
 /// frontier below is adjudicated by that command and not by a roll call in this file.
 ///
-/// EXACTLY ONE SURVIVOR STATES ITS OWN RETENTION, and an earlier wording of this header claimed
-/// they all did. That was FALSE. `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq`
-/// carries the measured obstacle and its trigger at its declaration -- its module declares no
-/// imports, so adding the one the collapse needs moves it into its own import closure and other
-/// names stop resolving. EVERY OTHER HIT THE COMMAND FINDS IS UNDECLARED RESIDUE: no reason
-/// recorded, no retention stated, nothing at its declaration saying why it survives. The claim
-/// that each one was declared is exactly the kind of statement this header exists to refuse --
-/// it told a reader asking `is this residue tracked` YES, in the authority they consult first.
+/// NO SURVIVOR STATES ITS OWN RETENTION. Two earlier wordings of this header were wrong here in
+/// opposite directions: the first claimed every survivor was declared, the second claimed
+/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` was the one that was. The
+/// second is now moot because that clone is gone: its stated retention was that the module
+/// declared no imports, so the one import the collapse needs would move it into its own import
+/// closure and strand `dedupe_snoc`, `tokenize` and `parse_module`. That is a real obstacle and
+/// it is not a dissolution trigger -- it named source work this change can express -- so the
+/// module now declares its own import surface and calls the authority. EVERY HIT THE COMMAND
+/// STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention stated, nothing at its
+/// declaration saying why it survives. The claim that any of it is declared is exactly the kind
+/// of statement this header exists to refuse -- it told a reader asking `is this residue tracked`
+/// YES, in the authority they consult first.
 ///
 /// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
 /// against a list this file keeps: the frontier closes when the command above returns exactly ONE
