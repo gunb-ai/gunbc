@@ -1,0 +1,194 @@
+module v2.workflow.floor_cost_debt_admission
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
+}
+import std.measure { Millisecond, millisecond_count }
+
+// ROSTER ADMISSION BY CONSTRUCTION FOR `v2.workflow.floor_cost_debt`.
+//
+// WHY THIS IS NOT INSIDE THAT MODULE. `required_floor` already imports `floor_cost_debt` for
+// membership. Importing `ClaimCostReading` there would pull `gunbc.floor_cost_distribution`
+// into every required-floor compile — a second copy of a large analysis module on the floor's
+// hot path. The identity census stays there; the READING FIELD of a new row lives here.
+//
+// THE PROVEN CLASS, STATED SO THE PR DOES NOT RE-DERIVE THE POLICY: witnesses whose observed
+// CPU exceeds `required_floor_per_subject_cpu_line_ms` (the 500ms CPU line -- CPU milliseconds, NOT the
+// work envelope: they share a magnitude and are different quantities) plus censored
+// witnesses that never reached a verdict. A censored reading must ESTABLISH that supplied
+// ceiling (censoring_ceiling equals it, lower bound at least it) and the attempt must CARRY
+// `FloorCostDebtNeverReachedAVerdict` — censoring is not that discriminator.
+// required_floor treats the roster and the long home as ONE declaration class. This constructor
+// is what makes "one declaration class" true IN EVIDENCE: a margin crossing (over 302, under
+// 500) cannot mint a row, and a 1ms censored reading against the 500ms ceiling cannot either.
+//
+// THE CEILING IS A PARAMETER. This module must not import `required_floor` (cycle through
+// floor_cost_debt) and must not restate 500. Callers pass
+// `required_floor_per_subject_cpu_line_ms()`.
+//
+// DECLARED FRONTIER (DESIGN §3c), not a live mint. `floor_cost_debt_row` is consumed by
+// `floor_cost_debt_admit_attempts` and by executing tests; it is NOT consumed by
+// `floor_cost_debt_roster`. The live withhold set is still those identity strings. Wiring
+// this module into every required-floor compile would import `gunbc.floor_cost_distribution`
+// onto that hot path (the reason the constructor is not inside `floor_cost_debt`).
+//
+// NAMED CONSUMER: `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`
+// decodes this list onto enrolment Roster ground. The withhold HashSet union into
+// `floor_cost_debt_roster` remains a later consumer: the first identity that would otherwise
+// be appended as a string after this PR is authored here as a `FloorCostDebtReadingAttempt`
+// and nowhere else. Until then this list is Empty, which is the honest population.
+
+fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
+  []
+}
+
+fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {
+  reverse(fold(
+    floor_cost_debt_admit_attempts(
+      attempts: floor_cost_debt_typed_admission_attempts(),
+      ceiling_ms: ceiling_ms,
+    ),
+    init: [],
+    f: fn(acc, row) { concat([row.identity], acc) },
+  ))
+}
+
+type FloorCostDebtRow {
+  identity: String
+  reading: ClaimCostReading
+}
+
+// VERDICT REACHABILITY IS A SEPARATE AXIS from ClaimCostReading (gunbc.floor_cost_distribution
+// / v2.workflow.claim_cost_observation). Censoring does not prove "never reached a verdict".
+// The attempt carries the discriminator; the constructor consumes it.
+type FloorCostDebtVerdictAxis =
+    FloorCostDebtReachedAVerdict
+  | FloorCostDebtNeverReachedAVerdict
+
+type FloorCostDebtRowStanding =
+    FloorCostDebtRowAdmitted { row: FloorCostDebtRow }
+  | FloorCostDebtRowRefusedUnderCeiling { identity: String, observed_cpu_ms: Millisecond }
+  | FloorCostDebtRowRefusedCensoredNotEstablished {
+      identity: String
+      cpu_lower_bound_ms: Millisecond
+      censoring_ceiling_ms: Millisecond
+    }
+  | FloorCostDebtRowRefusedBoundWithoutCeiling {
+      identity: String
+      cpu_lower_bound_ms: Millisecond
+    }
+
+type FloorCostDebtReadingAttempt {
+  identity: String
+  reading: ClaimCostReading
+  verdict: FloorCostDebtVerdictAxis
+}
+
+// A BOUND WITH NO CEILING CAN NEVER ESTABLISH THE SUPPLIED ONE, SO IT REFUSES ON ITS OWN ARM.
+// The admission test for a censored row is that its reading ESTABLISHES the ceiling it was
+// stopped at -- `censoring_ceiling` equals the supplied ceiling and the bound reaches it. A
+// `CpuLowerBoundWithoutCeiling` carries no ceiling at all, so that test has nothing to compare
+// and the row cannot be minted. It does NOT reuse `RefusedCensoredNotEstablished`, whose
+// `censoring_ceiling_ms` field would have to be filled from the SUPPLIED ceiling -- writing a
+// figure the reading never carried into a field named for one it did, which is the fabricated
+// diagnostic DESIGN §5 forbids. The refusal is typed, located, and names the bound it did read.
+fn floor_cost_debt_row(
+  identity: String,
+  reading: ClaimCostReading,
+  ceiling_ms: Millisecond,
+  verdict: FloorCostDebtVerdictAxis,
+) -> FloorCostDebtRowStanding {
+  match reading {
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: c } =>
+      match verdict {
+        FloorCostDebtNeverReachedAVerdict =>
+          if millisecond_count(m: c) == millisecond_count(m: ceiling_ms)
+            && millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
+            FloorCostDebtRowAdmitted {
+              row: FloorCostDebtRow {
+                identity: identity,
+                reading: RightCensoredCpuReading {
+                  cpu_lower_bound_ms: b,
+                  censoring_ceiling_ms: c,
+                },
+              },
+            }
+          } else {
+            FloorCostDebtRowRefusedCensoredNotEstablished {
+              identity: identity,
+              cpu_lower_bound_ms: b,
+              censoring_ceiling_ms: c,
+            }
+          }
+        FloorCostDebtReachedAVerdict =>
+          FloorCostDebtRowRefusedCensoredNotEstablished {
+            identity: identity,
+            cpu_lower_bound_ms: b,
+            censoring_ceiling_ms: c,
+          }
+      }
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b } =>
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: identity,
+        cpu_lower_bound_ms: b,
+      }
+    ObservedCpuReading { cpu_ms: c } =>
+      if millisecond_count(m: c) > millisecond_count(m: ceiling_ms) {
+        FloorCostDebtRowAdmitted {
+          row: FloorCostDebtRow {
+            identity: identity,
+            reading: ObservedCpuReading { cpu_ms: c },
+          },
+        }
+      } else {
+        FloorCostDebtRowRefusedUnderCeiling { identity: identity, observed_cpu_ms: c }
+      }
+  }
+}
+
+fn floor_cost_debt_row_is_admitted(standing: FloorCostDebtRowStanding) -> Bool {
+  match standing {
+    FloorCostDebtRowAdmitted { row: _ } => true
+    FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => false
+    FloorCostDebtRowRefusedCensoredNotEstablished {
+      identity: _,
+      cpu_lower_bound_ms: _,
+      censoring_ceiling_ms: _,
+    } => false
+    FloorCostDebtRowRefusedBoundWithoutCeiling {
+      identity: _,
+      cpu_lower_bound_ms: _,
+    } => false
+  }
+}
+
+// THE ROSTER WITNESS FOLD. Identity-grain over every attempt: a 325ms observed row cannot
+// survive into the admitted set; a censored row that does not establish the supplied ceiling
+// cannot either.
+fn floor_cost_debt_admit_attempts(
+  attempts: List<FloorCostDebtReadingAttempt>,
+  ceiling_ms: Millisecond,
+) -> List<FloorCostDebtRow> {
+  reverse(fold(attempts, init: [], f: fn(acc, attempt) {
+    match floor_cost_debt_row(
+      identity: attempt.identity,
+      reading: attempt.reading,
+      ceiling_ms: ceiling_ms,
+      verdict: attempt.verdict,
+    ) {
+      FloorCostDebtRowAdmitted { row: row } => concat([row], acc)
+      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => acc
+      FloorCostDebtRowRefusedCensoredNotEstablished {
+        identity: _,
+        cpu_lower_bound_ms: _,
+        censoring_ceiling_ms: _,
+      } => acc
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => acc
+    }
+  }))
+}

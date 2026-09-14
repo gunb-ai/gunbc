@@ -166,34 +166,16 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
 // narrowing to its first element, this function DISSOLVES INTO IT -- arg_value_node deletes and
 // arg_value_mentions censuses whatever that accessor returns. Until then the divergence is stated
 // here rather than argued in a review thread.
+// DELEGATES TO THE SPINE AUTHORITY rather than re-decoding it. This function used to carry its
+// own match chain over Seq(binding_name, Seq(colon, expr)) -- the third spelling of one fact in
+// the corpus -- and the decoder now lives beside the production it decodes, in
+// v2.extdeps.languages.dag dag_named_arg_value_optional. The CONTRACT HERE IS UNCHANGED: a named
+// argument yields its value node, and anything that is not a named spine (a positional argument)
+// yields the capture itself, which is what every caller of this reader already depends on.
 fn arg_value_node(arg_capture: Node) -> Node {
-  match sequence_left_node(cap: arg_capture) {
+  match v2.extdeps.languages.dag.dag_named_arg_value_optional(arg_capture: arg_capture) {
+    Present { value: value_node } => value_node
     Absent => arg_capture
-    Present { value: name_node } =>
-      match v2.std.grammar.node_atom_identity_optional(node: name_node) {
-        Absent => arg_capture
-        Present { value: _label } =>
-          match sequence_right_node(cap: arg_capture) {
-            Absent => arg_capture
-            Present { value: after_name } =>
-              match sequence_left_node(cap: after_name) {
-                Absent => arg_capture
-                Present { value: separator } =>
-                  match v2.std.grammar.node_atom_identity_optional(node: separator) {
-                    Absent => arg_capture
-                    Present { value: sep } =>
-                      if sep == ^dag_token_colon {
-                        match sequence_right_node(cap: after_name) {
-                          Absent => arg_capture
-                          Present { value: value_node } => value_node
-                        }
-                      } else {
-                        arg_capture
-                      }
-                  }
-              }
-          }
-      }
   }
 }
 
