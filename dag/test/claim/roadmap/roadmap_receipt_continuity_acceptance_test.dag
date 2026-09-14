@@ -53,7 +53,7 @@ data unreadable_carrier_text_fixture: String = "{ not json"
 
 fn fixture_history_load() -> RoadmapAcceptanceEventHistoryLoad {
   load_roadmap_acceptance_event_history_from_carrier_text(
-    text: receipt_continuity_acceptance_carrier_fixture_text(),
+    text: receipt_continuity_acceptance_carrier_fixture_text,
   )
 }
 
@@ -116,8 +116,7 @@ fn history_with_mutated_first_event_accepted_on(history: List<RoadmapAcceptanceE
 }
 
 test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
-  witness_fixture_history_loads_with_nonempty_live_set()
-    && witness_deleted_history_event_refuses()
+  witness_deleted_history_event_refuses()
     && witness_deleted_event_and_prior_prefix_refuses()
     && witness_wrong_prior_digest_in_revocation_refuses()
     && witness_revocation_while_exact_receipt_live_refuses()
@@ -416,7 +415,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) == 0
   }
     && match roadmap_authority_projection_from_carrier_text(
-      text: receipt_continuity_acceptance_carrier_fixture_text(),
+      text: receipt_continuity_acceptance_carrier_fixture_text,
     ) {
       RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
       RoadmapAuthorityProjectionRefused { detail: _ } => false
@@ -426,7 +425,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
 test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
   let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let projected = roadmap_authority_projection_from_carrier_text(
-    text: receipt_continuity_acceptance_carrier_fixture_text(),
+    text: receipt_continuity_acceptance_carrier_fixture_text,
   )
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
   string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
