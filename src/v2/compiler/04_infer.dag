@@ -2127,42 +2127,13 @@ fn infer_gather_transform_row_on_entries(
 // -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
 
 fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {
-  match infer_node_facts(n: n, partials: partials, tree: tree) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: n,
-        pending: r,
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: n,
-            pending: r,
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: n,
-            entries: [entry],
-            pending: diagnostics_merge(outer: d, inner: ed),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+  infer_gather_transform_frontier_on_entries(
+    node: n,
+    entries: empty_inferred_facts_entry_list(),
+    pending: None,
+    partials: partials,
+    tree: tree
+  )
 }
 
 fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {

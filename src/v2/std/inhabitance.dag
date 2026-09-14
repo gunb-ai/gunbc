@@ -67,7 +67,8 @@ type InhabitanceUndecidableReason
 // lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation).
 // It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND
 // find_witness over the declared singleton refusing, and for decidable positional arity mismatch
-// (exact bijection of formals and positional arguments). The RFM row's v2 arm retires when the
+// (exact bijection of formals and positional arguments). The v2 arm of the #11277 class (an
+// argument/type obligation can be absent while the route still advances) retires when the
 // frontier count over reached applications is zero on both routes; the count is the census.
 // RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a
 // decidable incompatible argument refuses; unjudgeable applications are counted. That is the
@@ -126,6 +127,14 @@ fn inhabitance_pair_undecidable_reason(
   }
 }
 
+// DIVERGES FROM v2.std.coercion coercion_fold / coercion_fold_exact_structural (§3b).
+// Same procedure: find_witness over candidates with preservation_rule_exact_structural_equality_zip_fold
+// and HomomorphismWitness { rule: homomorphism_rule_exact_structural_equality }. Different question:
+// coercion_fold selects a target-language inhabitant spelling (CoercionCandidateSet, TargetSelectionPolicy,
+// CoercionMismatchKind, CanonicalGrounding source). This fold asks whether one produced type inhabits one
+// declared formal (UniqueOnly over the singleton {declared}). Routing through coercion_fold would nickname
+// target-selection as typechecking. Application refusal maps find_witness_reason_no_candidate to
+// application_argument_does_not_inhabit, not CoercionMismatchKind.NoTargetCandidate.
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
