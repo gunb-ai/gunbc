@@ -263,7 +263,7 @@ fn whole_corpus_compile_demand_for_root(
 fn whole_corpus_compile_measurement_recipe(root: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
   concat(
     concat(
-      "measure once, on a host where an enforceable cgroup memory limit binds the process: gunbc measure-root-demand --repository ",
+      "measure once, on a host where a cgroup memory.max binds the process: gunbc measure-root-demand --repository ",
       concat(root.repository as String,
         concat(" --source-root ",
           concat(root.primary_root as String,
@@ -440,6 +440,8 @@ data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = S
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RootDemandDeclaration", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "AdmittedRootDemandMeasurement", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementLimitReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "read_root_demand_measurement_limit", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_admission", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_refusal_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementWait", field: WholeDeclaration },
@@ -454,7 +456,7 @@ data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = S
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "parse_root_demand_measurement_census", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "measure_root_demand", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_declared_budget_refuses_as_the_model_does", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_needs_an_enforceable_limit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_needs_memory_max", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_receipt_types_the_kill", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_census_line_round_trips", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner", field: WholeDeclaration },

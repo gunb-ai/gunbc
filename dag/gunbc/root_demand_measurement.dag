@@ -4,15 +4,7 @@ import std.types { Int, String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size, byte_size_count, gibibyte_scale_factor_bytes }
 import std.decl_ref { DeclarationRef }
 import gunbc.host_budget_source {
-  HostBudgetResolution,
-  HostBudgetResolved,
-  HostBudgetDeclaredUnverified,
-  HostBudgetUnreadable,
-  HostBudgetSource,
-  BudgetSourceCgroupMemoryHigh,
   BudgetSourceCgroupMemoryMax,
-  BudgetSourceDarwinPhysicalMemory,
-  HostBudgetObserved,
   host_budget_source_label,
 }
 import gunbc.whole_corpus_compile_admission {
@@ -32,10 +24,18 @@ import gunbc.whole_corpus_compile_admission {
 // review 65495). It is not the compile subject with its refusal skipped: its only product is a typed
 // receipt, it emits no artifact and no subject verdict, and a row is authored FROM that receipt.
 //
-// ADMITTED ONLY UNDER AN ENFORCEABLE LIMIT. Without a row the run has no demand figure to be refused
-// against, so the host itself must bound it: an OBSERVED cgroup memory.max or memory.high binds the
-// process, and the receipt records which. A declared budget is a number nothing enforces, and an
-// unreadable one is no bound at all; both refuse.
+// ADMITTED ONLY UNDER AN OBSERVED memory.max THAT BOUNDS THIS PROCESS (direction ruling on gunbc#11265,
+// review 65682, correcting that ruling's earlier 'memory.max or memory.high'). Without a row the run has
+// no demand figure to be refused against, so the host itself must bound it, and only memory.max does:
+// memory.high throttles and reclaims and never kills -- whole_corpus_compile_measured_demand_note records
+// that a run above it degrades into swap rather than dying -- so under memory.high alone the Exceeded
+// receipt could never fire and the parent could wait on a thrashing child indefinitely. The limit is
+// READ AS memory.max directly, never taken from the budget resolution, which reports the lower of high
+// and max and so names memory.high whenever both are set. A declared budget is not read here at all.
+type RootDemandMeasurementLimitReading
+  = MemoryMaxBindsProcess { cgroup_dir: NonEmptyStr, bytes: ByteSize }
+  | MemoryHighOnly { cgroup_dir: NonEmptyStr, high: ByteSize }
+  | NoCgroupMemoryLimit
 
 type RootDemandMeasurementAdmission
   = RootDemandMeasurementAdmitted {
@@ -49,32 +49,26 @@ type RootDemandMeasurementAdmission
     }
 
 fn root_demand_measurement_admission(
-  budget: HostBudgetResolution,
+  limit: RootDemandMeasurementLimitReading,
   root: WholeCorpusCompileRootIdentity
 ) -> RootDemandMeasurementAdmission {
-  match budget {
-    HostBudgetResolved {
-      effective_bytes: _,
-      requested_bytes: _,
-      observation: HostBudgetObserved { source: s, bytes: b }
-    } => match s {
-      BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } =>
-        RootDemandMeasurementAdmitted { root: root, limit: b, limit_source: host_budget_source_label(s: s) }
-      BudgetSourceCgroupMemoryMax { cgroup_dir: _ } =>
-        RootDemandMeasurementAdmitted { root: root, limit: b, limit_source: host_budget_source_label(s: s) }
-      BudgetSourceDarwinPhysicalMemory =>
-        RootDemandMeasurementRefusedNoEnforceableLimit {
-          root: root,
-          reason: "the only budget observed is the machine's physical memory, which bounds nothing about this process" as NonEmptyStr,
-        }
-    }
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } =>
+  match limit {
+    MemoryMaxBindsProcess { cgroup_dir: d, bytes: b } =>
+      RootDemandMeasurementAdmitted {
+        root: root,
+        limit: b,
+        limit_source: host_budget_source_label(s: BudgetSourceCgroupMemoryMax { cgroup_dir: d }),
+      }
+    MemoryHighOnly { cgroup_dir: _, high: _ } =>
       RootDemandMeasurementRefusedNoEnforceableLimit {
         root: root,
-        reason: concat("a declared budget is not an enforceable limit: ", r as String) as NonEmptyStr,
+        reason: "memory.high is set but memory.max is not: memory.high throttles and never kills, so it does not bound the process; the measurement needs memory.max" as NonEmptyStr,
       }
-    HostBudgetUnreadable { reason: r } =>
-      RootDemandMeasurementRefusedNoEnforceableLimit { root: root, reason: r }
+    NoCgroupMemoryLimit =>
+      RootDemandMeasurementRefusedNoEnforceableLimit {
+        root: root,
+        reason: "no cgroup memory.max binds this process; a declared or physical-memory budget bounds nothing, and the measurement needs memory.max" as NonEmptyStr,
+      }
   }
 }
 

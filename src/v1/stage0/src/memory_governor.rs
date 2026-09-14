@@ -530,34 +530,76 @@ pub enum RootDemandMeasurementAdmission {
     },
 }
 
-/// Admitted only when an OBSERVED cgroup memory.max or memory.high binds the process; a declared
-/// budget, an unreadable one, or the machine's physical memory refuses — the seed mirror of
-/// `gunbc.root_demand_measurement` `root_demand_measurement_admission`, arm for arm.
+/// What bounds a measurement run, READ AS memory.max directly — never the budget resolution, which
+/// reports the lower of memory.high and memory.max and so names memory.high whenever both are set.
+/// Seed mirror of `gunbc.root_demand_measurement` `RootDemandMeasurementLimitReading`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RootDemandMeasurementLimitReading {
+    MemoryMaxBindsProcess { cgroup_dir: String, bytes: u64 },
+    MemoryHighOnly { cgroup_dir: String, high_bytes: u64 },
+    NoCgroupMemoryLimit,
+}
+
+/// The effect: walk the cgroup tree for the tightest numeric memory.max; if none binds, report a
+/// memory.high that is set so the refusal can name it.
+pub fn read_root_demand_measurement_limit() -> RootDemandMeasurementLimitReading {
+    if let Some(dir) = binding_cap_cgroup_dir() {
+        if let Some(bytes) = read_cgroup_u64(&dir, "memory.max") {
+            return RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
+                cgroup_dir: dir.display().to_string(),
+                bytes,
+            };
+        }
+    }
+    if let Some(dir) = binding_high_cgroup_dir() {
+        if let Some(high_bytes) = read_cgroup_u64(&dir, "memory.high") {
+            return RootDemandMeasurementLimitReading::MemoryHighOnly {
+                cgroup_dir: dir.display().to_string(),
+                high_bytes,
+            };
+        }
+    }
+    RootDemandMeasurementLimitReading::NoCgroupMemoryLimit
+}
+
+/// Admitted ONLY under an observed memory.max that bounds this process (direction ruling on
+/// gunbc#11265 review 65682): memory.high throttles and never kills, so under it the Exceeded receipt
+/// could not fire and the parent could wait on a thrashing child indefinitely. The seed mirror of
+/// `gunbc.root_demand_measurement` `root_demand_measurement_admission`, arm for arm; the same fact
+/// `HostBudgetSource::bounds_this_process` carries.
 pub fn root_demand_measurement_admission(
-    budget: &HostBudgetResolution,
+    limit: &RootDemandMeasurementLimitReading,
     root: &WholeCorpusCompileRootIdentity,
 ) -> RootDemandMeasurementAdmission {
-    let refused = |reason: String| RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
-        root: root.clone(),
-        reason,
-    };
-    match budget {
-        HostBudgetResolution::Resolved { observation, .. } => match &observation.source {
-            HostBudgetSource::CgroupMemoryHigh { .. } | HostBudgetSource::CgroupMemoryMax { .. } => {
-                RootDemandMeasurementAdmission::Admitted(AdmittedRootDemandMeasurement {
-                    root: root.clone(),
-                    limit_bytes: observation.bytes,
-                    limit_source: observation.source.label(),
-                })
-            }
-            HostBudgetSource::DarwinPhysicalMemory => refused(
-                "the only budget observed is the machine's physical memory, which bounds nothing about this process".to_string(),
-            ),
-        },
-        HostBudgetResolution::DeclaredUnverified { reason, .. } => {
-            refused(format!("a declared budget is not an enforceable limit: {reason}"))
+    match limit {
+        RootDemandMeasurementLimitReading::MemoryMaxBindsProcess { cgroup_dir, bytes } => {
+            RootDemandMeasurementAdmission::Admitted(AdmittedRootDemandMeasurement {
+                root: root.clone(),
+                limit_bytes: *bytes,
+                limit_source: HostBudgetSource::CgroupMemoryMax {
+                    cgroup_dir: cgroup_dir.clone(),
+                }
+                .label(),
+            })
         }
-        HostBudgetResolution::Unreadable { reason } => refused(reason.clone()),
+        RootDemandMeasurementLimitReading::MemoryHighOnly { cgroup_dir, high_bytes } => {
+            RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
+                root: root.clone(),
+                reason: format!(
+                    "memory.high={high_bytes} is set at {cgroup_dir} but memory.max is not: memory.high \
+                     throttles and never kills, so it does not bound the process; the measurement \
+                     needs memory.max"
+                ),
+            }
+        }
+        RootDemandMeasurementLimitReading::NoCgroupMemoryLimit => {
+            RootDemandMeasurementAdmission::RefusedNoEnforceableLimit {
+                root: root.clone(),
+                reason: "no cgroup memory.max binds this process; a declared or physical-memory \
+                         budget bounds nothing, and the measurement needs memory.max"
+                    .to_string(),
+            }
+        }
     }
 }
 
@@ -568,9 +610,9 @@ pub fn root_demand_measurement_refusal_diagnostic(
         RootDemandMeasurementAdmission::Admitted(_) => None,
         RootDemandMeasurementAdmission::RefusedNoEnforceableLimit { root, reason } => Some(format!(
             "RootDemandMeasurementRefusedNoEnforceableLimit: measuring {} needs an enforceable cgroup \
-             memory limit binding this process, because a root with no row has no demand figure to be \
+             memory.max binding this process, because a root with no row has no demand figure to be \
              refused against and only the host can bound the run — {reason}. Remedy: run the \
-             measurement where a cgroup memory.max or memory.high binds the process.",
+             measurement where a cgroup memory.max binds the process.",
             root.label()
         )),
     }
@@ -704,7 +746,7 @@ fn whole_corpus_compile_measurement_recipe(root: &WholeCorpusCompileRootIdentity
         .map(|p| format!(" --source-root {p}"))
         .collect();
     format!(
-        "measure once, on a host where an enforceable cgroup memory limit binds the process: gunbc \
+        "measure once, on a host where a cgroup memory.max binds the process: gunbc \
          measure-root-demand --repository {} --source-root {}{pools} --receipt <receipt.json>; the \
          run's only product is that receipt. Author the MeasuredForRoot row for {} from it with \
          gunbc.root_demand_measurement measured_for_root_from_receipt in that repository's own \
@@ -2092,18 +2134,16 @@ mod tests {
         }
     }
 
-    /// Positive control and its reds: an observed cgroup limit admits the measurement of a root
-    /// with no row; a declared budget, an unreadable one and physical memory each refuse.
+    /// Positive control and its reds: an observed memory.max admits and its value is the receipt's
+    /// limit; memory.high alone refuses naming that it never kills; no cgroup limit refuses.
     #[test]
-    fn root_demand_measurement_needs_an_enforceable_limit() {
+    fn root_demand_measurement_needs_memory_max() {
         let root = unmeasured_private_root();
         match root_demand_measurement_admission(
-            &resolve_host_budget(
-                None,
-                None,
-                Some(("/sys/fs/cgroup/session.slice".to_string(), 6_442_450_944)),
-                None,
-            ),
+            &RootDemandMeasurementLimitReading::MemoryMaxBindsProcess {
+                cgroup_dir: "/sys/fs/cgroup/session.slice".to_string(),
+                bytes: 6_442_450_944,
+            },
             &root,
         ) {
             RootDemandMeasurementAdmission::Admitted(a) => {
@@ -2113,23 +2153,26 @@ mod tests {
             }
             other => panic!("an observed memory.max must admit: {other:?}"),
         }
-        for refused in [
-            resolve_host_budget(Some(68_719_476_736), None, None, None),
-            resolve_host_budget(None, None, None, None),
-            resolve_host_budget(None, None, None, Some(68_719_476_736)),
-        ] {
-            let a = root_demand_measurement_admission(&refused, &root);
-            assert!(
-                matches!(
-                    a,
-                    RootDemandMeasurementAdmission::RefusedNoEnforceableLimit { .. }
-                ),
-                "{refused:?} must refuse: {a:?}"
-            );
-            assert!(root_demand_measurement_refusal_diagnostic(&a)
-                .expect("refusal must diagnose")
-                .contains("RootDemandMeasurementRefusedNoEnforceableLimit"));
-        }
+        let high_only = root_demand_measurement_admission(
+            &RootDemandMeasurementLimitReading::MemoryHighOnly {
+                cgroup_dir: "/sys/fs/cgroup/runner.slice".to_string(),
+                high_bytes: 8_589_934_592,
+            },
+            &root,
+        );
+        let msg = root_demand_measurement_refusal_diagnostic(&high_only)
+            .expect("memory.high alone must refuse");
+        assert!(
+            msg.contains("throttles and never kills") && msg.contains("needs memory.max"),
+            "{msg}"
+        );
+        let none = root_demand_measurement_admission(
+            &RootDemandMeasurementLimitReading::NoCgroupMemoryLimit,
+            &root,
+        );
+        assert!(root_demand_measurement_refusal_diagnostic(&none)
+            .expect("no limit must refuse")
+            .contains("RootDemandMeasurementRefusedNoEnforceableLimit"));
     }
 
     fn fixture_run(census: Option<RootDemandMeasurementCensus>) -> RootDemandMeasurementRun {

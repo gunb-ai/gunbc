@@ -19803,8 +19803,8 @@ pub fn measure_root_demand(
         primary_root,
         dependency_pools: source_roots.iter().skip(1).cloned().collect(),
     };
-    let budget = crate::memory_governor::read_host_budget_resolution();
-    let admission = crate::memory_governor::root_demand_measurement_admission(&budget, &identity);
+    let limit = crate::memory_governor::read_root_demand_measurement_limit();
+    let admission = crate::memory_governor::root_demand_measurement_admission(&limit, &identity);
     if let Some(diagnostic) =
         crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
     {

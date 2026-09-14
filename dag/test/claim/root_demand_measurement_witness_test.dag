@@ -5,15 +5,6 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
-import gunbc.host_budget_source {
-  HostBudgetResolution,
-  HostBudgetResolved,
-  HostBudgetDeclaredUnverified,
-  HostBudgetUnreadable,
-  BudgetSourceCgroupMemoryMax,
-  BudgetSourceDarwinPhysicalMemory,
-  host_budget_resolved_observation,
-}
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileRootIdentity,
   WholeCorpusCompileSourceCensus,
@@ -23,6 +14,10 @@ import gunbc.whole_corpus_compile_admission {
   whole_corpus_compile_public_root,
 }
 import gunbc.root_demand_measurement {
+  RootDemandMeasurementLimitReading,
+  MemoryMaxBindsProcess,
+  MemoryHighOnly,
+  NoCgroupMemoryLimit,
   RootDemandMeasurementAdmitted,
   RootDemandMeasurementRefusedNoEnforceableLimit,
   RootDemandMeasurementRun,
@@ -49,11 +44,8 @@ fn private_root() -> WholeCorpusCompileRootIdentity {
   }
 }
 
-fn six_gib_cgroup() -> HostBudgetResolution {
-  host_budget_resolved_observation(
-    source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/session.slice" as NonEmptyStr },
-    bytes: byte_size(6442450944)
-  )
+fn six_gib_memory_max() -> RootDemandMeasurementLimitReading {
+  MemoryMaxBindsProcess { cgroup_dir: "/sys/fs/cgroup/session.slice" as NonEmptyStr, bytes: byte_size(6442450944) }
 }
 
 fn run_for(root: WholeCorpusCompileRootIdentity, census: Bool) -> RootDemandMeasurementRun {
@@ -75,7 +67,7 @@ fn evidence() -> DeclarationRef {
 
 // POSITIVE CONTROL: an observed cgroup limit admits a root that has no row.
 test fn an_enforceable_cgroup_limit_admits_the_measurement_of_an_unmeasured_root() -> Bool {
-  match root_demand_measurement_admission(budget: six_gib_cgroup(), root: private_root()) {
+  match root_demand_measurement_admission(limit: six_gib_memory_max(), root: private_root()) {
     RootDemandMeasurementAdmitted { root: _, limit: l, limit_source: s } =>
       byte_size_count(b: l) == 6442450944 && string_contains(s: s as String, pattern: "memory.max")
     RootDemandMeasurementRefusedNoEnforceableLimit { root: _, reason: _ } => false
@@ -84,17 +76,21 @@ test fn an_enforceable_cgroup_limit_admits_the_measurement_of_an_unmeasured_root
 
 // RED: a declared budget, an unreadable budget and the machine's physical memory are not
 // enforceable limits, so the measurement refuses on each.
-fn measurement_refused_under(b: HostBudgetResolution) -> Bool {
-  match root_demand_measurement_admission(budget: b, root: private_root()) {
-    RootDemandMeasurementRefusedNoEnforceableLimit { root: _, reason: _ } => true
-    RootDemandMeasurementAdmitted { root: _, limit: _, limit_source: _ } => false
+fn measurement_refusal_reason(l: RootDemandMeasurementLimitReading) -> String {
+  match root_demand_measurement_admission(limit: l, root: private_root()) {
+    RootDemandMeasurementRefusedNoEnforceableLimit { root: _, reason: r } => r as String
+    RootDemandMeasurementAdmitted { root: _, limit: _, limit_source: _ } => ""
   }
 }
 
-test fn measurement_without_an_enforceable_limit_refuses() -> Bool {
-  measurement_refused_under(b: HostBudgetDeclaredUnverified { requested_bytes: byte_size(68719476736), reason: "env GUNBC_MEMORY_BUDGET_BYTES" as NonEmptyStr })
-    && measurement_refused_under(b: HostBudgetUnreadable { reason: "no cgroup" as NonEmptyStr })
-    && measurement_refused_under(b: host_budget_resolved_observation(source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(68719476736)))
+// RED: memory.high alone throttles and never kills, so it refuses naming exactly that; no cgroup
+// limit at all refuses too. Neither admits.
+test fn measurement_under_memory_high_only_or_no_limit_refuses() -> Bool {
+  let high_only = measurement_refusal_reason(l: MemoryHighOnly { cgroup_dir: "/sys/fs/cgroup/runner.slice" as NonEmptyStr, high: byte_size(8589934592) })
+  let none_at_all = measurement_refusal_reason(l: NoCgroupMemoryLimit)
+  string_contains(s: high_only, pattern: "memory.high throttles and never kills")
+    && string_contains(s: high_only, pattern: "needs memory.max")
+    && string_contains(s: none_at_all, pattern: "needs memory.max")
 }
 
 // POSITIVE CONTROL for authoring: a completed, exit-0 receipt for the root authors its row at
