@@ -12,9 +12,9 @@ import gunbc.fleet_posix_accounts {
   ServicePrincipalRealizationStanding, PersistentServiceAccount, AccountUnallocated,
   fabric_origin_realization_standing,
 }
-import gunbc.fabric_m0_origin_pair { OriginPrimary, OriginReplica }
+import gunbc.fabric_m0_origin_pair { OriginPrimary, OriginReplica, FabricOriginPlacement }
 import gunbc.fabric_m0_origin_host {
-  FabricOriginPlacement, fabric_origin_primary_placement, fabric_origin_replica_placement,
+  fabric_origin_primary_placement, fabric_origin_replica_placement,
   fabric_origin_root, fabric_origin_root_path, fabric_origin_principal_name,
   FabricOriginConvergeStep, FabricOriginPrivileged, FabricOriginSyncDirectory, fabric_origin_converge_plan,
 }

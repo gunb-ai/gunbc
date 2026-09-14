@@ -8,7 +8,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSystemAccount,
 }
 import gunbc.fabric_m0_origin_filesystem { FilesystemOriginRoot }
-import gunbc.fabric_m0_origin_pair { OriginPairRole, OriginPrimary, OriginReplica }
+import gunbc.fabric_m0_origin_pair { OriginPairRole, OriginPrimary, OriginReplica, FabricOriginPlacement }
 
 // WHERE THE M0 FABRIC BLOB ORIGIN LIVES ON A HOST, AND WHAT HOST CONVERGENCE MUST ESTABLISH BEFORE ANY
 // OBJECT IS WRITTEN. gunbc.fabric_m0_origin_filesystem creates no directory and refuses a root that is
@@ -38,11 +38,6 @@ data fabric_origin_principal_name: NonEmptyStr = "gunbc-fabric-origin"
 data fabric_origin_root_path: NonEmptyStr = "/var/lib/gunbc-fabric-origin"
 data fabric_origin_root_parent_path: NonEmptyStr = "/var/lib"
 data fabric_origin_directory_mode: NonEmptyStr = "0700"
-
-type FabricOriginPlacement {
-  host: HostIdentity
-  role: OriginPairRole
-}
 
 data fabric_origin_primary_placement: FabricOriginPlacement = FabricOriginPlacement { host: operator_host_srv1, role: OriginPrimary }
 data fabric_origin_replica_placement: FabricOriginPlacement = FabricOriginPlacement { host: operator_host_srv2, role: OriginReplica }

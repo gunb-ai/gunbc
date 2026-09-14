@@ -6,32 +6,40 @@ import product.placement_supply { HostIdentity }
 import gunbc.fabric_m0_origin_readback { origin_reading_digest, origin_reading_path }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
 
-// WHEN AN OBJECT IN A TWO-HOST FILESYSTEM ORIGIN IS DURABLE.
+// WHEN AN OBJECT IN A TWO-HOST FILESYSTEM ORIGIN IS DURABLE, AND WHAT TO DO WHEN IT IS NOT.
 //
 // The M0 blob origin is one logical origin with two physical copies: the primary host is the sole
 // writer, the replica host holds a synchronous copy. An object is durable only when BOTH copies were
 // independently read back and each reading's digest is the expected SHA-256. This module is that
-// judgement and nothing else: it performs no put, fetch or replication, and it does not decide which
-// hosts play which role - that is the placement's.
+// judgement and nothing else: it performs no put, fetch or replication, and the admitted placements are
+// the host intent's (gunbc.fabric_m0_origin_host), passed in rather than decided here.
 //
-// TWO READINGS ARE NOT TWO COPIES. The decision takes readbacks BOUND to a host and a role, and refuses
-// a pair that is not one primary and one replica on distinct hosts about one key. Otherwise two
-// readings taken from the same host - or the same reading passed twice - would satisfy a durability
-// rule that is supposed to survive the loss of a host, which is exactly the fabricated plausible
-// output DESIGN section 5 forbids: a count standing where an identity join belongs.
+// TWO READINGS ARE NOT TWO COPIES. Each readback carries the placement it was taken at - host and role
+// together - and the judgement admits a pair only when those are exactly the admitted primary and the
+// admitted replica. Two readings from one host, swapped roles, or a reading from a host outside the pair
+// refuse, because a durability rule meant to survive the loss of a host cannot be satisfied by a count.
 //
-// WHAT IS PENDING AND WHAT IS REFUSED. Anything that a retry can complete is pending: a replica that has
-// no copy yet, or either host whose readback could not be taken. Anything a retry cannot repair into
-// the intended object is refused: a confirmed copy whose bytes are not the expected digest on either
-// host, a primary with no copy at all (the sole writer never installed it, so there is nothing for a
-// replica to be a copy of), or a pair whose hosts, roles or keys do not describe one object on two hosts.
-// Pending is never durable; no manifest or head may advance on it.
+// A NON-DURABLE ANSWER NAMES ITS REMEDY. A reconciler must not have to rediscover what is wrong:
+//   ReplicaDeficient        - the primary holds the expected bytes and the named replica placement has
+//                             no copy (copy primary to replica) or could not be observed (observe again);
+//   PrimaryUnobservable     - the primary could not be read; nothing is known that licenses a copy;
+//   PrimaryMissing          - the primary holds no object while the replica is confirmed: a repair of
+//                             the primary from the replica, which M0 does not perform automatically and
+//                             which is kept apart from "replica missing" because its direction is reversed;
+//   NotInstalled            - neither host holds the object; the put itself must run again;
+//   Refused                 - bindings that do not describe one object on the admitted pair, or confirmed
+//                             bytes that are not the expected digest on either host (corruption, which
+//                             no retry repairs into the intended object).
+// None of these but Durable may advance a manifest or head.
 //
-// RUNG, STATED. The host and role on a readback are supplied by whoever took it; this module refuses a
-// pair whose bindings are inconsistent, but it cannot tell a correctly labelled readback from a
-// mislabelled one. The binding becomes a construction guarantee when the per-host fetch that produces
-// the readback is the only thing that can mint the bound value; until that fetch lands beside this
-// judgement, the class "a readback labelled with the wrong host" is mitigatable, not prevented.
+// THIS IS A RECEIPT FOR ONE ATTEMPT, NOT LIVE STANDING. The answer describes the readbacks it was given;
+// a later health or repair decision takes fresh per-host observations.
+//
+// RUNG, STATED. The placement on a readback is supplied by whoever took it; this module refuses
+// inconsistent bindings but cannot tell a correctly labelled readback from a mislabelled one. The
+// binding becomes a construction guarantee when the per-host fetch - fetch, copy back to the controller,
+// digest there - is the only thing that can mint a bound readback; until that transport lands, the class
+// "a readback labelled with the wrong placement" is mitigatable, not prevented.
 
 type OriginPairRole
   = OriginPrimary
@@ -44,30 +52,40 @@ fn origin_pair_role_name(role: OriginPairRole) -> String {
   }
 }
 
-type HostBoundOriginReadback {
+fn origin_pair_role_eq(a: OriginPairRole, b: OriginPairRole) -> Bool {
+  origin_pair_role_name(role: a) == origin_pair_role_name(role: b)
+}
+
+type FabricOriginPlacement {
   host: HostIdentity
   role: OriginPairRole
+}
+
+fn fabric_origin_placement_eq(a: FabricOriginPlacement, b: FabricOriginPlacement) -> Bool {
+  (a.host as String) == (b.host as String) && origin_pair_role_eq(a: a.role, b: b.role)
+}
+
+fn placement_label(p: FabricOriginPlacement) -> String {
+  join([origin_pair_role_name(role: p.role), " ", p.host as String], "")
+}
+
+type HostBoundOriginReadback {
+  placement: FabricOriginPlacement
   key: NonEmptyStr
   readback: OriginReadback
 }
 
+type OriginReplicaDeficiency
+  = OriginReplicaHasNoCopy
+  | OriginReplicaUnobservable { cause: NonEmptyStr }
+
 type OriginPairDurability
   = OriginPairDurable
-  | OriginPairReplicationPending { cause: NonEmptyStr }
+  | OriginPairReplicaDeficient { replica: FabricOriginPlacement, deficiency: OriginReplicaDeficiency }
+  | OriginPairPrimaryUnobservable { primary: FabricOriginPlacement, cause: NonEmptyStr }
+  | OriginPairPrimaryMissing { primary: FabricOriginPlacement, replica: FabricOriginPlacement }
+  | OriginPairNotInstalled { primary: FabricOriginPlacement }
   | OriginPairRefused { cause: NonEmptyStr }
-
-fn role_is(role: OriginPairRole, expected: OriginPairRole) -> Bool {
-  match role {
-    OriginPrimary => match expected {
-      OriginPrimary => true
-      OriginReplica => false
-    }
-    OriginReplica => match expected {
-      OriginPrimary => false
-      OriginReplica => true
-    }
-  }
-}
 
 // WHAT ONE HOST'S READBACK SAYS ABOUT THE EXPECTED OBJECT.
 type OriginCopyStanding
@@ -89,30 +107,55 @@ fn origin_copy_standing(readback: OriginReadback, expected: Sha256Digest) -> Ori
   }
 }
 
-fn host_label(r: HostBoundOriginReadback) -> String {
-  join([origin_pair_role_name(role: r.role), " ", r.host as String], "")
+fn binding_refusal(admitted_primary: FabricOriginPlacement, admitted_replica: FabricOriginPlacement, primary: HostBoundOriginReadback, replica: HostBoundOriginReadback) -> String {
+  if (admitted_primary.host as String) == (admitted_replica.host as String) {
+    join(["the admitted primary and replica are both ", admitted_primary.host as String, "; one host holds one copy"], "")
+  } else if !origin_pair_role_eq(a: admitted_primary.role, b: OriginPrimary) || !origin_pair_role_eq(a: admitted_replica.role, b: OriginReplica) {
+    join(["the admitted placements are ", placement_label(p: admitted_primary), " and ", placement_label(p: admitted_replica), ", not one primary and one replica"], "")
+  } else if !fabric_origin_placement_eq(a: primary.placement, b: admitted_primary) {
+    join(["the primary readback was taken at ", placement_label(p: primary.placement), ", which is not the admitted ", placement_label(p: admitted_primary)], "")
+  } else if !fabric_origin_placement_eq(a: replica.placement, b: admitted_replica) {
+    join(["the replica readback was taken at ", placement_label(p: replica.placement), ", which is not the admitted ", placement_label(p: admitted_replica)], "")
+  } else if (primary.key as String) != (replica.key as String) {
+    join(["the primary readback is of ", primary.key as String, " and the replica readback is of ", replica.key as String, "; they describe different objects"], "")
+  } else {
+    ""
+  }
 }
 
-fn origin_pair_durability(primary: HostBoundOriginReadback, replica: HostBoundOriginReadback, expected: Sha256Digest) -> OriginPairDurability {
-  if !role_is(role: primary.role, expected: OriginPrimary) || !role_is(role: replica.role, expected: OriginReplica) {
-    OriginPairRefused { cause: join(["a pair needs one primary and one replica; got ", host_label(r: primary), " and ", host_label(r: replica)], "") as NonEmptyStr }
-  } else if (primary.host as String) == (replica.host as String) {
-    OriginPairRefused { cause: join(["the primary and the replica are both ", primary.host as String, "; two readings from one host are not two copies"], "") as NonEmptyStr }
-  } else if (primary.key as String) != (replica.key as String) {
-    OriginPairRefused { cause: join(["the primary readback is of ", primary.key as String, " and the replica readback is of ", replica.key as String, "; they describe different objects"], "") as NonEmptyStr }
+fn origin_pair_durability(
+  admitted_primary: FabricOriginPlacement,
+  admitted_replica: FabricOriginPlacement,
+  primary: HostBoundOriginReadback,
+  replica: HostBoundOriginReadback,
+  expected: Sha256Digest,
+) -> OriginPairDurability {
+  let refusal = binding_refusal(admitted_primary: admitted_primary, admitted_replica: admitted_replica, primary: primary, replica: replica)
+  if refusal != "" {
+    OriginPairRefused { cause: refusal as NonEmptyStr }
   } else {
     let p = origin_copy_standing(readback: primary.readback, expected: expected)
     let r = origin_copy_standing(readback: replica.readback, expected: expected)
     match p {
-      OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", host_label(r: primary), " holds different bytes at ", primary.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
-      OriginCopyMissing => OriginPairRefused { cause: join(["the ", host_label(r: primary), " holds no object at ", primary.key as String, "; the sole writer never installed it, so there is nothing to replicate"], "") as NonEmptyStr }
-      OriginCopyUnobserved { cause } => OriginPairReplicationPending { cause: join(["the ", host_label(r: primary), " readback could not be taken: ", cause as String], "") as NonEmptyStr }
+      OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", placement_label(p: primary.placement), " holds different bytes at ", primary.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
+      OriginCopyUnobserved { cause } =>
+        match r {
+          OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", placement_label(p: replica.placement), " holds different bytes at ", replica.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
+          other => OriginPairPrimaryUnobservable { primary: primary.placement, cause: cause }
+        }
+      OriginCopyMissing =>
+        match r {
+          OriginCopyMatches => OriginPairPrimaryMissing { primary: primary.placement, replica: replica.placement }
+          OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", placement_label(p: replica.placement), " holds different bytes at ", replica.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
+          OriginCopyMissing => OriginPairNotInstalled { primary: primary.placement }
+          OriginCopyUnobserved { cause: _ } => OriginPairNotInstalled { primary: primary.placement }
+        }
       OriginCopyMatches =>
         match r {
           OriginCopyMatches => OriginPairDurable
-          OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", host_label(r: replica), " holds different bytes at ", replica.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
-          OriginCopyMissing => OriginPairReplicationPending { cause: join(["the ", host_label(r: replica), " holds no copy of ", replica.key as String, " yet; replicate from the primary and read back again"], "") as NonEmptyStr }
-          OriginCopyUnobserved { cause } => OriginPairReplicationPending { cause: join(["the ", host_label(r: replica), " readback could not be taken: ", cause as String], "") as NonEmptyStr }
+          OriginCopyDiffers { observed_at } => OriginPairRefused { cause: join(["the ", placement_label(p: replica.placement), " holds different bytes at ", replica.key as String, " (read at ", observed_at, ")"], "") as NonEmptyStr }
+          OriginCopyMissing => OriginPairReplicaDeficient { replica: replica.placement, deficiency: OriginReplicaHasNoCopy }
+          OriginCopyUnobserved { cause } => OriginPairReplicaDeficient { replica: replica.placement, deficiency: OriginReplicaUnobservable { cause: cause } }
         }
     }
   }
@@ -121,7 +164,10 @@ fn origin_pair_durability(primary: HostBoundOriginReadback, replica: HostBoundOr
 fn origin_pair_is_durable(d: OriginPairDurability) -> Bool {
   match d {
     OriginPairDurable => true
-    OriginPairReplicationPending { cause: _ } => false
+    OriginPairReplicaDeficient { replica: _, deficiency: _ } => false
+    OriginPairPrimaryUnobservable { primary: _, cause: _ } => false
+    OriginPairPrimaryMissing { primary: _, replica: _ } => false
+    OriginPairNotInstalled { primary: _ } => false
     OriginPairRefused { cause: _ } => false
   }
 }

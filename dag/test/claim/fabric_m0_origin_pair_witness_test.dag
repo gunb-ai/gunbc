@@ -9,10 +9,13 @@ import gunbc.fabric_m0_origin_readback {
 }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
 import gunbc.fabric_m0_origin_pair {
-  OriginPairRole, OriginPrimary, OriginReplica, HostBoundOriginReadback,
-  OriginPairDurability, OriginPairDurable, OriginPairReplicationPending, OriginPairRefused,
+  OriginPairRole, OriginPrimary, OriginReplica, FabricOriginPlacement, HostBoundOriginReadback,
+  OriginReplicaDeficiency, OriginReplicaHasNoCopy, OriginReplicaUnobservable,
+  OriginPairDurability, OriginPairDurable, OriginPairReplicaDeficient, OriginPairPrimaryUnobservable,
+  OriginPairPrimaryMissing, OriginPairNotInstalled, OriginPairRefused,
   origin_pair_durability, origin_pair_is_durable,
 }
+import gunbc.fabric_m0_origin_host { fabric_origin_primary_placement, fabric_origin_replica_placement }
 
 // READS THE LIVE TREE: confirming readbacks carry an OriginReading, which is sole_constructor, so they
 // are taken through read_origin_staged_file over the committed fixtures - the same route the fabric
@@ -24,14 +27,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data fixture_object: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
 data fixture_other_object: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/other_object.txt"
 
-// CONTROLS FOR THE PAIR DURABILITY JUDGEMENT. Every arm is driven, and each refusal is paired
-// with the durable control it would contradict: a pair from one host, a pair with two primaries, a pair
-// about two keys - each built from readbacks that WOULD be durable if the bindings were right. What
-// these do NOT establish is that any host was read; that is the per-host fetch's evidence.
+// CONTROLS FOR THE PAIR DURABILITY JUDGEMENT, over the admitted srv1 primary and srv2 replica from the
+// host intent. Each binding refusal is built from readbacks that WOULD be durable if the bindings were
+// right, and each non-durable answer is checked for the remedy it names. What these do NOT establish is
+// that any host was read; that is the per-host fetch's evidence.
 
-fn srv1() -> HostIdentity { "srv1" as HostIdentity }
-fn srv2() -> HostIdentity { "srv2" as HostIdentity }
 fn key() -> NonEmptyStr { "sha256/abc" as NonEmptyStr }
+fn primary() -> FabricOriginPlacement { fabric_origin_primary_placement }
+fn replica() -> FabricOriginPlacement { fabric_origin_replica_placement }
 
 fn confirmed(path: NonEmptyStr) -> OriginReadback {
   match read_origin_staged_file(staged_path: path) {
@@ -40,9 +43,8 @@ fn confirmed(path: NonEmptyStr) -> OriginReadback {
   }
 }
 
-// The expected digest is the fixture's own reading. When the fixture cannot be read there is no
-// expected digest at all, and every test answers false rather than judging against a placeholder that
-// would make the refusal arms pass for the wrong reason.
+// The expected digest is the fixture's own reading. When the fixture cannot be read there is no expected
+// digest, and every test answers false rather than judging against a placeholder.
 fn expected_digest() -> Sha256Digest? {
   match confirmed(path: fixture_object) {
     ReadbackConfirmed { reading } => Present { value: origin_reading_digest(reading: reading) }
@@ -51,108 +53,79 @@ fn expected_digest() -> Sha256Digest? {
   }
 }
 
-fn bound(host: HostIdentity, role: OriginPairRole, k: NonEmptyStr, readback: OriginReadback) -> HostBoundOriginReadback {
-  HostBoundOriginReadback { host: host, role: role, key: k, readback: readback }
+fn at(placement: FabricOriginPlacement, readback: OriginReadback) -> HostBoundOriginReadback {
+  HostBoundOriginReadback { placement: placement, key: key(), readback: readback }
 }
 
-fn arm(d: OriginPairDurability) -> String {
+fn judge(p: HostBoundOriginReadback, r: HostBoundOriginReadback) -> OriginPairDurability? {
+  match expected_digest() {
+    Absent => Absent
+    Present { value: e } => Present { value: origin_pair_durability(admitted_primary: primary(), admitted_replica: replica(), primary: p, replica: r, expected: e) }
+  }
+}
+
+fn arm(d: OriginPairDurability?) -> String {
   match d {
-    OriginPairDurable => "durable"
-    OriginPairReplicationPending { cause: _ } => "pending"
-    OriginPairRefused { cause: _ } => "refused"
-  }
-}
-
-test fn both_copies_confirmed_on_distinct_hosts_is_durable() -> Bool {
-  match expected_digest() {
-    Absent => false
-    Present { value: e } => {
-      arm(d: origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )) == "durable"
+    Absent => "no_expected_digest"
+    Present { value: v } => match v {
+      OriginPairDurable => "durable"
+      OriginPairReplicaDeficient { replica: rp, deficiency } => match deficiency {
+        OriginReplicaHasNoCopy => concat("replica_has_no_copy:", rp.host as String)
+        OriginReplicaUnobservable { cause: _ } => concat("replica_unobservable:", rp.host as String)
+      }
+      OriginPairPrimaryUnobservable { primary: pp, cause: _ } => concat("primary_unobservable:", pp.host as String)
+      OriginPairPrimaryMissing { primary: pp, replica: rp } => join(["primary_missing:", pp.host as String, ":", rp.host as String], "")
+      OriginPairNotInstalled { primary: _ } => "not_installed"
+      OriginPairRefused { cause: _ } => "refused"
     }
   }
 }
 
-test fn two_readings_from_one_host_are_not_two_copies() -> Bool {
-  match expected_digest() {
-    Absent => false
-    Present { value: e } => {
-      arm(d: origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv1(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )) == "refused"
-    }
-  }
+fn placement(host: String, role: OriginPairRole) -> FabricOriginPlacement {
+  FabricOriginPlacement { host: host as HostIdentity, role: role }
 }
 
-test fn a_pair_needs_one_primary_and_one_replica_about_one_key() -> Bool {
-  match expected_digest() {
-    Absent => false
-    Present { value: e } => {
-      let two_primaries = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )
-      let two_keys = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: "sha256/def" as NonEmptyStr, readback: confirmed(path: fixture_object)),
-        expected: e,
-      )
-      arm(d: two_primaries) == "refused" && arm(d: two_keys) == "refused"
-    }
-  }
+test fn both_copies_confirmed_at_the_admitted_placements_is_durable() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: replica(), readback: confirmed(path: fixture_object)))) == "durable"
 }
 
-test fn a_replica_without_a_copy_or_an_unreadable_host_is_pending_never_durable() -> Bool {
-  match expected_digest() {
-    Absent => false
-    Present { value: e } => {
-      let replica_missing = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: ReadbackAbsent),
-        expected: e,
-      )
-      let replica_unreachable = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: ReadbackUnknown { cause: "ssh to srv2 refused" }),
-        expected: e,
-      )
-      let primary_unreachable = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: ReadbackUnknown { cause: "srv1 fetch unavailable" }),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )
-      arm(d: replica_missing) == "pending" && arm(d: replica_unreachable) == "pending" && arm(d: primary_unreachable) == "pending"
-        && !origin_pair_is_durable(d: replica_missing)
-    }
-  }
+test fn two_readings_from_srv1_are_not_two_copies() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: placement(host: "srv1", role: OriginReplica), readback: confirmed(path: fixture_object)))) == "refused"
 }
 
-test fn wrong_bytes_on_either_host_or_no_primary_copy_is_refused() -> Bool {
-  match expected_digest() {
-    Absent => false
-    Present { value: e } => {
-      let primary_differs = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_other_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )
-      let replica_differs = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: confirmed(path: fixture_object)),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_other_object)),
-        expected: e,
-      )
-      let primary_missing = origin_pair_durability(
-        primary: bound(host: srv1(), role: OriginPrimary, k: key(), readback: ReadbackAbsent),
-        replica: bound(host: srv2(), role: OriginReplica, k: key(), readback: confirmed(path: fixture_object)),
-        expected: e,
-      )
-      arm(d: primary_differs) == "refused" && arm(d: replica_differs) == "refused" && arm(d: primary_missing) == "refused"
+test fn swapped_roles_are_refused() -> Bool {
+  arm(d: judge(p: at(placement: placement(host: "srv2", role: OriginPrimary), readback: confirmed(path: fixture_object)), r: at(placement: placement(host: "srv1", role: OriginReplica), readback: confirmed(path: fixture_object)))) == "refused"
+}
+
+test fn a_reading_from_a_host_outside_the_pair_is_refused() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: placement(host: "srv3", role: OriginReplica), readback: confirmed(path: fixture_object)))) == "refused"
+}
+
+test fn readbacks_about_different_keys_are_refused() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: HostBoundOriginReadback { placement: replica(), key: "sha256/def" as NonEmptyStr, readback: confirmed(path: fixture_object) })) == "refused"
+}
+
+test fn a_missing_replica_copy_names_srv2_and_is_distinct_from_an_unobservable_one() -> Bool {
+  let missing = judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: replica(), readback: ReadbackAbsent))
+  let unobservable = judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: replica(), readback: ReadbackUnknown { cause: "ssh to srv2 refused" }))
+  arm(d: missing) == "replica_has_no_copy:srv2" && arm(d: unobservable) == "replica_unobservable:srv2"
+    && match missing {
+      Present { value: v } => !origin_pair_is_durable(d: v)
+      Absent => false
     }
-  }
+}
+
+test fn a_missing_primary_with_a_confirmed_replica_is_a_distinct_repair_state() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: ReadbackAbsent), r: at(placement: replica(), readback: confirmed(path: fixture_object)))) == "primary_missing:srv1:srv2"
+}
+
+test fn an_unobservable_primary_and_a_pair_with_no_copies_are_their_own_states() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: ReadbackUnknown { cause: "srv1 fetch unavailable" }), r: at(placement: replica(), readback: confirmed(path: fixture_object)))) == "primary_unobservable:srv1"
+    && arm(d: judge(p: at(placement: primary(), readback: ReadbackAbsent), r: at(placement: replica(), readback: ReadbackAbsent))) == "not_installed"
+}
+
+test fn wrong_bytes_on_either_host_are_refused() -> Bool {
+  arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_other_object)), r: at(placement: replica(), readback: confirmed(path: fixture_object)))) == "refused"
+    && arm(d: judge(p: at(placement: primary(), readback: confirmed(path: fixture_object)), r: at(placement: replica(), readback: confirmed(path: fixture_other_object)))) == "refused"
+    && arm(d: judge(p: at(placement: primary(), readback: ReadbackAbsent), r: at(placement: replica(), readback: confirmed(path: fixture_other_object)))) == "refused"
 }
