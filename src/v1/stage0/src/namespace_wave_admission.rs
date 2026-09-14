@@ -1771,8 +1771,7 @@ pub struct TransitionAdmission {
 /// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
 /// header paragraph went with them rather than being left describing an empty subject, which is the
 /// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
-/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
-/// relocation set alone.
+/// exists is worse than no prose, because it reads as coverage.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
@@ -1800,12 +1799,19 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE #11182 RELOCATION ROWS SURVIVE THIS DISSOLUTION, and the distinction is the whole point
-/// of the paragraph above: a consumed row goes because its transition is PRESENT AT THE BASE,
-/// not because the array was being emptied. #11156 is at base; the inventory evidence
-/// relocation is not - product.inventory carries no InventoryLotEvidence on main, checked by
-/// identity - so these seven still admit a real delta and deleting them would refuse a live
-/// transition rather than discharge a dead one.
+/// MAIN RETURNED THE ROSTER TO ITS EMPTY RESTING STATE before this branch restored its live
+/// #10994 admissions. The #11182 relocation rows that an
+/// earlier revision of this block described as surviving are no longer here either; that claim
+/// was already stale on main, where the array held one row, and it is repaired now because this
+/// is the roster's own next touch. The distinction the paragraph above draws still holds and is
+/// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
+/// the array was being emptied.
+/// RECHECKED AGAINST MAIN 9989db5538f (2026-09-14). All seventeen #10994 binding sites
+/// still reference their spelling at base and head, and the sole declaring modules still move
+/// from roadmap_model to roadmap_sizing or roadmap_spawner to roadmap_status. None is consumed.
+/// The named anchor dissolution below is retained from this branch: main also retired that
+/// row in #11356, but dropping this receipt would lose its identity and the base-side check.
+///
 /// ONE ROW, gunbc#11193: the `extdeps_external_authority_anchor` leaf in
 /// `extdeps.realization.artifact_store_fs` narrows from two candidates to that module's own.
 ///
