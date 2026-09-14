@@ -1,0 +1,23 @@
+baseline exit=0
+move_first exit=1
+error[E0382]: borrow of moved value: `item`
+  --> /tmp/crisp-seed-recovery/move-move_first-3.rs:26:11
+   |
+18 | pub fn build(item: Rc<Item>, early: bool) -> Rc<Item> {
+   |              ---- move occurs because `item` has type `Rc<Item>`, which does not implement the `Copy` trait
+...
+25 |     child: Some(item),
+   |                 ---- value moved here
+26 |     text: item.text.clone(),
+   |           ^^^^ value borrowed here after move
+   |
+   = note: borrow occurs due to deref coercion to `Item`
+help: clone the value to increment its reference count
+   |
+25 |     child: Some(item.clone()),
+   |                     ++++++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0382`.
+borrow_first exit=0
