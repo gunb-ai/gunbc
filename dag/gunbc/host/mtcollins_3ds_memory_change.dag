@@ -89,7 +89,7 @@ fn mtcollins_two_capture_evidence(
     ObservationRefused { cause } => [ObservationRefused { cause: cause }]
   }
   let second = match second_capture {
-    ObservationEstablished { observed: payload } => mtcollins_training_mixture_finding(expected_byte: 178,
+    ObservationEstablished { observed: payload } => mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 178,
       attempt: "2026-09-12T18:31:43Z two captured cycles", configuration: second_configuration,
       collector: mtcollins_3ds_collector(configuration: second_configuration, payload: payload))
     ObservationRefused { cause } => ObservationRefused { cause: cause }

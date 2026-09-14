@@ -103,7 +103,6 @@ import product.build_fulfillment {
   derive_bom,
   historical_basis_consumed,
   incremental_cash_now,
-  max_constructible,
   owned_stock_consumed,
   resolution_label,
   resolve_build,
@@ -834,7 +833,7 @@ fn ceiling_builds(fixture_roles: List<MtCollinsChannelPopulationRole>, cpu_units
     market_row(part: dimm_ref, units: 4000, unit_price: usd_micros(count: 90000000)),
     market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
   ]
-  match max_constructible(build: resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows)) {
+  match resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows).ceiling {
     CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } => b
     _ => 0 - 1
   }
@@ -858,7 +857,7 @@ test fn w_the_ceiling_names_the_line_that_stops_the_next_build() -> Bool {
         market_row(part: dimm_ref, units: 4000, unit_price: usd_micros(count: 90000000)),
         market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
       ]
-      match max_constructible(build: resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows)) {
+      match resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows).ceiling {
         CeilingDerived { builds: b, bottlenecks: bs, bottleneck_units: u } =>
           b == 31
             && count(bs) == 1
@@ -887,7 +886,7 @@ test fn w_unread_market_depth_refuses_the_ceiling() -> Bool {
         },
         market_row(part: mt_collins_ref, units: 4000, unit_price: usd_micros(count: 1000000)),
       ]
-      match max_constructible(build: resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows)) {
+      match resolve_build(recipe: dual_socket_recipe(fixture_roles: fixture_roles), rows: rows).ceiling {
         CeilingRefused { cause: c } => match c { CeilingDepthUnread { part: _, obligation: _ } => true, _ => false }
         _ => false
       }
@@ -944,7 +943,7 @@ test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
           SystemInclusion { role: MemoryModule, part: dimm_ref, quantity_included: 32 },
         ],
       }
-      match max_constructible(build: resolve_build(recipe: recipe, rows: [])) {
+      match resolve_build(recipe: recipe, rows: []).ceiling {
         CeilingUnconstrainedByAnyLine => true
         _ => false
       }

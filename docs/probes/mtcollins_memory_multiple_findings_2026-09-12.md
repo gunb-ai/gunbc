@@ -24,7 +24,7 @@ gunbc run --source-root dag --source-root src/v2 \
   --function assess_mtcollins_two_configurations
 ```
 
-The committed-file replay verified both hashes and exited 1 with the expected production-admission refusal. It retained expected values 145 and 178 with their separate sources and coverage, located found 0 at J9/MCU4, reported the independent per-socket capacity violation (68719476736 versus 17179869184 bytes), and left the Samsung catalog binding unresolved. No hardware action occurred.
+`assess_mtcollins_two_configurations` re-derives the hash-verified production-admission refusals, distinct observed byte pairs and sources, located mismatch, independent per-socket capacity conflict, and unresolved Samsung catalog binding. This is a read-only replay; it performs no hardware action.
 
 The controls live in `dag/test/claim/host/memory_multiple_findings_witness_test.dag`, with the original assessment, fulfillment and selection controls in their sibling witness modules. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. For example, dispatch the identity-join and production-consumer controls through the existing instrument:
 
@@ -36,6 +36,6 @@ claim_batch --source-root dag --source-root src/v2 \
 
 The source-carried hypothesis controls are explicitly not new machine observations. Required CI remains separate from these scoped controls. The collection reader uses map/flatten rather than repeatedly copying an accumulator as observation history grows; its unavailable arm carries only unresolved facts.
 
-The admission-boundary repair from #11144 is integrated: coverage is a unique identity correspondence, and `read_verified_memory_capture` passes its single captured value to `verify_memory_capture_content` for SHA-256 stdin verification. The 92 scoped controls passed before integrating the subsequent main changes, and the two-artifact replay retained both 145/0 and 178/0 counterexamples with no digest refusal. These are receipts for that prior composition, not for the later grammar migration.
+The admission-boundary repair from #11144 is integrated: coverage is a unique identity correspondence, and `read_verified_memory_capture` passes its single captured value to `verify_memory_capture_content` for SHA-256 stdin verification. Re-derive scoped control outcomes with `claim_batch` and the combined capture assessment with `assess_mtcollins_two_configurations`, using the entry points above. Earlier execution evidence applies to the composition before the subsequent main changes; it does not validate the later grammar migration.
 
 Main #10850 removed the redundant `func` spelling. Both replay declarations and the shared reader now use the authoritative `fn` form, after integrating that model. Required CI must validate the resulting composition; the earlier local compiler accepted the retired spelling and cannot establish that validation.

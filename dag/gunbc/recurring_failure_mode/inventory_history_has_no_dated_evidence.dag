@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.inventory_history_has_no_dated_evidence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data inventory_history_has_no_dated_evidence: RecurringFailureMode = RecurringFailureMode {
+  identity: "inventory_history_has_no_dated_evidence" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: procurement history records acquisition and receipt without dated evidence, while consumers need to distinguish transaction, physical delivery and service commencement. HARM: a population balance can be correct while downstream chronological questions remain unanswerable or borrow an unrelated date. ProcurementLot and InventoryEvent in product.inventory have no date-bearing or unsettled-date arm.",
+    "RECEIPT, gunbc#11182, nonfinancial facts relayed by the operator CPA session on 2026-09-12: the Micro Center North Jersey receipt establishes six separate one-unit lines and a transaction date of 2026-09-01. It refutes the two proposed acquisition dates 2026-08-19 and 2026-08-15. The separately purchased eBay pair was reported delivered 2026-08-06. The Micro Center transaction date is not an inferred receipt or service date. Receipt identifiers and financial contents remain private. These are historical receipts in this failure-mode carrier, not executable dated acquisition events.",
+    "DISTINGUISHING FACTS: conflicting candidate dates were both defeated by a third independent source; choosing either candidate or averaging them would manufacture a fact. The earlier LAN pair and later Micro Center transaction support a procurement-to-arrival hypothesis, but no serial has been observed against a running host. The existing gunbc.spark.dgx_procurement intent count and aggregate SKU binding are not acquisition-grain evidence; its arrival batches remain unchanged.",
+    "FOUND AT MITIGATABLE through explicitly named missing evidence, not a typed chronology. CEILING: STRUCTURALLY GUARANTEED for distinguishing evidence kinds and refusing unobserved required dates; truth of an external receipt remains an observation boundary. NEXT TRIGGER: procurement evidence carries validated, orderable calendar dates with transaction, delivery and service meanings kept distinct, including unknown or unsettled readings, and downstream chronology consumes those readings. Reuse the existing v2.std.datetime CalendarDate and make_calendar_date authority; do not mint another date type or substitute an ISO String field. No date-sensitive tax or commencement conclusion is established here.",
+  ],
+  evidence: [],
+}

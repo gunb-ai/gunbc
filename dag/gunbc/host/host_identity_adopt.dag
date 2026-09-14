@@ -38,6 +38,14 @@ fn srv2_host_identity_os_target() -> NodeControlPlane {
   HostOs { node: srv2_host }
 }
 
+fn srv3_host_identity_ssh_transport() -> HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv3 as NonEmptyStr }
+}
+
+fn srv4_host_identity_ssh_transport() -> HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv4 as NonEmptyStr }
+}
+
 fn host_identity_transport_label(transport: HostEffectTransport) -> String {
   match transport {
     SshShell { ssh_host: h } => concat("SshShell:", h)

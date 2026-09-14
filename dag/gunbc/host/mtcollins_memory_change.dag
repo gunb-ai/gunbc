@@ -114,9 +114,10 @@ fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: Str
 
 // Recognizer for this witnessed attempt only. The transcript tokens, roster,
 // firmware and compared pair are observing facts, not universal firmware rules.
-// The expected byte is recognized from this captured attempt,
-// independently of the prospective catalog evidence.
+// Both bytes are recognized from this captured attempt, independently
+// of the prospective catalog evidence joined by configuration evaluation.
 fn mtcollins_training_mixture_finding(
+  actual_byte: UInt8,
   expected_byte: UInt8,
   attempt: NonEmptyStr,
   configuration: MemoryConfiguration,
@@ -130,7 +131,7 @@ fn mtcollins_training_mixture_finding(
       } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
         ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
       } else if !contains(collector.payload, mtcollins_dram_cycle_start as String)
-        || !contains(collector.payload, concat("ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[", byte_hex_lower(v: expected_byte), "] @MCU[4]"))
+        || !contains(collector.payload, concat("ERR: CHANNEL Mismatch Byte 6 SLOT0[", byte_hex_lower(v: actual_byte), "] EXP[", byte_hex_lower(v: expected_byte), "] @MCU[4]"))
         || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
         || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
         || configuration.platform.firmware != "210525"
@@ -145,7 +146,7 @@ fn mtcollins_training_mixture_finding(
           Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
             attempt: attempt, configuration: configuration, collector: collector,
             comparison_socket: 0, mismatch_position: dimm.position,
-            expected_byte: expected_byte, actual_byte: mtcollins_observed_hynix_package.value.Data,
+            expected_byte: expected_byte, actual_byte: actual_byte,
           } }
         } }
       }
@@ -154,7 +155,7 @@ fn mtcollins_training_mixture_finding(
 
 fn mtcollins_memory_evidence_from_capture(configuration: MemoryConfiguration, payload: String) -> MemoryEvaluationEvidence {
   MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-    mixtures: [mtcollins_training_mixture_finding(expected_byte: 145, attempt: "2026-09-12T02:37:23Z", configuration: configuration,
+    mixtures: [mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 145, attempt: "2026-09-12T02:37:23Z", configuration: configuration,
       collector: mtcollins_training_collector(configuration: configuration, payload: payload))],
     qualifications: [], training_failures: [],
   }
