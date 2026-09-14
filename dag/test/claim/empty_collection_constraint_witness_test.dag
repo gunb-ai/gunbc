@@ -96,3 +96,25 @@ data none_present_branch_source: String = "module probe_none_present_branch\nimp
 test fn none_present_branch_binds() -> Bool {
   callback_compiles_clean(source: none_present_branch_source)
 }
+
+// Source controls consumed by the required floor for the Optional method-result
+// and inferred-application pattern-binding routes. The production consumers are
+// v1.compiler.emit_rust.compiler_pipeline_entry_decl and emit_rust_fold_method_call.
+
+data optional_method_none_join_source: String = "module probe_optional_method_none\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { none } }\n"
+
+test fn optional_method_none_join() -> Bool {
+  callback_compiles_clean(source: optional_method_none_join_source)
+}
+
+data optional_method_present_join_source: String = "module probe_optional_method_present\nimport std.types { Int, Bool, List }\nimport v2.std.optional { Present, Absent }\nfn asks(flag: Bool, xs: List<Int>) -> Int? { if flag { xs |> first } else { Present { value: 1 } } }\n"
+
+test fn optional_method_present_join() -> Bool {
+  callback_compiles_clean(source: optional_method_present_join_source)
+}
+
+data inferred_optional_pattern_preserves_argument_source: String = "module probe_optional_pattern\nimport std.types { Int, List }\nimport v2.std.optional { Present, Absent }\ntype Item { children: List<Int> }\nfn asks(src: Item?) -> Int {\n let candidate = match src { Present { value: v } => Present { value: v } Absent => none }\n let chosen = match src { Present { value: v } => match candidate { Present { value: w } => w Absent => v } Absent => Item { children: [] } }\n count(chosen.children)\n}\n"
+
+test fn inferred_optional_pattern_preserves_argument() -> Bool {
+  callback_compiles_clean(source: inferred_optional_pattern_preserves_argument_source)
+}
