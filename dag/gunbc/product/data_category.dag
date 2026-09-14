@@ -1,9 +1,9 @@
 module product.data_category
 
-import std.types { String }
+import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE HANDLING-CLASS MARKERS, ONE ROW EACH, AND NOTHING ELSE. A category here names a class of data
 // the product handles -- it is the C in product.data_class Classified<C, T> -- and it GRANTS
@@ -83,36 +83,30 @@ fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: da
 // a different declaration set in a different module, and merging them would put one module's
 // declarations in another module's roster. The two dissolve together in practice and are still two
 // facts (DESIGN 3).
-data data_category_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "source_and_build_input_ref"),
-    reason: "no public call site: source_and_build_input_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the SourceAndBuildInput MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing source_and_build_input_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling source_and_build_input_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
+fn data_category_ref_frontier_rows(
+  decl_names: List<NonEmptyStr>,
+  reason: String,
+  dissolution: DissolutionCondition,
+) -> List<FrontierRow> {
+  map(decl_names, n => frontier_row_decl(
+    ref: decl_ref(module_path: data_category_module_path, decl_name: n as String),
+    reason: reason,
+    dissolution: dissolution,
+  ))
+}
+
+data data_category_frontier_rows: List<FrontierRow> = data_category_ref_frontier_rows(
+  decl_names: [
+    "source_and_build_input_ref" as NonEmptyStr,
+    "ci_secret_ref" as NonEmptyStr,
+    "job_log_ref" as NonEmptyStr,
+    "metering_telemetry_ref" as NonEmptyStr,
+    "support_communication_ref" as NonEmptyStr,
+    "abuse_and_sanctions_record_ref" as NonEmptyStr,
+  ],
+  reason: "no public call site. These are the markers' only spellings, and the first consumer that needs them is a private one. product.data_class carries the matching frontier for the MARKERS and states that their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings. ONE REASON RATHER THAN SIX: the six share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence six times with only the symbol substituted, which is DESIGN 2 authored duplication and makes a seventh marker a seventh paste.",
+  dissolution: unbound_dissolution(
+    description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing these functions from this module. SUFFICIENT FOR deleting a name from the list above; the roster empties when all six are imported. NOT satisfied by a public witness calling one of them, which would prove the function evaluates and not that anything consumes the identity it names.",
   ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "ci_secret_ref"),
-    reason: "no public call site: ci_secret_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the CiSecret MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing ci_secret_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling ci_secret_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "job_log_ref"),
-    reason: "no public call site: job_log_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the JobLog MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing job_log_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling job_log_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "metering_telemetry_ref"),
-    reason: "no public call site: metering_telemetry_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the MeteringTelemetry MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing metering_telemetry_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling metering_telemetry_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "support_communication_ref"),
-    reason: "no public call site: support_communication_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the SupportCommunication MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing support_communication_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling support_communication_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: "abuse_and_sanctions_record_ref"),
-    reason: "no public call site: abuse_and_sanctions_record_ref is the marker's only spelling, and the first consumer that needs it is a private one. product.data_class carries the matching frontier for the AbuseAndSanctionsRecord MARKER and states that its consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The function exists ahead of that binding so the private rows import one spelling instead of re-spelling this module's path at six sites, which is the fork DESIGN 3 forbids and the reason the annotation above calls these the only spellings.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER: that binding lands on gunbc-private#118 from eea5674, importing abuse_and_sanctions_record_ref from this module. SUFFICIENT FOR deleting this row. NOT satisfied by a public witness calling abuse_and_sanctions_record_ref, which would prove the function evaluates and not that anything consumes the identity it names."),
-  ),
-]
+)
 
