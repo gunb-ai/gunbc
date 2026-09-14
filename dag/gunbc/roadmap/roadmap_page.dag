@@ -26,8 +26,8 @@ import gunbc.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
+  frontier_sets_from_live_history,
+  FrontierSetsProjected, FrontierSetsProjectionRefused,
   declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
 }
@@ -131,15 +131,15 @@ fn finish_line_progress_markup_for_accepted(accepted_ids: List<RoadmapNodeId>) -
 }
 
 fn finish_line_progress_markup() -> Fragment {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       el_class("section", "finish-line-progress", [
         el("h2", [ txt("v1 exit: four finish lines") ]),
         el_class("p", "finish-line-refused", [
           txt(concat("acceptance carrier refused: ", detail)),
         ]),
       ])
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
+    FrontierSetsProjected { accepted: accepted_ids, withheld: _ } =>
       finish_line_progress_markup_for_accepted(accepted_ids: accepted_ids)
   }
 }

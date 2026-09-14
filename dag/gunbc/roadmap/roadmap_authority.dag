@@ -3185,56 +3185,36 @@ type RoadmapAuthorityProjection
   | RoadmapAuthorityProjectionRefused { detail: String }
 
 fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
-  match roadmap_acceptance_receipts() {
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
-      AcceptedRoadmapNodesProjected {
-        nodes: declared_roadmap_nodes() |> filter(n => node_accepted(receipts: receipts, rn: n)),
-      }
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjectionRefused { detail: detail } =>
       AcceptedRoadmapNodesProjectionRefused { detail: detail }
+    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+      AcceptedRoadmapNodesProjected {
+        nodes: declared_roadmap_nodes() |> filter(n => accepted |> any(a => a == n.node)),
+      }
   }
 }
 
 fn accepted_roadmap_node_ids_projection_from_carrier_text(text: String) -> AcceptedRoadmapNodeIdsProjection {
-  match roadmap_acceptance_receipts_from_carrier_text(text: text) {
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
-      AcceptedRoadmapNodeIdsProjected {
-        ids: accepted_node_ids_from_receipts(receipts: receipts),
-      }
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      match frontier_sets_from_events(events: events) {
+        FrontierSetsProjectionRefused { detail: detail } =>
+          AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
+        FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+          AcceptedRoadmapNodeIdsProjected { ids: accepted }
+      }
   }
 }
 
 fn accepted_roadmap_node_ids_projection() -> AcceptedRoadmapNodeIdsProjection {
-  match accepted_roadmap_nodes_projection() {
-    AcceptedRoadmapNodesProjected { nodes: nodes } =>
-      AcceptedRoadmapNodeIdsProjected { ids: nodes |> map(n => n.node) }
-    AcceptedRoadmapNodesProjectionRefused { detail: detail } =>
+  match frontier_sets_from_live_history() {
+    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+      AcceptedRoadmapNodeIdsProjected { ids: accepted }
+    FrontierSetsProjectionRefused { detail: detail } =>
       AcceptedRoadmapNodeIdsProjectionRefused { detail: detail }
-  }
-}
-
-type WithheldNodeIdsProjection
-  = WithheldNodeIdsProjected { ids: List<RoadmapNodeId> }
-  | WithheldNodeIdsProjectionRefused { detail: String }
-
-fn withheld_node_ids_from_events(events: List<RoadmapAcceptanceEvent>) -> WithheldNodeIdsProjection {
-  match remains_superseded_revocations_join(history: events, nodes: declared_roadmap_nodes()) {
-    RemainsSupersededRevocationsJoined =>
-      WithheldNodeIdsProjected { ids: node_ids_held_off_active_frontier(history: events) }
-    RemainsSupersededRevocationOnNonSupersededNode { node: node } =>
-      WithheldNodeIdsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-non-superseded-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnUndeclaredNode { node: node } =>
-      WithheldNodeIdsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-undeclared-node:", node as String], ""),
-      }
-    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: node } =>
-      WithheldNodeIdsProjectionRefused {
-        detail: join(["remains-superseded-revocation-on-ambiguous-declared-node:", node as String], ""),
-      }
   }
 }
 
@@ -3300,6 +3280,10 @@ fn frontier_sets_from_live_history() -> FrontierSetsProjection {
   }
 }
 
+type WithheldNodeIdsProjection
+  = WithheldNodeIdsProjected { ids: List<RoadmapNodeId> }
+  | WithheldNodeIdsProjectionRefused { detail: String }
+
 fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
   match frontier_sets_from_live_history() {
     FrontierSetsProjected { accepted: _, withheld: withheld } =>
@@ -3311,10 +3295,15 @@ fn withheld_node_ids_from_live_history() -> WithheldNodeIdsProjection {
 
 fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjection {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-      withheld_node_ids_from_events(events: events)
     RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       WithheldNodeIdsProjectionRefused { detail: detail }
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      match frontier_sets_from_events(events: events) {
+        FrontierSetsProjected { accepted: _, withheld: withheld } =>
+          WithheldNodeIdsProjected { ids: withheld }
+        FrontierSetsProjectionRefused { detail: detail } =>
+          WithheldNodeIdsProjectionRefused { detail: detail }
+      }
   }
 }
 
