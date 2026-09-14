@@ -463,11 +463,31 @@ type ServingExecutionClosureResolution
   = ExecutionClosureResolved { closure: ServingTurnExecutionClosure }
   | ExecutionClosureUnestablished { obligations: List<NonEmptyStr> }
 
+// ── THE MINT IS ADMITTED TO PRODUCERS, BECAUSE A SEALED RECORD IS NOT A SEALED RELATION ───────
+//
+// sole_constructor STOPPED ANYONE BUILDING THE RECORD AND STOPPED NOBODY BUILDING THE CLAIM. This
+// function took three independent arguments, so any caller could resolve source A, resolve runtime B,
+// supply receipt C and obtain a perfectly valid ServingTurnExecutionClosure asserting that one
+// incarnation was observed to consist of them. The witness fixtures in this repository did exactly
+// that, which is the tell: if the test can forge it, the type is not carrying the relation.
+//
+// admit_callers PUTS THE LIST IN THIS MODULE. Adding a producer is an edit here -- a counted review
+// event in the authority's own file -- rather than an import someone writes in theirs. The DeepSeek
+// adapter, when it exists, becomes another row; that is the intended growth and it does not require
+// the mint to be globally callable.
+//
+// AND NO TEST IS ADMITTED. A witness obtains a closure the way production does, through an incarnation
+// producer over a real acceptance -- which is what makes a positive control a control over the
+// production path rather than over a shape the fixture invented.
 fn seal_serving_execution_closure(
   source: ServingSourceResolution,
   runtime: ServingRuntimeResolution,
   receipt: ObservationReceiptRef,
-) -> ServingExecutionClosureResolution {
+) -> ServingExecutionClosureResolution
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.vllm_incarnation_provenance", decl_name: "bind_incarnation"),
+  ]
+  = {
   match source {
     SourceManifestUnestablished { obligations: so } =>
       match runtime {

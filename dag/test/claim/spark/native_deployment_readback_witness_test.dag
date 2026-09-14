@@ -23,6 +23,17 @@ import gunbc.spark.vllm_incarnation_provenance {
   bind_incarnation, incarnation_applies_to, incarnation_for_launch,
   IncarnationFound, IncarnationMissing, IncarnationAmbiguous,
 }
+import product.fabric.work {
+  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import std.measure { hardware_thread_count }
+import gunbc.serving.turn_demand {
+  ServingTurnRequest, ServingTurnExecution, TurnExecutionBound,
+  TurnWorkBound, TurnWorkUnestablished, serving_turn_work, serving_turn_requirements,
+}
 import gunbc.serving.incarnation_provenance {
   ServingSourceResolution, ServingRuntimeResolution,
   CoordinateObserved, CoordinateAbsentByObservation, RevisionAddressedUpstreamVerification,
@@ -546,4 +557,56 @@ test fn a_restart_is_a_new_launch_over_the_same_execution() -> Bool {
             && !incarnation_applies_to(p: p1, launch: after)
       }
   }
+}
+
+
+// ── WORK IDENTITY, BUILT FROM A CLOSURE OBTAINED THE WAY PRODUCTION OBTAINS ONE ────────────────
+//
+// THESE ROWS LIVE HERE RATHER THAN BESIDE turn_demand BECAUSE THE SEAL IS ADMITTED-ONLY. A
+// ServingTurnExecutionClosure can be minted only by the incarnation producer, and that producer needs
+// a real DeploymentAcceptance -- so a positive control over Work identity necessarily exercises the
+// whole join: acceptance, rank population, source and runtime observation, launch binding. That is a
+// stronger control than the one it replaces, which assembled a closure in the fixture.
+fn t_request(execution: ServingTurnExecution) -> ServingTurnRequest {
+  ServingTurnRequest {
+    execution: execution,
+    inputs: "probe.inputs" as ArtifactManifestRef,
+    effect_contract: "probe.effects" as EffectContractRef,
+    output_contract: "probe.outputs" as OutputContractRef,
+  }
+}
+
+fn t_probe_requirements() -> ExecutionRequirements {
+  serving_turn_requirements(
+    capacity_class: ControlPlaneCapacity,
+    capabilities: "gunbc.capabilities.spark-serving.probe" as CapabilityManifestRef,
+    trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
+  )
+}
+
+fn t_work_key_for(checkpoint: String) -> String {
+  match t_bind(launch: t_launch(group: FabricGroupB, endpoint: "e", start: "s"), reading: t_faithful_reading(), checkpoint: checkpoint) {
+    IncarnationUnestablished { obligations: _ } => "unbound"
+    IncarnationBound { provenance: p } =>
+      match serving_turn_work(
+        principal: "gunbc" as NonEmptyStr,
+        request: t_request(execution: TurnExecutionBound { closure: p.execution }),
+        requirements: t_probe_requirements(),
+      ) {
+        TurnWorkUnestablished { obligation: _ } => "unestablished"
+        TurnWorkBound { work: w } => w.id.key as String
+      }
+  }
+}
+
+test fn an_observed_incarnation_mints_work_through_the_fabric_constructor() -> Bool {
+  t_work_key_for(checkpoint: "checkpoint-a") != "unbound"
+    && t_work_key_for(checkpoint: "checkpoint-a") != "unestablished"
+}
+
+// TWO SOURCES ARE TWO WORKS, and the identity is derived from the contract rather than decided here.
+test fn two_incarnation_sources_are_two_works() -> Bool {
+  t_work_key_for(checkpoint: "checkpoint-a") != t_work_key_for(checkpoint: "checkpoint-b")
 }

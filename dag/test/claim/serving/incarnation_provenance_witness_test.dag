@@ -175,30 +175,13 @@ test fn the_differing_axes_fold_names_exactly_the_axis_that_moved() -> Bool {
   }
 }
 
-// ── 8. THE SEAL CARRIES BOTH REFUSALS, NOT WHICHEVER MATCHED FIRST ────────────────────────────
-test fn the_seal_carries_obligations_from_both_halves() -> Bool {
-  let bad_source = resolve_serving_source(
-    checkpoint: CoordinateUnestablished { obligation: "checkpoint unread" as NonEmptyStr },
-    model_config: observed(seed: "model-config-a"),
-    tokenizer: observed(seed: "tokenizer-a"),
-    tokenizer_config: observed(seed: "tokenizer-config-a"),
-    special_tokens: observed(seed: "special-tokens-a"),
-    chat_template: observed(seed: "chat-template-a"),
-    model_side_code: CoordinateAbsentByObservation,
-    generation_defaults: observed(seed: "generation-defaults-a"),
-    processor_config: observed(seed: "processor-config-a"),
-    rung: t_rung(),
-  )
-  let bad_runtime = resolve_serving_runtime(
-    runtime_image: CoordinateUnestablished { obligation: "image unread" as NonEmptyStr },
-    runtime_extensions: observed(seed: "extensions-a"),
-    runtime_configuration: observed(seed: "runtime-config-a"),
-  )
-  match seal_serving_execution_closure(source: bad_source, runtime: bad_runtime, receipt: "test.claim.serving.incarnation_provenance_witness" as ObservationReceiptRef) {
-    ExecutionClosureResolved { closure: _ } => false
-    ExecutionClosureUnestablished { obligations: os } => count(os) == 2
-  }
-}
+// ── 8. THE SEAL'S BOTH-HALVES REFUSAL IS EXERCISED THROUGH THE PRODUCER ──────────────────────
+//
+// THIS ROW USED TO CALL seal_serving_execution_closure DIRECTLY, which that function now refuses: it
+// admits only the incarnation producer. The behaviour it checked -- that a failed source and a failed
+// runtime both reach the caller rather than whichever was matched first -- is exercised where a
+// closure can legitimately be obtained, in test.claim.spark.native_deployment_readback_witness.
+// Keeping an unreachable call here to preserve a row would be testing a wall by walking through it.
 
 // ── 9. DISTINCT FAMILIES RENDER DISTINGUISHABLY, WHICH IS THE PROPERTY THAT ACTUALLY HOLDS ─────
 //
