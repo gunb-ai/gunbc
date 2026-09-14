@@ -305,6 +305,8 @@ type SparkGrantDisclosure
   | GrantDisclosureAdmitted { assertion: OperatorAllocation }
   | GrantDisclosureUnestablished { obligation: NonEmptyStr }
 
+data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that object. Two facts are missing and neither implies the other: the environment the pinned base image bakes (extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference), and whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure to admit InspectServingContainer for gunbc-automation" as NonEmptyStr
+
 fn spark_grant_disclosure_for_precondition(
   grant: SparkManagedGrant,
   precondition: SparkInspectDisclosurePrecondition,
