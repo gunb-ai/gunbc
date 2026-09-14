@@ -273,16 +273,12 @@ type EncodedSize
 type PreservedProperty
   = PreservesTensorNames
   | PreservesDeclaredShapes
-  | PreservesDtypes
-  | PreservesBlockScalePairing
   | PreservesElementValues
 
 fn preserved_property_wire(p: PreservedProperty) -> NonEmptyStr {
   match p {
     PreservesTensorNames => "tensor-names" as NonEmptyStr
     PreservesDeclaredShapes => "declared-shapes" as NonEmptyStr
-    PreservesDtypes => "dtypes" as NonEmptyStr
-    PreservesBlockScalePairing => "block-scale-pairing" as NonEmptyStr
     PreservesElementValues => "element-values" as NonEmptyStr
   }
 }
@@ -747,13 +743,6 @@ fn realization_obligations(r: FaithfulComponentRealization) -> List<NonEmptyStr>
   }
 }
 
-fn realization_defects(r: FaithfulComponentRealization) -> List<NonEmptyStr> {
-  match r {
-    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => []
-    RealizationUnfaithful { subject: _, defects: ds } => ds
-    RealizationEvidenceMissing { subject: _, obligation: _ } => []
-  }
-}
 
 // ── A ROUTE IS A CHAIN OF PROVIDER HOPS, EACH PLAYING ONE ROLE ─────────────────────────────────
 //
@@ -1267,17 +1256,6 @@ fn route_verification_gap(
   }
 }
 
-fn route_integrity_causes(s: RouteIntegrityStanding) -> List<NonEmptyStr> {
-  match s {
-    IntegrityContentAddressedAt { role: _, provider_id: _ } => []
-    IntegrityNotContentAddressed { role: _, because: b } => [b]
-    IntegrityVerificationPointAbsent { role: rl } =>
-      [join([
-        "this route names ", route_role_wire(r: rl) as String,
-        " as its digest verification point and has no hop in that role",
-      ], "") as NonEmptyStr]
-  }
-}
 
 // ── THE SUBJECT A PIECE OF ROUTE EVIDENCE BELONGS TO ──────────────────────────────────────────
 //
