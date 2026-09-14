@@ -45,13 +45,13 @@ import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 // author those six files onto an unlanded #11345: they would refuse against a
 // main that does not yet carry the relocation.
 
+// Binding.expected_candidates: candidate declaring identities, same type as enclosing. The wall
+// join is module_path. decl_name must equal Binding.spelling (the relocated leaf); load refuses a
+// mismatch so a phantom leaf cannot pass.
 type AdmissionSubject
   = Binding {
       enclosing: DeclarationRef
       spelling: NonEmptyStr
-      // Candidate declaring identities, same type as enclosing. The wall join is
-      // module_path. decl_name must equal Binding.spelling (the relocated leaf);
-      // load refuses a mismatch so a phantom leaf cannot pass.
       expected_candidates: List<DeclarationRef>
     }
   | Membership {
