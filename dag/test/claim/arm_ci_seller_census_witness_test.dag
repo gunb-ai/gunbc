@@ -1,0 +1,297 @@
+module test.claim.arm_ci_seller_census_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { credits_per_minute_count, credits_per_minute_issuer, hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  EntitlementUnstated,
+  QuotedWithoutBasis,
+  ArmListPriceStanding,
+  ArmCreditsPerMinute,
+  RunnerCatalogAvailability,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+  aarch64_rows_missing_cited_label,
+}
+import extdeps.ci_runner.blacksmith { blacksmith_provider_identity }
+import extdeps.ci_runner.depot { depot_provider_identity }
+import extdeps.ci_runner.warpbuild { warpbuild_provider_identity }
+import extdeps.ci_runner.circleci { circleci_provider_identity, circleci_arm_list_price }
+import extdeps.ci_runner.github_actions { github_actions_provider_identity }
+import extdeps.ci_runner.namespace { namespace_provider_identity }
+import extdeps.ci_runner.buildjet { buildjet_provider_identity }
+import extdeps.ci_runner.runs_on { runs_on_provider_identity }
+import extdeps.ci_runner.actuated { actuated_provider_identity }
+import extdeps.ci_runner.cirrus_runners { cirrus_runners_provider_identity }
+import extdeps.ci_runner.buildkite { buildkite_provider_identity }
+import extdeps.ci_runner.gitlab { gitlab_provider_identity }
+import extdeps.ci_runner.aws_codebuild { aws_codebuild_provider_identity }
+import extdeps.ci_runner.sprinters { sprinters_provider_identity }
+import extdeps.ci_runner.semaphore { semaphore_provider_identity }
+import extdeps.ci_runner.google_cloud_build { google_cloud_build_provider_identity }
+import extdeps.cloud.ubicloud { ubicloud_provider_identity }
+import std.roster_frontier { DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.arm_ci_seller_census {
+  arm_ci_seller_census_later_consumer_frontier_rows,
+  cloud_arm_reseller_offers,
+  customer_account_cloud_arm_offers,
+  not_accepting_arm_linux_offers,
+  offers_include_provider,
+  provider_in,
+  surveyed_arm_linux_offers,
+  unread_standing_arm_linux_offers,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn offer_scope_nonempty(offer: SellerArmLinuxOffer) -> Bool {
+  string_length(s: offer.snapshot.declared_scope) > 0
+}
+
+// Labels transcribed here from the same 2026-09-13 vendor pages the modules cite.
+// They are NOT derived from RunnerShapeRow.label: a catalog row that claims Aarch64
+// with a spelling absent from this list fails the same helper as the rogue fixture.
+fn page_cited_arm_labels() -> List<NonEmptyStr> {
+  [
+    "blacksmith-2vcpu-ubuntu-2404-arm",
+    "blacksmith-4vcpu-ubuntu-2404-arm",
+    "blacksmith-8vcpu-ubuntu-2404-arm",
+    "blacksmith-16vcpu-ubuntu-2404-arm",
+    "blacksmith-32vcpu-ubuntu-2404-arm",
+    "depot-ubuntu-24.04-arm",
+    "depot-ubuntu-24.04-arm-4",
+    "depot-ubuntu-24.04-arm-8",
+    "depot-ubuntu-24.04-arm-16",
+    "depot-ubuntu-24.04-arm-32",
+    "depot-ubuntu-24.04-arm-64",
+    "warp-ubuntu-latest-arm64-2x",
+    "warp-ubuntu-latest-arm64-4x",
+    "warp-ubuntu-latest-arm64-8x",
+    "warp-ubuntu-latest-arm64-16x",
+    "warp-ubuntu-latest-arm64-32x",
+    "arm.medium",
+    "arm.large",
+    "arm.xlarge",
+    "arm.2xlarge",
+    "ubuntu-latest-arm-2core",
+    "ubuntu-latest-arm-4core",
+    "ubuntu-latest-arm-5core",
+    "ubuntu-latest-arm-8core",
+    "ubuntu-latest-arm-16core",
+    "ubuntu-latest-arm-32core",
+    "ubuntu-latest-arm-64core",
+    "ubicloud-standard-2-arm",
+    "ubicloud-standard-4-arm",
+    "ubicloud-standard-8-arm",
+    "ubicloud-standard-16-arm",
+    "ubicloud-standard-30-arm",
+    "1 vCPU 2 GB",
+    "2 vCPU 4 GB",
+    "2 vCPU 8 GB",
+    "4 vCPU 8 GB",
+    "4 vCPU 16 GB",
+    "8 vCPU 16 GB",
+    "8 vCPU 32 GB",
+    "16 vCPU 32 GB",
+    "16 vCPU 64 GB",
+    "32 vCPU 64 GB",
+    "32 vCPU 128 GB",
+    "LINUX_ARM64_2X4",
+    "LINUX_ARM64_4X16",
+    "LINUX_ARM64_8X32",
+    "LINUX_ARM64_16X64",
+    "LINUX_ARM64_32X128",
+    "LINUX_ARM64_64X256",
+    "saas-linux-small-arm64",
+    "saas-linux-medium-arm64",
+    "saas-linux-large-arm64",
+    "reserved.arm.2cpu.4gib",
+    "reserved.arm.4cpu.8gib",
+    "reserved.arm.8cpu.16gib",
+    "reserved.arm.16cpu.32gib",
+    "reserved.arm.32cpu.64gib",
+    "r1-standard-2",
+    "r1-standard-4",
+    "r1-standard-8",
+  ]
+}
+
+fn offer_aarch64_labels_are_page_cited(offer: SellerArmLinuxOffer) -> Bool {
+  count(aarch64_rows_missing_cited_label(
+    availability: offer.shapes,
+    cited_labels: page_cited_arm_labels(),
+  )) == 0
+}
+
+fn expected_seller_identities() -> List<DeclarationRef> {
+  [
+    blacksmith_provider_identity,
+    depot_provider_identity,
+    warpbuild_provider_identity,
+    circleci_provider_identity,
+    github_actions_provider_identity,
+    ubicloud_provider_identity,
+    namespace_provider_identity,
+    buildjet_provider_identity,
+    runs_on_provider_identity,
+    actuated_provider_identity,
+    cirrus_runners_provider_identity,
+    buildkite_provider_identity,
+    gitlab_provider_identity,
+    aws_codebuild_provider_identity,
+    sprinters_provider_identity,
+    semaphore_provider_identity,
+    google_cloud_build_provider_identity,
+  ]
+}
+
+fn expected_reseller_identities() -> List<DeclarationRef> {
+  [github_actions_provider_identity, depot_provider_identity, gitlab_provider_identity]
+}
+
+fn expected_customer_account_identities() -> List<DeclarationRef> {
+  [runs_on_provider_identity, sprinters_provider_identity]
+}
+
+fn expected_not_accepting_identities() -> List<DeclarationRef> {
+  [buildjet_provider_identity, cirrus_runners_provider_identity]
+}
+
+fn expected_unread_standing_identities() -> List<DeclarationRef> {
+  [
+    github_actions_provider_identity,
+    depot_provider_identity,
+    circleci_provider_identity,
+    gitlab_provider_identity,
+    aws_codebuild_provider_identity,
+    semaphore_provider_identity,
+    google_cloud_build_provider_identity,
+  ]
+}
+
+test fn every_expected_seller_is_surveyed() -> Bool {
+  all(
+    expected_seller_identities(),
+    p => offers_include_provider(offers: surveyed_arm_linux_offers(), provider: p),
+  )
+}
+
+test fn every_surveyed_offer_provider_is_an_expected_seller() -> Bool {
+  all(
+    surveyed_arm_linux_offers(),
+    o => provider_in(provider: o.provider, identities: expected_seller_identities()),
+  )
+}
+
+test fn every_surveyed_offer_declares_scope() -> Bool {
+  all(surveyed_arm_linux_offers(), o => offer_scope_nonempty(offer: o))
+}
+
+test fn every_surveyed_aarch64_shape_carries_a_cited_label() -> Bool {
+  all(surveyed_arm_linux_offers(), o => offer_aarch64_labels_are_page_cited(offer: o))
+}
+
+test fn wholesale_join_is_github_depot_and_gitlab() -> Bool {
+  all(
+    expected_reseller_identities(),
+    p => offers_include_provider(offers: cloud_arm_reseller_offers(), provider: p),
+  )
+    && all(
+      cloud_arm_reseller_offers(),
+      o => provider_in(provider: o.provider, identities: expected_reseller_identities()),
+    )
+}
+
+test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
+  all(
+    expected_customer_account_identities(),
+    p => offers_include_provider(offers: customer_account_cloud_arm_offers(), provider: p),
+  )
+    && all(
+      customer_account_cloud_arm_offers(),
+      o => provider_in(provider: o.provider, identities: expected_customer_account_identities()),
+    )
+}
+
+test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
+  all(
+    expected_not_accepting_identities(),
+    p => offers_include_provider(offers: not_accepting_arm_linux_offers(), provider: p),
+  )
+    && all(
+      not_accepting_arm_linux_offers(),
+      o => provider_in(provider: o.provider, identities: expected_not_accepting_identities()),
+    )
+}
+
+test fn unread_standing_join_is_price_page_or_sku_unread() -> Bool {
+  all(
+    expected_unread_standing_identities(),
+    p => offers_include_provider(offers: unread_standing_arm_linux_offers(), provider: p),
+  )
+    && all(
+      unread_standing_arm_linux_offers(),
+      o => provider_in(provider: o.provider, identities: expected_unread_standing_identities()),
+    )
+}
+
+data rogue_provider: DeclarationRef = decl_ref(
+  module_path: "test.claim.arm_ci_seller_census_witness",
+  decl_name: "rogue_provider",
+)
+
+data rogue_aarch64_without_cited_label: RunnerShapeRow = RunnerShapeRow {
+  provider: rogue_provider,
+  label: "uncited-arm",
+  architecture: Aarch64,
+  entitlement: EntitlementUnstated,
+  vcpus: hardware_thread_count(2),
+  memory: QuotedWithoutBasis { numeral: 8, unit_label: "GB" },
+}
+
+data rogue_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [rogue_aarch64_without_cited_label],
+}
+
+test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool {
+  frontier_rows_well_formed(rows: arm_ci_seller_census_later_consumer_frontier_rows)
+    && all(
+      arm_ci_seller_census_later_consumer_frontier_rows,
+      row => any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject)),
+    )
+    && all(
+      arm_ci_seller_census_later_consumer_frontier_rows,
+      row => frontier_subject_eq(
+        a: row.subject,
+        b: DeclSubject {
+          ref: decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "surveyed_arm_linux_offers"),
+        },
+      ),
+    )
+}
+
+test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
+  match circleci_arm_list_price {
+    ArmCreditsPerMinute { per_minute, priced_label } =>
+      credits_per_minute_count(r: per_minute) == 13
+        && priced_label == "arm.medium"
+        && declaration_ref_eq(
+          a: credits_per_minute_issuer(r: per_minute),
+          b: circleci_provider_identity,
+        )
+    _ => false
+  }
+}
+
+test fn a_row_claiming_aarch64_without_a_cited_label_is_red() -> Bool {
+  count(
+    aarch64_rows_missing_cited_label(
+      availability: rogue_catalog,
+      cited_labels: page_cited_arm_labels(),
+    ),
+  ) == 1
+}

@@ -1,9 +1,9 @@
 module test.claim.serving.turn_demand_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import product.fabric.work {
-  SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
   ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, OpaqueEffects,
   OutputArtifactObligation, TerminalResultObligation,
 }
@@ -12,10 +12,20 @@ import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { hardware_thread_count }
 import gunbc.serving.turn_demand {
-  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, serving_turn_source_unestablished,
+  ServingTurnRequest, ServingTurnSource, TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved,
+  ServingTurnComponent, TurnWeights, TurnTokenizer, TurnRuntime,
+  serving_turn_weights_obligation, serving_turn_tokenizer_obligation,
   serving_turn_steps, serving_turn_output_obligations, TurnWorkBound, TurnWorkUnestablished,
   serving_turn_work, serving_turn_requirements, serving_turn_satisfaction,
 }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, compare_content_hash, ContentHashEqual }
+import gunbc.spark.serving_offer { spark_serving_turn_runtime, spark_serving_incarnation_unobserved_obligation }
+import gunbc.spark.vllm_serving_launch {
+  vllm_serving_launch, endpoint_incarnation_observation, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+}
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.fleet_intent_network { operator_host_srv5 }
 
 fn probe_requirements() -> ExecutionRequirements {
   serving_turn_requirements(
@@ -37,44 +47,118 @@ fn request_with(source: ServingTurnSource) -> ServingTurnRequest {
   }
 }
 
-// ── AN ALIAS IS NOT A SOURCE MANIFEST, AND THE REFUSAL IS THE WHOLE POINT ─────────────────────
+// ── A SOURCE IS THREE COMPONENTS, EACH REFUSABLE ON ITS OWN ───────────────────────────────────
 //
-// What shipped before cast the served model alias straight into SourceManifestRef, which gave one
-// Work identity to engines that may be serving different weights, tokenizers or quantizations. There
-// is no arm here that turns an unestablished source into a Work: the turn has no exact identity
-// until something observes what the launch loaded, and the obligation says which consumer is waiting
-// and what would discharge it.
-test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
-  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: serving_turn_source_unestablished()), requirements: probe_requirements())
-  match w {
-    TurnWorkUnestablished { obligation: o } =>
-      string_contains(s: o as String, pattern: "no canonical source manifest")
-        && string_contains(s: o as String, pattern: "launch receipt")
-    TurnWorkBound { work: _ } => false
+// What shipped before cast the served model alias straight into SourceManifestRef, and after that the
+// source was one unestablished-or-not value. Now weights, tokenizer and runtime are separate standings,
+// and the refusal names every one that is missing. The observed digests below are FIXTURE EVIDENCE:
+// nothing in this repository observes loaded weight or tokenizer bytes.
+
+fn t_sha256(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+fn t_observed(hex: String) -> TurnComponentStanding {
+  TurnComponentObserved { digest: t_sha256(hex: hex), receipt: "test.claim.serving.turn_demand_witness fixture" as ObservationReceiptRef }
+}
+
+fn t_source(weights: TurnComponentStanding, tokenizer: TurnComponentStanding, runtime: TurnComponentStanding) -> ServingTurnSource {
+  ServingTurnSource { weights: weights, tokenizer: tokenizer, runtime: runtime }
+}
+
+data t_w1: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data t_w2: String = "2222222222222222222222222222222222222222222222222222222222222222"
+data t_tok: String = "3333333333333333333333333333333333333333333333333333333333333333"
+data t_rt: String = "4444444444444444444444444444444444444444444444444444444444444444"
+
+fn t_all_observed(weights_hex: String) -> ServingTurnSource {
+  t_source(weights: t_observed(hex: weights_hex), tokenizer: t_observed(hex: t_tok), runtime: t_observed(hex: t_rt))
+}
+
+fn t_component_is(c: ServingTurnComponent, want: ServingTurnComponent) -> Bool {
+  match c {
+    TurnWeights => match want { TurnWeights => true  _ => false }
+    TurnTokenizer => match want { TurnTokenizer => true  _ => false }
+    TurnRuntime => match want { TurnRuntime => true  _ => false }
   }
 }
 
-// AND THE POSITIVE CONTROL, so the refusal above is a wall and not a function that cannot succeed. A
-// request carrying an observed manifest mints Work, and its key comes from the fabric's own
-// constructor rather than from a second derivation here.
-test fn an_observed_manifest_mints_work_through_the_fabric_constructor() -> Bool {
-  let source = TurnSourceManifest { manifest: "probe.model-manifest" as SourceManifestRef, receipt: "test.claim.serving.turn_demand_witness" as ObservationReceiptRef }
+fn t_missing_exactly(source: ServingTurnSource, want: List<ServingTurnComponent>) -> Bool {
   match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: source), requirements: probe_requirements()) {
-    TurnWorkBound { work: work } => length(work.contract.steps) == 1 && length(work.id.key as String) > 0
-    TurnWorkUnestablished { obligation: _ } => false
+    TurnWorkBound { work: _ } => false
+    TurnWorkUnestablished { missing: m, obligation: _ } =>
+      length(m) == length(want)
+        && fold(want, init: true, f: (acc, w) => acc && any(m, x => t_component_is(c: x, want: w)))
   }
 }
 
-// TWO SOURCES ARE TWO WORKS. This is what the alias cast destroyed: the identity is derived from the
-// contract, so a different manifest is a different key without anyone deciding it should be.
-test fn two_source_manifests_are_two_works() -> Bool {
-  let one = TurnSourceManifest { manifest: "probe.model-a" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  let two = TurnSourceManifest { manifest: "probe.model-b" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: one), requirements: probe_requirements()) {
-    TurnWorkUnestablished { obligation: _ } => false
+// POSITIVE CONTROL. Every component observed mints Work through the fabric's own constructor.
+test fn three_observed_components_mint_work_through_the_fabric_constructor() -> Bool {
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: t_all_observed(weights_hex: t_w1)), requirements: probe_requirements()) {
+    TurnWorkBound { work: work } => length(work.contract.steps) == 1 && length(work.id.key as String) > 0
+    TurnWorkUnestablished { missing: _, obligation: _ } => false
+  }
+}
+
+// RED, ONE PER COMPONENT. Each drops exactly one observation and must name exactly that component.
+test fn unobserved_weights_refuse_and_name_only_weights() -> Bool {
+  t_missing_exactly(
+    source: t_source(weights: TurnComponentUnobserved { obligation: serving_turn_weights_obligation }, tokenizer: t_observed(hex: t_tok), runtime: t_observed(hex: t_rt)),
+    want: [TurnWeights],
+  )
+}
+
+test fn unobserved_tokenizer_refuses_and_names_only_tokenizer() -> Bool {
+  t_missing_exactly(
+    source: t_source(weights: t_observed(hex: t_w1), tokenizer: TurnComponentUnobserved { obligation: serving_turn_tokenizer_obligation }, runtime: t_observed(hex: t_rt)),
+    want: [TurnTokenizer],
+  )
+}
+
+test fn unobserved_runtime_refuses_and_names_only_runtime() -> Bool {
+  t_missing_exactly(
+    source: t_source(weights: t_observed(hex: t_w1), tokenizer: t_observed(hex: t_tok), runtime: TurnComponentUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }),
+    want: [TurnRuntime],
+  )
+}
+
+// RED -- THE PRODUCTION STANDING OF TODAY: weights and tokenizer have no observer, and the runtime is
+// read through spark_serving_turn_runtime from the incarnation standing production carries, which is
+// unobserved. All three are named.
+test fn todays_standing_refuses_naming_all_three_components() -> Bool {
+  t_missing_exactly(
+    source: t_source(
+      weights: TurnComponentUnobserved { obligation: serving_turn_weights_obligation },
+      tokenizer: TurnComponentUnobserved { obligation: serving_turn_tokenizer_obligation },
+      runtime: spark_serving_turn_runtime(incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }),
+    ),
+    want: [TurnWeights, TurnTokenizer, TurnRuntime],
+  )
+}
+
+// THE RUNTIME READS THE IMAGE DIGEST OF THE OBSERVED INCARNATION, and nothing else. Fixture evidence:
+// no production producer constructs the observation.
+test fn the_runtime_component_is_the_observed_incarnations_image_digest() -> Bool {
+  let launch = vllm_serving_launch(
+    group: FabricGroupA, head: operator_host_srv5,
+    systemd_invocation: "fixture-invocation-1" as NonEmptyStr, container_id: "fixture-container-1" as NonEmptyStr,
+    executable_digest: t_sha256(hex: t_rt), unit_digest: t_sha256(hex: t_tok), started_at: 1788907506,
+  )
+  let endpoint = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
+  match spark_serving_turn_runtime(incarnation: EndpointIncarnationObserved { observation: endpoint_incarnation_observation(endpoint: endpoint, launch: launch, receipt: "fixture" as ObservationReceiptRef) }) {
+    TurnComponentObserved { digest: d, receipt: _ } => match compare_content_hash(left: d, right: t_sha256(hex: t_rt)) { ContentHashEqual => true  _ => false }
+    TurnComponentUnobserved { obligation: _ } => false
+  }
+}
+
+// TWO WEIGHT DIGESTS ARE TWO WORKS. A manifest bound to content makes different loaded bytes a
+// different key without anyone deciding it should be.
+test fn different_weight_bytes_are_different_works() -> Bool {
+  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: t_all_observed(weights_hex: t_w1)), requirements: probe_requirements()) {
+    TurnWorkUnestablished { missing: _, obligation: _ } => false
     TurnWorkBound { work: a } =>
-      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: two), requirements: probe_requirements()) {
-        TurnWorkUnestablished { obligation: _ } => false
+      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: t_all_observed(weights_hex: t_w2)), requirements: probe_requirements()) {
+        TurnWorkUnestablished { missing: _, obligation: _ } => false
         TurnWorkBound { work: b } => (a.id.key as String) != (b.id.key as String)
       }
   }

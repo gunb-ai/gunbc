@@ -6107,7 +6107,7 @@ fn eval_var(
                     return Ok(v);
                 }
             }
-            ItemKind::FuncItem | ItemKind::FnItem => {
+            ItemKind::FnItem => {
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
@@ -6140,7 +6140,7 @@ fn eval_var(
                         return Ok(v);
                     }
                 }
-                ItemKind::FuncItem | ItemKind::FnItem => {
+                ItemKind::FnItem => {
                     return Ok(Value::Fn {
                         node: fn_node.clone(),
                     });
@@ -7634,7 +7634,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     //
     // THE GATE IS THE BINDING, NOT THE VALUE'S REPRESENTATION. It formerly matched
     // `Value::Closure` only, so the law held for a LAMBDA and failed for a NAMED top-level
-    // function -- `Value::Fn` (the `ItemKind::FuncItem | FnItem` arm of `eval_expr`'s identifier
+    // function -- `Value::Fn` (the `ItemKind::FnItem` arm of `eval_expr`'s identifier
     // path), which fell past every tier and was answered by `ctx.lookup_fn` at the FREE FUNCTION
     // sharing its spelling. Measured on the 3x2 grid (let / parameter / pattern x named-fn /
     // lambda) in `v2.test.claim.local_binding_shadow`: the three named-fn cells reached the free
