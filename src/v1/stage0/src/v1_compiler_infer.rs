@@ -13028,6 +13028,7 @@ pub fn enclosing_fn_value_param_names(scope: Rc<InferScope>) -> Rc<Vec<String>> 
                     scope.type_env.clone().source_indices.clone(),
                 )
                 .value_params
+                .clone()
                 .iter()
                 .cloned()
                 {
@@ -13052,17 +13053,19 @@ pub fn field_base_is_enclosing_value_param(base: Rc<Node>, scope: Rc<InferScope>
                 base.clone(),
                 scope.type_env.clone().source_indices.clone(),
             );
-            let mut __found = false;
-            for p in enclosing_fn_value_param_names(scope.clone())
-                .iter()
-                .cloned()
             {
-                if (p.clone() == name.clone()) {
-                    __found = true;
-                    break;
+                let mut __found = false;
+                for p in enclosing_fn_value_param_names(scope.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if (p.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
+                __found
             }
-            __found
         }
         _ => false,
     }
@@ -13088,20 +13091,24 @@ pub fn is_never_constrained_enclosing_generic_base(
             };
             if !in_enclosing.clone() {
                 false
-            } else if field_base_is_enclosing_value_param(base_expr.clone(), scope.clone()) {
-                true
             } else {
-                let in_unbound_callee = {
-                    let mut __found = false;
-                    for g in scope.unbound_call_generic_names.clone().iter().cloned() {
-                        if (g.clone() == id.clone()) {
-                            __found = true;
-                            break;
-                        }
+                if field_base_is_enclosing_value_param(base_expr.clone(), scope.clone()) {
+                    true
+                } else {
+                    {
+                        let in_unbound_callee = {
+                            let mut __found = false;
+                            for g in scope.unbound_call_generic_names.clone().iter().cloned() {
+                                if (g.clone() == id.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        !in_unbound_callee.clone()
                     }
-                    __found
-                };
-                !in_unbound_callee.clone()
+                }
             }
         }
         _ => false,
