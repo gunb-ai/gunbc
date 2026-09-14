@@ -272,8 +272,10 @@ type EnrolmentMarginStanding =
 // THE THREE FORMERLY-BLOCKING READINGS UNDER A DECLARATION, AND WHICH COMPOSED WALL HOLDS EACH
 // (review 65751: citing only the no-terminal path is rung inflation). (1) Observed over the
 // 302ms budget with a reached verdict: this gate reports and does not decide, matching
-// `ChangedCostDebtVerdictOnly` — the 500ms CPU line over long-home changed witnesses is already
-// `gunbc.rung_drop` `long_module_changed_witness_cpu_observed_only`. (2) Right-censored: the
+// `ChangedCostDebtVerdictOnly`. Standing down that enrolment-margin line for LongHome ground is
+// `gunbc.rung_drop` `long_home_enrolment_margin_observed_only` — a sibling of
+// `long_module_changed_witness_cpu_observed_only`, which covers the 500ms changed-witness CPU
+// line and does not reach this gate (review 65779). (2) Right-censored: the
 // host mints that reading only from interrupt terminality, so there is no censored-with-a-verdict
 // path; changed-witness still refuses `PlannedWithoutTerminalVerdict`. (3) Absent with a reached
 // verdict: `CostObservationMissingUnderVerdictOnly` — standing down this gate with nothing
