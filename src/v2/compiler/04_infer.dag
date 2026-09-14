@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, Empty, length, list_snoc_item }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_snoc_item, list_tail, zip_map }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -48,6 +48,20 @@ import v2.std.constraints {
   CanonicalGroundingWitness,
   canonical_grounding_from_derived_type
 }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceFormal,
+  InhabitanceUndecidableReason,
+  InhabitanceVerdict,
+  application_argument_does_not_inhabit_diagnostic,
+  application_positional_arity_mismatch_diagnostic,
+  declared_type_inhabitance,
+  inhabitance_node_undecidable_reason,
+  inhabitance_undecidable_diagnostic,
+  position_direct_call_argument,
+  undecidable_argument_type_not_derived,
+  undecidable_formal_unresolved
+}
 import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -84,6 +98,7 @@ import v2.std.node {
   Named,
   Node,
   NodeFold,
+  Positional,
   Symbol,
   Transform,
   TypeNode,
@@ -882,7 +897,10 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
   }
 }
 
-data infer_arrow_domain_binding_heuristic_note: String = "interim: infer_find_arrow_domain_type_in_tree DFS-walks the resolved tree for the first Arrow whose Conj domain names the atom-binding symbol — symbol-name collision across unrelated arrows picks first-visit order, not lexical scope. dissolve-on: namespace-only name resolution consumes containment-tree binding→domain (DESIGN open thread §namespace-only); delete this heuristic walker when SymbolIndex lookup lands."
+// interim: infer_find_arrow_domain_type_in_tree walks for a parameter name inside an Arrow domain
+// (operand typing). Application formals do not use that walk: only an operator whose node is
+// already Arrow is judged; an Atom operator is FormalUnresolved until SymbolIndex /
+// ResolvedTree.bindings. dissolve-on: delete the domain walker when that lookup lands.
 
 fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
@@ -1459,13 +1477,11 @@ fn infer_loop_iteration(
 // First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
 // add derives the unified Int type as the expression result — the add_probe body vertical. Operator
 // recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
-// (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row
-// on infer_transform_is_binary_infix_int_add_shape so every other Transform stays
-// GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating
-// add vertical witness enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission
-// (SubstrateLongLaneEvalBudget); fast per-PR subtract dispatch control in
-// body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general
-// operator/operand typing table subsumes this rule.
+// (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
+// so application-argument inhabitance runs; add-shape result derivation is selected inside
+// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
+// application's result type after the inhabitance judgment. dissolve-on: general operator/operand
+// typing table subsumes the add-only result rule.
 
 fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
   match op_node.kind {
@@ -1517,6 +1533,188 @@ fn infer_unify_transform_operand_types(
           } else {
             outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
           }
+      }
+  }
+}
+
+fn infer_transform_argument_targets(node: Node) -> List<Node> {
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailAbsent => Empty
+    TailFound { tail: t } => t
+  }
+}
+
+fn infer_operator_arrow(operator: Node) -> Optional<Node> {
+  match operator.kind {
+    TypeNode { connective: Arrow } => Present { value: operator }
+    _ => Absent
+  }
+}
+
+fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: Present { value: Empty }, f: fn(acc, e) {
+        match acc {
+          Absent => Absent
+          Present { value: formals } =>
+            match e.label {
+              Named { name: nme } =>
+                Present {
+                  value: list_snoc_item(
+                    xs: formals,
+                    item: InhabitanceFormal {
+                      parameter_identity: nme,
+                      declared: e.target
+                    }
+                  )
+                }
+              Positional => Absent
+            }
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Absent => Absent
+    Present { value: operator } =>
+      match infer_operator_arrow(operator: operator) {
+        Absent => Absent
+        Present { value: arrow } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+            Absent => Absent
+            Present { value: domain } => infer_formals_from_domain(domain: domain)
+          }
+      }
+  }
+}
+
+type InhabitanceFormalArg {
+  formal: InhabitanceFormal
+  arg: Node
+}
+
+fn infer_inhabitance_undecidable_accepted(
+  application: Node,
+  reason: InhabitanceUndecidableReason
+) -> Outcome<Bool> {
+  Accepted {
+    value: true,
+    diagnostics: Some {
+      diagnostics: diagnostics_singleton(
+        d: inhabitance_undecidable_diagnostic(application: application, reason: reason)
+      )
+    }
+  }
+}
+
+fn infer_judge_application_argument(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  arg: Node
+) -> Outcome<Bool> {
+  match inhabitance_node_undecidable_reason(n: formal.declared) {
+    Present { value: reason } =>
+      infer_inhabitance_undecidable_accepted(
+        application: application,
+        reason: reason
+      )
+    Absent =>
+  match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+    Absent =>
+      infer_inhabitance_undecidable_accepted(
+        application: application,
+        reason: undecidable_argument_type_not_derived()
+      )
+    Present { value: facts } =>
+      match inferred_facts_resolved_type(facts: facts) {
+        Violates { diagnostic: _ } =>
+          infer_inhabitance_undecidable_accepted(
+            application: application,
+            reason: undecidable_argument_type_not_derived()
+          )
+        Holds { value: produced } =>
+          let obligation = DeclaredTypeObligation {
+            position: position_direct_call_argument(),
+            parameter_identity: formal.parameter_identity,
+            declared: formal.declared,
+            produced: produced,
+            application: application
+          }
+          match declared_type_inhabitance(obligation: obligation) {
+            Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
+            InhabitanceUndecidable { reason: reason } =>
+              infer_inhabitance_undecidable_accepted(
+                application: obligation.application,
+                reason: reason
+              )
+            InhabitanceRefused { find_witness_reason: fw_reason } =>
+              outcome_rejected(
+                application_argument_does_not_inhabit_diagnostic(
+                  obligation: obligation,
+                  find_witness_reason: fw_reason
+                )
+              )
+          }
+      }
+  }
+  }
+}
+
+fn infer_application_argument_inhabitance(
+  node: Node,
+  entries: List<InferredFactsEntry>
+) -> Outcome<Bool> {
+  match infer_application_formals(node: node) {
+    Absent =>
+      infer_inhabitance_undecidable_accepted(
+        application: node,
+        reason: undecidable_formal_unresolved()
+      )
+    Present { value: formals } =>
+      let args = infer_transform_argument_targets(node: node)
+      if length(xs: formals) != length(xs: args) {
+        outcome_rejected(
+          application_positional_arity_mismatch_diagnostic(
+            application: node,
+            formal_count: length(xs: formals),
+            argument_count: length(xs: args)
+          )
+        )
+      } else {
+        fold(
+          zip_map(
+            a: formals,
+            b: args,
+            f: fn(formal, arg) {
+              InhabitanceFormalArg { formal: formal, arg: arg }
+            }
+          ),
+          init: Accepted { value: true, diagnostics: None },
+          f: fn(acc, pair) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: _, diagnostics: pd } =>
+                match infer_judge_application_argument(
+                  application: node,
+                  entries: entries,
+                  formal: pair.formal,
+                  arg: pair.arg
+                ) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: _, diagnostics: jd } =>
+                    Accepted {
+                      value: true,
+                      diagnostics: diagnostics_merge(outer: pd, inner: jd)
+                    }
+                }
+            }
+          }
+        )
       }
   }
 }
@@ -1811,14 +2009,14 @@ fn infer_gather_loop_row_on_entries(
   }
 }
 
-fn infer_gather_transform_row_on_entries(
+fn infer_gather_transform_frontier_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
   tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+  match infer_node_facts(n: node, partials: partials, tree: tree) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -1859,6 +2057,78 @@ fn infer_gather_transform_row_on_entries(
   }
 }
 
+fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_application_argument_inhabitance(node: node, entries: entries) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: node,
+        pending: rejected_with_pending(pending: pending, rejected: r),
+        await_branch_row: false,
+        await_match_row: false,
+        await_loop_row: false,
+        await_transform_row: false,
+        children_remaining: 0
+      )
+    Accepted { value: _, diagnostics: id } =>
+      let merged_pending = diagnostics_merge(outer: pending, inner: id)
+      if infer_transform_is_binary_infix_int_add_shape(node: node) {
+        match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: merged_pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: merged_pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(
+                    outer: diagnostics_merge(outer: merged_pending, inner: d),
+                    inner: ed
+                  ),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
+        }
+      } else {
+        infer_gather_transform_frontier_on_entries(
+          node: node,
+          entries: entries,
+          pending: merged_pending,
+          partials: partials,
+          tree: tree
+        )
+      }
+  }
+}
+
 // This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no
 // wildcard arm -- the construction half of the wall. The wildcard it replaces let eight kinds fall
 // silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be
@@ -1866,42 +2136,13 @@ fn infer_gather_transform_row_on_entries(
 // -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
 
 fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {
-  match infer_node_facts(n: n, partials: partials, tree: tree) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: n,
-        pending: r,
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: n,
-            pending: r,
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: n,
-            entries: [entry],
-            pending: diagnostics_merge(outer: d, inner: ed),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+  infer_gather_transform_frontier_on_entries(
+    node: n,
+    entries: empty_inferred_facts_entry_list(),
+    pending: None,
+    partials: partials,
+    tree: tree
+  )
 }
 
 fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {
@@ -1941,7 +2182,15 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
       )
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     ComputationNode { behavior: Transform } =>
-      if infer_transform_is_binary_infix_int_add_shape(node: n) {
+      if length(xs: n.children) == 0 {
+        infer_gather_transform_row_on_entries(
+          node: n,
+          entries: empty_inferred_facts_entry_list(),
+          pending: None,
+          partials: partials,
+          tree: tree
+        )
+      } else {
         infer_gather_fold_acc_ok(
           node: n,
           entries: empty_inferred_facts_entry_list(),
@@ -1952,8 +2201,6 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
           await_transform_row: true,
           children_remaining: length(xs: n.children)
         )
-      } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
       }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
