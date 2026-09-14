@@ -11,7 +11,7 @@ import tools.dag_compile_clean_seam_transport {
   cross_shard_seam_importer_entry_path,
   cross_shard_seam_importee_entry_path
 }
-import tools.dag_compile_clean_transport { dcc_report_is_subject_red, dcc_compile_report_arm }
+import tools.dag_compile_clean_transport { dcc_subject_expectation_holds, dcc_compile_report_arm }
 import std.types { String, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -28,9 +28,9 @@ type CrossShardSeamReceipt {
 fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
   CrossShardSeamReceipt {
     probe_ran: probe.probe_ran,
-    y_reds: dcc_report_is_subject_red(report: probe.y_report),
-    x_reds: dcc_report_is_subject_red(report: probe.x_report),
-    m_reds: dcc_report_is_subject_red(report: probe.m_report),
+    y_reds: dcc_subject_expectation_holds(report: probe.y_report, expect_success: false),
+    x_reds: dcc_subject_expectation_holds(report: probe.x_report, expect_success: false),
+    m_reds: dcc_subject_expectation_holds(report: probe.m_report, expect_success: false),
     y_names_class: string_contains(s: probe.y_output, pattern: cross_shard_seam_class_marker),
     x_names_class: string_contains(s: probe.x_output, pattern: cross_shard_seam_class_marker),
     m_names_class: string_contains(s: probe.m_output, pattern: cross_shard_seam_class_marker)

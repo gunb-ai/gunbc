@@ -22,7 +22,6 @@ import tools.dag_compile_clean_transport {
 }
 
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
-data shard_a_exemplar_file_name: String = "logic.dag"
 
 fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport {
   let root = git.Inspect.Toplevel()
@@ -50,7 +49,10 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport
         let compile = gunbc.WitnessBin.Run(
           workdir: root.path,
           bin_path: dcc_gunbc_path(root: root.path),
-          args: dcc_fixture_only_compile_args(tmp: stage.path, module_file: shard_a_exemplar_file_name),
+          args: dcc_fixture_only_compile_args(
+            tmp: stage.path,
+            module_file: fold(split(s: entry_rel_path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+          ),
           expect: OutcomeIsData
         )
         let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)

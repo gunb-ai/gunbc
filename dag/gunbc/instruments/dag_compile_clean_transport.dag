@@ -84,14 +84,6 @@ fn dcc_subject_expectation_holds(report: DccCompileReport, expect_success: Bool)
   }
 }
 
-fn dcc_report_is_subject_red(report: DccCompileReport) -> Bool {
-  match report {
-    SubjectRed => true
-    SubjectGreen => false
-    RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
-  }
-}
-
 fn dcc_source_root_args() -> List<String> {
   fold(compile_clean_source_roots(), init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
@@ -319,7 +311,7 @@ fn dcc_outside_workspace_root_precheck() -> DccCompileReport {
     if !cleaned.success {
       dcc_host_refused_before_subject(cause: "outside-root precheck stage cleanup failed")
     } else if under {
-      SubjectRed
+      dcc_host_refused_before_subject(cause: "outside-root precheck staged a path the containment relation reports as under the workspace root")
     } else {
       dcc_root_admission_precheck_refused(cause: concat(
         "primary source root is outside the workspace root (instrument admission, compiler not invoked): ",
@@ -346,7 +338,7 @@ fn dcc_compile_staged_outside_workspace_root() -> DccCompileReport {
       if dcc_staged_under_workspace(root: root.path, staged: tmp.path) {
         let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
         if cleaned.success {
-          SubjectRed
+          dcc_host_refused_before_subject(cause: "outside-root control staged a path the containment relation reports as under the workspace root")
         } else {
           dcc_host_refused_before_subject(cause: "outside-root control staged a path the containment relation reports as under the workspace root, and stage cleanup failed")
         }
