@@ -294,7 +294,7 @@ test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
   }
 }
 
-test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+fn named_step_fold_refuses_accumulator_unread() -> Bool {
   match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
     Absent => false
     Present { value: fs } =>
@@ -302,17 +302,20 @@ test fn named_step_fold_refuses_accumulator_unread() -> Bool {
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the planted copy after a `let` is admitted in
-// silence. Greens with no edit when the fold site reaches the lens at this position.
-test fn let_prefixed_fold_copy_is_caught() -> Bool {
+// GREEN since gunbc#11322 carries the let remainder Loop-first; was rostered RED. A plain fn, not a
+// test fn: an ingest-reaching identity newly enrolled after gunbc#11195 is judged at the
+// 100ms-equivalent tier and refused, so it joins gunbc.rung_drop
+// accumulator_copy_positive_controls_off_every_lane's population and executes under claim_batch.
+fn let_prefixed_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
   }
 }
 
-// RED, rostered at gunbc.explicit_witness_admission: the same planted copy in a match arm.
-test fn match_arm_fold_copy_is_caught() -> Bool {
+// GREEN since gunbc#11322 lowers match-arm bodies through call apply; was rostered RED. Plain fn
+// on the same standing as its let_prefixed sibling above.
+fn match_arm_fold_copy_is_caught() -> Bool {
   match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
     Absent => false
     Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
@@ -430,7 +433,7 @@ test fn out_of_iteration_append_is_out_of_domain() -> Bool {
   }
 }
 
-test fn report_counters_state_the_domain() -> Bool {
+fn report_counters_state_the_domain() -> Bool {
   match ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } =>
