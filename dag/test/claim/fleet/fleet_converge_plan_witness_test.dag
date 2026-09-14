@@ -2439,3 +2439,31 @@ test fn a_refused_hosts_existing_caps_are_not_proposed_for_removal() -> Bool {
   !any(lines, l => string_contains(s: l, pattern: "REMOVE"))
     && any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
 }
+
+// A REFUSED HOST REACHES NO MASK AND NO REMOVAL AT THE APPLY SEAM EITHER. `slot_apply_lines` is what
+// fleet apply executes; a host refused in the plan that still rendered a destructive step there would
+// be a refusal that only held for readers.
+test fn a_refused_host_emits_no_destructive_apply_step() -> Bool {
+  let lines = slot_apply_lines(
+    host: "srv2" as NonEmptyStr,
+    observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv2-01")],
+    retirement_evidence: witness_no_retirement_evidence(),
+  )
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+    && !any(lines, l => string_contains(s: l, pattern: "-rf"))
+    && !emits_mask_command(lines: lines)
+    && !any(lines, l => string_contains(s: l, pattern: "ADD runner-slot"))
+}
+
+// AND THE WHOLE-FLEET RESULT DOES NOT CLAIM COMPLETION WHILE srv2 IS REFUSED. Partial convergence of
+// the admitted hosts is admissible only because srv2 is structurally incapable of receiving the
+// change; a fleet total that counted its refusal as zero work would report a converged fleet with one
+// host unreachable, which is the reading the earlier ruling forbids.
+test fn a_refused_host_keeps_the_fleet_result_incomplete() -> Bool {
+  fleet_converge_cap_refusal_count(host: "srv2" as NonEmptyStr, observed_caps: []) > 0
+    && fleet_converge_slot_refusal_count(
+         host: "srv2" as NonEmptyStr,
+         observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv2-01")],
+         retirement_evidence: witness_no_retirement_evidence(),
+       ) > 0
+}
