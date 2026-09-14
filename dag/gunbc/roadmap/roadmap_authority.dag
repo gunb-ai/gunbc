@@ -867,6 +867,23 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active_sized(
+      identity: "rn_TXP0PJCJ3QANE66PGYW2X5CMFS",
+      id: "2-fabric-blob-origin-durable-pair",
+      owner: "fleet",
+      path: "dag/gunbc/fabric/fabric_m0_origin_host.dag",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Make the two-host blob origin real, and prove a stored object is durable",
+        boundary: "Converge the origin on both hosts and install the one narrow helper that crosses into it, then put an object and read it back from each host by real execution. The judgement, the helper, the transfer and the host intent are written and tested; what is missing is that any of it has ever run against a machine.",
+        displaced_cost: "Today a blob that a workflow depends on lives in one place with no second copy and no proof it can be read back. Losing one host loses the object, and nothing would say so until something asked for it.",
+        first_slice: "Converge one host, install the helper, and put and read back one object; then the second host and the pair judgement over both readings.",
+        red_control: "A transfer that reports success while the bytes never arrive must not read as confirmed, which the hermetic mock cannot show because it replays one digest for every path; a handoff whose bytes differ from the named digest never reaches the origin; and an object present on only one host is never durable.",
+        out_of_scope: "No service unit, no failover or promotion, no second writer beside the primary, and no cleanup of handoff files, which stay bounded at one per object.",
+        handback: "The converge receipts for both hosts, the put and read-back receipts taken through the installed helper, one pair durability receipt, and a named list of what still has no execution evidence."
+      )
+    ),
+    active_sized(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",

@@ -224,6 +224,132 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "the_helper_grant_is_one_path_as_the_fabric_origin_account_and_never_all" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "the_helper_grant_is_one_path_as_the_fabric_origin_account_and_never_all",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "only_put_and_stage_over_a_digest_and_an_entry_name_are_admitted" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "only_put_and_stage_over_a_digest_and_an_entry_name_are_admitted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "the_argv_carries_only_the_admitted_words" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "the_argv_carries_only_the_admitted_words",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "a_handoff_whose_bytes_differ_from_the_named_digest_never_reaches_the_origin_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "a_handoff_whose_bytes_differ_from_the_named_digest_never_reaches_the_origin_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "a_handoff_not_set_to_0640_is_refused_before_any_origin_effect_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "a_handoff_not_set_to_0640_is_refused_before_any_origin_effect_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "a_matching_handoff_is_put_and_then_staged_for_export_at_0640_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "a_matching_handoff_is_put_and_then_staged_for_export_at_0640_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "staging_an_object_the_origin_does_not_hold_exports_nothing_by_real_execution" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "staging_an_object_the_origin_does_not_hold_exports_nothing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "the_host_entry_refuses_an_unadmitted_operation_before_any_effect" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "the_host_entry_refuses_an_unadmitted_operation_before_any_effect",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "every_helper_exit_round_trips_and_a_foreign_status_is_indeterminate" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "every_helper_exit_round_trips_and_a_foreign_status_is_indeterminate",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_helper_witness_test", function: "the_helper_runs_its_entry_with_the_admitted_words_as_named_arguments" },
+      entry: "dag/test/claim/fabric_m0_origin_helper_witness_test.dag",
+      function: "the_helper_runs_its_entry_with_the_admitted_words_as_named_arguments",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "both_copies_confirmed_at_the_admitted_placements_match" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "both_copies_confirmed_at_the_admitted_placements_match",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "two_readings_from_srv1_are_not_two_copies" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "two_readings_from_srv1_are_not_two_copies",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "swapped_roles_are_refused" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "swapped_roles_are_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "a_reading_from_a_host_outside_the_pair_is_refused" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "a_reading_from_a_host_outside_the_pair_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "a_key_that_is_not_derived_from_the_expected_digest_is_refused" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "a_key_that_is_not_derived_from_the_expected_digest_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "readings_from_different_attempts_are_refused" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "readings_from_different_attempts_are_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "a_missing_replica_copy_names_srv2_and_is_distinct_from_an_unobservable_one" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "a_missing_replica_copy_names_srv2_and_is_distinct_from_an_unobservable_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "a_missing_primary_with_a_confirmed_replica_is_a_distinct_repair_state" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "a_missing_primary_with_a_confirmed_replica_is_a_distinct_repair_state",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "a_missing_primary_with_an_unobservable_replica_is_not_called_not_installed" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "a_missing_primary_with_an_unobservable_replica_is_not_called_not_installed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "an_unobservable_primary_is_its_own_state" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "an_unobservable_primary_is_its_own_state",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_m0_origin_pair_witness_test", function: "wrong_bytes_on_either_host_are_refused" },
+      entry: "dag/test/claim/fabric_m0_origin_pair_witness_test.dag",
+      function: "wrong_bytes_on_either_host_are_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.memory_capture_real_execution_witness", function: "w_capture_digest_binds_consumed_content" },
       entry: "dag/test/claim/host/memory_capture_real_execution_witness_test.dag",
       function: "w_capture_digest_binds_consumed_content",
