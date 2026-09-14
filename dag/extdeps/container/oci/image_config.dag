@@ -76,6 +76,24 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
+fn image_config_env(c: ImageConfiguration) -> List<String> {
+  match c.config {
+    Absent => []
+    Present { value: cfg } =>
+      match cfg.Env {
+        Absent => []
+        Present { value: env } => env
+      }
+  }
+}
+
+fn container_image_config_env(cfg: ContainerImageConfig) -> List<String> {
+  match cfg.Env {
+    Absent => []
+    Present { value: env } => env
+  }
+}
+
 fn image_config_cmd(c: ImageConfiguration) -> List<String> {
   match c.config {
     Absent => []

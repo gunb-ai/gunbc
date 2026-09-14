@@ -13,7 +13,9 @@ import gunbc.spark.managed_access_bootstrap {
   OperatorAcceptedUnresolvedDisclosureRisk,
   GrantReturnsNoHostData,
   GrantDisclosureUnestablished,
+  PinnedBaseImageEnvClassified,
   spark_managed_grant_disclosure_standing,
+  spark_inspect_grant_disclosure_unestablished_obligation,
   spark_managed_grant_install_basis,
   spark_install_basis_accepts_risk_for,
   spark_managed_grant_population,
@@ -175,6 +177,11 @@ fn spark_grant_install_admission(
             GrantInstallAdmittedOnAcceptedRisk { grant: g, obligation: o, basis: basis }
           } else {
             GrantInstallWithheld { grant: g, obligation: o }
+          }
+        PinnedBaseImageEnvClassified { classification: _ } =>
+          GrantInstallWithheld {
+            grant: g,
+            obligation: spark_inspect_grant_disclosure_unestablished_obligation,
           }
       }
   }
