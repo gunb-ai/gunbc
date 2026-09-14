@@ -301,3 +301,14 @@ test fn w_timeline_assessments_consume_commit_and_continuity_refusals() -> Bool 
       _ => false
     }
 }
+
+// Recovery labels locate the previous refusal; they must not replace its cause.
+test fn w_sel_baseline_retains_prior_cursor_refusal() -> Bool {
+  let prior = pre_os_text_refusal(text: "prior capture digest mismatch")
+  let reading = pre_os_ingest_sel(previous: ObservationRefused { cause: prior },
+    envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  match reading.continuity {
+    ObservationRefused { cause } => cause.detail == prior.detail && count(cause.location) == count(prior.location) + 1
+    _ => false
+  }
+}

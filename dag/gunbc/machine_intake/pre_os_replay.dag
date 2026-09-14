@@ -138,7 +138,7 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal>,
   let delta: ObservationAttempt<SelDelta, PreOsRefusal> = match cursor {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: next } => match previous {
-      ObservationRefused { cause: _ } => ObservationRefused { cause: pre_os_text_refusal(text: "initial or recovered SEL baseline; historical rows are not a newly observed stimulus") }
+      ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "initial or recovered SEL baseline; historical rows are not a newly observed stimulus") }
       ObservationEstablished { observed: before } =>
         if !pre_os_same_source_generation(a: before.envelope, b: envelope) {
           ObservationRefused { cause: PreOsRefusal { location: ["SEL source"], detail: PreOsSourceChanged { before: before.envelope, after: envelope } } }

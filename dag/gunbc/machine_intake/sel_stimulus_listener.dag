@@ -13,7 +13,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart
 // supply generation evidence independently. Rendering changes also refuse the
 // delta; they are not evidence of a new boot. Retain the snapshot across that
 // gap. OEM rows stay opaque and clocks never order events here.
-type SelWatermark sole_constructor { records: List<String> }
+type SelWatermark sole_constructor { records: List<String>, events: List<SelWindowEvent> }
 type SelDelta { watermark: SelWatermark, events: List<SelWindowEvent> }
 
 fn sel_lines(text: String) -> List<String> {
@@ -71,10 +71,7 @@ fn sel_snapshot_summary(text: String) -> ObservationAttempt<NonEmptyStr, NonEmpt
   match sel_read(text: text) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: watermark } => {
-      let restart = any(watermark.records, line => match sel_rendered_record(line: line) {
-        ObservationEstablished { observed: event } => match event.kind { BootRestart { offset: _ } => true _ => false }
-        ObservationRefused { cause: _ } => false
-      })
+      let restart = any(watermark.events, event => match event.kind { BootRestart { offset: _ } => true _ => false })
       ObservationEstablished { observed: concat(if restart { "restart observed" } else { "no restart observed" },
         " in supplied SEL rows only: ", to_string(map(watermark.records, line => sel_field(fields: split(s: line, delimiter: "|"), index: 0))),
         "; generation and continuity unestablished") as NonEmptyStr }
@@ -84,11 +81,22 @@ fn sel_snapshot_summary(text: String) -> ObservationAttempt<NonEmptyStr, NonEmpt
 
 fn sel_read(text: String) -> ObservationAttempt<SelWatermark, NonEmptyStr> {
   let records = sel_lines(text: text)
-  let parsed = map(records, line => sel_rendered_record(line: line))
-  let ids = flat_map(parsed, row => match row { ObservationRefused { cause: _ } => [] ObservationEstablished { observed: e } => [e.record_id] })
-  if count(ids) != count(records) || fold(ids, init: -1, f: (previous, id) => if previous == -2 || id <= previous { -2 } else { id }) == -2 {
-    ObservationRefused { cause: "SEL snapshot malformed or has duplicate record ids" }
-  } else { ObservationEstablished { observed: SelWatermark { records: records } } }
+  let parsed: ObservationAttempt<List<SelWindowEvent>, NonEmptyStr> = fold(records, init: ObservationEstablished { observed: [] }, f: (acc, line) => match acc {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: events } => match sel_rendered_record(line: line) {
+      ObservationRefused { cause } => ObservationRefused { cause: concat(cause as String, "; SEL row: ", line) as NonEmptyStr }
+      ObservationEstablished { observed: event } => ObservationEstablished { observed: concat(events, [event]) }
+    }
+  })
+  match parsed {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: events } => {
+      let ids = map(events, event => event.record_id)
+      if fold(ids, init: -1, f: (previous, id) => if previous == -2 || id <= previous { -2 } else { id }) == -2 {
+        ObservationRefused { cause: "SEL snapshot has duplicate or non-increasing record ids" }
+      } else { ObservationEstablished { observed: SelWatermark { records: records, events: events } } }
+    }
+  }
 }
 
 fn sel_after(watermark: SelWatermark, text: String) -> ObservationAttempt<SelDelta, NonEmptyStr> {
@@ -99,10 +107,7 @@ fn sel_after(watermark: SelWatermark, text: String) -> ObservationAttempt<SelDel
         ObservationRefused { cause: "SEL watermark prefix changed: retain snapshot with gap; source continuity unestablished" }
       } else {
         ObservationEstablished { observed: SelDelta { watermark: next,
-          events: flat_map(next.records.skip(n: count(watermark.records)), line => match sel_rendered_record(line: line) {
-            ObservationRefused { cause: _ } => []
-            ObservationEstablished { observed: event } => [event]
-          })
+          events: next.events.skip(n: count(watermark.records))
         } }
       }
   }

@@ -9,8 +9,8 @@ import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated, BootRestart }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp }
 import gunbc.machine_intake_pre_os_observer { pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment }
-import gunbc.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem }
-import std.goal_assessment { GoalIndeterminate, GoalAssessmentRefused, GoalSatisfied }
+import gunbc.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem, RepeatingFirmwareReset, BootStalledWithoutReset }
+import std.goal_assessment { GoalIndeterminate, GoalAssessmentRefused, GoalSatisfied, GoalDiverged }
 
 
 data observer_test_old: String = "685 | 09/12/2026 | 10:59:50 | Power Supply PSU0 | Presence detected | Asserted"
@@ -71,14 +71,13 @@ test fn w_ddr_statement_is_distinct_terminal() -> Bool {
 
 test fn w_quiet_sel_failed_collector_cannot_establish_training_or_boot() -> Bool {
   let milestones = pre_os_milestones(console: ObservationRefused { cause: "collector failed" }, os_boot: ObservationRefused { cause: "no positive boot evidence" })
-  milestones.training == TrainingOutcomeUnobserved && milestones.boot == BootOutcomeUnobserved
-    && match pre_os_boot_assessment(milestones: milestones) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+  match pre_os_boot_assessment(milestones: milestones) { GoalAssessmentRefused { cause } => cause == "no positive boot evidence" _ => false }
     && match pre_os_training_assessment(milestones: milestones) { GoalAssessmentRefused { cause: _ } => true _ => false }
 }
 
 test fn w_independent_positive_boot_does_not_require_a_sel() -> Bool {
   let milestones = pre_os_milestones(console: ObservationRefused { cause: "no SOL on this platform" }, os_boot: ObservationEstablished { observed: BootReachedOperatingSystem })
-  match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => milestones.training == TrainingOutcomeUnobserved _ => false }
+  match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => match pre_os_training_assessment(milestones: milestones) { GoalAssessmentRefused { cause } => cause == "no SOL on this platform" _ => false } _ => false }
 }
 
 test fn w_known_statement_does_not_hide_unknown_statement() -> Bool {
@@ -110,4 +109,50 @@ test fn w_positive_boot_requires_host_end_marker() -> Bool {
 test fn w_marker_substring_is_not_host_end_marker() -> Bool {
   let payload = join(split(s: observer_test_boot_payload(), delimiter: "marker-end=gunbc-runner-host-boot"), "prefix-marker-end=gunbc-runner-host-boot-suffix")
   match pre_os_host_userspace_boot(text: payload, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false }
+}
+
+// Missing marker in an assessed console is unknown; a partial marker refuses.
+// The assessment must retain the parser's refusal rather than widening it.
+test fn w_boot_parser_absence_and_refusal_survive_milestone_consumption() -> Bool {
+  all(["ordinary console without userspace", "marker=gunbc-runner-host-boot", ""], text => {
+    let observed = pre_os_host_userspace_boot(text: text, host_mac: mtcollins1_host_nic_mac)
+    let assessed = pre_os_boot_assessment(milestones: pre_os_milestones(console: ObservationEstablished { observed: text }, os_boot: observed))
+    match observed {
+      ObservationRefused { cause: original } => match assessed { GoalAssessmentRefused { cause } => cause == original _ => false }
+      ObservationEstablished { observed: BootOutcomeUnobserved } => text == "ordinary console without userspace" && match assessed { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+      _ => false
+    }
+  })
+}
+
+// Row parse refusal keeps its concrete cause and source row through the snapshot.
+test fn w_sel_parse_refusal_survives_snapshot_ingestion() -> Bool {
+  let malformed = "not-hex | date | time | sensor | description | Asserted"
+  match sel_read(text: malformed) {
+    ObservationRefused { cause } => contains(cause as String, "16-bit hexadecimal") && contains(cause as String, malformed)
+    _ => false
+  }
+}
+
+test fn w_opaque_error_codes_refuse_training_assessment() -> Bool {
+  let milestones = pre_os_milestones(console: ObservationEstablished { observed: "ERR: 1234\nERR: 5678" }, os_boot: ObservationEstablished { observed: BootOutcomeUnobserved })
+  match pre_os_training_assessment(milestones: milestones) {
+    GoalAssessmentRefused { cause } => contains(cause as String, "undecoded firmware error-code lines: 2")
+    _ => false
+  }
+}
+
+// Already observed failures must not be projected into an unknown boot outcome.
+test fn w_observed_boot_failures_remain_deviations() -> Bool {
+  all([RepeatingFirmwareReset { token: "reset fixture", cycles: 3 }, BootStalledWithoutReset], outcome => {
+    let milestones = pre_os_milestones(console: ObservationRefused { cause: "independent console unavailable" }, os_boot: ObservationEstablished { observed: outcome })
+    match pre_os_boot_assessment(milestones: milestones) {
+      GoalDiverged { deviations } => match outcome {
+        RepeatingFirmwareReset { token, cycles } => contains(deviations.head as String, token as String) && contains(deviations.head as String, to_string(cycles))
+        BootStalledWithoutReset => contains(deviations.head as String, "stalled")
+        _ => false
+      }
+      _ => false
+    }
+  })
 }

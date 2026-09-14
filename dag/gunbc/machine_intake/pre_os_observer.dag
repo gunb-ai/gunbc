@@ -9,8 +9,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware, firmware_console_report,
 }
 import gunbc.host_memory_qualification {
-  DdrTrainingOutcome, TrainingFailed, TrainingOutcomeUnobserved,
-  HostBootOutcome, BootReachedOperatingSystem, BootOutcomeUnobserved,
+  HostBootOutcome, BootReachedOperatingSystem, BootOutcomeUnobserved, RepeatingFirmwareReset, BootStalledWithoutReset,
 }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { FreeSemigroup, Empty }
@@ -31,6 +30,7 @@ fn pre_os_terminal_from_console(text: String) -> ObservationAttempt<FirmwareCons
   if text == "" { ObservationRefused { cause: "zero-byte capture: no console observation, not silence" } }
   else { match firmware_console_report(lines: split(s: text, delimiter: "\n")) {
     FirmwareErrorStatementUnrecognized { statement } => ObservationRefused { cause: concat("unrecognized firmware statement: ", statement as String) as NonEmptyStr }
+    UndecodedErrorCodesOnly { err_lines } => ObservationRefused { cause: concat("undecoded firmware error-code lines: ", to_string(err_lines)) as NonEmptyStr }
     report => ObservationEstablished { observed: report }
   } }
 }
@@ -40,8 +40,7 @@ fn pre_os_terminal_from_console(text: String) -> ObservationAttempt<FirmwareCons
 // health, or SEL quiet cannot construct either success. OS userspace observation
 // remains distinct from a firmware training result for a declared population.
 type PreOsMilestones {
-  training: DdrTrainingOutcome
-  boot: HostBootOutcome
+  boot: ObservationAttempt<HostBootOutcome, NonEmptyStr>
   firmware: ObservationAttempt<FirmwareConsoleReport, NonEmptyStr>
 }
 
@@ -52,18 +51,17 @@ fn pre_os_milestones(console: ObservationAttempt<String, NonEmptyStr>, os_boot: 
   }
   PreOsMilestones {
     firmware: report,
-    training: match report {
-      ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => TrainingFailed { detail: statement }
-      _ => TrainingOutcomeUnobserved
-    },
-    boot: match os_boot { ObservationEstablished { observed: boot } => boot ObservationRefused { cause: _ } => BootOutcomeUnobserved },
+    boot: os_boot,
   }
 }
 
 fn pre_os_boot_assessment(milestones: PreOsMilestones) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
   match milestones.boot {
-    BootReachedOperatingSystem => GoalSatisfied { evidence: "independent host userspace milestone observed" }
-    _ => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+    ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+    ObservationEstablished { observed: BootReachedOperatingSystem } => GoalSatisfied { evidence: "independent host userspace milestone observed" }
+    ObservationEstablished { observed: BootOutcomeUnobserved } => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+    ObservationEstablished { observed: RepeatingFirmwareReset { token, cycles } } => GoalDiverged { deviations: FreeSemigroup { head: concat("repeating firmware reset: ", token as String, "; cycles: ", to_string(cycles)) as NonEmptyStr, tail: Empty } }
+    ObservationEstablished { observed: BootStalledWithoutReset } => GoalDiverged { deviations: FreeSemigroup { head: "boot stalled without reset", tail: Empty } }
   }
 }
 
@@ -71,7 +69,9 @@ fn pre_os_training_assessment(milestones: PreOsMilestones) -> GoalAssessment<Non
   match milestones.firmware {
     ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
     ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => GoalDiverged { deviations: FreeSemigroup { head: statement, tail: Empty } }
-    _ => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "training completion unestablished", tail: Empty } }
+    ObservationEstablished { observed: NoTerminalStated } => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "training completion unestablished", tail: Empty } }
+    ObservationEstablished { observed: FirmwareErrorStatementUnrecognized { statement } } => GoalAssessmentRefused { cause: statement }
+    ObservationEstablished { observed: UndecodedErrorCodesOnly { err_lines } } => GoalAssessmentRefused { cause: concat("undecoded firmware error-code lines: ", to_string(err_lines)) as NonEmptyStr }
   }
 }
 
@@ -99,7 +99,9 @@ fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> Observatio
       }
     }) {
     ObservationEstablished { observed: BootReachedOperatingSystem }
-  } else { ObservationRefused { cause: "complete host userspace boot marker, host NIC or kernel evidence missing" } }
+  } else if text == "" || any(lines, line => starts_with(s: line, prefix: "marker=gunbc-runner-host-boot") || starts_with(s: line, prefix: "marker-end=gunbc-runner-host-boot")) {
+    ObservationRefused { cause: "complete host userspace boot marker, host NIC or kernel evidence missing" }
+  } else { ObservationEstablished { observed: BootOutcomeUnobserved } }
 }
 
 // Preserve what DMI actually stated, separately from the OS milestone. A slot
