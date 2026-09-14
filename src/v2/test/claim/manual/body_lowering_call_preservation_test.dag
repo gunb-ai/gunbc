@@ -38,6 +38,8 @@ data fold_arrow_form_snippet: String = "module arrowfold\n\nfn f(xs: List<Int>) 
 
 data fold_named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
 
+data pipe_fold_named_step_snippet: String = "module pipefold\n\nfn f(xs: List<Int>) -> Int {\n  xs |> fold(init: 0, f: step)\n}\n"
+
 data fold_nested_call_inline_step_snippet: String = "module decoyfold\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => a), init: 0, f: (acc, x) => list_append(left: x, right: acc))\n}\n"
 
 data call_preservation_undeclared_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
@@ -64,6 +66,7 @@ type CallPreservationProducerShape
   | FoldLoopFirstByNameStep
   | CallWithLambdaArgument
   | CallInMatchArm
+  | CallOnInfixRhs
 
 fn call_preservation_producer_shapes() -> List<CallPreservationProducerShape> {
   [
@@ -73,7 +76,8 @@ fn call_preservation_producer_shapes() -> List<CallPreservationProducerShape> {
     NestedCallInArgument,
     FoldLoopFirstByNameStep,
     CallWithLambdaArgument,
-    CallInMatchArm
+    CallInMatchArm,
+    CallOnInfixRhs
   ]
 }
 
@@ -271,6 +275,18 @@ fn lambda_argument_call_preserved() -> Bool {
       (call_arity_named(root: root, callee: ^apply) == 2)
         && match call_arg_identity_at(root: root, callee: ^apply, index: 1) {
           Present { value: a1 } => a1 == ^x
+          Absent => false
+        }
+  }
+}
+
+fn pipe_fold_named_step_preserved() -> Bool {
+  match normalize_unprepared(src: pipe_fold_named_step_snippet, file: ^pipe_fold_named) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^fold) == 2)
+        && match call_arg_identity_at(root: root, callee: ^fold, index: 1) {
+          Present { value: a1 } => a1 == ^step
           Absent => false
         }
   }
@@ -543,12 +559,13 @@ fn call_preservation_shape_holds(shape: CallPreservationProducerShape) -> Bool {
     FoldLoopFirstByNameStep => fold_loop_first_by_name_step_preserved()
     CallWithLambdaArgument => lambda_argument_call_preserved()
     CallInMatchArm => match_arm_call_preserved()
+    CallOnInfixRhs => pipe_fold_named_step_preserved()
   }
 }
 
 test fn call_preservation_producer_shape_table_is_closed() -> Bool {
   let shapes = call_preservation_producer_shapes()
-  (count(shapes) == 7)
+  (count(shapes) == 8)
     && fold(shapes, init: true, f: fn(acc, shape) {
       acc && call_preservation_shape_holds(shape: shape)
     })

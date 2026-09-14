@@ -852,7 +852,7 @@ fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node
       match body_lower_operator_atom_optional(node: pair.left) {
         Absent => Absent
         Present { value: operator } =>
-          match body_lower_operand_ref_optional(node: pair.right) {
+          match body_lower_arg_expr_optional(expr: pair.right) {
             Absent => Absent
             Present { value: right } =>
               Present {
@@ -886,7 +886,7 @@ fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Option
     Present { value: pair } =>
       match body_lower_operator_atom_optional(node: pair.left) {
         Present { value: operator } =>
-          match body_lower_operand_ref_optional(node: pair.right) {
+          match body_lower_arg_expr_optional(expr: pair.right) {
             Absent => Absent
             Present { value: right } =>
               Present {
@@ -898,7 +898,7 @@ fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Option
             Present { value: inner } =>
               match body_lower_operator_atom_optional(node: inner.left) {
                 Present { value: operator } =>
-                  match body_lower_operand_ref_optional(node: inner.right) {
+                  match body_lower_arg_expr_optional(expr: inner.right) {
                     Absent => Absent
                     Present { value: right } =>
                       Present {
@@ -922,7 +922,7 @@ fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
     Present { value: pair } =>
-      match body_lower_operand_ref_optional(node: pair.left) {
+      match body_lower_arg_expr_optional(expr: pair.left) {
         Absent => Absent
         Present { value: left } =>
           body_lower_infix_from_operator_tail(left: left, tail: pair.right)
