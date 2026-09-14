@@ -5,8 +5,7 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { Map, NonEmptyStr }
-import v2.std.collection { Absent, Present, empty_map, map_insert, map_lookup }
+import std.types { NonEmptyStr, Set }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -3264,26 +3263,18 @@ fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjectio
   }
 }
 
-fn roadmap_node_id_membership_map(ids: List<RoadmapNodeId>) -> Map<RoadmapNodeId, Bool> {
-  ids |> fold(init: empty_map(), f: (acc, id) => map_insert(m: acc, key: id, value: true))
-}
-
-fn roadmap_node_id_in_map(m: Map<RoadmapNodeId, Bool>, id: RoadmapNodeId) -> Bool {
-  match map_lookup(m: m, key: id) {
-    Present { value: _ } => true
-    Absent => false
-  }
+fn roadmap_node_id_set(ids: List<RoadmapNodeId>) -> Set<RoadmapNodeId> {
+  ids |> fold(init: empty_set(), f: (acc, id) => set_insert(acc, id))
 }
 
 fn active_roadmap_nodes_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapNode> {
-  let accepted_map = roadmap_node_id_membership_map(ids: accepted)
-  let withheld_map = roadmap_node_id_membership_map(ids: withheld)
+  let accepted_set = roadmap_node_id_set(ids: accepted)
+  let withheld_set = roadmap_node_id_set(ids: withheld)
   declared_roadmap_nodes() |> filter(n =>
-    !roadmap_node_id_in_map(m: accepted_map, id: n.node)
-      && !roadmap_node_id_in_map(m: withheld_map, id: n.node)
+    !set_contains(accepted_set, n.node) && !set_contains(withheld_set, n.node)
   )
 }
 
@@ -3619,13 +3610,13 @@ fn active_roadmap_edges_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapEdge> {
-  let accepted_map = roadmap_node_id_membership_map(ids: accepted)
-  let withheld_map = roadmap_node_id_membership_map(ids: withheld)
+  let accepted_set = roadmap_node_id_set(ids: accepted)
+  let withheld_set = roadmap_node_id_set(ids: withheld)
   declared_roadmap_edges() |> filter(e =>
-    !roadmap_node_id_in_map(m: accepted_map, id: e.child)
-      && !roadmap_node_id_in_map(m: accepted_map, id: e.parent)
-      && !roadmap_node_id_in_map(m: withheld_map, id: e.child)
-      && !roadmap_node_id_in_map(m: withheld_map, id: e.parent)
+    !set_contains(accepted_set, e.child)
+      && !set_contains(accepted_set, e.parent)
+      && !set_contains(withheld_set, e.child)
+      && !set_contains(withheld_set, e.parent)
   )
 }
 
