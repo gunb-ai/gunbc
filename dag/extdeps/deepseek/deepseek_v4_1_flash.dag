@@ -12,7 +12,7 @@ import extdeps.external_authority {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl, concat_frontier_row_groups }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_for_decls, concat_frontier_row_groups }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
 
 // DEEPSEEK-V4.1-FLASH, as its own extdeps authority because it is an independently versioned
@@ -237,24 +237,35 @@ fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloa
   byte_size(count: n)
 }
 
+// THE MODULE PATH, ONCE. Both the fact builder below and the frontier delegation need it, and two
+// spellings of one module's own name is the DESIGN 3 fork in miniature -- rename the module and one
+// of them silently keeps naming the old one.
+data deepseek_v4_1_flash_module_path: String = "extdeps.deepseek.deepseek_v4_1_flash"
+
 fn deepseek_v4_1_flash_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
-    module_path: "extdeps.deepseek.deepseek_v4_1_flash" as NonEmptyStr,
+    module_path: deepseek_v4_1_flash_module_path as NonEmptyStr,
     decl_name: decl_name,
     field: WholeDeclaration,
   }
 }
 
+// DELEGATES TO THE LIFTED FOLD. This body was the only instance of "one shared reason and one shared
+// dissolution mapped over a list of decl names"; product.data_category needed the same shape, so it
+// was lifted to std.roster_frontier frontier_rows_for_decls rather than copied (review 65996, DESIGN
+// 2: net concepts must not grow by re-invention). The name stays because this module's callers cite
+// it and the module path is this module's fact to supply.
 fn deepseek_v4_1_flash_frontier_rows(
   decl_names: List<NonEmptyStr>,
   reason: String,
   dissolution: DissolutionCondition,
 ) -> List<FrontierRow> {
-  map(decl_names, n => frontier_row_decl(
-    ref: deepseek_v4_1_flash_fact(decl_name: n),
+  frontier_rows_for_decls(
+    module_path: deepseek_v4_1_flash_module_path,
+    decl_names: decl_names,
     reason: reason,
     dissolution: dissolution,
-  ))
+  )
 }
 
 data deepseek_v4_1_flash_frontier_dsv41_1: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(

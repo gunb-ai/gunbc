@@ -2,7 +2,7 @@ module product.data_category
 
 import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.roster_frontier { FrontierRow, frontier_rows_for_decls }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE HANDLING-CLASS MARKERS, ONE ROW EACH, AND NOTHING ELSE. A category here names a class of data
@@ -83,19 +83,8 @@ fn abuse_and_sanctions_record_ref() -> DeclarationRef { decl_ref(module_path: da
 // a different declaration set in a different module, and merging them would put one module's
 // declarations in another module's roster. The two dissolve together in practice and are still two
 // facts (DESIGN 3).
-fn data_category_ref_frontier_rows(
-  decl_names: List<NonEmptyStr>,
-  reason: String,
-  dissolution: DissolutionCondition,
-) -> List<FrontierRow> {
-  map(decl_names, n => frontier_row_decl(
-    ref: decl_ref(module_path: data_category_module_path, decl_name: n as String),
-    reason: reason,
-    dissolution: dissolution,
-  ))
-}
-
-data data_category_frontier_rows: List<FrontierRow> = data_category_ref_frontier_rows(
+data data_category_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: data_category_module_path,
   decl_names: [
     "source_and_build_input_ref" as NonEmptyStr,
     "ci_secret_ref" as NonEmptyStr,
