@@ -296,22 +296,16 @@ type BypassRosterDesire
 // the row that owns it -- and the witness asserts the ordering rather than the value, so raising
 // the floor's timeout cannot silently invert it.
 //
-// THE ENTRY COUNTS ARE COMMISSIONING VALUES, NOT THROUGHPUT VALUES, and the difference is the
-// whole reason they are 1. Merging one at a time means a failure names one pull request rather
-// than a batch. Building one at a time means that at any moment ONE composition is in flight, so a
-// failed commissioning run says which protocol step failed rather than which of five candidates
-// was involved. A queue is adopted to make landings deterministic; starting it at its throughput
-// setting rather than its legible one inverts that, and the throughput is recoverable later while
-// a muddled first receipt is not.
+// THE ENTRY COUNTS ARE THE OPERATOR'S LIVE CHOICE, not the commissioning 1s this file first
+// proposed. Merging one at a time still means a failure names one pull request rather than a
+// batch. Building three at a time is what the operator set on 2026-09-13 after the one-entry
+// protocol was observed converging; declaring 1 would PUT over that raise.
 //
-// max_entries_to_build IS EXPECTED TO RISE, and it is a trigger rather than a note so it is
-// retired by evidence and not by someone remembering. Building ahead of the head is what makes a
-// candidate already validated when the head merges, which is real throughput and does not weaken
-// ALLGREEN -- it is withheld only until the one-entry protocol is observed converging.
+// max_entries_to_build ROSE. The trigger lived on merge_queue_build_concurrency_increase; it
+// FIRED (receipt on that row). This file does not re-bind it as a live bound.
 //
-// min_entries_to_merge_wait 5 bounds how long a lone entry waits for a batch that is not coming,
-// which is the starvation shape this proposal targets.
-data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: receipts from the commissioned queue show the ONE-ENTRY protocol converging -- entries composed, the required aggregate executing on each composition, and successful candidates advancing -- across enough landings to characterise a failure. max_entries_to_build then rises from 1 (5 is the intended value: it builds candidates ahead of the head so one is already validated when the head merges). Until those receipts exist, raising it puts several compositions in flight at once and a failure stops naming which protocol step produced it. This is a legibility bound on commissioning, not a claim that 1 is the right steady-state value.")
+// min_entries_to_merge_wait is the live GET's 1 (2026-09-14), not the commissioning 5.
+data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_dissolution(description: "FIRED 2026-09-13: operator raised the live passing-CI ruleset (id 16178731) max_entries_to_build from 1 to 3 after ~40 queue landings that day -- entries composed, the required aggregate executing on each composition, successful candidates advancing: the one-entry protocol this row named was observed converging. GET 2026-09-14 still reads build 3 / merge 1 / min 1 / wait 1 / timeout 90 / ALLGREEN / SQUASH. This row is history, not a live bound. Desired max_entries_to_build is 3.")
 // The margin covers queue-side scheduling either side of the check itself -- the composition being
 // built and the result being reported -- which is time the floor's own job timeout does not bound.
 data merge_queue_response_margin: Minute = minute(count: 30)
@@ -361,16 +355,16 @@ fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
     grouping_strategy: AllGreenGrouping,
     merge_method: QueueSquash,
     check_response_timeout: merge_queue_check_response_timeout(),
-    max_entries_to_build: merge_queue_entry_count(count: 1),
+    max_entries_to_build: merge_queue_entry_count(count: 3),
     max_entries_to_merge: merge_queue_entry_count(count: 1),
     min_entries_to_merge: merge_queue_entry_count(count: 1),
-    min_entries_to_merge_wait: minute(count: 5),
+    min_entries_to_merge_wait: minute(count: 1),
   }
 }
 
 data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
   policy: merge_queue_floor_aligned_policy(),
-  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90." as NonEmptyStr,
+  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90. Operator raised max_entries_to_build to 3 on 2026-09-13 after ~40 queue landings; GET 2026-09-14 reads 3 -- declare 3, do not PUT 1 over it." as NonEmptyStr,
 }
 
 data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {

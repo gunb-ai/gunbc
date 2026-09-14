@@ -383,11 +383,10 @@ test fn w_the_held_proposal_is_the_allgreen_squash_one() -> Bool {
     && merge_queue_entry_count_value(p.max_entries_to_merge) == 1
 }
 
-// THE COMMISSIONING BOUND, ASSERTED SO IT CANNOT BE RAISED SILENTLY. One composition in flight is
-// what makes a failed commissioning run name which protocol step failed rather than which of
-// several candidates was involved. The row it guards carries the trigger that retires it.
-test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
-  merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_build) == 1
+// THE DECLARED BUILD CONCURRENCY IS THE OPERATOR'S 3. The commissioning bound of 1 dissolved
+// when that raise landed; this witness refuses a silent walk back to 1.
+test fn w_the_declared_build_concurrency_is_the_operators_three() -> Bool {
+  merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_build) == 3
 }
 
 // THE TIMEOUT IS AN ORDERING, NOT A NUMBER, and this is the trap the assertion exists for. A queue
@@ -556,9 +555,9 @@ test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_fi
   }
 }
 
-// A NUMERIC PARAMETER DRIFTS TOO, and it is the one the operator ruled on. max_entries_to_build was
-// commissioned at 1 against a proposal of 5; a projection sending 5 under a sign-off for 1 is the
-// operator's ruling silently reversed, and it refuses with both numbers rather than a Bool.
+// A NUMERIC PARAMETER DRIFTS TOO. Declared max_entries_to_build is the operator's 3; a
+// projection sending 5 under that sign-off is the ruling silently reversed, and it refuses
+// with both numbers rather than a Bool.
 test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_numbers() -> Bool {
   match signed_desire_projection_refusal_for(
     policy: Present { value: merge_queue_floor_aligned_policy() },
@@ -566,7 +565,7 @@ test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_num
   ) {
     Present { value: cause } =>
       string_contains(s: cause, pattern: "projected max_entries_to_build is 5")
-        && string_contains(s: cause, pattern: "declares 1")
+        && string_contains(s: cause, pattern: "declares 3")
     Absent => false
   }
 }
