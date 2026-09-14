@@ -29,6 +29,9 @@ import gunbc.typed_remote_file_write {
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
+  GrantReturnsNoHostData,
+  GrantDisclosureUnestablished,
+  spark_managed_grant_disclosure,
   spark_managed_grant_wire,
   spark_managed_executor_login,
   spark_managed_principal_home,
@@ -214,7 +217,21 @@ fn spark_grant_admit_argv(identity: NonEmptyStr, raws: List<String>) -> PlannedR
   }
 }
 
+// DISCLOSURE IS ADMITTED BEFORE ANYTHING IS PLANNED. The reconcile says which grants are desired and
+// not held; whether one may be installed also depends on what it would let the grantee read, and that
+// is gunbc.spark.managed_access_bootstrap spark_managed_grant_disclosure. Every install reaches the host
+// through this plan, so refusing here is the one seam: an unestablished disclosure becomes
+// SparkGrantInstallNotAttempted, the run does not succeed, and the reconcile keeps reporting the grant
+// not held -- privilege never arrives ahead of knowing what it discloses.
 fn spark_grant_install_plan(grant: SparkManagedGrant, principal: NonEmptyStr) -> SparkGrantInstallPlan {
+  match spark_managed_grant_disclosure(grant: grant) {
+    GrantDisclosureUnestablished { obligation: o } =>
+      SparkGrantInstallRefused { grant: grant, cause: o }
+    GrantReturnsNoHostData => spark_grant_install_plan_admitted(grant: grant, principal: principal)
+  }
+}
+
+fn spark_grant_install_plan_admitted(grant: SparkManagedGrant, principal: NonEmptyStr) -> SparkGrantInstallPlan {
   let staged = spark_grant_staging_path(grant: grant, principal: principal)
   match typed_remote_file_write_seal(
     path: staged,

@@ -239,9 +239,17 @@ type SparkManagedGrant
 // docker group membership: the docker group is root-equivalent (it can run a privileged container),
 // while this Cmnd_Spec authorizes one read verb on one object. `ps`, `exec`, `logs` and a wildcard
 // name have no spelling. WHAT IT DISCLOSES is stated because it is the reason to grant it and the
-// reason to think before granting: inspect prints Config.Env, so the serving container's
-// environment becomes readable by gunbc-automation. That environment is exactly the telemetry
-// configuration the usage-stats wall needs, and it is also everything else the launch put there.
+// reason to think before granting: inspect with no --format prints the WHOLE object that
+// extdeps.docker.container_inspect ContainerInspect models -- path and args, image, the ContainerConfig
+// (env, cmd, entrypoint, volumes, labels, exposed ports), network settings, and the HostConfig
+// (volumes, device requests, namespace modes, capabilities). The command is narrow; the data is not.
+// Config.Env is the part the usage-stats wall needs and the part whose values can carry secrets.
+//
+// THEREFORE THE GRANT IS DESIRED BUT NOT INSTALLABLE, and that is decided by
+// spark_managed_grant_disclosure, which gunbc.spark.managed_grant_install spark_grant_install_plan
+// consumes before any host effect. Knowing a command is narrow says who may run it; installing it
+// changes who may read what it returns, so ignorance about that output refuses the install rather
+// than riding beside it as a trigger sentence.
 //
 // WHAT "EVERYTHING ELSE" IS IS NOT ESTABLISHED BY THIS REPOSITORY. spark_pair_container_env declares
 // no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV, and no
@@ -276,6 +284,27 @@ type SparkManagedGrant
 // name, path and verb -- so the absolute/bare divergence and the subject divergence are no longer
 // two functions remembering to agree. Absolute for the sudoers Cmnd_Spec, bare for the argv, one
 // authority for both, because that is one binary rendered for two consumers and not two facts.
+// WHAT INSTALLING A GRANT DISCLOSES TO ITS GRANTEE, as the admission the install route consumes. A
+// grant that returns no host data admits; a grant whose output is a data surface admits only once
+// that surface is classified for the grantee. There is deliberately no accepted-disclosure arm yet:
+// it lands with the thing that constructs it (a classification by execution, or a recorded operator
+// acceptance naming exactly what was disclosed), because an arm nothing can construct is a
+// declaration without a consumer.
+type SparkGrantDisclosure
+  = GrantReturnsNoHostData
+  | GrantDisclosureUnestablished { obligation: NonEmptyStr }
+
+data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that object. Two facts are missing and neither implies the other: the environment the pinned base image bakes (extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference), and whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure to admit InspectServingContainer for gunbc-automation" as NonEmptyStr
+
+fn spark_managed_grant_disclosure(grant: SparkManagedGrant) -> SparkGrantDisclosure {
+  match grant {
+    EnableLingerForOwnAccount { subject: _ } => GrantReturnsNoHostData
+    RebootThisHost => GrantReturnsNoHostData
+    InspectServingContainer { container: _ } =>
+      GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
+  }
+}
+
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
