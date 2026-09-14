@@ -178,7 +178,9 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
 
 // PLACEMENT RELEASED BEFORE LAUNCH IS AN ORDERING FACT OF THE UNIT: start the container, stop the
 // Ray session, start the head at the pair's rail-0 endpoint, then the engine; stdout appended to
-// the host log the pool line is read from; on-failure restart is what waits for the worker.
+// the host log the pool line is read from; the always-restart is what waits for the worker, and it
+// is also what brings the engine back after it exits 0 on losing ranks (the 2026-09-12 outage), so
+// on-failure is asserted absent rather than merely always present.
 test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_stdout() -> Bool {
   w_realized(f: fn(h, _ws) {
     let t = w_unit_text(u: h.unit)
@@ -189,7 +191,8 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
         "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve",
       ], ""))
       && string_contains(s: t, pattern: "StandardOutput=append:/var/log/gunbc/spark-pair-head.log")
-      && string_contains(s: t, pattern: "Restart=on-failure")
+      && string_contains(s: t, pattern: "\nRestart=always\n")
+      && !string_contains(s: t, pattern: "Restart=on-failure")
       && string_contains(s: t, pattern: "Requires=docker.service")
   })
 }

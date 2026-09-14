@@ -1,0 +1,61 @@
+module extdeps.ci_runner.cirrus_runners
+
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.ci_runner.types {
+  ArmSellerNotOffering,
+  ArmListPriceStanding,
+  CatalogSnapshot,
+  RunnerCatalogAvailability,
+  RunnerShapesUnavailable,
+  SellerNotAcceptingCustomers,
+  SellerOfferStanding,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cirruslabs.org",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.cirrus_runners",
+      decl_name: "cirrus_runners_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cirrus_runners_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data cirrus_runners_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.cirrus_runners",
+  decl_name: "cirrus_runners_catalog_authority",
+)
+
+// Live-fetched 2026-09-13 from cirruslabs.org: Cirrus Labs joined OpenAI; Cirrus CI
+// shut down 2026-06-01; Cirrus Runners stopped accepting new customers. cirrus-runners.app
+// pricing is a stale page and is not modelled as a live offer.
+data cirrus_runners_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "cirruslabs.org (read 2026-09-13): Cirrus CI shut down 2026-06-01; Cirrus Runners no longer accepts new customers. cirrus-runners.app/pricing is not a live offer.",
+}
+
+data cirrus_runners_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Shutdown standing from cirruslabs.org only. Historical Linux Arm resource-class spellings are not modelled as a live catalog.",
+}
+
+data cirrus_runners_arm_list_price: ArmListPriceStanding = ArmSellerNotOffering {
+  cause: "Cirrus Runners closed to new customers; Cirrus CI shut down 2026-06-01 (cirruslabs.org, read 2026-09-13).",
+}
+
+data cirrus_runners_offer_standing: SellerOfferStanding = SellerNotAcceptingCustomers {
+  cause: "cirruslabs.org 2026-04-07: no longer accepting new Cirrus Runners customers; Cirrus CI shut down 2026-06-01.",
+}
