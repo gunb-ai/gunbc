@@ -767,8 +767,10 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
     NoPoolReliefEveryHopInMemoryPool { how: _ } => true
     PoolReliefBoundedByWorkingSet { resident_upper_bound: _, authority: _ } => false
     PoolReliefNeedsWorkingSetEvidence { obligations: _ } => false
+    PoolReliefRouteUnresolved { route: _, unresolved: _ } => false
   } && all([engram_route_b_host_nvme, engram_route_c_nfs_token_time, engram_route_d_nfs_fill_then_nvme], r =>
     match engram_pool_relief(r: r) {
+      PoolReliefRouteUnresolved { route: _, unresolved: _ } => false
       PoolReliefNeedsWorkingSetEvidence { obligations: os } => count(os) > 0
       NoPoolReliefEveryHopInMemoryPool { how: _ } => false
       PoolReliefBoundedByWorkingSet { resident_upper_bound: _, authority: _ } => false
@@ -782,7 +784,46 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
       PoolReliefBoundedByWorkingSet { resident_upper_bound: b, authority: _ } => byte_size_count(b: b) == 4096
       NoPoolReliefEveryHopInMemoryPool { how: _ } => false
       PoolReliefNeedsWorkingSetEvidence { obligations: _ } => false
+      PoolReliefRouteUnresolved { route: _, unresolved: _ } => false
     }
+}
+
+// THE RED THAT WOULD HAVE CAUGHT THE FABRICATED PLACEMENT CLAIM, and it is a control rather than a
+// description because the defect it guards was live and green until review 66208 read it.
+//
+// `route_chain` answers [] for a route naming a provider the roster does not admit. That is honest
+// for the PREDICATES over it -- "no hops with that property" is true. It was not honest for
+// `pool_relief_standing`, which read the resulting false from `route_reaches_storage_tier` and
+// asserted the positive sentence "the token-time hop of X has a derived placement inside the memory
+// pool" about a route with no resolvable token-time hop at all: a fabricated plausible output
+// reaching the product root through `engram_pool_relief_note`.
+//
+// SO THE DISCRIMINATING INPUT IS A ROUTE WHOSE TOKEN-TIME PROVIDER IS NOT IN THE ROSTER. Before the
+// fourth arm this returned `NoPoolReliefEveryHopInMemoryPool` and this claim would have been green
+// asserting the wrong thing; now it must refuse and NAME the unresolved provider. Deleting the
+// `PoolReliefRouteUnresolved` arm reds this claim rather than silently restoring the old answer.
+test fn a_route_naming_an_unadmitted_provider_refuses_pool_relief_rather_than_claiming_the_pool() -> Bool {
+  match pool_relief_standing(
+    r: materialization_route(
+      identity: fixture_route_identity(),
+      label: "unresolved token-time hop" as NonEmptyStr,
+      origin: engram_origin_provider_id,
+      fill: [],
+      retained: [],
+      token_time: peer_host_provider_id(),
+      digest_verified_at: DurableOrigin),
+    roster: engram_admitted_providers,
+    unified_memory_host: true,
+    resident: ResidentMemoryBoundedAbove {
+      upper_bound: byte_size(count: 4096),
+      authority: fixture_relation(),
+    }) {
+    PoolReliefRouteUnresolved { route: _, unresolved: us } =>
+      count(us) > 0 && any(us, u => u as String == peer_host_provider_id() as String)
+    NoPoolReliefEveryHopInMemoryPool { how: _ } => false
+    PoolReliefBoundedByWorkingSet { resident_upper_bound: _, authority: _ } => false
+    PoolReliefNeedsWorkingSetEvidence { obligations: _ } => false
+  }
 }
 
 // A LOWER BOUND CANNOT ACT AS AN UPPER ONE. Route A's declared payload is a floor on what it
@@ -1986,6 +2027,7 @@ test fn the_safetensors_spec_module_cites_its_source_and_admits_an_unpinned_vers
 // subject -- the storage routes returning to the field under a runtime that can execute them -- and it is
 // enrolled below under its own declaration.
 data expected_engram_deferral_subjects: List<String> = [
+  "materialized_component_artifact",
   "engram_route_evidence_rows",
   "engram_mechanism_standing_for",
   "engram_resident_provider",

@@ -962,10 +962,6 @@ fn route_hops_with_role(r: MaterializationRoute, role: RouteRole, roster: List<C
   filter(route_chain(r: r, roster: roster), h => route_role_eq(a: h.role, b: role))
 }
 
-fn route_role_count(r: MaterializationRoute, role: RouteRole, roster: List<CacheProvider>) -> Nat {
-  count(route_hops_with_role(r: r, role: role, roster: roster))
-}
-
 // THE KEY IS BUILT FROM THE NAMES AND THE POSITIONS, so it needs no roster: a route's identity as a chain
 // is which providers it names in which roles, and both are now in the route itself.
 fn role_segment(ids: List<String>, role: RouteRole) -> List<String> {
@@ -1369,7 +1365,16 @@ type PoolReliefStanding
   = NoPoolReliefEveryHopInMemoryPool { how: NonEmptyStr }
   | PoolReliefBoundedByWorkingSet { resident_upper_bound: ByteSize, authority: DeclarationRef }
   | PoolReliefNeedsWorkingSetEvidence { obligations: List<NonEmptyStr> }
+  | PoolReliefRouteUnresolved { route: DeclarationRef, unresolved: List<String> }
 
+// AN UNRESOLVED CHAIN REFUSES HERE RATHER THAN READING AS "ALL IN THE POOL", and this arm exists
+// because the shape without it FABRICATED A POSITIVE CLAIM. `route_chain` answers [] for a route
+// naming a provider the roster does not admit, which is honest for the PREDICATES that read it --
+// their true answer is "no hops with that property". This consumer is not a predicate: it turned
+// that silence into the affirmative sentence "the token-time hop of X has a derived placement
+// inside the memory pool", about a route with no resolvable token-time hop at all. DESIGN section 5:
+// a failure arm must refuse, never widen, and no fabricated plausible output. Found by review 66208.
+//
 // THE QUESTION IS WHERE THE BYTES LIVE AT TOKEN TIME, NOT WHERE THEY CAME FROM. Every route's head
 // is the durable origin, whose derived placement is `RemoteNetwork` -- so "any hop reaches storage"
 // is true of the fully resident route too, and would have reported relief for a route that keeps
@@ -1386,6 +1391,10 @@ fn pool_relief_standing(
   unified_memory_host: Bool,
   resident: RouteResidentMemoryStanding,
 ) -> PoolReliefStanding {
+  match route_chain_resolution(r: r, roster: roster) {
+  RouteChainProviderUnresolved { route: rt, unresolved: us } =>
+    PoolReliefRouteUnresolved { route: rt, unresolved: us }
+  RouteChainResolved { hops: _ } =>
   if !route_reaches_storage_tier(r: r, roster: roster) {
     NoPoolReliefEveryHopInMemoryPool {
       how: join([
@@ -1413,6 +1422,7 @@ fn pool_relief_standing(
           ], "") as NonEmptyStr]),
       }
     }
+  }
   }
 }
 
@@ -3054,6 +3064,11 @@ fn engram_pool_relief(r: MaterializationRoute) -> PoolReliefStanding {
 }
 
 data engram_materialization_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "materialized_component_artifact"),
+    reason: "MaterializedComponentArtifact.encoded_size is CONSTRUCTED at every site and READ BY NOTHING -- write-only data, which section 3c calls dangling unless a consumer is named",
+    dissolution: unbound_dissolution(description: "STATED PLAINLY BECAUSE IT IS THE WEAKER OF THE TWO HONEST ARMS: this field is carried, not consumed. Its sibling `identity` IS consumed -- the encoding's digest is what distinguishes a repacked row store from the safetensors bytes, and that distinction is load-bearing today. The SIZE is not, yet: nothing folds it, no reading derives from it, and no diagnostic quotes it. It is kept rather than deleted because its consumer is named and near, not because a field might be useful later. TRIGGER: a materialization receipt that records the bytes an encoding actually occupied on a host, so encoded_size can be COMPARED against the component's derived span total rather than merely recorded beside it -- the same shape as artifact_upstream_agreement_defect, which is already the module's pattern for a two-source size disagreement. SUFFICIENT FOR: a faithfulness check that refuses when a materialized encoding's observed size disagrees with the population it claims to realize, which is the one question this field exists to make askable. If the measured cut lands without that comparison, this field is residue and the honest move then is deletion, not a second frontier row." as NonEmptyStr),
+  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_evidence_rows"),
     reason: "every route's cost axes are gaps because no bounded measurement on admitted resources exists yet",

@@ -71,6 +71,7 @@ import gunbc.fabric.engram_materialization {
   ComponentMemoryBudget, ComponentBudgetEstablished, ComponentBudgetUnestablished, component_budget_eq,
   engram_pool_relief, engram_route_a_resident,
   PoolReliefStanding, NoPoolReliefEveryHopInMemoryPool, PoolReliefBoundedByWorkingSet, PoolReliefNeedsWorkingSetEvidence,
+  PoolReliefRouteUnresolved,
 }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_subject {
@@ -1630,6 +1631,13 @@ fn engram_pool_relief_note(r: PoolReliefStanding) -> NonEmptyStr {
       ], "") as NonEmptyStr
     PoolReliefNeedsWorkingSetEvidence { obligations: os } =>
       join(map(os, o => o as String), "; ") as NonEmptyStr
+    PoolReliefRouteUnresolved { route: rt, unresolved: us } =>
+      join([
+        "no pool-relief standing is derivable for ", declaration_ref_display_key(ref: rt),
+        ": its chain names ", to_string(count(us)),
+        " provider(s) the roster does not admit (", join(map(us, u => u as String), ", "),
+        "), so it has no resolvable token-time hop to place",
+      ], "") as NonEmptyStr
   }
 }
 
