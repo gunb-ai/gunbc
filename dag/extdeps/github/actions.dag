@@ -76,6 +76,8 @@ data github_event_name_schedule: String = "schedule"
 
 data github_event_name_workflow_run: String = "workflow_run"
 
+data github_event_name_repository_dispatch: String = "repository_dispatch"
+
 data workflow_run_activity_completed: String = "completed"
 
 type Workflow {
@@ -107,6 +109,7 @@ type WorkflowTrigger
   | WorkflowCall { inputs: List<DispatchInput> }
   | WorkflowRunCompleted { workflows: List<String>, branches: List<String> }
   | MergeGroup
+  | RepositoryDispatch { types: List<String> }
 
 // THE CONSTRUCTOR TEST LIVES BESIDE THE COPRODUCT, because "does this trigger list admit a
 // merge_group composition" is a fact about `WorkflowTrigger` and not about whoever is asking. It
@@ -128,6 +131,7 @@ fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
     WorkflowDispatch { inputs: _ } => false
     WorkflowCall { inputs: _ } => false
     WorkflowRunCompleted { workflows: _, branches: _ } => false
+    RepositoryDispatch { types: _ } => false
   }
 }
 
@@ -159,6 +163,15 @@ type PullRequestActivity
 // construction-wall thread. The referent is the name, so it shares the name's carrier. If
 // Workflow.name ever gains a refinement, this field follows it there rather than being refined
 // separately.
+
+// repository_dispatch is the event GitHub delivers when a caller POSTs
+// /repos/{owner}/{repo}/dispatches with an event_type
+// (docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#repository_dispatch,
+// read 2026-09-14). `types` is the documented filter on that event_type. An empty list is GitHub's
+// default — every event_type admitted — not a phantom parameter: unlike merge_group, upstream
+// documents an open string of activity types, so the list is information. GITHUB_SHA / GITHUB_REF
+// on this event are the TARGET repository default branch, never the sender's subject; any foreign
+// SHA has to travel in client_payload (owned by the REST operation, not this trigger).
 
 // merge_group is the event GitHub delivers when a merge queue needs checks on a queue-constructed
 // tree

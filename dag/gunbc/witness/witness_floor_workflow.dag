@@ -61,6 +61,7 @@ import gunbc.ci_heal_credential {
   ci_regen_heal_if,
   ci_heal_job_permissions
 }
+import gunbc.private_witness_dispatch { private_witness_dispatch_step, private_witness_dispatch_step_name }
 import gunbc.ci_spec {
   gunbc_ci_heal_regen_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -1903,6 +1904,11 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
+      },
+      WitnessFloorBoundStep {
+        step: private_witness_dispatch_step(),
+        role: capability_neutral,
+        step_name: private_witness_dispatch_step_name,
       },
     ])),
   )
