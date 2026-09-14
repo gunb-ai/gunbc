@@ -1874,10 +1874,16 @@ pub struct TransitionAdmission {
 /// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: survivors under NICKNAMED spellings,
 /// byte-identical to the authority but invisible to a search for the exact name. That is §3's
 /// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
-/// frontier below is adjudicated by that command and not by a roll call in this file. Each
-/// survivor states its own retention at its declaration; `v2.lens` retains one, annotated at
-/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` with the measured obstacle
-/// and its trigger.
+/// frontier below is adjudicated by that command and not by a roll call in this file.
+///
+/// EXACTLY ONE SURVIVOR STATES ITS OWN RETENTION, and an earlier wording of this header claimed
+/// they all did. That was FALSE. `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq`
+/// carries the measured obstacle and its trigger at its declaration -- its module declares no
+/// imports, so adding the one the collapse needs moves it into its own import closure and other
+/// names stop resolving. EVERY OTHER HIT THE COMMAND FINDS IS UNDECLARED RESIDUE: no reason
+/// recorded, no retention stated, nothing at its declaration saying why it survives. The claim
+/// that each one was declared is exactly the kind of statement this header exists to refuse --
+/// it told a reader asking `is this residue tracked` YES, in the authority they consult first.
 ///
 /// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
 /// against a list this file keeps: the frontier closes when the command above returns exactly ONE

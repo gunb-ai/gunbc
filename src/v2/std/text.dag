@@ -69,30 +69,35 @@ fn char_eq(a: Char, b: Char) -> Bool {
 
 // THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The nine byte-identical
 // copies that lived across v2.lens collapse here. That is the whole of what this change does, and
-// it is NOT one string_eq corpus-wide: declarations survive outside v2.lens, and one survives
-// inside it under a different name.
+// it is NOT one string_eq corpus-wide: byte-identical forks survive elsewhere, several of them
+// under names that do not spell string_eq exactly.
 //
 // THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
-// rots the moment anyone adds or removes a copy:
-//   grep -rn '^fn string_eq' src dag | grep -v 'src/v2/std/text.dag'
+// rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster
+// header in src/v1/stage0/src/namespace_wave_admission.rs names -- two spellings of one census
+// would be the second authority DESIGN section 3 forbids, and the narrower one UNDER-REPORTS:
+//   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
 // A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
 // after it stopped being true, which is why neither appears in this annotation.
 //
-// THAT COMMAND IS NECESSARY BUT NOT SUFFICIENT, and the exception is why this sentence exists: a
-// RENAMED clone does not match it. v2.lens.enforcement.grammar_coverage retains
-// grammar_coverage_string_eq, byte-identical to this function, and the grep above will never find
-// it. That clone carries its own declaration and reason at its own site -- the module declares no
-// imports, so adding the one import the collapse needs moves it into its own import closure and
-// other names stop resolving. So the residue is: whatever the command finds, PLUS any renamed
-// clone declared at its own site.
+// AN EARLIER WORDING OF THIS NOTE NAMED THE NARROW PATTERN '^fn string_eq' AND CALLED
+// grammar_coverage_string_eq THE renamed exception. BOTH WERE FALSE. The narrow pattern misses
+// every renamed fork, and grammar_coverage is not the only one -- the command above finds several,
+// and grammar_coverage_string_eq is the ONLY one that carries a stated retention at its own site
+// (its module declares no imports, so adding the one the collapse needs moves it into its own
+// import closure and other names stop resolving). EVERY OTHER FORK THE COMMAND FINDS IS UNDECLARED
+// RESIDUE: no reason recorded, no retention stated, nothing at its declaration saying why it is
+// still there.
 //
 // TRIGGER, per fork rather than for the set: a fork collapses when a change touches its module,
 // or earlier if that module's import closure already reaches v2.std.text. There is no single event
 // that retires the whole residue, which is why this is a per-fork trigger and not a date.
 //
-// OWNER: the DESIGN section 3 single-authority reviewer, which is a standing review criterion and
-// not a person or a session. This annotation exists so that reviewer meets a declared residue
-// rather than rediscovering an undeclared one.
+// WHAT WILL ENCOUNTER IT: the DESIGN section 3 single-authority reviewer, a standing criterion
+// declared in gunbc.design_argument and derived into reviewers by gunbc.roadmap.roadmap_review_criteria,
+// which asks whether a change gives one concept a second name or a second home. It runs on changes
+// to this repository. This annotation exists so that reviewer meets a DECLARED residue with a
+// working census rather than rediscovering an undeclared one with a command that under-reports it.
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
