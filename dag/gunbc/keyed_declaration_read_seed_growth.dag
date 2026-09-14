@@ -68,8 +68,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // it returns the MATCHING SET -- every qualified name declaring that bare spelling as a type -- and
 // never a first hit, because multiplicity is the whole answer. A host that chose among candidates
 // would be the bare-name identity defect its consumer exists to remove, one layer below the one
-// being removed. Its consumer, v2.std.node_reflection resolve_type_node, refuses typed and located
-// on multiplicity and names its candidates from what this returns.
+// being removed. Its consumer is v2.std.node_reflection type_declarer_names, reached by both guarded
+// routes -- resolve_type_node_checked and resolve_type_node_at -- each of which refuses typed and
+// located on multiplicity and names its candidates from what this returns.
 //
 // It marshals no declaration nodes, which is where the population read's cost actually lived; it is
 // therefore cheaper than eval_decl_facts_at rather than merely narrower.

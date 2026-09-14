@@ -35,9 +35,9 @@ fn outcome_is_accepted<T>(o: Outcome<T>) -> Bool {
 
 // THE DISCRIMINATING RED. `Representation` is declared as a closed coproduct in two modules of
 // this very pool -- `v2.lens.intent_linearity` and `v2.std.integer` -- with DISJOINT arm sets.
-// The bare host seam answers it by first match over the interpreter's loaded modules, so before
-// this change `coproduct_arm_keys` returned one of two different answers with no diagnostic and
-// no way for a caller to know which. The claim is not that two declarations exist -- that is a
+// The bare host seam THAT THIS CHANGE DELETES answered it by first match over the interpreter's
+// loaded modules, so before this change the bare arm-key read returned one of two different answers
+// with no diagnostic and no way for a caller to know which. The claim is not that two declarations exist -- that is a
 // fact about the corpus and would be a change detector. The claim is that the GUARDED route
 // REFUSES rather than answering, which is a fact about this module's behaviour and goes red the
 // moment the guard is removed or widened to a first match.
@@ -156,16 +156,20 @@ test fn cited_forked_spelling_resolves_to_the_other_module_named() -> Bool {
   )
 }
 
-// THE SECOND SPECIMEN, AND THE ONE WHOSE CONTRAST IS ALREADY ENROLLED. UriScheme is declared in
-// two modules of this pool -- a closed coproduct in extdeps.uri and a RECORD in v2.std.network --
-// and the unguarded seam answers it today rather than refusing: the enrolled claim
-// v2.test.manual.coproduct_reflection_conformance witness_uri_scheme_reflected_arm_keys_are_non_empty asserts that
-// coproduct_arm_keys(^UriScheme) returns a non-empty list, and it is green on main. So this pair
-// is the case where the bare seam picks one of two declarations and says nothing, while the pair
-// in the claims above is the case where it raises an untyped host error instead. Both are the same
-// missing scope; only the guarded route below tells them apart from a caller's position, and the
-// contrast claim is CITED rather than restated here so this module does not fork it.
-test fn forked_spelling_answered_today_by_the_bare_seam_refuses_when_guarded() -> Bool {
+// THE SECOND SPECIMEN, AND THE ONE THAT SHOWS THE TWO FAILURE SHAPES ARE ONE DEFECT. UriScheme is
+// declared in two modules of this pool -- a closed coproduct in extdeps.uri and a RECORD in
+// v2.std.network. Before this change the unguarded seam ANSWERED it rather than refusing, picking
+// one of the two and saying nothing; the pair in the claims above is the case where the same seam
+// raised an untyped host error instead. Both are the same missing scope, and only the guarded route
+// tells them apart from a caller's position.
+//
+// The contrast is stated in the past tense deliberately. It used to be carried by an enrolled claim,
+// v2.test.manual.coproduct_reflection_conformance
+// witness_uri_scheme_reflected_arm_keys_are_non_empty, which asserted a non-empty arm list for a
+// BARE UriScheme -- and this change rewrites that claim to cite extdeps.uri, because the bare
+// spelling it rested on is exactly what is being removed. Citing it here as present evidence would
+// name a claim whose subject this same PR changed.
+test fn forked_spelling_refuses_when_guarded() -> Bool {
   outcome_is_rejected(
     o: coproduct_arm_keys_checked(
       pool_roots: scoped_reflection_pool_roots,
