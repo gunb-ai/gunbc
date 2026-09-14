@@ -3,6 +3,11 @@ module test.claim.ownership_branch_read_witness_test
 import std.types { Bool }
 import v1.compiler.ownership { BindingUsage, EdgeClassification, OwnershipProof, Read, Consumed, Projected, max_usage_by_fan_out, build_movable_set }
 
+// Execution: claim_batch with source roots dag, src/v2 and src/v1 runs these fixture controls.
+// Fixture-grain seed witnesses have no required executing owner today. These claims and the
+// authored-source move probe were executed at landing, but are not enrolled in required CI.
+// Trigger: a required phase that executes src/v1-rooted claims and compiles authored fixtures
+// with the seed. The existing required regen-fixed-point phase covers corpus-grain mirrors.
 // Consumer: build_movable_set at the branch join; this executes the lower-fan-out Read RED.
 test fn branch_read_survives_larger_projection_path() -> Bool {
   let read_path = BindingUsage { name: "item", binding_kind: none, consumers: [EdgeClassification { kind: Consumed, site: "return", span_start: 1 }, EdgeClassification { kind: Read, site: "read", span_start: 2 }] }
