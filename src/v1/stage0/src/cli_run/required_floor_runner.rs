@@ -5988,14 +5988,21 @@ pub fn run_required_floor(
     // them; eval_steps are still MEASURED AND RECORDED (WitnessExecutionOccurrence / claim_cost);
     // a semantic red still blocks. Not grandfathering, not cost-debt (no identity withheld),
     // not a skip of measurement. Empty or wrong-size decode refuses rather than applying a glob.
+    // ASKED THROUGH ITS OWN FRAME, not the `v2.workflow.*` policy frame: the closure-seed list
+    // in `cli_run.rs` states the rule that a `gunbc.*` module is evaluated in a scope of its own,
+    // and reaching it through the policy frame is what that rule refuses.
     let eval_step_cost_drop: HashSet<String> = {
+        let drop_frame = floor_authority_frame(
+            &prepared,
+            "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost",
+        )?;
         let value = v1_interpreter::run_in_context(
-            &hermetic,
+            &drop_frame,
             "gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost.roadmap_live_projection_new_witness_eval_step_cost_identities",
             false,
         )
         .map_err(|e| format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}"))?;
-        let items = floor_decode_list(&hermetic, Some(&value)).map_err(|e| {
+        let items = floor_decode_list(&drop_frame, Some(&value)).map_err(|e| {
             format!("roadmap_live_projection_new_witness_eval_step_cost_identities: {e}")
         })?;
         let mut out = HashSet::new();
