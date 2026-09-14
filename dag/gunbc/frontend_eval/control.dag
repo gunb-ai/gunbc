@@ -1,0 +1,311 @@
+module gunbc.frontend_eval.control
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { FreeMonoid, Cons, Empty }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.lens.module_graph {
+  ImportResolutionFact, ModuleDeclarationFact, import_closure, import_resolution_facts_live, module_declaration_facts_live,
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.gunbc
+import extdeps.shell
+import std.decl_ref { decl_ref }
+import gunbc.frontend_eval.task {
+  EvalTask, EvalFrontendStage, TextMutation, CrossModuleNameSentinel, RefusedAtParse, RefusedAtResolve,
+  frontend_eval_tasks, frontend_stage_key, pareto_path, pareto_entry,
+}
+
+// THE CONTROL RUN IS THE INSTRUMENT THE ROSTER'S DESIGN CITES (DESIGN section 6: name the producer,
+// never transcribe its output). For every task it establishes, by executing the real frontend
+// through gunbc.WitnessBin.Run on an isolated closure workspace, that (1) the mutation's `old` text
+// occurs exactly once in the subject, (2) the mutated workspace is REFUSED at the expected stage
+// and the refusal names the expected lexeme, and (3) restoring `old` is ACCEPTED and every test fn
+// of the entry passes. A task failing any of the three is a task whose RED is not authorable or
+// whose oracle is not green -- a decoration -- and the run refuses with that task named. The
+// four dropped-import sentinels that this instrument refused on 2026-09-14 (ACCEPTED where a
+// refusal was expected) are why the sentinel class is a misnamed callee; re-run this to re-derive it.
+//
+// THE WORKSPACE IS AN ISOLATED CLOSURE, NOT THE CORPUS, because preparing the whole corpus as source
+// roots costs ~95 s per invocation regardless of the entry, while an entry's transitive closure
+// runs in about a second. WHICH FILES FORM THE CLOSURE IS THE MODULE GRAPH'S FACT, NOT THIS
+// MODULE'S: v2.lens.module_graph import_closure folds the same import-resolution and
+// module-declaration facts the frontend produced, so no import line is parsed here and no
+// layer-to-directory table is minted (review 65965). Those facts cost minutes to build because the
+// host prepares the whole corpus once, so control_run builds them ONCE and every task folds its
+// closure from the same rows.
+type ControlModuleGraphFacts {
+  edges: List<ImportResolutionFact>
+  nodes: List<ModuleDeclarationFact>
+}
+
+fn control_module_graph_facts() -> ControlModuleGraphFacts {
+  ControlModuleGraphFacts {
+    edges: import_resolution_facts_live(pool_roots: witness_layer_roots, importer_roots: witness_layer_roots, exclude_substrings: []),
+    nodes: module_declaration_facts_live(pool_roots: witness_layer_roots),
+  }
+}
+
+fn closure_paths(m: FreeMonoid<String>) -> List<String> {
+  match m {
+    Empty => []
+    Cons { head, tail } => concat([head], closure_paths(m: tail))
+  }
+}
+
+type ClosureCopy
+  = ClosureCopied { modules: List<String> }
+  | ClosureRefused { detail: String }
+
+fn copy_one(workspace: String, rel: String) -> String {
+  let r = Filesystem.Read(path: rel)
+  if r.success == false {
+    join(["closure path does not read: ", rel, ": ", r.error], "")
+  } else {
+    let dir = shell.Mkdir.Parents(path: parent_dir(path: join([workspace, "/", rel], "")) as FilePath)
+    let w = Filesystem.Write(path: join([workspace, "/", rel], ""), content: r.content)
+    if dir.success && w.success { "" } else { join(["write failed for ", rel, ": ", w.error], "") }
+  }
+}
+
+// COPY THE ENTRY'S IMPORT CLOSURE INTO `workspace`. An empty closure is a refusal, not an empty
+// workspace: the entry itself is always a member, so emptiness means the facts do not know it.
+fn copy_closure(workspace: String, entry_path: String, facts: ControlModuleGraphFacts) -> ClosureCopy {
+  let paths = closure_paths(m: import_closure(entry_path: entry_path, edges: facts.edges, nodes: facts.nodes))
+  if count(paths) == 0 {
+    ClosureRefused { detail: join(["module graph carries no closure for ", entry_path], "") }
+  } else {
+    let failures = paths |> map(rel => copy_one(workspace: workspace, rel: rel)) |> filter(f => f != "")
+    match failures |> first {
+      Present { value: f } => ClosureRefused { detail: f }
+      Absent => ClosureCopied { modules: paths }
+    }
+  }
+}
+
+fn first_line_item_or_empty(items: List<String>) -> String {
+  match items |> first {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn parent_dir(path: String) -> String {
+  let parts = split(s: path, delimiter: "/")
+  join(parts |> take(n: count(parts) - 1), "/")
+}
+
+// TEST-FN DISCOVERY DIVERGES FROM THE FACT PRODUCERS, WITH THE REASON STATED (DESIGN section 3b):
+// v2.std.decl_index DeclFact carries ItemKind FnItem but not the `test` marker (that flag lives only
+// in the seed's cli_run is_test), so no in-tree fact distinguishes a test fn from a fn. Until a
+// declaration fact carries it, the roster is read from the entry's own `test fn ` lines, at
+// module scope, where the parser also requires them. TRIGGER: DeclFact or ItemKind carrying the
+// test marker; this fn is then deleted, not adapted.
+fn test_fns(source: String) -> List<String> {
+  split(s: source, delimiter: "\n")
+    |> filter(line => starts_with(s: line, prefix: "test fn "))
+    |> map(line => first_line_item_or_empty(items: split(s: substring(s: line, start: 8, end: length(line)), delimiter: "(")))
+}
+
+type FrontendRun {
+  accepted: Bool
+  text: String
+}
+
+fn run_entry(gunbc_program: String, workspace: String, entry: String, function: String) -> FrontendRun {
+  let r = gunbc.WitnessBin.Run(
+    workdir: "." as FilePath,
+    bin_path: gunbc_program as FilePath,
+    args: ["run", "--source-root", workspace, "--entry", join([workspace, "/", entry], ""), "--claim-run", "--function", function],
+  )
+  FrontendRun { accepted: r.exit_code == 0, text: join([r.stdout, r.stderr], "") }
+}
+
+// THE STAGE IS READ FROM THE REFUSAL'S OWN VOCABULARY, AND A TEXT THAT CARRIES NEITHER STAGE'S
+// VOCABULARY IS UNCLASSIFIED, NOT RESOLUTION. RUNG AND TRIGGER (DESIGN section 4b): this is rung 1
+// -- the stage is a fact the compiler has and this fold re-derives it from rendered text, so the
+// literals below are a contract with the renderer. It can climb after one grounding: a typed
+// diagnostic carried out of gunbc.WitnessBin.Run (the run's refusal as a value naming its phase,
+// not as stdout) -- the same capability the control's lexeme match waits on. When that lands this
+// fn reads the phase and deletes the literals. Parse-stage refusals carry the parser's lexemes;
+// resolution refusals are wrapped by the interpreter's `resolve failed for` line. A transport
+// failure, a missing binary, a panic -- none carries either, and an absorbing else would have
+// filed them as a resolve-stage refusal that could then match the expected lexeme (the mutated
+// source is echoed in diagnostics). DESIGN section 5: a failure arm must refuse, never widen.
+type RefusalStageRead
+  = StageRead { stage: EvalFrontendStage }
+  | StageUnclassified
+
+fn refusal_stage(text: String) -> RefusalStageRead {
+  if contains(text, ", found ") || contains(text, "heads-only parse") || contains(text, "expected item declaration") {
+    StageRead { stage: RefusedAtParse }
+  } else {
+    if contains(text, "resolve failed for") {
+      StageRead { stage: RefusedAtResolve }
+    } else {
+      StageUnclassified
+    }
+  }
+}
+
+// THE LEXEME IS LOOKED FOR IN THE DIAGNOSTIC MESSAGES, NOT THE WHOLE TRANSCRIPT. A refusal line is
+// `<path>:<line>:<col>: error: <message>`; only the text after `error:` is the frontend naming
+// something. Matching the concatenated stdout/stderr instead would let an echoed source excerpt
+// that happens to contain the lexeme satisfy the control (side-chat review, 2026-09-14).
+fn diagnostic_messages(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+    |> filter(line => contains(line, " error: "))
+    |> map(line => match split(s: line, delimiter: " error: ") |> last {
+      Present { value: m } => m
+      Absent => ""
+    })
+}
+
+fn refusal_names(text: String, lexeme: String) -> Bool {
+  count(diagnostic_messages(text: text) |> filter(m => contains(m, lexeme))) > 0
+}
+
+fn stage_eq(a: EvalFrontendStage, b: EvalFrontendStage) -> Bool {
+  frontend_stage_key(stage: a) == frontend_stage_key(stage: b)
+}
+
+fn mutation_site_occurrences(haystack: String, needle: String) -> Int {
+  count(split(s: haystack, delimiter: needle)) - 1
+}
+
+type TaskControl
+  = ControlHeld { task: NonEmptyStr, stage: EvalFrontendStage, tests: Int }
+  | ControlRefused { task: NonEmptyStr, detail: String }
+
+fn all_tests_pass(gunbc_program: String, workspace: String, entry: String, fns: List<String>) -> Int {
+  count(fns |> filter(f => run_entry(gunbc_program: gunbc_program, workspace: workspace, entry: entry, function: f).accepted == false))
+}
+
+// THE WORKSPACE IS FRESH FOR EVERY SPECIMEN. A directory reused from an earlier run keeps files a
+// later closure no longer contains, and on this frontend pool membership can decide a binding, so
+// a stale neighbour could turn a specimen's verdict. Removal is explicit and its failure refuses.
+fn control_task(gunbc_program: String, workspace_root: String, facts: ControlModuleGraphFacts, task: EvalTask) -> TaskControl {
+  let workspace = join([workspace_root, "/", task.id as String], "")
+  let cleared = shell.Remove.RecursiveForce(path: workspace as FilePath)
+  if cleared.success == false {
+    ControlRefused { task: task.id, detail: join(["could not clear workspace ", workspace], "") }
+  } else {
+  match copy_closure(workspace: workspace, entry_path: task.entry_path, facts: facts) {
+    ClosureRefused { detail } => ControlRefused { task: task.id, detail: detail }
+    ClosureCopied { modules: _ } => {
+      let subject_path = join([workspace, "/", task.subject_path], "")
+      let subject = Filesystem.Read(path: subject_path)
+      let n = mutation_site_occurrences(haystack: subject.content, needle: task.mutation.old)
+      if subject.success == false {
+        ControlRefused { task: task.id, detail: join(["subject unreadable: ", subject.error], "") }
+      } else {
+        if n != 1 {
+          ControlRefused { task: task.id, detail: join(["mutation site occurs ", to_string(value: n), " times"], "") }
+        } else {
+          let mutated = Filesystem.Write(path: subject_path, content: replace(subject.content, task.mutation.old, task.mutation.new))
+          if mutated.success == false {
+            ControlRefused { task: task.id, detail: join(["mutation write failed: ", mutated.error], "") }
+          } else {
+            let entry_source = Filesystem.Read(path: join([workspace, "/", task.entry_path], ""))
+            let fns = test_fns(source: entry_source.content)
+            let red = run_entry(gunbc_program: gunbc_program, workspace: workspace, entry: task.entry_path, function: first_line_item_or_empty(items: fns))
+            if entry_source.success == false {
+              ControlRefused { task: task.id, detail: join(["entry unreadable: ", entry_source.error], "") }
+            } else {
+              if red.accepted {
+                ControlRefused { task: task.id, detail: "mutated workspace was ACCEPTED: the RED is not authorable" }
+              } else {
+                match refusal_stage(text: red.text) {
+                  StageUnclassified => ControlRefused { task: task.id, detail: join(["frontend run carried neither stage's vocabulary: ", red.text], "") }
+                  StageRead { stage } =>
+                if stage_eq(a: stage, b: task.expected_stage) == false {
+                  ControlRefused { task: task.id, detail: join(["refused at ", frontend_stage_key(stage: stage), ", expected ", frontend_stage_key(stage: task.expected_stage)], "") }
+                } else {
+                  if task.expected_lexeme != "" && refusal_names(text: red.text, lexeme: task.expected_lexeme) == false {
+                    ControlRefused { task: task.id, detail: join(["refusal does not name ", task.expected_lexeme], "") }
+                  } else {
+                    let restored = Filesystem.Write(path: subject_path, content: subject.content)
+                    if restored.success == false {
+                      ControlRefused { task: task.id, detail: join(["restore write failed: ", restored.error], "") }
+                    } else {
+                      let failing = all_tests_pass(gunbc_program: gunbc_program, workspace: workspace, entry: task.entry_path, fns: fns)
+                      if failing == 0 && count(fns) > 0 {
+                        ControlHeld { task: task.id, stage: stage, tests: count(fns) }
+                      } else {
+                        ControlRefused { task: task.id, detail: join(["reference repair: ", to_string(value: failing), " of ", to_string(value: count(fns)), " test fns red"], "") }
+                      }
+                    }
+                  }
+                }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+}
+
+fn control_line(c: TaskControl) -> String {
+  match c {
+    ControlHeld { task, stage, tests } => join([task as String, ": RED at ", frontend_stage_key(stage: stage), " naming the lexeme; reference repair green on ", to_string(value: tests), " test fns"], "")
+    ControlRefused { task, detail } => join([task as String, ": CONTROL REFUSED -- ", detail], "")
+  }
+}
+
+fn control_refused(c: TaskControl) -> Bool {
+  match c {
+    ControlHeld { task: _, stage: _, tests: _ } => false
+    ControlRefused { task: _, detail: _ } => true
+  }
+}
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/frontend_eval/control.dag
+//   --function control_run --arg gunbc_program=target/release/gunbc --arg workspace_root=target/frontend-eval/control
+//   --arg receipt_path=target/frontend-eval/control_receipt.txt`
+fn control_run(gunbc_program: String, workspace_root: String, receipt_path: String) -> ProcessExit {
+  let facts = control_module_graph_facts()
+  let controls = frontend_eval_tasks |> map(t => control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: facts, task: t))
+  let receipt = join(controls |> map(c => control_line(c: c)), "\n")
+  let w = Filesystem.Write(path: receipt_path, content: concat(receipt, "\n"))
+  let refused = count(controls |> filter(c => control_refused(c: c)))
+  if w.success == false {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else {
+    if refused == 0 {
+      ExitSuccess
+    } else {
+      exit_failure(reason: join([to_string(value: refused), " of ", to_string(value: count(controls)), " task controls refused; see ", receipt_path], ""))
+    }
+  }
+}
+
+// THE PRODUCER BEHIND THE DROPPED-IMPORT RECEIPT. This is the sentinel as first authored: delete
+// the import member the module then uses. The row on gunbc.recurring_failure_mode
+// binding_chosen_by_pool_membership_rather_than_by_the_declared_rule cites this probe; re-run it to
+// re-derive the claim. The probe SUCCEEDS only when the control REFUSES the specimen for being
+// ACCEPTED -- i.e. when the frontend still resolves `Ordering` with its import deleted. The day the
+// frontend refuses a dropped import, this probe goes red, which is the signal to retire the receipt
+// and re-admit the dropped-import sentinel.
+data dropped_import_specimen: EvalTask = EvalTask {
+  id: "pareto.dropped_import" as NonEmptyStr, class: CrossModuleNameSentinel,
+  subject: decl_ref(module_path: "std.pareto", decl_name: "oriented_ordering"),
+  subject_path: pareto_path, entry_path: pareto_entry,
+  mutation: TextMutation { old: "import std.algebra { Ordering }\n", new: "" },
+  expected_stage: RefusedAtResolve, expected_lexeme: "Ordering",
+}
+
+fn dropped_import_probe(gunbc_program: String, workspace_root: String) -> ProcessExit {
+  match control_task(gunbc_program: gunbc_program, workspace_root: workspace_root, facts: control_module_graph_facts(), task: dropped_import_specimen) {
+    ControlRefused { task: _, detail } =>
+      if contains(detail, "ACCEPTED") {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["dropped import refused for another reason: ", detail], ""))
+      }
+    ControlHeld { task: _, stage: _, tests: _ } =>
+      exit_failure(reason: "the frontend now REFUSES a dropped import: retire the receipt and re-admit the dropped-import sentinel")
+  }
+}
