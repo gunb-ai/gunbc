@@ -5,7 +5,8 @@ import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_budget_ms,
     EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
   EnrolmentMarginStanding,
-  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
+  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored,
+  EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
   EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
   EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
   EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome,
@@ -25,7 +26,7 @@ import v2.workflow.floor_cost_debt_admission {
   FloorCostDebtReachedAVerdict,
 }
 import gunbc.floor_cost_distribution {
-  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
 }
 import v2.std.collection { List }
@@ -62,6 +63,14 @@ fn censored(lower_bound_ms: Int, ceiling_ms: Int) -> EnrolmentCostReading {
   }
 }
 
+fn bound_without_ceiling(lower_bound_ms: Int) -> EnrolmentCostReading {
+  EnrolmentCostMeasured {
+    reading: CpuLowerBoundWithoutCeiling {
+      cpu_lower_bound_ms: millisecond(count: lower_bound_ms),
+    }
+  }
+}
+
 fn standing_of(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
   enrolment_margin_standing(
     reading: reading,
@@ -90,6 +99,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "within-margin"
     EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "over-margin"
     EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "ceiling-censored"
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: _ } => "bound-without-ceiling"
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness-declared"
@@ -193,6 +203,26 @@ test fn a_censored_row_blocks_under_its_own_cause() -> Bool {
     && enrolment_margin_standing_blocks(standing: s)
     && enrolment_margin_blocking_cause(standing: s) == "enrolment_censored_at_ceiling"
     && enrolment_margin_blocking_cause(standing: s) != enrolment_margin_blocking_cause(standing: standing_of(reading: observed(cpu_ms: 450)))
+}
+
+// A BOUND WITH NO CEILING BLOCKS UNDER ITS OWN CAUSE, AND IS NEITHER OF THE TWO ARMS IT IS
+// TEMPTING TO COLLAPSE IT INTO. This is the arm review 65264 found had no producer on the
+// acceptance path, so it is asserted here by EXECUTION and not by the rendering match alone:
+// a `CpuLowerBoundWithoutCeiling` reading is driven through the real classification and must
+// come out refusing, with a cause distinct from BOTH `enrolment_not_measured` (there IS a
+// reading, so "produce a measurement" is the wrong remedy) and `enrolment_censored_at_ceiling`
+// (no CPU ceiling is armed, so there is nothing to report beside the bound).
+test fn a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours() -> Bool {
+  let s = standing_of(reading: bound_without_ceiling(lower_bound_ms: 514))
+  let cens = enrolment_margin_blocking_cause(standing: standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500)))
+  let miss = enrolment_margin_blocking_cause(
+    standing: standing_of(reading: EnrolmentCostAbsent { witness_identity: "fixture.unmeasured", cause: "no_claim_cost_row" })
+  )
+  standing_kind(s: s) == "bound-without-ceiling"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_bound_without_ceiling"
+    && enrolment_margin_blocking_cause(standing: s) != cens
+    && enrolment_margin_blocking_cause(standing: s) != miss
 }
 
 // THE THREE BLOCKING CAUSES ARE THREE DISTINCT STRINGS. A shared cause would offer the rerun that

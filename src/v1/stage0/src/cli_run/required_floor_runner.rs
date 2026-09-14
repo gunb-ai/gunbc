@@ -1355,9 +1355,17 @@ pub(crate) enum EnrolmentDeclaredCostReading {
     Observed {
         observed_cpu_ms: u64,
     },
-    Censored {
+    /// A CPU LOWER BOUND WITH NO CEILING. Mirrors `EnrolmentMarginStanding::BoundWithoutCeiling`
+    /// and exists for the same reason: since 2026-09-12 no required-floor claim arms a CPU
+    /// deadline, so a preempted row's CPU is a bound that nothing on this clock stopped. This arm
+    /// was `Censored { cpu_lower_bound_ms, censoring_ceiling_ms }` when it arrived from #11297,
+    /// whose ceiling field read the CPU safety limit that the same change removes. Filling it from
+    /// the WALL limit instead — which is what the compiler's "a field with a similar name exists"
+    /// suggestion proposes — would print a foreign clock's ceiling beside a CPU bound, the clock
+    /// fusion `std.measure` `measure_clock_basis_note` forbids. There is no ceiling to name, so
+    /// the arm does not carry one.
+    BoundWithoutCeiling {
         cpu_lower_bound_ms: u64,
-        censoring_ceiling_ms: u64,
     },
     Absent,
 }
@@ -1390,6 +1398,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::WithinMargin { .. }
             | EnrolmentMarginStanding::OverMargin { .. }
             | EnrolmentMarginStanding::CeilingCensored { .. }
+            | EnrolmentMarginStanding::BoundWithoutCeiling { .. }
             | EnrolmentMarginStanding::NotMeasured { .. } => EnrolmentPairingHole::None,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 EnrolmentPairingHole::OutsideExecution
@@ -1475,14 +1484,13 @@ impl EnrolmentMarginStanding {
                         "expensiveness_declared ground={ground_name} observed_cpu_ms={observed_cpu_ms} \
                          (reported; does not decide this gate)"
                     ),
-                    EnrolmentDeclaredCostReading::Censored {
-                        cpu_lower_bound_ms,
-                        censoring_ceiling_ms,
-                    } => format!(
-                        "expensiveness_declared ground={ground_name} cost=CENSORED \
-                         cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms} \
-                         (reported; does not decide this gate)"
-                    ),
+                    EnrolmentDeclaredCostReading::BoundWithoutCeiling { cpu_lower_bound_ms } => {
+                        format!(
+                            "expensiveness_declared ground={ground_name} cost=BOUND_WITHOUT_CEILING \
+                             cpu_at_least_ms={cpu_lower_bound_ms} \
+                             (reported; does not decide this gate)"
+                        )
+                    }
                     EnrolmentDeclaredCostReading::Absent => format!(
                         "expensiveness_declared ground={ground_name} cost=UNMEASURED \
                          (reported; does not decide this gate)"
@@ -1668,9 +1676,8 @@ pub(crate) fn enrolment_margin_standing_for(
                     observed_cpu_ms: *observed_cpu_ms,
                 },
                 crate::cli_run::ClaimCostReading::RightCensored(r) => {
-                    EnrolmentDeclaredCostReading::Censored {
+                    EnrolmentDeclaredCostReading::BoundWithoutCeiling {
                         cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
-                        censoring_ceiling_ms: r.cpu_safety_limit_ms,
                     }
                 }
             },
@@ -10409,7 +10416,7 @@ mod changed_witness_projection_tests {
     /// terminality, so there is no censored-with-a-verdict production path. Enrolment
     /// reports declared and does not block; changed-witness still stops on no verdict.
     #[test]
-    fn a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run() {
+    fn a_declared_identity_with_a_cpu_bound_and_no_verdict_still_stops_the_run() {
         let identity = "fixture.declared_cpu_censored";
         let occurrence = crate::cli_run::WitnessExecutionOccurrence {
             identity: identity.to_string(),
@@ -10417,10 +10424,9 @@ mod changed_witness_projection_tests {
             outcome: "interrupted".to_string(),
             reading: crate::cli_run::ClaimCostReading::RightCensored(
                 crate::cli_run::SafetyInterruptReading {
-                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::WallDeadlineRaised,
                     elapsed_cpu_at_least_ms: 500,
-                    elapsed_wall_at_least_ms: 500,
-                    cpu_safety_limit_ms: 500,
+                    elapsed_wall_at_least_ms: 8000,
                     wall_safety_limit_ms: 8000,
                 },
             ),
@@ -10436,17 +10442,20 @@ mod changed_witness_projection_tests {
             Some(terminal(
                 identity,
                 ClaimOutcome::BudgetInterrupted {
-                    elapsed_at_least_ms: 500,
-                    budget_ms: 500,
-                    kind: BudgetKind::Cpu,
+                    elapsed_at_least_ms: 8000,
+                    budget_ms: 8000,
+                    kind: BudgetKind::Wall,
                 },
             )),
             &HashMap::new(),
         );
         assert_eq!(composed.enrolment.name(), "expensiveness_declared");
         assert!(
-            composed.enrolment.detail().contains("cost=CENSORED"),
-            "this control is the censored reading, not the absent one: {}",
+            composed
+                .enrolment
+                .detail()
+                .contains("cost=BOUND_WITHOUT_CEILING"),
+            "this control is the bound-without-ceiling reading, not the absent one: {}",
             composed.enrolment.detail()
         );
         assert!(!composed.enrolment.blocks());
@@ -10575,7 +10584,7 @@ mod changed_witness_projection_tests {
 
     /// review 65714: a censored bound on a declared identity is not rendered as UNMEASURED.
     #[test]
-    fn a_declared_censored_reading_is_not_rendered_as_absent() {
+    fn a_declared_bound_without_ceiling_reading_is_not_rendered_as_absent() {
         let identity = "fixture.declared_censored";
         let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
         let mut dispositions = HashMap::new();
@@ -10586,10 +10595,9 @@ mod changed_witness_projection_tests {
             outcome: "interrupted".to_string(),
             reading: crate::cli_run::ClaimCostReading::RightCensored(
                 crate::cli_run::SafetyInterruptReading {
-                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::WallDeadlineRaised,
                     elapsed_cpu_at_least_ms: 500,
-                    elapsed_wall_at_least_ms: 500,
-                    cpu_safety_limit_ms: 500,
+                    elapsed_wall_at_least_ms: 8000,
                     wall_safety_limit_ms: 8000,
                 },
             ),
@@ -10616,8 +10624,8 @@ mod changed_witness_projection_tests {
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert!(
-            censored.detail().contains("cost=CENSORED"),
-            "censored declared reading: {}",
+            censored.detail().contains("cost=BOUND_WITHOUT_CEILING"),
+            "bound-without-ceiling declared reading: {}",
             censored.detail()
         );
         assert!(
