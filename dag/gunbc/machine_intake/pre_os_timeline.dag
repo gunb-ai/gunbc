@@ -231,7 +231,10 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     let console: ObservationAttempt<String, PreOsRefusal> = match association {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
       ObservationEstablished { observed: _ } => match o.format {
-        PreOsConsoleText => ObservationEstablished { observed: span.payload }
+        PreOsConsoleText => match pre_os_composable_payload(observation: o) {
+          ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "current chunk") }
+          ObservationEstablished { observed: _ } => ObservationEstablished { observed: span.payload }
+        }
         PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL observations do not establish console milestones") }
       }
     }
@@ -253,7 +256,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
       console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL snapshot is not a console span") } },
-      cycles: match association { ObservationEstablished { observed: _ } => match o.format { PreOsConsoleText => pre_os_captured_cycles(span: span, host_mac: host_mac) PreOsSelSnapshot => [] } _ => [] },
+      cycles: match console { ObservationEstablished { observed: _ } => pre_os_captured_cycles(span: span, host_mac: host_mac) ObservationRefused { cause: _ } => [] },
       boot: match milestones {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
         ObservationEstablished { observed: value } => pre_os_assessment_refusal(assessment: pre_os_boot_assessment(milestones: value))

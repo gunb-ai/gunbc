@@ -14,6 +14,7 @@ import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_own
 import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
 import gunbc.machine_intake_pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
+import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_inventory_question }
 import test.claim.pre_os_observer_witness { observer_test_boot_payload }
 
 fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
@@ -242,4 +243,61 @@ test fn w_boot_retains_payload_refusal_but_assessed_no_milestone_is_indeterminat
       }
     }
   })
+}
+
+// Carrier rejection must stop the assessments, not merely decorate the view.
+// A valid standalone chunk after a rejected chunk still has its own evidence.
+fn replay_carrier_assessment_control(standing: LocalCommitStanding, continuity: StreamContinuity, accepted: Bool) -> Bool {
+  let payload = concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) as NonEmptyStr
+  let valid = replay_console_chunk(seq: 1, first: 0, payload: payload, continuity: t_reach(through: 10000))
+  let base = valid.envelope
+  let changed = PreOsReplayObservation { format: PreOsConsoleText, payload: valid.payload,
+    envelope: ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+      ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+      local_commit: standing, downstream: base.downstream, continuity: continuity } }
+  let next = replay_console_chunk(seq: 2, first: byte_size_count(b: pre_os_utf8_size(text: payload as String)), payload: payload, continuity: t_reach(through: 10000))
+  match pre_os_archive_specs() {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: specs } => match specs.first() {
+      Absent => false
+      Present { value: spec } => {
+        let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [changed, next], host_mac: mtcollins1_host_nic_mac,
+          inventory_question: ObservationEstablished { observed: pre_os_archive_inventory_question(spec: spec) })
+        count(rows) == 2 && match rows.first() {
+          Absent => false
+          Present { value: row } => if accepted {
+            match row.boot { GoalSatisfied { evidence: _ } => count(row.cycles) == 1 _ => false }
+          } else {
+            count(row.cycles) == 0 && match row.console_composition {
+              ObservationEstablished { observed: _ } => false
+              ObservationRefused { cause: rejected } =>
+                match row.boot { GoalAssessmentRefused { cause } => cause == rejected _ => false }
+                && match row.training { GoalAssessmentRefused { cause } => cause == rejected _ => false }
+                && match row.configuration { ObservationRefused { cause } => cause == rejected _ => false }
+            }
+          }
+        } && match rows.skip(n: 1).first() {
+          Absent => false
+          Present { value: row } => match row.boot { GoalSatisfied { evidence: _ } => count(row.cycles) > 0 _ => false }
+        }
+      }
+    }
+  }
+}
+
+test fn w_timeline_assessments_consume_commit_and_continuity_refusals() -> Bool {
+  let payload = concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) as NonEmptyStr
+  let valid_commit = t_commit_for(payload: payload)
+  let reach = t_reach(through: 10000)
+  replay_carrier_assessment_control(standing: valid_commit, continuity: reach, accepted: true)
+    && all([LocalCommitNotAttempted, t_commit_for(payload: "another payload")], standing =>
+      replay_carrier_assessment_control(standing: standing, continuity: reach, accepted: false))
+    && all([ContinuityUnknown { detail: "capture continuity unobserved" }, t_reach(through: 1)], continuity =>
+      replay_carrier_assessment_control(standing: valid_commit, continuity: continuity, accepted: false))
+    && match continuity_from_committed_chunks(
+      committed: t_one(c: t_committed_chunk_on_stream(stream: t_other_stream, seq: 1, generation: 4, payload: "foreign reach", first: 0, len: 10000)),
+      subject: t_other_stream, from: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 0))) {
+      DerivedContinuity { continuity } => replay_carrier_assessment_control(standing: valid_commit, continuity: continuity, accepted: false)
+      _ => false
+    }
 }
