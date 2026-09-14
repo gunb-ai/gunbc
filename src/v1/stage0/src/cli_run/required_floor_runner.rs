@@ -1316,6 +1316,35 @@ pub(crate) enum EnrolmentMarginStanding {
     OutsideThisRunsExecution {
         disposition: String,
     },
+    /// Mirror of `EnrolmentExpensivenessDeclared`. Non-blocking: the declaration is observed
+    /// and reported with the reading beside it, and this gate decides nothing from the
+    /// cost. The reading is the same three-way split the `.dag` arm carries — observed,
+    /// censored bound, or absent — never an `Option` that maps a bound onto "unmeasured"
+    /// (review 65714).
+    ExpensivenessDeclared {
+        ground: EnrolmentExpensivenessGround,
+        reading: EnrolmentDeclaredCostReading,
+    },
+}
+
+/// Host rendering of `EnrolmentCostReading` beside a declared-expensiveness standing.
+/// A censored bound is not a missing measurement.
+#[derive(Clone, Debug)]
+pub(crate) enum EnrolmentDeclaredCostReading {
+    Observed {
+        observed_cpu_ms: u64,
+    },
+    Censored {
+        cpu_lower_bound_ms: u64,
+        censoring_ceiling_ms: u64,
+    },
+    Absent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EnrolmentExpensivenessGround {
+    Roster,
+    LongHome,
 }
 
 impl EnrolmentMarginStanding {
@@ -1327,6 +1356,23 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::CeilingCensored { .. } => true,
             EnrolmentMarginStanding::NotMeasured { .. } => true,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => false,
+        }
+    }
+
+    /// Mirror of `v2.workflow.floor_enrolment_margin` `enrolment_unpaired_pairing_hole`.
+    /// Exhaustive over `EnrolmentMarginStanding` so a new non-blocking arm cannot silently
+    /// acquire a pairing exemption (review 65665).
+    fn unpaired_pairing_hole(&self) -> EnrolmentPairingHole {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. }
+            | EnrolmentMarginStanding::OverMargin { .. }
+            | EnrolmentMarginStanding::CeilingCensored { .. }
+            | EnrolmentMarginStanding::NotMeasured { .. } => EnrolmentPairingHole::None,
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
+                EnrolmentPairingHole::OutsideExecution
+            }
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => EnrolmentPairingHole::Declared,
         }
     }
 
@@ -1340,6 +1386,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
             EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "",
         }
     }
 
@@ -1356,6 +1403,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 "outside_this_runs_execution"
             }
+            EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "expensiveness_declared",
         }
     }
 
@@ -1382,6 +1430,30 @@ impl EnrolmentMarginStanding {
                 "not adjudicated here: this run withheld the identity (disposition={disposition}); \
                  changed_witness_blocking owns it"
             ),
+            EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading } => {
+                let ground_name = match ground {
+                    EnrolmentExpensivenessGround::Roster => "roster",
+                    EnrolmentExpensivenessGround::LongHome => "long_home",
+                };
+                match reading {
+                    EnrolmentDeclaredCostReading::Observed { observed_cpu_ms } => format!(
+                        "expensiveness_declared ground={ground_name} observed_cpu_ms={observed_cpu_ms} \
+                         (reported; does not decide this gate)"
+                    ),
+                    EnrolmentDeclaredCostReading::Censored {
+                        cpu_lower_bound_ms,
+                        censoring_ceiling_ms,
+                    } => format!(
+                        "expensiveness_declared ground={ground_name} cost=CENSORED \
+                         cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms} \
+                         (reported; does not decide this gate)"
+                    ),
+                    EnrolmentDeclaredCostReading::Absent => format!(
+                        "expensiveness_declared ground={ground_name} cost=UNMEASURED \
+                         (reported; does not decide this gate)"
+                    ),
+                }
+            }
         }
     }
 }
@@ -1429,6 +1501,41 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
     }
 }
 
+/// `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`, decoded
+/// from the frame the same way `floor_cost_debt_roster` is. Never a Rust-empty HashSet:
+/// authoring `floor_cost_debt_typed_admission_attempts` must reach this gate (review 65692).
+pub(crate) fn floor_enrolment_typed_cost_debt_identities(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<HashSet<String>, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    const QUALIFIED: &str =
+        "v2.workflow.floor_enrolment_margin.enrolment_typed_cost_debt_identities";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let value = v1_interpreter::run_in_context(&ctx, QUALIFIED, false)
+        .map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value)).map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let mut out = HashSet::new();
+    for item in items {
+        match item {
+            v1_interpreter::Value::Str(s) => {
+                if !out.insert(s.to_string()) {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=EnrolmentTypedCostDebtDuplicate identity={s}"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "{QUALIFIED}: expected a qualified name, got {}",
+                    floor_value_shape(Some(other))
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The per-claim cost population indexed by identity, built ONCE for the whole gate.
 ///
 /// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
@@ -1466,11 +1573,30 @@ fn enrolment_gate_execution_disposition<'a>(
     dispositions.get(identity).copied()
 }
 
+/// Mirror of `v2.workflow.floor_enrolment_margin` `enrolment_expensiveness_declaration`.
+///
+/// Typed admission (Roster) or long home. String roster alone never declares. Long home
+/// declares regardless of a string-roster line.
+pub(crate) fn enrolment_expensiveness_declaration(
+    identity: &str,
+    typed_admission_holds: bool,
+    long_home_holds: bool,
+) -> Option<EnrolmentExpensivenessGround> {
+    if typed_admission_holds {
+        Some(EnrolmentExpensivenessGround::Roster)
+    } else if long_home_holds {
+        Some(EnrolmentExpensivenessGround::LongHome)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn enrolment_margin_standing_for(
     identity: &str,
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
     budget_ms: u64,
+    declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
@@ -1493,6 +1619,29 @@ pub(crate) fn enrolment_margin_standing_for(
                 disposition: "no_disposition_row".to_string(),
             };
         }
+    }
+    // THE DECLARATION COMES NEXT, AND IT IS NOT THE COST POPULATION. Consulting `claim_cost`
+    // before this point would rebuild review 64022. The caller supplies
+    // `enrolment_expensiveness_declaration` (long home, never an ungated string-roster
+    // append). This match decides nothing from the CPU — `ChangedCostDebtVerdictOnly`.
+    if let Some(ground) = declared_expensiveness {
+        let reading = match claim_cost.get(identity) {
+            Some(row) => match &row.reading {
+                crate::cli_run::ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                } => EnrolmentDeclaredCostReading::Observed {
+                    observed_cpu_ms: *observed_cpu_ms,
+                },
+                crate::cli_run::ClaimCostReading::RightCensored(r) => {
+                    EnrolmentDeclaredCostReading::Censored {
+                        cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+                        censoring_ceiling_ms: r.cpu_safety_limit_ms,
+                    }
+                }
+            },
+            None => EnrolmentDeclaredCostReading::Absent,
+        };
+        return EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading };
     }
     let Some(row) = claim_cost.get(identity) else {
         return EnrolmentMarginStanding::NotMeasured {
@@ -1522,6 +1671,97 @@ pub(crate) fn enrolment_margin_standing_for(
             }
         }
     }
+}
+
+/// Mirror of `v2.workflow.floor_enrolment_margin` `EnrolmentPairingHole`.
+/// `None` is not a hole; the other two arms are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EnrolmentPairingHole {
+    None,
+    Declared,
+    OutsideExecution,
+}
+
+/// Which of the two gates (or the pairing wall between them) produced a blocker.
+/// Callers MATCH this coproduct; they do not recover origin from the cause string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RequiredFloorBlockerOrigin {
+    Enrolment,
+    Changed,
+    DeclaredWithoutChangedPairing,
+    OutsideExecutionWithoutChangedPairing,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RequiredFloorIdentityBlocker {
+    pub identity: String,
+    pub cause: String,
+    pub origin: RequiredFloorBlockerOrigin,
+}
+
+/// What blocks the required floor for ONE identity, from the two gates
+/// `required_floor_outcome_is_clean` ANDs. Production and the composition controls call this
+/// same function; a test-local AND would survive a production short-circuit of the changed
+/// rows for a declared identity — the absorbing move this arm is not allowed to enable.
+///
+/// `standing` is `None` when this run did not adjudicate enrolment for the identity (it is
+/// not in the newly enrolled set). That is absence, not a synthesized
+/// `OutsideThisRunsExecution`. `changed_row` is `None` exactly when the identity is newly
+/// enrolled and absent from the changed projection. A standing that defers to
+/// changed-witness then REFUSES — the pairing invariant made executable, not argued.
+pub(crate) fn required_floor_blockers_for(
+    identity: &str,
+    standing: Option<&EnrolmentMarginStanding>,
+    changed_row: Option<&ChangedWitnessProjectionRow>,
+) -> Vec<RequiredFloorIdentityBlocker> {
+    let mut blockers = Vec::new();
+    if let Some(standing) = standing {
+        if standing.blocks() {
+            blockers.push(RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: standing.cause().to_string(),
+                origin: RequiredFloorBlockerOrigin::Enrolment,
+            });
+        }
+    }
+    match changed_row {
+        Some(row) => {
+            if row.blocks {
+                blockers.push(RequiredFloorIdentityBlocker {
+                    identity: row.identity.clone(),
+                    cause: row.cause.clone(),
+                    origin: RequiredFloorBlockerOrigin::Changed,
+                });
+            }
+        }
+        None => {
+            if let Some(standing) = standing {
+                if !standing.blocks() {
+                    match standing.unpaired_pairing_hole() {
+                        EnrolmentPairingHole::None => {}
+                        EnrolmentPairingHole::Declared => {
+                            blockers.push(RequiredFloorIdentityBlocker {
+                                identity: identity.to_string(),
+                                cause: "declared_expensiveness_without_changed_witness_pairing"
+                                    .to_string(),
+                                origin: RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing,
+                            });
+                        }
+                        EnrolmentPairingHole::OutsideExecution => {
+                            blockers.push(RequiredFloorIdentityBlocker {
+                                identity: identity.to_string(),
+                                cause: "enrolment_outside_execution_without_changed_witness_pairing"
+                                    .to_string(),
+                                origin:
+                                    RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    blockers
 }
 
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
@@ -5377,6 +5617,7 @@ pub fn run_required_floor(
     // asserts that the withheld set and the `DeclinedCostDebt` dispositions name the same
     // identities, which an override is by construction not one of.
     let mut cost_debt_verdict_only: HashSet<String> = HashSet::new();
+    let mut long_home_identities: HashSet<String> = HashSet::new();
     // WHAT EACH OVERRIDDEN ROW ACTUALLY COST, keyed by the debt identity. Minted at execution,
     // consumed by the changed-witness projection and by the published receipt line; never read
     // to decide admission, and never written back onto the authored roster.
@@ -5424,6 +5665,9 @@ pub fn run_required_floor(
                      one qualified declaration was discovered at more than one site, so it would \
                      carry more than one disposition; a witness identity names exactly one site"
                 ));
+            }
+            if long_home {
+                long_home_identities.insert(identity.clone());
             }
             let selected_as_changed_witness = changed_witness_set.contains(&identity);
             if selected_as_changed_witness && !prepared_module_paths.contains(&file.module_path) {
@@ -8327,7 +8571,7 @@ pub fn run_required_floor(
         wet_execution,
         &prepared.subject_digest,
     )?;
-    if let Some(changed_witnesses) = changed_witnesses {
+    let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
         let rows = changed_witness_projection_rows(
             &changed_witnesses,
             &outcome.required_floor_disposition,
@@ -8348,15 +8592,10 @@ pub fn run_required_floor(
                 row.identity, row.standing
             ));
         }
-        outcome.changed_witness_blocking = rows
-            .iter()
-            .filter(|r| r.blocks)
-            .map(|r| ChangedWitnessBlocker {
-                identity: r.identity.clone(),
-                cause: r.cause.clone(),
-            })
-            .collect();
-    }
+        Some(rows)
+    } else {
+        None
+    };
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -8369,22 +8608,32 @@ pub fn run_required_floor(
     // fabricated as empty, for the reason the changed-witness sublane states above: a run that
     // could not observe the diff cannot say what the change enrols, and an empty set would be a
     // silent claim that it enrols nothing.
-    if let Some(newly_enrolled) = newly_enrolled_witnesses {
+    let mut enrolment_standing_by_identity: HashMap<String, EnrolmentMarginStanding> =
+        HashMap::new();
+    let mut enrolment_deferred = 0usize;
+    let mut enrolment_budget_ms: Option<u64> = None;
+    if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
             .required_floor_disposition
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
-        let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
-        let mut deferred = 0usize;
-        for identity in &newly_enrolled {
+        let typed_admission = floor_enrolment_typed_cost_debt_identities(&prepared)?;
+        for identity in newly_enrolled {
+            let declared_expensiveness = enrolment_expensiveness_declaration(
+                identity,
+                typed_admission.contains(identity),
+                long_home_identities.contains(identity),
+            );
             let standing = enrolment_margin_standing_for(
                 identity,
                 &cost_by_identity,
                 &dispositions,
                 budget_ms,
+                declared_expensiveness,
             );
             eprintln!(
                 "[enrolment-margin] identity={identity} standing={} {}",
@@ -8395,36 +8644,90 @@ pub fn run_required_floor(
                 standing,
                 EnrolmentMarginStanding::OutsideThisRunsExecution { .. }
             ) {
-                deferred += 1;
+                enrolment_deferred += 1;
             }
-            if standing.blocks() {
-                refused.push(ChangedWitnessBlocker {
-                    identity: identity.clone(),
-                    cause: standing.cause().to_string(),
-                });
-            }
+            enrolment_standing_by_identity.insert(identity.clone(), standing);
         }
-        // THE DEFERRED COUNT IS PRINTED, NEVER SILENTLY SUBTRACTED (DESIGN section 5: no silent
-        // caps). `adjudicated + deferred == newly_enrolled` is checkable on the line itself, so a
-        // gate that quietly stopped looking at most of its population cannot render as one that
-        // looked and found nothing.
-        eprintln!(
-            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
-             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
-             / 3 hosts / 398 identities at identical eval_steps; authority \
-             v2.workflow.floor_enrolment_margin)",
-            newly_enrolled.len(),
-            newly_enrolled.len() - deferred,
-            deferred,
-            refused.len()
-        );
-        outcome.enrolment_margin_blocking = refused;
     } else {
         eprintln!(
             "[enrolment-margin] GATE NOT EVALUATED (no CI diff baseline on a local run): the \
              newly enrolled set is unobservable, so this run makes no claim about it"
         );
     }
+    // ONE AUTHORITY FOR "WHAT BLOCKS". Both gates' blocking populations are taken from
+    // `required_floor_blockers_for` — the same function the composition controls call — so a
+    // production short-circuit of changed-witness for a declared identity cannot leave the
+    // tests green.
+    let mut changed_blocking: Vec<ChangedWitnessBlocker> = Vec::new();
+    let mut enrolment_blocking: Vec<ChangedWitnessBlocker> = Vec::new();
+    if let Some(rows) = &changed_projection_rows {
+        for r in rows {
+            let standing = enrolment_standing_by_identity.get(&r.identity);
+            for blocker in required_floor_blockers_for(&r.identity, standing, Some(r)) {
+                match blocker.origin {
+                    RequiredFloorBlockerOrigin::Changed => {
+                        changed_blocking.push(ChangedWitnessBlocker {
+                            identity: blocker.identity,
+                            cause: blocker.cause,
+                        });
+                    }
+                    RequiredFloorBlockerOrigin::Enrolment
+                    | RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing
+                    | RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing => {
+                        enrolment_blocking.push(ChangedWitnessBlocker {
+                            identity: blocker.identity,
+                            cause: blocker.cause,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
+        let paired: HashSet<&str> = changed_projection_rows
+            .as_ref()
+            .map(|rows| rows.iter().map(|r| r.identity.as_str()).collect())
+            .unwrap_or_default();
+        for identity in newly_enrolled {
+            if paired.contains(identity.as_str()) {
+                continue;
+            }
+            let standing = enrolment_standing_by_identity
+                .get(identity)
+                .expect("standing recorded for every newly enrolled identity");
+            for blocker in required_floor_blockers_for(identity, Some(standing), None) {
+                match blocker.origin {
+                    RequiredFloorBlockerOrigin::Changed => {
+                        changed_blocking.push(ChangedWitnessBlocker {
+                            identity: blocker.identity,
+                            cause: blocker.cause,
+                        });
+                    }
+                    RequiredFloorBlockerOrigin::Enrolment
+                    | RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing
+                    | RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing => {
+                        enrolment_blocking.push(ChangedWitnessBlocker {
+                            identity: blocker.identity,
+                            cause: blocker.cause,
+                        });
+                    }
+                }
+            }
+        }
+        let budget_ms = enrolment_budget_ms.expect("budget present when newly enrolled is Some");
+        eprintln!(
+            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
+             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
+             / 3 hosts / 398 identities at identical eval_steps; authority \
+             v2.workflow.floor_enrolment_margin)",
+            newly_enrolled.len(),
+            newly_enrolled.len() - enrolment_deferred,
+            enrolment_deferred,
+            enrolment_blocking.len()
+        );
+    }
+    outcome.changed_witness_blocking = changed_blocking;
+    outcome.enrolment_margin_blocking = enrolment_blocking;
     Ok(outcome)
 }
 
@@ -9634,6 +9937,437 @@ mod changed_witness_projection_tests {
             rows.iter().find(|(q, _)| *q == "m.b").map(|(_, s)| *s),
             Some(CostDebtRosterStanding::DeclaredButNotWithheld)
         );
+    }
+
+    /// THE MERGE-GATE SEQUENCE THE REQUIRED FLOOR ACTUALLY APPLIES for a newly enrolled
+    /// identity: `enrolment_margin_standing_for` then `changed_witness_projection_rows`, the
+    /// two populations `required_floor_outcome_is_clean` ANDs and
+    /// `required_floor_measurement_blockers` concatenates. One helper so the two controls
+    /// below cannot silently test different compositions.
+    ///
+    /// THE HOST MIRROR IS A SECOND SPELLING of `v2.workflow.floor_enrolment_margin`
+    /// `EnrolmentExpensivenessDeclared` / `enrolment_margin_standing_name` /
+    /// `enrolment_margin_standing_blocks` / `enrolment_margin_blocking_cause` and of
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`. The asserts on
+    /// wire names below are that agreement, executed, not a comment that the two spellings
+    /// match.
+    struct EnrolmentAndChangedComposition {
+        enrolment: EnrolmentMarginStanding,
+        changed: ChangedWitnessProjectionRow,
+    }
+
+    fn enrolment_and_changed_composition(
+        identity: &str,
+        declared: EnrolmentExpensivenessGround,
+        occurrence: Option<&crate::cli_run::WitnessExecutionOccurrence>,
+        terminal_row: Option<ClaimTerminalRow>,
+        observations: &HashMap<String, ChangedWitnessCostObservation>,
+    ) -> EnrolmentAndChangedComposition {
+        let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let mut cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        if let Some(row) = occurrence {
+            cost_owned.insert(identity, row);
+        }
+        let enrolment = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            Some(declared),
+        );
+        let terminals: Vec<ClaimTerminalRow> = terminal_row.into_iter().collect();
+        let mut verdict_only = HashSet::new();
+        verdict_only.insert(identity.to_string());
+        let changed = changed_witness_projection_rows(
+            &[identity.to_string()],
+            &[disposition(
+                identity,
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &terminals,
+            &verdict_only,
+            observations,
+            &no_wet_lane(),
+            TEST_CANDIDATE,
+        )
+        .into_iter()
+        .next()
+        .expect("the changed set is this one identity");
+        EnrolmentAndChangedComposition { enrolment, changed }
+    }
+
+    /// CONTROL 1. A declared identity that reaches NO VERDICT — lane cancelled, no claim-cost
+    /// row, no terminal — is admitted by the enrolment arm and the RUN STILL STOPS on
+    /// changed-witness, with a typed cause naming the identity. An absorbing fallback would
+    /// stop nothing.
+    #[test]
+    fn a_declared_identity_with_no_verdict_still_stops_the_run_on_changed_witness() {
+        let identity = "fixture.declared_unmeasured";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            None,
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(
+            !composed.enrolment.blocks(),
+            "enrolment admits; that is the per-gate fact, not the composition"
+        );
+        assert_eq!(composed.enrolment.cause(), "");
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }],
+            "the run stops, naming this identity, via the changed-witness cause the .dag fold spells"
+        );
+    }
+
+    /// CONTROL 1b. The same declared identity, wall deadline fires (`BudgetInterrupted` on
+    /// the wall clock): enrolment still does not block, changed-witness still stops the run.
+    #[test]
+    fn a_declared_identity_interrupted_by_the_wall_deadline_still_stops_the_run() {
+        let identity = "fixture.declared_wall_interrupted";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            Some(terminal(
+                identity,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: 8000,
+                    budget_ms: 8000,
+                    kind: BudgetKind::Wall,
+                },
+            )),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }]
+        );
+    }
+
+    /// CONTROL 2. Twin: a declared identity that EXECUTES and goes semantically RED still
+    /// fails the run. Enrolment reports expensiveness_declared and does not block; the
+    /// semantic Fail is changed-witness's.
+    #[test]
+    fn a_declared_identity_that_executes_and_fails_still_stops_the_run() {
+        let identity = "m.a";
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "failed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: 325,
+                observed_wall_ms: 400,
+            },
+            eval_steps: 1,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            Some(&occurrence),
+            Some(terminal(identity, ClaimOutcome::Fail)),
+            &observation(325),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        assert_eq!(composed.enrolment.cause(), "");
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }]
+        );
+        assert_eq!(composed.changed.outcome, "failed");
+    }
+
+    /// review 65751: absent-with-a-verdict. Enrolment used to be `NotMeasured` and the only
+    /// wall if changed-witness greened a Pass. Under verdict-only it still refuses, naming
+    /// the missing publication rather than admitting.
+    #[test]
+    fn a_declared_identity_that_passes_without_a_cost_observation_still_stops_the_run() {
+        let identity = "fixture.declared_pass_unobserved";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            Some(terminal(identity, ClaimOutcome::Pass)),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_cost_observation_missing_under_verdict_only".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }],
+            "a reached verdict with nothing published still stops the run"
+        );
+    }
+
+    /// review 65751: ceiling-censored. The host mints `RightCensored` only from interrupt
+    /// terminality, so there is no censored-with-a-verdict production path. Enrolment
+    /// reports declared and does not block; changed-witness still stops on no verdict.
+    #[test]
+    fn a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run() {
+        let identity = "fixture.declared_cpu_censored";
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "interrupted".to_string(),
+            reading: crate::cli_run::ClaimCostReading::RightCensored(
+                crate::cli_run::SafetyInterruptReading {
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    elapsed_cpu_at_least_ms: 500,
+                    elapsed_wall_at_least_ms: 500,
+                    cpu_safety_limit_ms: 500,
+                    wall_safety_limit_ms: 8000,
+                },
+            ),
+            eval_steps: 1,
+            verdict_reached: false,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            Some(&occurrence),
+            Some(terminal(
+                identity,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: 500,
+                    budget_ms: 500,
+                    kind: BudgetKind::Cpu,
+                },
+            )),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(
+            composed.enrolment.detail().contains("cost=CENSORED"),
+            "this control is the censored reading, not the absent one: {}",
+            composed.enrolment.detail()
+        );
+        assert!(!composed.enrolment.blocks());
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }]
+        );
+    }
+
+    /// THE PAIRING INVARIANT MADE EXECUTABLE. newly_enrolled contains a declared identity
+    /// and the changed projection does not. Enrolment does not block; without a changed row
+    /// the identity would admit silently. This call is the unpaired production arm
+    /// (`changed_row = None`); it REFUSES, naming the identity. If pairing always holds in
+    /// production this arm never fires and the RED still proves the wall exists.
+    #[test]
+    fn a_declared_identity_with_no_changed_projection_row_stops_the_run() {
+        let identity = "fixture.declared_unpaired";
+        let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> = HashMap::new();
+        let standing = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        assert_eq!(standing.name(), "expensiveness_declared");
+        assert!(!standing.blocks());
+        let blockers = required_floor_blockers_for(identity, Some(&standing), None);
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "declared_expensiveness_without_changed_witness_pairing".to_string(),
+                origin: RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing,
+            }],
+            "unpaired declared expensiveness is a refusal, never a no-op"
+        );
+    }
+
+    /// review 65637: a withheld identity with no declaration must not wear the
+    /// declared-expensiveness pairing cause.
+    #[test]
+    fn an_unpaired_withheld_identity_is_not_labelled_as_declared_expensiveness() {
+        let identity = "fixture.withheld_unpaired";
+        let declined = RequiredFloorDisposition::DeclinedCostDebt;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &declined);
+        let cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> = HashMap::new();
+        let standing =
+            enrolment_margin_standing_for(identity, &cost_owned, &dispositions, 302, None);
+        assert_eq!(standing.name(), "outside_this_runs_execution");
+        assert!(!standing.blocks());
+        let blockers = required_floor_blockers_for(identity, Some(&standing), None);
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "enrolment_outside_execution_without_changed_witness_pairing".to_string(),
+                origin: RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
+            }]
+        );
+    }
+
+    /// review 65732: a changed-projection identity this run did not enrol is absence of
+    /// enrolment standing, not a synthesized `OutsideThisRunsExecution`. Pairing does not
+    /// fire; only the changed gate can block.
+    #[test]
+    fn a_changed_identity_outside_the_enrolled_set_has_no_enrolment_standing() {
+        let identity = "fixture.changed_not_enrolled";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            None,
+            &HashMap::new(),
+        );
+        let blockers = required_floor_blockers_for(identity, None, Some(&composed.changed));
+        assert!(
+            blockers
+                .iter()
+                .all(|b| b.origin == RequiredFloorBlockerOrigin::Changed),
+            "no enrolment origin from a missing standing"
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }]
+        );
+    }
+
+    /// A string-roster append is not enrolment's declaration. The 325ms specimen stays
+    /// over-margin; long home still declares.
+    #[test]
+    fn a_string_roster_append_does_not_declare_enrolment_expensiveness() {
+        let identity = "fixture.tripwire_325";
+        assert_eq!(
+            enrolment_expensiveness_declaration(identity, false, false),
+            None,
+            "string roster alone never declares"
+        );
+        assert_eq!(
+            enrolment_expensiveness_declaration(identity, false, true),
+            Some(EnrolmentExpensivenessGround::LongHome),
+            "long home declares even if a string-roster line also exists"
+        );
+        assert_eq!(
+            enrolment_expensiveness_declaration(identity, true, false),
+            Some(EnrolmentExpensivenessGround::Roster)
+        );
+    }
+
+    /// review 65714: a censored bound on a declared identity is not rendered as UNMEASURED.
+    #[test]
+    fn a_declared_censored_reading_is_not_rendered_as_absent() {
+        let identity = "fixture.declared_censored";
+        let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "interrupted".to_string(),
+            reading: crate::cli_run::ClaimCostReading::RightCensored(
+                crate::cli_run::SafetyInterruptReading {
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    elapsed_cpu_at_least_ms: 500,
+                    elapsed_wall_at_least_ms: 500,
+                    cpu_safety_limit_ms: 500,
+                    wall_safety_limit_ms: 8000,
+                },
+            ),
+            eval_steps: 1,
+            verdict_reached: false,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let mut cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        cost_owned.insert(identity, &occurrence);
+        let censored = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        let absent = enrolment_margin_standing_for(
+            identity,
+            &HashMap::new(),
+            &dispositions,
+            302,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        assert!(
+            censored.detail().contains("cost=CENSORED"),
+            "censored declared reading: {}",
+            censored.detail()
+        );
+        assert!(
+            absent.detail().contains("cost=UNMEASURED"),
+            "absent declared reading: {}",
+            absent.detail()
+        );
+        assert_ne!(censored.detail(), absent.detail());
     }
 }
 

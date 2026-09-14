@@ -42001,9 +42001,9 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
-    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
-    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
-    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
+    // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
+    // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
     // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
     // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
