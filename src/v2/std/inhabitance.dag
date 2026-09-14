@@ -104,15 +104,14 @@ fn inhabitance_connective_undecidable_reason(
   kind: NodeKind
 ) -> Optional<InhabitanceUndecidableReason> {
   match kind {
-    TypeNode { connective: c } =>
-      match c {
-        Cardinality => optional_present(value: UndecidableOptionalCarrier)
-        Instantiation => optional_present(value: UndecidableGenericFormal)
-        Atom { identity: _ } => Absent
-        Conj => Absent
-        Disj => Absent
-        Arrow => Absent
-      }
+    TypeNode { connective: Cardinality } =>
+      optional_present(value: UndecidableOptionalCarrier)
+    TypeNode { connective: Instantiation } =>
+      optional_present(value: UndecidableGenericFormal)
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
     ComputationNode { behavior: _ } => Absent
   }
 }

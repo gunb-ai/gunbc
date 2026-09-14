@@ -32,7 +32,6 @@ import v2.std.node {
   Value,
   node_synthetic
 }
-import std.occurrence_identity { OccurrenceSynthetic }
 
 fn inhabitance_diagnostics_list_has_reason(xs: List<Diagnostic>, reason: Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, d) {
@@ -49,166 +48,119 @@ fn inhabitance_diagnostics_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
   }
 }
 
-fn inhabitance_call_tree(arg: Node) -> Node {
+fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^inhabitance_takes_int },
-        target: dag_arrow_with_body_node(
-          domain: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge {
-                label: Named { name: ^inhabitance_param_x },
-                target: dag_type_atom_node(identity: ^dag_binding_type_int)
-              }
-            ],
-            occurrence_id: OccurrenceSynthetic
-          },
-          return_type_binding: ^dag_binding_type_int,
-          body: node_synthetic(
-            kind: ComputationNode { behavior: Transform },
-            children: [
-              Edge {
-                label: Positional,
-                target: dag_type_atom_node(identity: ^inhabitance_takes_int)
-              },
-              Edge { label: Positional, target: arg }
-            ]
-          )
-        )
+        label: Named { name: parameter },
+        target: declared
       }
     ]
+  )
+}
+
+fn inhabitance_apply(domain: Node, arg: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_arrow_with_body_node(
+          domain: domain,
+          return_type_binding: ^dag_binding_type_int,
+          body: dag_int_literal_fixture_one()
+        )
+      },
+      Edge { label: Positional, target: arg }
+    ]
+  )
+}
+
+fn inhabitance_call_tree(arg: Node) -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_x,
+      declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+    ),
+    arg: arg
   )
 }
 
 fn inhabitance_generic_formal_tree() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^inhabitance_takes_generic },
-        target: dag_arrow_with_body_node(
-          domain: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge {
-                label: Named { name: ^inhabitance_param_t },
-                target: node_synthetic(
-                  kind: TypeNode { connective: Instantiation },
-                  children: [
-                    Edge {
-                      label: Positional,
-                      target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
-                    }
-                  ]
-                )
-              }
-            ],
-            occurrence_id: OccurrenceSynthetic
-          },
-          return_type_binding: ^dag_binding_type_int,
-          body: node_synthetic(
-            kind: ComputationNode { behavior: Transform },
-            children: [
-              Edge {
-                label: Positional,
-                target: dag_type_atom_node(identity: ^inhabitance_takes_generic)
-              },
-              Edge {
-                label: Positional,
-                target: dag_int_literal_fixture_one()
-              }
-            ]
-          )
-        )
-      }
-    ]
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_t,
+      declared: node_synthetic(
+        kind: TypeNode { connective: Instantiation },
+        children: [
+          Edge {
+            label: Positional,
+            target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+          }
+        ]
+      )
+    ),
+    arg: dag_int_literal_fixture_one()
   )
 }
 
 fn inhabitance_optional_formal_tree() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: ^inhabitance_takes_optional },
-        target: dag_arrow_with_body_node(
-          domain: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge {
-                label: Named { name: ^inhabitance_param_opt },
-                target: node_synthetic(
-                  kind: TypeNode { connective: Cardinality },
-                  children: [
-                    Edge {
-                      label: Positional,
-                      target: dag_type_atom_node(identity: ^dag_binding_type_int)
-                    }
-                  ]
-                )
-              }
-            ],
-            occurrence_id: OccurrenceSynthetic
-          },
-          return_type_binding: ^dag_binding_type_int,
-          body: node_synthetic(
-            kind: ComputationNode { behavior: Transform },
-            children: [
-              Edge {
-                label: Positional,
-                target: dag_type_atom_node(identity: ^inhabitance_takes_optional)
-              },
-              Edge {
-                label: Positional,
-                target: dag_int_literal_fixture_one()
-              }
-            ]
-          )
-        )
-      }
-    ]
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_opt,
+      declared: node_synthetic(
+        kind: TypeNode { connective: Cardinality },
+        children: [
+          Edge {
+            label: Positional,
+            target: dag_type_atom_node(identity: ^dag_binding_type_int)
+          }
+        ]
+      )
+    ),
+    arg: dag_int_literal_fixture_one()
   )
 }
 
 fn inhabitance_arity_unmodeled_tree() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Conj },
+    kind: ComputationNode { behavior: Transform },
     children: [
       Edge {
-        label: Named { name: ^inhabitance_takes_int },
+        label: Positional,
         target: dag_arrow_with_body_node(
-          domain: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              Edge {
-                label: Named { name: ^inhabitance_param_x },
-                target: dag_type_atom_node(identity: ^dag_binding_type_int)
-              }
-            ],
-            occurrence_id: OccurrenceSynthetic
-          },
+          domain: inhabitance_named_conj_domain(
+            parameter: ^inhabitance_param_x,
+            declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+          ),
           return_type_binding: ^dag_binding_type_int,
-          body: node_synthetic(
-            kind: ComputationNode { behavior: Transform },
-            children: [
-              Edge {
-                label: Positional,
-                target: dag_type_atom_node(identity: ^inhabitance_takes_int)
-              },
-              Edge {
-                label: Positional,
-                target: dag_int_literal_fixture_one()
-              },
-              Edge {
-                label: Positional,
-                target: dag_int_literal_fixture_two()
-              }
-            ]
-          )
+          body: dag_int_literal_fixture_one()
         )
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_one()
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_two()
+      }
+    ]
+  )
+}
+
+fn inhabitance_formal_unresolved_tree() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^inhabitance_takes_int)
+      },
+      Edge {
+        label: Positional,
+        target: dag_int_literal_fixture_one()
       }
     ]
   )
@@ -278,6 +230,17 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
       inhabitance_diagnostics_has_reason(
         d: Some { diagnostics: nds },
         reason: ^application_positional_surplus
+      )
+  }
+}
+
+test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
+  match infer(tree: inhabitance_formal_unresolved_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      inhabitance_diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_formal_unresolved
       )
   }
 }

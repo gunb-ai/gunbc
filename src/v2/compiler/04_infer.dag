@@ -896,7 +896,10 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
   }
 }
 
-data infer_arrow_domain_binding_heuristic_note: String = "interim: two consumers share this dissolve-on, not one identity: infer_find_arrow_domain_type_in_tree walks for a parameter name inside an Arrow domain (operand typing); infer_arrow_declaration_for_binding walks for a Named operator whose target is Arrow (application formals). Both are scope-naive whole-tree lookups. Operator-arrow lookup is unique-or-absent (zero or colliding names are FormalUnresolved, never a first-match refusal). dissolve-on: namespace-only name resolution / SymbolIndex / ResolvedTree.bindings; delete both heuristic walks when that lookup lands."
+// interim: infer_find_arrow_domain_type_in_tree walks for a parameter name inside an Arrow domain
+// (operand typing). Application formals do not use that walk: only an operator whose node is
+// already Arrow is judged; an Atom operator is FormalUnresolved until SymbolIndex /
+// ResolvedTree.bindings. dissolve-on: delete the domain walker when that lookup lands.
 
 fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional<Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
@@ -1540,82 +1543,49 @@ fn infer_transform_argument_targets(node: Node) -> List<Node> {
   }
 }
 
-fn infer_concat_nodes(prefix: List<Node>, suffix: List<Node>) -> List<Node> {
-  fold(suffix, init: prefix, f: fn(xs, n) {
-    list_snoc_item(xs: xs, item: n)
-  })
-}
-
-fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
-  let arrows = fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(_n) { Empty },
-      step: fn(acc, e, child) {
-        let merged = infer_concat_nodes(prefix: acc, suffix: child)
-        match e.label {
-          Named { name: nme } =>
-            if nme == binding {
-              match e.target.kind {
-                TypeNode { connective: Arrow } =>
-                  list_snoc_item(xs: merged, item: e.target)
-                _ => merged
-              }
-            } else {
-              merged
-            }
-          Positional => merged
-        }
-      }
-    }
-  )
-  if length(xs: arrows) == 1 {
-    list_at_optional(xs: arrows, index: 0)
-  } else {
-    optional_absent()
-  }
-}
-
-fn infer_operator_arrow(operator: Node, tree: Node) -> Optional<Node> {
+fn infer_operator_arrow(operator: Node) -> Optional<Node> {
   match operator.kind {
     TypeNode { connective: Arrow } => Present { value: operator }
-    TypeNode { connective: Atom { identity: id } } =>
-      infer_arrow_declaration_for_binding(root: tree, binding: id)
     _ => Absent
   }
 }
 
-fn infer_formals_from_domain(domain: Node) -> List<InhabitanceFormal> {
+fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> {
   match domain.kind {
     TypeNode { connective: Conj } =>
-      fold(domain.children, init: Empty, f: fn(acc, e) {
-        match e.label {
-          Named { name: nme } =>
-            list_snoc_item(
-              xs: acc,
-              item: InhabitanceFormal {
-                parameter_identity: nme,
-                declared: e.target
-              }
-            )
-          Positional => acc
+      fold(domain.children, init: Present { value: Empty }, f: fn(acc, e) {
+        match acc {
+          Absent => Absent
+          Present { value: formals } =>
+            match e.label {
+              Named { name: nme } =>
+                Present {
+                  value: list_snoc_item(
+                    xs: formals,
+                    item: InhabitanceFormal {
+                      parameter_identity: nme,
+                      declared: e.target
+                    }
+                  )
+                }
+              Positional => Absent
+            }
         }
       })
-    _ => Empty
+    _ => Absent
   }
 }
 
-fn infer_application_formals(node: Node, tree: Node) -> Optional<List<InhabitanceFormal>> {
+fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Absent => Absent
     Present { value: operator } =>
-      match infer_operator_arrow(operator: operator, tree: tree) {
+      match infer_operator_arrow(operator: operator) {
         Absent => Absent
         Present { value: arrow } =>
           match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
             Absent => Absent
-            Present { value: domain } =>
-              Present { value: infer_formals_from_domain(domain: domain) }
+            Present { value: domain } => infer_formals_from_domain(domain: domain)
           }
       }
   }
@@ -1688,10 +1658,9 @@ fn infer_judge_application_argument(
 
 fn infer_application_argument_inhabitance(
   node: Node,
-  entries: List<InferredFactsEntry>,
-  tree: Node
+  entries: List<InferredFactsEntry>
 ) -> Outcome<Bool> {
-  match infer_application_formals(node: node, tree: tree) {
+  match infer_application_formals(node: node) {
     Absent =>
       infer_inhabitance_undecidable_accepted(
         application: node,
@@ -2086,7 +2055,7 @@ fn infer_gather_transform_row_on_entries(
   partials: List<Node>,
   tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, tree: tree) {
+  match infer_application_argument_inhabitance(node: node, entries: entries) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
