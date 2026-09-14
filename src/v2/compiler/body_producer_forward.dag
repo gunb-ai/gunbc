@@ -6,6 +6,17 @@ type BodyProducerForwardRow {
   surface_identity: Symbol
 }
 
+// Why this is not an eighth BodyProducerForwardRow: dag grammar has no emitted call identity
+// (call is an optional postfix_call_suffix on primary ident / dotted postfix). Minting a
+// surface_identity would fail ObligationForwardDeterminism; registering ^dag_surface_primary_expr
+// would steal literals and bare idents. Call apply therefore inhabits the existing primary_expr
+// and postfix_expr productions (body_lower_primary_expr / body_lower_postfix_expr →
+// body_lower_transform_call). fold_call_lowering still reads parse sequence-left and must keep
+// that seam or switch onto call_callee_target — do not invert try-fold-loop vs primary-ident-call
+// without that switch (#11314/#11315; crisp-carp decline-shape freeze on this fold).
+// Evidence for preservation is v2.test.manual.body_lowering_projection_call
+// body_lowering_normalize_accepts_projection_module, not a DeclarationRef roster.
+
 data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
   surface_identity: ^dag_surface_fn_decl
 }

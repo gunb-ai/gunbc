@@ -556,9 +556,13 @@ fn vacuity_bool_witness_fn_body_evidence(fn_decl: Node) -> VacuityEvidence {
         Present { value: stmt_seq } =>
           if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
             match body_lower_try_infix_transform(node: stmt_seq) {
-              Absent => Unknown
-              Present { value: transform } =>
-                vacuity_bool_witness_body_evidence(transform: transform)
+              Rejected { diagnostics: _ } => Unknown
+              Accepted { value: found, diagnostics: _ } =>
+                match found {
+                  Absent => Unknown
+                  Present { value: transform } =>
+                    vacuity_bool_witness_body_evidence(transform: transform)
+                }
             }
           } else {
             Unknown

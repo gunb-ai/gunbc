@@ -25,6 +25,42 @@ data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: 
 
 data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
 
+// THE POSITION SPECIMENS, one per body position the source admits a fold in. Each is the
+// quadratic_snippet's planted copy (fold / list_append with the carrier on the copied port) moved
+// to a different position of an fn body and nothing else changed, so what a witness over one of
+// them answers is about POSITION and not about spelling or about the combiner. Measured on the
+// tokenize / parse_module / normalize route (gunbc.recurring_failure_mode
+// fold_shape_visible_to_no_lens, receipts of 2026-09-13): the sole-body fold lowers to the seam
+// Loop the lens enumerates; the same fold after a `let`, in a `match` arm or in an `if` branch
+// reaches normalize's output with its arguments erased, so no Loop, no surface fold call and no
+// site -- the class gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, seen
+// from the lens's side. A fold NESTED inside a sole-body fold's step keeps its surface form
+// inside the retained Loop body and IS seen, which is the control that shows the surface arm of
+// count_fold_sites is reachable and not permanently green.
+data let_prefixed_planted_snippet: String = "module letplanted\n\nfn f(xs: List<Int>) -> Int {\n  let seed = 0\n  fold(xs, init: seed, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+
+data match_arm_planted_snippet: String = "module matchplanted\n\nfn f(xs: List<Int>, b: Bool) -> Int {\n  match b {\n    true => fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n    false => 0\n  }\n}\n"
+
+data nested_planted_snippet: String = "module nestedplanted\n\nfn f(xs: List<List<Int>>) -> Int {\n  fold(xs, init: 0, f: fn(acc, ys) { fold(ys, init: acc, f: fn(a2, y) { list_append(left: y, right: a2) }) })\n}\n"
+
+// THE BY-NAME CAPABILITY SPECIMEN: the step is DECLARED in the same module and carries the planted
+// copy in its own body, so the accumulator flow the class names is authored and readable -- the
+// step's Arrow member sits in the normalized root with `acc` as its first domain binding
+// (v2.std.node_query arrow_domain_named_param_bindings reads it). What is missing is the SITE: the
+// call `fold(xs, init: 0, f: step)` is erased before any lens runs.
+data declared_named_step_planted_snippet: String = "module declstep\n\nfn step(acc: Int, x: Int) -> Int {\n  list_append(left: x, right: acc)\n}\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
+// THE STEP-SLOT DISCRIMINATOR IN THE OTHER DIRECTION (review 65763 on gunbc#11315). The step is
+// BY NAME and a two-binder lambda sits in the NON-step argument. Before v2.compiler.fold_lowering
+// read the step at the callee-declared slot, fold_call_step_form found that lambda by whole-subtree
+// first match and minted a seam Loop whose carrier was `a` -- measured on 42e5937 (folds_seen 1,
+// carriers_bound 1, loop yes). At the slot read (a5f5585 and after) the call yields no Loop: the
+// step slot carries no inline form, which is StepByName and the honest no-Loop state. Its twin
+// puts the planted copy IN the slot beside the same decoy and must still lower and be caught.
+data by_name_step_with_lambda_in_other_argument_snippet: String = "module decoylambda\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => list_append(left: b, right: a)), init: 0, f: step)\n}\n"
+
+data inline_step_beside_lambda_in_other_argument_snippet: String = "module decoylambdactrl\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => a), init: 0, f: (acc, x) => list_append(left: x, right: acc))\n}\n"
+
 data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: x, right: grown)\n  })\n}\n"
 
 data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: x, right: seed)\n  })\n}\n"
@@ -258,11 +294,94 @@ test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
   }
 }
 
-test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+fn named_step_fold_refuses_accumulator_unread() -> Bool {
   match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
     Absent => false
     Present { value: fs } =>
       v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^fold_accumulator_unread)
+  }
+}
+
+// GREEN since gunbc#11322 carries the let remainder Loop-first; was rostered RED. A plain fn, not a
+// test fn: an ingest-reaching identity newly enrolled after gunbc#11195 is judged at the
+// 100ms-equivalent tier and refused, so it joins gunbc.rung_drop
+// accumulator_copy_positive_controls_off_every_lane's population and executes under claim_batch.
+fn let_prefixed_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// GREEN since gunbc#11322 lowers match-arm bodies through call apply; was rostered RED. Plain fn
+// on the same standing as its let_prefixed sibling above.
+fn match_arm_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// RED, rostered at gunbc.explicit_witness_admission: the by-name step's accumulator flow. This is
+// the CAPABILITY witness for the by-name half of fold_shape_visible_to_no_lens, stronger than
+// named_step_fold_refuses_accumulator_unread: a declared step with a planted copy must mint a
+// suspect, not merely a refusal, once the site is visible and the step is resolved.
+test fn declared_named_step_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: declared_named_step_planted_snippet, file: ^declstep_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// POSITIVE CONTROL, green today: both folds of the nested specimen are counted and the inner
+// planted copy is caught -- the inner fold survives as a SURFACE call inside the outer seam Loop's
+// retained body, so count_fold_sites's surface arm fires here. A change that makes this go red
+// has narrowed the lens's domain.
+//
+// A PLAIN fn RATHER THAN A test fn, on the standing v2.test.claim.complexity
+// accumulator_copy_corpus_path_test records for its own ingest-reaching predicates: this control
+// reaches the interpreted ingest, which measures several times
+// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms (1732ms CPU on run
+// 34786156711 against a 500ms line), and a NEWLY ENROLLED identity over that line is refused at
+// enrolment margin -- the unchanged test fns of this file sit outside per-PR discovery and are
+// not re-measured, which is why they are not refused and why this cannot simply join them. It
+// passes by execution under claim_batch beside the three RED probes above and is enrolled in
+// nothing; it dissolves into a test fn on the same trigger as its corpus-path siblings.
+fn nested_fold_inside_a_sole_body_fold_is_visible() -> Bool {
+  match ingest(source_text: nested_planted_snippet, file: ^nestedplanted_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 2) && (r.carriers_bound == 2)
+        && v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: r.findings)
+  }
+}
+
+// PLAIN fns, on the same standing as nested_fold_inside_a_sole_body_fold_is_visible below: both
+// reach the interpreted ingest. They pass by execution under claim_batch.
+//
+// RED CONTROL for the step-slot read: a lambda in a non-step argument must not become the step.
+// Went from loop=yes to loop=no between 42e5937 and a5f5585; a reading that searches the whole
+// call for a lambda makes this go red again.
+fn a_lambda_in_a_non_step_argument_mints_no_carrier() -> Bool {
+  match ingest(source_text: by_name_step_with_lambda_in_other_argument_snippet, file: ^decoylambda_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.carriers_bound == 0)
+        && !v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
+  }
+}
+
+// POSITIVE CONTROL: the same decoy beside a real inline step still lowers and the planted copy on
+// the real carrier is caught. Without this the red control is satisfiable by refusing every fold.
+fn an_inline_step_beside_a_decoy_lambda_is_still_caught() -> Bool {
+  match ingest(source_text: inline_step_beside_lambda_in_other_argument_snippet, file: ^decoylambdactrl_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 1) && (r.carriers_bound == 1)
+        && v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: r.findings)
   }
 }
 
@@ -314,7 +433,7 @@ test fn out_of_iteration_append_is_out_of_domain() -> Bool {
   }
 }
 
-test fn report_counters_state_the_domain() -> Bool {
+fn report_counters_state_the_domain() -> Bool {
   match ingest(source_text: quadratic_snippet, file: ^quad_file) {
     Absent => false
     Present { value: tree } =>
