@@ -105,6 +105,38 @@ test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
   })
 }
 
+// THE OCP-UNOBSERVED RECEIPT KEEPS AN EXERCISER, AND IT ALMOST DID NOT. Until the 2026-09-14 interior
+// report, the LIVE unit carried ocp: AttachmentPointUnobserved and real_candidates_reach_typed_verdicts
+// asserted it there; that arm now asserts Offered { positions: 1 }, so nothing would have driven an
+// unobserved OCP standing through the fold at all. The PCIe refusal got its fixture in
+// pcie_refusals_survive_the_candidate_join and this, its sibling, was missed - one half of a class
+// preserved and the other half dropped, which is worse than dropping both because the suite still looks
+// like it covers the class.
+//
+// WHAT IT PROVES IS SPECIFICALLY PROPAGATION, NOT REFUSAL. An unobserved OCP standing does NOT refuse:
+// attachment_against_evidence destructures the OCP arm as ocp: _ and decides from generation and physical
+// variant, so the verdict is admitted on generation whatever occupancy says. What must survive is the
+// CARRIED STANDING - the receipt has to still say unobserved rather than quietly reporting the live
+// unit's offered bay. That distinction is the whole reason this control is not a copy of the PCIe one,
+// and whether the OCP path SHOULD refuse on occupancy is the open semantic question tracked on roadmap
+// row fleet-mtcollins1-first-host (gunbc#11390).
+test fn an_unobserved_ocp_standing_survives_into_the_generation_only_receipt() -> Bool {
+  let unobserved_bay = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointAbsent { basis: "fixture: not the subject of this control" },
+    ocp: AttachmentPointUnobserved { platform_upper_bound: 1, settled_by: "fixture: the OCP bay has not been reported" },
+  }
+  match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: unobserved_bay, bay: mt_collins_1u_ocp_slot) {
+    Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: _, settled_by: settle }, unit_evidence: evidence } =>
+      settle != "" && match evidence {
+        UnitExpansionEvidence { observation: _, pcie: _, ocp: AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: carried } } =>
+          bound == 1 && carried != ""
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool {
   match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: expansion_evidence_for_unit(unit: observed_unit), bay: NoOcpSlot) {
     Refused { cause: AttachmentPointUnavailable { basis: basis } } => basis != ""
@@ -187,6 +219,7 @@ test fn pcie_refusals_survive_the_candidate_join() -> Bool {
 
 fn main() -> Bool {
   real_candidates_reach_typed_verdicts()
+    && an_unobserved_ocp_standing_survives_into_the_generation_only_receipt()
     && matching_generation_does_not_establish_physical_variant()
     && unknown_unit_never_borrows_mtcollins1_observation()
     && absent_ocp_bay_cannot_admit_a_matching_card()
