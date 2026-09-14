@@ -1047,29 +1047,10 @@ fn body_lower_try_fold_loop_at(node: Node) -> Outcome<Optional<Node>> {
 }
 
 fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
-  let stripped = body_lower_peel_call_surface(node: node)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-        Present { value: left_id } =>
-          if body_lower_surface_punct_token(id: left_id) {
-            body_lower_try_fold_loop(node: pair.right)
-          } else {
-            body_lower_try_fold_loop_at(node: stripped)
-          }
-        Absent =>
-          match body_lower_try_fold_loop(node: pair.left) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: found, diagnostics: d } =>
-              match found {
-                Present { value: _ } =>
-                  outcome_with_diagnostics(value: found, diagnostics: d)
-                Absent => body_lower_try_fold_loop(node: pair.right)
-              }
-          }
-      }
-    Absent => body_lower_try_fold_loop_at(node: stripped)
-  }
+  body_lower_search_call_spine(
+    node: node,
+    at: fn(stripped) { body_lower_try_fold_loop_at(node: stripped) }
+  )
 }
 
 fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
@@ -1153,6 +1134,35 @@ fn body_lower_peel_call_surface(node: Node) -> Node {
         stripped
       }
     Absent => stripped
+  }
+}
+
+fn body_lower_search_call_spine(
+  node: Node,
+  at: fn(Node) -> Outcome<Optional<Node>>
+) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_peel_call_surface(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => at(stripped)
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: left_id } =>
+          if body_lower_surface_punct_token(id: left_id) {
+            body_lower_search_call_spine(node: pair.right, at: at)
+          } else {
+            at(stripped)
+          }
+        Absent =>
+          match body_lower_search_call_spine(node: pair.left, at: at) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: found, diagnostics: d } =>
+              match found {
+                Present { value: _ } =>
+                  outcome_with_diagnostics(value: found, diagnostics: d)
+                Absent => body_lower_search_call_spine(node: pair.right, at: at)
+              }
+          }
+      }
   }
 }
 
@@ -2649,37 +2659,26 @@ fn body_lower_try_primary_ident_call_from_pair(callee_left: Node, suffix_root: N
   }
 }
 
-fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
-  let stripped = body_lower_peel_call_surface(node: node)
+fn body_lower_try_primary_ident_call_at(stripped: Node) -> Outcome<Optional<Node>> {
   match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      body_lower_try_primary_ident_call_from_pair(
+        callee_left: pair.left,
+        suffix_root: pair.right
+      )
     Absent =>
       match parse_production_captured_child_optional(node: stripped) {
         Present { value: captured } => body_lower_try_primary_ident_call(node: captured)
         Absent => outcome_accepted(value: optional_absent())
       }
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-        Present { value: left_id } =>
-          if body_lower_surface_punct_token(id: left_id) {
-            body_lower_try_primary_ident_call(node: pair.right)
-          } else {
-            body_lower_try_primary_ident_call_from_pair(
-              callee_left: pair.left,
-              suffix_root: pair.right
-            )
-          }
-        Absent =>
-          match body_lower_try_primary_ident_call(node: pair.left) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: found, diagnostics: d } =>
-              match found {
-                Present { value: _ } =>
-                  outcome_with_diagnostics(value: found, diagnostics: d)
-                Absent => body_lower_try_primary_ident_call(node: pair.right)
-              }
-          }
-      }
   }
+}
+
+fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
+  body_lower_search_call_spine(
+    node: node,
+    at: fn(stripped) { body_lower_try_primary_ident_call_at(stripped: stripped) }
+  )
 }
 
 fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>> {
@@ -2805,29 +2804,10 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
 }
 
 fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
-  let stripped = body_lower_peel_call_surface(node: node)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Absent => outcome_accepted(value: optional_absent())
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-        Present { value: left_id } =>
-          if body_lower_surface_punct_token(id: left_id) {
-            body_lower_try_postfix_projection(node: pair.right)
-          } else {
-            body_lower_try_postfix_projection_at(node: stripped)
-          }
-        Absent =>
-          match body_lower_try_postfix_projection(node: pair.left) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: found, diagnostics: d } =>
-              match found {
-                Present { value: _ } =>
-                  outcome_with_diagnostics(value: found, diagnostics: d)
-                Absent => body_lower_try_postfix_projection(node: pair.right)
-              }
-          }
-      }
-  }
+  body_lower_search_call_spine(
+    node: node,
+    at: fn(stripped) { body_lower_try_postfix_projection_at(node: stripped) }
+  )
 }
 
 fn body_lower_try_postfix_projection_at(node: Node) -> Outcome<Optional<Node>> {
