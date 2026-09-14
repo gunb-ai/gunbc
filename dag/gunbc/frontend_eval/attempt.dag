@@ -55,9 +55,10 @@ type ModelContextIdentity
   = ModelContextHashed { sha256: NonEmptyStr }
   | ModelContextUnrecorded
 
-// `answered_by` is the realized serving identity observed at the attempt's first request (the
-// engine generation among it), so a row answered by a restarted engine cannot sit in a cohort
-// pinned to the earlier one.
+// `answered_by` is the realized serving identity observed at the attempt's first request (host,
+// port, version, served model), so a row answered at another endpoint or by another runtime
+// version cannot sit in this cohort. A restart of the same version at the same endpoint is not
+// observable from a session (see serving_identity) and is not claimed to be excluded.
 type EvalAttempt {
   task_id: NonEmptyStr
   arm: EvalArm

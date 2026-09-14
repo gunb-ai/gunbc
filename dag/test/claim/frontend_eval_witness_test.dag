@@ -87,23 +87,23 @@ test fn model_projection_names_tasks_and_hides_the_repair() -> Bool {
     && (t.expected_lexeme == "" || contains(judge, t.expected_lexeme)))
 }
 
-fn fixture_serving(generation: Int) -> RealizedServing {
+fn fixture_serving(version: String) -> RealizedServing {
   RealizedServing {
     observed: ObservedServing {
       host: "srv9" as HostIdentity, port: 30000,
       models: vllm_models_route_readback(served_model_id: "m" as NonEmptyStr, configured_model_path: "/w" as NonEmptyStr, max_model_len: token_count(count: 8)),
-      created: vllm_models_entry_created(created: generation),
-      version: vllm_self_reported_version(version_string: "0.1" as NonEmptyStr),
+      read_at: vllm_models_entry_created(created: 1),
+      version: vllm_self_reported_version(version_string: version as NonEmptyStr),
     },
     runtime: RuntimeUnobserved,
   }
 }
 
-data fixture_answered_by: NonEmptyStr = realized_serving_identity(s: fixture_serving(generation: 1))
+data fixture_answered_by: NonEmptyStr = realized_serving_identity(s: fixture_serving(version: "0.1"))
 
 fn fixture_cohort(t: SamplingTemperature, identity: String) -> EvalCohort {
   EvalCohort {
-    identity: identity as NonEmptyStr, serving: fixture_serving(generation: 1),
+    identity: identity as NonEmptyStr, serving: fixture_serving(version: "0.1"),
     model_id: "m" as NonEmptyStr, model_snapshot: "s" as NonEmptyStr, compiler_program_sha256: "c" as NonEmptyStr,
     driver_sha256: "d" as NonEmptyStr, task_set_sha256: "r" as NonEmptyStr, prompt_template_sha256: "p" as NonEmptyStr,
     clear_thinking: false, temperature: t, max_tokens: token_count(count: 1),
@@ -324,11 +324,11 @@ test fn control_lexeme_must_appear_in_a_diagnostic_message() -> Bool {
     && refusal_names(text: "error: resolve failed for x.dag\n  cause: x.dag:1:1: error: undefined function 'interval_lower'\n", lexeme: "interval_lower")
 }
 
-// A ROW ANSWERED BY A RESTARTED ENGINE IS NOT IN THE COHORT: the same host, port, version and
-// model with a different engine generation refuses, because reasoning accounting and tool parsing
-// are the runtime's and a restart is a new runtime process (observed mid-run on the canary).
-test fn report_refuses_a_row_answered_by_another_engine_generation() -> Bool {
-  let restarted = realized_serving_identity(s: fixture_serving(generation: 2))
+// A ROW ANSWERED BY ANOTHER RUNTIME IS NOT IN THE COHORT: the same host, port and model under a
+// different self-reported vLLM version refuses, because reasoning accounting and tool parsing are
+// the runtime's. (A restart of the same version is not observable from a session and is not claimed.)
+test fn report_refuses_a_row_answered_by_another_runtime_version() -> Bool {
+  let restarted = realized_serving_identity(s: fixture_serving(version: "0.2"))
   let row = EvalAttempt {
     task_id: "pareto.labeled" as NonEmptyStr, arm: LowEffortBare, experiment: "exp-bare" as NonEmptyStr, answered_by: restarted,
     record_sha256: "rec" as NonEmptyStr, model_context: ModelContextUnrecorded,

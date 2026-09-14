@@ -275,11 +275,13 @@ fn vllm_models_route_readback(
   }
 }
 
-// THE `created` FIELD OF A /v1/models ENTRY IS THE ENGINE'S OWN START TIME, stamped once per process
-// (vLLM's OpenAI-compatible server sets it from the engine's start), so two readbacks of the same
-// endpoint that disagree on it were answered by two processes. It keeps upstream's name and is
-// carried as std.types EpochSecs, never a bare Int; it lives beside the models readback because
-// that route is its producer, and the frontend eval consumes it as the serving generation.
+// THE `created` FIELD OF A /v1/models ENTRY IS THE TIME THE ROUTE ANSWERED, NOT THE ENGINE'S START.
+// This was first modeled as a process generation and refuted by measurement: 52 readbacks of one
+// endpoint carried 52 distinct values, one per request (vLLM's OpenAI-compatible server stamps the
+// model card with the current time on each listing). So it establishes WHEN a readback was taken
+// and nothing about which process answered; a restart is NOT observable from this route. It keeps
+// upstream's name and is carried as std.types EpochSecs, never a bare Int, beside the readback
+// that produces it.
 type VllmModelsEntryCreated sole_constructor {
   created: EpochSecs
 }

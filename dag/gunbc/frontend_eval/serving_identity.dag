@@ -7,27 +7,27 @@ import gunbc.spark.vllm_observed { VllmModelsRouteReadback, VllmModelsEntryCreat
 
 // THE SERVING REALIZATION THAT ANSWERED IS NOT THE MODEL SNAPSHOT. Reasoning-token accounting, tool-call
 // parsing and the chat template's reading of `reasoning_effort` and `clear_thinking` are all the
-// runtime's, and a run long enough to span an engine restart at the same endpoint would otherwise
-// file a runtime transition as a treatment effect -- which this run did: the canary's /v1/models
-// `created` epoch changed from 1789344826 to 1789385874 during the first 57 attempts. So the cohort
-// binds what the driver can OBSERVE of the realization at the endpoint, and declares as unobserved
-// what only a fleet-side receipt could establish (side-chat review, 2026-09-14).
-//
-// The engine generation is the `created` epoch of the /v1/models entry, modeled where that route is
-// read (gunbc.spark.vllm_observed VllmModelsEntryCreated): two readings that differ are two
-// processes, whatever else agrees.
+// runtime's, and a run long enough to span an engine restart at the same endpoint would file a
+// runtime transition as a treatment effect. So the cohort binds what the driver can OBSERVE of the
+// realization at the endpoint -- host, port, the /v1/models readback, the self-reported version --
+// and declares as unobserved what only a fleet-side receipt could establish (side-chat review,
+// 2026-09-14). THE PROCESS GENERATION IS IN THE SECOND GROUP: /v1/models `created` was first taken
+// for it and is in fact the readback's own timestamp (gunbc.spark.vllm_observed
+// VllmModelsEntryCreated), so a restart between two attempts is not detectable from a session and
+// the identity below does not claim to detect one. `read_at` records when the observation was
+// taken; it is not part of the identity.
 type ObservedServing {
   host: HostIdentity
   port: Port
   models: VllmModelsRouteReadback
-  created: VllmModelsEntryCreated
+  read_at: VllmModelsEntryCreated
   version: VllmSelfReportedVersion
 }
 
-// WHAT A SESSION CANNOT OBSERVE AT THE ENDPOINT: the runtime image digest and the effective launch
-// configuration are fleet-side facts. They are named by declaration when known (the desired arm
-// the fleet converged, e.g. gunbc.spark.glm_canary_converge glm_canary_arm) and otherwise declared
-// unobserved -- never inferred from the endpoint answering.
+// WHAT A SESSION CANNOT OBSERVE AT THE ENDPOINT: the runtime image digest, the effective launch
+// configuration and the process generation are fleet-side facts. They are named by declaration
+// when known (the desired arm the fleet converged, e.g. gunbc.spark.glm_canary_converge
+// glm_canary_arm) and otherwise declared unobserved -- never inferred from the endpoint answering.
 type RuntimeProvenance
   = RuntimeDeclaredBy { desired: DeclarationRef }
   | RuntimeUnobserved
@@ -40,7 +40,6 @@ type RealizedServing {
 fn realized_serving_identity(s: RealizedServing) -> NonEmptyStr {
   join([
     s.observed.host as String, ":", to_string(value: s.observed.port),
-    "@", to_string(value: s.observed.created.created),
     "/", s.observed.version.version_string as String,
     "/", s.observed.models.served_model_id as String,
   ], "") as NonEmptyStr
