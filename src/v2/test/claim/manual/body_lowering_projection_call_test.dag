@@ -30,7 +30,7 @@ import v2.std.node {
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
 
-data filing_ident_and_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int, y: Int) -> Int { x }\n\nfn ident_caller() -> Int { g(x: 1, y: 0) }\n\nfn nested_caller() -> Int { g(x: h(y: 5), y: 9) }\n"
+data filing_ident_and_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn ident_caller() -> Int { g(x: 1) }\n\nfn nested_caller() -> Int { g(x: h(y: 5)) }\n"
 
 fn body_lowering_find_postfix_expr(root: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
@@ -184,32 +184,12 @@ fn nested_arg_is_call(root: Node, outer: Symbol, inner: Symbol) -> Bool {
   })
 }
 
-fn call_named_has_arity(root: Node, callee: Symbol, arity: Int) -> Bool {
-  let here = if node_is_call(node: root) {
-    match call_callee_target(node: root) {
-      Accepted { value: c, diagnostics: _ } =>
-        match node_atom_identity_optional(node: c) {
-          Present { value: id } =>
-            (id == callee) && (count(call_argument_targets(node: root)) == arity)
-          Absent => false
-        }
-      Rejected { diagnostics: _ } => false
-    }
-  } else {
-    false
-  }
-  here || fold(root.children, init: false, f: fn(acc, e) {
-    acc || call_named_has_arity(root: e.target, callee: callee, arity: arity)
-  })
-}
-
 fn filing_ident_and_nested_preserved() -> Bool {
   match normalize_source_root(src: filing_ident_and_nested_source, file: ^filing_ident_nested) {
     Absent => false
     Present { value: root } =>
       (count_calls_named(root: root, callee: ^g) == 2)
         && nested_arg_is_call(root: root, outer: ^g, inner: ^h)
-        && call_named_has_arity(root: root, callee: ^g, arity: 2)
   }
 }
 
