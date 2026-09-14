@@ -1,5 +1,6 @@
 module v2.lens.enforcement.grammar_coverage
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }

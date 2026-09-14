@@ -67,10 +67,10 @@ fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
-// THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The nine byte-identical
-// copies that lived across v2.lens collapse here. That is the whole of what this change does, and
-// it is NOT one string_eq corpus-wide: byte-identical forks survive elsewhere, several of them
-// under names that do not spell string_eq exactly.
+// THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The byte-identical copies
+// this change reaches across v2.lens collapse here. That is the whole of what this change does,
+// and it is NOT one string_eq corpus-wide: byte-identical forks survive elsewhere, several of
+// them under names that do not spell string_eq exactly.
 //
 // THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
 // rots the moment anyone adds or removes a copy. ONE COMMAND, and it is the SAME ONE the roster

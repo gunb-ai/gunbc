@@ -1821,11 +1821,19 @@ pub struct TransitionAdmission {
 /// change makes, one per call site the required floor enumerated.
 ///
 ///
-/// THAT RETIREMENT ALSO LANDED ON MAIN, in gunbc#11356, which deleted the same row from the same
-/// roster. The entry above is kept rather than dropped as a duplicate because it is the only
-/// place in this file that NAMES the retired row and records the identity check that admitted
-/// the deletion; main's prose states that two rows went and does not say which. One retirement,
-/// recorded once, by the side that wrote down what it was.
+/// THAT RETIREMENT ALSO LANDED ON MAIN, in gunbc#11356, which deleted the same single
+/// `gunbc#11193 artifact_store_fs anchor leaf` row AND REMOVED THE BLOCK THAT DESCRIBED IT, so
+/// main now names neither the row nor the check that retired it. The entry above is kept rather
+/// than dropped as a duplicate because it is the only place in this file that NAMES the retired
+/// row and records the identity check that admitted the deletion -- the history main
+/// intentionally dropped along with the row. One retirement, recorded once, by the side that
+/// wrote down what it was.
+///
+/// NOT THE `two rows` RETIREMENT, and an earlier wording of this paragraph conflated them. Main's
+/// surviving two-rows prose is the THIRTY-SEVENTH dissolution, the `gunbc#11156` pair discharged
+/// by #11156 merging -- a different retirement, a different trigger, a different population. It
+/// says nothing about the #11193 row either way, so it was never evidence that main had failed to
+/// say which row went.
 ///
 /// THE ROSTER RETURNED TO EMPTY ON MAIN, which is its resting state, AND THIS BRANCH REFILLS IT.
 /// Main's correction is kept because it is true and this branch's earlier wording was not: the
