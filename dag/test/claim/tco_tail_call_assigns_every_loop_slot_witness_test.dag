@@ -67,11 +67,27 @@ test fn tco_shared_reassign_writes_every_slot_in_param_order() -> Bool {
     && tco_has_both_slot_dests(block: tco_reassign_block(target: Go))
 }
 
-test fn tco_identity_elision_mutant_drops_same_named_slot() -> Bool {
-  let mutant = shared_tco_reassign(
-    ordered_args: ["(n - 1)"],
-    param_names: [tco_slot_n()],
+fn tco_witness_identity_elision_reassign(
+  ordered_args: List<String>,
+  param_names: List<String>,
+  identity_mask: List<Bool>
+) -> String {
+  let kept = param_names |> enumerate
+    |> filter(pair => match identity_mask |> skip(pair.first) |> first { Present { value: elide } => !elide  Absent => true })
+  let kept_args = kept |> map(pair => match ordered_args |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
+  let kept_names = kept |> map(pair => pair.second)
+  shared_tco_reassign(
+    ordered_args: kept_args,
+    param_names: kept_names,
     spec: language_spec(target: Rust)
+  )
+}
+
+test fn tco_identity_elision_mutant_drops_same_named_slot() -> Bool {
+  let mutant = tco_witness_identity_elision_reassign(
+    ordered_args: tco_fixture_args(),
+    param_names: tco_fixture_slots(),
+    identity_mask: [true, false]
   )
   !string_contains(s: mutant, pattern: concat(tco_slot_acc(), " ="))
     && string_contains(s: mutant, pattern: concat(tco_slot_n(), " ="))
