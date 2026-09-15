@@ -570,6 +570,16 @@ fn capture_unit_diagnosis(
 // the one-attempt observer until the apply path owns the loop; the observer
 // itself (live_deploy_service_ready_once_*) never sleeps. Pending retries;
 // Refused does not.
+// UNPROVEN: the poll's Ready arm exits without a further attempt. The deleted
+// witness_bounded_poll_early_exit_on_grounded_read called
+// live_deploy_service_ready_once, not this loop, so it never discriminated that
+// arm. TRIGGER: a fixture that can supply a Ready ServiceReadiness into
+// live_deploy_poll_service_ready_outcome_after_attempts without materializing
+// the live site (injected one-attempt observation). Until then the once-Ready
+// property is held by
+// test.claim.roadmap_site_surface_readiness
+// witness_roadmap_site_surface_readiness_materialized_batch_holds via
+// service_ready_once_converges_on_healthy_fixture_for_bundle.
 
 type ServiceReadyPollOutcome =
     PollSettled { result: ServiceReadiness }
