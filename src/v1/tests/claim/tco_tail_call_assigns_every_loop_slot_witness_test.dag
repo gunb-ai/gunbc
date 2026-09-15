@@ -6,7 +6,7 @@ import v1.compiler.emit {
   tco_loop_slot_name
 }
 import v1.compiler.emit_core_support { language_spec }
-import v2.std.logic { Bool }
+import std.types { Bool }
 
 // LOCAL DILIGENCE for tco_identity_passthrough_elision_after_slot_local_split. It lives here
 // because the required floor's source roots are `dag` and `src/v2` only (witnesses.yml), and
