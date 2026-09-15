@@ -104,6 +104,10 @@ fn desired_deployment_roster() -> List<DesiredDeployment> {
   ]
 }
 
+fn instance_id_text(id: NonEmptyStr) -> String {
+  join([id as String], "")
+}
+
 fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment? {
   fold(
     desired_deployment_roster(),
@@ -112,7 +116,7 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment?
       match acc {
         Present { value } => Present { value: value }
         Absent => {
-          if row.instance.instance_id == instance_id as NonEmptyStr {
+          if instance_id_text(id: row.instance.instance_id) == instance_id {
             Present { value: row }
           } else {
             none

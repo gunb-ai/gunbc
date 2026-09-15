@@ -141,7 +141,7 @@ fn discrimination_apply_plan(row: DesiredDeployment) -> ReleaseEffectPlan {
     mutation_for: m => match m {
       UnitFile => WriteUnit
       DirectoryRoot { path } => {
-        if path as String == owned as String {
+        if join([path as String], "") == join([owned as String], "") {
           CreateRoot
         } else {
           KeepMember
