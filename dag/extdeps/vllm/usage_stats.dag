@@ -113,6 +113,8 @@ type VllmUsageStatsReporting sole_constructor {
   service_jurisdiction: VllmUsageStatsServiceJurisdiction
   collected_fields: List<NonEmptyStr>
   disable_terms: List<VllmUsageStatsDisableTerm>
+  vllm_do_not_track_env: NonEmptyStr
+  do_not_track_fallback_env: NonEmptyStr
   disable_marker_path: NonEmptyStr
   established_against: VllmSourceRevision
 }
@@ -137,25 +139,29 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
   ],
   disable_terms: [
     VllmUsageStatsDisableTerm { variable: "VLLM_NO_USAGE_STATS", disabling_value: "1" },
-    VllmUsageStatsDisableTerm { variable: "DO_NOT_TRACK", disabling_value: "1" },
   ],
+  vllm_do_not_track_env: "VLLM_DO_NOT_TRACK",
+  do_not_track_fallback_env: "DO_NOT_TRACK",
   disable_marker_path: "~/.config/vllm/do_not_track",
   established_against: vllm_source_revision_read,
 }
 
-// THE THIRD TERM OF UPSTREAM'S DISJUNCTION IS THE MARKER FILE, carried above as
-// disable_marker_path and deliberately not folded by the launch standing below: a container
-// environment cannot answer whether a path exists inside the image or the home directory, and
-// guessing would be the same authored reading this module just moved out of the consumer. Its
-// absence from the fold errs in the conservative direction -- a fleet that disabled reporting only
-// by marker file reads as ENABLED here, which over-declares the egress rather than hiding it -- and
-// the honest closure is a filesystem observation, not a bolder predicate.
+// THE THIRD TERM OF UPSTREAM'S DISJUNCTION IS THE MARKER FILE. InspectServingContainer does not
+// authorize a filesystem read of disable_marker_path. Unread marker is therefore Unread standing,
+// never an authored "enabled" default: upstream is
+// `_USAGE_STATS_ENABLED = not (do_not_track or no_usage_stats or do_not_track_file)` at
+// vllm_source_revision_read (vllm/usage/usage_lib.py). Treating unread-as-absent would admit.
 //
-// REPORTING IS ON UNLESS SOMETHING TURNS IT OFF, which is the shape of the upstream check
-// (_USAGE_STATS_ENABLED = not (do_not_track or no_usage_stats or do_not_track_file)) and therefore
-// the shape of the question a consumer must ask about a particular launch. The arms are what a
-// launch's configuration can establish, and the unread arm exists because reading a running host's
-// environment is an observation this module cannot make.
+// DO_NOT_TRACK IS NOT AN INDEPENDENT TERM. At that same revision, envs.py computes
+// `VLLM_DO_NOT_TRACK = (os.environ.get("VLLM_DO_NOT_TRACK") or os.environ.get("DO_NOT_TRACK") or "0") == "1"`.
+// Python `or` skips only unset and empty, so VLLM_DO_NOT_TRACK=0 with DO_NOT_TRACK=1 stays enabled.
+// VLLM_NO_USAGE_STATS remains an independent exact-equality term (`== "1"`).
+//
+// VLLM_USAGE_STATS_SERVER: os.environ.get's default applies only when the name is unset. A present
+// empty string stays empty and is not the default server.
+
+data vllm_usage_stats_empty_server_cause: NonEmptyStr = "VLLM_USAGE_STATS_SERVER is present and empty; os.environ.get's default applies only when the name is unset (extdeps.vllm.usage_stats, vllm/envs.py at vllm_source_revision_read)" as NonEmptyStr
+
 type VllmDoNotTrackMarkerStanding
   = DoNotTrackMarkerPresent
   | DoNotTrackMarkerAbsent
@@ -174,7 +180,13 @@ type VllmUsageStatsLaunchStanding
 
 fn vllm_usage_stats_inspect_env_names() -> List<NonEmptyStr> {
   append(
-    map(vllm_usage_stats_reporting.disable_terms, t => t.variable),
+    append(
+      append(
+        map(vllm_usage_stats_reporting.disable_terms, t => t.variable),
+        items: [vllm_usage_stats_reporting.vllm_do_not_track_env],
+      ),
+      items: [vllm_usage_stats_reporting.do_not_track_fallback_env],
+    ),
     items: [vllm_usage_stats_reporting.server_override_env],
   )
 }
@@ -190,6 +202,52 @@ fn vllm_usage_stats_named_value(assignments: List<VllmUsageStatsEnvAssignment>, 
           none
         }
     })
+}
+
+fn vllm_usage_stats_python_or_env(first: String?, second: String?) -> String {
+  match first {
+    Present { value: a } =>
+      if a.length() == 0 {
+        match second {
+          Present { value: b } => if b.length() == 0 { "0" } else { b }
+          Absent => "0"
+        }
+      } else {
+        a
+      }
+    Absent =>
+      match second {
+        Present { value: b } => if b.length() == 0 { "0" } else { b }
+        Absent => "0"
+      }
+  }
+}
+
+fn vllm_usage_stats_do_not_track_mechanism(
+  assignments: List<VllmUsageStatsEnvAssignment>,
+) -> NonEmptyStr? {
+  let primary = vllm_usage_stats_named_value(
+    assignments: assignments,
+    name: vllm_usage_stats_reporting.vllm_do_not_track_env,
+  )
+  let fallback = vllm_usage_stats_named_value(
+    assignments: assignments,
+    name: vllm_usage_stats_reporting.do_not_track_fallback_env,
+  )
+  if vllm_usage_stats_python_or_env(first: primary, second: fallback) == "1" {
+    match primary {
+      Present { value: a } =>
+        if a.length() == 0 {
+          Present { value: vllm_usage_stats_reporting.do_not_track_fallback_env }
+        } else {
+          Present { value: vllm_usage_stats_reporting.vllm_do_not_track_env }
+        }
+      Absent =>
+        Present { value: vllm_usage_stats_reporting.do_not_track_fallback_env }
+    }
+  } else {
+    none
+  }
 }
 
 fn vllm_usage_stats_term_disables_from_assignments(
@@ -212,18 +270,15 @@ fn vllm_usage_stats_term_disables_from_assignments(
     })
 }
 
-fn vllm_usage_stats_destination(assignments: List<VllmUsageStatsEnvAssignment>) -> NonEmptyStr {
-  match vllm_usage_stats_named_value(
+fn vllm_usage_stats_disable_mechanism_from_assignments(
+  assignments: List<VllmUsageStatsEnvAssignment>,
+) -> NonEmptyStr? {
+  match vllm_usage_stats_term_disables_from_assignments(
+    terms: vllm_usage_stats_reporting.disable_terms,
     assignments: assignments,
-    name: vllm_usage_stats_reporting.server_override_env,
   ) {
-    Absent => vllm_usage_stats_reporting.default_server
-    Present { value: v } =>
-      if v.length() == 0 {
-        vllm_usage_stats_reporting.default_server
-      } else {
-        v as NonEmptyStr
-      }
+    Present { value: m } => Present { value: m }
+    Absent => vllm_usage_stats_do_not_track_mechanism(assignments: assignments)
   }
 }
 
@@ -231,25 +286,34 @@ fn vllm_usage_stats_standing_from_effective_config(
   assignments: List<VllmUsageStatsEnvAssignment>,
   marker: VllmDoNotTrackMarkerStanding,
 ) -> VllmUsageStatsLaunchStanding {
-  match vllm_usage_stats_term_disables_from_assignments(
-    terms: vllm_usage_stats_reporting.disable_terms,
-    assignments: assignments,
-  ) {
+  match vllm_usage_stats_disable_mechanism_from_assignments(assignments: assignments) {
     Present { value: mechanism } =>
       UsageStatsDisabledByLaunch { mechanism: mechanism }
     Absent =>
       match marker {
         DoNotTrackMarkerPresent =>
           UsageStatsDisabledByLaunch { mechanism: vllm_usage_stats_reporting.disable_marker_path }
+        DoNotTrackMarkerUnread { obligation: o } =>
+          UsageStatsLaunchUnread { obligation: o }
         DoNotTrackMarkerAbsent =>
-          UsageStatsEnabledByDefault {
-            basis: "no disable term equals 1 and the do-not-track marker is absent" as NonEmptyStr,
-            destination: vllm_usage_stats_destination(assignments: assignments),
-          }
-        DoNotTrackMarkerUnread { obligation: _ } =>
-          UsageStatsEnabledByDefault {
-            basis: "no disable term equals 1; the do-not-track marker was not read, so disable-by-marker is not claimed" as NonEmptyStr,
-            destination: vllm_usage_stats_destination(assignments: assignments),
+          match vllm_usage_stats_named_value(
+            assignments: assignments,
+            name: vllm_usage_stats_reporting.server_override_env,
+          ) {
+            Present { value: v } =>
+              if v.length() == 0 {
+                UsageStatsEnvMalformed { cause: vllm_usage_stats_empty_server_cause }
+              } else {
+                UsageStatsEnabledByDefault {
+                  basis: "no disable term equals 1 and the do-not-track marker is absent" as NonEmptyStr,
+                  destination: v as NonEmptyStr,
+                }
+              }
+            Absent =>
+              UsageStatsEnabledByDefault {
+                basis: "no disable term equals 1 and the do-not-track marker is absent" as NonEmptyStr,
+                destination: vllm_usage_stats_reporting.default_server,
+              }
           }
       }
   }

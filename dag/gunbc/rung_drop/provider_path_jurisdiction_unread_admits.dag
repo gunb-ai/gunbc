@@ -111,12 +111,10 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 //
 // DECLARED 2026-09-11 with the Spark first-party serving route, under review 63995.
 
-// THE POPULATION IS THE LOCATED TELEMETRY PATH WHEN INSPECT STANDING IS ENABLED AND METADATA-ONLY.
-// spark_usage_stats_telemetry_path returns ProviderPathLocated in that arm; Absent when the launch
-// disables the reporter; Unread when inspect stdout was not supplied. A previous spelling claimed
-// Unread on every arm and kept population []. That sentence was true of the declared-env repair
-// and is false once inspect standing can enable the reporter. The enrollment is live for that
-// Located arm, keyed to spark_serving_usage_stats_standing and the undocumented-jurisdiction field.
+// THE POPULATION STAYS EMPTY IN THIS PR. Inspect standing can now observe a disable and Absent
+// the telemetry path, or refuse Unread/malformed/enabled. Enabled egress -- even at the canonical
+// default server -- is not Located and is not admitted. That enrollment is a later policy
+// decision; this row does not start counting because of the inspect reader.
 data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
   identity: "provider_path_jurisdiction_unread_admits" as NonEmptyStr,
 
@@ -130,9 +128,7 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-  population: [
-    "gunbc.spark.first_party_serving spark_usage_stats_telemetry_path returns ProviderPathLocated when the answering container's effective usage-stats configuration is enabled (metadata-only reporter, undocumented jurisdiction enrolled on this path)",
-  ],
+    population: [],
     restoration_trigger: "product.fabric.provider_route ProviderPathStanding carries a jurisdiction standing SUFFICIENT FOR a located path to declare its jurisdiction unread without the whole path becoming unread -- so that a consumer matching the located arm can see which of its three components were established -- and gunbc.spark.first_party_serving's telemetry path states the fact in its arm. Reading who operates the usage-stats service does NOT discharge this row: it fills one slot on one route and leaves every other located path with an undocumented counterparty in the same unexpressible position",
   }
 }

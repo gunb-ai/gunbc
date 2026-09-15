@@ -1,6 +1,6 @@
 module gunbc.spark.first_party_serving
 
-import std.types { NonEmptyStr, List, String }
+import std.types { NonEmptyStr, List, String, Bool }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
@@ -674,19 +674,19 @@ fn spark_serving_usage_stats_standing(
   }
 }
 
-// THE LOCATED ARM IS REACHABLE WHEN THE INSPECT STANDING IS ENABLED AND METADATA-ONLY. It is
-// the right answer for an ESTABLISHED applicable reporter, and the operator's 2026-09-11 ruling
-// governs exactly that case: a metadata-only reporter may be admitted despite its undocumented
-// jurisdiction. Attribution is the inspect bound to the offered incarnation, not the declared
-// unit environment. When inspect is unread, the path stays Unread; when a disable term equals 1,
-// the path is Absent. The drop enrollment at spark_first_party_posture covers the Located arm's
-// undocumented jurisdiction; gunbc.rung_drop.provider_path_jurisdiction_unread_admits names that
-// population.
-fn spark_usage_stats_telemetry_path(
-  realization: SparkServingRealization,
-  inspect: ServingContainerInspectStdout,
+data spark_usage_stats_enabled_egress_refused_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: inspect standing shows the usage-stats reporter enabled (metadata-only, destination either the upstream default or an explicit VLLM_USAGE_STATS_SERVER). THIS PR DOES NOT ADMIT THAT EGRESS. Enabled-telemetry admission is a separate operator policy decision; until it is taken, spark_usage_stats_telemetry_path stays ProviderPathUnread rather than ProviderPathLocated, and gunbc.rung_drop.provider_path_jurisdiction_unread_admits population stays empty. Setting a disable term to exactly 1 on the answering container, then supplying that inspect, is the arm that absents the path." as NonEmptyStr
+
+data spark_usage_stats_unmodeled_destination_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: VLLM_USAGE_STATS_SERVER is set to a nonempty URL that is not extdeps.vllm.usage_stats vllm_usage_stats_reporting.default_server. That recipient is unmodeled: it must not inherit the default-service operator, jurisdiction, or jurisdiction-drop enrollment. The path is ProviderPathUnread." as NonEmptyStr
+
+// THE LOCATED ARM IS NOT TAKEN IN THIS PR. An observed disable (exact-1 env term or a present
+// marker) absents the path. Enabled standing -- even at the canonical default server -- stays
+// Unread. An override destination stays Unread on its own obligation so it cannot wear the default
+// row. Marker unread with no disabling env is Unread. Attribution is inspect bound to the offered
+// incarnation, not spark_pair_container_env.
+fn spark_usage_stats_path_from_launch_standing(
+  standing: VllmUsageStatsLaunchStanding,
 ) -> ProviderPathStanding {
-  match spark_serving_usage_stats_standing(realization: realization, inspect: inspect) {
+  match standing {
     UsageStatsLaunchUnread { obligation: _ } =>
       ProviderPathUnread {
         obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
@@ -701,7 +701,7 @@ fn spark_usage_stats_telemetry_path(
       ProviderPathAbsent {
         evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
       }
-    UsageStatsEnabledByDefault { basis: _, destination: _ } =>
+    UsageStatsEnabledByDefault { basis: _, destination: d } =>
       match vllm_usage_stats_reporting.content_class {
         CarriesRequestMaterial =>
           ProviderPathUnread {
@@ -709,13 +709,28 @@ fn spark_usage_stats_telemetry_path(
             consulted: [],
           }
         ConfigurationAndHardwareMetadataOnly =>
-          ProviderPathLocated {
-            operator: decl_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting"),
-            jurisdiction: decl_field_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting", field_name: "service_jurisdiction"),
-            evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+          if (d as String) == (vllm_usage_stats_reporting.default_server as String) {
+            ProviderPathUnread {
+              obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_usage_stats_enabled_egress_refused_obligation"),
+              consulted: [],
+            }
+          } else {
+            ProviderPathUnread {
+              obligation: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_usage_stats_unmodeled_destination_obligation"),
+              consulted: [],
+            }
           }
       }
   }
+}
+
+fn spark_usage_stats_telemetry_path(
+  realization: SparkServingRealization,
+  inspect: ServingContainerInspectStdout,
+) -> ProviderPathStanding {
+  spark_usage_stats_path_from_launch_standing(
+    standing: spark_serving_usage_stats_standing(realization: realization, inspect: inspect),
+  )
 }
 
 // THE observed_at DATE IS THE ASSERTION'S, AT DATE GRAIN. ProviderRouteFacts takes a Timestamp and

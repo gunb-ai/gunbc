@@ -19,7 +19,7 @@ import gunbc.spark.vllm_serving_launch { VllmServingLaunch }
 // is not required. WHAT THIS MODULE MUST NOT DO: return, log or persist the rest of Config.Env;
 // infer the running environment from a declared unit; widen an identity-only inspect decoder.
 
-data spark_usage_stats_inspect_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the answering container's inspect stdout was not supplied, so the effective usage-stats configuration is unread. THE GRANT THAT AUTHORIZES THE READ is gunbc.spark.managed_access_bootstrap InspectServingContainer, installed through gunbc.spark.managed_grant_install. The decoder is docker_container_inspect_named_env_from_stdout over VLLM_NO_USAGE_STATS, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER only." as NonEmptyStr
+data spark_usage_stats_inspect_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the answering container's inspect stdout was not supplied, so the effective usage-stats configuration is unread. THE GRANT THAT AUTHORIZES THE READ is gunbc.spark.managed_access_bootstrap InspectServingContainer, installed through gunbc.spark.managed_grant_install. The decoder is docker_container_inspect_named_env_from_stdout over VLLM_NO_USAGE_STATS, VLLM_DO_NOT_TRACK, DO_NOT_TRACK and VLLM_USAGE_STATS_SERVER only." as NonEmptyStr
 
 data spark_usage_stats_marker_unread_obligation: NonEmptyStr = "gunbc.spark.serving_usage_stats_observe: the upstream do-not-track marker file was not observed inside the answering container. InspectServingContainer does not authorize a filesystem read of disable_marker_path. Disable-by-marker is therefore not claimed." as NonEmptyStr
 

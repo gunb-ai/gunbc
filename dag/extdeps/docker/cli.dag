@@ -412,7 +412,9 @@ fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<No
       } else {
         match json_object_unique_member(v: obj, key: "Config") {
           JsonMemberAbsent =>
-            DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: [] }
+            DockerContainerInspectNamedEnvUnreadable {
+              cause: "docker container inspect JSON names no Config" as NonEmptyStr,
+            }
           JsonMemberNotAnObject =>
             DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect JSON element is not an object" as NonEmptyStr }
           JsonMemberDuplicated { count: n } =>
@@ -422,7 +424,9 @@ fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<No
           JsonMemberFound { value: cfg } =>
             match json_object_unique_member(v: cfg, key: "Env") {
               JsonMemberAbsent =>
-                DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: [] }
+                DockerContainerInspectNamedEnvUnreadable {
+                  cause: "docker container inspect Config names no Env" as NonEmptyStr,
+                }
               JsonMemberNotAnObject =>
                 DockerContainerInspectNamedEnvUnreadable { cause: "docker container inspect Config is not an object" as NonEmptyStr }
               JsonMemberDuplicated { count: n } =>
@@ -430,17 +434,40 @@ fn docker_container_inspect_named_env_from_object(obj: JsonValue, names: List<No
                   cause: join(["docker container inspect Config names Env ", to_string(n), " times"], "") as NonEmptyStr,
                 }
               JsonMemberFound { value: envv } =>
-                match docker_json_string_list(v: envv) {
-                  Absent =>
+                match envv {
+                  JsonNull =>
+                    DockerContainerInspectNamedEnvUnreadable {
+                      cause: "docker container inspect Config.Env is null" as NonEmptyStr,
+                    }
+                  JsonBool { value: _ } =>
                     DockerContainerInspectNamedEnvUnreadable {
                       cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
                     }
-                  Present { value: env } =>
-                    match docker_project_named_env(env: env, names: names) {
-                      DockerNamedEnvAccUnreadable { cause: c } =>
-                        DockerContainerInspectNamedEnvUnreadable { cause: c }
-                      DockerNamedEnvAcc { assignments: asg } =>
-                        DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: asg }
+                  JsonNumber { lexeme: _ } =>
+                    DockerContainerInspectNamedEnvUnreadable {
+                      cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
+                    }
+                  JsonString { value: _ } =>
+                    DockerContainerInspectNamedEnvUnreadable {
+                      cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
+                    }
+                  JsonObject { members: _ } =>
+                    DockerContainerInspectNamedEnvUnreadable {
+                      cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
+                    }
+                  JsonArray { elements: _ } =>
+                    match docker_json_string_list(v: envv) {
+                      Absent =>
+                        DockerContainerInspectNamedEnvUnreadable {
+                          cause: "docker container inspect Config.Env is not a list of strings" as NonEmptyStr,
+                        }
+                      Present { value: env } =>
+                        match docker_project_named_env(env: env, names: names) {
+                          DockerNamedEnvAccUnreadable { cause: c } =>
+                            DockerContainerInspectNamedEnvUnreadable { cause: c }
+                          DockerNamedEnvAcc { assignments: asg } =>
+                            DockerContainerInspectNamedEnv { id: id as NonEmptyStr, assignments: asg }
+                        }
                     }
                 }
             }

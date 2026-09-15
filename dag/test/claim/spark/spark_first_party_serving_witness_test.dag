@@ -305,15 +305,9 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
   }
 }
-// THE LOCATED DROP CONTROL IS NOT IN THIS FILE. This suite still drives unread inspect, which is
-// Unread rather than Located. The population
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits names -- enabled inspect, metadata-only,
-// ProviderPathLocated, admit via spark_first_party_posture's enrollment -- is executed in
-// test.claim.spark.spark_serving_usage_stats_observe_witness_test
-// enabled_inspect_is_a_located_telemetry_path,
-// enabled_inspect_admits_first_party_use_under_the_jurisdiction_drop, and the RED
-// enabled_inspect_refuses_when_the_jurisdiction_drop_is_not_enrolled. Restoring a Located control
-// here against unread inspect would be permanently green.
+// THIS FILE STILL DRIVES UNREAD INSPECT. Disabled inspect -> Absent and admit is in
+// test.claim.spark.spark_serving_usage_stats_observe_witness_test. Enabled egress is refused there
+// too; this PR does not populate gunbc.rung_drop.provider_path_jurisdiction_unread_admits.
 
 
 // THE THREE RESULTS THIS REPAIR HAS TO ESTABLISH, each at the seam that owns it. They are separate
