@@ -1,6 +1,6 @@
 module test.claim.live_deploy.desired_roster
 
-import std.types { Bool, String, Int, List, CommitSha }
+import std.types { Bool, String, Int, List }
 import std.dissolution {
   dissolution_status,
   DissolutionPending,
@@ -27,11 +27,21 @@ import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path
 import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_plan_listen_port,
+  deployment_systemd_unit_path,
 }
-import gunbc.live_deploy.emit {
-  live_deploy_systemd_unit_for,
-  RevisionBoundAtEmission,
+import gunbc.live_deploy.emit { live_deploy_apply_script_for }
+import gunbc.live_deploy.member_identity {
+  ReleaseEffectPlan,
+  uniform_release_plan,
+  UnitFile,
+  DirectoryRoot,
+  WriteUnit,
+  CreateRoot,
+  KeepMember,
 }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.roadmap_dashboard_instance { dashboard_instance_dispatch_worktree_root }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target }
 import v2.std.collection { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -116,16 +126,53 @@ test fn same_host_production_and_lab_do_not_share_port_unit_or_handler() -> Bool
     && !(live.service.repo_root == lab.service.repo_root)
 }
 
+// THE ARTIFACT IS THE APPLY SCRIPT. A unit-file inequality does not entail that lab and
+// production apply scripts differ, and it is the apply script that mutates the host. The
+// full-install plan is what blew the floor eval-step budget; shrinking THAT plan is the cost
+// repair, not swapping the artifact. This plan still writes the unit (handler) and creates one
+// owned dispatch-worktree root. Tree publication, executable install, and the other roots stay
+// KeepMember so they are not rendered.
+fn discrimination_apply_plan(row: DesiredDeployment) -> ReleaseEffectPlan {
+  let spec = selected_deployment_spec(row: row)
+  let owned = dashboard_instance_dispatch_worktree_root(instance: row.instance)
+  uniform_release_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+    mutation_for: m => match m {
+      UnitFile => WriteUnit
+      DirectoryRoot { path } =>
+        if path as String == owned as String {
+          CreateRoot
+        } else {
+          KeepMember
+        }
+      _ => KeepMember
+    },
+  )
+}
+
 test fn selecting_lab_changes_emitted_apply_bytes() -> Bool {
-  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
-  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let rev = RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha }
-  let live_unit = live_deploy_systemd_unit_for(spec: live, revision: rev)
-  let lab_unit = live_deploy_systemd_unit_for(spec: lab, revision: rev)
-  !(live_unit == lab_unit)
-    && string_contains(s: live_unit, pattern: "--function roadmap_serve_handle ")
-    && string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle_srv1_lab ")
-    && !string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle ")
+  let live_row = srv1_production_desired_deployment()
+  let lab_row = srv1_lab_desired_deployment()
+  let live = selected_deployment_spec(row: live_row)
+  let lab = selected_deployment_spec(row: lab_row)
+  let live_sh = live_deploy_apply_script_for(spec: live, plan: discrimination_apply_plan(row: live_row))
+  let lab_sh = live_deploy_apply_script_for(spec: lab, plan: discrimination_apply_plan(row: lab_row))
+  !(live_sh == lab_sh)
+    && string_contains(s: live_sh, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: live_sh, pattern: deployment_systemd_unit_path(names: live.names) as String)
+    && string_contains(s: lab_sh, pattern: deployment_systemd_unit_path(names: lab.names) as String)
+    && !string_contains(s: lab_sh, pattern: deployment_systemd_unit_path(names: live.names) as String)
+    && string_contains(
+      s: live_sh,
+      pattern: dashboard_instance_dispatch_worktree_root(instance: live_row.instance) as String,
+    )
+    && string_contains(
+      s: lab_sh,
+      pattern: dashboard_instance_dispatch_worktree_root(instance: lab_row.instance) as String,
+    )
 }
 
 test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
