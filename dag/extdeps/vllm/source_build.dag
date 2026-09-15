@@ -171,6 +171,7 @@ data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
 fn vllm_recipe_targeting(
   base: VllmContainerBuildRecipe,
   torch_cuda_arch_list: List<NonEmptyStr>,
+  install_kv_connectors: Bool,
   max_jobs: Nat,
   nvcc_threads: Nat,
 ) -> VllmContainerBuildRecipe {
@@ -185,7 +186,7 @@ fn vllm_recipe_targeting(
     torch_version: base.torch_version,
     flashinfer_version: base.flashinfer_version,
     torch_cuda_arch_list: torch_cuda_arch_list,
-    install_kv_connectors: base.install_kv_connectors,
+    install_kv_connectors: install_kv_connectors,
     max_jobs: max_jobs,
     nvcc_threads: nvcc_threads,
   }

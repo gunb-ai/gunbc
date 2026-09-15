@@ -10,7 +10,6 @@ import extdeps.docker.cli { docker_build_spec_command }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.gpu.types { GpuCapabilityLabelOk, GpuCapabilityLabelRejected }
 import extdeps.vllm.source_build {
-  VllmContainerBuildRecipe,
   vllm_07b75534_aarch64_release_recipe, vllm_07b75534_default_recipe,
   vllm_recipe_targeting, vllm_cuda_arch_supported,
   vllm_torch_cuda_arch_list_wire, vllm_torch_cuda_arch_list_targets,
@@ -148,21 +147,13 @@ test fn neither_upstream_recipe_targets_gb10_and_upstream_still_accepts_it() -> 
 // `false`, so one identity would stand for two different sets of bytes. Both directions are asserted.
 test fn the_key_moves_with_the_connector_build_argument() -> Bool {
   let with_conn = vllm_07b75534_aarch64_release_recipe
-  let without = VllmContainerBuildRecipe {
-    source: with_conn.source,
-    dockerfile_path: with_conn.dockerfile_path,
-    build_target: with_conn.build_target,
-    cuda_version: with_conn.cuda_version,
-    build_base_image: with_conn.build_base_image,
-    final_base_image: with_conn.final_base_image,
-    python_version: with_conn.python_version,
-    torch_version: with_conn.torch_version,
-    flashinfer_version: with_conn.flashinfer_version,
+  let without = vllm_recipe_targeting(
+    base: with_conn,
     torch_cuda_arch_list: with_conn.torch_cuda_arch_list,
     install_kv_connectors: false,
     max_jobs: with_conn.max_jobs,
     nvcc_threads: with_conn.nvcc_threads,
-  }
+  )
   with_conn.install_kv_connectors
     && !without.install_kv_connectors
     && (serialize_content_hash(hash: vllm_image_build_key(r: without)) as String)
@@ -176,12 +167,14 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
   let other_arch = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: ["12.0" as NonEmptyStr],
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: v41_build_max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
   let other_jobs = vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: 1,
     nvcc_threads: 1,
   )

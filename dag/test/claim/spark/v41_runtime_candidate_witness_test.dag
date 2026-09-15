@@ -79,7 +79,7 @@ fn w_observed(pairs: List<WPatchSpec>, partition: V41EngramPartitionAuthority) -
 fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat, wheels: List<FlashInferWheel>) -> V41CandidateInputs {
   V41CandidateInputs {
     runtime: V41RuntimeArtifactInputs {
-      recipe: vllm_recipe_targeting(base: v41_candidate_recipe(), torch_cuda_arch_list: v41_candidate_recipe().torch_cuda_arch_list, max_jobs: max_jobs, nvcc_threads: 2),
+      recipe: vllm_recipe_targeting(base: v41_candidate_recipe(), torch_cuda_arch_list: v41_candidate_recipe().torch_cuda_arch_list, install_kv_connectors: v41_candidate_recipe().install_kv_connectors, max_jobs: max_jobs, nvcc_threads: 2),
       kernel_acquisition: flashinfer_0_6_18_post1,
       kernel_wheels: wheels,
       patches: patches,

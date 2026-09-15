@@ -237,6 +237,7 @@ fn v41_gb10_recipe() -> VllmContainerBuildRecipe {
   vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: v41_build_max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
