@@ -4773,7 +4773,20 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
           match body_lower_find_where_host_conj(root: captured) {
-            Absent => outcome_accepted(value: shell)
+            Absent =>
+              match body_lower_find_captured(root: captured, emitted: ^dag_surface_field_decl_block) {
+                ParseSubtreeFound { captured: fields } =>
+                  outcome_accepted(
+                    value: node_with_occurrence_id(
+                      kind: TypeNode { connective: Conj },
+                      children: [
+                        Edge { label: Named { name: type_name }, target: fields }
+                      ],
+                      occurrence_id: shell.occurrence_id
+                    )
+                  )
+                ParseSubtreeAbsent => outcome_accepted(value: shell)
+              }
             Present { value: host } =>
               outcome_accepted(
                 value: node_with_occurrence_id(
