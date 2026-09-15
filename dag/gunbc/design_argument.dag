@@ -98,6 +98,7 @@ data conformance_domains: List<ConformanceDomain> = [
         decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
         decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
         decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+        decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
       ],
     },
     tells: [
@@ -105,7 +106,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a shell or host call that executes what a realization handler already binds",
       "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
     ],
-    narrative: "caching and execution are one concept, keyed by content hash",
+    narrative: "caching and execution are one concept, keyed by content hash. This row owns cache PURITY (whether a materialized value denotes the same fact); key DERIVATION correctness (relation, encoding, family, scope) is owned by conformance-identity",
   },
   ConformanceDomain {
     key: "conformance-leasing",
@@ -188,7 +189,6 @@ data conformance_domains: List<ConformanceDomain> = [
         decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
         decl_ref(module_path: "v2.std.node", decl_name: "content_hash"),
         decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
-        decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
       ],
     },
     tells: [
@@ -198,7 +198,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a second key derivation for a subject that already has a key authority, or a key under one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity)",
       "a cache or memo key that omits a declared input the result depends on"
     ],
-    narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key, judged by extdeps.realization.cache_purity), and occurrence identity within one source graph (std.occurrence_identity). Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
+    narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key), and occurrence identity within one source graph (std.occurrence_identity). This row owns key DERIVATION correctness (relation, encoding, family, scope); cache PURITY -- whether a materialized value denotes the same fact -- is owned by conformance-realization. Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
   },
   ConformanceDomain {
     key: "conformance-observability",
