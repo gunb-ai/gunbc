@@ -134,7 +134,7 @@ test fn a_negative_btime_refuses_rather_than_minting_epoch_secs() -> Bool {
 
 test fn the_clock_tick_rate_reads() -> Bool {
   match clock_ticks_reading(stdout: fixture_clk_tck) {
-    ClockTicksObserved { per_second: n } => n == hertz(count: 100)
+    ClockTicksObserved { per_second: n } => n == 100
     ClockTicksUnparseable { field: _ } => false
     ClockTicksNotPositive { value: _ } => false
   }
