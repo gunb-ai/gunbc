@@ -68,7 +68,6 @@ type SystemdUnitProperty
   | SubState
   | Result
   | ExecMainStatus
-  | SubState
   | ExecStartProperty
   | User
   | WorkingDirectoryProperty
@@ -106,7 +105,6 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     SubState => "SubState" as NonEmptyStr
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
-    SubState => "SubState" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
