@@ -1812,12 +1812,15 @@ pub struct TransitionAdmission {
 /// touch: it pays the deletion rather than inheriting 37 consumed rows onto an unrelated
 /// relocation. Trigger, merge identity, and the required-floor consumed count on #11418 agree.
 ///
-/// gunbc#11418 declared-unit-digest home (2026-09-15). Nine `TargetChanged` rows for one move:
+/// gunbc#11418 declared-unit-digest home (2026-09-15). Six `TargetChanged` rows for one move:
 /// `DeclaredUnitDigestStanding`, `DeclaredUnitDigested`, and `DeclaredUnitDigestUnavailable`
 /// relocate from `gunbc.spark.serving_offer` to `gunbc.spark.pair_serving_realization`, which is
 /// the render boundary that mints the SHA-256 of the rendered head-unit bytes. The three
 /// declarations move verbatim; each row below is a spelling authored on both sides whose
-/// candidate module changed, not a change of which declaration the spelling denotes.
+/// candidate module changed, not a change of which declaration the spelling denotes. The same
+/// change moves the declared-unit match from `spark_service_from_observation` (which now takes
+/// the digest itself) up into `spark_serving_route_standing`, so the three spellings that stood
+/// in `spark_service_from_observation` at the base are absent at the head and have no row.
 ///
 /// DISSOLVE-ON: gunbc#11440 merging. Once the relocation is on main, base and head of every
 /// pull_request build both carry it, all nine report consumed and refuse every unrelated roster
@@ -1859,36 +1862,6 @@ const DECLARED_UNIT_DIGEST_HOME_LABEL: &str =
 /// inheriting them onto the declared-unit-digest relocation.
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: DECLARED_UNIT_DIGEST_HOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_offer",
-            in_declaration: "spark_service_from_observation",
-            spelling: "DeclaredUnitDigestStanding",
-            expected_candidates: &["gunbc.spark.pair_serving_realization"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: DECLARED_UNIT_DIGEST_HOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_offer",
-            in_declaration: "spark_service_from_observation",
-            spelling: "DeclaredUnitDigestUnavailable",
-            expected_candidates: &["gunbc.spark.pair_serving_realization"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: DECLARED_UNIT_DIGEST_HOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_offer",
-            in_declaration: "spark_service_from_observation",
-            spelling: "DeclaredUnitDigested",
-            expected_candidates: &["gunbc.spark.pair_serving_realization"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: DECLARED_UNIT_DIGEST_HOME_LABEL,
         subject: AdmissionSubject::Binding {

@@ -493,9 +493,14 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // gunbc.spark.pair_serving_realization spark_pair_head_unit_file rendered; harness_collect_candidates
 // mints spark_pair_declared_unit_digests once per turn and carries the group's standing in, so
 // DigestStdin is not re-spawned per enrolled route. The incarnation observation is still absent on
-// this path, so production still returns ServingRouteServiceUnidentified with
-// ServiceIncarnationUnobserved. test.claim.spark.spark_pair_head_unit_digest_witness hashes the
-// rendered unit bytes by real sha256sum execution.
+// this path, so production still returns ServingRouteServiceUnidentified -- with
+// ServiceIncarnationUnobserved when the group's digest is carried, and ServiceDeclaredUnitDigestUnavailable
+// when it is not, because spark_serving_route_standing refuses the declared unit before it consults
+// the incarnation. That order is what makes the carry observable: a wire that dropped the roster
+// between harness_collect_candidates and this fold would change the verdict, not merely a note.
+// test.claim.spark.spark_pair_head_unit_digest_witness hashes the rendered unit bytes by real
+// sha256sum execution; test.claim.serving.serving_availability_bind_wet_witness drives
+// harness_add_serving_candidate with the production roster and watches the verdict move.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -622,11 +627,12 @@ fn harness_candidate_from_standing(
                 )
               } else {
                 harness_add_serving_candidate(
-                  acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement,
+                  acc: acc, endpoint: endpoint, class: class, requirement: requirement,
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-                  layout: layout, now: now, declared_units: declared_units,
+                  seats_held: harness_seat_standing(route: route, layout: layout, now: now),
+                  now: now, declared_units: declared_units,
                 )
               }
             HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -638,10 +644,17 @@ fn harness_candidate_from_standing(
           }
 }
 
+// EVERY OBSERVATION THIS FOLD CONSUMES ARRIVES AS A SUPPLIED VALUE -- the engine reading, the
+// availability verdict, the launch, and the seat pool standing -- and the one thing it reaches
+// for itself is the declared-unit roster lookup for this group. That is what makes the roster ->
+// among -> bind wire claimable at this one interface: test.claim.serving.serving_availability_bind_wet_witness
+// executes it with the production roster (spark_pair_declared_unit_digests, real sha256sum) and
+// shows the route verdict move when the roster is withdrawn. The observations themselves are
+// taken one call up, in harness_add_candidate, which no claim executes because it reads live
+// endpoints.
 fn harness_add_serving_candidate(
   acc: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
-  route: ServingRoute,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
   availability: ServingFrontDoorAvailabilityVerdict,
@@ -651,7 +664,7 @@ fn harness_add_serving_candidate(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   seats: Nat,
-  layout: EventLogLayout,
+  seats_held: ServingSeatStanding,
   now: EpochSecs,
   declared_units: List<SparkPairDeclaredUnitDigest>,
 ) -> HarnessCandidates {
@@ -660,7 +673,7 @@ fn harness_add_serving_candidate(
     incoming: class,
     tenancy: serving_co_tenancy(reading: engine.queue),
     pressure: serving_capacity_pressure(reading: engine.queue),
-    seats: harness_seat_standing(route: route, layout: layout, now: now),
+    seats: seats_held,
     ceiling: seats,
     receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
   )

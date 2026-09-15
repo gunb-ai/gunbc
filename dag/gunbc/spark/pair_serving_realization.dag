@@ -540,6 +540,8 @@ fn spark_pair_declared_unit_digests() -> List<SparkPairDeclaredUnitDigest> {
   map(spark_pair_realizations(), r => spark_pair_declared_unit_digest_row(realization: r))
 }
 
+data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr
+
 fn spark_pair_head_unit_declared_digest_among(roster: List<SparkPairDeclaredUnitDigest>, group: FabricGroup) -> DeclaredUnitDigestStanding {
   match first(flat_map(roster, row =>
     if (fabric_group_wire(g: row.group) as String) == (fabric_group_wire(g: group) as String) {
@@ -548,9 +550,7 @@ fn spark_pair_head_unit_declared_digest_among(roster: List<SparkPairDeclaredUnit
       [] as List<DeclaredUnitDigestStanding>
     })) {
     Absent =>
-      DeclaredUnitDigestUnavailable {
-        obligation: "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr,
-      }
+      DeclaredUnitDigestUnavailable { obligation: spark_pair_no_realization_names_group_obligation }
     Present { value: standing } => standing
   }
 }
