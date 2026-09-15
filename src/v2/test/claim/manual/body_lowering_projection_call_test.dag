@@ -11,6 +11,8 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_emitted_identity_optional
 }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node_query { call_argument_targets, call_callee_target }
 import v2.std.optional {
   Absent,
   Optional,
@@ -80,7 +82,17 @@ test fn body_lowering_projection_lowers_to_transform() -> Bool {
                   match found {
                     Present { value: lowered } =>
                       match lowered.kind {
-                        ComputationNode { behavior: Transform } => true
+                        ComputationNode { behavior: Transform } =>
+                          match call_callee_target(node: lowered) {
+                            Rejected { diagnostics: _ } => false
+                            Accepted { value: callee, diagnostics: _ } =>
+                              match node_atom_identity_optional(node: callee) {
+                                Present { value: id } =>
+                                  (id == ^step)
+                                    && (count(call_argument_targets(node: lowered)) == 2)
+                                Absent => false
+                              }
+                          }
                         _ => false
                       }
                     Absent => false
