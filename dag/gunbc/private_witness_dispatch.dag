@@ -114,6 +114,8 @@ fn dispatch_to(target: PrivateWitnessDispatchTarget, sha: String) -> ProcessExit
     Present { value: why } => exit_failure(reason: why)
     Absent =>
       match associated_pull_number(pulls: pulls.pulls) {
+        // Outside the modeled guarantee: an empty list is read as "no PR behind this push", but a
+        // token that lost scope may answer 200 with [] instead of 4xx, and this arm cannot tell.
         Absent => ExitSuccess
         Present { value: pr_number } => {
           let sent = github.RepositoryDispatch.Create(

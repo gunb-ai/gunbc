@@ -1,0 +1,27 @@
+module gunbc.guarantee_stall.process_exit_success_carries_no_receipt_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// Found on gunbc#11389. gunbc.private_witness_dispatch dispatch has two ExitSuccess arms: a
+// dispatch that was sent, and a push with no associated pull request where there is nothing to
+// send. A job log reader cannot tell them apart, because std.process ProcessExit carries a reason
+// only on failure and no extdeps service writes to the stdout gunbc run renders. The only way to
+// print the difference today is a hand-spelled echo beside the modeled route, which is the
+// workaround DESIGN section 5 names, so the arm exits 0 without a line instead.
+data process_exit_success_carries_no_receipt_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a gunbc run entry whose distinct successful outcomes (did the work vs had nothing to do) are indistinguishable to the reader of its job log",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "std.process ProcessExit gains a success arm carrying a typed receipt, or an extdeps stdout effect exists that gunbc run renders"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "gunbc.private_witness_dispatch dispatch_to: the no-associated-pull-request arm and the dispatched arm both return ExitSuccess",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a gunbc run entry can end in success with a typed receipt that gunbc run prints, so gunbc.private_witness_dispatch dispatch_to reports 'nothing to dispatch: no associated pull request for <sha>' distinctly from a sent dispatch without a hand-spelled echo")
+}
