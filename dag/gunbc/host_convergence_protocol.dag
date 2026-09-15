@@ -1,7 +1,7 @@
 module gunbc.host_convergence_protocol
 
 import std.types { Bool, String, List, Int }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { filter, length, concat }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -242,12 +242,12 @@ type FrontierStanding
   = FrontierHonest
   | FrontierConsumerIsDeclaration { frontier: ProtocolDeclaredFrontier }
   | FrontierTriggerIsDeclaration { frontier: ProtocolDeclaredFrontier }
+  | FrontierTriggerIsTheConsumer { frontier: ProtocolDeclaredFrontier }
 
 type CanonicalProtocolStanding
-  = CanonicalProtocolBound
+  = CanonicalProtocolBound { frontiers: List<FrontierStanding> }
   | CanonicalLayersUnbound { join: CanonicalLayerJoin }
   | CensusProtocolUnbound { standing: CensusPhaseStanding }
-  | HostEffectFrontierUnbound { standing: FrontierStanding }
 
 type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan> {
   observe: fn(Subject, Request) -> ObservationAttempt<Observed, ObserveRefusal>
@@ -311,6 +311,10 @@ fn frontier_trigger_is_not_declaration(f: ProtocolDeclaredFrontier) -> Bool {
   !declaration_ref_eq(a: f.declaration, b: f.trigger_capability)
 }
 
+fn frontier_trigger_is_not_the_consumer(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.trigger_capability, b: f.named_consumer)
+}
+
 fn reconcile_from_read_attempt<P, R, E>(
   decision: UpsertDecision<P>,
   application: Application,
@@ -337,7 +341,11 @@ fn reconcile_from_read_attempt<P, R, E>(
 fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
   if frontier_names_a_distinct_consumer(f: f) {
     if frontier_trigger_is_not_declaration(f: f) {
-      FrontierHonest
+      if frontier_trigger_is_not_the_consumer(f: f) {
+        FrontierHonest
+      } else {
+        FrontierTriggerIsTheConsumer { frontier: f }
+      }
     } else {
       FrontierTriggerIsDeclaration { frontier: f }
     }
@@ -347,21 +355,11 @@ fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
 }
 
 fn bind_declared_frontiers(frontiers: List<ProtocolDeclaredFrontier>) -> CanonicalProtocolStanding {
-  fold(frontiers, init: CanonicalProtocolBound, f: fn(acc, f) {
-    match acc {
-      CanonicalLayersUnbound { join: j } => CanonicalLayersUnbound { join: j }
-      CensusProtocolUnbound { standing: s } => CensusProtocolUnbound { standing: s }
-      HostEffectFrontierUnbound { standing: s } => HostEffectFrontierUnbound { standing: s }
-      CanonicalProtocolBound =>
-        match admit_frontier(f: f) {
-          FrontierHonest => CanonicalProtocolBound
-          FrontierConsumerIsDeclaration { frontier: x } =>
-            HostEffectFrontierUnbound { standing: FrontierConsumerIsDeclaration { frontier: x } }
-          FrontierTriggerIsDeclaration { frontier: x } =>
-            HostEffectFrontierUnbound { standing: FrontierTriggerIsDeclaration { frontier: x } }
-        }
-    }
-  })
+  CanonicalProtocolBound {
+    frontiers: fold(frontiers, init: [], f: fn(acc, f) {
+      concat(acc, [admit_frontier(f: f)])
+    }),
+  }
 }
 
 fn bind_canonical_protocol() -> CanonicalProtocolStanding {

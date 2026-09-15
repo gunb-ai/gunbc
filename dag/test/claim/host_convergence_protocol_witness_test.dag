@@ -36,7 +36,15 @@ import gunbc.host_convergence_protocol {
   CanonicalProtocolBound,
   CanonicalLayersUnbound,
   CensusProtocolUnbound,
-  HostEffectFrontierUnbound,
+  admit_frontier,
+  FrontierStanding,
+  FrontierTriggerIsTheConsumer,
+  FrontierHonest,
+  FrontierConsumerIsDeclaration,
+  FrontierTriggerIsDeclaration,
+  host_effect_observe_frontier,
+  host_effect_decide_plan_frontier,
+  host_effect_decide_apply_frontier,
   reconcile_from_read_attempt,
   inspect_via_host_effect_projection,
   HostEffectDomainProjection,
@@ -49,6 +57,7 @@ import gunbc.host_convergence_protocol {
   ProtocolDeclaredFrontier,
   frontier_names_a_distinct_consumer,
   frontier_trigger_is_not_declaration,
+  frontier_trigger_is_not_the_consumer,
 }
 import gunbc.host_convergence_census { protocol_phases }
 import gunbc.ensure {
@@ -308,11 +317,47 @@ test fn frontier_self_trigger_is_red() -> Bool {
 
 test fn canonical_protocol_binds() -> Bool {
   match bind_canonical_protocol() {
-    CanonicalProtocolBound => true
+    CanonicalProtocolBound { frontiers: fs } =>
+      frontier_standings_await_routing(ss: fs)
     CanonicalLayersUnbound { join: _ } => false
     CensusProtocolUnbound { standing: _ } => false
-    HostEffectFrontierUnbound { standing: _ } => false
   }
+}
+
+fn frontier_standings_await_routing(ss: List<FrontierStanding>) -> Bool {
+  fold(ss, init: true, f: fn(ok, s) {
+    if ok {
+      match s {
+        FrontierTriggerIsTheConsumer { frontier: _ } => true
+        FrontierHonest => false
+        FrontierConsumerIsDeclaration { frontier: _ } => false
+        FrontierTriggerIsDeclaration { frontier: _ } => false
+      }
+    } else {
+      false
+    }
+  })
+}
+
+test fn decide_frontiers_do_not_claim_routing_exists() -> Bool {
+  match admit_frontier(f: host_effect_observe_frontier) {
+    FrontierTriggerIsTheConsumer { frontier: _ } => true
+    FrontierHonest => false
+    FrontierConsumerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsDeclaration { frontier: _ } => false
+  }
+    && match admit_frontier(f: host_effect_decide_plan_frontier) {
+      FrontierTriggerIsTheConsumer { frontier: _ } => true
+      FrontierHonest => false
+      FrontierConsumerIsDeclaration { frontier: _ } => false
+      FrontierTriggerIsDeclaration { frontier: _ } => false
+    }
+    && match admit_frontier(f: host_effect_decide_apply_frontier) {
+      FrontierTriggerIsTheConsumer { frontier: _ } => true
+      FrontierHonest => false
+      FrontierConsumerIsDeclaration { frontier: _ } => false
+      FrontierTriggerIsDeclaration { frontier: _ } => false
+    }
 }
 
 test fn host_convergence_protocol_keystone_holds() -> Bool {
@@ -327,6 +372,7 @@ test fn host_convergence_protocol_keystone_holds() -> Bool {
     && ensure_observation_is_a_projection_of_the_canonical_attempt()
     && ensure_inaccessible_after_cannot_converge()
     && canonical_protocol_binds()
+    && decide_frontiers_do_not_claim_routing_exists()
     && canonical_layer_join_missing_required_layer_is_red()
     && frontier_self_successor_is_red()
     && frontier_self_trigger_is_red()
