@@ -6,7 +6,7 @@ import std.durable_compare_and_set {
   CasAttempt, CasExpectation, ExpectSlotAbsent, cas_attempt,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasSlotVersion, CasSlotObservation,
-  CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused, CasUnreadableMalformed, CasUnreadableContentMissing,
+  CasObservedReadable, CasObservedUnreadable, CasUnreadableReadRefused, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableObservationBoundExceeded,
   cas_generation_count, cas_generation_first,
 }
 import extdeps.filesystem.filesystem_io {
@@ -273,6 +273,7 @@ test fn an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other() -> B
         CasUnreadableMalformed { detail: _ } => true
         CasUnreadableReadRefused { detail: _ } => false
         CasUnreadableContentMissing { referenced: _ } => false
+        CasUnreadableObservationBoundExceeded { bound: _ } => false
       }
     CasObservedReadable { readable: _ } => false
   }

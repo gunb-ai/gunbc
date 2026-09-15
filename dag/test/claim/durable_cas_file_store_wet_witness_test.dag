@@ -8,12 +8,12 @@ import std.durable_compare_and_set {
   CasAttempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
-  CasUnreadableMalformed,
+  CasGenerationPublicationRefused,
   cas_generation_count,
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state, cas_file_slot_path,
+  admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path,
 }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
@@ -31,13 +31,13 @@ fn honest(key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> C
 
 fn run_cas(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>) -> CasOutcome<NonEmptyStr> {
   match admit_cas_attempt(attempt: attempt) {
-    CasAttemptAdmitted { verified: v } => file_compare_and_set(root: root, verified: v)
+    CasAttemptAdmitted { verified: v } => file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v)
     CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      CasStoreRefused { cause: CasUnreadableMalformed { detail: "mint digest mismatch" as NonEmptyStr } }
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "mint digest mismatch" as NonEmptyStr } }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      CasStoreRefused { cause: CasUnreadableMalformed { detail: "mint digest incomparable" as NonEmptyStr } }
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "mint digest incomparable" as NonEmptyStr } }
     CasAttemptKeyNotSlotAddressable { key: _ } =>
-      CasStoreRefused { cause: CasUnreadableMalformed { detail: "key not slot-addressable" as NonEmptyStr } }
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "key not slot-addressable" as NonEmptyStr } }
   }
 }
 

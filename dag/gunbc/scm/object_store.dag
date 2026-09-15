@@ -566,6 +566,113 @@ type AuthoredSourceLookup
   | AuthoredSourceIsSemanticNode { identity: ObjectId }
   | AuthoredSourceIsCorpusManifest { identity: ObjectId }
 
+// RESOLVING ONE MANIFEST ENTRY TO ITS AUTHORED BYTES, AS THE SINGLE AUTHORITY TWO OPERATIONS SHARE.
+//
+// `checkout` asked this question first, because recovering a working tree obviously needs the bytes.
+// Review then found that COMMIT needs the same question and never asked it: a candidate manifest
+// inherited from a PARTIAL base could name a source this store does not hold, and the commit reported
+// success while the resulting snapshot could not be checked out. The format admits partial manifests on
+// purpose -- historical and transport state is representable -- and that permission is NOT the same
+// fact as "this repository may publish this snapshot locally".
+//
+// SO THE PER-ENTRY RESOLUTION IS HOMED HERE RATHER THAN COPIED. It needs only the store, the entry and
+// the authored-source lookup, all of which this module owns, and it is reachable from `checkout`,
+// `staging` and `write_spine` alike without inverting any dependency (DESIGN 3, acyclicity). Copying
+// the walk into the commit path would have given one question two answers that could drift; calling
+// `recover_corpus` from the commit path instead would have MATERIALIZED every file's content to decide
+// a question that needs none, which DESIGN 2 prices as work bought for nothing. The split is at the
+// per-entry seam: this function answers "does this entry's source resolve, and if not, why and where",
+// and each caller keeps what it needs -- checkout the record, commit only the refusal.
+//
+// ALL THREE NON-SUCCESS ARMS SURVIVE, LOCATED BY PATH. An empty locator and one OCCUPIED BY THE WRONG
+// KIND are different repairs, and "some source is missing" is not actionable; the path is the only
+// thing an operator can act on.
+type CorpusEntrySourceRefusal
+  = CorpusEntrySourceMissing { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsSemanticNode { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsCorpusManifest { path: NonEmptyStr, source: ObjectId }
+
+type CorpusEntrySourceResolution
+  = CorpusEntrySourceResolved(AuthoredSourceRecord)
+  | CorpusEntrySourceUnresolved { cause: CorpusEntrySourceRefusal }
+
+fn resolve_manifest_entry_source(
+  store: ObjectStore,
+  entry: CorpusManifestEntry,
+) -> CorpusEntrySourceResolution {
+  match find_authored_source_record(
+    store: store,
+    identity: authored_source_target_locator(target: entry.source),
+  ) {
+    AuthoredSourceFound(record) => CorpusEntrySourceResolved(record)
+    AuthoredSourceAbsent { identity: id } =>
+      CorpusEntrySourceUnresolved { cause: CorpusEntrySourceMissing { path: entry.path, source: id } }
+    AuthoredSourceIsSemanticNode { identity: id } =>
+      CorpusEntrySourceUnresolved {
+        cause: CorpusEntrySourceIsSemanticNode { path: entry.path, source: id },
+      }
+    AuthoredSourceIsCorpusManifest { identity: id } =>
+      CorpusEntrySourceUnresolved {
+        cause: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: id },
+      }
+  }
+}
+
+// SOURCE COMPLETENESS: every entry resolves, or the first failure is reported with its path.
+//
+// THIS OBSERVES, IT DOES NOT DECIDE. An earlier writing called this "the publication admission" and
+// described it as the question a commit must pass before publishing -- but whether completeness is
+// REQUIRED is policy, and policy about publishing belongs to the operations that publish
+// (`gunbc.scm.write_spine` `commit_staged`, `gunbc.scm.squash_merge`), not to the store. What this
+// module owns is the observable fact: against this store, right now, do these entries' sources all
+// resolve. Naming the fold after one caller's policy is the layer inversion DESIGN section 3 names,
+// and it would have made a second caller wanting the same fact under a different policy look like a
+// new question. Found by external review.
+//
+// It is deliberately NOT the checkout recovery: it discards the bytes, because whether a snapshot is
+// complete does not depend on holding its content in memory, and a commit that materialized every
+// file would pay the whole corpus per commit.
+type CorpusSourceCompleteness
+  = CorpusSourcesComplete
+  | CorpusSourceIncomplete { cause: CorpusEntrySourceRefusal }
+
+type CorpusSourceCompletenessAcc {
+  refusal: CorpusEntrySourceRefusal?
+}
+
+fn corpus_source_completeness_step(
+  store: ObjectStore,
+  acc: CorpusSourceCompletenessAcc,
+  entry: CorpusManifestEntry,
+) -> CorpusSourceCompletenessAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match resolve_manifest_entry_source(store: store, entry: entry) {
+        CorpusEntrySourceResolved(_) => acc
+        CorpusEntrySourceUnresolved { cause: c } =>
+          CorpusSourceCompletenessAcc { refusal: Present { value: c } }
+      }
+  }
+}
+
+fn observe_corpus_source_completeness(
+  store: ObjectStore,
+  entries: List<CorpusManifestEntry>,
+) -> CorpusSourceCompleteness {
+  match fold(
+    entries,
+    init: CorpusSourceCompletenessAcc { refusal: none },
+    f: fn(acc, e) { corpus_source_completeness_step(store: store, acc: acc, entry: e) },
+  ) {
+    CorpusSourceCompletenessAcc { refusal: r } =>
+      match r {
+        Present { value: cause } => CorpusSourceIncomplete { cause: cause }
+        Absent => CorpusSourcesComplete
+      }
+  }
+}
+
 fn find_authored_source_record(store: ObjectStore, identity: ObjectId) -> AuthoredSourceLookup {
   match find_object(store: store, identity: identity) {
     Absent => AuthoredSourceAbsent { identity: identity }
@@ -909,14 +1016,200 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
   ).duplicate
 }
 
-fn store_corpus_manifest(
-  store: ObjectStore,
+// ENTRIES WHOSE PATHS ARE UNIQUE BY CONSTRUCTION, SO THE DUPLICATE QUESTION CAN BE ABSENT DOWNSTREAM.
+//
+// `store_corpus_manifest` must ask about duplicates, because it accepts an arbitrary list and a caller
+// really can hand it one path twice. But a caller that DERIVED its list by replacing one path in an
+// already-stored manifest cannot produce a duplicate, and until this carrier existed it had no way to
+// say so: it matched a `CorpusManifestDuplicatePath` arm it could not reach, and
+// `gunbc.scm.write_spine` carried that unreachable arm out into its own public outcome with a comment
+// admitting as much. That is the same shape as the integration arm one module over -- honest about the
+// callee's domain, dishonest about the operation's -- and external review caught both.
+//
+// THE UNIQUENESS CHAIN IS REAL AND IT ENDS AT A sole_constructor. `CorpusManifestRecord` is minted at
+// exactly one place -- `insert_canonical_manifest` below -- which cannot be reached without an
+// `AdmittedManifestEntries`, and that carrier has only two constructors: one that ran
+// `a_duplicated_manifest_path` and got `Absent`, and one whose argument is a `PathUniqueManifestEntries`.
+// So a record's entries ARE path-unique, as a fact about how the value was obtained rather than a
+// property someone asserts. An earlier revision of this paragraph named `store_corpus_manifest` as the
+// sole minter, which was true when written and stopped being true when the insertion body was factored
+// out -- and the factored body then took a bare list, so for one revision the premise was not merely
+// stale but FALSE. Both halves were found by external review.
+//
+// THE RECIPE SENTENCE THAT STOOD HERE IS DELETED TOO. It said uniqueness was preserved by "removing
+// one path from that set and appending exactly one entry", and that both constructors below were
+// exactly that move. That described the LIST carrier. The carrier is a map keyed by path, so a bind is
+// an insert that replaces, there is no removal step, and `path_unique_with_path_removed` was deleted
+// for want of a consumer. Describing a map-backed invariant in the vocabulary of the list it replaced
+// is the attractor DESIGN 3 warns about: while the old spelling survives, the next question gets
+// answered in it.
+// UNIQUENESS IS STRUCTURAL RATHER THAN MAINTAINED, AND THAT IS BOTH A SAFETY AND A COST REPAIR.
+//
+// The list form kept its invariant by SCANNING: every bind dropped any entry already holding the path
+// and appended. That is correctness by validation where construction was available, and it made the
+// otherwise one-pass grouped merge quadratic. DESIGN section 6 rules a proven quadratic fold is always
+// fixed regardless of the realized n, because "n is small here" is not a time-stable fact and this n
+// is a repository's manifest size. A manifest is semantically a finite function from path to source,
+// so the map is not a new collection concept; it is the carrier that already models that, and it
+// CANNOT HOLD TWO ENTRIES FOR ONE PATH, so the invalid state loses its representation entirely.
+//
+// THE COST CLAIM IS DELIBERATELY NARROW. Each merge path is bound WITHOUT A FULL-MANIFEST RESCAN,
+// which is what eliminates the quadratic fold; canonical ordering is derived once at this boundary.
+// An earlier draft of this note claimed a logarithmic per-bind cost from the runtime's persistent map.
+// That is a property of one realization rather than of this model, and review narrowed the claim to
+// what the cut actually establishes.
+//
+// THE PROJECTION IS DETERMINISTIC BY SORTING, NOT BY TRUSTING ITERATION ORDER. Hash-map iteration
+// order may never influence the manifest locator or the wire bytes, so the projection sorts by path.
+// It does not produce "the same canonical order" as `canonical_manifest_entries` -- an earlier form of
+// this sentence said that, and two spellings of one order is how they drift apart.
+// `path_unique_entry_list` IS `canonical_manifest_entries` applied to the map's values: one owner, one
+// execution, on the cost-sensitive route. Ruled by external review.
+//
+// DIVERGENCE, STATED RATHER THAN QUIETLY TAKEN (DESIGN 3b admits a departure with its reason beside
+// it). The ruling asked for `Map<NonEmptyStr, AuthoredSourceTarget>` -- the value being ONLY the
+// source -- and, in the same ruling, that enumeration and value recovery use ONE TOTAL OWNED ROUTE
+// which never drops a key through an `Absent` fallback after enumerating that same map. With this
+// runtime those two cannot both hold: there is no pair-enumerating builtin (`map_entries`,
+// `map_pairs`, `map_fold` are all absent; the surface is `map_keys`, `sorted_map_keys`, `map_values`,
+// `map_get`), so a source-only value forces `sorted_map_keys` followed by a `map_get` whose `Absent`
+// arm no caller can reach -- exactly the shape the same ruling forbids. Holding the ENTRY as the value
+// makes `map_values` a total route with no such arm. The key stays the path, as ruled, and the path
+// inside the value is not a second authority for it: the sole constructor below derives both from one
+// argument, so they cannot disagree. If a pair-enumerating builtin lands, the value should narrow to
+// the source and this note retires with it.
+type PathUniqueManifestEntries sole_constructor {
+  bindings: Map<NonEmptyStr, CorpusManifestEntry>
+}
+
+fn path_unique_entry_list(unique: PathUniqueManifestEntries) -> List<CorpusManifestEntry> {
+  canonical_manifest_entries(entries: map_values(unique.bindings))
+}
+
+// THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
+// take one from: a repository with no history and no stage has never stored a manifest. No entries is
+// trivially path-unique.
+fn empty_path_unique_entries() -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries { bindings: empty_map() }
+}
+
+// BINDING A PATH IS A SINGLE KEYED WRITE. Whether that path was already present is not a question this
+// operation has to ask, because the map answers it: one key holds one entry. This is what lets a
+// PRODUCER build the carrier incrementally -- the merge fold does -- without a raw list ever crossing
+// a boundary, without a second uniqueness type, and without rescanning what it has already decided.
+fn path_unique_with_path_bound(
+  unique: PathUniqueManifestEntries,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  PathUniqueManifestEntries {
+    bindings: map_insert(
+      m: unique.bindings,
+      key: path,
+      value: CorpusManifestEntry { path: path, source: source },
+    ),
+  }
+}
+
+// A STORED RECORD'S ENTRIES ARE ALREADY PATH-UNIQUE, as a fact about how the record was obtained --
+// `CorpusManifestRecord` is minted only through `insert_canonical_manifest`, which cannot be reached
+// without an `AdmittedManifestEntries`. So reading them back into the carrier asserts nothing the
+// record's own provenance did not already establish.
+fn path_unique_of_record(base: CorpusManifestRecord) -> PathUniqueManifestEntries {
+  fold(base.entries, init: empty_path_unique_entries(), f: fn(acc, entry) {
+    path_unique_with_path_bound(unique: acc, path: entry.path, source: entry.source)
+  })
+}
+
+fn manifest_entries_with_path_replaced(
+  base: CorpusManifestRecord,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  path_unique_with_path_bound(
+    unique: path_unique_of_record(base: base),
+    path: path,
+    source: source,
+  )
+}
+
+fn manifest_entries_of_single(
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> PathUniqueManifestEntries {
+  path_unique_with_path_bound(
+    unique: empty_path_unique_entries(),
+    path: path,
+    source: source,
+  )
+}
+
+// THE NARROW STORE ROUTE. It is not a second authority: the identity is `corpus_manifest_identity`,
+// the canonicalization is `canonical_manifest_entries` and the admission is `insert_admission`, all
+// shared with `store_corpus_manifest`. What it omits is the duplicate CHECK, and it may omit it
+// because its argument cannot carry a duplicate -- so the outcome has two arms instead of three, and
+// a caller on this route is not asked about a state it cannot reach.
+type UniqueManifestStoreOutcome
+  = UniqueManifestStored { store: ObjectStore, manifest: CorpusManifestObjectRef }
+  | UniqueManifestLocatorCollision {
+      identity: ObjectId,
+      existing: ScmObject,
+      incoming: ScmObject
+    }
+
+// THE INSERTION IS SHARED; ONLY THE DUPLICATE QUESTION DIFFERS. A first cut of the narrow route
+// copied five steps out of the generic one -- canonicalize, derive the locator, build the record, wrap
+// it, admit it -- so the unreachable-arm repair created two compositions that would drift on every
+// future manifest change. That is the redundancy DESIGN section 2 names, introduced by a fix for a
+// different defect. Found by external review. The two routes now differ in exactly the one thing that
+// should differ: whether they ask about duplicate paths before inserting.
+//
+// THE SHARED BODY TAKES A CARRIER, NOT A LIST, AND THAT IS THE SECOND REPAIR ON THE SAME FUNCTION.
+// Its first version took `canonical: List<CorpusManifestEntry>`, and a PARAMETER NAME ESTABLISHES
+// NOTHING: `.dag` has no module privacy, so any caller could hand it duplicate paths, or the right
+// entries in a noncanonical order, and it would mint a `CorpusManifestRecord` and answer
+// `UniqueManifestStored` without canonicalizing or checking. That falsified this module's own
+// load-bearing premise -- that a record is minted only after the duplicate admission succeeded -- and
+// with it every downstream construction that reads path-uniqueness off a record's provenance,
+// including `PathUniqueManifestEntries` directly above. A sealed helper factored out of two correct
+// callers is still an exported forge for the invariant it was factored to share. Found by external
+// review.
+//
+// `AdmittedManifestEntries` is sole-constructed by the two admissions below and by nothing else, so
+// the insertion body cannot be reached with entries that have not been canonicalized AND cleared of
+// duplicate paths.
+type AdmittedManifestEntries sole_constructor {
   entries: List<CorpusManifestEntry>
-) -> CorpusManifestStoreOutcome {
+}
+
+// THE ALREADY-UNIQUE ROUTE OWES ONLY THE CANONICAL ORDER. Its argument's own sole constructor is what
+// discharged the duplicate question -- see `PathUniqueManifestEntries` above -- so re-asking it here
+// would be the validation-where-construction-was-available move DESIGN section 5 names, and its
+// answer would be an arm no caller could reach.
+fn admit_path_unique_entries(unique: PathUniqueManifestEntries) -> AdmittedManifestEntries {
+  AdmittedManifestEntries { entries: path_unique_entry_list(unique: unique) }
+}
+
+type ManifestEntriesAdmission
+  = ManifestEntriesAdmitted(AdmittedManifestEntries)
+  | ManifestEntriesDuplicatePath { path: NonEmptyStr }
+
+// THE GENERAL ROUTE ASKS, BECAUSE ITS ARGUMENT REALLY CAN CARRY THE SAME PATH TWICE. The duplicate is
+// looked for in the CANONICAL entries rather than the authored ones, so the answer does not depend on
+// the order a caller happened to write.
+fn admit_manifest_entries(entries: List<CorpusManifestEntry>) -> ManifestEntriesAdmission {
   let canonical = canonical_manifest_entries(entries: entries)
   match a_duplicated_manifest_path(entries: canonical) {
-    Present { value: path } => CorpusManifestDuplicatePath { path: path }
-    Absent =>
+    Present { value: path } => ManifestEntriesDuplicatePath { path: path }
+    Absent => ManifestEntriesAdmitted(AdmittedManifestEntries { entries: canonical })
+  }
+}
+
+fn insert_canonical_manifest(
+  store: ObjectStore,
+  admitted: AdmittedManifestEntries,
+) -> UniqueManifestStoreOutcome {
+  let canonical = admitted.entries
   let reference = CorpusManifestObjectRef {
     locator: corpus_manifest_identity(entries: canonical),
   }
@@ -924,14 +1217,36 @@ fn store_corpus_manifest(
     CorpusManifestRecord { identity: reference, entries: canonical },
   )
   match insert_admission(store: store, object: object) {
-    AdmitStored(next) => CorpusManifestStored { store: next, manifest: reference }
+    AdmitStored(next) => UniqueManifestStored { store: next, manifest: reference }
     AdmitCollision { existing: existing } =>
-      CorpusManifestLocatorCollision {
+      UniqueManifestLocatorCollision {
         identity: reference.locator,
         existing: existing,
         incoming: object,
       }
   }
+}
+
+fn store_path_unique_manifest(
+  store: ObjectStore,
+  unique: PathUniqueManifestEntries,
+) -> UniqueManifestStoreOutcome {
+  insert_canonical_manifest(store: store, admitted: admit_path_unique_entries(unique: unique))
+}
+
+fn store_corpus_manifest(
+  store: ObjectStore,
+  entries: List<CorpusManifestEntry>
+) -> CorpusManifestStoreOutcome {
+  match admit_manifest_entries(entries: entries) {
+    ManifestEntriesDuplicatePath { path: path } => CorpusManifestDuplicatePath { path: path }
+    ManifestEntriesAdmitted(admitted) =>
+      match insert_canonical_manifest(store: store, admitted: admitted) {
+        UniqueManifestStored { store: next, manifest: reference } =>
+          CorpusManifestStored { store: next, manifest: reference }
+        UniqueManifestLocatorCollision { identity: i, existing: e, incoming: n } =>
+          CorpusManifestLocatorCollision { identity: i, existing: e, incoming: n }
+      }
   }
 }
 

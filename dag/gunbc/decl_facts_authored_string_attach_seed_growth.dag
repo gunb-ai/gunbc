@@ -1,0 +1,57 @@
+module gunbc.decl_facts_authored_string_attach_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the three hand items added in
+// v1_compiler.data_initializer_identity (gunbc#11082). Authored because
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated
+// hand growth in src/v1 a stop-line, a DissolutionCondition in
+// v2.std.decl_facts_skeleton is not a substitute, and pub(crate) is not an exemption.
+// One SeedGrowthJustification per added item. .dag authority is the decl-facts
+// projection (v2.std.data_initializer_identity marshal_data_initializer_projection
+// and v2.std.decl_facts_skeleton authored-string EdgeLabel skip). Seed-retained
+// module: data_initializer_identity.
+
+data collect_authored_string_literals_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.data_initializer_identity",
+      decl_name: "collect_authored_string_literals",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "Walks the DataItem parse tree (not the typechecked projection) and collects every LitStr so lexeme-keyed discovery can see initializer values. WHY RUST REMAINS NECESSARY: the parse-tree ExprData/LitStr walk is a host interp fact; marshal_data_initializer_projection still does not intern those atoms into the typechecked Node. The .dag authority that will retire it is that marshal, not a second walk.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete collect_authored_string_literals when marshal_data_initializer_projection itself interns every initializer LitStr into the typechecked Node, so atom_identities_in_node / v1_consumer_discovery read inhabitance rather than a host attach.",
+  current_boundary: "v1_compiler.data_initializer_identity collect_authored_string_literals; called only from with_authored_string_literals. crate-internal. No public surface."
+}
+
+data authored_string_literal_edge_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.data_initializer_identity",
+      decl_name: "AUTHORED_STRING_LITERAL_EDGE",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "Intern spelling of v2.std.decl_facts_skeleton authored_string_literal_edge_name, duplicated in the seed until that Symbol row emits this const. WHY RUST REMAINS NECESSARY: constructor-spelling walks skip by intern equality on the host EdgeLabel; the seed cannot yet consume the .dag Symbol as its intern table.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete AUTHORED_STRING_LITERAL_EDGE when that host const is emitted from authored_string_literal_edge_name so a rename cannot silently un-skip constructor-spelling walks.",
+  current_boundary: "v1_compiler.data_initializer_identity AUTHORED_STRING_LITERAL_EDGE; consumed only by with_authored_string_literals when attaching named edges. crate-internal."
+}
+
+data with_authored_string_literals_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.data_initializer_identity",
+      decl_name: "with_authored_string_literals",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "Attaches collected LitStrs as named authored_string_literal children on the marshaled Node record. WHY RUST REMAINS NECESSARY: coproduct_reflection marshals DataItem through host marshal_data_initializer_projection; the attach is a host seam beside that projection until the projection carries LitStr atoms. PURPOSE-serving for v2 lexeme-keyed discovery; not a new language behavior.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete with_authored_string_literals together with collect_authored_string_literals when marshal_data_initializer_projection interns every initializer LitStr; the coproduct_reflection DataItem arm then returns the projection unattached.",
+  current_boundary: "v1_compiler.data_initializer_identity with_authored_string_literals; one call site in v1_compiler.coproduct_reflection marshal_decl_fact_node DataItem arm. pub(crate)."
+}
