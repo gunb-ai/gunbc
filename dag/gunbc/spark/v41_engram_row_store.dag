@@ -12,7 +12,7 @@ import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
   safetensors_dtype_byte_width, safetensors_dtype_token,
 }
-import gunbc.fabric.engram_materialization { engram_component_identity }
+import extdeps.toolchain.architecture_profile { Endianness, LittleEndian, endianness_token }
 import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition,
   v41_input,
@@ -25,11 +25,39 @@ import gunbc.spark.v41_runtime_candidate {
 // dtypes and geometry, the on-disk revision and endianness, and a digest over the produced bytes.
 // That last digest is THIS encoding's; it does not inherit a safetensors shard digest.
 data v41_row_store_format_revision: Nat = 1
-data v41_row_store_endianness: NonEmptyStr = "little" as NonEmptyStr
-data v41_row_store_row_order: NonEmptyStr = "global-ascending-interleaved-by-rank" as NonEmptyStr
-data v41_row_store_partition_rule: NonEmptyStr = "dest_rank = global_row % rank_count; local_row = global_row / rank_count" as NonEmptyStr
+data v41_row_store_endianness: Endianness = LittleEndian
 data v41_row_store_alignment_bytes: ByteSize = byte_size(count: 64)
 data v41_row_store_rank_count: Nat = 4
+
+// THE PARTITION RULE IS THE PLACER. InterleaveByRankRemainder is dest_rank = global_row % rank_count
+// and local_row = global_row / rank_count; the encoding key hashes this variant, not a parallel
+// prose sentence. GlobalAscendingInterleavedByRank is the order the rank payload is concatenated.
+// One-arm coproducts parse as aliases (no constructor). The reserved arm exists so the
+// placement scheme is a closed type the placer and encoding key both match on.
+type V41RowStorePartition
+  = InterleaveByRankRemainder
+  | RankMapReservedUninhabited
+
+type V41RowStoreOrder
+  = GlobalAscendingInterleavedByRank
+  | RowOrderReservedUninhabited
+
+data v41_row_store_partition: V41RowStorePartition = InterleaveByRankRemainder
+data v41_row_store_order: V41RowStoreOrder = GlobalAscendingInterleavedByRank
+
+fn v41_partition_token(p: V41RowStorePartition) -> NonEmptyStr {
+  match p {
+    InterleaveByRankRemainder => "interleave-by-rank-remainder" as NonEmptyStr
+    RankMapReservedUninhabited => "rank-map-reserved-uninhabited" as NonEmptyStr
+  }
+}
+
+fn v41_order_token(o: V41RowStoreOrder) -> NonEmptyStr {
+  match o {
+    GlobalAscendingInterleavedByRank => "global-ascending-interleaved-by-rank" as NonEmptyStr
+    RowOrderReservedUninhabited => "row-order-reserved-uninhabited" as NonEmptyStr
+  }
+}
 
 type V41RowGeometry sole_constructor {
   weight_dtype: SafetensorsDtype
@@ -132,9 +160,9 @@ type V41RowStoreEncodingSpec sole_constructor {
   geometry: V41RowGeometry
   rank_count: Nat
   format_revision: Nat
-  endianness: NonEmptyStr
-  row_order: NonEmptyStr
-  partition_rule: NonEmptyStr
+  endianness: Endianness
+  row_order: V41RowStoreOrder
+  rank_map: V41RowStorePartition
   alignment_bytes: ByteSize
 }
 
@@ -171,9 +199,24 @@ fn v41_encoding_spec_with_geometry(partition: V41EngramResidencyPartition, slice
     rank_count: v41_row_store_rank_count,
     format_revision: v41_row_store_format_revision,
     endianness: v41_row_store_endianness,
-    row_order: v41_row_store_row_order,
-    partition_rule: v41_row_store_partition_rule,
+    row_order: v41_row_store_order,
+    rank_map: v41_row_store_partition,
     alignment_bytes: v41_row_store_alignment_bytes,
+  }
+}
+
+fn v41_encoding_spec_override_endianness(spec: V41RowStoreEncodingSpec, endianness: Endianness) -> V41RowStoreEncodingSpec {
+  V41RowStoreEncodingSpec {
+    component: spec.component,
+    partition: spec.partition,
+    slices: spec.slices,
+    geometry: spec.geometry,
+    rank_count: spec.rank_count,
+    format_revision: spec.format_revision,
+    endianness: endianness,
+    row_order: spec.row_order,
+    rank_map: spec.rank_map,
+    alignment_bytes: spec.alignment_bytes,
   }
 }
 
@@ -188,9 +231,9 @@ fn v41_encoding_spec_inputs(spec: V41RowStoreEncodingSpec) -> List<ArtifactReali
   concat(concat([
     v41_input(identity: "component", value: declaration_ref_display_key(ref: spec.component) as String),
     v41_input(identity: "format_revision", value: to_string(spec.format_revision)),
-    v41_input(identity: "endianness", value: spec.endianness as String),
-    v41_input(identity: "row_order", value: spec.row_order as String),
-    v41_input(identity: "partition_rule", value: spec.partition_rule as String),
+    v41_input(identity: "endianness", value: endianness_token(e: spec.endianness) as String),
+    v41_input(identity: "row_order", value: v41_order_token(o: spec.row_order) as String),
+    v41_input(identity: "rank_map", value: v41_partition_token(p: spec.rank_map) as String),
     v41_input(identity: "rank_count", value: to_string(spec.rank_count)),
     v41_input(identity: "alignment_bytes", value: to_string(byte_size_count(b: spec.alignment_bytes))),
     v41_input(identity: "weight_dtype", value: safetensors_dtype_token(d: spec.geometry.weight_dtype) as String),
@@ -264,21 +307,27 @@ type V41PlacedRow sole_constructor {
   payload: NonEmptyStr
 }
 
-fn v41_dest_rank(global_row: Nat, rank_count: Nat) -> Nat {
-  global_row % rank_count
+fn v41_dest_rank(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+  match spec.rank_map {
+    InterleaveByRankRemainder => global_row % spec.rank_count
+    RankMapReservedUninhabited => spec.rank_count
+  }
 }
 
-fn v41_local_row(global_row: Nat, rank_count: Nat) -> Nat {
-  global_row / rank_count
+fn v41_local_row(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+  match spec.rank_map {
+    InterleaveByRankRemainder => global_row / spec.rank_count
+    RankMapReservedUninhabited => 0
+  }
 }
 
 fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank: Nat) -> V41PlacedRow {
-  let rank = v41_dest_rank(global_row: row.global_row, rank_count: spec.rank_count)
+  let rank = v41_dest_rank(global_row: row.global_row, spec: spec)
   V41PlacedRow {
     tensor: row.tensor,
     global_row: row.global_row,
     rank: rank,
-    local_row: v41_local_row(global_row: row.global_row, rank_count: spec.rank_count),
+    local_row: v41_local_row(global_row: row.global_row, spec: spec),
     offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
     payload: row.payload,
   }
@@ -300,23 +349,26 @@ type V41TransformResult
   | V41PublishedTransformUnestablished { obligation: NonEmptyStr }
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
 
-fn v41_count_on_rank_before(rows: List<V41SourceRow>, index: Nat, rank: Nat, rank_count: Nat) -> Nat {
-  length(filter(enumerate(rows), p => p.first < index && v41_dest_rank(global_row: p.second.global_row, rank_count: rank_count) == rank))
+fn v41_count_on_rank_before(rows: List<V41SourceRow>, index: Nat, rank: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+  length(filter(enumerate(rows), p => p.first < index && v41_dest_rank(global_row: p.second.global_row, spec: spec) == rank))
 }
 
 fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> List<V41PlacedRow> {
   map(enumerate(rows), p => v41_place_row(
     row: p.second,
     spec: spec,
-    prior_on_rank: v41_count_on_rank_before(rows: rows, index: p.first, rank: v41_dest_rank(global_row: p.second.global_row, rank_count: spec.rank_count), rank_count: spec.rank_count)))
+    prior_on_rank: v41_count_on_rank_before(rows: rows, index: p.first, rank: v41_dest_rank(global_row: p.second.global_row, spec: spec), spec: spec)))
 }
 
-fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat) -> String {
-  join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
+fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String {
+  match order {
+    GlobalAscendingInterleavedByRank => join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
+    RowOrderReservedUninhabited => "" as String
+  }
 }
 
-fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat) -> ContentHash {
-  let payload = v41_rank_payload(placed: placed, rank: rank)
+fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat, spec: V41RowStoreEncodingSpec) -> ContentHash {
+  let payload = v41_rank_payload(placed: placed, rank: rank, order: spec.row_order)
   if payload == "" {
     content_hash_of_value(value: "empty-rank" as NonEmptyStr)
   } else {
@@ -335,7 +387,7 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
     filter(placed, p => length(filter(placed, q => q.rank == p.rank && q.offset == p.offset)) != 1),
     p => join(["rank ", to_string(p.rank), " offset ", to_string(byte_size_count(b: p.offset)), " is not unique"], "") as NonEmptyStr)
   let wrong_rank = map(
-    filter(placed, p => p.rank != v41_dest_rank(global_row: p.global_row, rank_count: spec.rank_count)),
+    filter(placed, p => p.rank != v41_dest_rank(global_row: p.global_row, spec: spec)),
     p => join(["row ", to_string(p.global_row), " placed on rank ", to_string(p.rank), " against the declared partition rule"], "") as NonEmptyStr)
   concat(concat(concat(count_mismatch, lost), dup), wrong_rank)
 }
@@ -349,7 +401,7 @@ fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, 
   if length(defects) != 0 {
     V41TransformUnfaithful { defects: defects }
   } else {
-    let ranks = map(nat_ranks(n: spec.rank_count), k => V41RankStoreIdentity { rank: k, digest: v41_rank_digest(placed: placed, rank: k) })
+    let ranks = map(nat_ranks(n: spec.rank_count), k => V41RankStoreIdentity { rank: k, digest: v41_rank_digest(placed: placed, rank: k, spec: spec) })
     match v41_identify_row_store(spec: spec, rank_stores: ranks) {
       V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
         V41FixtureCorrespondenceHolds {
