@@ -5,6 +5,16 @@ import std.nat { Nat, nat_min }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
+import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, VllmSpeculativePolicy, SpeculativeDecodingOff }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
+import extdeps.nvidia.nccl { NcclRealizedTransport }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, deepseek_v4_flash_snapshot, model_snapshot_revision }
+import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2 }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
+}
 
 // ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
 //
@@ -18,13 +28,12 @@ import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_
 // numbers established, which is stated in prose beside each one; the numbers themselves are facts
 // about a profile, not about the fleet.
 //
-// THESE ROWS DO NOT YET CARRY THAT SUBJECT STRUCTURALLY, and that is a known gap rather than an
-// oversight. A measurement should name its model artifact, tokenizer, runtime, KV policy, topology
-// and speculative policy in a type, so a row from one profile cannot be joined to a decision about
-// another -- the same defect gunbc.spark.vllm_serving_launch exists to prevent for process
-// incarnations, one level up. The type belongs with the serving-observation substrate rather than
-// beside these measurements, so it is named here as an obligation and deliberately not coined: a
-// second profile authority is exactly the fork this lane has already made once.
+// THAT SUBJECT IS NOW CARRIED STRUCTURALLY. The obligation this paragraph used to declare -- a type
+// naming the model artifact, runtime, KV policy and topology, so a row from one profile cannot be
+// joined to a decision about another -- is discharged at
+// gunbc.spark.serving_performance_subject ServingPerformanceSubject, coined once for both
+// measurement modules rather than twice. The rows below bind to it at the bottom of this file, and
+// what the binding refuses is stated there rather than promised here.
 
 // ── WHAT THE PREFILL BATCH BUDGET BUYS AND COSTS, MEASURED ACROSS FOUR LAUNCHES ───────────────
 //
@@ -53,6 +62,7 @@ import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_
 // function that accepts either, and no list containing both. A consumer that wants the modelled
 // 1024 row must name the predicted population explicitly and thereby say so.
 type MeasuredBatchArm sole_constructor {
+  subject: ServingPerformanceSubjectStanding
   max_num_batched_tokens: Nat
   probe_computed_tokens: TokenCount
   probe_wall_micros: Nat
@@ -70,6 +80,83 @@ type PredictedBatchArm sole_constructor {
   from_law: NonEmptyStr
 }
 
+
+// ── EVERY ARM CARRIES ITS OWN SUBJECT, BECAUSE THE SWEPT AXIS IS A SUBJECT AXIS ───────────────
+//
+// THE FIRST ATTEMPT AT THIS BINDING PUT ONE `spark_group_a_batch_arm_subject` BESIDE THE POPULATION
+// AND THAT WAS INCOHERENT. `max_num_batched_tokens` IS one of the axes a subject is made of, and
+// these arms differ on exactly that -- 2048, 8192, 16384 -- so one subject cannot describe three of
+// them. A sidecar row also left the raw arms independently importable, which is the whole failure
+// this type exists to close: a consumer could read a per-token rate without ever touching a subject.
+//
+// SO THE SUBJECT IS A FIELD OF THE ARM, derived from that arm's own budget, and there is no way to
+// hold one of these numbers without the profile it was measured against coming with it. That is the
+// shape gunbc.spark.vllm_kv_layout_observe already uses for launches: VllmKvLayoutReceipt carries
+// its `launch` in EVERY arm, including the failure arms, precisely so a reading cannot be lifted off
+// the incarnation that produced it.
+//
+// THE ARM CARRIES EVERY AXIS IT KNOWS AND LEAVES ABSENT ONLY WHAT NOBODY READ, which is a
+// correction to how this binding first worked. It used to answer a subject-less standing on the
+// strength of the one axis it was missing, so a DeepSeek batch measurement read against a GLM
+// decision came back "incomparable, subject unestablished" and never named the CHECKPOINT -- the
+// very fence this module's header claims is now structural. Six axes are stated by this module and
+// were being thrown away to represent one that is not. DESIGN section 4d's third arm is the one that
+// bites here: under-asserting is not humility, and a fact you decline to state is a wall that does
+// not exist.
+//
+// THE KV CACHE LAYOUT IS ABSENT, AND A FIRST VERSION OF THIS BINDING WROTE THE WRONG ONE. I put
+// `KvFp8` here, which is not merely ungrounded -- it is FALSE for this route. `fp8_ds_mla` is the
+// cache layout of DeepSeek's Multi-head Latent Attention, and extdeps.vllm.engine_args warns in its
+// own annotation that recording the REQUESTED `fp8` spelling as the served format records the
+// argument sent rather than the behaviour got. gunbc.spark.pair_serving_desired carries a paragraph
+// about a previous edit making exactly this mistake on exactly this route. I repeated it.
+//
+// AND THE REPAIR IS STILL ABSENCE RATHER THAN THE CORRECT-LOOKING VALUE, because nothing in this
+// module read the layout for these launches either. `KvFp8DsMla` would be the right answer for the
+// route and would still be a guess about the measurement -- and a wrong axis value is worse than an
+// absent one: a correct DeepSeek decision would have REFUSED transfer against these rows, or a
+// `KvFp8` decision would have falsely agreed with them.
+//
+// THE CONTEXT CEILING IS ABSENT ON THE ARMS FOR THE SAME REASON. The module names a
+// 1,048,576-token context MODEL, which is a fact about the checkpoint and not a reading of what
+// max_model_len these four launches were started with.
+//
+// THE SCHEDULER'S SEQUENCE LIMIT IS ABSENT TOO, and a first version of this binding wrote 32 there
+// because that is what the fleet generally runs. Nothing in this module read it for these launches,
+// so it was a fabricated default on a MANDATORY axis -- which is worse than one on an optional axis,
+// because two subjects that both guessed it would have silently AGREED on that axis and the join
+// would have named one fewer difference than it should. The axis is optional now, and the existing
+// `spark_host_max_num_seqs` row is deliberately not cited: it is a desired launch parameter, not a
+// reading of these launches, and binding it would be the provenance overclaim
+// gunbc.recurring_failure_mode.a_constructor_asserts_a_provenance_its_value_does_not_have files.
+//
+// SO THE DEGREE, THE RANK COUNT AND THE SEQUENCE LIMIT ARE ABSENT AND EVERYTHING ELSE IS PRESENT. The standing comes out
+// Partial, the known axes fence, and the belief about the degree rides beside it as a bet rather
+// than inside the subject as a fact. When the invocation is read, this one function changes and all
+// three arms become Established together.
+fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
+  serving_subject_standing(
+    subject: serving_performance_subject(
+      checkpoint: DeepseekV4FlashIq3sSplit,
+      checkpoint_revision: model_snapshot_revision(snapshot: deepseek_v4_flash_snapshot),
+      runtime: GunbcSparkrunVllmDs4Gb10,
+      runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+      topology: Absent,
+      rank_population: Absent,
+      context_ceiling: Absent,
+      max_num_batched_tokens: budget,
+      max_num_seqs: Absent,
+      kv_cache_dtype: Absent,
+      speculative: Present { value: SpeculativeDecodingOff },
+      collective_transport: Absent
+    ),
+    believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(token_count_value(t: budget))], "") as NonEmptyStr,
+    would_settle: join(["read --tensor-parallel-size off the recorded systemd invocation ",
+                        arm_launch_invocation(b: arm_2048_binding) as String,
+                        " for the 2048 control arm (arm_2048_binding), which is the one arm whose invocation was captured"], "") as NonEmptyStr,
+  )
+}
+
 // ── WHAT WAS AND WAS NOT CAPTURED ABOUT EACH ARM'S LAUNCH ─────────────────────────────────────
 //
 // The systemd invocation was re-read for the CONTROL arm and not for the other three, which is a
@@ -80,6 +167,17 @@ type PredictedBatchArm sole_constructor {
 type ArmLaunchBinding
   = ArmLaunchInvocationRead { invocation: NonEmptyStr, budget_read_back: Nat }
   | ArmLaunchDiscriminatedByReadback { budget_read_back: Nat, missing: NonEmptyStr }
+
+// THE INVOCATION, PROJECTED, so a consumer that needs to name it in a remedy reads it here instead
+// of re-spelling the id. The arm that has no invocation says so rather than answering an empty
+// string: a remedy that names a blank invocation would send a reader looking for a unit that has no
+// identity recorded at all.
+fn arm_launch_invocation(b: ArmLaunchBinding) -> NonEmptyStr {
+  match b {
+    ArmLaunchInvocationRead { invocation: i, budget_read_back: _ } => i
+    ArmLaunchDiscriminatedByReadback { budget_read_back: _, missing: m } => m
+  }
+}
 
 data arm_2048_binding: ArmLaunchBinding = ArmLaunchInvocationRead {
   invocation: "794afae389e44952a9049452c0619620" as NonEmptyStr,
@@ -102,6 +200,7 @@ data arm_16384_binding: ArmLaunchBinding = ArmLaunchDiscriminatedByReadback {
 // co-tenant pair taken on the same launch minutes later.
 data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: token_count(count: 2048)),
     max_num_batched_tokens: 2048,
     probe_computed_tokens: token_count(count: 16510),
     probe_wall_micros: 17759300,
@@ -112,6 +211,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_2048_binding,
   },
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: token_count(count: 8192)),
     max_num_batched_tokens: 8192,
     probe_computed_tokens: token_count(count: 16463),
     probe_wall_micros: 16652100,
@@ -122,6 +222,7 @@ data spark_group_a_measured_arms: List<MeasuredBatchArm> = [
     binding: arm_8192_binding,
   },
   MeasuredBatchArm {
+    subject: batch_arm_subject(budget: token_count(count: 16384)),
     max_num_batched_tokens: 16384,
     probe_computed_tokens: token_count(count: 16508),
     probe_wall_micros: 16327100,
@@ -435,6 +536,7 @@ fn ceil_div(a: Nat, b: Nat) -> Nat {
 // attention proper, the candidate. That is a hypothesis and the operation ladder is what would
 // settle it.
 type DepthDependentRate sole_constructor {
+  subject: ServingPerformanceSubjectStanding
   base_micros_per_thousand_tokens: Nat
   micros_per_thousand_tokens_per_million_depth: Nat
   fitted_from_depth: Nat
@@ -443,7 +545,49 @@ type DepthDependentRate sole_constructor {
   provenance: NonEmptyStr
 }
 
+// THE DEPTH LAW'S TOPOLOGY IS STATED BY ITS OWN PROVENANCE -- TP=2 at a 1,048,576 ceiling -- which
+// the batch arms' is not, and it is a DIFFERENT subject from them on two axes at once. That is the
+// fact this module could not previously express: read as one `spark_group_a_*` population, the
+// per-step amortisation result and this quadratic law describe one profile, and they do not.
+// Carrying the subject in the row is what makes the join refuse.
+//
+// THE STANDING THIS PRODUCES IS PARTIAL, NOT ESTABLISHED, and saying otherwise was the fourth
+// annotation in this lane to assert a guarantee the declaration does not carry. Nobody read NCCL's
+// verdict line for this launch, so `collective_transport` is absent and `serving_subject_standing`
+// answers SubjectPartial. That is the whole point of the constructor: prose cannot promote a subject
+// the axes do not support.
+//
+// THE CEILING HERE IS STATED AND IS THE MODEL'S OWN, so it is bound rather than absent: this row's
+// provenance says "TP=2 at max_model_len 1,048,576", and that figure is
+// extdeps.deepseek.deepseek_v4 deepseek_v4_context_length -- read from the loaded GGUF's
+// deepseek4.context_length and agreeing with the published figure. It is consumed rather than
+// re-spelled, so a model change moves it here too.
+//
+// THE SPECULATIVE POLICY IS READ RATHER THAN ASSUMED, and it is the one axis here with a cited
+// ground: the co-tenant section below states "This profile served no speculative decoding" and
+// corroborates it with a mechanism -- each step accepted exactly one decode token, which is what
+// makes the victim's inter-token latency equal the step duration. That is a statement about the
+// launch, not a guess from its behaviour, so this row carries a value where its sibling module,
+// which states nothing, carries absence.
 data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
+  subject: serving_subject_standing(
+    believed: "nothing about the collective transport: this acquisition never read NCCL's `Using network` verdict line, and the launch's NCCL_IB_* environment was not captured either" as NonEmptyStr,
+    would_settle: "read NCCL's `Using network` verdict line on a relaunch of this profile -- which produces a NEW subject for that launch rather than repairing this row, since a transport reading cannot be attached backwards to performance measured earlier" as NonEmptyStr,
+    subject: serving_performance_subject(
+      checkpoint: DeepseekV4FlashIq3sSplit,
+      checkpoint_revision: model_snapshot_revision(snapshot: deepseek_v4_flash_snapshot),
+      runtime: GunbcSparkrunVllmDs4Gb10,
+      runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+      topology: Present { value: SparkPairTp2 },
+      rank_population: Present { value: 2 },
+      context_ceiling: Present { value: deepseek_v4_context_length },
+      max_num_batched_tokens: token_count(count: 2048),
+      max_num_seqs: Absent,
+      kv_cache_dtype: Absent,
+      speculative: Present { value: SpeculativeDecodingOff },
+      collective_transport: Absent
+    )
+  ),
   base_micros_per_thousand_tokens: 923600,
   micros_per_thousand_tokens_per_million_depth: 1415900,
   fitted_from_depth: 8200,

@@ -363,6 +363,24 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {}", function);
             *any_failed = true;
         }
+        // THE EXECUTOR SURFACE THE DISSOLVE-ON NAMED. This line is where a gate-class claim's
+        // typed refusal reason reaches the operator: `tools.emit_host_gate` once shelled its
+        // per-smoke verdict line out to printf because this path could only print bare FAIL
+        // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
+        // narration op is deleted, and this arm prints what the claim itself returned.
+        ClaimOutcome::ExitFailure { code, reason } => {
+            match reason {
+                Some(r) => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}: {})",
+                    function, code, r
+                ),
+                None => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}, no reason given)",
+                    function, code
+                ),
+            }
+            *any_failed = true;
+        }
         ClaimOutcome::NotBool { got } => {
             println!(
                 "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",
@@ -483,15 +501,23 @@ fn resolve_timed(
 ///
 /// Extracted from the `eprintln!` so the property — the enforced quantity is reported, distinctly
 /// from the recorded one — has an executing consumer rather than only a format string.
+///
+/// `eval_steps` IS HERE BECAUSE IT IS NOW THE QUANTITY THE REQUIRED FLOOR ENFORCES ON
+/// (`v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, 2026-09-12), and because
+/// it is the instrument the pinned calibration fixture in `v2.workflow.floor_eval_step_calibration`
+/// is read from: that row's step count and its millisecond reading both come off this line. A
+/// budget stated in steps with no local instrument reporting steps would be a figure nobody could
+/// re-derive without a CI run. The fast lane's own cap is still CPU, so both travel.
 fn witness_report_line(
     function: &str,
     receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
 ) -> String {
     format!(
-        "[witness] {}: cpu={}ms wall={}ms subject={} eval_self={:.3}ms",
+        "[witness] {}: cpu={}ms wall={}ms eval_steps={} subject={} eval_self={:.3}ms",
         function,
         receipt.cpu_nanos / 1_000_000,
         receipt.wall_nanos / 1_000_000,
+        receipt.eval_steps,
         receipt.subject_key,
         receipt.eval_self_nanos as f64 / 1.0e6,
     )

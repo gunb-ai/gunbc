@@ -64,3 +64,41 @@ test fn witness_subject_token_stream_scope_sensitive() -> Bool {
   a != b
 }
 
+// DOMAINS PAST ONE BYTE LIMB. The subject and the stream digest used to send positions, offsets
+// and lexeme codepoints through the single-byte-limb digest, which gives every value above 255 one
+// tag: positions 256 and 257 hashed equal, as did two token streams differing only in an offset
+// past byte 255 or only in a non-Latin-1 lexeme. Each witness below returned false under it.
+fn key_at(position: Int) -> ParsePositionKey { ParsePositionKey { position: position, production: ^ctk_prod_a } }
+
+fn subject_at(position: Int) -> Hash {
+  parse_table_subject(table: table_g1_t1(), key: key_at(position: position))
+}
+
+test fn witness_subject_positions_255_256_257_pairwise_distinct() -> Bool {
+  (subject_at(position: 255) != subject_at(position: 256))
+    && (subject_at(position: 256) != subject_at(position: 257))
+    && (subject_at(position: 255) != subject_at(position: 257))
+}
+
+fn ctk_token(lexeme: Lexeme, start: Int, end: Int) -> Token {
+  Token { class: ^ctk_token_class, lexeme: lexeme, file: ^ctk_token_file, start: start, end: end }
+}
+
+fn stream_digest_one(tok: Token) -> Hash {
+  parse_token_stream_digest(all_tokens: Cons { head: tok, tail: std.algebra.Empty })
+}
+
+test fn witness_stream_digest_offsets_past_one_limb_distinct() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "a", start: 300, end: 301))
+    != stream_digest_one(tok: ctk_token(lexeme: "a", start: 301, end: 302))
+}
+
+test fn witness_stream_digest_lexemes_past_latin1_distinct() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "λ", start: 0, end: 2))
+    != stream_digest_one(tok: ctk_token(lexeme: "μ", start: 0, end: 2))
+}
+
+test fn witness_stream_digest_deterministic() -> Bool {
+  stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
+    == stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
+}

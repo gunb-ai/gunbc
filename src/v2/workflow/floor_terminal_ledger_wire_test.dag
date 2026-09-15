@@ -24,6 +24,7 @@ import v2.workflow.floor_terminal_ledger {
   NotAttemptedAfterAbort,
   Panicked,
   PanickedBeforeVerdict,
+  Failed,
   Passed,
   RouteGap,
   RuntimeErrored,
@@ -492,6 +493,59 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
   ) {
     LedgerRendered { text: _ } => false
     LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "seed-terminal-tag-unrecognized"
+  }
+}
+
+// THE TYPED-REFUSAL TAG READS BACK TO THE FAIL DISPOSITIONS, BY EXPECTATION. The seed's
+// vocabulary distinguishes a claim that answered `Bool(false)` ("returned-false") from one that
+// returned a typed `ProcessExit::ExitFailure` refusal ("exit-failure"); this module keeps that
+// distinction representable instead of refusing the ledger, and maps it to the SAME dispositions
+// — a typed refusal is a failing verdict either way. The reason is the detail field's payload,
+// not a third disposition.
+test fn an_exit_failure_tag_reads_back_to_the_fail_dispositions() -> Bool {
+  let held = LedgerReadbackRow {
+    qualified: "test.claim.example.gate",
+    expectation: ExpectedToHold,
+    terminal_tag: "exit-failure",
+    terminal_detail: "emit-host smoke verdicts: rust=pass python=pass go=FAIL ts=FAIL node_http=pass c=pass"
+  }
+  let enrolled = LedgerReadbackRow {
+    qualified: "test.claim.example.gate",
+    expectation: ExpectedRed,
+    terminal_tag: "exit-failure",
+    terminal_detail: "emit-host smoke verdicts: rust=FAIL"
+  }
+  match readback_disposition(row: held) {
+    Present { value: d } =>
+      match readback_disposition(row: enrolled) {
+        Present { value: e } => d == Failed && e == KnownRedHeld
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE TYPED-REFUSAL ROW RENDERS END TO END, AND ITS REASON SURVIVES INTO THE PUBLISHED BYTES.
+// This is the read side of the dissolve: `tools.emit_host_gate` deleted its printf narration
+// because the claim path now carries the verdict line — so the ledger row is where a reader of
+// the artifact finds it, not a shell channel beside the FAIL line.
+test fn an_exit_failure_seed_row_renders_with_its_reason_as_detail() -> Bool {
+  let gate_refusal = SeedLedgerRow {
+    qualified: "test.claim.example.gate",
+    expectation_wire: render_expectation(expectation: ExpectedToHold),
+    terminal_tag: "exit-failure",
+    terminal_detail: "emit-host smoke verdicts: rust=pass python=pass go=FAIL ts=FAIL node_http=pass c=pass",
+    seed_disposition_wire: render_disposition(disposition: Failed)
+  }
+  match render_ledger_from_seed(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [gate_refusal]
+  ) {
+    LedgerRendered { text: t } =>
+      t.split(delimiter: "exit-failure").length() == 2
+        && t.split(delimiter: "go=FAIL").length() == 2
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
   }
 }
 

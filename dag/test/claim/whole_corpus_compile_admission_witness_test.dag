@@ -1,6 +1,6 @@
 module test.claim.whole_corpus_compile_admission_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_budget_source {
@@ -12,18 +12,46 @@ import gunbc.host_budget_source {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileAdmission,
   WholeCorpusCompileAdmitted,
   WholeCorpusCompileRefusedBudgetBelowMeasuredDemand,
   WholeCorpusCompileRefusedBudgetUnreadable,
+  WholeCorpusCompileRefusedUnmeasuredRoot,
+  WholeCorpusCompileRootIdentity,
+  MeasuredForRoot,
+  UnmeasuredRoot,
   whole_corpus_compile_admission,
   whole_corpus_compile_admits,
-  whole_corpus_compile_measured_peak_demand,
+  whole_corpus_compile_demand_for_root,
+  whole_corpus_compile_public_root,
+  whole_corpus_compile_public_root_demand,
+  whole_corpus_compile_public_root_census,
+  whole_corpus_compile_public_root_receipt,
+  whole_corpus_compile_measured_root_demands,
   whole_corpus_compile_observed_runner_budget_lower_bound,
 }
+import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_subject_note: String = "BOTH ARMS STAND ON INDEPENDENTLY MEASURED MACHINES, which is what makes the pair fail for a reason worth knowing in either direction rather than restating its own input.\n\nThe REFUSING budget is the one the BuildBuddy remote-execution runner actually answered with on invocation 13cf8d2e-173a-42d2-9a56-101bb3332740, the run that was SIGKILLed at exit 137. It is not chosen to make the assertion true: it is recovered from the cap=1675 line that run printed, by inverting the integer division cli_run performs.\n\nTHE SOURCE ON THAT FIXTURE MOVED AND THE BUDGET DID NOT. It was BudgetSourceMemAvailable, the arm that produced the doomed number in the first place; that arm is deleted (gunbc.host_budget_source host_budget_source_seed_mirror_disposition) because a reading about the MACHINE is not a bound on the slot, and a runner in that state now resolves to HostBudgetUnreadable and refuses before this arm is reached. What this row judges is the QUANTITY, so the fixture is now carried on BudgetSourceEnvOverride — which is precisely the shape an operator on that runner produces today, and it makes the arm say something sharper than it did: even a 4.9 GiB budget DECLARED by an operator is refused against the measured demand.\n\nThe ADMITTING budget is gunbc.runner_slot_allocation's declared per-slot memory.high, READ FROM THAT AUTHORITY rather than retyped here. Retyping it would have been the exact defect this PR's own threshold note argues against, and it has a live specimen one module over: host_budget_source_witness_test built its expectation from the seed mirror value retyped, so it greened whichever way the mirror went (found by stern-heron-695, corrected in gunbc#8638). A fixture input is still an input, and one that silently tracks nothing is worse than one that fails. So a refusal that stopped firing would mean the measured doomed run had become admissible, and an admission that stopped holding would mean CI's own runner had been refused — two different regressions, each with its own arm here."
+
+// The public root's measured peak, READ FROM ITS ROW rather than retyped, so every arm below asserts
+// a relation to the row and survives a re-measure without an edit.
+fn public_root_peak() -> Int {
+  match whole_corpus_compile_public_root_demand {
+    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p)
+    UnmeasuredRoot { root: _ } => 0
+  }
+}
+
+fn admit_public_root(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
+  whole_corpus_compile_admission(
+    budget: budget,
+    root: whole_corpus_compile_public_root,
+    demands: whole_corpus_compile_measured_root_demands,
+  )
+}
 
 fn observed_doomed_budget() -> HostBudgetResolution {
   host_budget_resolved_observation(
@@ -45,7 +73,7 @@ fn fleet_runner_slot_budget() -> HostBudgetResolution {
 // of the authority's own constant, which made it a change detector: the only way to close it after
 // a re-measure was to hand-edit the expectation to whatever the authority now says, which is the
 // self-comparison DESIGN section 5's oracle rule names. It caught nothing and cost a red on the
-// 2026-08-28 re-measure. Derived from whole_corpus_compile_measured_peak_demand() it asserts the
+// 2026-08-28 re-measure. Derived from the public root row's peak it asserts the
 // RELATION the arm exists for -- the refusal reports the authority's figure and not some other --
 // and it survives every future re-measure without an edit.
 //
@@ -62,16 +90,17 @@ fn fleet_runner_slot_budget() -> HostBudgetResolution {
 // assertion says something sharper than it did: even 4.9 GiB DECLARED by an operator is refused,
 // and the refusal still names where the number came from rather than reporting a bare figure.
 test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
-  match whole_corpus_compile_admission(budget: observed_doomed_budget()) {
+  match admit_public_root(budget: observed_doomed_budget()) {
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
       budget: b,
       required: r,
       source: s,
     } => byte_size_count(b: b) == 5269094400
-      && byte_size_count(b: r) == byte_size_count(b: whole_corpus_compile_measured_peak_demand())
+      && byte_size_count(b: r) == public_root_peak()
       && string_contains(s: s as String, pattern: "memory.high")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, recipe: _ } => false
   }
 }
 
@@ -89,7 +118,7 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
 // fires upward -- so no legitimate future measurement makes this arm red.
 test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
   whole_corpus_compile_admits(
-    a: whole_corpus_compile_admission(
+    a: admit_public_root(
       budget: host_budget_resolved_observation(
         source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
         bytes: byte_size(7516192768)
@@ -119,13 +148,13 @@ test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
 // as a side effect of wanting this green.
 
 test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool {
-  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_budget())) == false
+  whole_corpus_compile_admits(a: admit_public_root(budget: fleet_runner_slot_budget())) == false
 }
 
 test fn admission_is_tight_at_the_measured_demand() -> Bool {
-  let demand = byte_size_count(b: whole_corpus_compile_measured_peak_demand())
+  let demand = public_root_peak()
   whole_corpus_compile_admits(
-    a: whole_corpus_compile_admission(
+    a: admit_public_root(
       budget: host_budget_resolved_observation(
         source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
         bytes: byte_size(demand)
@@ -133,7 +162,7 @@ test fn admission_is_tight_at_the_measured_demand() -> Bool {
     )
   )
     && !whole_corpus_compile_admits(
-      a: whole_corpus_compile_admission(
+      a: admit_public_root(
         budget: host_budget_resolved_observation(
           source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
           bytes: byte_size(demand - 1)
@@ -143,7 +172,7 @@ test fn admission_is_tight_at_the_measured_demand() -> Bool {
 }
 
 test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> Bool {
-  match whole_corpus_compile_admission(
+  match admit_public_root(
     budget: HostBudgetUnreadable {
       reason: "no modeled host memory source answered on this platform" as NonEmptyStr,
     }
@@ -151,5 +180,168 @@ test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> B
     WholeCorpusCompileRefusedBudgetUnreadable { reason: r } => !((r as String) == "")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: _, recipe: _ } => false
   }
+}
+
+// THE ROOT JOIN, EXECUTING. Each arm below varies ONE coordinate of the root identity against the
+// public row and holds the budget at a figure the public row admits by a wide margin, so a refusal
+// is the join refusing and never the budget. Without the join all four would admit: that is the
+// population-blind constant this change deletes.
+fn ample_budget() -> HostBudgetResolution {
+  host_budget_resolved_observation(
+    source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+    bytes: byte_size(public_root_peak() * 4)
+  )
+}
+
+fn refuses_as_unmeasured(a: WholeCorpusCompileAdmission, root: WholeCorpusCompileRootIdentity) -> Bool {
+  match a {
+    WholeCorpusCompileRefusedUnmeasuredRoot { root: r, recipe: rc } =>
+      (r.repository as String) == (root.repository as String)
+        && (r.primary_root as String) == (root.primary_root as String)
+        && string_contains(s: rc as String, pattern: concat("--source-root ", root.primary_root as String))
+        && string_contains(s: rc as String, pattern: "MeasuredForRoot")
+    WholeCorpusCompileAdmitted { budget: _, required: _ } => false
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
+    WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for the arms below: the same ample budget admits the public root, so the
+// harness produces an admission and the refusals are findings rather than a rig that never admits.
+test fn the_public_root_admits_at_an_ample_budget() -> Bool {
+  whole_corpus_compile_admits(a: admit_public_root(budget: ample_budget()))
+}
+
+test fn an_unmeasured_root_refuses_naming_its_measurement_recipe() -> Bool {
+  let private_root = WholeCorpusCompileRootIdentity {
+    repository: "gunbc-private" as RepositoryIdentity,
+    primary_root: "strategy" as SourceRootIdentity,
+    dependency_pools: ["dag" as SourceRootIdentity],
+  }
+  refuses_as_unmeasured(
+    a: whole_corpus_compile_admission(
+      budget: ample_budget(),
+      root: private_root,
+      demands: whole_corpus_compile_measured_root_demands,
+    ),
+    root: private_root,
+  )
+}
+
+// The repository is part of the key: a second repository spelling the SAME roots does not join the
+// public row. This is the direction that would have admitted a larger root on an undercounting number.
+test fn the_same_root_spelling_in_another_repository_is_unmeasured() -> Bool {
+  let same_spelling = WholeCorpusCompileRootIdentity {
+    repository: "gunbc-private" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["src/v2" as SourceRootIdentity],
+  }
+  refuses_as_unmeasured(
+    a: whole_corpus_compile_admission(
+      budget: ample_budget(),
+      root: same_spelling,
+      demands: whole_corpus_compile_measured_root_demands,
+    ),
+    root: same_spelling,
+  )
+}
+
+// The pools are part of the key: the public primary root with a different pool set is a different
+// subject, including the empty pool set, which a name-census-tracking resident set prices differently.
+test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
+  let no_pools = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: [],
+  }
+  let v2_primary = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "src/v2" as SourceRootIdentity,
+    dependency_pools: ["dag" as SourceRootIdentity],
+  }
+  refuses_as_unmeasured(
+    a: whole_corpus_compile_admission(budget: ample_budget(), root: no_pools, demands: whole_corpus_compile_measured_root_demands),
+    root: no_pools,
+  )
+    && refuses_as_unmeasured(
+      a: whole_corpus_compile_admission(budget: ample_budget(), root: v2_primary, demands: whole_corpus_compile_measured_root_demands),
+      root: v2_primary,
+    )
+}
+
+// A MeasuredForRoot row for a DIFFERENT root does not admit this one at any budget: the roster here
+// holds ONLY a row for another root, with a peak far below the budget, and the public root still
+// refuses as unmeasured. Root identity is the join, not a label on a number.
+test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
+  let other_root_row = MeasuredForRoot {
+    root: WholeCorpusCompileRootIdentity {
+      repository: "gunbc-private" as RepositoryIdentity,
+      primary_root: "dag" as SourceRootIdentity,
+      dependency_pools: ["src/v2" as SourceRootIdentity],
+    },
+    census: whole_corpus_compile_public_root_census,
+    peak: byte_size(1),
+    receipt: whole_corpus_compile_public_root_receipt,
+  }
+  refuses_as_unmeasured(
+    a: whole_corpus_compile_admission(
+      budget: ample_budget(),
+      root: whole_corpus_compile_public_root,
+      demands: [other_root_row],
+    ),
+    root: whole_corpus_compile_public_root,
+  )
+}
+
+// Pinned by the join and not by position: with the other root's row FIRST, the public root still
+// resolves to its own row.
+test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool {
+  let other = MeasuredForRoot {
+    root: WholeCorpusCompileRootIdentity {
+      repository: "gunbc" as RepositoryIdentity,
+      primary_root: "src/v2" as SourceRootIdentity,
+      dependency_pools: ["dag" as SourceRootIdentity],
+    },
+    census: whole_corpus_compile_public_root_census,
+    peak: byte_size(1),
+    receipt: whole_corpus_compile_public_root_receipt,
+  }
+  match whole_corpus_compile_demand_for_root(
+    root: whole_corpus_compile_public_root,
+    demands: [other, whole_corpus_compile_public_root_demand],
+  ) {
+    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => byte_size_count(b: p) == public_root_peak()
+    UnmeasuredRoot { root: _ } => false
+  }
+}
+
+// The pool comparison is ordered and element-wise: reversed pools, and one pool whose spelling
+// joins two, are both different subjects from the public root's.
+test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
+  let reversed = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["src/v2" as SourceRootIdentity, "extdeps" as SourceRootIdentity],
+  }
+  let listed = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["extdeps" as SourceRootIdentity, "src/v2" as SourceRootIdentity],
+  }
+  let joined = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["extdeps, src/v2" as SourceRootIdentity],
+  }
+  let row = MeasuredForRoot {
+    root: listed,
+    census: whole_corpus_compile_public_root_census,
+    peak: byte_size(1),
+    receipt: whole_corpus_compile_public_root_receipt,
+  }
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: ample_budget(), root: listed, demands: [row]))
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: reversed, demands: [row]), root: reversed)
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: joined, demands: [row]), root: joined)
 }

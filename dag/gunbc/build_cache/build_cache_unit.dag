@@ -119,6 +119,14 @@ fn sccache_endpoint_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr 
   }
 }
 
+fn sccache_error_log_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr {
+  concat(concat("SCCACHE_ERROR_LOG=", instance.intended_storage as String), "/sccache-server.log") as NonEmptyStr
+}
+
+fn sccache_cache_dir_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr {
+  concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr
+}
+
 fn capacity_env_directives(instance: BuildCacheInstance) -> List<SystemdServiceDirective> {
   match instance.intended_capacity {
     Absent => []
@@ -201,13 +209,10 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
         ServiceUser { name: instance.intended_principal },
         ServiceGroup { name: instance.intended_principal },
         Environment {
-          assignment: concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr,
+          assignment: sccache_cache_dir_env_assignment(instance: instance),
         },
         Environment {
-          assignment: concat(
-            concat("SCCACHE_ERROR_LOG=", instance.intended_storage as String),
-            "/sccache-server.log",
-          ) as NonEmptyStr,
+          assignment: sccache_error_log_env_assignment(instance: instance),
         },
         Environment { assignment: sccache_start_server_env_assignment() as NonEmptyStr },
         Environment { assignment: sccache_no_daemon_env_assignment() as NonEmptyStr },

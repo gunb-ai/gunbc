@@ -1,23 +1,21 @@
 module v1.gunbc.parsed_import_statements
 
-import extdeps.languages.dag.syntax { dag_parse_environment }
-
-import std.types { String }
-import std.import { ParsedImportStatements }
-import v1.compiler.tokenize { tokenize }
+import std.types { String, List }
+import std.import { ParsedImportObservation }
 import v1.compiler.parse { parse_import_statement_extents }
-import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
+import v1.std.core { empty_intern_table, NewlineIndex, Token }
 
-// THE TRANSPORT FROM ONE IN-MEMORY SOURCE TO ITS PARSED IMPORT STATEMENTS, and nothing else.
-// It reads no repository file, consults no module index and decides nothing: the statements are
-// delimited by v1.compiler.parse parse_import_statement_extents, which is the parser reading its
-// own consumption, and the carrier is std.import's. It exists because a caller outside the seed
-// holds a source string and cannot assemble a token vector, a newline index and an intern table.
+// The host supplies the tokens and newline index from its existing source acquisition. Previously
+// this producer tokenized the source again; carrying the first value deletes that duplicate work.
+// Import boundaries still come exclusively from the parser reading its own consumption.
 
-fn parsed_import_statements(file: String, source: String) -> ParsedImportStatements {
-  parse_import_statement_extents(
-    tokens: tokenize(source: source, file: file, env: dag_parse_environment),
-    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
-    intern_table: empty_intern_table(),
-  )
+fn parsed_import_statements(file: String, tokens: List<Token>, newline_index: NewlineIndex) -> ParsedImportObservation<Token> {
+  ParsedImportObservation {
+    tokens: tokens,
+    imports: parse_import_statement_extents(
+      tokens: tokens,
+      source_indices: map_insert(empty_map(), file, newline_index),
+      intern_table: empty_intern_table(),
+    )
+  }
 }

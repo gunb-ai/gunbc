@@ -1,0 +1,104 @@
+module tools.roadmap_denominator_probe
+
+import std.types { Bool, List, String, Int, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+import gunbc.roadmap_status {
+  RoadmapItem, TicketLine, SupersededLine, AuthoredLine, PlainLine, DerivableLine,
+  line_ticket, item_is_done, signoff_is_present, TicketFields,
+}
+import gunbc.roadmap_authority {
+  declared_roadmap_nodes, active_roadmap_nodes_projection,
+  ActiveRoadmapNodesProjected, ActiveRoadmapNodesProjectionRefused,
+  ManualAcceptance,
+}
+
+// WHICH ROADMAP ROWS ARE ON THE ACTIVE FRONTIER AND CANNOT BE ACTIVE WORK.
+//
+// THIS IS AN INSTRUMENT AND NOT A WITNESS. It asserts nothing; it prints the population, so a figure
+// about the roadmap frontier is cited by naming a producer that re-derives it rather than by being
+// transcribed into prose where it rots (DESIGN section 6). It exists because reading the row
+// constructors gave the WRONG repair: the two size/completeness witnesses in test.claim.roadmap_authority
+// walk the declared set while their predicate is named active_node_admissible, which reads as a
+// denominator defect -- and repointing them at the active set does not repair it, because the active
+// set itself carries superseded and signed-off rows. Only the measurement separates those two stories.
+//
+// WHAT THE ROWS MEAN: `active superseded` is rows the authority has retired that the frontier still
+// presents as work; `active inadmissible` is every active row failing the admissibility the roadmap
+// page assumes of what it renders. Both should be zero and neither is.
+
+fn line_kind(i: RoadmapItem) -> String {
+  match i {
+    TicketLine { done: _, ticket: _ } => "ticket"
+    SupersededLine { by: _, content: _ } => "superseded"
+    AuthoredLine { done: _, content: _ } => "authored"
+    DerivableLine { prs: _, title: _, description: _ } => "derivable"
+    PlainLine { content: _ } => "plain"
+  }
+}
+
+fn sizing_kind(s: NodeSizing) -> String {
+  match s {
+    Unsized => "unsized"
+    Sized { intricacy: _, volume: _, repo: r, acceptance: a } =>
+      join(["sized(", r, ",", if a == ManualAcceptance { "manual" } else { "other" }, ")"], "")
+  }
+}
+
+fn ticket_complete(t: TicketFields) -> Bool {
+  !(t.headline == "") && !(t.brief == "") && !(t.displaced_cost == "") && !(t.current_state == "")
+    && !(t.first_slice == "") && !(t.red_control == "") && !(t.out_of_scope == "") && !(t.handback == "")
+}
+
+fn admissible(n: RoadmapNode) -> Bool {
+  !item_is_done(item: n.line, merged: [])
+    && !signoff_is_present(s: n.signoff)
+    && (match line_ticket(item: n.line) { Present { value: t } => ticket_complete(t: t)  Absent => false })
+    && count(n.carriers) > 0
+    && !(n.owner == "")
+    && (match n.sizing {
+      Sized { intricacy: _, volume: _, repo: r, acceptance: a } => r == "gunbc" && a == ManualAcceptance
+      Unsized => false
+    })
+}
+
+fn row_line(n: RoadmapNode) -> String {
+  join([
+    "  ", n.node as String,
+    " line=", line_kind(i: n.line),
+    " sizing=", sizing_kind(s: n.sizing),
+    " carriers=", to_string(count(n.carriers)),
+    " owner=", if n.owner == "" { "(empty)" } else { n.owner },
+    " done=", if item_is_done(item: n.line, merged: []) { "yes" } else { "no" },
+    " signed=", if signoff_is_present(s: n.signoff) { "yes" } else { "no" },
+    "\n",
+  ], "")
+}
+
+fn active_nodes_or_empty() -> List<RoadmapNode> {
+  match active_roadmap_nodes_projection() {
+    ActiveRoadmapNodesProjected { nodes: ns } => ns
+    ActiveRoadmapNodesProjectionRefused { detail: _ } => []
+  }
+}
+
+fn probe() -> ProcessExit {
+  let declared = declared_roadmap_nodes()
+  let active = active_nodes_or_empty()
+  let declared_bad = filter(declared, n => !admissible(n: n))
+  let active_bad = filter(active, n => !admissible(n: n))
+  let active_superseded = filter(active, n => line_kind(i: n.line) == "superseded")
+  let body = join([
+    "ROADMAP DENOMINATOR PROBE\n",
+    "  declared          ", to_string(count(declared)), "\n",
+    "  active            ", to_string(count(active)), "\n",
+    "  declared inadmissible ", to_string(count(declared_bad)), "\n",
+    "  active inadmissible   ", to_string(count(active_bad)), "\n",
+    "  active superseded     ", to_string(count(active_superseded)), "\n",
+    "ACTIVE AND INADMISSIBLE:\n",
+    join(map(active_bad, n => row_line(n: n)), ""),
+  ], "")
+  let w = Filesystem.Write(path: "target/roadmap-denominator-probe.txt", content: body)
+  if w.success { ExitSuccess } else { exit_failure(reason: body) }
+}

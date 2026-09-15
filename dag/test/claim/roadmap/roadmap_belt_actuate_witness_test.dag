@@ -1354,7 +1354,6 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       spawn_outcomes: [],
       teardown_outcomes: [],
       commit_outcomes: [],
-    commit_outcomes: [],
       verify_outcomes: [
         VerifyRecorded {
           node_id: "v2-emitter-producer-provenance",
@@ -2218,7 +2217,6 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       spawn_outcomes: [],
       teardown_outcomes: [],
       commit_outcomes: [],
-    commit_outcomes: [],
       verify_outcomes: [],
       publish_outcomes: [],
       review_outcomes: [],
@@ -2239,7 +2237,6 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       spawn_outcomes: [],
       teardown_outcomes: [],
       commit_outcomes: [],
-    commit_outcomes: [],
       verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
       publish_outcomes: [],
       review_outcomes: [],

@@ -17,6 +17,7 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   corpus_paths,
   corpus_report,
   corpus_report_from_rows,
+  corpus_file_row,
   corpus_rows_for_paths
 }
 import std.algebra { Cons, Empty }
@@ -58,7 +59,16 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.witness { Holds, Violates }
 import v2.std.collection { List }
-import v2.std.integer { Int }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceAnalysisNotEstablishedCause,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected,
+  SourceUnreadable
+}
 import v2.lens.complexity_accumulator_copy.roster_gate {
   GateClean,
   GateNotEstablished,
@@ -92,8 +102,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // lives here are entry points, run by a person, whose output belongs in a run.
 //
 // AND THE PRICE THAT DECIDES THIS IS NOT THE CORPUS -- IT IS ONE SUBJECT, WHICH IS A HARDER FACT
-// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness CPU line is
-// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms -- named rather than
+// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness work envelope is
+// v2.workflow.required_floor required_floor_claim_work_envelope_ms -- 500ms of ordinary
+// interpreted evaluation, the policy the floor's eval-step ceiling is grounded against since
+// 2026-09-12, and the figure these CPU measurements are held beside -- named rather than
 // transcribed, because that module's own prose already carries a stale ten-fold figure for it in
 // nine places and this file will not become the tenth. Interpreted ingest of a FIVE-LINE fixture,
 // and of a four-line String snippet with no filesystem read, both measure several times that line,
@@ -149,8 +161,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // SUFFICIENT FOR -- AND THE MEASUREMENT THAT SETS THE BAR IS THE SMALLEST SUBJECT, NOT THE CORPUS.
 // This is the finding to carry out of this lane and it belongs in the trigger rather than in a
 // discussion: interpreted ingest of a FIVE-LINE fixture, and of a FOUR-LINE String with no
-// filesystem read, both measure several times the required floor's per-witness CPU line
-// (v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms) -- at the smallest subject
+// filesystem read, both measure several times the required floor's per-witness work envelope
+// (v2.workflow.required_floor required_floor_claim_work_envelope_ms) -- at the smallest subject
 // expressible. So the trigger is not "when the per-claim budget accommodates ingest", which reads
 // as waiting for the ceiling to move: the ceiling did not drift, it was deliberately RESTORED by
 // gunbc#9517, which froze the over-cost population as a monotone debt contract at the same time.
@@ -217,6 +229,43 @@ fn census_for_root(root: String) -> CorpusReport {
 
 fn census_for_paths(paths_csv: String) -> CorpusReport {
   corpus_report_from_rows(rows: corpus_rows_for_paths(paths: split(s: paths_csv, delimiter: ",")))
+}
+
+// ONE FILE, ONE LINE, READ FROM THE VALUE — NEVER FROM THE PROCESS EXIT CODE.
+// still-bee-353 encoded a suspect total in the exit status; that wraps at 256, so the
+// number is not a number. This entry returns a String. `gunbc run --function` prints a
+// non-ProcessExit return via classify_exit's format_value arm. The driver writes that
+// line to a file. One path per process: corpus_census already records that a multi-subject
+// fold dies with SIGSEGV and a silent truncation. The two-arm receipt is
+// corpus_gate.newly_red_difference: lockstep identity join, unmeasured listed and not red.
+fn not_established_cause_token(cause: SourceAnalysisNotEstablishedCause) -> String {
+  match cause {
+    LanguageGrammarUnavailable => "LanguageGrammarUnavailable"
+    LanguageGrammarRejected => "LanguageGrammarRejected"
+    SourceUnreadable => "SourceUnreadable"
+    SourceTokenizationRejected => "SourceTokenizationRejected"
+    SourceParseRejected => "SourceParseRejected"
+    SourceNormalizationRejected => "SourceNormalizationRejected"
+  }
+}
+
+fn census_tsv_line_for_path(path: String) -> String {
+  let row = corpus_file_row(path: path)
+  match row.standing {
+    CorpusFileScanned { suspects: s, refusals: r, causes: _ } =>
+      concat(
+        path,
+        concat(
+          "\tscanned\t",
+          concat(
+            integer_int_to_decimal_string(value: s),
+            concat("\t", integer_int_to_decimal_string(value: r))
+          )
+        )
+      )
+    CorpusFileNotEstablished { cause: cause } =>
+      concat(path, concat("\tnot_established\t", concat(not_established_cause_token(cause: cause), "\t0")))
+  }
 }
 
 fn subtree_gate() -> CorpusGateDisposition {

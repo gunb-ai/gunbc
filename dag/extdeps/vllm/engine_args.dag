@@ -173,6 +173,31 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   }
 }
 
+// ── WHETHER A DRAFT MODEL WAS PROPOSING TOKENS, WHICH IS A MEASUREMENT AXIS ────────────────────
+//
+// WHY THIS IS MODELLED HERE RATHER THAN BESIDE A MEASUREMENT. gunbc.spark.prefill_batch_sweep states
+// the consequence in its own prose: "a budget measurement taken with speculation OFF does not
+// describe a product served with it ON" -- draft tokens consume the same batch budget, and a step
+// that accepts a BURST instead of exactly one decode token has a different felt cadence at the same
+// step duration. So a measurement's speculative policy decides whether it transfers, which makes it
+// an engine argument like the others rather than a fact about any one experiment.
+//
+// EVERY ARM IS A POLICY THAT WAS READ. The fleet's existing measurements do not record this, and
+// answering "off" for them would be a fabricated default on an axis whose whole purpose is to expire
+// a number -- but the fix is not a third arm saying "unread". Absence of a reading is the absence of
+// this value, spelled by an optional at the use site; a policy type whose arms include "no policy
+// was observed" forces every consumer to carry a bespoke guard for a state the option already has.
+type VllmSpeculativePolicy
+  = SpeculativeDecodingOff
+  | SpeculativeDecodingOn { proposer: NonEmptyStr }
+
+fn vllm_speculative_policy_wire(p: VllmSpeculativePolicy) -> NonEmptyStr {
+  match p {
+    SpeculativeDecodingOff => "speculation-off" as NonEmptyStr
+    SpeculativeDecodingOn { proposer: n } => join(["speculation-on:", n as String], "") as NonEmptyStr
+  }
+}
+
 type VllmDistributedExecutorBackend = ExecutorMp | ExecutorRay | ExecutorExternalLauncher
 
 fn vllm_distributed_executor_backend_wire(backend: VllmDistributedExecutorBackend) -> NonEmptyStr {

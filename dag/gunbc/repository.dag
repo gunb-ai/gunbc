@@ -12,3 +12,23 @@ data gunbc_repository: Repository = Repository {
   private: false,
   default_branch: "main",
 }
+
+// THE SECOND REPOSITORY THIS PROJECT COMPOSES WITH, and it lives here for the reason the note above
+// gives for the first: WHICH repositories this project is are product facts, and one authority the
+// others consume beats a spelling per consumer. gunbc.workspace_repository_materialisation reads
+// this row to say which prefixes hold material that must never be tracked in the public tree, and
+// gunbc.gitignore_emit derives the ignore rows from its visibility -- so a flip at the forge is a
+// change to THIS row and the projection follows.
+//
+// Every field is OBSERVED from the GitHub repository object rather than assumed, read 2026-09-14
+// via the repos/gunb-ai/gunbc-private endpoint: full_name, private and default_branch came back
+// gunb-ai/gunbc-private, true and main. default_branch in particular is not inferred from the
+// public repository's -- a sibling repository is free to differ, and a guessed field is exactly the
+// kind of quietly-wrong fact that survives until something acts on it.
+data gunbc_private_repository: Repository = Repository {
+  owner: "gunb-ai",
+  name: "gunbc-private",
+  full_name: "gunb-ai/gunbc-private",
+  private: true,
+  default_branch: "main",
+}

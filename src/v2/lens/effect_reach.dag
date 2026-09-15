@@ -61,7 +61,7 @@ import v2.std.node {
   Symbol,
   fold_node
 }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
@@ -76,10 +76,6 @@ data empty_flow_list: List<EffectReachFlow> = []
 data empty_string_list: List<String> = []
 data empty_symbol_list: List<Symbol> = []
 data empty_node_list: List<Node> = []
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn callee_text_is_host_sink(text: String) -> Bool {
   contains(xs: effect_reach_host_sink_callee_symbols_v0, item: text, eq: string_eq)
