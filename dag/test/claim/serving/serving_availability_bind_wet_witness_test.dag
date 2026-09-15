@@ -1,0 +1,83 @@
+module test.claim.serving.serving_availability_bind_wet_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
+}
+import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, harness_route_availability,
+}
+import gunbc.spark.serving_offer {
+  SparkServingRoute, ServingRouteServiceUnidentified, ServingRouteObserved, ServingRouteOperatorAsserted,
+  ServingRouteRegionUnobserved,
+  SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
+  ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
+  ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
+  spark_serving_incarnation_unobserved_obligation,
+}
+import gunbc.harness.harness_seat {
+  HarnessCandidates, harness_bind_candidate, harness_serving_route, AnyAdmittedModel,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+
+data w_now: String = "1789400000"
+
+fn w_serving_standing() -> HarnessBackendStanding {
+  HarnessBackendServing {
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    unit: DeepseekV4FlashOnVllm,
+    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+  }
+}
+
+fn w_launch(field: String) -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+}
+
+fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
+  LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
+}
+
+// PRODUCT PATH, wet because harness_serving_route now reaches DigestStdin. The hermetic copy in
+// serving_availability_witness_test is deleted so discovery cannot refuse NoMockResponse before a
+// verdict. harness_bind_candidate and harness_serving_route both execute that wire.
+test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
+  let launch = w_launch(field: "1789300000.12")
+  let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
+  let bound = harness_bind_candidate(
+    acc: HarnessCandidates { candidates: [], notes: [], retryable: false },
+    group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
+    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+    requirement: AnyAdmittedModel, seats: 4, now: 1789400000,
+  )
+  length(bound.candidates) == 0
+    && any(bound.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
+    && match harness_serving_route(
+      group: FabricGroupA,
+      launch: launch,
+      readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+    ) {
+      ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
+        match c {
+          ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
+            (o as String) == (spark_serving_incarnation_unobserved_obligation as String)
+          ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
+          ServiceIncarnationOutsideRealization { incarnation: _ } => false
+          ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
+          ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
+          ServiceConfigurationDisagrees { configuration: _ } => false
+        }
+      ServingRouteObserved { route: _ } => false
+      ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+      ServingRouteRegionUnobserved { obligation: _ } => false
+    }
+}
