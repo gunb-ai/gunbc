@@ -6108,14 +6108,14 @@ pub fn maybe_mark_shared_type(
                 } => (unit_only.clone() == false),
             });
         if is_grounded_coproduct_native_alias(summary.name.clone()) {
-            acc
+            acc.clone()
         } else {
             if (needs_sharing.clone()
                 && !is_type_constant(summary.clone(), recursive_type_set.clone()))
             {
-                v1_rt::rc_set_insert(acc, summary.name.clone())
+                v1_rt::rc_set_insert(acc.clone(), summary.name.clone())
             } else {
-                acc
+                acc.clone()
             }
         }
     }
@@ -16207,11 +16207,11 @@ pub fn emit_type_def_from_connective(
                     emit_info.clone(),
                 );
                 if (clone_bound_refusal.clone() == "".to_string()) {
-                    struct_text
+                    struct_text.clone()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat(clone_bound_refusal.clone(), "\n".to_string()),
-                        struct_text,
+                        struct_text.clone(),
                     )
                 }
             }
@@ -16394,11 +16394,11 @@ pub fn emit_type_def_from_connective(
                                 }
                             };
                             if (validations.clone() == "".to_string()) {
-                                enum_text
+                                enum_text.clone()
                             } else {
                                 v1_rt::concat(
                                     v1_rt::concat(validations.clone(), "\n".to_string()),
-                                    enum_text,
+                                    enum_text.clone(),
                                 )
                             }
                         }
@@ -16766,9 +16766,9 @@ pub fn emit_struct_from_children(
                 };
                 let with_accessors = v1_rt::concat(struct_def.clone(), sealed_accessors.clone());
                 if (surface.impl_bodies.clone() == "".to_string()) {
-                    with_accessors
+                    with_accessors.clone()
                 } else {
-                    v1_rt::concat(with_accessors, surface.impl_bodies.clone())
+                    v1_rt::concat(with_accessors.clone(), surface.impl_bodies.clone())
                 }
             }
         }
@@ -17367,9 +17367,9 @@ pub fn emit_enum_from_children(
             )
         };
         if (supplemental.clone() == "".to_string()) {
-            with_accessors
+            with_accessors.clone()
         } else {
-            v1_rt::concat(with_accessors, supplemental.clone())
+            v1_rt::concat(with_accessors.clone(), supplemental.clone())
         }
     }
 }
@@ -19748,14 +19748,14 @@ pub fn emit_func_body(
                             std::option::Option::None => "Ok(())".to_string(),
                         };
                         if ((init_state.text.clone().len() as i64) == 0) {
-                            last_str
+                            last_str.clone()
                         } else {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     init_state.text.clone().join(&"\n".to_string()),
                                     "\n".to_string(),
                                 ),
-                                last_str,
+                                last_str.clone(),
                             )
                         }
                     }
@@ -20715,7 +20715,7 @@ pub fn emit_variant_pattern(
                         }
                     }
                 }
-                std::option::Option::None => qualified,
+                std::option::Option::None => qualified.clone(),
             }
         } else {
             if ((field_bindings.clone().len() as i64) == 1) {
@@ -20736,7 +20736,7 @@ pub fn emit_variant_pattern(
                                 if is_string_lit_pattern(fb_pat.clone()) {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(qualified, "(ref ".to_string()),
+                                            v1_rt::concat(qualified.clone(), "(ref ".to_string()),
                                             bind_name.clone(),
                                         ),
                                         ")".to_string(),
@@ -20760,7 +20760,7 @@ pub fn emit_variant_pattern(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, "(".to_string()),
+                                                v1_rt::concat(qualified.clone(), "(".to_string()),
                                                 inner_pat.clone(),
                                             ),
                                             ")".to_string(),
@@ -20787,7 +20787,10 @@ pub fn emit_variant_pattern(
                                             ));
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, " { ref ".to_string()),
+                                                v1_rt::concat(
+                                                    qualified.clone(),
+                                                    " { ref ".to_string(),
+                                                ),
                                                 bind_name.clone(),
                                             ),
                                             ", .. }".to_string(),
@@ -20811,7 +20814,7 @@ pub fn emit_variant_pattern(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, " { ".to_string()),
+                                                v1_rt::concat(qualified.clone(), " { ".to_string()),
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         crate::v1_compiler_emit::emit_ident(
@@ -20830,12 +20833,12 @@ pub fn emit_variant_pattern(
                             }
                         }
                     }
-                    std::option::Option::None => qualified,
+                    std::option::Option::None => qualified.clone(),
                 }
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
                     variant_pattern_shape_str(
-                        qualified,
+                        qualified.clone(),
                         rust_name.clone(),
                         resolved_parent.clone(),
                         emit_info.clone(),
@@ -20858,7 +20861,7 @@ pub fn emit_variant_pattern(
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
                             variant_pattern_shape_str(
-                                qualified,
+                                qualified.clone(),
                                 rust_name.clone(),
                                 resolved_parent.clone(),
                                 emit_info.clone(),
@@ -20909,7 +20912,7 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
                                 let bindings_str = binding_strs.clone().join(&", ".to_string());
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(qualified, " { ".to_string()),
+                                        v1_rt::concat(qualified.clone(), " { ".to_string()),
                                         bindings_str.clone(),
                                     ),
                                     ", .. }".to_string(),
@@ -21358,7 +21361,7 @@ pub fn emit_variant_pattern_rc_aware(
                         }
                     }
                 }
-                std::option::Option::None => qualified,
+                std::option::Option::None => qualified.clone(),
             }
         } else {
             if ((field_bindings.clone().len() as i64) == 1) {
@@ -21379,7 +21382,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 if is_string_lit_pattern(fb_pat.clone()) {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(qualified, "(ref ".to_string()),
+                                            v1_rt::concat(qualified.clone(), "(ref ".to_string()),
                                             bind_name.clone(),
                                         ),
                                         ")".to_string(),
@@ -21411,7 +21414,7 @@ pub fn emit_variant_pattern_rc_aware(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, "(".to_string()),
+                                                v1_rt::concat(qualified.clone(), "(".to_string()),
                                                 inner_pat.clone(),
                                             ),
                                             ")".to_string(),
@@ -21438,7 +21441,10 @@ pub fn emit_variant_pattern_rc_aware(
                                             ));
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, " { ref ".to_string()),
+                                                v1_rt::concat(
+                                                    qualified.clone(),
+                                                    " { ref ".to_string(),
+                                                ),
                                                 bind_name.clone(),
                                             ),
                                             ", .. }".to_string(),
@@ -21448,7 +21454,10 @@ pub fn emit_variant_pattern_rc_aware(
                                     if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified, " { ref ".to_string()),
+                                                v1_rt::concat(
+                                                    qualified.clone(),
+                                                    " { ref ".to_string(),
+                                                ),
                                                 crate::v1_compiler_emit::emit_ident(
                                                     fb_name.clone(),
                                                     RenderTarget::Rust,
@@ -21482,7 +21491,10 @@ pub fn emit_variant_pattern_rc_aware(
                                             );
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    v1_rt::concat(qualified, " { ".to_string()),
+                                                    v1_rt::concat(
+                                                        qualified.clone(),
+                                                        " { ".to_string(),
+                                                    ),
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             crate::v1_compiler_emit::emit_ident(
@@ -21502,12 +21514,12 @@ pub fn emit_variant_pattern_rc_aware(
                             }
                         }
                     }
-                    std::option::Option::None => qualified,
+                    std::option::Option::None => qualified.clone(),
                 }
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
                     variant_pattern_shape_str(
-                        qualified,
+                        qualified.clone(),
                         rust_name.clone(),
                         resolved_parent.clone(),
                         emit_info.clone(),
@@ -21530,7 +21542,7 @@ pub fn emit_variant_pattern_rc_aware(
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
                             variant_pattern_shape_str(
-                                qualified,
+                                qualified.clone(),
                                 rust_name.clone(),
                                 resolved_parent.clone(),
                                 emit_info.clone(),
@@ -21586,7 +21598,7 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
                                 let bindings_str = binding_strs.clone().join(&", ".to_string());
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(qualified, " { ".to_string()),
+                                        v1_rt::concat(qualified.clone(), " { ".to_string()),
                                         bindings_str.clone(),
                                     ),
                                     ", .. }".to_string(),
@@ -33124,14 +33136,14 @@ pub fn emit_rust_tco_block(
                         std::option::Option::None => "break;".to_string(),
                     };
                     if ((init_state.text.clone().len() as i64) == 0) {
-                        last_str
+                        last_str.clone()
                     } else {
                         v1_rt::concat(
                             v1_rt::concat(
                                 init_state.text.clone().join(&"\n".to_string()),
                                 "\n".to_string(),
                             ),
-                            last_str,
+                            last_str.clone(),
                         )
                     }
                 }
@@ -39819,13 +39831,15 @@ pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> String {
             CliOptionValue::CliMillisecondValue { .. } => "u64".to_string(),
         };
         match opt.arity.clone() {
-            CliOptionArity::CliRequired => base,
-            CliOptionArity::CliAtMostOne => {
-                v1_rt::concat(v1_rt::concat("Option<".to_string(), base), ">".to_string())
-            }
-            CliOptionArity::CliRepeated => {
-                v1_rt::concat(v1_rt::concat("Vec<".to_string(), base), ">".to_string())
-            }
+            CliOptionArity::CliRequired => base.clone(),
+            CliOptionArity::CliAtMostOne => v1_rt::concat(
+                v1_rt::concat("Option<".to_string(), base.clone()),
+                ">".to_string(),
+            ),
+            CliOptionArity::CliRepeated => v1_rt::concat(
+                v1_rt::concat("Vec<".to_string(), base.clone()),
+                ">".to_string(),
+            ),
         }
     }
 }

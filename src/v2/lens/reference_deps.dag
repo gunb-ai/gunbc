@@ -8,6 +8,7 @@ import v2.lens.module_graph { map_lookup_where_rejected_unreachable, no_paths, m
 import v2.std.algebra { contains, fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
+import v2.std.text { string_eq }
 
 
 type ReferenceResolutionFact {
@@ -84,10 +85,6 @@ data reference_deps_ingest_refusal_probe_path: String = "witness/ingest_refusal_
 data empty_reference_facts: List<ReferenceResolutionFact> = []
 
 data empty_reference_refusals: List<ReferenceIngestRefusal> = []
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
