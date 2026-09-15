@@ -11,11 +11,11 @@ import extdeps.languages.yaml.types {
 }
 import gunbc.witness_floor_workflow { required_lanes_aggregate_job, build_lane_job }
 import extdeps.github.commits { CommitAssociatedPull }
+import gunbc.repository { gunbc_private_repository }
 import gunbc.private_witness_dispatch {
   associated_pull_number,
   dispatch_target_of,
   private_witness_dispatch_effect,
-  gunbc_private_repository,
   private_witness_dispatch_step_name,
   private_witness_dispatch_step,
   private_witness_dispatch_uses_contents_write,

@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.shell
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.repository { gunbc_repository }
+import gunbc.repository { gunbc_repository, gunbc_private_repository }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.github.github { Repository }
 import extdeps.github.commits { CommitAssociatedPull }
@@ -20,14 +20,6 @@ import extdeps.github.actions {
 import extdeps.github.expressions { Equals, ContextAccess, Github, Secrets, StringLiteral, serialize_expression, interpolate }
 import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
-
-data gunbc_private_repository: Repository = Repository {
-  owner: "gunb-ai",
-  name: "gunbc-private",
-  full_name: "gunb-ai/gunbc-private",
-  private: true,
-  default_branch: "main",
-}
 
 data public_main_dispatch_event_type: NonEmptyStr = "gunbc_public_main"
 
