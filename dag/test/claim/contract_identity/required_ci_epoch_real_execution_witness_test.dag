@@ -6,8 +6,10 @@ import std.algebra { trim }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
-import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
-import extdeps.github.workflow_run_event { WorkflowRunEvent }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, WorkflowRun, WorkflowRunList, WorkflowRunStatus, Completed }
+import extdeps.github.push_event { PushRefUpdate }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import std.algebra { length }
 import std.types { CommitSha }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
@@ -31,13 +33,13 @@ import gunbc.fleet_revision_acceptance {
   RequiredCiAdmitted,
   RequiredCiRefused,
   CiContractEpochMismatch,
-  accept_required_ci_workflow_run,
+  accept_required_ci_merge_group_runs,
 }
 import gunbc.fleet_desired_admission {
   FleetDesiredAcceptedRevision,
   FleetDesiredRevisionAccepted,
   FleetDesiredRevisionRefused,
-  fleet_desired_accepted_from_event,
+  fleet_desired_accepted_from_push,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -130,27 +132,50 @@ type EpochExperiment {
   setup_ok: Bool
 }
 
-fn fixture_event_at(head_sha: String) -> WorkflowRunEvent {
-  WorkflowRunEvent {
-    activity: "completed",
-    run_id: "1" as NonEmptyStr,
-    workflow_name: witness_floor_workflow_name,
-    workflow_id: "2" as NonEmptyStr,
-    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-    conclusion: Success,
-    html_url: "https://example.invalid/run" as NonEmptyStr,
-    run_started_at: "2026-09-01T00:00:00Z" as NonEmptyStr,
-    head_sha: head_sha as CommitSha,
-    head_branch: gunbc_default_branch_name,
-    head_repository_full_name: fixture_repo_full_name,
-    originating_event: "push",
+// THE ROUTE THIS WITNESS RUNS THROUGH IS THE MERGE-QUEUE ONE, because it is the only route there
+// is: the workflow_run route was deleted with the push-on-main required run
+// (gunbc.witness_floor_workflow witness_floor_triggers). The epoch axis is unchanged by that move
+// -- the observation still comes from a real commit through the production reader, and the fold it
+// is fed to is still the production composition -- but the CI fact now arrives as merge_group runs
+// on the pushed revision rather than as a delivered run-completion event.
+fn fixture_push_at(head_sha: String) -> PushRefUpdate {
+  PushRefUpdate {
+    ref: concat("refs/heads/", gunbc_default_branch_name),
+    after: head_sha,
     repository_full_name: fixture_repo_full_name,
   }
 }
 
+fn fixture_merge_group_runs_at(head_sha: String) -> WorkflowRunList {
+  let r = WorkflowRun {
+    id: 1,
+    name: Present { value: witness_floor_workflow_name },
+    path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
+    head_sha: head_sha as CommitSha,
+    head_branch: Present { value: "gh-readonly-queue/main/pr-1-deadbeef" },
+    event: "merge_group",
+    status: Completed,
+    conclusion: Present { value: Success },
+    workflow_id: 900001,
+    run_number: 1,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://example.invalid/run" as NonEmptyStr,
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-01T00:30:00Z",
+    pull_requests: [],
+  }
+  WorkflowRunList { total_count: 1, workflow_runs: [r] }
+}
+
 // ONE AXIS. Both arms run this function; the only thing that differs between them is WHICH of the
-// two fixture commits is named as the run's head_sha, and every other field of the event, the
-// repository, and the reader are identical.
+// two fixture commits is named as the pushed revision and as the merge_group run's head_sha, and
+// every other field of the push, the run list, the repository, and the reader are identical.
+//
+// THE none ARM OF THE HEX DECODE IS NOT A SECOND VERDICT. A commit sha this fixture just read back
+// from git is decodable; the arm exists because the decode is total, and it is written as a refusal
+// so an undecodable sha can never reach the epoch assertions as an admission.
 fn run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
   let dir = shell.Mktemp.Dir()
   let fixture = build_epoch_fixture(repo: dir.path)
@@ -159,13 +184,14 @@ fn run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
     address: GitWorktreeAt { path: dir.path },
     head_sha: head_sha as GitRef,
   )
-  let event = fixture_event_at(head_sha: head_sha)
-  let admission = accept_required_ci_workflow_run(
-    event: event,
-    evidence: event.run_id,
-    observed_epoch: observed,
-  )
-  let desired = fleet_desired_accepted_from_event(event: event, observed_epoch: observed)
+  let push = fixture_push_at(head_sha: head_sha)
+  let runs = fixture_merge_group_runs_at(head_sha: head_sha)
+  let admission = match git_object_id_from_untagged_hex(hex: head_sha) {
+    Present { value: revision } =>
+      accept_required_ci_merge_group_runs(revision: revision, runs: runs, observed_epoch: observed)
+    none => RequiredCiRefused { cause: CiContractEpochMismatch { observed: "", required: "" } }
+  }
+  let desired = fleet_desired_accepted_from_push(push: push, runs: runs, observed_epoch: observed)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   EpochExperiment {
     observation: observed,
