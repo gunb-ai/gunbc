@@ -1022,13 +1022,15 @@ pub fn collect_callable_refs(
     })
 }
 
-pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
+pub fn fold_terminal_expr(mut __tco_loop_body: Rc<Node>) -> Rc<Node> {
     loop {
+        #[allow(unused_mut)]
+        let mut body = __tco_loop_body.clone();
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => {
                     let __tco_0 = inner.clone();
-                    body = __tco_0;
+                    __tco_loop_body = __tco_0;
                     continue;
                 }
                 std::option::Option::None => {
@@ -1038,7 +1040,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
             ExprData::ExprBlock => match body.children.clone().last().cloned() {
                 Some(last_child) => {
                     let __tco_0 = last_child.clone();
-                    body = __tco_0;
+                    __tco_loop_body = __tco_0;
                     continue;
                 }
                 std::option::Option::None => {

@@ -136,18 +136,28 @@ pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
 }
 
 pub fn source_scan_while(
-    mut source: Rc<SourceRef>,
-    mut start: i64,
-    mut pred: impl Fn(i64) -> bool + Clone,
+    mut __tco_loop_source: Rc<SourceRef>,
+    mut __tco_loop_start: i64,
+    mut __tco_loop_pred: impl Fn(i64) -> bool + Clone,
 ) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
+        #[allow(unused_mut)]
+        let mut pred = __tco_loop_pred.clone();
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
             if pred(source.source_chars.clone()[(start.clone()) as usize].clone()) {
                 {
-                    let __tco_0 = (start + 1);
-                    start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    let __tco_2 = pred;
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
+                    __tco_loop_pred = __tco_2;
                     continue;
                 }
             } else {
@@ -157,16 +167,22 @@ pub fn source_scan_while(
     }
 }
 
-pub fn source_skip_ws(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
+pub fn source_skip_ws(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start: i64) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
         if (start.clone() >= source_len(source.clone())) {
             break start.clone();
         } else {
             let ch = source.source_chars.clone()[(start.clone()) as usize].clone();
             if ((ch.clone() == 32) || (ch.clone() == 9)) {
                 {
-                    let __tco_0 = (start + 1);
-                    start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
                     continue;
                 }
             } else {
@@ -176,8 +192,12 @@ pub fn source_skip_ws(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
+pub fn source_scan_to_eol(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start: i64) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut start = __tco_loop_start.clone();
         if (start.clone() >= source_len(source.clone())) {
             break source_len(source.clone());
         } else {
@@ -185,8 +205,10 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
                 break start.clone();
             } else {
                 {
-                    let __tco_0 = (start + 1);
-                    start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
                     continue;
                 }
             }
@@ -248,8 +270,12 @@ pub fn v1_line_prefix_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
+pub fn source_line_start(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_pos: i64) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
         if (pos.clone() <= 0) {
             break 0;
         } else {
@@ -257,8 +283,10 @@ pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
                 break pos.clone();
             } else {
                 {
-                    let __tco_0 = (pos - 1);
-                    pos = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos - 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
                     continue;
                 }
             }
@@ -294,19 +322,29 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
 }
 
 pub fn tokenize_line_first_content_pos(
-    mut source: Rc<SourceRef>,
-    mut pos: i64,
-    mut end: i64,
+    mut __tco_loop_source: Rc<SourceRef>,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_end: i64,
 ) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut end = __tco_loop_end.clone();
         if (pos.clone() >= end.clone()) {
             break end.clone();
         } else {
             let ch = source_code_point(source.clone(), pos.clone());
             if ((ch.clone() == 32) || (ch.clone() == 9)) {
                 {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = end;
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_end = __tco_2;
                     continue;
                 }
             } else {
@@ -450,14 +488,26 @@ pub fn scan_next_token(
 }
 
 pub fn tokenize_loop(
-    mut source: Rc<SourceRef>,
-    mut tokens: Rc<Vec<Rc<Token>>>,
-    mut annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    mut pos: Rc<TokPos>,
-    mut fuel: i64,
-    mut env: Rc<ParseEnvironment>,
+    mut __tco_loop_source: Rc<SourceRef>,
+    mut __tco_loop_tokens: Rc<Vec<Rc<Token>>>,
+    mut __tco_loop_annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
+    mut __tco_loop_pos: Rc<TokPos>,
+    mut __tco_loop_fuel: i64,
+    mut __tco_loop_env: Rc<ParseEnvironment>,
 ) -> Rc<TokenizerState> {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens.clone();
+        #[allow(unused_mut)]
+        let mut annotations = __tco_loop_annotations.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env.clone();
         let s = skip_spaces(source.clone(), pos.clone());
         if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
@@ -474,27 +524,39 @@ pub fn tokenize_loop(
                 interp_depth: depth,
                 ..
             } => {
-                let __tco_0 = v1_rt::rc_list_push(annotations, capture.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_0 = source;
+                let __tco_1 = tokens;
+                let __tco_2 = v1_rt::rc_list_push(annotations, capture.clone());
+                let __tco_3 = Rc::new(TokPos {
                     pos: next_pos.clone(),
                     interp_depth: depth.clone(),
                 });
-                let __tco_2 = (fuel - 1);
-                annotations = __tco_0;
-                pos = __tco_1;
-                fuel = __tco_2;
+                let __tco_4 = (fuel - 1);
+                let __tco_5 = env;
+                __tco_loop_source = __tco_0;
+                __tco_loop_tokens = __tco_1;
+                __tco_loop_annotations = __tco_2;
+                __tco_loop_pos = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                __tco_loop_env = __tco_5;
                 continue;
             }
             ScanStep::ScannedToken { result: result, .. } => {
-                let __tco_0 = v1_rt::rc_list_push(tokens, result.token.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_0 = source;
+                let __tco_1 = v1_rt::rc_list_push(tokens, result.token.clone());
+                let __tco_2 = annotations;
+                let __tco_3 = Rc::new(TokPos {
                     pos: result.pos.clone(),
                     interp_depth: result.interp_depth.clone(),
                 });
-                let __tco_2 = (fuel - 1);
-                tokens = __tco_0;
-                pos = __tco_1;
-                fuel = __tco_2;
+                let __tco_4 = (fuel - 1);
+                let __tco_5 = env;
+                __tco_loop_source = __tco_0;
+                __tco_loop_tokens = __tco_1;
+                __tco_loop_annotations = __tco_2;
+                __tco_loop_pos = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                __tco_loop_env = __tco_5;
                 continue;
             }
         }
@@ -1035,11 +1097,17 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
 }
 
 pub fn scan_string_body(
-    mut source: Rc<SourceRef>,
-    mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
+    mut __tco_loop_source: Rc<SourceRef>,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<StringScanResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
                 content: acc.clone(),
@@ -1063,24 +1131,28 @@ pub fn scan_string_body(
                                 == 123))
                         {
                             {
-                                let __tco_0 = (pos + 3);
-                                let __tco_1 = v1_rt::rc_list_push(
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 3);
+                                let __tco_2 = v1_rt::rc_list_push(
                                     v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), 117),
                                     123,
                                 );
-                                pos = __tco_0;
-                                acc = __tco_1;
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         } else {
                             {
-                                let __tco_0 = (pos + 2);
-                                let __tco_1 = v1_rt::rc_list_push(
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 2);
+                                let __tco_2 = v1_rt::rc_list_push(
                                     v1_rt::rc_list_push(acc, 92),
                                     escaped.clone(),
                                 );
-                                pos = __tco_0;
-                                acc = __tco_1;
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         }
@@ -1099,19 +1171,23 @@ pub fn scan_string_body(
                             });
                         } else {
                             {
-                                let __tco_0 = (pos + 1);
-                                let __tco_1 = v1_rt::rc_list_push(acc, 123);
-                                pos = __tco_0;
-                                acc = __tco_1;
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 1);
+                                let __tco_2 = v1_rt::rc_list_push(acc, 123);
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         }
                     } else {
                         {
-                            let __tco_0 = (pos + 1);
-                            let __tco_1 = v1_rt::rc_list_push(acc, ch.clone());
-                            pos = __tco_0;
-                            acc = __tco_1;
+                            let __tco_0 = source;
+                            let __tco_1 = (pos + 1);
+                            let __tco_2 = v1_rt::rc_list_push(acc, ch.clone());
+                            __tco_loop_source = __tco_0;
+                            __tco_loop_pos = __tco_1;
+                            __tco_loop_acc = __tco_2;
                             continue;
                         }
                     }
@@ -1192,12 +1268,20 @@ pub struct UnicodeEscape {
 }
 
 pub fn unicode_escape_at(
-    mut source: Rc<Vec<i64>>,
-    mut pos: i64,
-    mut digit_count: i64,
-    mut value: i64,
+    mut __tco_loop_source: Rc<Vec<i64>>,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_digit_count: i64,
+    mut __tco_loop_value: i64,
 ) -> Option<UnicodeEscape> {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut digit_count = __tco_loop_digit_count.clone();
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value.clone();
         if (pos.clone() >= (source.clone().len() as i64)) {
             break std::option::Option::None;
         } else {
@@ -1219,12 +1303,14 @@ pub fn unicode_escape_at(
                 } else {
                     match hex_digit_value(ch.clone()) {
                         Some(digit) => {
-                            let __tco_0 = (pos + 1);
-                            let __tco_1 = (digit_count + 1);
-                            let __tco_2 = ((value * 16) + digit.clone());
-                            pos = __tco_0;
-                            digit_count = __tco_1;
-                            value = __tco_2;
+                            let __tco_0 = source;
+                            let __tco_1 = (pos + 1);
+                            let __tco_2 = (digit_count + 1);
+                            let __tco_3 = ((value * 16) + digit.clone());
+                            __tco_loop_source = __tco_0;
+                            __tco_loop_pos = __tco_1;
+                            __tco_loop_digit_count = __tco_2;
+                            __tco_loop_value = __tco_3;
                             continue;
                         }
                         std::option::Option::None => {
@@ -1238,11 +1324,17 @@ pub fn unicode_escape_at(
 }
 
 pub fn process_escapes_loop(
-    mut source: Rc<Vec<i64>>,
-    mut pos: i64,
-    mut acc: Rc<Vec<i64>>,
+    mut __tco_loop_source: Rc<Vec<i64>>,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<EscapeProcessResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut source = __tco_loop_source.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
         if (pos.clone() >= (source.clone().len() as i64)) {
             break Rc::new(EscapeProcessResult::EscapesProcessed {
                 text: v1_rt::chars_to_string(&acc, 0, (acc.clone().len() as i64)),
@@ -1261,10 +1353,12 @@ pub fn process_escapes_loop(
                         let lo = code_point_at(source.clone(), (pos.clone() + 3));
                         match hex_escape_char(hi.clone(), lo.clone()) {
                             Some(decoded) => {
-                                let __tco_0 = (pos + 4);
-                                let __tco_1 = v1_rt::rc_list_push(acc, decoded.clone());
-                                pos = __tco_0;
-                                acc = __tco_1;
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 4);
+                                let __tco_2 = v1_rt::rc_list_push(acc, decoded.clone());
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                             std::option::Option::None => {
@@ -1278,11 +1372,13 @@ pub fn process_escapes_loop(
                         {
                             match unicode_escape_at(source.clone(), (pos.clone() + 3), 0, 0) {
                                 Some(decoded) => {
-                                    let __tco_0 = decoded.next_pos.clone();
-                                    let __tco_1 =
+                                    let __tco_0 = source;
+                                    let __tco_1 = decoded.next_pos.clone();
+                                    let __tco_2 =
                                         v1_rt::rc_list_push(acc, decoded.code_point.clone());
-                                    pos = __tco_0;
-                                    acc = __tco_1;
+                                    __tco_loop_source = __tco_0;
+                                    __tco_loop_pos = __tco_1;
+                                    __tco_loop_acc = __tco_2;
                                     continue;
                                 }
                                 std::option::Option::None => {
@@ -1325,10 +1421,12 @@ pub fn process_escapes_loop(
                             };
                             match decoded.clone() {
                                 Some(code_point) => {
-                                    let __tco_0 = (pos + 2);
-                                    let __tco_1 = v1_rt::rc_list_push(acc, code_point.clone());
-                                    pos = __tco_0;
-                                    acc = __tco_1;
+                                    let __tco_0 = source;
+                                    let __tco_1 = (pos + 2);
+                                    let __tco_2 = v1_rt::rc_list_push(acc, code_point.clone());
+                                    __tco_loop_source = __tco_0;
+                                    __tco_loop_pos = __tco_1;
+                                    __tco_loop_acc = __tco_2;
                                     continue;
                                 }
                                 std::option::Option::None => {
@@ -1340,10 +1438,12 @@ pub fn process_escapes_loop(
                 }
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    let __tco_1 = v1_rt::rc_list_push(acc, ch.clone());
-                    pos = __tco_0;
-                    acc = __tco_1;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = v1_rt::rc_list_push(acc, ch.clone());
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             }
@@ -1408,16 +1508,30 @@ pub fn is_hex_upper_digit(ch: i64) -> bool {
     (((ch.clone() >= 48) && (ch.clone() <= 57)) || ((ch.clone() >= 65) && (ch.clone() <= 70)))
 }
 
-pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> bool {
+pub fn all_hex_upper_in_range(
+    mut __tco_loop_text: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_end: i64,
+) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut end = __tco_loop_end.clone();
         if (pos.clone() >= end.clone()) {
             break true;
         } else {
             let ch = v1_rt::code_point(v1_rt::char_at(&text, pos.clone()));
             if is_hex_upper_digit(ch.clone()) {
                 {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = end;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_end = __tco_2;
                     continue;
                 }
             } else {
@@ -1428,12 +1542,20 @@ pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> b
 }
 
 pub fn sentinel_prefix_matches(
-    mut text: String,
-    mut prefix: String,
-    mut pos: i64,
-    mut len: i64,
+    mut __tco_loop_text: String,
+    mut __tco_loop_prefix: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_len: i64,
 ) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut prefix = __tco_loop_prefix.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut len = __tco_loop_len.clone();
         if (pos.clone() >= len.clone()) {
             break true;
         } else {
@@ -1443,8 +1565,14 @@ pub fn sentinel_prefix_matches(
                 break false;
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = prefix;
+                    let __tco_2 = (pos + 1);
+                    let __tco_3 = len;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_prefix = __tco_1;
+                    __tco_loop_pos = __tco_2;
+                    __tco_loop_len = __tco_3;
                     continue;
                 }
             }
@@ -1453,13 +1581,23 @@ pub fn sentinel_prefix_matches(
 }
 
 pub fn sentinel_suffix_matches(
-    mut text: String,
-    mut suffix: String,
-    mut pos: i64,
-    mut sfx_len: i64,
-    mut text_start: i64,
+    mut __tco_loop_text: String,
+    mut __tco_loop_suffix: String,
+    mut __tco_loop_pos: i64,
+    mut __tco_loop_sfx_len: i64,
+    mut __tco_loop_text_start: i64,
 ) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut text = __tco_loop_text.clone();
+        #[allow(unused_mut)]
+        let mut suffix = __tco_loop_suffix.clone();
+        #[allow(unused_mut)]
+        let mut pos = __tco_loop_pos.clone();
+        #[allow(unused_mut)]
+        let mut sfx_len = __tco_loop_sfx_len.clone();
+        #[allow(unused_mut)]
+        let mut text_start = __tco_loop_text_start.clone();
         if (pos.clone() >= sfx_len.clone()) {
             break true;
         } else {
@@ -1469,8 +1607,16 @@ pub fn sentinel_suffix_matches(
                 break false;
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = suffix;
+                    let __tco_2 = (pos + 1);
+                    let __tco_3 = sfx_len;
+                    let __tco_4 = text_start;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_suffix = __tco_1;
+                    __tco_loop_pos = __tco_2;
+                    __tco_loop_sfx_len = __tco_3;
+                    __tco_loop_text_start = __tco_4;
                     continue;
                 }
             }

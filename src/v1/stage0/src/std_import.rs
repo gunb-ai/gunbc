@@ -171,15 +171,29 @@ pub fn statement_text_opens_with_the_import_keyword(statement_text: String) -> b
     }
 }
 
-pub fn import_module_start(mut statement_text: String, mut at: i64, mut limit: i64) -> i64 {
+pub fn import_module_start(
+    mut __tco_loop_statement_text: String,
+    mut __tco_loop_at: i64,
+    mut __tco_loop_limit: i64,
+) -> i64 {
     loop {
+        #[allow(unused_mut)]
+        let mut statement_text = __tco_loop_statement_text.clone();
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at.clone();
+        #[allow(unused_mut)]
+        let mut limit = __tco_loop_limit.clone();
         if (at.clone() >= limit.clone()) {
             break at.clone();
         } else {
             if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
                 {
-                    let __tco_0 = (at + 1);
-                    at = __tco_0;
+                    let __tco_0 = statement_text;
+                    let __tco_1 = (at + 1);
+                    let __tco_2 = limit;
+                    __tco_loop_statement_text = __tco_0;
+                    __tco_loop_at = __tco_1;
+                    __tco_loop_limit = __tco_2;
                     continue;
                 }
             } else {
