@@ -1921,39 +1921,9 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
-/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
-/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
-/// what made the move necessary rather than cosmetic: `actions_token` declared
-/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
-/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
-/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
-/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
-/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
-/// type.
-///
-/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
-/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
-/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
-/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
-/// moved would refuse on its own row rather than hide under these. The membership half of the same
-/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
-/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
-/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
-/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
-///
-/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
-/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
-/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
-/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
-/// that trigger, not by reinterpreting it.
-/// THE gunbc#11306 ROWS DISSOLVED HERE (2026-09-15, gunbc#11441), by the same trigger: #11306
-/// landed as `9f5e4988c5`, so its repository-visibility cohort is present at this merge's base,
-/// every row reports consumed by its own merge, and CONSUMED comes due on this roster's next
-/// touch -- this one. The #10729 rows the block above dissolved are likewise gone.
-///
 /// gunbc#11441 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
-/// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`.
+/// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`. The roster
+/// was empty at this merge's base (main deleted its consumed #11306 cohort in gunbc#11316).
 /// DISSOLVE-ON: gunbc#11441 merging.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
     label: "json_string_list lives in json.parse (gunbc#11441)",
