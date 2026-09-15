@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import std.measure { hardware_thread_count_value }
+import std.measure { hardware_thread_count_value, ByteSize, byte_size, byte_size_count, measure_add, measure_le }
 import v2.std.optional { Present, Absent }
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vllm.server { VllmSourceRevision }
@@ -272,8 +272,20 @@ type V41EngramResidencyPartition {
 }
 
 type V41PartitionAdmission
-  = V41PartitionAdmitted { partition: V41EngramResidencyPartition, storage_backed_bytes: Nat }
+  = V41PartitionAdmitted { partition: V41EngramResidencyPartition }
   | V41PartitionRefused { defects: List<NonEmptyStr> }
+
+// A DERIVED BYTE QUANTITY IS A MEASURE, NOT A COUNT. The spans it sums are extdeps fidelity -- a
+// SafetensorsEntry's offsets are the cited file's own integers and stay bare there -- but the total
+// carried inward is a product-layer quantity, and std.measure ByteSize is where this repository already
+// keeps those: gunbc.fabric.engram_materialization engram_shard_set_bytes folds the same kind of
+// quantity with measure_add over the same population's files.
+fn v41_partition_bytes(population: List<SafetensorsEntry>, names: List<NonEmptyStr>) -> ByteSize {
+  fold(
+    filter(population, e => v41_count_named(names: names, name: e.name) == 1),
+    init: byte_size(count: 0),
+    f: (acc, e) => measure_add(a: acc, b: byte_size(count: e.end_offset - e.begin_offset)))
+}
 
 fn v41_engram_population() -> List<SafetensorsEntry> {
   concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14)
@@ -289,13 +301,20 @@ fn v41_admit_partition(p: V41EngramResidencyPartition) -> V41PartitionAdmission 
   let unassigned = map(filter(population, e => v41_count_named(names: assigned, name: e.name) == 0), e => join(["tensor ", e.name as String, " is neither storage-backed nor resident"], "") as NonEmptyStr)
   let twice = map(filter(population, e => v41_count_named(names: assigned, name: e.name) > 1), e => join(["tensor ", e.name as String, " is assigned more than once"], "") as NonEmptyStr)
   let foreign = map(filter(assigned, n => length(filter(population, e => (e.name as String) == (n as String))) == 0), n => join(["tensor ", n as String, " is not in the cited Engram population"], "") as NonEmptyStr)
-  let defects = concat(concat(unassigned, twice), foreign)
-  if length(defects) != 0 {
-    V41PartitionRefused { defects: defects }
+  let shape = concat(concat(unassigned, twice), foreign)
+  if length(shape) != 0 {
+    V41PartitionRefused { defects: shape }
   } else {
-    V41PartitionAdmitted {
-      partition: p,
-      storage_backed_bytes: fold(filter(population, e => v41_count_named(names: p.storage_backed, name: e.name) == 1), init: 0, f: (acc, e) => acc + (e.end_offset - e.begin_offset)),
+    let storage = v41_partition_bytes(population: population, names: p.storage_backed)
+    let resident = v41_partition_bytes(population: population, names: p.resident)
+    if measure_le(a: storage, b: resident) {
+      V41PartitionRefused { defects: [join([
+        "the storage-backed side of this partition is ", to_string(byte_size_count(b: storage)),
+        " bytes and the resident side is ", to_string(byte_size_count(b: resident)),
+        " bytes, so the large Engram tables are the ones being kept resident -- this candidate exists because they are not",
+      ], "") as NonEmptyStr] }
+    } else {
+      V41PartitionAdmitted { partition: p }
     }
   }
 }
@@ -379,7 +398,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
   match v41_admit_partition(p: e.partition) {
     V41PartitionRefused { defects: d } => V41IdentityRefused { defects: d }
-    V41PartitionAdmitted { partition: p, storage_backed_bytes: _ } =>
+    V41PartitionAdmitted { partition: p } =>
       if !v41_route_admitted(route: e.route) {
         V41IdentityRefused { defects: [join(["route ", e.route.decl_name as String, " is not a storage-backed token-time route this candidate admits (B or D)"], "") as NonEmptyStr] }
       } else {

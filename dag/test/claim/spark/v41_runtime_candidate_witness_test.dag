@@ -21,7 +21,9 @@ import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
+  v41_partition_bytes, v41_engram_population,
 }
+import std.measure { byte_size_count }
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
@@ -188,18 +190,36 @@ test fn a_partition_fixed_by_patch_enters_the_runtime_key() -> Bool {
 // THE LIVE PARTITION IS TOTAL AND DISJOINT OVER THE CITED POPULATION, AND ITS STORAGE-BACKED BYTES ARE
 // DERIVED FROM THE CITED SPANS: 101377628352 + 101380404048. A foreign or a missing tensor refuses.
 test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses() -> Bool {
-  (match v41_admit_partition(p: v41_candidate_partition) {
-    V41PartitionAdmitted { partition: _, storage_backed_bytes: b } => b == 202758032400
-    V41PartitionRefused { defects: _ } => false
-  })
+  byte_size_count(b: v41_partition_bytes(population: v41_engram_population(), names: v41_candidate_partition.storage_backed)) == 202758032400
+    && (match v41_admit_partition(p: v41_candidate_partition) {
+      V41PartitionAdmitted { partition: _ } => true
+      V41PartitionRefused { defects: _ } => false
+    })
     && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.2.engram.embed.weight" as NonEmptyStr]), resident: v41_candidate_partition.resident }) {
       V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.2.engram.embed.weight"))
-      V41PartitionAdmitted { partition: _, storage_backed_bytes: _ } => false
+      V41PartitionAdmitted { partition: _ } => false
     })
     && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: v41_candidate_partition.storage_backed, resident: ["layers.1.engram.q_weight" as NonEmptyStr] }) {
       V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.wkv.scale"))
-      V41PartitionAdmitted { partition: _, storage_backed_bytes: _ } => false
+      V41PartitionAdmitted { partition: _ } => false
     })
+}
+
+// A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THAT IS THE ONE THE BYTE TOTAL EXISTS
+// TO CATCH. Swapping the two sides satisfies every shape check -- each tensor is assigned exactly once and
+// nothing foreign appears -- while keeping the two ~101 GB embedding tables resident and reading the small
+// q/k/wkv operators from storage. That inverts the premise the whole candidate rests on, and no name-level
+// check can see it: the discriminator is which side is larger, which is why the total is derived in
+// production rather than asserted only in a test.
+test fn a_partition_that_keeps_the_large_tables_resident_refuses() -> Bool {
+  let inverted = V41EngramResidencyPartition {
+    storage_backed: v41_candidate_partition.resident,
+    resident: v41_candidate_partition.storage_backed,
+  }
+  match v41_admit_partition(p: inverted) {
+    V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("the large Engram tables are the ones being kept resident"))
+    V41PartitionAdmitted { partition: _ } => false
+  }
 }
 
 // THE SHAPE AND THE KERNEL PIN REFUSE. TP8, a 12.0 device, and a kernel acquisition naming a version the
