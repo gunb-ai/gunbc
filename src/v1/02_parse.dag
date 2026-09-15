@@ -6058,8 +6058,10 @@ fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsRe
 // declaration at all -- two values stated for one field is wrong whatever the type says -- so it
 // refuses here, where all three record-literal spellings (named, brace-initial key, string key) pass
 // through, naming the field and BOTH positions. Before this, the second assignment silently won
-// (gunbc.recurring_failure_mode duplicate_record_literal_field_silently_last_wins). `_` is the
-// positional-init placeholder name, not an authored key, and is never compared.
+// (gunbc.recurring_failure_mode duplicate_record_literal_field_silently_last_wins). `_`, the
+// positional-init placeholder, is looked up like any other key and EXEMPTED on a hit, not skipped
+// before the lookup -- the exemption is a branch in the refusal arm, so a reader repairing this
+// fold should not go looking for a pre-lookup skip that does not exist.
 fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>, seen: Map<String, SourceSpan>) -> FieldInitsResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
