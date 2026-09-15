@@ -50,7 +50,7 @@ import gunbc.spark.serving_arm {
 // than the module it borrows from is not a fence.
 type ServingPerformanceSubject sole_constructor {
   checkpoint: ServingCheckpoint
-  checkpoint_revision: NonEmptyStr
+  checkpoint_revision: NonEmptyStr?
   runtime: ServingRuntime
   runtime_image_reference: NonEmptyStr
   topology: ServingTopology?
@@ -70,7 +70,7 @@ type ServingPerformanceSubject sole_constructor {
 // field.
 fn serving_performance_subject(
   checkpoint: ServingCheckpoint,
-  checkpoint_revision: NonEmptyStr,
+  checkpoint_revision: NonEmptyStr?,
   runtime: ServingRuntime,
   runtime_image_reference: NonEmptyStr,
   topology: ServingTopology?,
@@ -152,7 +152,11 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
 fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
     AxisCheckpoint => serving_checkpoint_wire(c: s.checkpoint)
-    AxisCheckpointRevision => s.checkpoint_revision
+    AxisCheckpointRevision =>
+      match s.checkpoint_revision {
+        Absent => axis_value_unread_marker
+        Present { value: r } => r
+      }
     AxisRuntime => serving_runtime_wire(r: s.runtime)
     AxisRuntimeImageReference => s.runtime_image_reference
     AxisTopology =>
@@ -246,7 +250,8 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisSpeculativePolicy =>
       match s.speculative { Absent => true, Present { value: _ } => false }
     AxisCheckpoint => false
-    AxisCheckpointRevision => false
+    AxisCheckpointRevision =>
+      match s.checkpoint_revision { Absent => true, Present { value: _ } => false }
     AxisRuntime => false
     AxisRuntimeImageReference => false
     AxisTopology =>

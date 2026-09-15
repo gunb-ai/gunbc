@@ -7,6 +7,7 @@ import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy }
 import extdeps.nvidia.nccl { NcclRealizedTransport }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, deepseek_v4_flash_snapshot, model_snapshot_revision }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10,
   ServingTopology, SparkPairTp2, FourSparkTp4, serving_topology_of_rank_count,
@@ -116,7 +117,7 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: To
   serving_subject_standing(
     subject: serving_performance_subject(
       checkpoint: DeepseekV4FlashIq3sSplit,
-      checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+      checkpoint_revision: model_snapshot_revision(snapshot: deepseek_v4_flash_snapshot),
       runtime: GunbcSparkrunVllmDs4Gb10,
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: serving_topology_of_rank_count(ranks: degree),

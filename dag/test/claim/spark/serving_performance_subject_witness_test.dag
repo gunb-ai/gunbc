@@ -41,7 +41,7 @@ data fx_ib: NcclRealizedTransport = NcclTransportIbVerbs { read_from: "fixture" 
 // THE DEEPSEEK-ERA MEASUREMENT PROFILE, as the two measurement modules describe theirs.
 data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: DeepseekV4FlashIq3sSplit,
-  checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+  checkpoint_revision: Present { value: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr },
   runtime: GunbcSparkrunVllmDs4Gb10,
   runtime_image_reference: "repo@sha256:aaa" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
@@ -58,7 +58,7 @@ data fx_deepseek_tp4: ServingPerformanceSubject = serving_performance_subject(
 // topology and budget differs from the measurement profile above, which is the whole point.
 data fx_glm_group_b: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: Glm53NativeFp8,
-  checkpoint_revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  checkpoint_revision: Present { value: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr },
   runtime: Gitcommit90Sm121Exl3,
   runtime_image_reference: "repo@sha256:bbb" as NonEmptyStr,
   topology: Present { value: FourSparkTp4 },
@@ -492,7 +492,7 @@ test fn w_a_zero_rank_count_refuses_too() -> Bool {
 fn moved(base: ServingPerformanceSubject, which: ServingSubjectAxis) -> ServingPerformanceSubject {
   serving_performance_subject(
     checkpoint: base.checkpoint,
-    checkpoint_revision: if axis_is(a: which, b: AxisCheckpointRevision) { "0000000000000000000000000000000000000000" as NonEmptyStr } else { base.checkpoint_revision },
+    checkpoint_revision: if axis_is(a: which, b: AxisCheckpointRevision) { Present { value: "0000000000000000000000000000000000000000" as NonEmptyStr } } else { base.checkpoint_revision },
     runtime: base.runtime,
     runtime_image_reference: if axis_is(a: which, b: AxisRuntimeImageReference) { "repo@sha256:zzz" as NonEmptyStr } else { base.runtime_image_reference },
     topology: base.topology,

@@ -8,6 +8,7 @@ import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, KvFp8, VllmSpeculativePolicy, SpeculativeDecodingOff }
 import extdeps.nvidia.nccl { NcclRealizedTransport }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, deepseek_v4_flash_snapshot, model_snapshot_revision }
 import gunbc.spark.serving_arm { ServingCheckpoint, DeepseekV4FlashIq3sSplit, ServingRuntime, GunbcSparkrunVllmDs4Gb10, ServingTopology, SparkPairTp2 }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
@@ -119,7 +120,7 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
   serving_subject_standing(
     subject: serving_performance_subject(
       checkpoint: DeepseekV4FlashIq3sSplit,
-      checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+      checkpoint_revision: model_snapshot_revision(snapshot: deepseek_v4_flash_snapshot),
       runtime: GunbcSparkrunVllmDs4Gb10,
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: Absent,
@@ -537,7 +538,7 @@ data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
     would_settle: "read NCCL's `Using network` verdict line on a relaunch of this profile -- which produces a NEW subject for that launch rather than repairing this row, since a transport reading cannot be attached backwards to performance measured earlier" as NonEmptyStr,
     subject: serving_performance_subject(
       checkpoint: DeepseekV4FlashIq3sSplit,
-      checkpoint_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+      checkpoint_revision: model_snapshot_revision(snapshot: deepseek_v4_flash_snapshot),
       runtime: GunbcSparkrunVllmDs4Gb10,
       runtime_image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
       topology: Present { value: SparkPairTp2 },
