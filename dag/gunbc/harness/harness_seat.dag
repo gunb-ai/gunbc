@@ -461,9 +461,9 @@ fn harness_turn_inputs_identity(inputs: List<String>) -> Fnv1a64Structural {
   fold(
     inputs,
     init: content_hash_atom(value: join(["gunbc.harness.turn-inputs:", to_string(length(inputs))], "") as NonEmptyStr),
-    f: (acc, input) => content_hash_combine_structural(
+    f: (acc, part) => content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: join([to_string(input.length()), ":", input], "") as NonEmptyStr)
+      right: content_hash_atom(value: join([to_string(part.length()), ":", part], "") as NonEmptyStr)
     )
   )
 }
