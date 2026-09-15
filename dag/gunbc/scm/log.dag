@@ -9,7 +9,9 @@ module gunbc.scm.log
 // module is built entirely from what the envelope carries.
 //
 // WHAT THE ENVELOPE CARRIES: a RepositoryCommit has its minted reference, root, message and explicit
-// ancestry. So a log row can name the commit, name the program it points at, and carry the message.
+// ancestry. So a log row can name the commit, name the corpus manifest it points at, and carry the
+// message. (The root was a PROGRAM when this was written and is now a `CorpusManifestObjectRef` -- an
+// authored snapshot, not a semantic node. Found by external review, along with the two below.)
 // TWO FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
 // here rather than synthesised:
 //
@@ -30,7 +32,8 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 
-// WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
+// WHETHER THIS COMMIT'S CORPUS MANIFEST IS ACTUALLY HELD, which is decidable here and therefore
+// reported. (This heading said PROGRAM, from when a root was a semantic node.)
 // The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
 // the store does not contain" is a state the model already knows how to recognise. Listing such a
 // commit without saying so would present a row that cannot be checked out as though it were
@@ -38,19 +41,24 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // the same refusal it is derived from.
 // THREE STANDINGS, NOT TWO, BECAUSE THE STORE ANSWERS TWO DIFFERENT NEGATIVES.
 //
-// A commit root must denote a semantic node: it is the thing `checkout` reconstructs. The store also
-// holds authored-source objects, so a locator can be PRESENT and still be the wrong kind of thing
-// for a root. An earlier revision asked `store_contains`, which is deliberately kind-agnostic --
-// it answers about the LOCATOR -- and so reported a file sitting under a commit's root locator as
-// `LoggedCommitRootHeld`: a log row claiming a checkoutable root where checkout refuses. The two
+// A commit root must denote a CORPUS MANIFEST: it is the snapshot `checkout` materializes. The store
+// also holds authored-source objects and semantic nodes, so a locator can be PRESENT and still be the
+// wrong kind of thing for a root. (This paragraph said "semantic node" from when a root WAS a program;
+// the arm it describes is `LoggedCommitManifestHeld`, which already had the corrected name.) An
+// earlier revision asked `store_contains`, which is deliberately kind-agnostic -- it answers about the
+// LOCATOR -- and so reported a file sitting under a commit's root locator as `LoggedCommitRootHeld`: a
+// log row claiming a checkoutable root where checkout refuses. The two
 // negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
 // they are separate arms rather than one Bool.
 //
-// A CORPUS MANIFEST IS A THIRD SUCH THING, and it arrives by the same route: the store holds one, a
-// locator can be present and be it, and a log row claiming a checkoutable root over one would be the
-// same false report this type was split to prevent. It is named rather than folded into the authored
-// -source arm because a log is read by a person deciding what to repair, and "there is a file here"
-// sends them somewhere different from "there is a corpus manifest here".
+// (THIS PARAGRAPH ONCE CALLED A CORPUS MANIFEST "A THIRD SUCH THING" -- a third WRONG kind whose
+// presence under a root would make a checkoutability claim false. That is now the exact inverse of
+// the model: a corpus manifest is the REQUIRED root kind, as the paragraph directly above states, and
+// `LoggedCommitManifestHeld` is the SUCCESS arm. It was written when a root was a semantic node and
+// was left stale when the root kind changed, so it contradicted its own neighbour rather than
+// recording history. Found by external review.) The two wrong-kind arms are named separately rather
+// than folded together because a log is read by a person deciding what to repair, and "there is a
+// file here" sends them somewhere different from "there is a semantic node here".
 // THE STANDING IS ABOUT THE SNAPSHOT DESIGNATION ALONE, AND ITS SUCCESS ARM IS DELIBERATELY NARROW.
 // `LoggedCommitManifestHeld` says exactly one thing: this store holds a corpus manifest at the root
 // this commit names. It does NOT say the corpus is recoverable, and it must never be rendered as
@@ -60,7 +68,9 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // is the defect this module's neighbours keep paying for.
 //
 // The wrong-kind arms swapped with the root's kind rather than thinning: a semantic node occupying
-// the root locator is now the wrong kind, and an authored source still is.
+// the root locator is now the wrong kind, and an authored source still is. That swap is exactly why
+// the prose above needed correcting rather than the arms -- the CODE tracked the manifest recut and
+// the sentences describing it did not.
 type LoggedCommitStanding
   = LoggedCommitManifestHeld
   | LoggedCommitRootMissingFromStore
@@ -109,7 +119,6 @@ fn logged_commit_standing(store: ObjectStore, root: CorpusManifestObjectRef) -> 
 fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryCommit) -> CommitLogAcc {
   CommitLogAcc {
     rows: concat(
-      acc.rows,
       [
         CommitLogRow {
           reference: commit.reference,
@@ -118,24 +127,56 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
           standing: logged_commit_standing(store: store, root: commit.root),
         },
       ],
+      acc.rows,
     ),
   }
 }
 
 // Rows preserve the authored commit-list order, but references do not derive from that order.
 //
-// WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
-// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. There is no
-// commit-authoring verb -- every RepositoryCommit constructed anywhere in this repository today is
-// constructed by a witness -- so no producer defines what appending means, and no commit carries a
-// timestamp or a parent to recover an order from. Presenting these rows newest-first would therefore
-// manufacture chronology out of position, which is the same fabrication as inventing the timestamp
-// itself, one step less obvious.
+// THE STEP PREPENDS AND THE FOLD REVERSES ONCE, which is the shape this needs rather than a
+// micro-optimisation. `concat(acc.rows, [row])` copied the whole accumulator per commit, making a
+// log quadratic in the number of commits it lists; DESIGN section 6's bare-minimum-cost rule fixes a
+// proven cost shape regardless of the realized n, because reuse changes n and "few commits here" is
+// not a time-stable fact. The reverse is therefore load-bearing for the order claim above, not
+// cosmetic: dropping it would silently reverse the log. Found by external review; the identical
+// copied accumulator was repaired in `gunbc.scm.checkout` `recover_corpus` in this same cut.
 //
-// This is not a tiebreak waiting to be chosen. A tiebreak presumes an ordering basis that is merely
-// partial; here the basis for recency is ABSENT. It becomes derivable the moment a commit verb
-// exists to define it, and at that point this function gains a stated recency order rather than a
-// reinterpretation of position.
+// WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
+// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. No commit
+// carries a timestamp, and position is an artefact of how a list was assembled rather than of when
+// anything happened. Presenting these rows newest-first would manufacture chronology out of position,
+// which is the same fabrication as inventing the timestamp itself, one step less obvious.
+//
+// THE REASON GIVEN FOR THIS USED TO BE FALSE, and correcting it does NOT license the ordering it
+// refused. It said there is no commit-authoring verb and every `RepositoryCommit` is constructed by a
+// witness. That stopped being true in this cut: `gunbc.scm.write_spine` `commit_staged` and
+// `gunbc.scm.squash_merge` `squash_merge` are both producers, and each appends a commit whose parent
+// it knows. Found by external review.
+//
+// BUT TWO REAL PRODUCERS DO NOT MAKE THE LIST CHRONOLOGICAL, and this is exactly where a stale premise
+// invites an over-correction. `commits` is also populated by `gunbc.scm.repository_envelope`
+// `decode_repository`, which reconstructs a commit list from a document in whatever order that
+// document happens to carry. The decoder DOES preserve that presentation order -- an earlier writing
+// of this sentence said it did not, which contradicted the order claim at the top of this very block
+// and understated the decoder. What neither the document nor the decoder supplies is any RECENCY
+// semantics for that order, and that is what actually defeats newest-first: the order survives, the
+// chronology was never in it. So the honest statement is narrower than either the old claim or its
+// negation: SOME
+// commits now have a producer that defines what appending meant, and the list as a whole still has no
+// ordering basis, because a property that holds of some members of a population is not a property of
+// the population.
+//
+// (AN EARLIER WRITING OF THIS PARAGRAPH -- MINE, IN THE COMMIT THAT REPLACED THE STALE PREMISE -- also
+// named "importing a history" as a second such route. THERE IS NO IMPORT ROUTE. No producer of that
+// name exists anywhere in `gunbc.scm`, and I invented it while correcting an annotation for asserting
+// a capability the model does not have. Caught by external review asking whether the route I cited had
+// a producer. The argument does not need it: one non-appending route is enough to defeat a claim that
+// every member was appended in order.)
+//
+// This is still not a tiebreak waiting to be chosen -- a tiebreak presumes a partial ordering basis,
+// and here the basis is absent. What would establish one is a per-commit fact every route must supply,
+// not a verb that some routes happen to use.
 fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
   if count(envelope.commits) == 0 {
     NoCommitsYet
@@ -145,15 +186,28 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
       init: CommitLogAcc { rows: [] },
       f: fn(acc, c) { commit_log_step(store: envelope.store, acc: acc, commit: c) },
     ) {
-      CommitLogAcc { rows: rows } => CommitLogRows { rows: rows }
+      CommitLogAcc { rows: rows } => CommitLogRows { rows: reverse(rows) }
     }
   }
 }
 
-// Whether every logged commit names a program this repository actually holds. A consumer deciding
-// whether the image is usable wants this without walking the rows itself, and it is a FACT rather
-// than a rendering, so it belongs beside the log rather than in whatever eventually prints it.
-fn commit_log_is_fully_held(log: CommitLog) -> Bool {
+// Whether every logged commit names a corpus manifest this repository actually holds -- held-ness of
+// the SNAPSHOT DESIGNATION ALONE. `LoggedCommitManifestHeld` says the manifest OBJECT is present;
+// whether the authored sources that manifest names resolve is a SEPARATE observation this function
+// does not perform, and one that already has its own meaning and authority in this cut
+// (`gunbc.scm.object_store` `observe_corpus_source_completeness`).
+//
+// THE NAME USED TO BE `commit_log_is_fully_held`, and the sentence here used to say a consumer
+// deciding whether the IMAGE IS USABLE wants this. Both promoted the smaller observation into the
+// larger one: a log can answer true here while no source in any manifest is recoverable, so a
+// consumer taking it as usability would be misled by a predicate that never claimed it. Renamed to
+// the operation it performs, which also leaves the recoverability roll-up a name to land under
+// without a meaning collision (DESIGN section 3: a materially different contract needs a materially
+// different name). Found by external review.
+//
+// It is a FACT rather than a rendering, so it belongs beside the log rather than in whatever
+// eventually prints it.
+fn commit_log_manifest_roots_are_held(log: CommitLog) -> Bool {
   match log {
     NoCommitsYet => true
     CommitLogRows { rows: rows } =>

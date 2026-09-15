@@ -1907,324 +1907,104 @@ pub struct TransitionAdmission {
 /// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
 /// wave_admission_refusal charges consumed rows on that landing run. A separate
 /// cleanup PR must remove the consumed rows; this admission does not waive it.
+
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
+///
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
+/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
+/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
+/// what made the move necessary rather than cosmetic: `actions_token` declared
+/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
+/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
+/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
+/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
+/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
+/// type.
+///
+/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
+/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
+/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
+/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
+/// moved would refuse on its own row rather than hide under these. The membership half of the same
+/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
+/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
+/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
+/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
+///
+/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
+/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
+/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
+/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
+/// that trigger, not by reinterpreting it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "r8169_claims_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "ActionsRepositoryPolicyObservation",
+            spelling: "RepositoryVisibility",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "realtek_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8125_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8126_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_allows",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "extdeps.os.ubuntu_kernel_nic_coverage",
-            in_declaration: "rtl8127_pci_device_id",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_denies",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_first_boot_receipt",
-            in_declaration: "mtcollins1_igb_binding",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "LinuxDriverQualification",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "LinuxDriverQualification",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciClassPopulationObservation",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "PciFunctionObservation",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "i350_igb_qualification",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "i350_igb_qualification",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciAddress",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_observed_pci_functions",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_host_hardware_observation",
-            in_declaration: "mtcollins1_pci_mass_storage_population",
-            spelling: "PciClassCode",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "PciDeviceIdentity",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "PciDeviceIdentity",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "SparkUnattendedPxeBootRefusalReason",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.dgx_pxe_boot",
-            in_declaration: "SparkUnattendedPxeBootRefusalReason",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.pxe_rescue_observation",
-            in_declaration: "spark_2196_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.pxe_rescue_observation",
-            in_declaration: "spark_2196_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "witness_claimed_pci_device",
-            spelling: "PciDeviceId",
-            expected_candidates: &["extdeps.pci.identity"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11373 PCI identity authority repair; delete after landing",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.dgx_spark_pxe_witness",
-            in_declaration: "witness_claimed_pci_vendor",
-            spelling: "PciVendorId",
-            expected_candidates: &["extdeps.pci.identity"],
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "public_fork_policy_allows",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

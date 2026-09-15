@@ -45,7 +45,6 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
   RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
@@ -137,11 +136,10 @@ fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
 }
 
 fn scm_ck_minted_or(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
-  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent, integration: NoSquashIntegration) {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
     RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
