@@ -37,6 +37,16 @@ type HermeticEffectGround
 // witness never given a runnable route was indistinguishable from a witness that ran and
 // errored on its subject. The required floor resolved that ambiguity by declining the whole
 // population instead, which is how 778 identities came to be discovered and never executed.
+//
+// AND THE ARM THE SEED'S TYPED PROCESS REFUSAL NEEDED (2026-09-14, gunbc#11342 review): a witness
+// that ran to a nonzero process exit IS a verdict -- the subject was reached and the gate
+// refused, carrying its reason -- so it is StillRed, not an absence of one. The vocabulary had no
+// arm for it, and the seed's mapping returning not_observed was then rewritten by
+// finalize_not_observed into NotEvaluated { reason: "not_in_executed_manifest" }, a fabricated
+// ledger claim: the claim DID execute and DID reach a failing verdict. Borrowing BoolFalse was
+// never available either -- it would publish the specific falsehood that the function returned a
+// Bool. The arm carries the observed exit code and the failing site's reason so the detail can
+// distinguish a subject refusal from an infra failure without log archaeology.
 type WitnessEvalVerdict
   = Passed
   | BoolFalse
@@ -45,6 +55,7 @@ type WitnessEvalVerdict
   | HostToolUnresolved { name: String, probed: List<String> }
   | HostEffectRefused { operation: String, ground: HermeticEffectGround }
   | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
+  | ExitFailure { code: Int, reason: String }
 
 // WHY A SUPPRESSED ROW IS ITS OWN DISPOSITION AND NOT A NotEvaluated REASON. NotEvaluated says
 // the identity was ATTEMPTED and produced no verdict -- host tool missing, hermetic route gap,
@@ -211,6 +222,11 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
           "ms EXACT — ran to completion. Stale roster ",
           "row: prune enrollment, cost debt is separate"
         )
+      },
+    ExitFailure { code: code, reason: reason } =>
+      VerdictClassification {
+        disposition: StillRed,
+        detail: concat("exit ", to_string(code), ": ", reason)
       }
   }
 }

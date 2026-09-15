@@ -2270,6 +2270,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The inventory with nothing unowned."
       )
     ),
+    active_small(
+      identity: "rn_4XK7P2WQ9BNF6RTH3VJD8MCZ5L",
+      id: "gate-refusal-reason-survives-wrapper",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "A gate's typed refusal reason survives the wrapper that reports it",
+        boundary: "A wrapper that reports whether a gate passed carries the gate's reason with it. Collapsing a typed outcome to yes-or-no at the wrapper boundary is the defect, wherever the wrapper lives.",
+        displaced_cost: "The gate already produces the reason and the wrapper discards it, so a consumer asking WHY a gate refused has to go back to the logs, and a ledger built on the wrapper cannot tell a subject refusal from an infrastructure failure. gunbc#11342 addresses exactly this shape one layer down -- an ExitFailure that collapses into a fabricated not-executed row -- and leaves the wrapper boundary standing.",
+        first_slice: "emit_host_gate_passes reduces exit_ok(...) to a Bool; dissolve that collapse so the typed outcome std.process already carries reaches the gate's wrapper consumers. tools.emit_host_gate emit_host_verdict_narration_scaffold shells out a per-smoke verdict line ONLY because this wrapper discards ProcessExit.reason, and its dissolve-on fires when the claim path carries typed refusal reasons to the executor surface -- which gunbc#11342 does, and that PR deletes the scaffold and its trigger together. Either way this row's subject is untouched: the narration is the compensation, the wrapper collapse is the cause, and dissolving the compensation removes the marker without removing the collapse. That is why the collapse needs a home that does not depend on the marker surviving.",
+        red_control: "A wrapper that reduces a typed outcome to a Bool is flagged, and a consumer asserting on the reason goes red when the collapse is reintroduced.",
+        out_of_scope: "The accounting of hand-written shell sites, which is shell-residue-zero's subject; this row is about the typed outcome, not the shell that produced it.",
+        handback: "No wrapper in the gate surface reduces a typed outcome to a Bool, with a consumer reading the reason green by execution. The handback is the collapse itself rather than a dissolution receipt, because the narration that compensated for it is retired by the same capability under DESIGN.md §4b(4) and cannot stand as evidence that the cause was addressed."
+      )
+    ),
 
     superseded(
       identity: "rn_E8Y0PHW82DNMMYZ6SB2KKX2K76",
@@ -2333,6 +2348,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An undeclared file, service, credential, or device refuses before anything is changed.",
         out_of_scope: "No inventory of everything on the machine for its own sake.",
         handback: "The classification plus one refusal on something unclassified."
+      )
+    ),
+    active_large(
+      identity: "rn_0J26ACBBJP5AD79QB78HAYGVQM",
+      id: "fleet-mtcollins1-first-host",
+      owner: "fleet",
+      path: "dag/gunbc/machine_intake/mtcollins1_expansion_observation.dag",
+      t: fields(
+        headline: "Bring Mt. Collins unit 1 into service as our first owned host, from observation rather than assumption",
+        boundary: "Every fact the unit's intake depends on is either bound to a git-tracked observation consumed at mint time, or stays in its typed unobserved arm and refuses. The remaining facts: OCP bay occupancy and riser fitment observed from the unit interior; the bring-up evidence captures bound onto an executing consumer rather than stored beside it; controller credential standing minted from a channel-census observation over every controller LAN address (the mtcollins1_bmc_secure_standing_frontier dissolution); one PCI identity authority with its superseded namespace admissions deleted; pre-OS assessment derived from SEL and captured inventory with its absence and indexed-replay controls executed; live pre-OS acquisition; supervision-to-envelope realization; PCI address cross-rendering equivalence between firmware and kernel renderings; and one meaning for AttachmentVerdict, since mtcollins1_expansion_attachment attachment_against_evidence discards the OCP standing (ocp: _) and so admits installability on the PCIe path but only interface compatibility on the OCP path (either match the OCP standing before the generation comparison with typed occupied and unobserved refusals, or split the verdict). Zero offers, over-reports and populated bays refuse rather than answer.",
+        displaced_cost: "Hardware bought against an assumed slot, riser or bay costs a returned part and a lost week; a credential believed rotated but readable on another controller address is a silent exposure.",
+        first_slice: "Settle OCP bay occupancy and riser fitment from the interior observation, with the zero-offer, over-report and populated-bay refusals.",
+        red_control: "An unobserved OCP variant, an unfitted riser, a populated bay, or a credential rotation evidenced on a single controller address refuses rather than reporting an attachment point or a secured controller.",
+        out_of_scope: "Not fleet-wide firmware or cooling policy (fleet-bmc-policy-convergence) and not classification of what we manage on machines generally (fleet-state-frontier).",
+        handback: "Each fact above is bound to a consumed artifact or refusing in its unobserved arm, and the unit mints a BmcSecureStanding."
       )
     ),
     active_large(
