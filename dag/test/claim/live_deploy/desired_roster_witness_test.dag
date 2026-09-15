@@ -15,6 +15,9 @@ import gunbc.live_deploy.desired {
   DesiredRosterDuplicateInstanceId,
   desired_deployment_roster,
   desired_deployment_for_instance_id,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
   desired_roster_standing,
   instance_id_text,
   selected_deployment_spec,
@@ -53,15 +56,17 @@ test fn desired_deployment_for_instance_id_returns_the_matching_row() -> Bool {
   let live = srv1_production_desired_deployment()
   let live_id = live.instance.instance_id as String
   match desired_deployment_for_instance_id(instance_id: live_id) {
-    Present { value } => value.instance.instance_id == live.instance.instance_id
-    Absent => false
+    DesiredDeploymentFound { row } => row.instance.instance_id == live.instance.instance_id
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => false
+    DesiredDeploymentRosterRefused { standing: _ } => false
   }
 }
 
 test fn desired_deployment_for_instance_id_is_absent_for_an_unknown_id() -> Bool {
   match desired_deployment_for_instance_id(instance_id: "not-a-desired-deployment") {
-    Absent => true
-    Present { value: _ } => false
+    DesiredDeploymentUnknownInstanceId { instance_id } => instance_id == "not-a-desired-deployment"
+    DesiredDeploymentFound { row: _ } => false
+    DesiredDeploymentRosterRefused { standing: _ } => false
   }
 }
 

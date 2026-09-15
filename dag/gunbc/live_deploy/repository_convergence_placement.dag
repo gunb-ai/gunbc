@@ -62,6 +62,12 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   desired_deployment_for_instance_id,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+  DesiredRosterSameHostCollision,
+  DesiredRosterDuplicateInstanceId,
+  DesiredRosterAdmitted,
   selected_deployment_spec,
 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
@@ -728,9 +734,18 @@ fn repository_converge_srv1_owner_wet(
       exit_failure(reason: "--arg instance_id=<id> is required -- selection sits before this fold, and the receipt path is not the selector")
     } else {
       match desired_deployment_for_instance_id(instance_id: instance_id) {
-        Absent =>
-          exit_failure(reason: join(["repository-convergence: instance_id is not a desired-deployment: ", instance_id], ""))
-        Present { value: row } =>
+        DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+          exit_failure(reason: join(["repository-convergence: instance_id is not a desired-deployment: ", id], ""))
+        DesiredDeploymentRosterRefused { standing } =>
+          match standing {
+            DesiredRosterAdmitted =>
+              exit_failure(reason: "repository-convergence: desired-deployment roster refused while admitted")
+            DesiredRosterSameHostCollision { host } =>
+              exit_failure(reason: join(["repository-convergence: desired-deployment roster has a same-host collision on ", host], ""))
+            DesiredRosterDuplicateInstanceId { instance_id: dup } =>
+              exit_failure(reason: join(["repository-convergence: desired-deployment roster has a duplicate instance_id: ", dup], ""))
+          }
+        DesiredDeploymentFound { row } =>
           placement_converge_for_spec(
             spec: selected_deployment_spec(row: row),
             candidate: candidate,
