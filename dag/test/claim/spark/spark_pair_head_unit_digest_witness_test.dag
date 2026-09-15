@@ -19,8 +19,8 @@ import gunbc.spark.pair_serving_realization {
   SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
   spark_pair_digest_unit_render, spark_pair_rendered_unit_artifact, spark_pair_container_spec,
   spark_pair_container_env, spark_pair_head_unit_name, spark_pair_lookup_declared_head_digest,
-  spark_pair_realizations, spark_pair_head_render_inputs_identity, spark_pair_publish_declared_head_artifact,
-  spark_pair_seal_unit_render, spark_pair_head_render_inputs_identity_for_group,
+  spark_pair_realizations, spark_pair_publish_declared_head_artifact,
+  spark_pair_seal_unit_render,
   spark_pair_head_unit_unsigned,
 }
 import gunbc.spark.model_snapshot_acquisition {
@@ -46,11 +46,6 @@ fn w_sealed_head(head: FabricLaneObserved) -> SparkPairUnitRender {
       head: head,
       spec: spark_pair_container_spec(env: spark_pair_container_env(lane: head)),
     ),
-    render_inputs_identity: spark_pair_head_render_inputs_identity(
-      args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
-      snapshot: w_fixture_snapshot,
-      head: head,
-    ),
   )
 }
 
@@ -63,21 +58,6 @@ fn w_head_render() -> DeclaredUnitDigestStanding {
       DeclaredUnitDigestUnavailable { obligation: c }
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
       spark_pair_digest_unit_render(render: w_sealed_head(head: h.lane))
-  }
-}
-
-fn w_fixture_identity() -> ContentHash? {
-  match spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
-    max_num_seqs: 32,
-    basis: "controlled fixture: this witness hashes renderer bytes, never a measured capacity" as NonEmptyStr,
-  }) {
-    SparkPairServingUnitRefused { group: _, cause: _ } => none
-    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      Present { value: spark_pair_head_render_inputs_identity(
-        args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
-        snapshot: w_fixture_snapshot,
-        head: h.lane,
-      ) }
   }
 }
 
@@ -95,6 +75,8 @@ fn w_head_text() -> String? {
       }
   }
 }
+
+// POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
 test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
   match w_head_render() {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
@@ -118,31 +100,27 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
   match w_head_text() {
     Absent => false
     Present { value: t } =>
-      match w_fixture_identity() {
-        Absent => false
-        Present { value: id } =>
-          match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: t, render_inputs_identity: id) {
+      match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: t) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+        SparkPairUnitRendered { unit_name: _, text: _ } => false
+        SparkPairUnitSealed { artifact: a } =>
+          match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: join([t, " "], "")) {
             SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
             SparkPairUnitRendered { unit_name: _, text: _ } => false
-            SparkPairUnitSealed { artifact: a } =>
-              match spark_pair_rendered_unit_artifact(unit_name: spark_pair_head_unit_name, text: join([t, " "], ""), render_inputs_identity: id) {
-                SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
-                SparkPairUnitRendered { unit_name: _, text: _ } => false
-                SparkPairUnitSealed { artifact: a2 } =>
-                  match compare_content_hash(left: a.digest, right: a2.digest) {
-                    ContentHashDifferent => true
-                    ContentHashEqual => false
-                    ContentHashCrossFamilyIncomparable => false
-                  }
+            SparkPairUnitSealed { artifact: a2 } =>
+              match compare_content_hash(left: a.digest, right: a2.digest) {
+                ContentHashDifferent => true
+                ContentHashEqual => false
+                ContentHashCrossFamilyIncomparable => false
               }
           }
       }
   }
 }
 
-// PRODUCTION PUBLISH THEN LOOKUP: apply's publisher seals the unsigned realized head unit and writes
-// the artifact; lookup reads that file and must agree with the sealed digest. Placement does
-// not render.
+// PRODUCTION PUBLISH THEN LOOKUP: apply seals the unsigned realized head unit and writes text plus
+// digest; lookup re-renders the unsigned unit and requires the stored text to match. Placement does
+// not DigestStdin.
 test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
   match first(spark_pair_realizations()) {
     Absent => false
@@ -154,26 +132,22 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
             DeclaredUnitDigested { unit_name: _, digest: _ } => false
           }
         SparkPairRealized { group: g, head: h, workers: _ } =>
-          match spark_pair_head_render_inputs_identity_for_group(group: g) {
-            Absent => false
-            Present { value: id } =>
-              match spark_pair_publish_declared_head_artifact(realization: r) {
-                SparkPairDeclaredHeadPublishRefused { cause: _ } => false
-                SparkPairDeclaredHeadPublished { group: _, digest: _ } =>
-                  match spark_pair_digest_unit_render(render: spark_pair_seal_unit_render(render: h.unit, render_inputs_identity: id)) {
-                  DeclaredUnitDigestUnavailable { obligation: _ } => false
-                  DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
-                    match spark_pair_lookup_declared_head_digest(group: g) {
-                      DeclaredUnitDigestUnavailable { obligation: _ } => false
-                      DeclaredUnitDigested { unit_name: n, digest: from_store } =>
-                        (n as String) == (spark_pair_head_unit_name as String)
-                          && match compare_content_hash(left: from_unit, right: from_store) {
-                            ContentHashEqual => true
-                            ContentHashDifferent => false
-                            ContentHashCrossFamilyIncomparable => false
-                          }
-                    }
-                }
+          match spark_pair_publish_declared_head_artifact(realization: r) {
+            SparkPairDeclaredHeadPublishRefused { cause: _ } => false
+            SparkPairDeclaredHeadPublished { group: _, digest: _ } =>
+              match spark_pair_digest_unit_render(render: spark_pair_seal_unit_render(render: h.unit)) {
+                DeclaredUnitDigestUnavailable { obligation: _ } => false
+                DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
+                  match spark_pair_lookup_declared_head_digest(group: g) {
+                    DeclaredUnitDigestUnavailable { obligation: _ } => false
+                    DeclaredUnitDigested { unit_name: n, digest: from_store } =>
+                      (n as String) == (spark_pair_head_unit_name as String)
+                        && match compare_content_hash(left: from_unit, right: from_store) {
+                          ContentHashEqual => true
+                          ContentHashDifferent => false
+                          ContentHashCrossFamilyIncomparable => false
+                        }
+                  }
               }
           }
       }
