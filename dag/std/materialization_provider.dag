@@ -39,6 +39,7 @@ import v2.compiler.self_host.generation {
 }
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
+import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect, FreshEffect }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed
@@ -60,7 +61,7 @@ import std.measure { ByteSize, byte_size }
 // the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted
 // evictions).
 
-data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request COPRODUCT, whose variant fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. Widening the carve-out below to a second item is the change this invariant exists to make visible.
+data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request family's JudgmentContract, whose persistence projection is ArtifactRequest and which fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. Widening the carve-out below to a second item is the change this invariant exists to make visible.
 
 THE ONE CARVE-OUT, AND ITS HONEST CLASS (parent ruling on codex review 44286): source (3), the read-back, is today an ASSERTION — that the transport computed observed_digest from the stored parts by this same derivation. Classifying that as a permanent residual trust boundary would be the section 5 'never' trap: a permanent-sounding residue carries no trigger, so its frequency is zero by construction and it never ranks for fixing. It is not permanent. It is a WALL AFTER GROUNDING, and the grounding is decidable — just not INSIDE this module, which never receives bytes. It is decidable at the TRANSPORT: if the only way to obtain a ProviderProbe is to have called the realization's modeled read operation, the provenance is structural rather than asserted. Note what that does NOT mean — the grounding is not a brand on the digest value, because a brand is freely constructible here and would be forgeable theater (the same argument the 44265 custody token lost); it is that the PROBE is produced by the read rather than hand-built. What blocks it today is that ProbeFound stays freely constructible from any module — the same constructor-confinement gap DESIGN recorded for TransportScript. That precedent has since RESOLVED in the direction this carve-out needs: TransportScript is a sole_constructor record whose single mint is admit_callers-sealed to named production decls, and the cast form of sole_constructor was closed in 04_infer sole_constructor_construction_diags, so 'freely constructible from any module' is no longer the language's fate for a carrier — it is a property of ProbeFound's own declaration, which this module has not yet changed. DISSOLUTION TRIGGER: this carve-out grounds when ProviderProbe is minted only by the modeled read operation (extdeps.realization.artifact_store_fs is the concrete site — a function taking an ArtifactFsLookup and computing the digest itself makes a hand-built ProbeFound impossible at the seam that matters) and constructor confinement lands; tracked against the node/subtree visibility-grants lane, whose Reference verb gates whether the reference edge may be formed at all. Until then this is counted debt, not accepted permanence. WHY IT IS STATED RATHER THAN PATCHED (parent ruling, DESIGN section 6 root-cause-do-not-patch-the-sites): four review findings — 44175 caller-supplied required_outputs, 44265 caller-supplied ComputationIdentity, 44278 caller-authored carried_outputs beside a caller-authored content_digest, and artifact_bytes, found by the parent by reading the three together — were ONE defect found four times, each an accepted assertion where a derivation was available. The fourth was the sharpest because it was load-bearing on a wall built for it: provider_admit_bound branches the budget check on the size and hands that same size to store_put as the stored size, so an understated value did not merely walk past ProviderBudgetExhausted once, it corrupted store_bytes_used and therefore every subsequent LRU eviction decision. The symmetric fix was chosen over carrying the size in the probe precisely BECAUSE of this invariant: a probe field would have been honest but would have added a second item to the trust boundary, whereas a fold over the parts makes the roster the preimage of BOTH the digest and the size — one construction, one argument, no new trust."
 
@@ -146,10 +147,12 @@ type DeclaredInput {
 // required_outputs list left the illegal state WRITABLE — a resolve request with an empty output
 // roster would let provider_admit accept an artifact lacking the compile-clean diagnostic union,
 // and helper constructors that merely offer the right shape do not forbid the wrong one. Here the
-// caller can only name a request FAMILY; kind, declared inputs, and required outputs are all
-// DERIVED from the variant through request_fold, so an under-specified obligation roster cannot be
-// expressed at all. A new family is a new variant, and the fold's totality makes every derivation a
-// type error until it is answered.
+// caller can only name a request FAMILY. Kind, declared inputs, and required outputs are all
+// DERIVED from that family's JudgmentContract (via request_judgment_contract, total over the
+// coproduct), so an under-specified obligation roster cannot be expressed at all. ArtifactRequest
+// is the persistence projection of that contract, not a second authority beside it. A new family
+// is a new variant, and the fold's totality makes every derivation a type error until the contract
+// answers it.
 
 type ArtifactRequest
   = ParseModuleRequest { source_digest: Fnv1a64Structural, compiler: DeclaredInput }
@@ -227,6 +230,178 @@ type NativeModuleVerdictBundleSubject {
   eval_interpretation_identity: Fnv1a64Structural
 }
 
+// JudgmentContract is the ONE authority for what an ArtifactRequest family denotes. ArtifactRequest
+// remains the persistence projection: it is constructed when a result is stored, and request_kind /
+// request_declared_inputs / request_required_outputs read THROUGH the contract rather than answering
+// those three questions from a second per-family table.
+//
+// There is no hand-maintained JudgmentKind coproduct: family identity is the existing ArtifactRequest
+// variant, and kind is the existing std.cache_identity ArtifactKindId row the contract carries.
+// Demand nature is std.materialization_ladder DemandNature, not a restatement.
+//
+// DECLARED FRONTIER (DESIGN §3c): demand_nature and result.occurrence_contract are classified here
+// so they cannot be restated later. Their production consumers are demand-engine-program M3 (share
+// admission reads demand_nature) and M2 (cross-graph load respects occurrence_contract). TRIGGER:
+// those milestones consume the fields; until then request_kind / request_declared_inputs /
+// request_required_outputs are the production readers of the contract, and omitting a family from
+// request_judgment_contract fails to typecheck by request_fold totality.
+
+type OccurrencePersistenceContract
+  = SemanticOnly
+  | Scoped
+  | Rebinding
+
+type ResultContract {
+  carries_semantic_value: Bool
+  ordered_diagnostics: Bool
+  occurrence_contract: OccurrencePersistenceContract
+  carries_effect_requests_receipts: Bool
+  carries_refusal_arm: Bool
+  required_persisted_outputs: List<ArtifactOutputId>
+}
+
+type JudgmentContract {
+  kind: ArtifactKindId
+  declared_inputs: List<DeclaredInput>
+  result: ResultContract
+  demand_nature: DemandNature
+}
+
+fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
+  JudgmentContract {
+    kind: parse_source_artifact_kind,
+    declared_inputs: [compiler],
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      occurrence_contract: Scoped,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [output_parse_tree, output_parse_diagnostics]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn typecheck_module_judgment_contract(
+  source_digest: Fnv1a64Structural,
+  direct_import_interfaces: List<InterfaceHash>,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    kind: typed_module_artifact_kind,
+    declared_inputs: concat(
+      direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }),
+      [compiler]
+    ),
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      occurrence_contract: Scoped,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [output_typed_module_interface, output_typecheck_diagnostics]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn resolve_closure_judgment_contract(closure_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
+  JudgmentContract {
+    kind: resolved_graph_artifact_kind,
+    declared_inputs: [compiler],
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      occurrence_contract: Scoped,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        output_resolved_graph,
+        output_source_indices,
+        output_compile_clean_diagnostic_union
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> JudgmentContract {
+  JudgmentContract {
+    kind: native_compiler_artifact_kind,
+    declared_inputs: [
+      DeclaredInput { ref: "generation.producer_compiler", digest: generation.producer_compiler },
+      DeclaredInput { ref: "generation.source_closure", digest: generation.source_closure },
+      DeclaredInput { ref: "generation.target_model", digest: generation.target_model },
+      DeclaredInput { ref: "generation.toolchain", digest: generation.toolchain },
+      DeclaredInput { ref: "generation.build_configuration", digest: generation.build_configuration },
+      DeclaredInput { ref: "generation.required_lens_contract", digest: generation.required_lens_contract }
+    ],
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      occurrence_contract: SemanticOnly,
+      carries_effect_requests_receipts: true,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        output_native_compiler_executable,
+        output_native_compiler_build_diagnostics
+      ]
+    },
+    demand_nature: IdempotentEffect
+  }
+}
+
+fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput) -> JudgmentContract {
+  JudgmentContract {
+    kind: native_test_universe_artifact_kind,
+    declared_inputs: [route_binary],
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: false,
+      occurrence_contract: SemanticOnly,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        output_universe_test_identity_population,
+        output_universe_module_import_closures
+      ]
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSubject) -> JudgmentContract {
+  JudgmentContract {
+    kind: native_module_verdict_bundle_artifact_kind,
+    declared_inputs: [],
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      occurrence_contract: SemanticOnly,
+      carries_effect_requests_receipts: true,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        output_module_test_verdicts,
+        output_module_preparation_diagnostics
+      ]
+    },
+    demand_nature: FreshEffect
+  }
+}
+
+fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
+  request_fold(
+    req: req,
+    parse_module: parse_module_judgment_contract,
+    typecheck_module: typecheck_module_judgment_contract,
+    resolve_closure: resolve_closure_judgment_contract,
+    native_compiler: native_compiler_judgment_contract,
+    universe: universe_judgment_contract,
+    module_verdict_bundle: module_verdict_bundle_judgment_contract
+  )
+}
+
 fn request_fold<T>(
   req: ArtifactRequest,
   parse_module: fn(Fnv1a64Structural, DeclaredInput) -> T,
@@ -270,15 +445,7 @@ fn module_verdict_bundle_subject_digest(subject: NativeModuleVerdictBundleSubjec
 }
 
 fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
-  request_fold(
-    req: req,
-    parse_module: (sd, c) => parse_source_artifact_kind,
-    typecheck_module: (sd, ii, c) => typed_module_artifact_kind,
-    resolve_closure: (cd, c) => resolved_graph_artifact_kind,
-    native_compiler: g => native_compiler_artifact_kind,
-    universe: (tt, rb) => native_test_universe_artifact_kind,
-    module_verdict_bundle: subject => native_module_verdict_bundle_artifact_kind
-  )
+  request_judgment_contract(req: req).kind
 }
 
 fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
@@ -294,39 +461,11 @@ fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
 }
 
 fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
-  request_fold(
-    req: req,
-    parse_module: (sd, c) => [c],
-    typecheck_module: (sd, ii, c) =>
-      concat(ii |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }), [c]),
-    resolve_closure: (cd, c) => [c],
-    native_compiler: g => [
-      DeclaredInput { ref: "generation.producer_compiler", digest: g.producer_compiler },
-      DeclaredInput { ref: "generation.source_closure", digest: g.source_closure },
-      DeclaredInput { ref: "generation.target_model", digest: g.target_model },
-      DeclaredInput { ref: "generation.toolchain", digest: g.toolchain },
-      DeclaredInput { ref: "generation.build_configuration", digest: g.build_configuration },
-      DeclaredInput { ref: "generation.required_lens_contract", digest: g.required_lens_contract }
-    ],
-    universe: (tt, rb) => [rb],
-    module_verdict_bundle: subject => []
-  )
+  request_judgment_contract(req: req).declared_inputs
 }
 
 fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
-  request_fold(
-    req: req,
-    parse_module: (sd, c) => [output_parse_tree, output_parse_diagnostics],
-    typecheck_module: (sd, ii, c) => [output_typed_module_interface, output_typecheck_diagnostics],
-    resolve_closure: (cd, c) =>
-      [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
-    native_compiler: g =>
-      [output_native_compiler_executable, output_native_compiler_build_diagnostics],
-    universe: (tt, rb) =>
-      [output_universe_test_identity_population, output_universe_module_import_closures],
-    module_verdict_bundle: subject =>
-      [output_module_test_verdicts, output_module_preparation_diagnostics]
-  )
+  request_judgment_contract(req: req).result.required_persisted_outputs
 }
 
 fn declared_input_digest(input: DeclaredInput) -> Fnv1a64Structural {

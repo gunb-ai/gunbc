@@ -28,7 +28,10 @@ import std.materialization_provider {
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
-  request_key, request_kind, request_required_outputs,
+  NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
+  NativeModuleVerdictBundleSubject,
+  request_key, request_kind, request_required_outputs, request_declared_inputs,
+  request_judgment_contract,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
@@ -52,6 +55,7 @@ import gunbc.materialization_provider_targets {
   materialization_provider_targets_contain,
   materialization_provider_targets_all_bound
 }
+import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -642,4 +646,94 @@ test fn incomplete_artifact_derives_unknown_identity() -> Bool {
     }
   )
   identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false
+}
+
+fn witness_native_compiler_request() -> ArtifactRequest {
+  NativeCompilerArtifactRequest {
+    generation: PreMaterializationIdentity {
+      producer_compiler: content_hash_atom(value: "tree-1"),
+      source_closure: content_hash_atom(value: "closure-1"),
+      target_model: content_hash_atom(value: "rust"),
+      toolchain: content_hash_atom(value: "rustc-1.93.0"),
+      build_configuration: content_hash_atom(value: "release"),
+      required_lens_contract: content_hash_atom(value: "lens-contract-1")
+    }
+  }
+}
+
+fn witness_universe_request() -> ArtifactRequest {
+  UniverseArtifactRequest {
+    tested_tree_identity: content_hash_atom(value: "tree-1"),
+    route_binary: DeclaredInput {
+      ref: "route_binary_identity",
+      digest: content_hash_atom(value: "route-binary-1")
+    }
+  }
+}
+
+fn witness_verdict_bundle_request() -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: content_hash_atom(value: "route-1"),
+    module_identity: content_hash_atom(value: "module-1"),
+    canonical_module_import_closure_identity: content_hash_atom(value: "closure-1"),
+    ordered_test_identity_population: content_hash_atom(value: "tests-1"),
+    eval_interpretation_identity: content_hash_atom(value: "eval-1")
+  })
+}
+
+fn witness_parse_request() -> ArtifactRequest {
+  ParseModuleRequest {
+    source_digest: content_hash_atom(value: "module-source-1"),
+    compiler: witness_compiler()
+  }
+}
+
+fn witness_six_artifact_request_families() -> List<ArtifactRequest> {
+  [
+    witness_parse_request(),
+    witness_typecheck_request(),
+    witness_closure_request(),
+    witness_native_compiler_request(),
+    witness_universe_request(),
+    witness_verdict_bundle_request()
+  ]
+}
+
+// PAIR: request_projections_read_the_judgment_contract (specimen over all six families) with
+// provider_serve_completeness_reads_the_judgment_contract (production inhabitance). Bypass:
+// provider_serve that does not read request_required_outputs from the contract greens a v1-shape
+// resolve artifact. Removing one family's contract constructor from request_judgment_contract
+// fails to typecheck by request_fold totality.
+test fn request_projections_read_the_judgment_contract() -> Bool {
+  let reqs = witness_six_artifact_request_families()
+  let n = reqs.count()
+  let matched = reqs |> filter(r => {
+    let c = request_judgment_contract(req: r)
+    (request_kind(req: r) == c.kind)
+      && (request_declared_inputs(req: r) == c.declared_inputs)
+      && (request_required_outputs(req: r) == c.result.required_persisted_outputs)
+  }) |> count()
+  (n == 6) && (matched == 6)
+}
+
+// Production-route inhabitance: the real provider door uses the contract roster. Removing
+// output_compile_clean_diagnostic_union from resolve_closure_judgment_contract would make this
+// green on a v1-shape artifact (bypass). Removing the resolve family from request_judgment_contract
+// fails to typecheck by request_fold totality.
+test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
+  let req = witness_closure_request()
+  let required = request_judgment_contract(req: req).result.required_persisted_outputs
+  let refused = provider_serve(
+    req: req,
+    probe: ProbeFound {
+      artifact: witness_v1_shape_closure_artifact(),
+      observed_digest: witness_v1_shape_digest()
+    }
+  )
+  let missing = lookup_refused_incomplete_missing(l: refused)
+  (required.count() == 3)
+    && (missing.count() == 1)
+    && output_list_contains(xs: required, wanted: output_compile_clean_diagnostic_union)
+    && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
+    && (lookup_is_hit(l: refused) == false)
 }
