@@ -12,8 +12,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // classes (identifier, digits, whitespace); a string literal carrying non-ASCII text; a line
 // comment; an atom; a character no rule starts on; and the empty source, where every rule is tried.
 data lex_rule_dispatch_specimens: List<String> = [
-  "iffy", "if x", "fnord", "->", "-1", "=>", "==", "= ", "|>", "||", "| ", "!=", "!x",
-  "\"λ\"", "// c", "^a", "42", " \n", "{", "λ", ""
+  "iffy", "if x", "fnord", "->", "-1", "=>", "==", "|>", "||", "!=", "!x",
+  "\"λ\"", "// c", "^a", "42", " \n", "{", ""
 ]
 
 type LexDispatchCensus {
