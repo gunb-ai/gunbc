@@ -21,7 +21,6 @@ import gunbc.serving.serving_availability {
   EndpointProcessContinuity, EndpointProcessContinuityVerdict, EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
   serving_availability_after_launch_read,
 }
-<<<<<<< HEAD
 import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of }
 
 data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }

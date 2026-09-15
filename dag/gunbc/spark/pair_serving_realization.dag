@@ -520,21 +520,32 @@ fn spark_pair_realizations() -> List<SparkPairRealization> {
   map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
 }
 
-fn spark_pair_head_unit_declared_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  match first(flat_map(spark_pair_realizations(), r =>
-    match r {
-      SparkPairRealizationRefused { group: g, cause: c } =>
-        if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) {
-          [DeclaredUnitDigestUnavailable { obligation: c }]
-        } else {
-          [] as List<DeclaredUnitDigestStanding>
-        }
-      SparkPairRealized { group: g, head: h, workers: _ } =>
-        if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) {
-          [spark_pair_digest_unit_render(render: h.unit)]
-        } else {
-          [] as List<DeclaredUnitDigestStanding>
-        }
+// ONE STANDING PER REALIZED GROUP, TAKEN FROM THE ROSTER ONCE. The rendered bytes do not change
+// within a turn; hashing them again per enrolled route is authored duplication of DigestStdin.
+type SparkPairDeclaredUnitDigest {
+  group: FabricGroup
+  standing: DeclaredUnitDigestStanding
+}
+
+fn spark_pair_declared_unit_digest_row(realization: SparkPairRealization) -> SparkPairDeclaredUnitDigest {
+  match realization {
+    SparkPairRealizationRefused { group: g, cause: c } =>
+      SparkPairDeclaredUnitDigest { group: g, standing: DeclaredUnitDigestUnavailable { obligation: c } }
+    SparkPairRealized { group: g, head: h, workers: _ } =>
+      SparkPairDeclaredUnitDigest { group: g, standing: spark_pair_digest_unit_render(render: h.unit) }
+  }
+}
+
+fn spark_pair_declared_unit_digests() -> List<SparkPairDeclaredUnitDigest> {
+  map(spark_pair_realizations(), r => spark_pair_declared_unit_digest_row(realization: r))
+}
+
+fn spark_pair_head_unit_declared_digest_among(roster: List<SparkPairDeclaredUnitDigest>, group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match first(flat_map(roster, row =>
+    if (fabric_group_wire(g: row.group) as String) == (fabric_group_wire(g: group) as String) {
+      [row.standing]
+    } else {
+      [] as List<DeclaredUnitDigestStanding>
     })) {
     Absent =>
       DeclaredUnitDigestUnavailable {
@@ -542,6 +553,10 @@ fn spark_pair_head_unit_declared_digest(group: FabricGroup) -> DeclaredUnitDiges
       }
     Present { value: standing } => standing
   }
+}
+
+fn spark_pair_head_unit_declared_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  spark_pair_head_unit_declared_digest_among(roster: spark_pair_declared_unit_digests(), group: group)
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a

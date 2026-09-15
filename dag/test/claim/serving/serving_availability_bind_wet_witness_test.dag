@@ -9,6 +9,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
 }
 import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
+import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, harness_route_availability,
@@ -21,9 +22,12 @@ import gunbc.spark.serving_offer {
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
   spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_declared_digest }
 import gunbc.harness.harness_seat {
   HarnessCandidates, harness_bind_candidate, harness_serving_route, AnyAdmittedModel,
+  harness_turn_subject, harness_turn_request,
 }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -52,12 +56,17 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
 // verdict. harness_bind_candidate and harness_serving_route both execute that wire.
 test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path() -> Bool {
   let launch = w_launch(field: "1789300000.12")
+  let declared_unit = spark_pair_head_unit_declared_digest(group: FabricGroupA)
+  let incarnation = EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
+  let readback = ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 }
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: "1789300000.12"), standing: w_serving_standing(), after: w_seen(field: "1789300000.12"), now: w_now)
+  let route = harness_serving_route(group: FabricGroupA, launch: launch, readback: readback, incarnation: incarnation, declared_unit: declared_unit)
   let bound = harness_bind_candidate(
-    acc: HarnessCandidates { candidates: [], notes: [], retryable: false },
+    acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
     group: FabricGroupA, endpoint: w_endpoint, launch: launch, availability: a,
-    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
-    requirement: AnyAdmittedModel, seats: 4, now: 1789400000,
+    readback: readback, incarnation: incarnation, route: route,
+    subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 4,
   )
   length(bound.candidates) == 0
     && any(bound.notes, note => note.contains(spark_serving_incarnation_unobserved_obligation as String))
@@ -65,6 +74,8 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
       group: FabricGroupA,
       launch: launch,
       readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unexaminable_entries: 0 },
+      incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
+      declared_unit: declared_unit,
     ) {
       ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
         match c {
