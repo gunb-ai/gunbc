@@ -64,8 +64,8 @@ test fn witness_red_control_state_root_absent_is_pending_not_refused() -> Bool {
     executable_refusal: "",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservedAbsent,
-    runtime: fail_probe(detail: "unused"),
-    auth: fail_probe(detail: "unused"),
+    runtime: Absent,
+    auth: Absent,
     login_command: "login",
   ) {
     Pending { cause: ProviderStateRootAbsent { state_root: _, remediation } } =>
@@ -82,8 +82,8 @@ test fn witness_red_control_transport_refusal_is_refused_not_pending() -> Bool {
     executable_refusal: "",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservationRefused { reason: "ssh refused" },
-    runtime: ok_probe(detail: "v"),
-    auth: ok_probe(detail: "a"),
+    runtime: Absent,
+    auth: Absent,
     login_command: "login",
   ) {
     Refused { cause: ProviderObservationUnusable { stage, reason } } =>
@@ -101,8 +101,8 @@ test fn witness_red_control_unauthenticated_is_pending_not_ready() -> Bool {
     executable_refusal: "",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservedPresent,
-    runtime: ok_probe(detail: "codex-cli"),
-    auth: fail_probe(detail: "not logged in"),
+    runtime: Present { value: ok_probe(detail: "codex-cli") },
+    auth: Present { value: fail_probe(detail: "not logged in") },
     login_command: "login",
   ) {
     Pending { cause: ProviderUnauthenticated { state_root: _, detail, remediation } } =>
@@ -119,8 +119,8 @@ test fn witness_provider_ready_when_runtime_and_auth_succeed() -> Bool {
     executable_refusal: "",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservedPresent,
-    runtime: ok_probe(detail: "codex-cli"),
-    auth: ok_probe(detail: "logged in"),
+    runtime: Present { value: ok_probe(detail: "codex-cli") },
+    auth: Present { value: ok_probe(detail: "logged in") },
     login_command: "login",
   ) {
     Ready { evidence: ProviderReadyEvidence { runtime_detail, auth_detail } } =>
@@ -136,8 +136,8 @@ test fn witness_red_control_missing_executable_is_refused() -> Bool {
     executable_refusal: "no placement",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservedAbsent,
-    runtime: refused_probe(reason: "unused"),
-    auth: refused_probe(reason: "unused"),
+    runtime: Absent,
+    auth: Absent,
     login_command: "",
   ) {
     Refused { cause: ProviderExecutableUnplaced { reason } } => reason == "no placement"
@@ -154,8 +154,8 @@ test fn witness_red_control_runtime_unavailable_is_refused() -> Bool {
     executable_refusal: "",
     state_root: "/tmp/state" as FilePath,
     state_root_obs: PathObservedPresent,
-    runtime: fail_probe(detail: "not found"),
-    auth: ok_probe(detail: "unused"),
+    runtime: Present { value: fail_probe(detail: "not found") },
+    auth: Absent,
     login_command: "login",
   ) {
     Refused { cause: ProviderRuntimeUnavailable { executable, detail } } =>

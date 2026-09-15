@@ -31,7 +31,6 @@ import gunbc.roadmap_dashboard_instance_observe {
   dashboard_target_path_observe,
   dashboard_target_probe,
   dashboard_probe_refused,
-  dashboard_exec_ok,
   codex_probe_detail,
 }
 
@@ -87,8 +86,8 @@ fn classify_dashboard_provider_readiness(
   executable_refusal: String,
   state_root: FilePath,
   state_root_obs: DashboardPathObservation,
-  runtime: DashboardExecResult,
-  auth: DashboardExecResult,
+  runtime: DashboardExecResult?,
+  auth: DashboardExecResult?,
   login_command: String,
 ) -> ProviderInstanceReadiness {
   match executable {
@@ -113,42 +112,64 @@ fn classify_dashboard_provider_readiness(
             },
           }
         PathObservedPresent =>
-          if dashboard_probe_refused(r: runtime) {
-            Refused {
-              cause: ProviderObservationUnusable {
-                stage: "provider-runtime" as NonEmptyStr,
-                reason: trim(runtime.stderr),
-              },
-            }
-          } else if !runtime.success {
-            Refused {
-              cause: ProviderRuntimeUnavailable {
-                executable: codex_program,
-                detail: trim(runtime.stderr),
-              },
-            }
-          } else if dashboard_probe_refused(r: auth) {
-            Refused {
-              cause: ProviderObservationUnusable {
-                stage: "provider-auth" as NonEmptyStr,
-                reason: trim(auth.stderr),
-              },
-            }
-          } else if !auth.success {
-            Pending {
-              cause: ProviderUnauthenticated {
-                state_root: state_root,
-                detail: trim(auth.stderr),
-                remediation: login_command,
-              },
-            }
-          } else {
-            Ready {
-              evidence: ProviderReadyEvidence {
-                runtime_detail: codex_probe_detail(out: runtime.stdout, err: runtime.stderr),
-                auth_detail: codex_probe_detail(out: auth.stdout, err: auth.stderr),
-              },
-            }
+          match runtime {
+            Absent =>
+              Refused {
+                cause: ProviderObservationUnusable {
+                  stage: "provider-runtime" as NonEmptyStr,
+                  reason: "runtime probe was not taken",
+                },
+              }
+            Present { value: runtime_obs } =>
+              if dashboard_probe_refused(r: runtime_obs) {
+                Refused {
+                  cause: ProviderObservationUnusable {
+                    stage: "provider-runtime" as NonEmptyStr,
+                    reason: trim(runtime_obs.stderr),
+                  },
+                }
+              } else if !runtime_obs.success {
+                Refused {
+                  cause: ProviderRuntimeUnavailable {
+                    executable: codex_program,
+                    detail: trim(runtime_obs.stderr),
+                  },
+                }
+              } else {
+                match auth {
+                  Absent =>
+                    Refused {
+                      cause: ProviderObservationUnusable {
+                        stage: "provider-auth" as NonEmptyStr,
+                        reason: "auth probe was not taken",
+                      },
+                    }
+                  Present { value: auth_obs } =>
+                    if dashboard_probe_refused(r: auth_obs) {
+                      Refused {
+                        cause: ProviderObservationUnusable {
+                          stage: "provider-auth" as NonEmptyStr,
+                          reason: trim(auth_obs.stderr),
+                        },
+                      }
+                    } else if !auth_obs.success {
+                      Pending {
+                        cause: ProviderUnauthenticated {
+                          state_root: state_root,
+                          detail: trim(auth_obs.stderr),
+                          remediation: login_command,
+                        },
+                      }
+                    } else {
+                      Ready {
+                        evidence: ProviderReadyEvidence {
+                          runtime_detail: codex_probe_detail(out: runtime_obs.stdout, err: runtime_obs.stderr),
+                          auth_detail: codex_probe_detail(out: auth_obs.stdout, err: auth_obs.stderr),
+                        },
+                      }
+                    }
+                }
+              }
           }
       }
   }
@@ -159,7 +180,6 @@ fn observe_dashboard_provider_readiness(
 ) -> ProviderInstanceReadiness {
   let state_root = dashboard_instance_provider_state_root(instance: instance)
   let executable = dashboard_instance_provider_executable(instance: instance)
-  let unused_probe = dashboard_exec_ok(stdout: "")
   match executable {
     Absent =>
       classify_dashboard_provider_readiness(
@@ -167,8 +187,8 @@ fn observe_dashboard_provider_readiness(
         executable_refusal: dashboard_instance_provider_executable_refusal_detail(instance: instance),
         state_root: state_root,
         state_root_obs: PathObservedAbsent,
-        runtime: unused_probe,
-        auth: unused_probe,
+        runtime: Absent,
+        auth: Absent,
         login_command: "",
       )
     Present { value: codex_program } => {
@@ -181,9 +201,29 @@ fn observe_dashboard_provider_readiness(
         flag: "-d",
         path: state_root,
       )
-      let runtime = match state_root_obs {
-        PathObservedPresent =>
-          dashboard_target_probe(
+      match state_root_obs {
+        PathObservedAbsent =>
+          classify_dashboard_provider_readiness(
+            executable: Present { value: codex_program },
+            executable_refusal: "",
+            state_root: state_root,
+            state_root_obs: state_root_obs,
+            runtime: Absent,
+            auth: Absent,
+            login_command: login_command,
+          )
+        PathObservationRefused { reason: _ } =>
+          classify_dashboard_provider_readiness(
+            executable: Present { value: codex_program },
+            executable_refusal: "",
+            state_root: state_root,
+            state_root_obs: state_root_obs,
+            runtime: Absent,
+            auth: Absent,
+            login_command: login_command,
+          )
+        PathObservedPresent => {
+          let runtime_obs = dashboard_target_probe(
             instance: instance,
             program: dashboard_environment_binding_executable,
             args: shape_codex_version_env_args_for_program(
@@ -191,31 +231,38 @@ fn observe_dashboard_provider_readiness(
               codex_home: state_root as String,
             ),
           )
-        PathObservedAbsent => unused_probe
-        PathObservationRefused { reason: _ } => unused_probe
+          if dashboard_probe_refused(r: runtime_obs) || !runtime_obs.success {
+            classify_dashboard_provider_readiness(
+              executable: Present { value: codex_program },
+              executable_refusal: "",
+              state_root: state_root,
+              state_root_obs: state_root_obs,
+              runtime: Present { value: runtime_obs },
+              auth: Absent,
+              login_command: login_command,
+            )
+          } else {
+            classify_dashboard_provider_readiness(
+              executable: Present { value: codex_program },
+              executable_refusal: "",
+              state_root: state_root,
+              state_root_obs: state_root_obs,
+              runtime: Present { value: runtime_obs },
+              auth: Present {
+                value: dashboard_target_probe(
+                  instance: instance,
+                  program: dashboard_environment_binding_executable,
+                  args: shape_codex_login_status_env_args_for_program(
+                    program: codex_program as String,
+                    codex_home: state_root as String,
+                  ),
+                ),
+              },
+              login_command: login_command,
+            )
+          }
+        }
       }
-      let auth = match state_root_obs {
-        PathObservedPresent =>
-          dashboard_target_probe(
-            instance: instance,
-            program: dashboard_environment_binding_executable,
-            args: shape_codex_login_status_env_args_for_program(
-              program: codex_program as String,
-              codex_home: state_root as String,
-            ),
-          )
-        PathObservedAbsent => unused_probe
-        PathObservationRefused { reason: _ } => unused_probe
-      }
-      classify_dashboard_provider_readiness(
-        executable: Present { value: codex_program },
-        executable_refusal: "",
-        state_root: state_root,
-        state_root_obs: state_root_obs,
-        runtime: runtime,
-        auth: auth,
-        login_command: login_command,
-      )
     }
   }
 }
