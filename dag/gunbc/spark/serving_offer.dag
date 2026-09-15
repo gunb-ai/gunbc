@@ -19,6 +19,10 @@ import gunbc.spark.first_party_serving {
   spark_realization_identity, SparkRealizationIdentity,
   RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
+  spark_incarnation_observation_agreement,
+  ObservationAgreesWithThisRealization, ObservationNamesAnotherEndpoint,
+  ObservationIncarnationOutsideRealization,
+  spark_incarnation_observation_unread_obligation,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
@@ -27,11 +31,10 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationObservation, EndpointIncarnationStanding,
   EndpointIncarnationObserved, EndpointIncarnationUnobserved,
   LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
-  launch_unit_provenance, launch_wire,
+  launch_unit_provenance,
 }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { host_identity_eq }
 import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
 import gunbc.serving.serving_availability {
   ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
@@ -349,9 +352,13 @@ fn spark_service_identity_cause_text(cause: SparkServiceIdentityCause, realizati
     ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
       join([o as String, ". The readback, which cannot identify the deployment on its own, reports: ", spark_realization_identity_cause(realization: realization) as String], "")
     ServiceObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
-      join(["the incarnation observation is about endpoint process ", ob as String, ", not the process that answered this route, ", an as String], "")
+      spark_incarnation_observation_unread_obligation(
+        agreement: ObservationNamesAnotherEndpoint { observed: ob, answering: an },
+      ) as String
     ServiceIncarnationOutsideRealization { incarnation: i } =>
-      join(["the observed incarnation ", i as String, " is not on this realization's group and hosts"], "")
+      spark_incarnation_observation_unread_obligation(
+        agreement: ObservationIncarnationOutsideRealization { incarnation: i },
+      ) as String
     ServiceDeclaredUnitDigestUnavailable { obligation: o } => o as String
     ServiceIncarnationNotFromDeclaredUnit { provenance: p } => spark_launch_unit_provenance_text(provenance: p)
     ServiceConfigurationDisagrees { configuration: _ } =>
@@ -382,15 +389,13 @@ fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
 }
 
 fn spark_service_from_observation(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, observation: EndpointIncarnationObservation) -> SparkServingRoute {
-  let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
-  let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
-  if (observed_key as String) != (answering_key as String) {
-    spark_service_unidentified(realization: realization, cause: ServiceObservationNamesAnotherEndpoint { observed: observed_key, answering: answering_key })
-  } else if (fabric_group_wire(g: observation.launch.group) as String) != (fabric_group_wire(g: realization.endpoint.group) as String)
-      || !any(realization.hosts, h => host_identity_eq(a: h, b: observation.launch.head)) {
-    spark_service_unidentified(realization: realization, cause: ServiceIncarnationOutsideRealization { incarnation: launch_wire(i: observation.launch) as NonEmptyStr })
-  } else {
-    match declared_unit {
+  match spark_incarnation_observation_agreement(realization: realization, observation: observation) {
+    ObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
+      spark_service_unidentified(realization: realization, cause: ServiceObservationNamesAnotherEndpoint { observed: ob, answering: an })
+    ObservationIncarnationOutsideRealization { incarnation: i } =>
+      spark_service_unidentified(realization: realization, cause: ServiceIncarnationOutsideRealization { incarnation: i })
+    ObservationAgreesWithThisRealization =>
+      match declared_unit {
       DeclaredUnitDigestUnavailable { obligation: o } =>
         spark_service_unidentified(realization: realization, cause: ServiceDeclaredUnitDigestUnavailable { obligation: o })
       DeclaredUnitDigested { unit_name: _, digest: declared } =>

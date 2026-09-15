@@ -1921,7 +1921,20 @@ pub struct TransitionAdmission {
 /// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
 /// runner hardware observation, DGX PXE and PXE-rescue consumers.
 ///
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// gunbc#11441 json_string_list hoist (2026-09-15). One TargetChanged: `json_string_list` in
+/// `container_image_config_env_from_json` now binds `extdeps.languages.json.parse`. The roster
+/// was empty at this merge's base (main deleted its consumed #11306 cohort in gunbc#11316).
+/// DISSOLVE-ON: gunbc#11441 merging.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "json_string_list lives in json.parse (gunbc#11441)",
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.container.registry_image_config",
+        in_declaration: "container_image_config_env_from_json",
+        spelling: "json_string_list",
+        expected_candidates: &["extdeps.languages.json.parse"],
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

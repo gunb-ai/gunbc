@@ -111,38 +111,10 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 //
 // DECLARED 2026-09-11 with the Spark first-party serving route, under review 63995.
 
-// THE POPULATION IS EMPTY AND THAT IS A COUNTED ZERO, NOT AN UNCOUNTED ONE. Nothing reaches
-// gunbc.spark.first_party_serving spark_usage_stats_telemetry_path's located arm, because
-// spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, so this row
-// admits nothing today. A previous spelling put that sentence INSIDE the list as its sole
-// member, which made gunbc.rung_drop rung_drop_declaration_message publish a one-member
-// population whose one member denied being a member -- and any consumer counting members got 1.
-// A fabricated plausible value is worse than an uninformative one, which is why this is [].
-//
-// WHAT THE EMPTY LIST COSTS, DECLARED RATHER THAN DISCOVERED: the projection renders
-// "Population: " and stops, and DESIGN 4c means this annotation is unreadable to any consumer,
-// so the REASON the population is zero does not reach docs/design-rung-drops.md. That is
-// uninformative rather than wrong -- nothing plausible is asserted. It is not the
-// bottom-as-answer conflation gunbc.guarantee_stall warns about either: that warning is about
-// rows whose exposure is UNBOUNDED, where [] would falsely read as "nothing is affected". Here
-// nothing IS affected, so in that carrier's vocabulary this row is BoundedPopulation with no
-// members and the empty list is the correct value rather than a compromise.
-// WHAT THE MERGE WITH #11194 DECIDED HERE, AND WHY THE POPULATION IS STILL EMPTY. That change
-// enrolled this drop as an EXECUTED exception: gunbc.spark.first_party_serving
-// spark_first_party_posture now carries a JurisdictionDropEnrollment naming this row, with
-// path_evidence spark_serving_usage_stats_standing and the undocumented-jurisdiction field. Its
-// population member says that path "returns ProviderPathLocated". After this branch's repair it
-// does not: spark_serving_usage_stats_standing answers UsageStatsLaunchUnread on every arm, so
-// spark_usage_stats_telemetry_path returns ProviderPathUnread for every input and no located path
-// with an undocumented jurisdiction is produced. Keeping that member would have reinstated, in the
-// projected ledger, the exact claim this branch removed from the code.
-//
-// SO THE ENROLLMENT IS CURRENTLY UNREACHABLE, WHICH IS #11194'S SUBJECT AND NOT THIS ROW'S TO
-// SETTLE. The enrollment is well-formed and its matching rule is keyed to this path rather than to
-// a sentinel, which is the stronger design; what it now lacks is an occurrence, because the arm it
-// excepts cannot be reached while the telemetry path refuses. It becomes live again by the same
-// trigger that repopulates this row -- evidence identifying the deployment that answered -- so the
-// two are discharged together rather than separately.
+// THE POPULATION STAYS EMPTY IN THIS PR. Inspect standing can now observe a disable and Absent
+// the telemetry path, or refuse Unread/malformed/enabled. Enabled egress -- even at the canonical
+// default server -- is not Located and is not admitted. That enrollment is a later policy
+// decision; this row does not start counting because of the inspect reader.
 data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
   identity: "provider_path_jurisdiction_unread_admits" as NonEmptyStr,
 
