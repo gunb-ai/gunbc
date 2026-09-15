@@ -234,6 +234,16 @@ fn section_6_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_6b_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "6b. Chain re-derivation (how a defect is worked)"),
+    p(text: "A consequence of §2, §3 and §5 applied to the act of debugging, and stated separately because the opposite is the default habit (operator ruling, 2026-09-15). A program is a chain of derivations — `a → b → c → d` — and a defect is observed at one link. The habitual repair reads `c`, finds the local condition under which `c` misbehaves, and patches `c`. That is validation standing where construction was available (§5): the patch encodes a fact about `a` and `b` that neither declares, so it is a second, positional authority for that fact (§3), and it is redundant with the derivation it shadows (§2) — the defect recurs at the next link that consumed the same undeclared fact, and the patches accumulate into a system nobody can re-derive."),
+    p(text: "**Chain re-derivation** is the discipline instead: when `c` is observed wrong, start at `a` and re-derive the chain qualitatively — what each link *means*, what it is entitled to assume from the link before it, and what the link after it consumes — through `c` and **including `d`**, because `d` is the consumer whose demand defines what `c` owes, and a repair to `c` that `d` does not need is redundant work. The output is not a patch to `c` but a reassessment of the chain: where an assumption was never declared, declare it on the carrier that owns it; where two links answer the same question, consolidate them under one authority; where a link does work its consumer does not demand, delete it. Then re-realize the links from the corrected derivation. The repair is holistic by construction: it is derived from the chain, not applied to the link."),
+    p(text: "The tells are mechanical. A fix whose diff touches only the link where the symptom appeared. A guard that tests for a state the earlier links could have made unwritable. A fix that cites the symptom and not the derivation. A second fix to the same link within a short time. And the one the author can feel: knowing *that* `c` is wrong without being able to say what `a` and `b` established — that is §5's workaround signal one link earlier, and it is the line-stop. Its receipt in this corpus is the v2 native fold's per-module resolution rebuild: the symptom was a slow module, the patch on offer was a cache at the module, and the re-derivation found that resolution state was a corpus-wide fact never carried to its consumers — one construction at the root, and the module-level symptom had no link left to appear at."),
+    p(text: "Two boundaries keep this from being ceremony. The chain is re-derived at the grain of *meaning*, not of code — a qualitative reading of what each link establishes, which is minutes, not a rewrite. And the re-derivation stops at the first link whose declared contract the observed behaviour violates: that link is the root, and everything downstream of it is a consequence to be re-realized, not a second defect to be patched."),
+  ]
+}
+
 fn section_7_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
@@ -279,6 +289,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     section_4d_blocks(),
     section_5_blocks(),
     section_6_blocks(),
+    section_6b_blocks(),
     section_7_blocks(),
     failure_modes_blocks(),
     building_checks_blocks(),
