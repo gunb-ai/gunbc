@@ -6,7 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
-import std.measure { Minute, minute, MergeQueueEntryCount, merge_queue_entry_count }
+import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -15,6 +15,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "docs.github.com/en/rest/repos/rules"
   }
 }
+
+// Retrieved 2026-09-13 from docs.github.com/en/rest/repos/rules (REST: GET/PUT
+// /repos/{owner}/{repo}/rulesets/{ruleset_id}; rule types required_status_checks,
+// merge_queue, pull_request, deletion, non_fast_forward; bypass_actors). GitHub's field
+// names are kept. The merge_queue parameters GitHub documents are
+// check_response_timeout_minutes, grouping_strategy, max_entries_to_build,
+// max_entries_to_merge, merge_method, min_entries_to_merge,
+// min_entries_to_merge_wait_minutes.
 
 // THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
 // ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
@@ -90,6 +98,14 @@ type RulesetBypassActor {
   bypass_mode: String
 }
 
+// GitHub REST bypass_actors field names (same retrieval as the module cite, 2026-09-13,
+// docs.github.com/en/rest/repos/rules). actor_type includes RepositoryRole; bypass_mode
+// includes always and pull_request. For actor_type RepositoryRole, actor_id is the
+// repository role id; GitHub's Maintain role is 2.
+data github_ruleset_bypass_actor_type_repository_role: String = "RepositoryRole"
+data github_ruleset_bypass_mode_always: String = "always"
+data github_repository_role_id_maintain: Int = 2
+
 type BypassActorRosterObservation
   = BypassRosterObserved { actors: List<RulesetBypassActor> }
   | BypassRosterUnavailable { reader: NonEmptyStr, cause: NonEmptyStr }
@@ -162,9 +178,9 @@ type RequiredStatusCheckWire {
 // section 5 forbids outright. The declaration is not being deferred for convenience; it is
 // unreadable until its producer changes.
 type RulesetRuleParametersWire {
-  strict_required_status_checks_policy: Bool
-  do_not_enforce_on_create: Bool
-  required_status_checks: List<RequiredStatusCheckWire>
+  strict_required_status_checks_policy: Bool?
+  do_not_enforce_on_create: Bool?
+  required_status_checks: List<RequiredStatusCheckWire>?
   check_response_timeout_minutes: Int?
   grouping_strategy: String?
   max_entries_to_build: Int?
@@ -202,6 +218,7 @@ type RulesetWire {
   current_user_can_bypass: String
   conditions: RulesetConditionsWire
   rules: List<RulesetRuleWire>
+  bypass_actors: List<RulesetBypassActor>?
 }
 
 type RulesetSummaryWire {
@@ -287,13 +304,11 @@ fn reader_bypass_standing_wire_label(b: ReaderBypassStanding) -> String {
   }
 }
 
-// THE ROSTER IS NOT DECODED FROM THIS RESPONSE, AND THAT IS A REFUSAL RATHER THAN AN OMISSION.
-// Adding a `bypass_actors` field to RulesetWire would decode an absent key to an empty list, which
-// is exactly the conflation the type above exists to prevent -- and no field in the response says
-// whether the reader was authorized to see the roster. So every observation built from this
-// endpoint is Unavailable, carrying who asked and why the answer is not established. An
-// authorized read is a different observation with its own producer, and it is what may mint
-// BypassRosterObserved.
+// OPTIONAL DECODE, NOT A MISSING FIELD. RulesetWire.bypass_actors is List<RulesetBypassActor>?,
+// so an omitted key is Absent and a JSON array (including []) is Present. Absent still conflates
+// empty-and-omitted with unauthorized-and-omitted -- GitHub's GET carries nothing that separates
+// those two -- so this helper mints BypassRosterUnavailable. Present is BypassRosterObserved;
+// observe_repo_ruleset matches on that coproduct rather than treating every GET as Unavailable.
 fn bypass_roster_unavailable_from_get(reader: NonEmptyStr) -> BypassActorRosterObservation {
   BypassRosterUnavailable {
     reader: reader,
@@ -339,7 +354,47 @@ type RequiredStatusCheckStanding
       strict: Bool
       do_not_enforce_on_create: Bool
     }
+  | RequiredStatusChecksParametersIncomplete { missing: List<String> }
   | MultipleRequiredStatusChecksRules { count: Int }
+
+fn missing_bool_field(name: String, v: Bool?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn missing_check_roster_field(name: String, v: List<RequiredStatusCheckWire>?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn required_status_check_missing_fields(p: RulesetRuleParametersWire) -> List<String> {
+  fold(
+    [
+      missing_bool_field(name: "do_not_enforce_on_create", v: p.do_not_enforce_on_create),
+      missing_check_roster_field(name: "required_status_checks", v: p.required_status_checks),
+    ],
+    init: missing_bool_field(name: "strict_required_status_checks_policy", v: p.strict_required_status_checks_policy),
+    f: fn(acc, more) { append(acc, items: more) },
+  )
+}
+
+fn rsc_bool(v: Bool?) -> Bool {
+  match v {
+    Absent => false
+    Present { value: x } => x
+  }
+}
+
+fn rsc_checks(v: List<RequiredStatusCheckWire>?) -> List<RequiredStatusCheckWire> {
+  match v {
+    Absent => []
+    Present { value: xs } => xs
+  }
+}
 
 fn required_status_check_standing(rules: List<RulesetRuleWire>) -> RequiredStatusCheckStanding {
   let matched = filter(rules, r => rule_is_required_status_checks(rule: r))
@@ -350,10 +405,15 @@ fn required_status_check_standing(rules: List<RulesetRuleWire>) -> RequiredStatu
       MultipleRequiredStatusChecksRules { count: length(matched) }
     } else {
       fold(matched, init: NoRequiredStatusChecksRule, f: fn(_, rule) {
-        RequiredStatusChecks {
-          contexts: map(rule.parameters.required_status_checks, c => c.context),
-          strict: rule.parameters.strict_required_status_checks_policy,
-          do_not_enforce_on_create: rule.parameters.do_not_enforce_on_create,
+        let missing = required_status_check_missing_fields(p: rule.parameters)
+        if length(missing) > 0 {
+          RequiredStatusChecksParametersIncomplete { missing: missing }
+        } else {
+          RequiredStatusChecks {
+            contexts: map(rsc_checks(v: rule.parameters.required_status_checks), c => c.context),
+            strict: rsc_bool(v: rule.parameters.strict_required_status_checks_policy),
+            do_not_enforce_on_create: rsc_bool(v: rule.parameters.do_not_enforce_on_create),
+          }
         }
       })
     }
@@ -571,9 +631,9 @@ fn required_status_checks_rule(
   RulesetRuleWire {
     type: ruleset_rule_type_wire_label(t: RequiredStatusChecksRule),
     parameters: RulesetRuleParametersWire {
-      strict_required_status_checks_policy: strict,
-      do_not_enforce_on_create: do_not_enforce_on_create,
-      required_status_checks: checks,
+      strict_required_status_checks_policy: Present { value: strict },
+      do_not_enforce_on_create: Present { value: do_not_enforce_on_create },
+      required_status_checks: Present { value: checks },
       check_response_timeout_minutes: none,
       grouping_strategy: none,
       max_entries_to_build: none,
@@ -581,6 +641,32 @@ fn required_status_checks_rule(
       merge_method: none,
       min_entries_to_merge: none,
       min_entries_to_merge_wait_minutes: none,
+    },
+  }
+}
+
+fn merge_queue_rule(
+  grouping_strategy: MergeQueueGroupingStrategy,
+  merge_method: MergeQueueMergeMethod,
+  check_response_timeout: Minute,
+  max_entries_to_build: MergeQueueEntryCount,
+  max_entries_to_merge: MergeQueueEntryCount,
+  min_entries_to_merge: MergeQueueEntryCount,
+  min_entries_to_merge_wait: Minute,
+) -> RulesetRuleWire {
+  RulesetRuleWire {
+    type: ruleset_rule_type_wire_label(t: MergeQueueRule),
+    parameters: RulesetRuleParametersWire {
+      strict_required_status_checks_policy: none,
+      do_not_enforce_on_create: none,
+      required_status_checks: none,
+      check_response_timeout_minutes: Present { value: minute_count(check_response_timeout) },
+      grouping_strategy: Present { value: merge_queue_grouping_strategy_wire_label(g: grouping_strategy) },
+      max_entries_to_build: Present { value: merge_queue_entry_count_value(max_entries_to_build) },
+      max_entries_to_merge: Present { value: merge_queue_entry_count_value(max_entries_to_merge) },
+      merge_method: Present { value: merge_queue_merge_method_wire_label(m: merge_method) },
+      min_entries_to_merge: Present { value: merge_queue_entry_count_value(min_entries_to_merge) },
+      min_entries_to_merge_wait_minutes: Present { value: minute_count(min_entries_to_merge_wait) },
     },
   }
 }
@@ -648,6 +734,7 @@ service github.Rulesets {
       current_user_can_bypass: String
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
+      bypass_actors: List<RulesetBypassActor>?
       outcome: RestOutcome
     }
     readonly
@@ -675,6 +762,7 @@ service github.Rulesets {
       enforcement: String
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
+      bypass_actors: List<RulesetBypassActor>
     }
     output {
       id: Int
@@ -684,6 +772,7 @@ service github.Rulesets {
       current_user_can_bypass: String
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
+      bypass_actors: List<RulesetBypassActor>?
       outcome: RestOutcome
     }
     transport rest {
@@ -695,6 +784,7 @@ service github.Rulesets {
         enforcement: enforcement,
         conditions: conditions,
         rules: rules,
+        bypass_actors: bypass_actors,
       }
     }
     response {

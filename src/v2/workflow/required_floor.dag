@@ -1,6 +1,6 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Cons, Empty, contains }
 import v2.std.collection { List }
 import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt }
@@ -23,16 +23,23 @@ import v2.workflow.floor_terminal_ledger {
 }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
+import v2.workflow.floor_eval_step_calibration {
+  EvalStepRateGrounding, floor_eval_step_calibration, eval_step_rate_grounding,
+  eval_step_budget_for
+}
+import v2.workflow.floor_grandfathered_roster { floor_grandfathered_holds }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Millisecond,
   ByteSize,
+  EvalStepCount,
   millisecond,
   millisecond_count,
   byte_size,
   byte_size_count,
+  eval_step_count_value,
 }
 import std.types { NonEmptyStr }
 
@@ -170,13 +177,27 @@ fn required_floor_disposition_with_changed_selection(
 // exactly one thing -- the CPU ceiling's power to convert a REACHED verdict into a floor red,
 // for an identity whose expensiveness is already declared debt and whose author is present.
 //
-// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NEITHER cost-debt
-// rostered NOR long-home classified keeps the ordinary policy and still reds when it exceeds the
-// CPU line, so this is not a widening of the floor: no identity gains the override by being
-// changed alone, and none gains it by being expensive alone. The two conditions are one question
-// asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority that joins
-// them -- so this sentence names both, and a reader who finds only the roster here is reading a
-// rule the implementation stopped following.
+// WHAT THIS POLICY STILL DISTINGUISHES, RESTATED BECAUSE THE CPU ARMING DISTINCTION IT USED TO
+// NAME NO LONGER EXISTS (review 65674). An earlier revision of this paragraph said an ordinary
+// changed witness "still reds when it exceeds the CPU line". That was true when written and is
+// false at this head: `claim_cost_basis_standing` makes `CpuTimeBasis` `BasisObservedOnly` for
+// EVERY claim, so no CPU figure refuses anything under either arm. Two answers to "may CPU
+// refuse?" in one file is the meaning fork DESIGN section 3 forbids, and it is an instance of the
+// class this same change files at `gunbc.recurring_failure_mode`
+// `prose_repealed_by_the_change_that_wrote_it` -- which is why it is corrected here rather than
+// left for the next reader to discover against a deleted world.
+//
+// THE SURVIVING DIFFERENCE IS ABOUT PUBLISHING, NOT ABOUT ARMING. Both arms now gate on eval
+// steps and observe CPU. What `ChangedCostDebtVerdictOnly` still selects is that a changed
+// identity whose expensiveness is ALREADY DECLARED DEBT, and whose author is present, has its
+// cost observation published as a cost-debt receipt rather than read as a fresh finding about
+// that claim. `OrdinaryChangedWitnessCostPolicy` publishes no such receipt.
+//
+// NEITHER ARM IS A WIDENING, and the reason is unchanged by the above: no identity gains the
+// override by being changed alone, and none by being expensive alone. The two conditions are one
+// question asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority
+// that joins them -- so a reader who finds only the roster here is reading a rule the
+// implementation stopped following.
 type ChangedWitnessCostPolicy =
     OrdinaryChangedWitnessCostPolicy
   | ChangedCostDebtVerdictOnly
@@ -915,15 +936,14 @@ fn required_floor_site_disposition(
 // (and nothing in the live loop does today -- `RequiredFloorClaim.cost_line_ms` has no
 // admission-path consumer; the only reader is the diagnostic `exceeds_completed_cost_line`).
 //
-// `required_floor_claim_cpu_safety_limit_ms` and `required_floor_claim_wall_safety_limit_ms`
-// are TWO INDEPENDENT SAFETY DEADLINES, never a scalar mechanically copied into both clocks.
-// For a Hermetic pure in-process claim, CPU protects against runaway evaluation while wall
-// protects against a blocked or descheduled process -- different jobs, so the wall limit is
-// independently derived and LOOSER than the CPU limit, so ordinary host scheduling cannot
-// preempt a computation that is still inside its CPU envelope. TEMPORARY restoration-envelope
-// values, not re-founded permanent ceilings, and both are deliberately far above where any
-// ordinary witness should land (measured per-witness median ~1ms) so neither should fire against
-// a healthy claim.
+// `claim_eval_step_budget_for_identity` and `required_floor_claim_wall_safety_limit_ms` are the
+// TWO INDEPENDENT LIMITS a claim is judged against, and they are independent because they answer
+// different questions. The step budget bounds the WORK a Hermetic pure in-process claim may
+// perform -- a quantity the host cannot inflate, which is why it replaced the CPU deadline that
+// stood in this sentence until 2026-09-12. The wall deadline bounds a claim that is BLOCKED or
+// DESCHEDULED, which no amount of work-counting can see. Neither is a scalar copied into the
+// other's clock, and both sit far above where an ordinary witness lands (measured per-witness
+// median ~1ms) so neither should fire against a healthy claim.
 //
 // THE GUARANTEE, REWRITTEN RATHER THAN ANNOTATED (PREEMPTION-1, operator-directed, 2026-08-19;
 // reworked on gunbc#8584 per royal-hawk-392's REWORK): these two limits are cooperatively
@@ -941,7 +961,9 @@ fn required_floor_site_disposition(
 // over it -- `claim_safety_outcome`, `claim_safety_outcome_blocks`, the migration wall and the §4b
 // rung drop -- stays in this module, which is the consumer. The measured receipt behind
 // it (floor run 32301212975, `root_d_checkpoint_scalar_declared_arity_witness_holds` reaching a
-// verdict at 60317ms CPU against this module's 5000ms `required_floor_claim_cpu_safety_limit_ms`,
+// verdict at 60317ms CPU against the 5000ms CPU safety deadline this module carried at the time
+// (a function since deleted by the eval-step cut below; the receipt is retained because what it
+// establishes -- that no poll landed inside the operation -- is clock-independent),
 // twelve times over and uninterrupted, not a first occurrence -- 2792-2855ms isolated per
 // docs/plans/witness-cost-first-touch-attribution.md) is what that model derives
 // `CompletedPastSafetyLimit { preemption: OpaqueHostCallUnbounded { operation:
@@ -975,12 +997,77 @@ fn required_floor_claim_cost_line_ms() -> Int {
   100
 }
 
-// THE CPU SAFETY DEADLINE: 500ms (operator ruling 2026-08-17, RESTORED 2026-08-27).
+// WHICH BASIS MAY REFUSE A CLAIM, AS A CLOSED ROSTER OVER THE THREE QUANTITIES A RUN READS
+// (operator ruling via fierce-lark-661, 2026-09-12; evidence from bright-boar-435 on gunbc#11173).
 //
-// THIS IS NOT A NEW NUMBER. It is the ruling that has stood since gunbc#8283 and was never
-// repealed. It is written here with its own provenance because the two raises that displaced it
-// each cited an authority that did not cover the value, and a reader who finds only the raises
-// will re-derive them as legitimate:
+// WHAT REPLACED WHAT, STATED AS A CUT RATHER THAN AS A REFINEMENT. `ClaimCpuDeadline` and
+// `changed_witness_cpu_deadline` stood here and are DELETED. They answered "is the CPU deadline
+// armed for THIS claim", parameterised by `ChangedWitnessCostPolicy`, because the observed-only
+// disposition was an exception granted to one rostered population. The ruling generalises that
+// exception to every claim, so a predicate whose only job was to distinguish the two populations
+// distinguishes nothing; keeping it would leave one arm (`CpuDeadlineArmed`) with no producer,
+// which DESIGN section 3c calls dangling and section 3 calls a second authority for a decision this
+// roster now makes once. The migration is the root cut DESIGN section 3 requires, not a leaf edit.
+//
+// THE EVIDENCE THAT MOVED THE CPU CLOCK OFF THE GATING SIDE. Three prose-only heads of gunbc#11173
+// -- heads that changed no executable source -- measured all 3,775 floor claims uniformly about ten
+// percent slower on each successive run (summed CPU 36.7s, then 40.8s, then 44.7s), and one identity
+// at an IDENTICAL `eval_steps` of 2884 read 34ms, 455ms and 511ms across them. A 500ms line sits
+// inside that environmental band, so a CPU ceiling adjudicates which runner dequeued the job rather
+// than what the claim did. That is `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable`
+// measured in this file's own units, and it is why the clock that decides is now the one that
+// counts WORK.
+//
+// OBSERVED-ONLY IS NOT DROPPED, AND THE DISTINCTION IS THE WHOLE OF WHY THIS IS A ROSTER RATHER
+// THAN A DELETION. A mechanism that stopped gating AND stopped counting is the absorbing fallback
+// DESIGN section 5 forbids -- the deficit stops being visible at the moment it stops blocking. So
+// `BasisObservedOnly` REQUIRES its publisher to be named, and the CPU arm names the per-claim cost
+// receipt every run already emits for every claim. A later author who wants to stop publishing CPU
+// must delete the field that says who publishes it, which is a visible edit.
+//
+// THE ROSTER IS CLOSED OVER THE BASES, NOT OVER THE CLAIMS. It takes no claim, no policy and no
+// identity: the answer is the same for every required claim, which is exactly what "for every
+// claim" in the ruling means and is what makes the previous policy parameter dissolve.
+type ClaimCostBasis =
+    EvalStepBasis
+  | CpuTimeBasis
+  | WallTimeBasis
+
+type ClaimCostBasisStanding =
+    BasisGates
+  | BasisObservedOnly { published_by: NonEmptyStr }
+
+fn claim_cost_basis_standing(basis: ClaimCostBasis) -> ClaimCostBasisStanding {
+  match basis {
+    EvalStepBasis => BasisGates {}
+    CpuTimeBasis =>
+      BasisObservedOnly {
+        published_by: "the per-claim cost receipt the required floor emits for every claim -- one row per identity carrying both clocks and the eval-step count, folded into the required-floor-claim-cost artifact and, for a cost-debt identity executing under a changed-witness verdict, into v2.workflow.floor_changed_witness ChangedWitnessCostObservation beside it" as NonEmptyStr,
+      }
+    WallTimeBasis => BasisGates {}
+  }
+}
+
+fn claim_cost_basis_gates(basis: ClaimCostBasis) -> Bool {
+  match claim_cost_basis_standing(basis: basis) {
+    BasisGates => true
+    BasisObservedOnly { published_by: _ } => false
+  }
+}
+
+// THE DECLARED WORK ENVELOPE: 500ms of ordinary interpreted evaluation.
+//
+// THIS IS THE SAME 500 THE OPERATOR RULED ON 2026-08-17 AND IT HAS NOT MOVED. What moved is the
+// clock it is stated against. It stood in this file as `required_floor_claim_cpu_safety_limit_ms`,
+// a CPU deadline; that function is DELETED rather than renamed, because the floor now carries no
+// CPU line that decides anything and a second 500 beside this one would be the fork DESIGN
+// section 3 forbids. The single CPU figure the floor still names is the explicitly diagnostic
+// `required_floor_claim_cost_line_ms` above, which has never had an admission-path consumer.
+//
+// THE PROVENANCE TRAVELS WITH THE NUMBER, because it is the same number and the same danger. It is
+// the ruling that has stood since gunbc#8283 and was never repealed, and it is written with its
+// provenance because the two raises that displaced it each cited an authority that did not cover
+// the value -- a reader who finds only the raises will re-derive them as legitimate:
 //
 //   500  -> 1552  (gunbc#8514, 2026-08-19 01:26). NO OPERATOR RULING. The whole justification
 //                  was "the 2026-08-18 witnesses fold measured a 1527ms ceiling ... 1552ms is
@@ -994,65 +1081,237 @@ fn required_floor_claim_cost_line_ms() -> Int {
 //                  wall are two independent deadlines rather than one scalar copied into both.
 //                  The operator's own quoted words in that diff, "DO NOT set CPU and wall to the
 //                  same 5000ms", PRESUPPOSE 5000 was already on the table: it is a ruling about
-//                  the mechanical copy, not about the magnitude. The value rode in as a
-//                  passenger on a ruling about something else, which is the AUTHORITY
-//                  SUBSTITUTION failure mode in DESIGN's recurring list -- both halves true,
-//                  only the arrow invented.
+//                  the mechanical copy, not about the magnitude. The value rode in as a passenger
+//                  on a ruling about something else -- the AUTHORITY SUBSTITUTION failure mode,
+//                  both halves true and only the arrow invented.
 //
-// Neither raise named a restoration trigger or a date, so "TEMPORARY" and "restoration
-// envelope" described nothing that could end. The population that had accumulated under the
-// 10x drift is frozen in `v2.workflow.floor_cost_debt` as a monotone debt contract and withheld
-// from execution; it is not granted a higher ceiling, because a row that broke the budget does
-// not get an exemption to keep spending it.
+// THAT HISTORY IS WHY THIS NUMBER IS RESTATED RATHER THAN RE-FOUNDED HERE. Moving a ceiling onto a
+// new clock is exactly the moment a magnitude rides in as a passenger; the magnitude did not move.
 //
-// This is the TIGHTER of the two limits. It protects a pure in-process claim against runaway
-// evaluation on the CPU clock; the wall limit below is independently derived and looser.
+// THE POPULATION THAT ACCUMULATED UNDER THE 10x DRIFT is frozen in `v2.workflow.floor_cost_debt` as
+// a monotone debt contract and withheld from execution. It is not granted a higher ceiling by this
+// change either, and enrolling more identities there is expressly NOT the remedy for the
+// environmental band this change is about.
 //
-// WHAT THE FIGURE COSTS, MEASURED, AND THE PRODUCER THAT RE-DERIVES IT. This number is unchanged by
-// the measurement below and is not proposed to move -- raising it is refused by the two repudiated
-// raises above -- but what a 500ms line actually adjudicates is now measured rather than assumed.
-// `gunbc.floor_cost_distribution` `worst_envelope_permille`, driven by
-// `tools.floor_cost_distribution_instrument` `floor_cost_envelope_report` over twelve green `main`
-// runs on twelve distinct runner registrations across three hosts, reports a per-identity
-// max-over-min CPU envelope of 1.367x median, 1.653x at p90 and 2.280x worst, over rows whose
-// `eval_steps` were IDENTICAL in every run -- so the movement is the machine, not the tree. Composed
-// with `implied_clean_run_budget`, a row must sit under 302ms on its cheapest run to be safe at p90
-// and under 219ms to be safe at the worst observed.
-//
-// AND THE EXTREMES ARE CONCENTRATED ON PARTICULAR MACHINES, which is the fact a median run factor
-// cannot see: `run_extreme_census` reports one run holding the minimum for 367 of 398 rows, and one
-// host holding the maximum for 279 of 398 from three of twelve runs. A row near this line is
-// therefore adjudicated by which runner dequeued the job, which is `gunbc.rung_drop`
-// `floor_cost_claim_qualification_unavailable` restated in this file's own units: the stop remains
-// REQUIRED as an attempt-safety and verdict-availability criterion and is disqualified as an
-// intrinsic claim-cost verdict. That row's attention constant is derived from this envelope.
-fn required_floor_claim_cpu_safety_limit_ms() -> Int {
-  500
+// IT IS POLICY AND IT IS STATED IN MILLISECONDS BECAUSE THAT IS THE UNIT THE RULING IS IN. The
+// conversion to steps is a separate fact with a separate authority and a separate failure mode,
+// which is why it does not live in this function.
+fn required_floor_claim_work_envelope_ms() -> Millisecond {
+  millisecond(count: 500)
 }
 
-// WHETHER THE CPU SAFETY DEADLINE IS ARMED FOR ONE CLAIM, derived from the policy rather than
-// from the claim (FLOOR-CHANGED-COST-0).
+// THE CPU LINE THE PER-SUBJECT GATES STILL DENOMINATE AGAINST, AND IT IS A DIFFERENT FACT FROM THE
+// ENVELOPE ABOVE DESPITE SHARING ITS MAGNITUDE (review 66007).
 //
-// NEITHER ARM CARRIES THE FIGURE, and that is the point twice over. The number is the SAME 500ms
-// under both policies -- the override does not grant a rostered row a higher ceiling (DESIGN
-// section 5: a row that broke the budget does not get an exemption to keep spending it), it
-// changes what a crossing MEANS -- so a field restating it here would be a second home for a
-// fact `required_floor_claim_cpu_safety_limit_ms` above already owns, and the two could drift.
-// A reader of either arm reads that one function.
+// THE TWO ARE NOT THE SAME NUMBER WEARING TWO NAMES, WHICH IS THE ONLY THING THAT WOULD MAKE THIS A
+// SECTION 3 NICKNAME. `required_floor_claim_work_envelope_ms` is POLICY IN MILLISECONDS OF WORK: it
+// is consumed only after conversion into eval steps, and no clock is ever compared to it. THIS
+// figure is CPU MILLISECONDS: it is compared directly against an observed CPU reading. Same
+// magnitude, two quantities -- exactly the coincidence `std.measure` `measure_clock_basis_note`
+// warns about, which is why they are two declarations and not one.
 //
-// THE OBSERVED-ONLY ARM DOES NOT MEAN THE FIGURE IS DROPPED: the run publishes it, tagged with
-// its clock, through `v2.workflow.floor_changed_witness` `ChangedWitnessCostObservation`, which
-// is where a measurement belongs. A policy that stopped gating AND stopped counting would be the
-// absorbing fallback DESIGN section 5 forbids. The wall deadline is not modeled here at all: it
-// is armed under both policies, so a second arm restating it would be a decoration.
-type ClaimCpuDeadline =
-    CpuDeadlineArmed
-  | CpuDeadlineObservedOnly
+// HOW THE FORK GOT WRITTEN, RECORDED BECAUSE THE NEXT AUTHOR WILL BE TEMPTED THE SAME WAY. When
+// gunbc#11297 landed calling the deleted `required_floor_claim_cpu_safety_limit_ms`, this branch
+// repaired it by repointing those call sites at the work envelope -- on the grounds that both
+// returned 500. That is a substitution by MAGNITUDE where the question was MEANING, and it made
+// the enrolment margin derive a CPU budget from a work policy while a sibling module asserted in
+// terms that no clock is ever compared to that policy. Both statements could not be true.
+//
+// IT IS NOT A DEADLINE AND NOTHING IS ARMED ON IT. No claim is interrupted at this figure -- since
+// CPU became observed-only for every claim, the only armed deadline is the wall one. This is a LINE
+// USED BY TWO PER-SUBJECT GATES that were not converted to eval steps by this change: the enrolment
+// margin derives its budget from it, and cost-debt admission takes it as the supplied ceiling.
+//
+// DISSOLUTION (DESIGN section 5): this declaration ends when those two gates are themselves
+// denominated in eval steps, at which point nothing compares a CPU reading to a per-subject budget
+// and the figure has no consumer. That is the same capability `gunbc.rung_drop`
+// `floor_cost_cpu_regression_at_constant_eval_steps` names in its clause (iv) -- NO PER-SUBJECT
+// BUDGET MAY CONSUME A RUN-LEVEL READING -- so this symbol is that row's remaining surface made
+// nameable rather than a new debt.
+fn required_floor_per_subject_cpu_line_ms() -> Millisecond {
+  millisecond(count: 500)
+}
 
-fn changed_witness_cpu_deadline(policy: ChangedWitnessCostPolicy) -> ClaimCpuDeadline {
-  match policy {
-    OrdinaryChangedWitnessCostPolicy => CpuDeadlineArmed {}
-    ChangedCostDebtVerdictOnly => CpuDeadlineObservedOnly {}
+// THE NEW-WITNESS WORK ENVELOPE: 100ms (operator ruling via fierce-lark-661, 2026-09-13).
+//
+// A SECOND POLICY INPUT, NOT A SECOND MECHANISM. The floor now carries TWO ceilings and one way of
+// deriving them: both are milliseconds of work put through the same calibration, and the only
+// difference between them is which millisecond figure the operator ruled. 100 is the figure for
+// work that is NEW; 500 above is the figure for work that was already enrolled when the roster was
+// cut.
+//
+// WHY A NEW WITNESS IS HELD TO A TIGHTER LINE THAN AN OLD ONE, which is otherwise an odd-looking
+// asymmetry. The 500 figure is not a judgement that 500ms is a good cost -- it is the ceiling the
+// existing population grew up under, and lowering it on 3,795 rows at once would refuse work that
+// nothing has asked anyone to repair. 100 is what the operator is willing to pay for work arriving
+// from now on. So the two tiers are a debt and a standard, not two standards.
+fn required_floor_new_witness_envelope_ms() -> Millisecond {
+  millisecond(count: 100)
+}
+
+// WHICH CEILING ONE CLAIM IS JUDGED AGAINST, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
+//
+// THE SELECTOR TAKES AN IDENTITY, NOT A LABEL, AND THAT IS THE LOAD-BEARING PART. There is no
+// `legacy: Bool` parameter, no `is_new` flag, and no caller-supplied tier: an identity outside the
+// roster CANNOT acquire the larger budget by landing, by appearing in the tree, or by having been
+// accepted once. The only way into `GrandfatheredTier` is to be in the roster
+// `v2.workflow.floor_grandfathered_roster` carries, cut once, whose rows leave by typed
+// disposition. A caller-supplied label would be exactly the escape hatch DESIGN section 5 forbids
+// -- a toggle whose only effect is "proceed as if the refusal had not fired".
+//
+// THAT THE ROSTER MAY ONLY SHRINK IS NOT A PROPERTY TO CITE FROM HERE (review 65720). An earlier
+// revision of this sentence said it "may only shrink" as though the refusal were established.
+// `roster_change_verdict` models it and fixtures exercise it, but no acceptance-path caller runs
+// it against the live roster; that frontier and its trigger are stated where the verdict is
+// declared. What THIS function guarantees is only what it does: the tier comes from identity
+// membership and from nothing a caller can pass.
+//
+// A RENAME IS A DELETION PLUS AN ADDITION, so a renamed witness is NEW. That falls out of
+// identity-grain membership rather than being a rule layered on top, and it closes the one move
+// that would otherwise launder an expensive grandfathered witness into a fresh identity at the old
+// ceiling.
+//
+// A MODIFIED GRANDFATHERED WITNESS KEEPS ITS TIER while its identity survives. There is no
+// "substantially rewritten" test and there may not be one: a near-the-line judgement about how much
+// editing makes a witness new is the smuggled threshold DESIGN section 5 names, and it would be
+// decided by whoever was reviewing that day.
+type ClaimCeilingTier =
+    GrandfatheredTier
+  | NewWitnessTier
+
+fn claim_ceiling_tier(identity: String) -> ClaimCeilingTier {
+  if floor_grandfathered_holds(name: identity) {
+    GrandfatheredTier {}
+  } else {
+    NewWitnessTier {}
+  }
+}
+
+// THE POLICY INPUT EACH TIER PROJECTS, AS A `Millisecond` AND NOT A BARE `Int` (review 65247,
+// BLOCKING). These are milliseconds of work -- the unit the rulings are in -- and `std.measure`
+// owns that carrier, which this module already imports and which `eval_step_budget_for` already
+// takes. Carrying the magnitude as a raw scalar and re-minting it into the carrier at the consumer
+// is the re-invention DESIGN section 2's test names and the second home section 3 forbids; it also
+// contradicted this lane's own dissolution note, which asserts that the millisecond gap in the
+// sibling file was CLOSED.
+//
+// THE EVAL-STEP SURFACES NOW CARRY `EvalStepCount` FOR THE SAME REASON, and an earlier revision of
+// this annotation said they stayed scalars because the roster had no arm for evaluation steps
+// (review 65531). That sentence was true on main and FALSE at this head: the same change adds the
+// arm. Leaving it standing would have made the module that DECIDES refusals the one place the new
+// carrier is not consumed, on the strength of a sentence the diff itself repeals -- and an
+// annotation that states something the tree contradicts is worse than none (DESIGN section 4c).
+fn claim_ceiling_envelope_ms(tier: ClaimCeilingTier) -> Millisecond {
+  match tier {
+    GrandfatheredTier => required_floor_claim_work_envelope_ms()
+    NewWitnessTier => required_floor_new_witness_envelope_ms()
+  }
+}
+
+// THE CEILING IN THE UNIT THE FLOOR MEASURES. Neither budget is a literal anywhere: both are the
+// tier's policy milliseconds put through `v2.workflow.floor_eval_step_calibration`, so they cannot
+// drift apart, and neither can be raised without moving a policy figure or the pinned rate -- both
+// of which have executing checks over them.
+fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> EvalStepCount {
+  eval_step_budget_for(
+    calibration: floor_eval_step_calibration,
+    envelope: claim_ceiling_envelope_ms(tier: tier),
+  )
+}
+
+// THE HOST MIRRORS THIS SELECTION BY HAND, AND THAT MIRROR IS DECLARED HERE RATHER THAN LEFT TO
+// BE INFERRED (review 65731). `v1_compiler.cli_run.required_floor_runner` does not call this
+// function per claim. It reads the two tier budgets ONCE through the hermetic frame, decodes
+// `floor_grandfathered_roster` into a HashSet, and reproduces the membership test in Rust.
+//
+// THE REASON IS MEASURED, NOT STYLISTIC. Evaluating this function per claim re-folds a 3,795-row
+// roster once per claim -- and this change's own witnesses measured that fold at about 38,000 eval
+// steps for a name the roster does NOT hold, which is the worst case and the common one. Across
+// the floor's claim population that is work of the order the ceiling this module declares exists
+// to refuse, so the mirror is the cheaper correct answer today rather than a shortcut.
+//
+// IT IS `mitigatable` AND NOT HIGHER, stated plainly: a divergence between this derivation and its
+// Rust mirror is writable, and what prevents it today is that BOTH READ THE SAME ROSTER through
+// the frame -- the numbers and the membership set have one authority -- plus review. Nothing
+// executes a comparison of the two.
+//
+// IT IS NOT COVERED BY `floor_preparation_host_mirror_dissolve_on`, which names
+// `floor_preparation_outcome` and only that; a reader who took that row as covering this mirror
+// would be reading a narrower declaration than what landed.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the per-claim cost of evaluating this function through
+// the frame stops scaling with roster size -- the roster fold served once across claim frames
+// rather than re-derived per claim, which is exactly what
+// `v2.workflow.floor_pure_producer_share`'s cross-claim share does for other nullary producers --
+// at which point the host calls `claim_eval_step_budget_for_identity` and the mirrored branch is
+// DELETED rather than kept beside it (DESIGN section 4b(4), dissolution on climb). A trigger
+// naming a faster HashSet, a cache inside the runner, or a comparison test does not discharge
+// this: each keeps two derivations of one fact, which is the condition being retired.
+data claim_ceiling_tier_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: v1_compiler.cli_run.required_floor_runner selects a claim's budget by evaluating v2.workflow.required_floor claim_eval_step_budget_for_identity through the hermetic frame it already holds, instead of decoding floor_grandfathered_roster into a HashSet and reproducing claim_ceiling_tier's membership test in Rust. BLOCKED ON COST, NOT ON PLUMBING: the frame call is available today and the mirror exists because evaluating it per claim re-folds the whole roster per claim, measured at roughly 38,000 eval steps per absent-name probe by this lane's own witnesses. The capability that retires it is the roster fold being SERVED once across claim frames rather than re-derived, the shape v2.workflow.floor_pure_producer_share already provides for nullary producers. Owner: the required-floor ceiling lane, currently smart-heron-867 and after it whoever holds the floor cost-ceiling work item. On the climb the mirrored branch is deleted, not kept beside the call." as NonEmptyStr,
+)
+
+// THE CEILING FOR ONE IDENTITY, WHICH IS THE ONLY ENTRY POINT A CALLER SHOULD REACH FOR. It joins
+// the two steps above so no caller can select a tier for one identity and a budget for another.
+fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
+  claim_ceiling_eval_step_budget(tier: claim_ceiling_tier(identity: identity))
+}
+
+// THE GROUNDING, AS AN EXECUTING FOLD RATHER THAN AS THE PROSE ABOVE. Its consumer is
+// `test.claim.floor_eval_step_budget_witness_test`, which goes red if the pinned rate stops being
+// the floor of the ratio its own sample measured -- so "723 steps is one millisecond of work" is a
+// claim the tree can refuse rather than a comment nobody can check.
+fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
+  eval_step_rate_grounding(calibration: floor_eval_step_calibration)
+}
+
+// WHAT A NEW WITNESS OVER ITS BUDGET SHOULD TRY FIRST, CARRIED AS DATA RATHER THAN LEFT TO THE
+// AUTHOR'S IMAGINATION (fierce-lark-661, 2026-09-13). The first live application of the two-tier
+// ruling found a correct identity join written as two nested all/any scans -- 2n^2, 618k eval steps
+// -- because the lane believed `dag/std` had no membership primitive. It does, and the
+// folder-as-direction-rule reading that hides it is what DESIGN section 3 denies in terms.
+//
+// THE TEXT NAMES THE PRIMITIVE AND STOPS THERE, AND THAT IS A RULING RATHER THAN AN OMISSION. This
+// lane measured the map-backed fold costing 36,000ms of host CPU at 3,795 rows while reading as the
+// CHEAPEST of three spellings on the gated clock, and proposed teaching authors to choose by n. That
+// was REFUSED: a per-site "check your n" exception prices a workaround around a defect, which DESIGN
+// section 6's bare-minimum-cost rule forbids in terms -- a proven cost-shape defect is always fixed,
+// and pricing per-site exceptions is itself redundant work. The quadratic is a REALIZATION DEFECT in
+// the map primitive, filed at `gunbc.recurring_failure_mode`
+// `nested_membership_scan_where_a_map_primitive_exists` and owned by the primitive's lane, not a
+// fact every future author must route around.
+fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
+  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup` -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact. READ THE COST CAVEAT BEFORE YOU DO, BECAUSE IT IS CURRENTLY THE LARGER RISK: `map_insert` has no bulk constructor, so building the map is an insert fold whose REALIZED cost is quadratic in the host, and this lane measured a map-backed specimen at far MORE CPU than the nested scan it replaced while performing FEWER eval steps. That means the swap can pass this eval-step ceiling and breach the WALL deadline, which is the one limit still armed. The defect is the primitive's, filed at `gunbc.recurring_failure_mode` `nested_membership_scan_where_a_map_primitive_exists` and owned by its lane -- but until it is repaired the swap is not unconditionally safe, and measuring the wall clock after it is part of the remedy rather than an afterthought. BEFORE REDUCING ANYTHING, CHECK WHETHER THE COST IS THIS IDENTITY'S AT ALL: if the same eval_steps has been observed cheap on a quiet run and expensive here, and neighbouring claims in the module moved with it, the charge is contention billed as CPU rather than this claim's work -- see gunbc.rung_drop floor_cost_cpu_regression_at_constant_eval_steps, which carries that class and the series that established it. A step count that did not move is the discriminator." as NonEmptyStr
+}
+
+// WHETHER ONE CLAIM'S PERFORMED WORK IS INSIDE THE CEILING.
+//
+// THE ARMS CARRY BOTH FIGURES rather than a bare Bool, because the remedy a reader needs is "this
+// claim performed N steps against a budget of M" -- a claim three percent over and a claim forty
+// times over are the same `true` and have nothing else in common. It is the same reason
+// `ClaimSafetyOutcome` carries its observations into its arms.
+type ClaimEvalStepStanding =
+    EvalStepsWithinBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
+  | EvalStepsOverBudget { observed_steps: EvalStepCount, budget_steps: EvalStepCount }
+
+fn claim_eval_step_standing(
+  observed_eval_steps: EvalStepCount,
+  budget_steps: EvalStepCount,
+) -> ClaimEvalStepStanding {
+  if int_gt(
+    a: eval_step_count_value(s: observed_eval_steps),
+    b: eval_step_count_value(s: budget_steps),
+  ) {
+    EvalStepsOverBudget { observed_steps: observed_eval_steps, budget_steps: budget_steps }
+  } else {
+    EvalStepsWithinBudget { observed_steps: observed_eval_steps, budget_steps: budget_steps }
+  }
+}
+
+fn claim_eval_step_standing_blocks(standing: ClaimEvalStepStanding) -> Bool {
+  match standing {
+    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudget { observed_steps: _, budget_steps: _ } => true
   }
 }
 
@@ -1162,11 +1421,14 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // for -- everything above this point that reads as a description of the residue is now backed
 // by the carriers below, with a real derivation and a real consumer, not a comment restating
 // itself as done). THE GUARANTEE TEXT ITSELF IS REWRITTEN, not merely annotated:
-// `required_floor_claim_cpu_safety_limit_ms` / `_wall_safety_limit_ms` are limits COOPERATIVELY
-// OBSERVED while interpreted execution keeps returning to `eval_expr`'s own stride poll. They
-// are NOT hard bounds across an opaque host operation unless that operation separately carries
-// a deadline-aware contract or a killable process boundary -- neither of which
-// `compile_dag_rust_emit_check` has today.
+// `required_floor_claim_wall_safety_limit_ms` is a limit COOPERATIVELY OBSERVED while interpreted
+// execution keeps returning to `eval_expr`'s own stride poll. It is NOT a hard bound across an
+// opaque host operation unless that operation separately carries a deadline-aware contract or a
+// killable process boundary -- neither of which `compile_dag_rust_emit_check` has today. The
+// eval-step budget is not a deadline at all and does not share this residue: it is compared once
+// against a completed claim's step count, so it cannot miss an interrupt -- what it cannot do is
+// see cost that accrued without performing steps, which is the same opaque-host region named from
+// the other side.
 
 
 // THE POPULATION OF OPAQUE HOST OPERATIONS THE PREEMPTION-1 RUNG DROP IS DECLARED OVER, AND IT
@@ -1212,6 +1474,8 @@ data opaque_host_call_population_authority_dissolves_on: DissolutionCondition = 
 
 fn opaque_host_call_grandfather_population() -> List<String> {
   Cons {
+    head: "claim_scope_dag_multi_module_fixture",
+    tail: Cons {
     head: "compile_dag_rust_emit_check",
     tail: Cons {
       head: "compile_dag_diagnostic_census",
@@ -1235,7 +1499,7 @@ fn opaque_host_call_grandfather_population() -> List<String> {
         }
       }
     }
-  }
+  } }
 }
 
 // TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The
@@ -1259,22 +1523,10 @@ fn grandfather_population_has_duplicate(population: List<String>) -> Bool {
   match population {
     Empty {} => false
     Cons { head: h, tail: t } =>
-      if string_in_grandfather_population(needle: h, population: t) {
+      if contains(xs: t, item: h, eq: fn(a, b) { a == b }) {
         true
       } else {
         grandfather_population_has_duplicate(population: t)
-      }
-  }
-}
-
-fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
-  match population {
-    Empty {} => false
-    Cons { head: h, tail: t } =>
-      if needle == h {
-        true
-      } else {
-        string_in_grandfather_population(needle: needle, population: t)
       }
   }
 }
@@ -1292,7 +1544,11 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   match preemption {
     CooperativelyPollable => true
     OpaqueHostCallUnbounded { operation: op } =>
-      string_in_grandfather_population(needle: op, population: opaque_host_call_grandfather_population())
+      contains(
+        xs: opaque_host_call_grandfather_population(),
+        item: op,
+        eq: fn(a, b) { a == b },
+      )
   }
 }
 
@@ -1314,7 +1570,7 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
 // PR read cleanly and mismatched a carrier seal at runtime). Recorded as a typed obligation
 // rather than a prose promise so it cannot decay into an unmarked scaffold.
 data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/cpu_limit_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
+  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
 )
 
 // THE DERIVATION. `reached_verdict` is the one fact that decides between `SafetyInterrupted` and
@@ -1323,11 +1579,32 @@ data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_
 // being misreported as complete. `preemption` and `raised_by` are supplied by the caller (the
 // reachability fact and the trigger are observed at the interpreter boundary this module does
 // not itself reach into) rather than guessed here.
+//
+// THE COMPLETED-CLAIM COMPARISON IS ON EVAL STEPS AND ON WALL, NEVER ON CPU (2026-09-12). The
+// parameter that carried the CPU limit is GONE from this signature rather than passed and ignored:
+// a limit a function still accepts is a limit a caller still believes in, and the whole subject of
+// this change is that the CPU figure adjudicates the runner rather than the claim. `observed_cpu_ms`
+// REMAINS a parameter and still travels into both non-clean arms, because observed-only means the
+// measurement is published and not that it is discarded -- a mechanism that stopped gating AND
+// stopped counting is the absorbing fallback DESIGN section 5 forbids.
+//
+// SO THE TWO ARMS BELOW READ DIFFERENTLY THAN THEIR SHAPE SUGGESTS. `CompletedPastSafetyLimit`
+// carries `observed_cpu` as a RECORDED OBSERVATION beside the reason it was minted, and the reason
+// is the step count or the wall clock. A reader who infers from a populated `observed_cpu` that CPU
+// decided this outcome is reading a receipt field as a cause; the cause is which comparison below
+// fired, and `claim_eval_step_standing` carries the step figures in its own arms for exactly that
+// reason.
+//
+// ORDER: STEPS FIRST. A claim that performed more work than its budget allows is over budget
+// whatever the wall clock did, and reporting the step overrun is actionable in a way a wall
+// crossing on the same row is not -- the remedy for too many steps is to reach for less, while the
+// remedy for a wall crossing is usually not the claim's at all.
 fn claim_safety_outcome(
   reached_verdict: Bool,
   observed_cpu_ms: Int,
   observed_wall_ms: Int,
-  cpu_limit_ms: Int,
+  observed_eval_steps: EvalStepCount,
+  eval_step_budget: EvalStepCount,
   wall_limit_ms: Int,
   raised_by: String,
   preemption: ClaimPreemptionReachability,
@@ -1340,7 +1617,12 @@ fn claim_safety_outcome(
         elapsed_wall_at_least: observed_wall_ms,
       }
     true =>
-      if int_gt(a: observed_cpu_ms, b: cpu_limit_ms) {
+      if claim_eval_step_standing_blocks(
+        standing: claim_eval_step_standing(
+          observed_eval_steps: observed_eval_steps,
+          budget_steps: eval_step_budget,
+        ),
+      ) {
         CompletedPastSafetyLimit {
           observed_cpu: observed_cpu_ms,
           observed_wall: observed_wall_ms,
@@ -1431,7 +1713,7 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // against ONE index address, `edge_index_construction { builds: 1 }` -- so its ~28s is neither
 // duplicated nor repeated. It was simply BILLED to whichever claim resolved an entry first:
 // `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
-// at 57193ms against a 5000ms `required_floor_claim_cpu_safety_limit_ms`, while its sibling
+// at 57193ms against the 5000ms CPU safety deadline standing at the time, while its sibling
 // reaching the identical computation milliseconds later measured 5ms. Three earlier modules
 // were quarantined down exactly this chain before the pattern was read correctly
 // (docs/plans/witness-cost-first-touch-attribution.md), each read as a slow test and each in
@@ -1675,3 +1957,22 @@ fn floor_run_blocks(
 data floor_preparation_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
   description: "dissolve-on: v1_compiler.cli_run run_required_floor evaluates floor_preparation_outcome / floor_preparation_outcome_blocks through the hermetic frame instead of mirroring the three-axis comparison in Rust; the mirrored branch is deleted in the same change." as NonEmptyStr,
 )
+
+// ── THE TWO CEILINGS AS NULLARY PROJECTIONS, FOR THE SEED'S READ POINT ─────────────────────
+//
+// The seed evaluates its policy figures out of the model rather than mirroring them as Rust
+// literals -- `floor_required_int` does exactly this for the wall deadline and the cost line -- and
+// it reads NULLARY functions. These two are that read point and nothing else: they have no
+// arithmetic of their own and no second home for a figure. A reader who changes a tier's policy
+// milliseconds, or the pinned rate, changes both of these; nobody edits them directly.
+//
+// THEY ARE NOT A THIRD AND FOURTH BUDGET. Each is `claim_ceiling_eval_step_budget` at one tier, so
+// the model and the seed cannot disagree about what a tier costs, and the tier SELECTION stays in
+// `claim_ceiling_tier` where the roster is the only input.
+fn required_floor_grandfathered_eval_step_budget() -> EvalStepCount {
+  claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})
+}
+
+fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
+  claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
+}

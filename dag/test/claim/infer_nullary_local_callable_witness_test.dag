@@ -1,0 +1,64 @@
+module test.claim.infer_nullary_local_callable_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for, any_class_count_for }
+
+// THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode
+// arity_proxy_for_callability_misroutes_a_found_local.
+//
+// Every cell is a source string compiled by the seed through gunbc.compile_census_probe, so a cell
+// whose subject refuses to resolve cannot take the controls down with it (the reasoning
+// test.claim.algebra_receiver_callable_witness_test states in full).
+//
+// THE REFUSAL BEING WITNESSED IS MISDIRECTED, NOT MERELY PRESENT. Before the repair each nullary cell
+// refused with `function 'pick' not found in scope`, keyed by the census as class InternalError,
+// subject function:pick -- about a binding that IS in scope. So the RED cells assert on exactly that
+// class and subject, and additionally on zero blocking rows overall, which a repair that swapped
+// the misdirected refusal for a different one would still fail.
+//
+// THE CONTROLS HOLD THE DISTINCTION THE ARITY TEST WAS PROXYING. A nullary GLOBAL and a unary LOCAL
+// both resolved before the repair and must still resolve; the surplus cell proves that a nullary
+// callable now binds in exact bijection rather than being admitted with any argument count, which
+// is what widening the seam without the arity-diagnostic guard would have done.
+
+data nullary_parameter_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host(pick: fn() -> Int) -> Int { pick() }\n"
+
+data nullary_argument_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn apply(pick: fn() -> Int) -> Int { pick() }\nfn host() -> Int { apply(pick: fn() { 7 }) }\n"
+
+data nullary_alias_parameter_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\ntype NullaryPicker = fn() -> Int\nfn host(pick: NullaryPicker) -> Int { pick() }\n"
+
+data nullary_global_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn seven() -> Int { 7 }\nfn host() -> Int { seven() }\n"
+
+data unary_parameter_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host(pick: fn(Int) -> Int) -> Int { pick(3) }\n"
+
+data nullary_parameter_surplus_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host(pick: fn() -> Int) -> Int { pick(3) }\n"
+
+fn resolves_clean(source: String) -> Bool {
+  blocking_subject_count_for(source: source, wanted_class: "InternalError", wanted_subject: "function:pick") == 0
+    && total_blocking_count_for(source: source) == 0
+}
+
+test fn nullary_parameter_callable_resolves() -> Bool {
+  resolves_clean(source: nullary_parameter_source)
+}
+
+test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool {
+  resolves_clean(source: nullary_argument_source)
+}
+
+test fn nullary_alias_typed_parameter_resolves() -> Bool {
+  resolves_clean(source: nullary_alias_parameter_source)
+}
+
+test fn nullary_global_still_resolves() -> Bool {
+  total_blocking_count_for(source: nullary_global_source) == 0
+}
+
+test fn unary_local_still_resolves() -> Bool {
+  resolves_clean(source: unary_parameter_source)
+}
+
+test fn nullary_local_refuses_a_surplus_argument() -> Bool {
+  any_class_count_for(source: nullary_parameter_surplus_source, wanted_class: "CallPositionalSurplus") > 0
+    && blocking_subject_count_for(source: nullary_parameter_surplus_source, wanted_class: "InternalError", wanted_subject: "function:pick") == 0
+}

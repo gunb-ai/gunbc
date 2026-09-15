@@ -138,6 +138,7 @@ data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv9",
   ssh_target: "briansrls@192.168.1.250",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
   runner_count: 5,

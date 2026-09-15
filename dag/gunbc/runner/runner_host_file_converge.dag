@@ -15,6 +15,7 @@ import extdeps.needrestart {
   RestartDeferredByDefault,
   NeedrestartUnitNamePrefixAdmitted,
   NeedrestartUnitNamePrefixRefused,
+  NeedrestartUnitNamePrefix,
   needrestart_unit_name_prefix,
   needrestart_conf_d_path,
   needrestart_conf_d_text,
@@ -58,7 +59,18 @@ import gunbc.runner_unit {
   runner_unit_suffix,
   runner_unit_name_of_registration,
 }
-import gunbc.runner_unit_file { runner_unit_teardown_dropin_path, gunbc_runner_unit_teardown_dropin_text }
+import gunbc.runner_unit_file {
+  runner_unit_teardown_dropin_path,
+  gunbc_runner_unit_teardown_dropin_text,
+  runner_unit_depriv_dropin_path,
+  gunbc_runner_unit_depriv_dropin_text_from_figure,
+  runner_job_user_xdg_runtime_uid,
+  RunnerJobUserRuntimeUidFigure,
+  runner_unit_system_path,
+  gunbc_runner_unit_fragment_from_deploy,
+  RunnerUnitText,
+  RunnerUnitTextRefused,
+}
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
@@ -76,14 +88,13 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
 // srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
 //
-// TWO FILES, TWO HALVES OF ONE CLASS, NEITHER SUFFICIENT ALONE.
-//   - the teardown drop-in makes ANY stop of a slot reach its whole cgroup, whoever issues it;
-//   - the needrestart deferral stops the daily upgrade from issuing that stop at all. An ephemeral
-//     runner already begins a fresh process after every job, so the upgraded library is picked up at
-//     the next job boundary without anyone restarting a slot mid-job.
-// Without the first, any other restart (an operator, a converge, the liveness reconciler) still
-// orphans. Without the second, the daily upgrade would still stop every busy slot -- loudly and
-// cleanly after the first lands, but as a wave of cancelled jobs rather than a silent corruption.
+// TEARDOWN AND NEEDRESTART STILL REACH THE FLEET WHEN DEPRIV CANNOT. Those two files are the orphan
+// class; neither is sufficient alone, and neither depends on the job-user docker uid. Depriv is a
+// per-file refusal while runner_job_user_xdg_runtime_uid is TranscribedUncited: it is withheld
+// (counted, not written) so live depriv.conf is not overwritten from a bet. The fragment waits
+// with it: installing the unit file without a modeled depriv drop-in would be correct only on
+// hosts that still happen to carry a hand-placed depriv.conf. Fragment User= is still
+// deploy.runner_user, not root, when the figure is CitedToAuthority and both files land.
 //
 // WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
@@ -109,8 +120,13 @@ type RunnerHostFileDesired {
   mode: RemoteFileMode
 }
 
+type RunnerHostFileWithheld {
+  subject: NonEmptyStr
+  cause: NonEmptyStr
+}
+
 type RunnerHostFileDesiredPopulation
-  = RunnerHostFilesDesired { files: List<RunnerHostFileDesired> }
+  = RunnerHostFilesDesired { files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld> }
   | RunnerHostFilesDesiredRefused { cause: NonEmptyStr }
 
 // Every desired path lives under /etc, and typed_remote_file_write refuses a path outside the scope it
@@ -119,27 +135,109 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
-fn runner_host_file_desired_population() -> RunnerHostFileDesiredPopulation {
+fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
+  runner_host_file_desired_population_from_uid_figure(host: host, figure: runner_job_user_xdg_runtime_uid())
+}
+
+fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> List<RunnerHostFileDesired> {
+  [
+    RunnerHostFileDesired {
+      subject: "runner-teardown-dropin" as NonEmptyStr,
+      path: runner_unit_teardown_dropin_path() as FilePath,
+      content: gunbc_runner_unit_teardown_dropin_text(),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+    },
+    RunnerHostFileDesired {
+      subject: "needrestart-runner-deferral" as NonEmptyStr,
+      path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+      content: needrestart_conf_d_text(overrides: [
+        NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
+      ]),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+    },
+  ]
+}
+
+fn runner_host_fragment_file(fragment: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired {
+    subject: "runner-unit-fragment" as NonEmptyStr,
+    path: runner_unit_system_path as FilePath,
+    content: fragment,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+  }
+}
+
+fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired {
+    subject: "runner-depriv-dropin" as NonEmptyStr,
+    path: runner_unit_depriv_dropin_path() as FilePath,
+    content: depriv,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+  }
+}
+
+fn runner_host_files_with_optional_depriv(
+  fragment: String,
+  prefix: NeedrestartUnitNamePrefix,
+  depriv: String?,
+) -> List<RunnerHostFileDesired> {
+  let tail = runner_host_teardown_and_needrestart(prefix: prefix)
+  match depriv {
+    Absent => tail
+    Present { value: text } =>
+      concat(
+        [runner_host_fragment_file(fragment: fragment), runner_host_depriv_file(depriv: text)],
+        tail,
+      )
+  }
+}
+
+fn runner_host_file_desired_population_from_uid_figure(
+  host: HostIdentity,
+  figure: RunnerJobUserRuntimeUidFigure,
+) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
-      RunnerHostFilesDesired {
-        files: [
-          RunnerHostFileDesired {
-            subject: "runner-teardown-dropin" as NonEmptyStr,
-            path: runner_unit_teardown_dropin_path() as FilePath,
-            content: gunbc_runner_unit_teardown_dropin_text(),
-            mode: RemoteFileModeOwnerReadWriteWorldRead,
-          },
-          RunnerHostFileDesired {
-            subject: "needrestart-runner-deferral" as NonEmptyStr,
-            path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-            content: needrestart_conf_d_text(overrides: [
-              NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
-            ]),
-            mode: RemoteFileModeOwnerReadWriteWorldRead,
-          },
-        ],
+      match runner_host_deploy_for(host: host) {
+        RunnerHostDeployUnmodeled { host: h } =>
+          RunnerHostFilesDesiredRefused {
+            cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row, so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
+          }
+        RunnerHostDeployFound { deploy: d } =>
+          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
+            RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
+            RunnerUnitText { text: fragment } =>
+              match gunbc_runner_unit_depriv_dropin_text_from_figure(deploy: d, host: host, figure: figure) {
+                RunnerUnitTextRefused { reason: r } =>
+                  RunnerHostFilesDesired {
+                    files: runner_host_files_with_optional_depriv(
+                      fragment: fragment,
+                      prefix: p,
+                      depriv: none,
+                    ),
+                    withheld: [
+                      RunnerHostFileWithheld {
+                        subject: "runner-depriv-dropin" as NonEmptyStr,
+                        cause: r,
+                      },
+                      RunnerHostFileWithheld {
+                        subject: "runner-unit-fragment" as NonEmptyStr,
+                        cause: "runner_host_file_converge: fragment waits until depriv can be authored; writing the unit file without that drop-in is only correct if an unread depriv.conf happens to exist" as NonEmptyStr,
+                      },
+                    ],
+                  }
+                RunnerUnitText { text: depriv } =>
+                  RunnerHostFilesDesired {
+                    files: runner_host_files_with_optional_depriv(
+                      fragment: fragment,
+                      prefix: p,
+                      depriv: Present { value: depriv },
+                    ),
+                    withheld: [],
+                  }
+              }
+          }
       }
   }
 }
@@ -952,9 +1050,9 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
       match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
         RunnerHostFileSubjectAdmitted { subject: subject } =>
-          match runner_host_file_desired_population() {
+          match runner_host_file_desired_population(host: raw_host as HostIdentity) {
             RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
-            RunnerHostFilesDesired { files: files } =>
+            RunnerHostFilesDesired { files: files, withheld: withheld } =>
               match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
                 FleetSshContextRefused { cause: c } => exit_failure(reason: c)
                 FleetSshContextReady { context: context, receipt: context_receipt } => {
@@ -962,6 +1060,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,
+                    join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
                   let w = Filesystem.Write(path: runner_host_file_converge_receipt_path, content: body)

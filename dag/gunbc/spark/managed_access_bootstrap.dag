@@ -14,7 +14,9 @@ import gunbc.fleet_posix_accounts {
 }
 import extdeps.systemd.loginctl { loginctl_enable_linger_argv, loginctl_enable_linger_command }
 import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_command }
-
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli { docker_container_inspect_command }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -223,6 +225,47 @@ type SparkGrantOutcome
 type SparkManagedGrant
   = EnableLingerForOwnAccount { subject: NonEmptyStr }
   | RebootThisHost
+  | InspectServingContainer { container: NonEmptyStr }
+
+// INSPECT IS THE ACCESS CAPABILITY THE LIVE SERVING READERS ARE MISSING, measured rather than
+// assumed (2026-09-13, srv5 and srv6): gunbc-automation authenticates, `sudo -n` asks for a
+// password, and the docker socket is root:docker 0660 with the account in no docker group, so no
+// principal this fleet runs as can read a running container. The walls that wait on that reading
+// are gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation and
+// gunbc.spark.serving_offer spark_serving_incarnation_unobserved_obligation.
+//
+// The grant is `docker container inspect <name>` with the name PINNED, and it is deliberately not
+// docker group membership: the docker group is root-equivalent (it can run a privileged container),
+// while this Cmnd_Spec authorizes one read verb on one object. `ps`, `exec`, `logs` and a wildcard
+// name have no spelling. WHAT IT DISCLOSES is stated because it is the reason to grant it and the
+// reason to think before granting: inspect with no --format prints the WHOLE object that
+// extdeps.docker.container_inspect ContainerInspect models -- path and args, image, the ContainerConfig
+// (env, cmd, entrypoint, volumes, labels, exposed ports), network settings, and the HostConfig
+// (volumes, device requests, namespace modes, capabilities). The command is narrow; the data is not.
+// Config.Env is the part the usage-stats wall needs and the part whose values can carry secrets.
+//
+// THEREFORE THE GRANT IS DESIRED BUT NOT INSTALLABLE, and that is decided by
+// spark_managed_grant_disclosure_standing together with spark_managed_grant_install_basis, which
+// gunbc.spark.managed_grant_reconcile spark_grant_install_admission consumes on the install route, so
+// merging this grant does not make the modeled installer install it. Knowing a command is narrow says who may run it; installing it
+// changes who may read what it returns, so ignorance about that output refuses the install rather
+// than riding beside it as a trigger sentence.
+//
+// WHAT "EVERYTHING ELSE" IS IS NOT ESTABLISHED BY THIS REPOSITORY. spark_pair_container_env declares
+// no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV.
+// THE PINNED-BASE HALF IS ESTABLISHED BY EXECUTION: gunbc.spark.pinned_base_env_classification
+// sparkrun_pinned_base_env_read reads Hub config at extdeps.docker.images.sparkrun_vllm_ds4_gb10
+// sparkrun_vllm_ds4_gb10_pinned_reference, decodes into extdeps.container.oci.image_config
+// ContainerImageConfig, and classifies Env. Name that instrument; do not transcribe its output here
+// (DESIGN 6). That receipt is not a classification of the live serving container.
+//
+// AND THE IMAGE THE CONTAINER RUNS IS NOT THAT DIGEST. It is created from the host-local tag
+// gunbc_spark_pair_runtime_image_tag, built from gunbc_spark_pair_runtime_dockerfile (FROM the pinned
+// base, RUN pip, CMD; no ENV instruction), so nothing binds the running container to a digest. This
+// grant is also that gap's observer: inspect returns .Image, the running container's image id, which
+// is its config digest. TRIGGER: this grant installed AND a build-digest producer for that Dockerfile,
+// SUFFICIENT FOR the running pair container's image to be identified by digest rather than by a
+// host-local tag. No comparison is built here; the join half is missing.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
@@ -239,10 +282,79 @@ type SparkManagedGrant
 // name, path and verb -- so the absolute/bare divergence and the subject divergence are no longer
 // two functions remembering to agree. Absolute for the sudoers Cmnd_Spec, bare for the argv, one
 // authority for both, because that is one binary rendered for two consumers and not two facts.
+// WHAT INSTALLING A GRANT DISCLOSES, AND WHETHER IT MAY BE INSTALLED ANYWAY, ARE TWO AXES. The first is
+// epistemic -- is what the grantee would read classified? -- and only a classification receipt moves
+// it. The second is policy -- may installation proceed given that standing? -- and an operator can
+// move it without moving the first. Carried as one coproduct, an operator's acceptance would REPLACE
+// "unestablished" and erase its obligation for the very grant it admits, so the model would say the
+// knowledge wall came down when only the decision to proceed was taken.
+
+// THE EPISTEMIC AXIS. A grant that returns no host data has nothing to classify.
+// A pinned-base image Env classification lives on PinnedBaseEnvRead, not on this coproduct:
+// classifying a digest-pinned image is not a disclosure standing for any grant, including
+// InspectServingContainer (live object, unpinned tag).
+type SparkGrantDisclosureStanding
+  = GrantReturnsNoHostData
+  | GrantDisclosureUnestablished { obligation: NonEmptyStr }
+
+data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that live object. The pinned-base Env half is established by gunbc.spark.pinned_base_env_classification sparkrun_pinned_base_env_read over extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference. What is still missing is whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure_standing to leave GrantDisclosureUnestablished for InspectServingContainer" as NonEmptyStr
+
+fn spark_managed_grant_disclosure_standing(grant: SparkManagedGrant) -> SparkGrantDisclosureStanding {
+  match grant {
+    EnableLingerForOwnAccount { subject: _ } => GrantReturnsNoHostData
+    RebootThisHost => GrantReturnsNoHostData
+    InspectServingContainer { container: _ } =>
+      GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
+  }
+}
+
+// THE POLICY AXIS. OperatorAcceptedUnresolvedDisclosureRisk is an attributable decision to install one
+// grant WHILE its disclosure is unclassified -- acceptance of whatever the whole surface that grant
+// returns might contain, never a statement of what it contains, so it carries no reading and cannot
+// generalize one. It is scoped to the grant it names. It carries its own fields rather than borrowing
+// gunbc.spark.dgx_procurement OperatorAllocation, whose name means a slot allocation, and it is not
+// std.scoped_authorization OperatorGrant: that binds one attempt and expires, while this is a standing
+// install policy.
+type SparkGrantInstallBasis
+  = InstallBasisAbsent
+  | OperatorAcceptedUnresolvedDisclosureRisk { actor: NonEmptyStr, decided_on: NonEmptyStr, accepted_for: SparkManagedGrant }
+
+// THE ROW AN OPERATOR DECISION EDITS, AND THE DECISION THAT EDITED IT. On 2026-09-14 the operator
+// answered the escalation raised when the inspect grant landed withheld (#11326): APPROVE installing
+// InspectServingContainer for the pinned pair container, on the strength of a one-off read of the
+// base image's configuration taken outside this repository. That read is NOT transcribed here and
+// this row does NOT classify anything -- it is an attributable decision to proceed while the
+// disclosure stays unestablished, which is exactly what the accepted-risk arm means. The
+// obligation spark_inspect_grant_disclosure_unestablished_obligation remains outstanding and is
+// still owed by the image-configuration reader and by the live inspect classification; an admission
+// on this basis carries that obligation into the receipt rather than retiring it.
+//
+// The actor is the operator's fleet login, read from the account model rather than spelled here, so
+// the decision is attributed to the same principal every other operator act in this lane names.
+data spark_managed_grant_install_basis: SparkGrantInstallBasis = OperatorAcceptedUnresolvedDisclosureRisk {
+  actor: fleet_bootstrap_principal_login(),
+  decided_on: "2026-09-14" as NonEmptyStr,
+  accepted_for: InspectServingContainer { container: spark_pair_container_name },
+}
+
+// Whether a basis names this grant, joined on the derived sudoers command: two grants authorizing the
+// same words are the same authorization.
+fn spark_install_basis_accepts_risk_for(basis: SparkGrantInstallBasis, grant: SparkManagedGrant) -> Bool {
+  match basis {
+    InstallBasisAbsent => false
+    OperatorAcceptedUnresolvedDisclosureRisk { actor: _, decided_on: _, accepted_for: g } =>
+      spark_managed_grant_sudoers_command(grant: g) as String == spark_managed_grant_sudoers_command(grant: grant) as String
+  }
+}
+
+
+
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
     RebootThisHost => systemctl_reboot_command()
+    InspectServingContainer { container: c } =>
+      join(argv_words(command: docker_container_inspect_command(name: c)), " ") as NonEmptyStr
   }
 }
 
@@ -254,6 +366,7 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
     match grant {
       EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_argv(subject: s)
       RebootThisHost => systemctl_reboot_argv()
+      InspectServingContainer { container: c } => argv_words(command: docker_container_inspect_command(name: c))
     },
   )
 }
@@ -262,12 +375,14 @@ fn spark_managed_grant_wire(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => "enable-linger for this account only" as NonEmptyStr
     RebootThisHost => "reboot this host" as NonEmptyStr
+    InspectServingContainer { container: _ } => "inspect the serving container only" as NonEmptyStr
   }
 }
 
 data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
   RebootThisHost,
+  InspectServingContainer { container: spark_pair_container_name },
 ]
 
 fn derive_spark_bootstrap_plan(

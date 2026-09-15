@@ -1,0 +1,229 @@
+module test.claim.mtcollins1_candidate_attachment_witness_test
+
+import std.types { Bool, list_length }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import extdeps.storage.types { Gen3 }
+import extdeps.standards.nic_attachment { OcpNic2, OcpNic3, PcieCem, VendorDaughterCard }
+import extdeps.standards.ocp_nic_2_0 { Type1, Type2, Type3, Type4, Type5 }
+import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
+import extdeps.ampere.mt_collins_1u_product_brief.specifications { NoOcpSlot, OcpMezzanineSlotPresent, mt_collins_1u_ocp_slot, mt_collins_1u_expansion }
+import gunbc.machine_intake_mtcollins1_expansion_observation {
+  expansion_evidence_for_unit, UnitExpansionEvidence, NoExpansionObservationForUnit,
+  AttachmentPointUnobserved, AttachmentPointOffered, AttachmentPointAbsent,
+  AttachmentPointOccupied, AttachmentPointReportExceedsPlatform, mtcollins1_expansion_observation,
+}
+import gunbc.machine_intake_mtcollins1_expansion_attachment {
+  AttachmentVerdict, Admitted, Refused, InterfaceGenerationOnly, InterfaceFamilyOnly, PhysicalFitUnresolved,
+  WrongOcpGeneration, WrongInterfaceFamily, RiserOccupancyUnobserved,
+  AttachmentPointUnavailable, OccupiedAttachmentPoint, RiserReportExceedsPlatform,
+  NoObservationForUnit, attachment_for_unit, attachment_against_evidence,
+}
+import gunbc.machine_intake_mtcollins1_expansion_candidates {
+  candidate_verdicts, mtcollins1_candidate_verdicts, CatalogEvaluation, RelayedListingAlias, OrderedAwaitingArrival, FullHeightBracket,
+}
+import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executes the production join over all five real candidate authorities. Each
+// verdict is checked against the part's identity, so no omitted or misrouted
+// candidate can pass as an anonymous member of the right attachment family.
+// TWO ARMS MOVED WITH THE 2026-09-14 INTERIOR REPORT, AND THEY MOVED FOR DIFFERENT REASONS.
+//
+// THE IBM CANDIDATE MOVED OFF ITS REFUSAL. It asserted Refused { RiserOccupancyUnobserved } while the
+// unit's riser positions were unreported; the report settles TWO fitted positions, so the PCIe path
+// reaches AttachmentPointOffered and the verdict is admitted on interface family. Physical fit is a
+// separate question from availability and stays unresolved: fitted riser positions do not establish
+// card clearance, retention or electrical qualification.
+//
+// THE OCP CANDIDATE'S VERDICT IS UNCHANGED AND ONLY ITS CARRIED RECEIPT MOVED. attachment_against_evidence
+// destructures the OCP standing as ocp: _ and decides from platform generation and the physical variant,
+// so that candidate was ALREADY admitted while occupancy was unobserved -- which is the honest reading of
+// the empty-bay report, and not the one the observation PR first claimed. Its assertion therefore changes
+// from Unobserved to Offered { positions: 1 } in the EVIDENCE only, with scope and fit untouched. Whether
+// an OCP admission should consult occupancy at all is a semantic question owned by the lane that built
+// this fold; it is tracked on roadmap row fleet-mtcollins1-first-host and deliberately not decided here.
+test fn real_candidates_reach_typed_verdicts() -> Bool {
+  let rows = mtcollins1_candidate_verdicts()
+  let each_identity_once = fold(["mcx4411a_acan_attachment", "mcx4421a_acan_attachment", "dell_0r887v_attachment", "mcx4621a_acab_attachment", "ibm_01ft753"], init: true, f: (acc, name) =>
+    acc && fold(rows, init: 0, f: (count, row) => if row.candidate.catalog_scope.subject.declaration.decl_name == name { count + 1 } else { count }) == 1)
+  each_identity_once && list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => {
+    let name = row.candidate.catalog_scope.subject.declaration.decl_name
+    let correct = match row.verdict {
+      Refused { cause: WrongOcpGeneration { candidate_generation: generation, bay_generation: bay } } =>
+        (name == "mcx4411a_acan_attachment" || name == "mcx4421a_acan_attachment")
+          && generation == "OCP 2.0" && bay == "OCP 3.0"
+          && match row.candidate.attachment {
+            OcpNic2 { physical_variant: Type1 } => true
+            _ => false
+          }
+      Refused { cause: WrongInterfaceFamily { candidate: candidate } } =>
+        name == "dell_0r887v_attachment" && match candidate {
+          VendorDaughterCard { form_authority: _, form_name: form } => form == "rNDC"
+          _ => false
+        }
+      Admitted { scope: InterfaceFamilyOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: _ } =>
+        name == "ibm_01ft753" && settle != ""
+          && match candidate { PcieCem => true, _ => false }
+          && match row.candidate.context {
+            OrderedAwaitingArrival { reported_alias: listing_name, bracket: FullHeightBracket {}, catalog: catalog, relay_message: relay } =>
+              listing_name == "CX4121A" && catalog.host_link.generation == Gen3
+                && catalog.host_link.lane_count == 8 && catalog.port_count == 2
+                && catalog.port_connector == "SFP28" && relay != ""
+            _ => false
+          }
+      Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: candidate, settled_by: settle }, unit_evidence: evidence } =>
+        name == "mcx4621a_acab_attachment" && settle != ""
+          && match candidate { OcpNic3 { physical_variant: Sff } => true, _ => false }
+          && match evidence {
+            UnitExpansionEvidence { observation: _, pcie: _, ocp: AttachmentPointOffered { positions: ocp_positions, basis: _ } } => ocp_positions == 1
+            _ => false
+          }
+      _ => false
+    }
+    acc && declaration_ref_eq(a: row.unit, b: observed_unit) && correct
+  })
+}
+
+// An LFF card has the same generation as SFF, but neither obtains a physical-fit
+// claim. This catches the tempting inference OCP 3.0 => SFF in the verdict fold.
+test fn matching_generation_does_not_establish_physical_variant() -> Bool {
+  let result = attachment_for_unit(candidate: OcpNic3 { physical_variant: Lff }, unit: observed_unit)
+  match result {
+    Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: OcpNic3 { physical_variant: Lff }, settled_by: settle }, unit_evidence: _ } => settle != ""
+    _ => false
+  }
+}
+
+test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
+  let other = DeclarationRef { module_path: "test.claim.mtcollins1_candidate_attachment_witness_test", decl_name: "unknown_unit_never_borrows_mtcollins1_observation", field: WholeDeclaration }
+  let rows = candidate_verdicts(unit: other)
+  list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => acc && match row.verdict {
+    Refused { cause: NoObservationForUnit { requested_unit: unit } } => declaration_ref_eq(a: unit, b: other)
+    _ => false
+  })
+}
+
+// THE OCP-UNOBSERVED RECEIPT KEEPS AN EXERCISER, AND IT ALMOST DID NOT. Until the 2026-09-14 interior
+// report, the LIVE unit carried ocp: AttachmentPointUnobserved and real_candidates_reach_typed_verdicts
+// asserted it there; that arm now asserts Offered { positions: 1 }, so nothing would have driven an
+// unobserved OCP standing through the fold at all. The PCIe refusal got its fixture in
+// pcie_refusals_survive_the_candidate_join and this, its sibling, was missed - one half of a class
+// preserved and the other half dropped, which is worse than dropping both because the suite still looks
+// like it covers the class.
+//
+// WHAT IT PROVES IS SPECIFICALLY PROPAGATION, NOT REFUSAL. An unobserved OCP standing does NOT refuse:
+// attachment_against_evidence destructures the OCP arm as ocp: _ and decides from generation and physical
+// variant, so the verdict is admitted on generation whatever occupancy says. What must survive is the
+// CARRIED STANDING - the receipt has to still say unobserved rather than quietly reporting the live
+// unit's offered bay. That distinction is the whole reason this control is not a copy of the PCIe one,
+// and whether the OCP path SHOULD refuse on occupancy is the open semantic question tracked on roadmap
+// row fleet-mtcollins1-first-host (gunbc#11390).
+test fn an_unobserved_ocp_standing_survives_into_the_generation_only_receipt() -> Bool {
+  let unobserved_bay = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointAbsent { basis: "fixture: not the subject of this control" },
+    ocp: AttachmentPointUnobserved { platform_upper_bound: 1, settled_by: "fixture: the OCP bay has not been reported" },
+  }
+  match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: unobserved_bay, bay: mt_collins_1u_ocp_slot) {
+    Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: _, settled_by: settle }, unit_evidence: evidence } =>
+      settle != "" && match evidence {
+        UnitExpansionEvidence { observation: _, pcie: _, ocp: AttachmentPointUnobserved { platform_upper_bound: bound, settled_by: carried } } =>
+          bound == 1 && carried != ""
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool {
+  match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: expansion_evidence_for_unit(unit: observed_unit), bay: NoOcpSlot) {
+    Refused { cause: AttachmentPointUnavailable { basis: basis } } => basis != ""
+    _ => false
+  }
+}
+
+// A controlled disagreement checks that matching the present sources has not
+// coupled their authorities: changing only the bay claim cannot relabel a card.
+test fn changed_bay_generation_does_not_relabel_the_candidate() -> Bool {
+  let different_bay = OcpMezzanineSlotPresent {
+    generation: "OCP 2.0",
+    multi_host: false,
+    occupancy_note: "Controlled fixture, not a claim about Mt. Collins.",
+  }
+  match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: expansion_evidence_for_unit(unit: observed_unit), bay: different_bay) {
+    Refused { cause: WrongOcpGeneration { candidate_generation: candidate, bay_generation: bay } } => candidate == "OCP 3.0" && bay == "OCP 2.0"
+    _ => false
+  }
+}
+
+test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool {
+  fold([Type2, Type3, Type4, Type5], init: true, f: (acc, variant) => acc && match attachment_for_unit(candidate: OcpNic2 { physical_variant: variant }, unit: observed_unit) {
+    Refused { cause: WrongOcpGeneration { candidate_generation: _, bay_generation: _ } } => true
+    _ => false
+  })
+}
+
+// Fixture evidence exercises the join's propagation of upstream refusals. It is
+// not another unit observation and does not mutate the operator receipt.
+// THE UNOBSERVED REFUSAL MOVED INTO THIS FIXTURE RATHER THAN OUT OF THE FILE. It used to be exercised by
+// the LIVE unit, whose riser positions were unreported; the 2026-09-14 interior report settles them, so
+// real_candidates_reach_typed_verdicts now asserts an admission and this refusal would have had no caller
+// left. Deleting it would retire the wall along with the gap it was watching, and the gap is permanent: a
+// unit whose interior nobody has reported must still refuse rather than be admitted on a platform
+// capacity. DESIGN section 4b(4) -- the production handling dissolves on a climb, the evidence does not.
+test fn pcie_refusals_survive_the_candidate_join() -> Bool {
+  let occupied = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointOccupied { basis: "fixture: occupied" },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  let overreported = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointReportExceedsPlatform { reported: 3, platform_upper_bound: 2 },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  let zero = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointOffered { positions: 0, basis: "fixture: no fitted positions" },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  let available = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointOffered { positions: 1, basis: "fixture: one fitted position" },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  let unobserved = UnitExpansionEvidence {
+    observation: mtcollins1_expansion_observation,
+    pcie: AttachmentPointUnobserved { platform_upper_bound: 2, settled_by: "fixture: the interior has not been reported" },
+    ocp: AttachmentPointAbsent { basis: "fixture" },
+  }
+  match attachment_against_evidence(candidate: PcieCem, evidence: unobserved, bay: NoOcpSlot) {
+    Refused { cause: RiserOccupancyUnobserved { platform_upper_bound: bound, settled_by: settle } } => bound == 2 && settle != ""
+    _ => false
+  } && match attachment_against_evidence(candidate: PcieCem, evidence: occupied, bay: NoOcpSlot) {
+    Refused { cause: OccupiedAttachmentPoint { basis: _ } } => true
+    _ => false
+  } && match attachment_against_evidence(candidate: PcieCem, evidence: overreported, bay: NoOcpSlot) {
+    Refused { cause: RiserReportExceedsPlatform { reported: reported, platform_upper_bound: bound } } => reported == 3 && bound == 2
+    _ => false
+  } && match attachment_against_evidence(candidate: PcieCem, evidence: zero, bay: NoOcpSlot) {
+    Refused { cause: AttachmentPointUnavailable { basis: _ } } => true
+    _ => false
+  } && match attachment_against_evidence(candidate: PcieCem, evidence: available, bay: NoOcpSlot) {
+    Admitted { scope: InterfaceFamilyOnly {}, physical_fit: PhysicalFitUnresolved { candidate: PcieCem, settled_by: _ }, unit_evidence: _ } => true
+    _ => false
+  }
+}
+
+fn main() -> Bool {
+  real_candidates_reach_typed_verdicts()
+    && an_unobserved_ocp_standing_survives_into_the_generation_only_receipt()
+    && matching_generation_does_not_establish_physical_variant()
+    && unknown_unit_never_borrows_mtcollins1_observation()
+    && absent_ocp_bay_cannot_admit_a_matching_card()
+    && changed_bay_generation_does_not_relabel_the_candidate()
+    && other_ocp2_physical_variants_still_refuse_wrong_generation()
+    && pcie_refusals_survive_the_candidate_join()
+}

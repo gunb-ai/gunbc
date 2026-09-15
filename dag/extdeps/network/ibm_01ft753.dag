@@ -1,0 +1,40 @@
+module extdeps.network.ibm_01ft753
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.storage.types { PcieLink, Gen3 }
+import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
+
+// IBM's FRU is shared by EC2T and EC2U. The bracket fitted to the ordered card
+// is an operator report downstream, not something inferred from the FRU number.
+// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// SFP28 names the port connector; no Ethernet link mode or aggregate is inferred.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "www.ibm.com/docs/en/power11/9856-42H?topic=ad-pcie3-2-port-2510-gb-nic-roce-sfp28-adapter-fc-ec2t-fc-ec2u-ccin-58fb",
+} }
+
+type Ibm01ft753 {
+  attachment: NicAttachmentClass
+  host_link: PcieLink
+  port_count: Nat
+  port_connector: NonEmptyStr
+}
+
+data ibm_01ft753: Ibm01ft753 = Ibm01ft753 {
+  attachment: PcieCem,
+  host_link: PcieLink { generation: Gen3, lane_count: 8 },
+  port_count: 2,
+  port_connector: "SFP28",
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.ibm_01ft753", decl_name: "ibm_01ft753", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

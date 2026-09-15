@@ -815,7 +815,7 @@ data gunbc_runner_slot_allocation_srv3: HostRunnerSlotAllocation = gunbc_committ
 )
 
 // srv4 MEMORY-ADMITS 29 AND COMMITS 21, THE CPU AXIS BINDING (2026-08-23). This row said 'srv4
-// commits 6 slots at the memory axis' and that srv4_runner_host_deploy.runner_count and this roster
+// commits 6 slots at the memory axis' and that srv4's admitted deploy runner_count and this roster
 // 'both name 6 as the materialization target'. Both sentences were true when written and were
 // falsified by the CPU axis landing; they are replaced rather than annotated, because two accounts
 // of one width is what this module exists to prevent. Neither number is authored here: memory
