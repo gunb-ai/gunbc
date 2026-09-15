@@ -12,7 +12,6 @@ import gunbc.lambda_argument_typing_gate {
   lambda_typing_gate_declaration_refs,
   lambda_typing_gate_declaration_refs_from,
   lambda_typing_gate_outside_index_count,
-  lambda_typing_gate_sites,
 }
 import gunbc.list_membership_operation_gap {
   ListMembershipGapSite,
