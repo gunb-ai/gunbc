@@ -231,6 +231,18 @@ fn floor_discovery_identity_fold_strings(
   )
 }
 
+
+// DECLARED SCAFFOLD for the existing Rust snapshot transport only.
+// `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` observes tested_commit and the
+// format-qualified tree object selected by that commit, refuses cross-process sharing when tracked
+// or untracked worktree bytes differ from the selected commit tree, derives this request identity
+// in the field order this identity fold uses, and refuses a coordinated snapshot whose complete request differs. It
+// does not evaluate this model per floor request because doing so would resolve another compiler
+// world inside the path whose duplicate setup this lane removes. The executable model witness pins
+// the authority and Rust unit controls pin the mirror. DISSOLVE-ON: generated host-effect transport
+// can construct FloorDiscoveryRequest and its typed binding directly; then the Rust
+// request/terminal mirror and this scaffold note delete.
+
 fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> Fnv1a64Structural {
   let with_commit = content_hash_combine_structural(
     left: content_hash_atom(value: "floor-discovery-request-identity-v2"),
@@ -273,62 +285,3 @@ fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> Fnv1a64St
     right: request.subject.tool_identity,
   )
 }
-
-// DECLARED SCAFFOLD for the existing Rust snapshot transport only.
-// `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` observes tested_commit and the
-// format-qualified tree object selected by that commit, refuses cross-process sharing when tracked
-// or untracked worktree bytes differ from the selected commit tree, derives this request identity
-// in the field order above, and refuses a coordinated snapshot whose complete request differs. It
-// does not evaluate this model per floor request because doing so would resolve another compiler
-// world inside the path whose duplicate setup this lane removes. The executable model witness pins
-// the authority and Rust unit controls pin the mirror. DISSOLVE-ON: generated host-effect transport
-// can construct FloorDiscoveryRequest and its typed binding directly; then the Rust
-// request/terminal mirror and this scaffold note delete.
-
-type FloorDiscoveryRow {
-  label: String
-  entry: String
-  function: String
-  reads_live_tree: LiveTreeDisposition
-}
-
-type FloorDiscoverySidecarKind
-  = TestMarkedDecl
-  | WireContractDecl
-  | BarrenTestSidecar
-
-type FloorDiscoverySidecarViolation {
-  entry_path: String
-  kind: FloorDiscoverySidecarKind
-  required_suffix: String
-}
-
-fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
-  if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
-    optional_absent()
-  } else {
-    optional_present(
-      value: FloorDiscoverySidecarViolation {
-        entry_path: entry_path,
-        kind: TestMarkedDecl,
-        required_suffix: floor_test_sidecar_suffix
-      }
-    )
-  }
-}
-
-fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> Optional<FloorDiscoverySidecarViolation> {
-  if floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
-    optional_absent()
-  } else {
-    optional_present(
-      value: FloorDiscoverySidecarViolation {
-        entry_path: entry_path,
-        kind: WireContractDecl,
-        required_suffix: floor_wire_contract_sidecar_suffix
-      }
-    )
-  }
-}
-
-data floor_discovery_producer_note: String = "Discovery producer authority: row shape + sidecar placement decisions for the floor corpus. Host realize discovers owned-data transport rows and test fn names; this module owns the typed verdicts (live-tree eligibility, sidecar suffix rules) that cli_run.rs must not re-implement."

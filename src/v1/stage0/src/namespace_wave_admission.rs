@@ -1716,7 +1716,558 @@ pub struct TransitionAdmission {
 /// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
 /// Empty is the resting state; this touch deletes the row rather than inheriting it.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here.
+/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
+/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
+/// floor run that reported the row stale; what follows is why the disposition was nearly the
+/// wrong one, which is the part that generalises. The `gunbc#11137
+/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
+/// description that stood above it goes with it. Its trigger, authored as "this row goes when
+/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
+/// by their declaring module"), so the base carries the named import, the delta stopped being
+/// producible, and the row became CONSUMED.
+///
+/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
+/// reported as matching no delta on any open PR, and the required floor refused
+/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
+/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
+/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
+/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
+/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
+/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
+/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
+/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
+/// the row was deleted unmatched, and the debt would have stayed visible.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
+/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
+/// go with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
+/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
+/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
+/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
+/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
+/// was written. So the base carries the four module splits, the deltas stopped being producible,
+/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
+/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
+/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
+/// paying attention to, and the same discipline is applied here.
+///
+/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
+/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
+/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
+/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
+/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
+/// Main's roster held exactly these 181 rows and nothing else, so the array was empty of inherited
+/// rows after that deletion.
+///
+/// THE #11156 PAIR IS ALSO GONE, and the same trigger discharged it. Those two rows named their own
+/// retirement condition -- "these rows go when #11156 merges" -- #11156 merged, and the required
+/// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
+/// header paragraph went with them rather than being left describing an empty subject, which is the
+/// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
+/// exists is worse than no prose, because it reads as coverage.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
+///
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
+/// THE ROSTER IS EMPTY AGAIN, which is its resting state. The #11182 relocation rows that an
+/// earlier revision of this block described as surviving are no longer here either; that claim
+/// was already stale on main, where the array held one row, and it is repaired now because this
+/// is the roster's own next touch. The distinction the paragraph above draws still holds and is
+/// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
+/// the array was being emptied.
+/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
+/// change makes, one per call site the required floor enumerated.
+///
+/// main now names neither the row nor the check that retired it. The entry above is kept rather
+/// than dropped as a duplicate because it is the only place in this file that NAMES the retired
+/// row and records the identity check that admitted the deletion -- the history main
+/// intentionally dropped along with the row. One retirement, recorded once, by the side that
+/// wrote down what it was.
+///
+/// NOT THE `two rows` RETIREMENT, and an earlier wording of this paragraph conflated them. Main's
+/// surviving two-rows prose is the THIRTY-SEVENTH dissolution, the `gunbc#11156` pair discharged
+/// by #11156 merging -- a different retirement, a different trigger, a different population. It
+/// say which row went.
+///
+/// THE ROSTER RETURNED TO EMPTY ON MAIN, which is its resting state, AND THIS BRANCH REFILLS IT.
+/// Main's correction is kept because it is true and this branch's earlier wording was not: the
+/// #11182 relocation rows an older revision of this block described as surviving are gone, that
+/// claim was already stale on main where the array held one row, and gunbc#11274 retired them.
+/// This branch does not restore them and does not re-assert them. What follows the header below
+/// is a DIFFERENT population -- the 37 `string_eq` rows this change owes -- so the array is
+/// non-empty here for a reason stated at its own site rather than because emptiness was undone.
+/// The distinction main draws still holds and is why it is kept: a consumed row goes because its
+/// transition is PRESENT AT THE BASE, not because the array was being emptied.
+
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared
+/// byte-identical in every `v2.lens` module that needed it. This change deletes those bodies --
+/// the delta is read from the diff, `git diff origin/main...HEAD -- '*.dag' | grep '^-fn
+/// [a-z_]*string_eq'`, not from a count transcribed here -- and lands an authority in
+/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
+/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
+/// `string_eq` is the `eq` argument to `contains`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
+/// both sides at every one of the 37 sites below, and what changed is which declaration it
+/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
+/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// `AuthoredReferenceResolution`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. EVERY DELETED BODY WAS
+/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
+/// it denoted at the base. A body differing anywhere would have made this a semantic change
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so each was
+/// compared before the collapse rather than assumed equal from the shared spelling.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than what
+/// this change deletes.
+///
+/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
+/// enumeration in this file is a transcription that rots -- and the first attempt at one was
+/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
+/// under. Re-derive with:
+///
+///   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
+///
+/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
+/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
+///
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: survivors under NICKNAMED spellings,
+/// byte-identical to the authority but invisible to a search for the exact name. That is §3's
+/// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
+/// frontier below is adjudicated by that command and not by a roll call in this file.
+///
+/// NO SURVIVOR STATES ITS OWN RETENTION. Two earlier wordings of this header were wrong here in
+/// opposite directions: the first claimed every survivor was declared, the second claimed
+/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` was the one that was. The
+/// second is now moot because that clone is gone: its stated retention was that the module
+/// declared no imports, so the one import the collapse needs would move it into its own import
+/// closure and strand `dedupe_snoc`, `tokenize` and `parse_module`. That is a real obstacle and
+/// it is not a dissolution trigger -- it named source work this change can express -- so the
+/// module now declares its own import surface and calls the authority. EVERY HIT THE COMMAND
+/// STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention stated, nothing at its
+/// declaration saying why it survives. The claim that any of it is declared is exactly the kind
+/// of statement this header exists to refuse -- it told a reader asking `is this residue tracked`
+/// YES, in the authority they consult first.
+///
+/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
+/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
+/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
+/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
+/// inflation this phrasing exists to avoid.
+///
+/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
+/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
+/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
+/// and one that deserves its own evidence.
+///
+/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
+/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
+/// next touch -- adjudicated by the declaring-module join, not by this sentence.
+const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
+
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.complexity_linearity_audit",
+            in_declaration: "migration_roster_contains",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "callee_text_is_host_sink",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "data_init_belongs_to_modules",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "flow_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "path_literal_from_lexeme",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "sink_kind_for_callee",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.enforcement.vocab",
+            in_declaration: "scope_roster_covers",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.fact_cardinality",
+            in_declaration: "add_unseen_key",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "callee_text_is_known_carrier",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_for_callee_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_homes_in_closure",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "classification_has_literal_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "decls_with_qualified_name",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "live_read_carrier_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "module_facts_for_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "modules_of_closure_paths",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "path_pattern_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "path_pattern_from_lexeme",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "runtime_read_carrier_module_names",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.manufactured_dependency_census",
+            in_declaration: "edge_is_manufactured",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.manufactured_dependency_census",
+            in_declaration: "snoc_unseen",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "add_unseen",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "bfs_absorb_neighbor",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "path_matches_touched",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "snoc_unseen_list",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "decl_contains_atom",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "decl_contains_callee",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "maybe_snoc_callee_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "node_contains_atom_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "site_row_already_present",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "structural_red_control_live_fixture_mint_site_discovered",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_corpus_paths_live",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_fact_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_import_facts_at_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_neighbor_paths_from_facts",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_paths_from_import_edges",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_paths_from_module_declarations",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -1978,6 +2529,159 @@ fn membership_map(index: &DeclarationIndex) -> BTreeMap<String, BTreeSet<String>
         .into_iter()
         .map(|r| (r.module_path.clone(), direct_membership(index, r)))
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// THE DEPENDENTS DIRECTION — match-bearing consumers of a coproduct whose arm set changed
+// ---------------------------------------------------------------------------
+
+/// One coproduct whose arm set differs between the base and head indexes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetChange {
+    pub module_path: String,
+    pub declaration: String,
+    pub arms_added: Vec<String>,
+    pub arms_removed: Vec<String>,
+}
+
+/// How a consumer's match arm was bound to the changed coproduct, carried so the receipt can
+/// name the two populations apart: a read whose candidate set names the declaring module, and a
+/// bare read whose candidate set is EMPTY at this grain -- the flat last-writer-wins channel the
+/// namespace cut is retiring. The second is planned too (it is a consumer in the compiler's
+/// eyes, and a missed one is exactly the silent class this selector closes), but it is counted
+/// under its own name so the deficit stays visible instead of being absorbed into the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArmConsumerBinding {
+    BoundToDeclaringModule,
+    BoundThroughFlatBareChannel,
+}
+
+/// One module that carries a `match` naming an arm of a changed coproduct, with the declaring
+/// module that arm resolved to and the declarations in the consumer that carry the match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetMatchConsumer {
+    pub changed_module_path: String,
+    pub changed_declaration: String,
+    pub consumer_module_path: String,
+    pub consumer_rel_path: String,
+    pub in_declarations: Vec<String>,
+    pub binding: ArmConsumerBinding,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ArmSetConsumerSelection {
+    pub changes: Vec<ArmSetChange>,
+    pub consumers: Vec<ArmSetMatchConsumer>,
+}
+
+/// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
+/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
+/// tree carries; the planned set is producer-derived, never a path filter).
+///
+/// A `match` over a closed coproduct that was exhaustive when it landed goes stale when the
+/// coproduct grows an arm in ANOTHER module: the match site has an empty diff, so no
+/// diff-keyed selector can see it, and the required floor's prepared subject is the gate
+/// closure plus the changed set -- the consumer is never Strict-prepared and `check_match`
+/// never runs on it (gunbc#11194, found by a person reading arms). This is the DEPENDENTS
+/// direction; `touched_entry_files` seeding is the DEPENDENCY direction, and neither closes
+/// the class alone.
+///
+/// THE RELATION IS THE ONE THE WALL ALREADY USES. A consumer is a module whose `matched_arms`
+/// (a pattern head, read at the one site that has no transport entry) names an arm of the
+/// changed coproduct and whose `declaring_candidates` for that spelling include the declaring
+/// module -- on EITHER side, because a match naming a REMOVED arm has no head-side candidate
+/// (the surface no longer exports it) while its base-side one names the declarer exactly. No
+/// second consumer relation is minted here; this is `declaring_candidates` asked one more
+/// question.
+///
+/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the
+/// diff, so the dependency direction already seeds it); a coproduct that is NEW at head (no
+/// consumer can have matched it exhaustively before it existed); and a module whose match
+/// names the arm but whose candidate set names a DIFFERENT declarer (a same-spelled arm of an
+/// unrelated coproduct -- a consumer of that one, not of this one). A match that names none
+/// of the coproduct's arms -- a wildcard, or arms of another type -- is not a consumer, and it
+/// is also not stale.
+pub(crate) fn arm_set_changed_match_consumers(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> ArmSetConsumerSelection {
+    let mut changes: Vec<ArmSetChange> = Vec::new();
+    for head_record in index_records(head) {
+        let Some(base_record) = index_get(base, &head_record.module_path) else {
+            continue;
+        };
+        for (declaration, head_arms) in &head_record.coproduct_arms {
+            let Some(base_arms) = base_record.coproduct_arms.get(declaration) else {
+                continue;
+            };
+            if head_arms == base_arms {
+                continue;
+            }
+            changes.push(ArmSetChange {
+                module_path: head_record.module_path.clone(),
+                declaration: declaration.clone(),
+                arms_added: head_arms.difference(base_arms).cloned().collect(),
+                arms_removed: base_arms.difference(head_arms).cloned().collect(),
+            });
+        }
+    }
+    let mut consumers: Vec<ArmSetMatchConsumer> = Vec::new();
+    for change in &changes {
+        let universe: BTreeSet<&String> = {
+            let head_arms = &index_get(head, &change.module_path)
+                .expect("a change names a head module")
+                .coproduct_arms[&change.declaration];
+            let base_arms = &index_get(base, &change.module_path)
+                .expect("a change names a base module")
+                .coproduct_arms[&change.declaration];
+            head_arms.iter().chain(base_arms.iter()).collect()
+        };
+        for consumer in index_records(head) {
+            if consumer.module_path == change.module_path {
+                continue;
+            }
+            let mut in_declarations: BTreeSet<String> = BTreeSet::new();
+            let mut binding: Option<ArmConsumerBinding> = None;
+            for (in_declaration, spelling) in &consumer.matched_arms {
+                let leaf = qualified_last_segment(spelling.clone());
+                if !universe.contains(&leaf) {
+                    continue;
+                }
+                let mut candidates = declaring_candidates(head, consumer, spelling);
+                candidates.extend(declaring_candidates(base, consumer, spelling));
+                let bound = if candidates.contains(&change.module_path) {
+                    ArmConsumerBinding::BoundToDeclaringModule
+                } else if candidates.is_empty() {
+                    ArmConsumerBinding::BoundThroughFlatBareChannel
+                } else {
+                    // Bound to another declarer of a same-spelled arm: not this coproduct's consumer.
+                    continue;
+                };
+                in_declarations.insert(in_declaration.clone());
+                // A declarer-bound read wins over a flat one for the module's disposition: the
+                // module IS a resolved consumer if any read resolves, and the flat count is for
+                // modules that reach the coproduct by no other route.
+                binding = Some(match (binding, bound) {
+                    (Some(ArmConsumerBinding::BoundToDeclaringModule), _)
+                    | (_, ArmConsumerBinding::BoundToDeclaringModule) => {
+                        ArmConsumerBinding::BoundToDeclaringModule
+                    }
+                    _ => ArmConsumerBinding::BoundThroughFlatBareChannel,
+                });
+            }
+            if let Some(binding) = binding {
+                consumers.push(ArmSetMatchConsumer {
+                    changed_module_path: change.module_path.clone(),
+                    changed_declaration: change.declaration.clone(),
+                    consumer_module_path: consumer.module_path.clone(),
+                    consumer_rel_path: consumer.rel_path.clone(),
+                    in_declarations: in_declarations.into_iter().collect(),
+                    binding,
+                });
+            }
+        }
+    }
+    ArmSetConsumerSelection { changes, consumers }
 }
 
 // ---------------------------------------------------------------------------
@@ -2660,14 +3364,26 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
 /// unreadable base sealed the transition that only moves `//` onto the declaration the grain
 /// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
-pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
-    let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
-        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: rel.to_string(),
-            content: content.to_string(),
-        })]
-        .into(),
-    ));
+/// THE ENVIRONMENT IS REQUIRED, NOT DEFAULTED. A default would be the HEAD grammar, and this
+/// function's entire job is reading the BASE revision -- so a forgetful caller would read base text
+/// under head rules and answer confidently, which is
+/// `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change` itself. A caller
+/// that genuinely means the head environment says so at the call site.
+pub fn base_records(
+    rel: &str,
+    content: &str,
+    environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+) -> Result<Vec<ModuleDeclarationRecord>, String> {
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+        std::rc::Rc::new(
+            vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: rel.to_string(),
+                content: content.to_string(),
+            })]
+            .into(),
+        ),
+        environment,
+    );
     let annotation_erased_readable = !fill.modules.is_empty()
         && !fill.diagnostics.is_empty()
         && fill.diagnostics.iter().all(|d| {
@@ -2724,17 +3440,97 @@ pub fn run_required_wave_admission(
             })
         }
     };
+    run_wave_admission_between(&workspace, &base, &head, head_index)
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules.
+/// The base side of one change, reconstructed from the head index, at file grain.
+///
+/// LIFTED OUT OF `run_wave_admission_between` so the required floor's planning row can ask the
+/// same question over ITS OWN comparison window. The two callers resolve different windows on
+/// purpose -- the wall compares against the merge base with `origin/main`, the floor against
+/// `v2.workflow.floor_diff_observe`'s resolved baseline -- so the refs are parameters and the
+/// reconstruction is one function. It is `pub(crate)`: its only callers are in this crate, and a
+/// public export would be seed surface growth under the freeze.
+pub(crate) enum BaselineReconstruction {
+    /// The window's base IS its head: nothing to reconstruct, and not a refusal.
+    NoSubject { head: String },
+    /// The base could not be observed. NOT an empty base: the two are different states with
+    /// different remedies, and conflating them is the empty-observation narrow.
+    NotEvaluated { reason: String },
+    Reconstructed {
+        base: String,
+        head: String,
+        base_index: DeclarationIndex,
+        /// Every head path the diff touched, UNFILTERED -- consumers apply their own scope.
+        head_touched: Vec<String>,
+    },
+}
+
+/// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain -- the
+/// construction, not an optimisation -- unless the two revisions speak different grammars, in
+/// which case the whole base side is read under the base's own environment (see below). Only
+/// changed files are re-parsed from their base blobs and substituted on the ordinary route.
+pub(crate) fn reconstruct_base_index(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<BaselineReconstruction, String> {
+    let base = base.to_string();
+    let head = head.to_string();
+    let workspace = workspace.to_path_buf();
     if base == head {
-        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
-            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        return Ok(BaselineReconstruction::NoSubject { head });
+    }
+
+    // WHICH GRAMMAR DOES THE BASE SPEAK? Everything below reads base-side declarations, and reading
+    // them under the head's grammar is the defect this phase kept tripping over: a change that edits
+    // the language refuses in proportion to how thoroughly it succeeded
+    // (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change).
+    //
+    // The cheap answer comes first. Object identity over the files declaring the environment settles
+    // "same grammar?" in a few `rev-parse` calls, so the ordinary pull request -- which changes no
+    // grammar -- pays nothing, and only a real grammar change pays to materialize and evaluate the
+    // base corpus.
+    let agreement = match environment_agreement(&workspace, &base, &head) {
+        Ok(a) => a,
+        // A REFUSAL HERE IS NOT A LICENCE TO USE THE HEAD'S. Not knowing which grammar the base
+        // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
+        // NotEvaluated rather than a confident answer under the wrong rules.
+        Err(e) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "the base revision's parse environment could not be established ({}), so its declarations cannot be read under any grammar this run can justify", environment_load_refusal_text(&e)
+                ),
+            })
         }
-        // Landing owns roster debt even though it has no namespace delta to compare.
-        return Ok(WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
-            roster_touched: false,
-        });
+    };
+
+    // THE KERNEL HALF, GUARDED NARROWLY. `declaring_candidates` consults this binary's own
+    // `kernel_type_set`, a head fact. Equal declaring blobs mean both revisions name the same kernel
+    // and one map serves; different blobs leave the question open, and an open question refuses.
+    match kernel_set_serves_both(&workspace, &base, &head) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set this binary carries cannot speak for the base side"
+                ),
+            })
+        }
+        Err(e) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!("the kernel declaring file could not be compared ({})", environment_load_refusal_text(&e)),
+            })
+        }
     }
 
     let name_status = git_stdout(
@@ -2758,13 +3554,42 @@ pub fn run_required_wave_admission(
     // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
     // BASE's. Its base side is not read from git either (the tree does not carry it); it is
     // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
+    //
+    // CARRYING UNTOUCHED HEAD RECORDS IS VALID ONLY WHILE THE GRAMMARS AGREE. The reconstruction
+    // below keeps every head record the diff did not touch, which assumes an untouched FILE has an
+    // untouched PARSE. That holds when both revisions speak one grammar and fails exactly when they
+    // do not: a keyword, literal, operator or item-form change gives an untouched file a different
+    // parse, so its head records are not its base records. When the environments differ, nothing is
+    // carried and every base-side file in sweep scope is read under the base's own environment.
+    let (base_environment, full_base_parse, differing) = match &agreement {
+        EnvironmentAgreement::Identical => (
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            false,
+            Vec::new(),
+        ),
+        EnvironmentAgreement::Differs {
+            base_environment,
+            differing_paths,
+        } => (base_environment.clone(), true, differing_paths.clone()),
+    };
+    if full_base_parse {
+        eprintln!(
+            "namespace-wave-admission: the base and head parse environments differ ({}), so the \
+             baseline is read in full under the base's own grammar rather than reconstructed from \
+             untouched head records",
+            differing.join(", ")
+        );
+    }
+
     let mut base_index = DeclarationIndex::default();
-    for record in index_records(head_index) {
-        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
-            continue;
-        }
-        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+    if !full_base_parse {
+        for record in index_records(head_index) {
+            if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+                continue;
+            }
+            if !head_parsed.iter().any(|c| *c == &record.rel_path) {
+                crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+            }
         }
     }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
@@ -2776,26 +3601,72 @@ pub fn run_required_wave_admission(
     // `ls-tree` answers what the base tree CONTAINS: a path missing from its output is absent,
     // and a failure to obtain the listing is a refusal, not an empty answer.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
-    let base_paths: std::collections::BTreeSet<String> =
-        base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &base_parsed {
+    let base_paths: BTreeSet<String> = base_paths.lines().map(|l| l.trim().to_string()).collect();
+    // WHEN THE GRAMMARS DIFFER THE READ SET IS THE WHOLE BASE SIDE, not the diff's. The diff is a
+    // statement about bytes; a grammar change is a statement about every file's parse.
+    let owned_full: Vec<String> = if full_base_parse {
+        base_paths
+            .iter()
+            .filter(|p| in_sweep_scope(p))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let read_set: Vec<&String> = if full_base_parse {
+        owned_full.iter().collect()
+    } else {
+        base_parsed.clone()
+    };
+    // ONE ACQUISITION FOR THE WHOLE READ SET, not one `git show` per path. On the grammar-differs
+    // route the read set is every base-side file in sweep scope -- thousands -- and the process-
+    // per-file shape this prerequisite removed from the loader must not survive one layer down in
+    // its consumer. The paths the base actually carries are archived once and read locally.
+    let present: Vec<&str> = read_set
+        .iter()
+        .filter(|rel| base_paths.contains(**rel))
+        .map(|rel| rel.as_str())
+        .collect();
+    let base_tree = workspace.join("target").join(format!(
+        "gunbc-wave-base-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    if !present.is_empty() {
+        if let Err(e) = materialize_revision_paths(&workspace, &base, &base_tree, &present) {
+            let _ = std::fs::remove_dir_all(&base_tree);
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "the base revision's files could not be materialized ({}), so the baseline is \
+                     unobservable and no verdict is available",
+                    environment_load_refusal_text(&e)
+                ),
+            });
+        }
+    }
+    for rel in &read_set {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;
         }
         // The listing says the base carries this path, so a read failure here is UNOBSERVABLE
         // BASELINE, not news about the file.
-        let content = git_stdout(&workspace, &["show", &format!("{base}:{rel}")]).map_err(|e| {
-            format!(
-                "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
-                 partially unobservable and no verdict is available"
-            )
-        });
-        let content = match content {
+        let content = match std::fs::read_to_string(base_tree.join(rel)) {
             Ok(c) => c,
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(BaselineReconstruction::NotEvaluated {
+                    reason: format!(
+                        "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
+                         partially unobservable and no verdict is available"
+                    ),
+                });
+            }
         };
-        match base_records(rel, &content) {
+        match base_records(rel, &content, base_environment.clone()) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
@@ -2810,9 +3681,13 @@ pub fn run_required_wave_admission(
             // compare equal whenever the head touched only comments, so the old discriminator
             // would happily certify a baseline for a file that failed to parse for an unrelated
             // reason. The residual case argues for deletion, not for retention.
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(BaselineReconstruction::NotEvaluated { reason });
+            }
         }
     }
+    let _ = std::fs::remove_dir_all(&base_tree);
 
     // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
     // authoritative listing already in hand, so this asks the same question the writer asks of a
@@ -2830,15 +3705,71 @@ pub fn run_required_wave_admission(
         ) else {
             continue;
         };
-        match base_records(&record.rel_path, &content) {
+        // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
+        // not bytes read from the base tree; it is new source the head's roster writer produced from
+        // the base tree's path membership. The base environment is reserved for bytes that actually
+        // came out of the base revision -- sending renderer output through an older grammar could
+        // refuse text no historical source ever carried.
+        match base_records(
+            &record.rel_path,
+            &content,
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        ) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         }
     }
+
+    Ok(BaselineReconstruction::Reconstructed {
+        base,
+        head,
+        base_index,
+        head_touched,
+    })
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules.
+pub fn run_wave_admission_between(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<WaveAdmissionOutcome, String> {
+    let (base, head, base_index, head_touched) =
+        match reconstruct_base_index(workspace, base, head, head_index)? {
+            BaselineReconstruction::NoSubject { head } => {
+                if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+                    return Ok(WaveAdmissionOutcome::NoSubject { head });
+                }
+                // Landing owns roster debt even though it has no namespace delta to compare.
+                return Ok(WaveAdmissionOutcome::Adjudicated {
+                    base: head.clone(),
+                    head,
+                    report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+                    roster_touched: false,
+                });
+            }
+            BaselineReconstruction::NotEvaluated { reason } => {
+                return Ok(WaveAdmissionOutcome::NotEvaluated { reason })
+            }
+            BaselineReconstruction::Reconstructed {
+                base,
+                head,
+                base_index,
+                head_touched,
+            } => (base, head, base_index, head_touched),
+        };
 
     // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
     // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
@@ -2852,4 +3783,489 @@ pub fn run_required_wave_admission(
         report,
         roster_touched,
     })
+}
+
+// THE PARSE ENVIRONMENT OF A REVISION THAT IS NOT THE RUNNING BINARY'S.
+//
+// `ParseEnvironment` (`std.syntax`) is threaded through the tokenizer and parser so that reading a
+// revision's source does not mean reading it under whatever grammar this binary was built with.
+// That thread is inert until something can PRODUCE an environment other than the compiled-in
+// `dag_parse_environment`. This is that producer, and the revision SELECTS THE SOURCE: the bytes
+// evaluated are the bytes git holds at that revision, not the worktree's.
+//
+// WHY: `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change`. A gate that
+// compares base-side declarations against head-side ones parses both with one compiler, and has no
+// representable arm for "the base is well formed under its OWN grammar and unreadable only under
+// the head's" -- so a change that edits the grammar is refused in proportion to how thoroughly it
+// succeeded.
+//
+// ONE MATERIALIZATION, THEN THE REPOSITORY'S OWN INDEX. An earlier revision of this code listed the
+// whole `.dag` tree and ran one `git show` per file -- 5,306 subprocesses on every required run --
+// and recognized `module` and `import` with its own line-prefix scanner, which is a second grammar
+// for declarations the module index already recognizes (section 3). Both are gone: one
+// `git archive` writes the revision's `dag/` tree into a caller-owned directory, and the real
+// module index and entry resolver read it from there. The loader therefore cannot disagree with the
+// compiler about what a module is, because it does not decide.
+//
+// DECODE IS NOT HAND-WRITTEN. `Value` -> `value_to_wire_json` -> `serde_json::from_value`: the wire
+// encoder resolves its tag policy from the same emitter that wrote the `#[serde(...)]` attributes
+// on the mirror struct, so encoder and decoder cannot disagree about shape unless the emitter
+// disagrees with itself. A hand-written decoder would fork the type's shape across nine types and
+// drift the first time a field was added to `SyntaxSpec`.
+//
+// WHAT IT DOES NOT COVER. This reproduces the DECLARATIVE environment: which words are keywords,
+// which item forms exist, which operators bind how. It does NOT reproduce the revision's PARSER --
+// body parsers are dispatched on `body_kind` to code compiled into this binary, so a revision whose
+// body parser behaved differently is not reproduced by supplying its environment and must not be
+// claimed to be. That population stays outside the covered set.
+
+/// The module whose declarations ARE the dag realization's parse environment.
+const ENVIRONMENT_MODULE: &str = "extdeps.languages.dag.syntax";
+/// The data item within it that carries the environment value.
+const ENVIRONMENT_ITEM: &str = "dag_parse_environment";
+/// The path, relative to the repository root, of the file declaring `ENVIRONMENT_MODULE`.
+const ENVIRONMENT_MODULE_PATH: &str = "dag/extdeps/languages/dag/syntax.dag";
+/// Where the corpus of `.dag` declarations lives, relative to the repository root.
+const DAG_SOURCE_ROOT: &str = "dag";
+
+/// Why an environment could not be produced for a revision.
+///
+/// EVERY ARM IS A REFUSAL, NEVER A SUBSTITUTION. The tempting arm when a base environment cannot be
+/// read is to fall back to the head's -- precisely the assumption this code exists to remove, and it
+/// would fail open on exactly the changes that alter the grammar. Section 5's absorbing fallback in
+/// its purest form: nothing is missed, so the arm reads as safe, while the only signal that the base
+/// was unreadable is destroyed. So the failure is typed and located and the caller decides what an
+/// unreadable base means for its own verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvironmentLoadRefusal {
+    /// `git` could not be run, or answered non-zero, while reading this revision.
+    RevisionUnreadable {
+        revision: String,
+        step: String,
+        cause: String,
+    },
+    /// The revision's materialized tree has no file at the environment module's path.
+    EnvironmentModuleMissing { revision: String, path: String },
+    /// The materialized corpus did not resolve, or the item did not evaluate.
+    ClosureNotEvaluable { revision: String, cause: String },
+    /// `ENVIRONMENT_ITEM` is not declared by `ENVIRONMENT_MODULE` at this revision.
+    ///
+    /// Separate from `ClosureNotEvaluable` because it is the HOMONYM refusal: the interpreter
+    /// resolves a data item by bare name across the whole closure, so without this check a
+    /// `dag_parse_environment` declared anywhere else could silently supply the grammar. The
+    /// environment must come from the declaration that owns it.
+    EnvironmentItemNotOwned {
+        revision: String,
+        item: String,
+        module: String,
+    },
+    /// The item evaluated, but its value did not decode into the typed environment.
+    ///
+    /// The arm that fires on emitted-schema drift -- a field the wire encoder omits that the mirror
+    /// struct requires. Separate from `ClosureNotEvaluable` because the owners differ: that one is a
+    /// defect in the revision being read, this one is THIS binary disagreeing with its own emitter.
+    ValueNotDecodable { revision: String, cause: String },
+}
+
+/// The operator-facing text of a refusal.
+///
+/// A FREE FUNCTION, NOT A `Display` IMPL, because this module's seed-growth roster enumerates every
+/// declaration it carries by `DeclarationRef`, and an `impl` block is the one item that roster
+/// structurally cannot cite -- the reason an earlier lane converted the module's methods to free
+/// functions. An earlier revision of this change added `impl Display` here and left the roster's
+/// "carries no impl block" sentence standing over it; this keeps the sentence true.
+pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String {
+    match refusal {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision,
+            step,
+            cause,
+        } => format!("reading revision {revision} failed at {step}: {cause}"),
+        EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
+            "{path} does not exist at revision {revision}, so that revision's parse \
+                 environment cannot be read"
+        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
+            "the parse environment closure at revision {revision} did not evaluate: {cause}"
+        ),
+        EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision,
+            item,
+            module,
+        } => format!(
+            "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
+                 bare-name lookup would return is not the grammar authority"
+        ),
+        EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
+            "the parse environment at revision {revision} evaluated but did not decode into \
+                 this binary's `ParseEnvironment`: {cause}"
+        ),
+    }
+}
+
+/// Run one `git` invocation to completion, or refuse with what it said.
+fn git_capture(
+    repo: &std::path::Path,
+    revision: &str,
+    step: &str,
+    args: &[&str],
+) -> Result<Vec<u8>, EnvironmentLoadRefusal> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: step.to_string(),
+            cause: format!("git failed to start: {e}"),
+        })?;
+    if !out.status.success() {
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: step.to_string(),
+            cause: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        });
+    }
+    Ok(out.stdout)
+}
+
+/// The object id git holds for one path at one revision, or `None` if the path is absent.
+///
+/// Used to decide whether two revisions share a parse environment WITHOUT materializing either:
+/// object identity is content identity, so equal ids over the environment's declaring files mean the
+/// environments are equal by construction rather than by comparison.
+pub fn blob_id_at(
+    repo: &std::path::Path,
+    revision: &str,
+    path: &str,
+) -> Result<Option<String>, EnvironmentLoadRefusal> {
+    let spec = format!("{revision}:{path}");
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", &spec])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: format!("rev-parse {spec}"),
+            cause: format!("git failed to start: {e}"),
+        })?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if id.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(id))
+    }
+}
+
+/// Materialize one revision's ENVIRONMENT CLOSURE under `dest`, in a single git invocation.
+///
+/// ONLY THE CLOSURE, NEVER THE WHOLE TREE, and the reason is the class this loader exists to
+/// repair, met one level down. The module index that resolves the environment parses every `.dag`
+/// file it is shown with THIS binary's grammar. Materializing the whole `dag/` tree therefore
+/// parsed every base-side file under the head's grammar in order to learn the base's grammar --
+/// and a base file written in the base's grammar refused inside the loader before the environment
+/// was ever evaluated. The grammar-differs witness caught exactly that. So the index is shown only
+/// the files the environment's declaring closure consists of.
+///
+/// THE HONEST BOUNDARY THIS DRAWS: the loader can read a base whose grammar differs from the head's
+/// so long as the base's ENVIRONMENT CLOSURE is itself readable under the head's grammar. A change
+/// that alters the grammar AND uses the altered grammar inside `std.syntax`'s own closure is outside
+/// any head-built loader's reach -- the same bootstrap boundary the compiler itself has -- and it
+/// refuses as `ClosureNotEvaluable`, never answering under the wrong rules.
+///
+/// `git archive | tar -x` over the named paths rather than a read per file: acquisition cost must
+/// not scale with the corpus (section 6, bare minimum cost). `dest` is the caller's to remove.
+fn materialize_environment_closure_at(
+    repo: &std::path::Path,
+    revision: &str,
+    dest: &std::path::Path,
+    closure_paths: &BTreeSet<String>,
+) -> Result<(), EnvironmentLoadRefusal> {
+    let paths: Vec<&str> = closure_paths.iter().map(String::as_str).collect();
+    materialize_revision_paths(repo, revision, dest, &paths)?;
+    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: ENVIRONMENT_MODULE_PATH.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Materialize the named paths of one revision under `dest`: one `git archive`, one `tar -x`.
+///
+/// THE ONE ACQUISITION ROUTE. Every consumer that needs a revision's bytes on disk -- the
+/// environment loader above for its closure, the grammar-differs and provenance witnesses for a
+/// whole `dag/` tree -- comes through here, so acquisition is checked once and a defect in it is
+/// found once. An earlier shape had the witnesses carrying their own `sh -c "git archive | tar"`
+/// string beside this function: the same pipeline twice over, one of them unchecked hand-shell. A
+/// pathspec may name a directory (`dag`) or a file; git archive accepts both.
+pub fn materialize_revision_paths(
+    repo: &std::path::Path,
+    revision: &str,
+    dest: &std::path::Path,
+    paths: &[&str],
+) -> Result<(), EnvironmentLoadRefusal> {
+    std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+        revision: revision.to_string(),
+        step: "create materialization directory".to_string(),
+        cause: e.to_string(),
+    })?;
+    let mut args: Vec<&str> = vec!["archive", "--format=tar", revision];
+    args.extend_from_slice(paths);
+    let archive = git_capture(repo, revision, "archive", &args)?;
+    let tar_path = dest.join("dag-tree.tar");
+    std::fs::write(&tar_path, &archive).map_err(|e| {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "write archive".to_string(),
+            cause: e.to_string(),
+        }
+    })?;
+    let extract = std::process::Command::new("tar")
+        .arg("-xf")
+        .arg(&tar_path)
+        .arg("-C")
+        .arg(dest)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: format!("tar failed to start: {e}"),
+        })?;
+    if !extract.status.success() {
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: String::from_utf8_lossy(&extract.stderr).trim().to_string(),
+        });
+    }
+    let _ = std::fs::remove_file(&tar_path);
+    Ok(())
+}
+
+/// Decode an evaluated environment value into this binary's `ParseEnvironment`.
+pub fn decode_environment_value(
+    value: &crate::v1_interpreter::Value,
+    ctx: &crate::v1_interpreter::InterpContext,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let wire = super::value_to_wire_json(value, ctx).map_err(|e| {
+        EnvironmentLoadRefusal::ValueNotDecodable {
+            revision: revision.to_string(),
+            cause: format!("wire-encode: {e}"),
+        }
+    })?;
+    serde_json::from_value::<crate::std_syntax::ParseEnvironment>(wire)
+        .map(std::rc::Rc::new)
+        .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
+            revision: revision.to_string(),
+            cause: e.to_string(),
+        })
+}
+
+/// Evaluate the parse environment out of an already-materialized corpus rooted at `root`.
+///
+/// Split from acquisition so the decode seam can be exercised against an independent oracle -- the
+/// compiled-in `dag_parse_environment()` over the live tree -- without a revision in the way. The
+/// revision string here is diagnostic ONLY; callers that mean "the environment AT a revision" must
+/// use `load_parse_environment_at`, which selects the source.
+pub fn evaluate_environment_in(
+    root: &std::path::Path,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    if !entry.exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: entry.display().to_string(),
+        });
+    }
+    let dag_root = root.join(DAG_SOURCE_ROOT);
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let entry_display = entry.display().to_string();
+    let (graph, indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry_display).map_err(
+            |e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: revision.to_string(),
+                cause: e,
+            },
+        )?;
+    // HERMETIC, NOT WET. A static grammar declaration has no business acquiring permission to
+    // perform host effects while it is being decoded; `Wet` here would let a corpus under
+    // examination act during examination.
+    let ctx = super::make_eval_context(
+        &graph,
+        indices,
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    // EXACT OWNERSHIP, NOT A BARE NAME. `eval_data_item_value` resolves by bare name across the
+    // closure, so a homonymous `dag_parse_environment` elsewhere in the corpus would silently
+    // supply the grammar. The environment must come from the declaration that owns it.
+    if !super::data_item_declared_in_file(&ctx, ENVIRONMENT_ITEM, &entry_display) {
+        return Err(EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision: revision.to_string(),
+            item: ENVIRONMENT_ITEM.to_string(),
+            module: ENVIRONMENT_MODULE.to_string(),
+        });
+    }
+    let value = crate::v1_interpreter::with_active_context(&ctx, || {
+        crate::v1_interpreter::eval_data_item_value(&ctx, ENVIRONMENT_ITEM)
+    })
+    .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: revision.to_string(),
+        cause: format!("eval {ENVIRONMENT_ITEM}: {e}"),
+    })?
+    .ok_or_else(|| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: revision.to_string(),
+        cause: format!("{ENVIRONMENT_ITEM} is not a data item in `{ENVIRONMENT_MODULE}`"),
+    })?;
+    decode_environment_value(&value, &ctx, revision)
+}
+
+/// THE LOADER: the parse environment git holds at `revision`.
+///
+/// The revision selects the bytes. Materialization happens into a temporary directory this function
+/// owns and removes, so nothing about the caller's worktree is read or written.
+pub fn load_parse_environment_at(
+    repo: &std::path::Path,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    load_parse_environment_with_closure(repo, revision, &closure)
+}
+
+/// The loader over an ALREADY-RESOLVED closure.
+///
+/// `environment_agreement` resolves the closure to decide whether the grammars differ and then, on
+/// the differing path, loads the base's environment -- the same closure, same inputs, with the
+/// caller already holding the answer. Section 2: carry the first value rather than recompute it at
+/// the least common ancestor. This is that carried value; `load_parse_environment_at` resolves once
+/// for callers that hold nothing.
+pub fn load_parse_environment_with_closure(
+    repo: &std::path::Path,
+    revision: &str,
+    closure: &BTreeSet<String>,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dest =
+        // UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside
+        // the workspace root (`repo_relative_path_normalized`), so a corpus materialized into the
+        // system temp directory cannot be read by the repository's own machinery -- the loader would
+        // refuse every call, in production as much as in test. `target/` is where generated and
+        // scratch trees already live (`target/stage0-regen-candidate` is the precedent).
+        super::workspace_root()
+            .join("target")
+            .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
+    // If the base's closure has a member the head's does not, the materialized set is incomplete
+    // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
+        .and_then(|()| evaluate_environment_in(&dest, revision));
+    let _ = std::fs::remove_dir_all(&dest);
+    outcome
+}
+
+/// The repo-relative files that declare the parse environment's closure, per the real resolver.
+///
+/// ASKED OF THE RESOLVER, NOT LISTED. The closure is 13 modules today and that number appears
+/// nowhere: a hardcoded roster would be a second authority for what the grammar depends on and would
+/// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
+/// The resolved graph's own span files ARE the closure.
+pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let root = super::workspace_root();
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let dag_root = root.join(DAG_SOURCE_ROOT);
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let (graph, _indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
+            .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: "live-tree".to_string(),
+                cause: e,
+            })?;
+    let mut paths = BTreeSet::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            let file = item.span.file.clone();
+            if let Some(idx) = file.find(&format!("{DAG_SOURCE_ROOT}/")) {
+                paths.insert(file[idx..].to_string());
+            }
+        }
+    }
+    if paths.is_empty() {
+        return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
+            revision: "live-tree".to_string(),
+            cause: "the resolved environment closure named no files, so no agreement check is \
+                    possible"
+                .to_string(),
+        });
+    }
+    Ok(paths)
+}
+
+/// Whether two revisions share a parse environment, and the base's environment when they do not.
+#[derive(Debug, Clone)]
+pub enum EnvironmentAgreement {
+    /// Every file declaring the environment is byte-identical across the two revisions.
+    ///
+    /// Equal object ids are equal content, so the environments are identical BY CONSTRUCTION rather
+    /// than by a comparison that could be wrong. Nothing needs loading, and the changed-file
+    /// baseline reconstruction stays valid.
+    Identical,
+    /// The declaring files differ, so the base must be read under its own environment.
+    Differs {
+        base_environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+        differing_paths: Vec<String>,
+    },
+}
+
+/// Decide whether the base and head grammars agree, loading the base's environment only if not.
+///
+/// THE CHEAP CHECK COMES FIRST because the expensive one must not be paid on every run: object
+/// identity over the closure's files answers "same grammar?" with a handful of `rev-parse` calls,
+/// and only a real difference pays for materializing and evaluating the base corpus. The ordinary
+/// pull request changes no grammar and therefore costs nothing here.
+pub fn environment_agreement(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    let mut differing = Vec::new();
+    for path in &closure {
+        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
+            differing.push(path.clone());
+        }
+    }
+    if differing.is_empty() {
+        return Ok(EnvironmentAgreement::Identical);
+    }
+    Ok(EnvironmentAgreement::Differs {
+        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
+        differing_paths: differing,
+    })
+}
+
+/// The path whose declarations the kernel-name set is derived from.
+const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
+
+/// Whether the kernel type set this binary carries can speak for both revisions.
+///
+/// NARROW ON PURPOSE. `declaring_candidates` consults the RUNNING compiler's `kernel_type_set`,
+/// which is a fact about the head. Threading distinct base and head kernel maps is the general
+/// repair and is not this change's subject; what is needed here is honesty about when the single map
+/// is adequate. Equal blobs for the declaring file means both revisions name the same kernel, so one
+/// map serves. Different blobs means the question is open, and an open question is `NotEvaluated` --
+/// not a guess that the head's map is close enough.
+pub fn kernel_set_serves_both(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+) -> Result<bool, EnvironmentLoadRefusal> {
+    Ok(blob_id_at(repo, base, KERNEL_TYPES_PATH)? == blob_id_at(repo, head, KERNEL_TYPES_PATH)?)
 }

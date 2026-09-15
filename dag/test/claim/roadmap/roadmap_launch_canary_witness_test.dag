@@ -11,7 +11,7 @@ import gunbc.roadmap_status {
 }
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract, ExecutionContractUnspecified,
-  contract_has_closing_validation,
+  ContractCloses, contract_closure,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, node_closes_dependency, doc_all_nodes, doc_all_edges }
@@ -341,14 +341,17 @@ test fn falsifier_oracle_red_on_wrong_or_missing_nonce() -> Bool {
 test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
   let contract = roadmap_launch_canary_execution_contract()
   let scopes = validation_oracle_scopes(contract: contract)
-  contract_has_closing_validation(contract: contract)
-    && count(scopes) == 1
-    && all(scopes, s => match s {
-      OraclePinnable { oracle } =>
-        oracle.entry as String == roadmap_launch_canary_oracle_entry as String
-          && oracle.function as String == roadmap_launch_canary_oracle_function as String
-      OracleNotPinnable { validation_label: _, reason: _ } => false
-    })
+  match contract_closure(contract: contract) {
+    ContractCloses { validations: _ } =>
+      count(scopes) == 1
+        && all(scopes, s => match s {
+          OraclePinnable { oracle } =>
+            oracle.entry as String == roadmap_launch_canary_oracle_entry as String
+              && oracle.function as String == roadmap_launch_canary_oracle_function as String
+          OracleNotPinnable { validation_label: _, reason: _ } => false
+        })
+    _ => false
+  }
 }
 
 // Falsifier (d), the RLM-0 FINDING, now a REGRESSION CONTROL (RLM-1): a node with an unspecified

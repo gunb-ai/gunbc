@@ -109,7 +109,7 @@ fn runner_memory_converge_effect(host: HostIdentity) -> HostEffect? {
   }
 }
 
-func provision_runner_memory_caps(host: HostIdentity) -> ProcessExit
+fn provision_runner_memory_caps(host: HostIdentity) -> ProcessExit
   uses net: Network
 {
   match host_toolchain_direct_access(host: host) {

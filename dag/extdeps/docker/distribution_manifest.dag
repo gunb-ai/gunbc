@@ -1,0 +1,15 @@
+module extdeps.docker.distribution_manifest
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/distribution/distribution/blob/v2.8.3/docs/spec/manifest-v2-2.md"
+  }
+}
+
+data docker_distribution_manifest_v2_media_type: NonEmptyStr = "application/vnd.docker.distribution.manifest.v2+json" as NonEmptyStr
+data docker_container_image_v1_media_type: NonEmptyStr = "application/vnd.docker.container.image.v1+json" as NonEmptyStr

@@ -179,16 +179,18 @@ import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.roadmap_dispatch_destination {
+  node_dispatch_destination,
+  DispatchDestinationResolved,
+  DispatchDestinationMissing,
+  dispatch_spawn_origin_basename,
+  destination_is_this_spawn_tree,
+  destination_not_this_spawn_tree_reason,
+}
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
-
-data dispatch_repo: String = "gunbc"
-
-// PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared
-// with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy
-// deleted, belt-B lane 2026-07-20).
 
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
@@ -846,6 +848,22 @@ fn dispatch_attempt_launch_path_for_instance(
       attempt_key: attempt_key,
     ),
     "/launch-identity.json",
+  ], "")
+}
+
+fn dispatch_attempt_spawn_origin_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/",
+    dispatch_spawn_origin_basename,
   ], "")
 }
 
@@ -2539,6 +2557,19 @@ fn dispatch_spawn_commands_for_resolved_instance(
   model: ProviderModelSelection,
   origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      DispatchSpawnRefused {
+        step: "spawn-destination" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchDestinationResolved { identity } =>
+      if !destination_is_this_spawn_tree(identity: identity) {
+        DispatchSpawnRefused {
+          step: "spawn-destination" as NonEmptyStr,
+          detail: destination_not_this_spawn_tree_reason(identity: identity) as String,
+        }
+      } else {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
@@ -2657,6 +2688,8 @@ fn dispatch_spawn_commands_for_resolved_instance(
     }
     }
   }
+      }
+  }
 }
 
 fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
@@ -2767,13 +2800,6 @@ fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
   any(ready, n => n.node == node_id)
 }
 
-fn node_repo_supported(node: RoadmapNode) -> Bool {
-  match node.sizing {
-    Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_repo
-    Unsized => false
-  }
-}
-
 fn dispatch_permitted_from_selection(
   node: RoadmapNode,
   attempt_key: String,
@@ -2790,6 +2816,49 @@ fn dispatch_permitted_from_selection(
   }
 }
 
+fn classify_dispatch_lease_after_destination(
+  node: RoadmapNode,
+  tmux_entries: List<TmuxLsEntry>,
+  attempt_key: String,
+  process_fingerprint: NonEmptyStr,
+  effort: ReasoningEffort,
+  model: ProviderModelSelection,
+) -> DispatchRequestGate {
+  let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: node.node,
+    process_fingerprint: process_fingerprint,
+  )
+  let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+  match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+    UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+      DispatchRefused { reason: reason }
+    UpsertClassification { verdict: _, decision: Noop } =>
+      DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+    UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+      dispatch_permitted_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        effort: effort,
+        model: model,
+      )
+  }
+}
+
+fn classify_dispatch_destination_gate(node: RoadmapNode) -> DispatchRequestGate? {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      Present { value: DispatchRefused { reason: reason } }
+    DispatchDestinationResolved { identity } =>
+      if !destination_is_this_spawn_tree(identity: identity) {
+        Present {
+          value: DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) },
+        }
+      } else {
+        none
+      }
+  }
+}
+
 fn classify_dispatch_request_for_process_fingerprint(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
@@ -2802,27 +2871,17 @@ fn classify_dispatch_request_for_process_fingerprint(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
-    } else {
-      let scope = dispatch_tmux_session_scope_for_process_fingerprint(
-        node_id: node.node,
-        process_fingerprint: process_fingerprint,
-      )
-      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
-          DispatchRefused { reason: reason }
-        UpsertClassification { verdict: _, decision: Noop } =>
-          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_from_selection(
-            node: node,
-            attempt_key: attempt_key,
-            effort: effort,
-            model: model,
-          )
-      }
+    match classify_dispatch_destination_gate(node: node) {
+      Present { value: refused } => refused
+      Absent =>
+        classify_dispatch_lease_after_destination(
+          node: node,
+          tmux_entries: tmux_entries,
+          attempt_key: attempt_key,
+          process_fingerprint: process_fingerprint,
+          effort: effort,
+          model: model,
+        )
     }
   }
 }
@@ -2853,23 +2912,22 @@ fn classify_dispatch_request(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    if !node_repo_supported(node: node) {
-      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
-    } else {
-      match selection {
-        DispatchActuatorSelectionRefused { reason } =>
-          DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
-          classify_dispatch_request_for_process_fingerprint(
-            node: node,
-            ready: ready,
-            tmux_entries: tmux_entries,
-            attempt_key: attempt_key,
-            process_fingerprint: process_fingerprint,
-            effort: effort,
-            model: model,
-          )
-      }
+    match classify_dispatch_destination_gate(node: node) {
+      Present { value: refused } => refused
+      Absent =>
+        match selection {
+          DispatchActuatorSelectionRefused { reason } =>
+            DispatchRefused { reason: reason }
+          DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
+            classify_dispatch_lease_after_destination(
+              node: node,
+              tmux_entries: tmux_entries,
+              attempt_key: attempt_key,
+              process_fingerprint: process_fingerprint,
+              effort: effort,
+              model: model,
+            )
+        }
     }
   }
 }

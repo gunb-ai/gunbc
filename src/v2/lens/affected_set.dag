@@ -31,8 +31,10 @@ import v2.std.diagnostic {
   Accepted,
   None,
   Rejected,
+  bind_outcome,
   diagnostics_merge,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_accepted
 }
 import v2.std.node {
   Arrow,
@@ -1296,16 +1298,42 @@ data affected_set_reflect_gate_type: Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: Symbol = ^RepoProcessKind
 
-fn ci_gate_processes() -> List<RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: RepoProcess { kind: CiGateProcess, identity: key })
-  })
+// THE REFLECTION READS ARE NOW SCOPE-CARRYING AND CAN REFUSE, which is why each returns an Outcome
+// rather than a bare list. They read type declarations by BARE SPELLING, and a bare spelling that
+// two modules declare cannot say which was meant -- the seam used to answer such a spelling from
+// whichever module the interpreter's load order reached first, silently, and this lens consumed
+// that answer as the process universe. v2.std.node_reflection coproduct_arm_keys refuses
+// typed and located instead, so the refusal has to arrive somewhere, and RepoProcessUniverse
+// already owns the vocabulary for it: UniverseIncomplete carrying a FailClosedReason.
+fn reflected_processes(
+  pool_roots: List<String>,
+  type_name: Symbol,
+  kind: RepoProcessKind
+) -> Outcome<List<RepoProcess>> {
+  bind_outcome(
+    o: coproduct_arm_keys(pool_roots: pool_roots, type_name: type_name),
+    f: fn(keys) {
+      outcome_accepted(
+        value: keys |> map(key => RepoProcess { kind: kind, identity: key })
+      )
+    }
+  )
 }
 
-fn meta_processes() -> List<RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: RepoProcess { kind: MetaProcessRole, identity: key })
-  })
+fn ci_gate_processes(pool_roots: List<String>) -> Outcome<List<RepoProcess>> {
+  reflected_processes(
+    pool_roots: pool_roots,
+    type_name: affected_set_reflect_gate_type,
+    kind: CiGateProcess
+  )
+}
+
+fn meta_processes(pool_roots: List<String>) -> Outcome<List<RepoProcess>> {
+  reflected_processes(
+    pool_roots: pool_roots,
+    type_name: affected_set_reflect_meta_process_kind_type,
+    kind: MetaProcessRole
+  )
 }
 
 fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) -> Bool {
@@ -1314,9 +1342,12 @@ fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) 
   })
 }
 
-fn repo_process_universe_from(processes: List<RepoProcess>) -> RepoProcessUniverse {
+fn repo_process_universe_from_kinds(
+  processes: List<RepoProcess>,
+  kind_keys: List<Symbol>
+) -> RepoProcessUniverse {
   fold(
-    coproduct_arm_keys(type_name: affected_set_reflect_repo_process_kind_type),
+    kind_keys,
     init: UniverseComplete { processes: processes },
     f: fn(acc, kind_key) {
       match acc {
@@ -1336,10 +1367,54 @@ fn repo_process_universe_from(processes: List<RepoProcess>) -> RepoProcessUniver
   )
 }
 
-fn repo_process_universe() -> RepoProcessUniverse {
-  repo_process_universe_from(
-    processes: list_append(left: ci_gate_processes(), right: meta_processes())
-  )
+// A REFUSED REFLECTION READ IS AN INCOMPLETE UNIVERSE, not an empty one, and the distinction is the
+// whole reason this fold threads Outcomes rather than lists. An empty process list is a legitimate
+// answer meaning the corpus declares no such process; a refusal means the question could not be
+// answered at all. Collapsing the second into the first would hand this lens a confidently empty
+// universe built on a question that was never settled -- which is the widening DESIGN section 5
+// forbids, and it would be invisible because UniverseComplete with no processes typechecks.
+//
+// The uncovered_kind on each refusal arm names WHICH reflection read refused, so the diagnostic
+// locates the unanswerable spelling rather than reporting that the universe is merely unavailable.
+fn repo_process_universe_from(
+  pool_roots: List<String>,
+  processes: List<RepoProcess>
+) -> RepoProcessUniverse {
+  match coproduct_arm_keys(
+    pool_roots: pool_roots,
+    type_name: affected_set_reflect_repo_process_kind_type
+  ) {
+    Rejected { diagnostics: d } =>
+      UniverseIncomplete {
+        uncovered_kind: affected_set_reflect_repo_process_kind_type,
+        reason: ReasonDiagnostics { diagnostics: d }
+      }
+    Accepted { value: kind_keys, diagnostics: _ } =>
+      repo_process_universe_from_kinds(processes: processes, kind_keys: kind_keys)
+  }
+}
+
+fn repo_process_universe(pool_roots: List<String>) -> RepoProcessUniverse {
+  match ci_gate_processes(pool_roots: pool_roots) {
+    Rejected { diagnostics: d } =>
+      UniverseIncomplete {
+        uncovered_kind: affected_set_reflect_gate_type,
+        reason: ReasonDiagnostics { diagnostics: d }
+      }
+    Accepted { value: gates, diagnostics: _ } =>
+      match meta_processes(pool_roots: pool_roots) {
+        Rejected { diagnostics: d } =>
+          UniverseIncomplete {
+            uncovered_kind: affected_set_reflect_meta_process_kind_type,
+            reason: ReasonDiagnostics { diagnostics: d }
+          }
+        Accepted { value: metas, diagnostics: _ } =>
+          repo_process_universe_from(
+            pool_roots: pool_roots,
+            processes: list_append(left: gates, right: metas)
+          )
+      }
+  }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

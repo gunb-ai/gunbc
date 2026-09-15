@@ -1,0 +1,245 @@
+module test.claim.moonshot.kimi_code_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { token_count_value }
+import std.dissolution { UnboundDissolution, BoundDissolution }
+import std.roster_frontier { DeclSubject, PathSubject }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.moonshot.kimi_code {
+  kimi_for_coding_wire_id,
+  kimi_k28_preview_served_version_name,
+  kimi_k27_code_highspeed_served_version_name,
+  kimi_for_coding_k28_preview_assignment,
+  kimi_for_coding_highspeed_assignment,
+  AliasEndNotPublished,
+  AliasEndPublished,
+  kimi_code_request_id_wire,
+  kimi_code_thinking_effort_wire,
+  KimiCodeEffortLow,
+  KimiCodeEffortHigh,
+  KimiCodeEffortMax,
+  kimi_k28_declared_context_ceiling,
+  kimi_code_route,
+  KimiForCoding,
+  KimiK3,
+  KimiK3_256k,
+  KimiForCodingHighspeed,
+  KimiThinkingOff,
+  KimiThinkingOn,
+  KimiHighSpeedThinkingOn,
+  ServedK28Preview,
+  ServedK3,
+  ServedK27CodeHighspeed,
+  kimi_code_served_version_name,
+  KimiCodeRouteResolved,
+  KimiCodeThinkingControlNotDocumented,
+  CitedAvailableOn,
+  StartDateNotPublishedOnCitedAuthorities,
+  kimi_code_catalog_as_of_2026_09_11,
+  kimi_code_provider_integration_frontier,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool {
+  (kimi_code_request_id_wire(id: kimi_for_coding_k28_preview_assignment.request_id) as String)
+      == (kimi_for_coding_wire_id as String)
+    && (kimi_for_coding_wire_id as String) == "kimi-for-coding"
+    && (kimi_code_served_version_name(v: kimi_for_coding_k28_preview_assignment.served_version) as String)
+      == (kimi_k28_preview_served_version_name as String)
+    && match kimi_for_coding_k28_preview_assignment.effective_from {
+      CitedAvailableOn { on: d } => (d as String) == "2026-09-11"
+      StartDateNotPublishedOnCitedAuthorities { read_obligation: _ } => false
+    }
+    && match kimi_for_coding_k28_preview_assignment.effective_until {
+      AliasEndNotPublished => true
+      AliasEndPublished { on: _ } => false
+    }
+    && (kimi_code_catalog_as_of_2026_09_11.observed_as_of as String) == "2026-09-11"
+    && match kimi_for_coding_highspeed_assignment.effective_from {
+      CitedAvailableOn { on: d } => (d as String) == "2026-07-09"
+      StartDateNotPublishedOnCitedAuthorities { read_obligation: _ } => false
+    }
+    && match kimi_code_route(
+      requested: KimiForCoding,
+      thinking: KimiThinkingOn { effort: KimiCodeEffortMax },
+    ) {
+      KimiCodeRouteResolved { route: r } => match kimi_code_catalog_as_of_2026_09_11.kimi_for_coding.assignment.served_version {
+        ServedK28Preview => match r.served_version {
+          ServedK28Preview => true
+          ServedK3 => false
+          ServedK27CodeHighspeed => false
+        }
+        ServedK3 => false
+        ServedK27CodeHighspeed => false
+      }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+    }
+}
+
+test fn k2_8_preview_name_is_not_a_request_model_id() -> Bool {
+  (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiForCoding) as String)
+    && (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiK3) as String)
+    && (kimi_k28_preview_served_version_name as String) != (kimi_code_request_id_wire(id: KimiK3_256k) as String)
+    && (kimi_k28_preview_served_version_name as String)
+      != (kimi_code_request_id_wire(id: KimiForCodingHighspeed) as String)
+}
+
+test fn k2_8_preview_declares_low_high_max() -> Bool {
+  let low = kimi_code_thinking_effort_wire(effort: KimiCodeEffortLow)
+  let high = kimi_code_thinking_effort_wire(effort: KimiCodeEffortHigh)
+  let max = kimi_code_thinking_effort_wire(effort: KimiCodeEffortMax)
+  (low as String) == "low"
+    && (high as String) == "high"
+    && (max as String) == "max"
+}
+
+test fn k2_8_preview_declared_context_ceiling_is_1048576() -> Bool {
+  token_count_value(t: kimi_k28_declared_context_ceiling) == 1048576
+}
+
+test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request() -> Bool {
+  match kimi_code_route(requested: KimiK3, thinking: KimiThinkingOff) {
+    KimiCodeRouteResolved { route: k3 } =>
+      (kimi_code_request_id_wire(id: k3.requested_id) as String) == "k3"
+        && match k3.served_version {
+          ServedK28Preview => true
+          ServedK3 => false
+          ServedK27CodeHighspeed => false
+        }
+        && match k3.served_thinking {
+          KimiThinkingOff => true
+          KimiThinkingOn { effort: _ } => false
+          KimiHighSpeedThinkingOn => false
+        }
+        && (kimi_code_served_version_name(v: k3.served_version) as String) == "K2.8 Preview"
+    KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+  }
+    && match kimi_code_route(requested: KimiK3_256k, thinking: KimiThinkingOff) {
+      KimiCodeRouteResolved { route: k3_256k } =>
+        (kimi_code_request_id_wire(id: k3_256k.requested_id) as String) == "k3-256k"
+          && match k3_256k.served_version {
+            ServedK28Preview => true
+            ServedK3 => false
+            ServedK27CodeHighspeed => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+    }
+    && match kimi_code_route(requested: KimiForCoding, thinking: KimiThinkingOff) {
+      KimiCodeRouteResolved { route: k28 } =>
+        (kimi_code_request_id_wire(id: k28.requested_id) as String) == "kimi-for-coding"
+          && match k28.served_version {
+            ServedK28Preview => true
+            ServedK3 => false
+            ServedK27CodeHighspeed => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+    }
+    && match kimi_code_route(
+      requested: KimiK3,
+      thinking: KimiThinkingOn { effort: KimiCodeEffortMax },
+    ) {
+      KimiCodeRouteResolved { route: k3_on } =>
+        (kimi_code_request_id_wire(id: k3_on.requested_id) as String) == "k3"
+          && match k3_on.served_version {
+            ServedK3 => true
+            ServedK28Preview => false
+            ServedK27CodeHighspeed => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+    }
+}
+
+test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
+  match kimi_for_coding_highspeed_assignment.served_version {
+    ServedK27CodeHighspeed => true
+    ServedK28Preview => false
+    ServedK3 => false
+  }
+    && (kimi_code_served_version_name(v: kimi_for_coding_highspeed_assignment.served_version) as String)
+      == (kimi_k27_code_highspeed_served_version_name as String)
+    && match kimi_code_route(requested: KimiForCodingHighspeed, thinking: KimiHighSpeedThinkingOn) {
+      KimiCodeRouteResolved { route: on } =>
+        (kimi_code_request_id_wire(id: on.requested_id) as String) == "kimi-for-coding-highspeed"
+          && match on.served_version {
+            ServedK27CodeHighspeed => true
+            ServedK28Preview => false
+            ServedK3 => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+    }
+    && match kimi_code_route(requested: KimiForCodingHighspeed, thinking: KimiThinkingOff) {
+      KimiCodeThinkingControlNotDocumented { requested_id: id, thinking: t } =>
+        match id {
+          KimiForCodingHighspeed => match t {
+            KimiThinkingOff => true
+            KimiThinkingOn { effort: _ } => false
+            KimiHighSpeedThinkingOn => false
+          }
+          KimiForCoding => false
+          KimiK3 => false
+          KimiK3_256k => false
+        }
+      KimiCodeRouteResolved { route: _ } => false
+    }
+    && match kimi_code_route(
+      requested: KimiForCodingHighspeed,
+      thinking: KimiThinkingOn { effort: KimiCodeEffortMax },
+    ) {
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => true
+      KimiCodeRouteResolved { route: _ } => false
+    }
+}
+
+test fn provider_integration_frontier_names_the_route() -> Bool {
+  (kimi_code_provider_integration_frontier |> count) == 4
+    && (kimi_code_provider_integration_frontier |> any(row =>
+      match row.subject {
+        DeclSubject { ref: r } => (r.decl_name as String) == "kimi_code_route"
+        PathSubject { path: _ } => false
+      }
+        && match row.dissolution {
+          UnboundDissolution { description: d } =>
+            (d as String)
+              == "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"
+          BoundDissolution { trigger: _ } => false
+        }
+    ))
+    && (kimi_code_provider_integration_frontier |> any(row =>
+      match row.subject {
+        DeclSubject { ref: r } =>
+          (r.decl_name as String) == "kimi_k28_declared_context_ceiling"
+        PathSubject { path: _ } => false
+      }
+        && match row.dissolution {
+          UnboundDissolution { description: d } =>
+            (d as String)
+              == "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"
+          BoundDissolution { trigger: _ } => false
+        }
+    ))
+    && (kimi_code_provider_integration_frontier |> any(row =>
+      match row.subject {
+        DeclSubject { ref: r } => (r.decl_name as String) == "KimiCodeEffectiveFrom"
+        PathSubject { path: _ } => false
+      }
+        && match row.dissolution {
+          UnboundDissolution { description: d } =>
+            (d as String)
+              == "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"
+          BoundDissolution { trigger: _ } => false
+        }
+    ))
+    && (kimi_code_provider_integration_frontier |> any(row =>
+      match row.subject {
+        DeclSubject { ref: r } => (r.decl_name as String) == "KimiCodeAliasEnd"
+        PathSubject { path: _ } => false
+      }
+        && match row.dissolution {
+          UnboundDissolution { description: d } =>
+            (d as String)
+              == "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"
+          BoundDissolution { trigger: _ } => false
+        }
+    ))
+}

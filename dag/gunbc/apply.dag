@@ -115,6 +115,6 @@ fn apply_dispatch(
   }
 }
 
-func apply_wet(workflow: String, srv3_width: String, srv4_width: String, mode: String) -> ProcessExit {
+fn apply_wet(workflow: String, srv3_width: String, srv4_width: String, mode: String) -> ProcessExit {
   apply_dispatch(workflow: workflow, srv3_width: srv3_width, srv4_width: srv4_width, mode: mode)
 }

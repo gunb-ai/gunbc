@@ -1,0 +1,310 @@
+module extdeps.moonshot.kimi_code
+
+import std.types { NonEmptyStr, List }
+import std.measure { TokenCount, token_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+}
+import extdeps.uri { Uri, Https }
+
+// KIMI CODE, independently versioned Moonshot product. K2.8 Preview is a time-bounded served
+// version of the kimi-for-coding alias, not the module subject. Wire-compatible OpenAI/Anthropic
+// shapes live elsewhere and do not become this product. No moonshot/kimi vendor module existed to
+// inhabit.
+
+data kimi_code_whats_new_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.kimi.com/code/docs/en/kimi-code/whats-new.html" as NonEmptyStr,
+  }
+}
+
+data kimi_code_models_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.kimi.com/code/docs/en/kimi-code/models.html" as NonEmptyStr,
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = kimi_code_whats_new_authority
+
+data kimi_for_coding_wire_id: NonEmptyStr = "kimi-for-coding" as NonEmptyStr
+data kimi_k3_wire_id: NonEmptyStr = "k3" as NonEmptyStr
+data kimi_k3_256k_wire_id: NonEmptyStr = "k3-256k" as NonEmptyStr
+data kimi_for_coding_highspeed_wire_id: NonEmptyStr = "kimi-for-coding-highspeed" as NonEmptyStr
+data kimi_k28_preview_served_version_name: NonEmptyStr = "K2.8 Preview" as NonEmptyStr
+data kimi_k27_code_highspeed_served_version_name: NonEmptyStr = "K2.7 Code HighSpeed" as NonEmptyStr
+data kimi_k3_served_version_name: NonEmptyStr = "K3" as NonEmptyStr
+
+type KimiCodeRequestId
+  = KimiForCoding
+  | KimiK3
+  | KimiK3_256k
+  | KimiForCodingHighspeed
+
+fn kimi_code_request_id_wire(id: KimiCodeRequestId) -> NonEmptyStr {
+  match id {
+    KimiForCoding => kimi_for_coding_wire_id
+    KimiK3 => kimi_k3_wire_id
+    KimiK3_256k => kimi_k3_256k_wire_id
+    KimiForCodingHighspeed => kimi_for_coding_highspeed_wire_id
+  }
+}
+
+type KimiCodeServedVersion
+  = ServedK28Preview
+  | ServedK3
+  | ServedK27CodeHighspeed
+
+fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
+  match v {
+    ServedK28Preview => kimi_k28_preview_served_version_name
+    ServedK3 => kimi_k3_served_version_name
+    ServedK27CodeHighspeed => kimi_k27_code_highspeed_served_version_name
+  }
+}
+
+type KimiCodeAliasEnd
+  = AliasEndNotPublished
+  | AliasEndPublished { on: NonEmptyStr }
+
+type KimiCodeEffectiveFrom
+  = CitedAvailableOn { on: NonEmptyStr }
+  | StartDateNotPublishedOnCitedAuthorities { read_obligation: NonEmptyStr }
+
+type KimiCodeAliasAssignment {
+  request_id: KimiCodeRequestId
+  served_version: KimiCodeServedVersion
+  effective_from: KimiCodeEffectiveFrom
+  effective_until: KimiCodeAliasEnd
+  authority: ExternalAuthority
+}
+
+// THE WIRE ID IS STABLE; THE SERVED VERSION IS TIME-BOUNDED. Overwriting a timeless "current
+// version" row would collapse two epochs onto one name. K2.8 Preview is the 2026-09-11
+// rollout; the cited docs do not publish an until date.
+data kimi_for_coding_k28_preview_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  request_id: KimiForCoding,
+  served_version: ServedK28Preview,
+  effective_from: CitedAvailableOn { on: "2026-09-11" as NonEmptyStr },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_whats_new_authority,
+}
+
+// HighSpeed availability is cited to the live HTML h2
+// #highspeed-extra-usage-are-live-july-9-2026 (wn-date July 9, 2026), not to a markdown
+// rendering of whats-new.html: that conversion nested this block under the preceding
+// v0.24.0 July 14 CLI heading, which is a different announcement. Do not re-derive
+// 2026-07-14 from the markdown projection of the same page.
+data kimi_for_coding_highspeed_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  request_id: KimiForCodingHighspeed,
+  served_version: ServedK27CodeHighspeed,
+  effective_from: CitedAvailableOn { on: "2026-07-09" as NonEmptyStr },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_whats_new_authority,
+}
+
+data kimi_k3_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  request_id: KimiK3,
+  served_version: ServedK3,
+  effective_from: CitedAvailableOn { on: "2026-07-16" as NonEmptyStr },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_whats_new_authority,
+}
+
+data kimi_k3_256k_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  request_id: KimiK3_256k,
+  served_version: ServedK3,
+  effective_from: StartDateNotPublishedOnCitedAuthorities {
+    read_obligation: "whats-new.html and models.html list k3-256k but do not publish a first-available date" as NonEmptyStr,
+  },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_models_authority,
+}
+
+data kimi_code_catalog_observed_as_of: NonEmptyStr = "2026-09-11" as NonEmptyStr
+
+type KimiCodeThinkingEffort
+  = KimiCodeEffortLow
+  | KimiCodeEffortHigh
+  | KimiCodeEffortMax
+
+// models.html documents reasoning_effort low/high/max for both K3 (k3, k3-256k) and
+// K2.8 Preview (kimi-for-coding). This is the Kimi Code product-wide thinking-on control,
+// not a K2.8-only vocabulary applied to K3.
+fn kimi_code_thinking_effort_wire(effort: KimiCodeThinkingEffort) -> NonEmptyStr {
+  match effort {
+    KimiCodeEffortLow => "low" as NonEmptyStr
+    KimiCodeEffortHigh => "high" as NonEmptyStr
+    KimiCodeEffortMax => "max" as NonEmptyStr
+  }
+}
+
+type KimiCodeThinkingControl
+  = KimiThinkingOn { effort: KimiCodeThinkingEffort }
+  | KimiThinkingOff
+  | KimiHighSpeedThinkingOn
+
+type KimiCodeThinkingOnPolicy
+  = ThinkingOnWithDocumentedEffort
+  | HighSpeedThinkingOnOnly
+
+type KimiCodeThinkingOffPolicy
+  = ThinkingOffServes { version: KimiCodeServedVersion }
+  | ThinkingOffNotDocumented
+
+type KimiCodeCatalogRow {
+  assignment: KimiCodeAliasAssignment
+  thinking_on: KimiCodeThinkingOnPolicy
+  thinking_off: KimiCodeThinkingOffPolicy
+}
+
+type KimiCodeCatalogEpoch {
+  observed_as_of: NonEmptyStr
+  kimi_for_coding: KimiCodeCatalogRow
+  kimi_k3: KimiCodeCatalogRow
+  kimi_k3_256k: KimiCodeCatalogRow
+  kimi_for_coding_highspeed: KimiCodeCatalogRow
+}
+
+data kimi_code_catalog_as_of_2026_09_11: KimiCodeCatalogEpoch = KimiCodeCatalogEpoch {
+  observed_as_of: kimi_code_catalog_observed_as_of,
+  kimi_for_coding: KimiCodeCatalogRow {
+    assignment: kimi_for_coding_k28_preview_assignment,
+    thinking_on: ThinkingOnWithDocumentedEffort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_k3: KimiCodeCatalogRow {
+    assignment: kimi_k3_assignment,
+    thinking_on: ThinkingOnWithDocumentedEffort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_k3_256k: KimiCodeCatalogRow {
+    assignment: kimi_k3_256k_assignment,
+    thinking_on: ThinkingOnWithDocumentedEffort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_for_coding_highspeed: KimiCodeCatalogRow {
+    assignment: kimi_for_coding_highspeed_assignment,
+    thinking_on: HighSpeedThinkingOnOnly,
+    thinking_off: ThinkingOffNotDocumented,
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.moonshot.kimi_code" as NonEmptyStr,
+      decl_name: "kimi_code_catalog_as_of_2026_09_11" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: kimi_code_whats_new_authority,
+  further_citations: [kimi_code_models_authority],
+}
+
+fn kimi_code_catalog_row(epoch: KimiCodeCatalogEpoch, requested: KimiCodeRequestId) -> KimiCodeCatalogRow {
+  match requested {
+    KimiForCoding => epoch.kimi_for_coding
+    KimiK3 => epoch.kimi_k3
+    KimiK3_256k => epoch.kimi_k3_256k
+    KimiForCodingHighspeed => epoch.kimi_for_coding_highspeed
+  }
+}
+
+type KimiCodeRoute {
+  requested_id: KimiCodeRequestId
+  served_version: KimiCodeServedVersion
+  served_thinking: KimiCodeThinkingControl
+}
+
+type KimiCodeRouteResult
+  = KimiCodeRouteResolved { route: KimiCodeRoute }
+  | KimiCodeThinkingControlNotDocumented {
+      requested_id: KimiCodeRequestId
+      thinking: KimiCodeThinkingControl
+    }
+
+// ROUTING CONSUMES THE CATALOG EPOCH. Thinking-off for the K3 family and K2.8 Preview is served as
+// K2.8 Preview; the request id is not rewritten. HighSpeed is Thinking:ON only — effort levels and
+// thinking-off are not documented for that id, so those combinations refuse rather than ignore the control.
+fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingControl) -> KimiCodeRouteResult {
+  let row = kimi_code_catalog_row(epoch: kimi_code_catalog_as_of_2026_09_11, requested: requested)
+  match thinking {
+    KimiThinkingOff => match row.thinking_off {
+      ThinkingOffServes { version: v } => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: v,
+          served_thinking: thinking,
+        },
+      }
+      ThinkingOffNotDocumented => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
+    }
+    KimiThinkingOn { effort: _ } => match row.thinking_on {
+      ThinkingOnWithDocumentedEffort => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: row.assignment.served_version,
+          served_thinking: thinking,
+        },
+      }
+      HighSpeedThinkingOnOnly => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
+    }
+    KimiHighSpeedThinkingOn => match row.thinking_on {
+      HighSpeedThinkingOnOnly => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: row.assignment.served_version,
+          served_thinking: thinking,
+        },
+      }
+      ThinkingOnWithDocumentedEffort => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
+    }
+  }
+}
+
+data kimi_k28_declared_context_ceiling: TokenCount = token_count(count: 1048576)
+
+fn kimi_code_fact(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "extdeps.moonshot.kimi_code" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
+  }
+}
+
+data kimi_code_provider_integration_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: kimi_code_fact(decl_name: "kimi_code_route" as NonEmptyStr),
+    reason: "KIMI28-1 is the owning change: it binds this resolver on the admitted Kimi Code live-request path; this change does not",
+    dissolution: unbound_dissolution(description: "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_fact(decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr),
+    reason: "KIMI28-1 request admission applies this TokenCount as the K2.8 Preview context bound; this change does not admit requests",
+    dissolution: unbound_dissolution(description: "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_fact(decl_name: "KimiCodeEffectiveFrom" as NonEmptyStr),
+    reason: "CitedAvailableOn.on is a Gregorian day as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (pin.dag pin_currency_gap dissolve names the same gap)",
+    dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_fact(decl_name: "KimiCodeAliasEnd" as NonEmptyStr),
+    reason: "AliasEndPublished.on is the same Gregorian-day NonEmptyStr as CitedAvailableOn.on",
+    dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
+  ),
+]

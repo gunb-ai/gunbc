@@ -1,11 +1,11 @@
 module test.claim.fabric_terminal_contract_witness
 
-import test.claim.fabric.provider_use_fixture { fixture_route }
+import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_for }
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
+import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, OfferKey }
 import product.fabric.work { CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, declared_terminal_obligations }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
@@ -393,27 +393,40 @@ data stale_receipt: Receipt<NonEmptyStr> = Receipt {
   },
 }
 
-data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
-  id: FabricIdentity { principal: "operator", key: "grant-1" },
-  object: FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
-  context: FabricGrantContext {
+fn fixture_grant() -> ExecutionGrant<NonEmptyStr>? {
+  match fixture_permit_for(
+    route: owned_offer.route,
+    offer: owned_offer.id,
     demand: github_binding_demand.id,
     work: FabricIdentity { principal: "operator", key: fixture_work_key },
-    attempt: first_attempt.id,
-    executor: "srv3",
-    lease: lease_gen_9,
-    issued_at: "2026-08-18T01:00:00Z",
-    maximum_liability: money_amount_micro(1000000),
-  },
-  evidence: FabricGrantEvidence {
-    fungibility_receipt: "fungibility-1",
-    offer_authority: "offer-authority-1",
-    resource_conservation: "resource-conservation-1",
-    budget_conservation: "budget-conservation-1",
-    principal_authority: "principal-authority-1",
-  },
-  resource_reservations: ["reservation-cpu-1"],
-  money_reservation: "reservation-money-1",
+  ) {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
+        id: FabricIdentity { principal: "operator", key: "grant-1" },
+        object: FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
+        context: FabricGrantContext {
+          demand: github_binding_demand.id,
+          work: FabricIdentity { principal: "operator", key: fixture_work_key },
+          attempt: first_attempt.id,
+          executor: "srv3",
+          lease: lease_gen_9,
+          issued_at: "2026-08-18T01:00:00Z",
+          maximum_liability: money_amount_micro(1000000),
+        },
+        evidence: FabricGrantEvidence {
+          fungibility_receipt: "fungibility-1",
+          offer_authority: "offer-authority-1",
+          resource_conservation: "resource-conservation-1",
+          budget_conservation: "budget-conservation-1",
+          principal_authority: "principal-authority-1",
+        },
+        permit: permit,
+        resource_reservations: ["reservation-cpu-1"],
+        money_reservation: "reservation-money-1",
+      }
+    }
+  }
 }
 
 // The receipt that makes the fence discriminating. It is at the SAME
@@ -468,12 +481,16 @@ data foreign_attempt_receipt: Receipt<NonEmptyStr> = Receipt {
 }
 
 fn admission_label(r: Receipt<NonEmptyStr>) -> NonEmptyStr {
-  match admit_receipt_for_grant(r: r, g: fixture_grant) {
-    ReceiptAdmissible => "admissible"
-    ReceiptFromDifferentLease => "different-lease"
-    ReceiptFromDifferentAttempt => "different-attempt"
-    ReceiptFingerprintIncomparable => "fingerprint-incomparable"
-    ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
+  match fixture_grant() {
+    Absent => "no-permit"
+    Present { value: g } =>
+      match admit_receipt_for_grant(r: r, g: g) {
+        ReceiptAdmissible => "admissible"
+        ReceiptFromDifferentLease => "different-lease"
+        ReceiptFromDifferentAttempt => "different-attempt"
+        ReceiptFingerprintIncomparable => "fingerprint-incomparable"
+        ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
+      }
   }
 }
 
@@ -512,12 +529,16 @@ data granted_lease_receipt: Receipt<NonEmptyStr> = Receipt {
 // admission function that refuses everything.
 
 test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
-  match admit_receipt_for_grant(r: granted_lease_receipt, g: fixture_grant) {
-    ReceiptAdmissible => true
-    ReceiptFromDifferentLease => false
-    ReceiptFromDifferentAttempt => false
-    ReceiptFingerprintIncomparable => false
-    ReceiptGenerationStale { presented: _, current: _ } => false
+  match fixture_grant() {
+    Absent => false
+    Present { value: g } =>
+      match admit_receipt_for_grant(r: granted_lease_receipt, g: g) {
+        ReceiptAdmissible => true
+        ReceiptFromDifferentLease => false
+        ReceiptFromDifferentAttempt => false
+        ReceiptFingerprintIncomparable => false
+        ReceiptGenerationStale { presented: _, current: _ } => false
+      }
   }
 }
 

@@ -1,0 +1,213 @@
+module gunbc.spark.pinned_base_env_classification
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.container.oci.image_config { ContainerImageConfig, container_image_config_env }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
+  sparkrun_vllm_ds4_gb10_digest_sha256_hex,
+  sparkrun_vllm_ds4_gb10_pinned_reference,
+  sparkrun_vllm_ds4_gb10_repository,
+}
+import gunbc.container.registry_image_config {
+  PinnedRegistryImageConfig,
+  PinnedRegistryImageConfigRefused,
+  container_image_config_from_env,
+  read_docker_hub_image_config_at_digest,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+
+// WHAT THIS CLASSIFIES: Env entries decoded from a ContainerImageConfig against a modeled
+// syntactic class (name markers and PEM headers). EnvSecretShapeUnmatched is that class
+// unmatched, not a claim that the Env contains no secrets. WHAT IT DOES NOT: whether a live
+// container runs that image.
+
+type EnvSecretStanding
+  = EnvSecretShapeUnmatched { names: List<NonEmptyStr> }
+  | EnvContainsSecretShapedEntry { secret_shaped_names: List<NonEmptyStr> }
+
+type PinnedBaseImageEnvClassification {
+  pin: NonEmptyStr
+  env_names: List<NonEmptyStr>
+  standing: EnvSecretStanding
+}
+
+fn env_entry_name(entry: String) -> String {
+  match split(s: entry, delimiter: "=") |> get(0) {
+    Absent => entry
+    Present { value: n } => n
+  }
+}
+
+fn env_entry_value(entry: String) -> String {
+  let parts = split(s: entry, delimiter: "=")
+  if count(parts) < 2 {
+    ""
+  } else {
+    join(parts.skip(n: 1), "=")
+  }
+}
+
+fn env_name_ends_with(name: String, suffix: String) -> Bool {
+  if name.length() < suffix.length() {
+    false
+  } else {
+    substring(s: name, start: name.length() - suffix.length(), end: name.length()) == suffix
+  }
+}
+
+fn env_name_is_secret_shaped(name: String) -> Bool {
+  string_contains(s: name, pattern: "PASSWORD")
+    || string_contains(s: name, pattern: "PASSWD")
+    || string_contains(s: name, pattern: "SECRET")
+    || string_contains(s: name, pattern: "TOKEN")
+    || string_contains(s: name, pattern: "CREDENTIAL")
+    || string_contains(s: name, pattern: "API_KEY")
+    || string_contains(s: name, pattern: "ACCESS_KEY")
+    || env_name_ends_with(name: name, suffix: "_KEY")
+}
+
+fn env_value_is_secret_shaped(value: String) -> Bool {
+  string_contains(s: value, pattern: "BEGIN PRIVATE KEY")
+    || string_contains(s: value, pattern: "BEGIN RSA PRIVATE KEY")
+    || string_contains(s: value, pattern: "BEGIN OPENSSH PRIVATE KEY")
+}
+
+fn env_entry_is_secret_shaped(entry: String) -> Bool {
+  env_name_is_secret_shaped(name: env_entry_name(entry: entry))
+    || env_value_is_secret_shaped(value: env_entry_value(entry: entry))
+}
+
+fn env_entry_name_nonempty(entry: String) -> NonEmptyStr? {
+  let n = env_entry_name(entry: entry)
+  if n.length() == 0 {
+    none
+  } else {
+    Present { value: n as NonEmptyStr }
+  }
+}
+
+fn env_names(env: List<String>) -> List<NonEmptyStr> {
+  fold(env, init: [], f: (acc, entry) =>
+    match env_entry_name_nonempty(entry: entry) {
+      Absent => acc
+      Present { value: n } => append(acc, items: [n])
+    })
+}
+
+fn secret_shaped_names(env: List<String>) -> List<NonEmptyStr> {
+  fold(env, init: [], f: (acc, entry) =>
+    if env_entry_is_secret_shaped(entry: entry) {
+      match env_entry_name_nonempty(entry: entry) {
+        Absent => acc
+        Present { value: n } => append(acc, items: [n])
+      }
+    } else {
+      acc
+    })
+}
+
+fn classify_container_image_config_env(config: ContainerImageConfig) -> EnvSecretStanding {
+  let env = container_image_config_env(cfg: config)
+  let secrets = secret_shaped_names(env: env)
+  if count(secrets) == 0 {
+    EnvSecretShapeUnmatched { names: env_names(env: env) }
+  } else {
+    EnvContainsSecretShapedEntry { secret_shaped_names: secrets }
+  }
+}
+
+fn classify_pinned_base_image_env(config: ContainerImageConfig, pin: NonEmptyStr) -> PinnedBaseImageEnvClassification {
+  PinnedBaseImageEnvClassification {
+    pin: pin,
+    env_names: env_names(env: container_image_config_env(cfg: config)),
+    standing: classify_container_image_config_env(config: config),
+  }
+}
+
+fn env_secret_standing_is_secret_bearing(standing: EnvSecretStanding) -> Bool {
+  match standing {
+    EnvSecretShapeUnmatched { names: _ } => false
+    EnvContainsSecretShapedEntry { secret_shaped_names: _ } => true
+  }
+}
+
+fn env_secret_standing_carried_strings(standing: EnvSecretStanding) -> List<String> {
+  match standing {
+    EnvSecretShapeUnmatched { names: ns } => map(ns, n => n as String)
+    EnvContainsSecretShapedEntry { secret_shaped_names: ns } => map(ns, n => n as String)
+  }
+}
+
+fn pinned_base_classification_carried_strings(row: PinnedBaseImageEnvClassification) -> List<String> {
+  concat(
+    concat([row.pin as String], map(row.env_names, n => n as String)),
+    env_secret_standing_carried_strings(standing: row.standing),
+  )
+}
+
+fn pinned_base_classification_carries_text(row: PinnedBaseImageEnvClassification, text: String) -> Bool {
+  any(pinned_base_classification_carried_strings(row: row), s => string_contains(s: s, pattern: text))
+}
+
+type PinnedBaseEnvRead
+  = PinnedBaseEnvReadClassified { classification: PinnedBaseImageEnvClassification }
+  | PinnedBaseEnvReadRefused { cause: String }
+
+fn sparkrun_pinned_base_env_read() -> PinnedBaseEnvRead
+  uses net: Network
+{
+  match read_docker_hub_image_config_at_digest(
+    repository: sparkrun_vllm_ds4_gb10_repository,
+    digest_sha256_hex: sparkrun_vllm_ds4_gb10_digest_sha256_hex,
+    pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  ) {
+    PinnedRegistryImageConfigRefused { cause: c } => PinnedBaseEnvReadRefused { cause: c }
+    PinnedRegistryImageConfig { pin: pin, config: config } =>
+      PinnedBaseEnvReadClassified {
+        classification: classify_pinned_base_image_env(config: config, pin: pin),
+      }
+  }
+}
+
+fn sparkrun_pinned_base_env_classification_wet() -> ProcessExit
+  uses net: Network
+{
+  match sparkrun_pinned_base_env_read() {
+    PinnedBaseEnvReadRefused { cause: c } =>
+      exit_failure(reason: join(["sparkrun_pinned_base_env_classification: ", c], ""))
+    PinnedBaseEnvReadClassified { classification: row } =>
+      match row.standing {
+        EnvSecretShapeUnmatched { names: _ } => ExitSuccess
+        EnvContainsSecretShapedEntry { secret_shaped_names: ns } =>
+          if count(ns) == 0 {
+            exit_failure(reason: "sparkrun_pinned_base_env_classification: secret-bearing standing carried no names")
+          } else {
+            ExitSuccess
+          }
+      }
+  }
+}
+
+data fixture_secret_shaped_value: String = "fixture-not-a-live-secret"
+data fixture_pem_shaped_value: String = "-----BEGIN PRIVATE KEY-----fixture"
+
+fn fixture_secret_shaped_config() -> ContainerImageConfig {
+  container_image_config_from_env(env: [
+    "PATH=/usr/bin",
+    join(["AWS_SECRET_ACCESS_KEY=", fixture_secret_shaped_value], ""),
+  ])
+}
+
+fn fixture_pem_shaped_config() -> ContainerImageConfig {
+  container_image_config_from_env(env: [
+    join(["TLS_CERT=", fixture_pem_shaped_value], ""),
+  ])
+}
+
+fn fixture_non_secret_config() -> ContainerImageConfig {
+  container_image_config_from_env(env: [
+    "GLOO_SOCKET_IFNAME=fixture",
+    "NCCL_SOCKET_IFNAME=fixture",
+    "NODE_IP=0.0.0.0",
+  ])
+}

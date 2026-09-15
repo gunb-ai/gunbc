@@ -139,15 +139,15 @@ fn decode_fabric_ci_evidence_wire(wire: String) -> FabricCiEvidenceDecode {
   }
 }
 
-func fabric_ci_calibration_assertion_success() -> ProcessExit { ExitSuccess }
+fn fabric_ci_calibration_assertion_success() -> ProcessExit { ExitSuccess }
 
-func fabric_ci_calibration_bool_must_refuse() -> Bool { true }
+fn fabric_ci_calibration_bool_must_refuse() -> Bool { true }
 
-func fabric_ci_calibration_raw_coproduct_must_not_cross() -> FabricCiCalibrationProjection {
+fn fabric_ci_calibration_raw_coproduct_must_not_cross() -> FabricCiCalibrationProjection {
   FabricCiCalibrationAlpha { payload: "raw-coproduct" }
 }
 
-func fabric_ci_calibration_diagnostic_forgery(path: String) -> String {
+fn fabric_ci_calibration_diagnostic_forgery(path: String) -> String {
   fabric_ci_calibration_alpha_wire()
 }
 
@@ -167,20 +167,20 @@ fn fabric_ci_write_wire(path: String, wire: String) -> ProcessExit {
   else { ExitSuccess }
 }
 
-func fabric_ci_calibration_transport_alpha(path: String) -> ProcessExit {
+fn fabric_ci_calibration_transport_alpha(path: String) -> ProcessExit {
   fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_alpha_wire())
 }
 
-func fabric_ci_calibration_transport_beta(path: String) -> ProcessExit {
+fn fabric_ci_calibration_transport_beta(path: String) -> ProcessExit {
   fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_beta_wire())
 }
 
-func fabric_ci_calibration_transport_ignores_write_failure(path: String) -> ProcessExit {
+fn fabric_ci_calibration_transport_ignores_write_failure(path: String) -> ProcessExit {
   let ignored = Filesystem.Write(path: "/proc/fci-evidence-ignored-write", content: fabric_ci_calibration_alpha_wire())
   ExitSuccess
 }
 
-func fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
+fn fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
   match decode_fabric_ci_evidence_wire(wire: wire) {
     FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 transport undecodable")
     FabricCiEvidenceDecoded { value: decoded } =>
@@ -190,7 +190,7 @@ func fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
   }
 }
 
-func fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
+fn fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
   let alpha = fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "same" })
   let beta = fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "same" })
   if alpha == beta || starts_with(alpha, prefix: beta) || starts_with(beta, prefix: alpha) {
@@ -198,7 +198,7 @@ func fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
   } else { exit_failure(reason: "FCI-EVIDENCE-0 decisive red: projection arms remain distinct") }
 }
 
-func fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
+fn fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
   match decode_fabric_ci_evidence_wire(wire: wire) {
     FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 beta transport undecodable")
     FabricCiEvidenceDecoded { value: decoded } =>
@@ -260,6 +260,6 @@ fn fabric_ci_calibration_plan_wire() -> String {
   concat(join(map(fabric_ci_calibration_steps(), step => fabric_ci_calibration_step_wire(step: step)), "\n"), "\n")
 }
 
-func fabric_ci_calibration_write_plan(path: String) -> ProcessExit {
+fn fabric_ci_calibration_write_plan(path: String) -> ProcessExit {
   fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_plan_wire())
 }

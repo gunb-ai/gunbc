@@ -1,0 +1,167 @@
+FAN0_0_Speed     | 01h | ok  | 29.0 | 5802 RPM
+FAN0_1_Speed     | 02h | ok  | 29.1 | 5677 RPM
+FAN1_0_Speed     | 03h | ok  | 29.2 | 5802 RPM
+FAN1_1_Speed     | 04h | ok  | 29.3 | 5802 RPM
+FAN2_0_Speed     | 05h | ok  | 29.4 | 5802 RPM
+FAN2_1_Speed     | 06h | ok  | 29.5 | 5802 RPM
+FAN3_0_Speed     | 07h | ok  | 29.6 | 5552 RPM
+FAN3_1_Speed     | 08h | ok  | 29.7 | 5677 RPM
+FAN4_0_Speed     | 09h | ok  | 29.8 | 5677 RPM
+FAN4_1_Speed     | 0Ah | ok  | 29.9 | 5802 RPM
+FAN5_0_Speed     | 0Bh | ok  | 29.10 | 5677 RPM
+FAN5_1_Speed     | 0Ch | ok  | 29.11 | 5677 RPM
+FAN6_0_Speed     | 0Dh | ok  | 29.10 | 5802 RPM
+FAN6_1_Speed     | 0Eh | ok  | 29.11 | 5677 RPM
+FAN7_0_Speed     | B9h | ok  | 29.10 | 5802 RPM
+FAN7_1_Speed     | BAh | ok  | 29.11 | 5802 RPM
+FAN0_Presence    | 0Fh | ok  | 29.0 | Device Present
+FAN1_Presence    | 10h | ok  | 29.0 | Device Present
+FAN2_Presence    | 11h | ok  | 29.0 | Device Present
+FAN3_Presence    | 12h | ok  | 29.0 | Device Present
+FAN4_Presence    | 13h | ok  | 29.0 | Device Present
+FAN5_Presence    | 14h | ok  | 29.0 | Device Present
+FAN6_Presence    | 15h | ok  | 29.0 | Device Present
+FAN7_Presence    | 16h | ok  | 29.0 | Device Present
+FAN0_Failure     | 17h | ok  | 29.0 | 
+FAN1_Failure     | 18h | ok  | 29.0 | 
+FAN2_Failure     | 19h | ok  | 29.0 | 
+FAN3_Failure     | 1Ah | ok  | 29.0 | 
+FAN4_Failure     | 1Bh | ok  | 29.0 | 
+FAN5_Failure     | 1Ch | ok  | 29.0 | 
+FAN6_Failure     | 1Dh | ok  | 29.0 | 
+FAN7_Failure     | 1Eh | ok  | 29.0 | 
+CPU0_0V8_VDDCSOC | 1Fh | ok  | 19.0 | 0.75 Volts
+CPU0_0V75_PCP    | 20h | ok  | 19.0 | 1.06 Volts
+CPU0_1V2VDDQ0123 | 21h | ok  | 19.0 | 1.23 Volts
+CPU0_0V6_VTT0123 | 22h | ok  | 19.0 | 0.61 Volts
+CPU0_2V5_VPP0123 | 23h | ok  | 19.0 | 2.48 Volts
+CPU0_1V2VDDQ4567 | 24h | ok  | 19.0 | 1.23 Volts
+CPU0_0V6_VTT4567 | 25h | ok  | 19.0 | 0.61 Volts
+CPU0_2V5_VPP4567 | 26h | ok  | 19.0 | 2.50 Volts
+CPU0_0V85_RCA    | 27h | ok  | 19.0 | 0.91 Volts
+CPU0_1V8_VDDH    | 28h | ok  | 19.0 | 1.79 Volts
+CPU0_1V5_VDDH    | 29h | ok  | 19.0 | 1.49 Volts
+CPU0_1V8_SOC     | 2Ah | ok  | 19.0 | 1.78 Volts
+CPU0_1V8_PCP     | 2Bh | ok  | 19.0 | 1.78 Volts
+CPU0_3V3_SOC     | 2Ch | ok  | 19.0 | 3.28 Volts
+CPU1_0V8_VDDCSOC | 2Dh | ok  | 19.0 | 0.75 Volts
+CPU1_0V75_PCP    | 2Eh | ok  | 19.0 | 1.04 Volts
+CPU1_1V2VDDQ0123 | 2Fh | ok  | 19.0 | 1.23 Volts
+CPU1_0V6_VTT0123 | 30h | ok  | 19.0 | 0.62 Volts
+CPU1_2V5_VPP0123 | 31h | ok  | 19.0 | 2.50 Volts
+CPU1_1V2VDDQ4567 | 32h | ok  | 19.0 | 1.23 Volts
+CPU1_0V6_VTT4567 | 33h | ok  | 19.0 | 0.61 Volts
+CPU1_2V5_VPP4567 | 34h | ok  | 19.0 | 2.48 Volts
+CPU1_0V85_RCA    | 35h | ok  | 19.0 | 0.92 Volts
+CPU1_1V8_VDDH    | 36h | ok  | 19.0 | 1.80 Volts
+CPU1_1V5_VDDH    | 37h | ok  | 19.0 | 1.50 Volts
+CPU1_1V8_SOC     | 38h | ok  | 19.0 | 1.80 Volts
+CPU1_1V8_PCP     | 39h | ok  | 19.0 | 1.80 Volts
+CPU1_3V3_SOC     | 3Ah | ok  | 19.0 | 3.31 Volts
+CPU0_SOC_Temp    | 3Dh | ok  | 30.15 | 46 degrees C
+CPU0_SOC_VRDTemp | 3Eh | ok  | 30.16 | 36 degrees C
+CPU0_DIMMVRDTemp | 3Fh | ok  | 30.17 | 33 degrees C
+CPU0_PMD_VRDTemp | 40h | ok  | 30.18 | 34 degrees C
+CPU0_DIMMG0_Temp | 41h | ok  | 30.19 | 34 degrees C
+CPU0_DIMMG1_Temp | 42h | ok  | 30.19 | 32 degrees C
+CPU0_CPU_Pwr     | 43h | ok  | 19.39 | 28 Watts
+CPU0_DIMM_VR1Pwr | 44h | ok  | 19.40 | 0 Watts
+CPU0_DIMM_VR2Pwr | 45h | ok  | 19.41 | 0 Watts
+CPU0_MEM_Pwr     | 46h | ok  | 19.42 | 0 Watts
+CPU0_CPU_VCORE   | 47h | ok  | 19.43 | 1.06 Volts
+CPU0_DIMMVR1Volt | 48h | ok  | 19.44 | 1.23 Volts
+CPU0_DIMMVR2Volt | 49h | ok  | 19.45 | 1.23 Volts
+CPU0_DIMMDDRVolt | 4Ah | ok  | 19.46 | 1.23 Volts
+CPU0_Hightemp    | 4Bh | ok  |  3.1 | 
+CPU0_Overtemp    | 4Ch | ok  |  3.1 | 
+CPU1_SOC_Temp    | 4Eh | ok  | 30.20 | 47 degrees C
+CPU1_SOC_VRDTemp | 4Fh | ok  | 30.21 | 38 degrees C
+CPU1_DIMMVRDTemp | 50h | ok  | 30.22 | 33 degrees C
+CPU1_PMD_VRDTemp | 51h | ok  | 30.23 | 34 degrees C
+CPU1_DIMMG0_Temp | 52h | ok  | 30.24 | 32 degrees C
+CPU1_DIMMG1_Temp | 53h | ok  | 30.24 | 33 degrees C
+CPU1_CPU_Pwr     | 54h | ok  | 19.47 | 30 Watts
+CPU1_DIMM_VR1Pwr | 55h | ok  | 19.48 | 0 Watts
+CPU1_DIMM_VR2Pwr | 56h | ok  | 19.49 | 0 Watts
+CPU1_MEM_Pwr     | 57h | ok  | 19.50 | 0.80 Watts
+CPU1_CPU_VCORE   | 58h | ok  | 19.51 | 1.03 Volts
+CPU1_DIMMVR1Volt | 59h | ok  | 19.52 | 1.23 Volts
+CPU1_DIMMVR2Volt | 5Ah | ok  | 19.53 | 1.23 Volts
+CPU1_DIMMDDRVolt | 5Bh | ok  | 19.54 | 1.23 Volts
+CPU1_Hightemp    | 5Ch | ok  |  3.1 | 
+CPU1_Overtemp    | 5Dh | ok  |  3.1 | 
+FIO_Inlet_Temp   | 65h | ok  | 30.0 | 25 degrees C
+Outlet_1_Temp    | 66h | ok  | 30.0 | 37 degrees C
+Outlet_2_Temp    | 67h | ok  | 30.0 | 37 degrees C
+BMC_Zone_Temp    | 68h | ok  | 30.0 | 36 degrees C
+PSU_Zone_Temp    | 69h | ok  | 30.0 | 32 degrees C
+OCP_Zone_Temp    | 6Ah | ok  | 30.0 | 36 degrees C
+M2_Zone_Temp     | 6Bh | ok  | 30.0 | 34 degrees C
+HDD_BP_Temp1     | 6Dh | ok  |  3.0 | 25 degrees C
+HDD_BP_Temp2     | 6Eh | ok  |  3.0 | 25 degrees C
+PSU1_POUT        | 70h | ok  | 19.0 | 120 Watts
+PSU2_POUT        | 71h | ok  | 19.0 | 0 Watts
+Total_Power      | 72h | ok  | 19.0 | 120 Watts
+PSU1_TEMP        | 73h | ok  | 19.0 | 35 degrees C
+PSU2_TEMP        | 74h | ok  | 19.0 | 32 degrees C
+PSU1_FAN_SPEED   | 75h | ok  | 19.1 | 5000 RPM
+PSU2_FAN_SPEED   | 76h | ok  | 19.1 | 0 RPM
+PSU1_Status      | EAh | ok  |  0.0 | Presence detected
+PSU2_Status      | EBh | ok  |  0.0 | Presence detected, Power Supply AC lost
+HDD0_Status      | 77h | ok  | 208.0 | 
+HDD1_Status      | 78h | ok  | 208.0 | 
+HDD2_Status      | 79h | ok  | 208.0 | 
+HDD3_Status      | 7Ah | ok  | 208.0 | 
+HDD4_Status      | 7Bh | ok  | 208.0 | 
+HDD5_Status      | 7Ch | ok  | 208.0 | 
+HDD6_Status      | 7Dh | ok  | 208.0 | 
+HDD7_Status      | 7Eh | ok  | 208.0 | 
+HDD8_Status      | 7Fh | ok  | 208.0 | 
+HDD9_Status      | 80h | ok  | 208.0 | 
+HDD10_Status     | 81h | ok  | 208.0 | 
+HDD11_Status     | 82h | ok  | 208.0 | 
+HDD0_Temp        | 8Fh | ns  |  3.1 | No Reading
+HDD1_Temp        | 90h | ns  |  3.2 | No Reading
+HDD2_Temp        | 91h | ns  |  3.3 | No Reading
+HDD3_Temp        | 92h | ns  |  3.4 | No Reading
+HDD4_Temp        | 93h | ns  |  3.5 | No Reading
+HDD5_Temp        | 94h | ns  |  3.6 | No Reading
+HDD6_Temp        | 95h | ns  |  3.7 | No Reading
+HDD7_Temp        | 96h | ns  |  3.8 | No Reading
+HDD8_Temp        | 97h | ns  |  3.9 | No Reading
+HDD9_Temp        | 98h | ns  |  3.10 | No Reading
+HDD10_Temp       | 99h | ns  |  3.11 | No Reading
+HDD11_Temp       | 9Ah | ns  |  3.12 | No Reading
+OCP_Temp         | A8h | ns  |  3.0 | No Reading
+OCP_OPT1_Temp    | A9h | ns  |  3.0 | No Reading
+OCP_OPT2_Temp    | AAh | ns  |  3.0 | No Reading
+GPU1_Temp        | ABh | ns  | 30.0 | No Reading
+GPU2_Temp        | ACh | ns  | 30.0 | No Reading
+Riser0_Zone_Temp | AFh | ok  | 30.0 | 33 degrees C
+Riser1_Zone_Temp | B2h | ok  | 30.0 | 31 degrees C
+CPU0_3V3_SRD_ADC | BDh | ok  | 19.0 | 3.32 Volts
+CPU1_3V3_SRD_ADC | BEh | ok  | 19.0 | 3.30 Volts
+CPU0_5V_SRD      | BFh | ok  | 19.0 | 5.10 Volts
+CPU1_5V_SRD      | C0h | ok  | 19.0 | 5.03 Volts
+3V3_SB           | F1h | ok  |  7.0 | 3.31 Volts
+System_Inlet     | C2h | ok  |  3.0 | 25 degrees C
+Sys_Boot_Restart | D5h | ok  | 34.2 | 
+Event_log        | D6h | ok  | 33.2 | 
+Watchdog2        | D7h | ok  | 33.0 | 
+CPU0_SCP_Status  | DBh | ok  |  3.1 | 
+CPU1_SCP_Status  | DCh | ok  |  3.1 | 
+EndOfPost        | E2h | ok  |  6.2 | 
+BmcReset         | E4h | ok  |  3.1 | 
+ReadFrontBPHDD   | E9h | ok  | 208.0 | 
+M2_SSD_Temp      | F2h | ns  | 30.0 | No Reading
+Host_SPI_Auth    | E6h | ns  | 208.2 | No Reading
+CPU1_MemStatus   | 63h | ok  |  8.0 | 
+CPU1_ACPI_State  | 5Eh | ok  | 34.2 | S0/G0: working
+CPU1_CPU_Status  | DAh | ok  |  3.2 | 
+CPU1_PCIeStatus  | 60h | ok  | 23.0 | 
+CPU1_OtherStatus | C6h | ok  |  0.0 | 
+CPU0_MemStatus   | 61h | ok  |  8.0 | 
+CPU0_CPU_Status  | D9h | ok  |  3.2 | 
+CPU0_ACPI_State  | 4Dh | ok  | 34.1 | S0/G0: working
+CPU0_OtherStatus | C5h | ok  |  0.0 | 
+CPU0_PCIeStatus  | 5Fh | ok  | 23.0 | 

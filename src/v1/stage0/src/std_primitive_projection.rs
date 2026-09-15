@@ -164,6 +164,15 @@ pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_type_declarer_qualified_names() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("type_declarer_qualified_names".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -195,6 +204,15 @@ pub fn primitive_symbol_intern_lexeme() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
             primitive_identity_slug("symbol_intern_lexeme".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_data_init_decl_facts_live() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("data_init_decl_facts_live".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -249,6 +267,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_type_declarer_qualified_names(),
+            "v2.std.decl_index".to_string(),
+            "type_declarer_qualified_names".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_concept_decl_facts(),
             "v2.std.concept_index".to_string(),
             "concept_decl_facts".to_string(),
@@ -288,6 +312,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_symbol_intern_lexeme(),
             "v2.std.compilers.lexing".to_string(),
             "symbol_intern_lexeme".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_data_init_decl_facts_live(),
+            "v2.std.data_index".to_string(),
+            "data_init_decl_facts_live".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

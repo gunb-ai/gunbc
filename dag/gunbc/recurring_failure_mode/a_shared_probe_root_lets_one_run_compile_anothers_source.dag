@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_shared_probe_root_lets_one_run_compile_anothers_source
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_shared_probe_root_lets_one_run_compile_anothers_source: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_shared_probe_root_lets_one_run_compile_anothers_source" as NonEmptyStr,
+
+  receipts: [
+    "**a shared probe root lets one run compile another run source** (two executions materialize their generated crate into a directory keyed by WHAT is built rather than by WHO builds it. The second writer overwrites the first; the loser compiles the winner source against its own dependencies, and the type errors are attributed to the loser tree. The exclusion that would stop it EXISTS in this corpus and the failing caller does not take it.)",
+
+    "INVALID STATE: a build whose SOURCE came from one revision and whose DEPENDENCIES came from another, with a diagnostic naming only the second.",
+
+    "THE PROTECTION IS BUILT AND BYPASSED, WHICH IS THE WHOLE POINT OF THIS ROW. gunbc.emitted_closure_compile_host acquire_probe_root_lock creates an exclusive lock in the probe root and REFUSES a second concurrent run with a typed located cause; its own annotation argues the design -- refusing beats waiting, which serializes into the same shared state, and beats a private directory per run, which throws away the warm target dir. That reasoning is sound and it is already written down. run_required_emit_compile takes the lock. THE v2-NATIVE ROUTE DOES NOT: v1_compiler.cli_run.native_lane_runner selects the same root through lane_emit_compile_probe_root and passes it to emission without acquiring anything. So this is not a missing mechanism; it is a mechanism one caller reaches around.",
+
+    "WHY IT SURVIVES REVIEW: the guard exists, it is well argued, and a reviewer who greps for it FINDS it. Establishing that a given caller takes it requires following the call, which nobody does when the protection is known to be present. A built wall with one gate left open reads, from a distance, exactly like a built wall.",
+
+    "SPECIMEN (gunbc#10940, 2026-09-12). A baseline run of the base revision and a successor run of the branch executed concurrently on one host. The successor refused EmittedCompilerBuildFailed with E0063 naming three missing fields on a cost-row type. The first reading -- mine -- was that the branch emitted a broken driver. It had not: the emitted main on disk was the BASE revision, written minutes earlier by the baseline, and predated the three fields the branch added. Neither run took the lock, so nothing refused and the wrong verdict was computed against an innocent tree.",
+
+    "DISTINGUISHING FACT, so the next reader arrives faster: READ THE GENERATED ARTIFACT. If its content belongs to a revision other than the one being built -- a field set, a call, a spelling from another head -- the build is compiling somebody else source, and its timestamp falling inside another run window confirms it.",
+
+    "THE LOUD FORM WAS ALREADY FIXED AND THE SILENT ONE LEFT OPEN. The same shared directory previously produced EACCES against another job artifacts, and that repair routed the required lane to a declared per-job root. A collision class repaired where it announces itself and left reachable where it does not is the more dangerous half surviving.",
+
+    "RUNG: found BELOW the ladder for the unlocked caller. The run does not merely fail; it fails with a confident, specific cause about the wrong subject. The locked caller sits at 1, mitigated by a typed refusal.",
+
+    "CEILING 4, structurally impossible, and MOST OF THE DISTANCE IS ALREADY TRAVELLED -- which is why the honest ceiling is high rather than aspirational. Selecting the probe root and taking exclusive ownership of it are one operation, so a selector that RETURNS an owned root (the lock taken, released on drop) leaves no spelling by which a caller can hold the path without the exclusion. Then the invalid state has no constructor, rather than depending on each caller remembering.",
+
+    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): probe-root selection yields an owned root, so acquiring the path and acquiring the exclusion cannot be separated. Adding the existing lock call to the one bypassing caller is a REPAIR of this instance and does NOT discharge the row -- it leaves the next caller free to reach around it the same way. Setting a per-run environment variable is a weaker mitigation still: it protects the launches that remember.",
+
+    "REVIEW TELL: a guard function whose callers are fewer than the callers of the thing it guards. Grep the protected resource, not the protection, and ask which callers of the resource never mention the guard.",
+  ],
+
+  evidence: [],
+}

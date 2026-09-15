@@ -866,7 +866,12 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // verdict roster cannot carry it.
 //
 // THE POPULATION IS BOUNDED AND MEASURED, at identity grain, on the run named above: 44
-// interrupted, all on the CPU clock against `required_floor_claim_cpu_safety_limit_ms`'s 5000ms,
+// interrupted, all on the CPU clock against `required_floor_per_subject_cpu_line_ms` (the CPU
+// line; this sentence named the work envelope for one revision of gunbc#11195, which compared a
+// CPU reading to a work policy -- the fusion review 66007 found. The "5000ms" beside it does not
+// match that line's 500 and did not match its predecessor's either; it is left as written rather
+// than guessed at, because whether the figure or the clock attribution is the wrong half is not
+// decidable from this file and predates this change),
 // concentrated in live-tree corpus witnesses (13 in
 // `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
 // `v2.test.claim.enforcement_live_witness`, 6 in
@@ -950,16 +955,15 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 //      A WALL LANDED, NOT BECAUSE THE HOLE IS OPEN. They assert a hole is still open; it is
 //      not. The discriminating evidence: BOTH of that hole's controls PASS
 //      (`floor_generic_instantiation_monomorphic_control_refuses`,
-//      `floor_generic_instantiation_green_control_is_clean`) and the SIBLING hole probe
-//      `floor_field_through_generics_is_still_silently_accepted` also passes -- so the harness
-//      reached the judgment and the other hole is genuinely still open; a harness that saw
-//      nothing would have taken the sibling down too. That module's own
-//      `guarantee_floor_class_probe_scope_note` prescribes the remedy verbatim: such a probe
-//      "flip[s] RED on the day the wall lands, which is the signal to rewrite the row as
-//      `ExpectBlockingRefusal` rather than to delete the probe" -- DESIGN 4b(4)'s rule that a
-//      greened expecting-red probe becomes a permanent regression control. Enrolment holds them
-//      honestly (they do fail) while recording nothing about WHY, so the rewrite is owed and the
-//      stale-quarantine arm will demand it.
+//      `floor_generic_instantiation_green_control_is_clean`). The sibling field-through-generics
+//      hole has already taken that module's prescribed remedy: it is
+//      `ExpectBlockingRefusal` / `floor_field_through_generics_type_variable_refuses`, not a
+//      remaining silent hole, so it no longer discriminates "harness reached a judgment" by
+//      staying open. That module's own `guarantee_floor_class_probe_scope_note` still names the
+//      rewrite — DESIGN 4b(4)'s rule that a greened expecting-red probe becomes a permanent
+//      regression control. Enrolment holds the generic-instantiation rows honestly (they do fail)
+//      while recording nothing about WHY, so the rewrite is owed and the stale-quarantine arm
+//      will demand it.
 //
 //   2. THE FOUR `sole_constructor_completeness_audit_probe_test` f10 ROWS ANSWERED AN OPEN QUESTION
 //      THE FIRST TIME THEY RAN. Their block annotation states a question rather than a marked

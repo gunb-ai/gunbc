@@ -4,8 +4,10 @@ import std.types { Bool, NonEmptyStr, String, FilePath }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
-import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
-import gunbc.auth.gcp_secret_access { SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token }
+import gunbc.auth.access_token_source {
+  AccessTokenSource, OperatorSuppliedToken,
+  SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+}
 import gunbc.fabric_m0_origin_readback {
   OriginFetchOutcome,
   OriginObjectStaged,
@@ -27,7 +29,21 @@ import gunbc.fabric_m0_completion {
   ComputationSucceeded, CommittedOutput, ManifestMember, OriginObservation, ObligationSubject,
 }
 import gunbc.fabric_m0_commit { CommitNamespace, commit_slot_key }
-import gunbc.fabric_m0_origin_commit { OriginCommitObservation, OriginObjectCommit, commit_manifest_to_origin, commit_object_to_origin, process_exit_with_credential_custody }
+import gunbc.fabric_m0_origin_commit {
+  OriginCommitObservation, OriginObjectCommit, OriginObjectWrite, OriginObjectWritten, OriginObjectWriteRefused,
+  OriginWritePermitStanding, PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherRoute, PermitNamesAnotherOperation,
+  commit_manifest_to_origin, commit_object_to_origin,
+  process_exit_with_credential_custody, job_output_bytes, fabric_durable_origin_route,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.fabric.provider_route { CompliancePostureRevision }
+import product.data_class {
+  DataHandlingMap, DataEffectAdmitted, DataEffectRefused, DataEffectRefusal,
+  CategoryDisagreesWithSink, CategoryUnmapped, SinkNotPermittedForCategory, RouteNotPermittedForCategory,
+  PurposeNotPermittedForSink, RecipientNotPermittedForSink, OperationNotPermittedForSink, PostureRevisionStale,
+  StoreDurably,
+  admit_data_effect, durable_origin_sink, build_output_category, public_fabric_map, public_fabric_posture,
+}
 import gunbc.fabric_m0_job_ending { end_required_job }
 import gunbc.cloudflare.r2_origin_object {
   OriginPut,
@@ -88,7 +104,7 @@ type ProbeCredential
   = ProbeCredentialReady { source: AccessTokenSource }
   | ProbeCredentialUnavailable { cause: NonEmptyStr }
 
-func probe_token_source() -> ProbeCredential {
+fn probe_token_source() -> ProbeCredential {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: cause } =>
       ProbeCredentialUnavailable { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
@@ -97,7 +113,7 @@ func probe_token_source() -> ProbeCredential {
   }
 }
 
-func fetch_absent() -> ProcessExit uses net: Network {
+fn fetch_absent() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } =>
@@ -137,7 +153,7 @@ fn put_cause(put: OriginPut) -> String {
   }
 }
 
-func roundtrip() -> ProcessExit uses net: Network {
+fn roundtrip() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
@@ -233,34 +249,92 @@ fn canary_object_key() -> NonEmptyStr {
   commit_slot_key(namespace: (canary_namespace + "/objects") as CommitNamespace, attempt: canary_attempt as AttemptIdentity)
 }
 
-func canary_ending() -> ProcessExit uses net: Network {
+// THE CANARY'S OUTPUT IS CLASSIFIED AT ITS BOUNDARY AND WRITTEN UNDER A PERMIT. The fixture is
+// what the job produced, so it enters through job_output_bytes as a BuildOutput; the write to the
+// durable origin then needs a DataEffectPermit from admit_data_effect for the DurableOrigin sink on
+// the fleet R2 route. THE PUBLIC MAP IS EMPTY, so from this tree the fold refuses with
+// CategoryUnmapped naming product.data_class public_fabric_map, and the canary exits with that
+// refusal as its reason -- the declared state, not a broken probe, for the same reason roundtrip
+// refuses before its write credential is minted. The data-handling rows are private policy
+// (gunbc-private strategy.data_map); a run with that map supplied through canary_ending_under is
+// what reaches the PUT. Nothing here admits by default.
+//
+// The purpose and recipient are cited declarations: the purpose is the M0 commit contract this
+// canary exercises, and the recipient is the durable origin bucket allocation. The posture handed
+// in is the revision of the public tree's empty map (product.data_class public_fabric_posture),
+// and it is never consulted here, because CategoryUnmapped precedes the posture comparison.
+fn canary_purpose() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fabric_m0_commit", decl_name: "CommitNamespace")
+}
+
+fn canary_recipient() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "gunbc_fleet_r2_bucket_allocations")
+}
+
+fn refusal_reason(cause: DataEffectRefusal) -> String {
+  match cause {
+    CategoryDisagreesWithSink { classified: _, sink: _ } => "the classified value's category disagrees with the sink's"
+    CategoryUnmapped { category: _, map: m } => "no data-handling row admits BuildOutput under map " + (m.module_path as String) + "." + (m.decl_name as String) + "; run with the private map"
+    SinkNotPermittedForCategory { category: _, sink: _ } => "the data-handling map admits BuildOutput to no durable origin"
+    RouteNotPermittedForCategory { category: _, route: _ } => "the data-handling map does not admit BuildOutput on the fleet R2 route"
+    PurposeNotPermittedForSink { category: _, sink: _, purpose: _ } => "the admitting row does not name the canary's purpose"
+    RecipientNotPermittedForSink { category: _, sink: _, recipient: _ } => "the admitting row does not name the durable origin bucket as recipient"
+    OperationNotPermittedForSink { category: _, sink: _, operation: _ } => "the admitting row does not admit a durable store"
+    PostureRevisionStale { evaluated: _, active: _ } => "the admitting row's posture revision is stale"
+  }
+}
+
+fn write_refusal_reason(standing: OriginWritePermitStanding) -> String {
+  match standing {
+    PermitAuthorisesThisOrigin => "authorised"
+    PermitNamesAnotherSink { sink: _ } => "the permit was admitted for another sink"
+    PermitNamesAnotherRoute { route: _ } => "the permit was admitted for a durable origin on another route"
+    PermitNamesAnotherOperation { operation: _ } => "the permit was admitted for another operation"
+  }
+}
+
+fn canary_ending() -> ProcessExit uses net: Network {
+  canary_ending_under(handling_map: public_fabric_map(), posture: public_fabric_posture())
+}
+
+fn canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostureRevision) -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
       let attempt = canary_attempt as AttemptIdentity
-      let object = commit_object_to_origin(local_path: probe_fixture_path as FilePath, key: canary_object_key(), token_source: source)
-      let commit = commit_manifest_to_origin(
-        namespace: canary_namespace as CommitNamespace,
-        attempt: attempt,
-        manifest_path: canary_manifest_path as FilePath,
-        manifest_digest: expected_manifest_digest(),
-        token_source: source,
-      )
-      process_exit_with_credential_custody(
-        custodies: [object.credential, commit.credential],
-        ending: end_required_job(
-          work: canary_work(),
-          attempt: attempt,
-          computation: ComputationSucceeded,
-          committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
-          observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object.readback }],
-          namespace: canary_namespace as CommitNamespace,
-          manifest_digest: expected_manifest_digest(),
-          members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],
-          transport: commit.transport,
-          observed: commit.observed,
-        )
-      )
+      let sink = durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: canary_purpose(), recipient: canary_recipient())
+      match admit_data_effect(classified: job_output_bytes(local_path: probe_fixture_path as FilePath), sink: sink, operation: StoreDurably, handling_map: handling_map, posture: posture) {
+        DataEffectRefused { cause: cause } => exit_failure(reason: "canary output not admitted to the durable origin: " + refusal_reason(cause: cause))
+        DataEffectAdmitted { permit: permit } =>
+          match commit_object_to_origin(permit: permit, key: canary_object_key(), token_source: source) {
+            OriginObjectWriteRefused { standing: standing } =>
+              exit_failure(reason: "canary permit does not authorise this origin: " + write_refusal_reason(standing: standing))
+            OriginObjectWritten { commit: object } => {
+              let commit = commit_manifest_to_origin(
+                namespace: canary_namespace as CommitNamespace,
+                attempt: attempt,
+                manifest_path: canary_manifest_path as FilePath,
+                manifest_digest: expected_manifest_digest(),
+                token_source: source,
+              )
+              process_exit_with_credential_custody(
+                custodies: [object.credential, commit.credential],
+                ending: end_required_job(
+                  work: canary_work(),
+                  attempt: attempt,
+                  computation: ComputationSucceeded,
+                  committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
+                  observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object.readback }],
+                  namespace: canary_namespace as CommitNamespace,
+                  manifest_digest: expected_manifest_digest(),
+                  members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],
+                  transport: commit.transport,
+                  observed: commit.observed,
+                )
+              )
+            }
+          }
+      }
     }
   }
 }

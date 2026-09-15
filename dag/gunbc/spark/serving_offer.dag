@@ -1,6 +1,6 @@
 module gunbc.spark.serving_offer
 
-import std.types { String, NonEmptyStr, Int, Timestamp, List }
+import std.types { Bool, String, NonEmptyStr, Int, Timestamp, List }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
@@ -14,10 +14,27 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
-  spark_first_party_route, spark_fleet_site_allocation, spark_site_uncovered_units,
+  spark_fleet_site_allocation, spark_site_uncovered_units, spark_first_party_route,
+  SparkServingRealization,
+  spark_realization_identity, SparkRealizationIdentity,
+  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
+}
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationObservation, EndpointIncarnationStanding,
+  EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+  LaunchUnitProvenance, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
+  launch_unit_provenance, launch_wire,
+}
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
+import std.content_hash { ContentHash, serialize_content_hash }
+import product.placement_supply { host_identity_eq }
+import gunbc.serving.turn_demand { TurnComponentStanding, TurnComponentObserved, TurnComponentUnobserved }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
 }
 
 // ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
@@ -100,12 +117,36 @@ type SparkServingReadiness
   = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
   | ServingUnobserved { obligation: NonEmptyStr }
 
+// READINESS IS A PROJECTION OF AVAILABILITY, NEVER A SECOND READING, AND ONLY FOR THE PROCESS IT WAS
+// READ FROM. gunbc.serving.serving_availability is the one statement of whether a route can take new
+// work; an offer on a launch is ready exactly when that reading is available AND names that same
+// endpoint process. An available reading from another process refuses naming both, so an answer from
+// process A can never make an offer on process B ready.
+fn spark_serving_readiness_of(verdict: ServingFrontDoorAvailabilityVerdict, launch: VllmEndpointProcessLaunch) -> SparkServingReadiness {
+  let availability = verdict.reading
+  match availability {
+    ServingAvailable { endpoint: _, launch: observed, observed_at: t, receipt: r } =>
+      if vllm_endpoint_process_launch_is(launch: observed, other: launch) {
+        ServingObserved { ready_at: t, receipt: r }
+      } else {
+        ServingUnobserved { obligation: join([
+          "availability was observed from endpoint process ", vllm_endpoint_process_launch_key(launch: observed) as String,
+          " but the offer names ", vllm_endpoint_process_launch_key(launch: launch) as String,
+        ], "") as NonEmptyStr }
+      }
+    ServingUnavailable { endpoint: _, observed_at: _, cause: _, receipt: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+    ServingAvailabilityUnread { endpoint: _, attempted_at: _, cause: _ } =>
+      ServingUnobserved { obligation: serving_availability_text(a: availability) as NonEmptyStr }
+  }
+}
+
 // ── THE ROUTE IS OBSERVED OR THE OFFER DOES NOT EXIST, WHICH IS READINESS'S ARGUMENT AGAIN ────
 //
 // SupplierOffer carries a ProviderRoute because admission is decided over provider x service x
 // region and never over a company. A route's region is therefore an OBSERVATION, exactly as
-// product.supplier.ubicloud ubicloud_route treats it: unread, it refuses as
-// UbicloudRouteRegionUnobserved rather than filling the slot. This module has the same obligation
+// product.fabric.provider_route provider_route_from_region treats it: unread, it refuses as
+// ProviderRouteRegionUnobserved rather than filling the slot. This module has the same obligation
 // and, today, no observer -- so it refuses for the same reason the readiness arm above refuses.
 // Binding an offer whose route nothing established would put a candidate in front of selection
 // carrying a region no one measured, and every admission decision downstream would be taken
@@ -124,9 +165,30 @@ type SparkServingReadiness
 // and the divergence (DESIGN section 3b) would then have been readable only in prose; as its own
 // arm, every consumer that cares can tell the two apart by matching, and the offer records which
 // kind of fact its region rests on.
+// A FOURTH ARM, AND IT EXISTS BECAUSE THE TWO HALVES OF A ROUTE ARE ESTABLISHED BY DIFFERENT
+// EVIDENCE. The region comes from the operator's dated site allocation, which is about WHERE THE
+// MACHINES ARE and is established independently of whatever answered on them. The service is a claim
+// about WHICH DEPLOYMENT ANSWERED, and nothing about host coverage establishes it. Until this arm
+// existed the standing had no way to say the first without also asserting the second, so an
+// unreadable readback on covered hosts received the pair-serving service by default -- the same
+// declaration-standing-in-for-a-realization defect this module was changed to remove, surviving in
+// the half nobody had looked at.
+// WHICH ROUTE-BEARING ARM IS REACHABLE, AND FROM WHAT. ServingRouteObserved is unreachable from the
+// standing: no producer observes the region of a unit the operator holds. ServingRouteOperatorAsserted
+// is reachable ONLY FROM FIXTURE EVIDENCE. It needs an EndpointIncarnationObservation, and no
+// production producer constructs one (gunbc.spark.vllm_serving_launch names the trigger). The
+// production caller, gunbc.harness.harness_seat harness_serving_realization, passes
+// EndpointIncarnationUnobserved, so in production this standing refuses on every input. That is the
+// only rung claimed for the production path. The arm carries the observation it rests on, so an
+// asserted route can always be traced to the incarnation that answered.
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
-  | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation }
+  | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation, answered_by: EndpointIncarnationObservation }
+  | ServingRouteServiceUnidentified {
+      allocation: OperatorAllocation,
+      cause: SparkServiceIdentityCause,
+      obligation: NonEmptyStr,
+    }
   | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
 
 // THE SINGLE PLACE THE STANDING IS RECORDED, which is why the 2026-09-11 restoration replaced one
@@ -154,6 +216,17 @@ data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_o
 // a machine the operator never placed at his home carry a region citing an assertion about other
 // machines (review 63995).
 //
+// THE SUBJECT IS THE REALIZATION THAT ANSWERED, NOT A HOST LIST, because the same hosts can carry
+// more than one deployment and the route's facts are about the one being offered. Passing a bare
+// host list let the region and the service come from different deployments (operator-routed review
+// of #11083).
+//
+// WHAT EACH INPUT DECIDES. The hosts decide the REGION, against the operator's dated allocation. The
+// SERVICE needs the incarnation observation, which ties the answering endpoint to one engine launch.
+// Given that observation, the declared unit digest decides whether that launch came from our unit,
+// and the readback decides whether its configuration agrees. Without the observation, the readback
+// only shapes the refusal's diagnosis. No container environment is attributed to anything here.
+//
 // AN EMPTY HOST LIST REFUSES, and that arm is the reason this is a fold over the UNCOVERED set
 // rather than an all() over the covered one: all() of nothing is true, so a group whose membership
 // could not be read would have passed the check vacuously -- the check reading cleanest exactly
@@ -168,7 +241,183 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
   ], "") as NonEmptyStr
 }
 
-fn spark_serving_route_standing(hosts: List<HostIdentity>) -> SparkServingRoute {
+// WHY A MATCHING CONFIGURATION DOES NOT ESTABLISH THE SERVICE EITHER. An earlier spelling refused only when the readback was unreadable or
+// reported a different path, and returned the pair-serving service whenever the reported
+// configured_model_path MATCHED. That preserved the exact defect the telemetry repair exists to
+// remove, one seam over: gunbc.spark.first_party_serving spark_realization_identity says in its own
+// annotation that the comparison establishes CONFIGURATION AGREEMENT and not which launch answered,
+// and that a consumer may not read a configuration match as identity. This was that consumer,
+// reading it as identity, and naming a specific declared deployment on the strength of it.
+//
+// SO REFUSING THE UNREADABLE AND DIFFERENT-PATH CASES WAS NEVER THE FIX. Those are the easy cases.
+// The motivating case is two deployments that SHARE a configuration, which the comparison cannot
+// separate -- so no configuration comparison, however wide, establishes the service. What does is a
+// different kind of evidence, an observation of which incarnation answered, and the standing below
+// requires it before the configuration is consulted at all.
+//
+// WHAT THIS DOES NOT CLAIM: it does not detect a foreign launch. Nothing here can distinguish two
+// launches sharing a configuration, and a refusal is not a detection. The claim is only the narrow
+// one -- matching configuration does not establish the specific deployment service -- which is why
+// the region, resting on evidence of a different kind, survives untouched.
+data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. The service is named only when three separate facts hold together: an observation binds the answering endpoint process to an engine incarnation (gunbc.spark.vllm_serving_launch EndpointIncarnationObservation), that incarnation was launched from the digest of the unit we render (LaunchedFromDeclaredUnit), and the readback agrees with the declared configuration. The second and third are about our declaration and can never stand in for the first. No production producer constructs the first today."
+
+// THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH situation
+// obtained. The refusal is the same for all four; the diagnosis is not, and a reader who cannot tell
+// them apart goes looking for the wrong evidence. The matched-configuration case gets the longest
+// sentence because it is the one that reads like success -- everything a consumer might mistake for
+// identity is present and the service still cannot be named.
+//
+// IT CONSUMES THE IDENTITY JOIN AND NOT THE TELEMETRY CAUSE, WHICH IS THE REPAIR THIS REVISION
+// MAKES. An earlier spelling called gunbc.spark.first_party_serving
+// spark_serving_usage_stats_unread_cause -- the TELEMETRY cause, which is the identity join PLUS two
+// host checks that exist for the telemetry question. So a realization whose hosts are covered by the
+// allocation but one of whose hosts has no OBSERVED FABRIC LANE rendered, as the reason WHICH
+// DEPLOYMENT ANSWERED is unestablished, an obligation about reading more lanes -- while this module's
+// own spark_serving_route_service_identity_obligation says the discharging capability is evidence
+// identifying the deployment, and lane observation is not it. That is DESIGN 3's meaning fork: one
+// name, two materially different contracts. It is also the class this change files at
+// gunbc.recurring_failure_mode.diagnostic_asserts_standing_no_check_evaluated, by that row's own
+// tell -- name the producer the sentence points a reader at, then check the emitting arm: the
+// service arm pointed at telemetry evidence no service check consults.
+//
+// LATENT RATHER THAN FIRING TODAY, recorded because the distinction decides how it is filed: every
+// unit in spark_fleet_site_allocation currently has an observed lane, so the mis-rendered arm is not
+// reachable with present data. It becomes reachable the moment a unit is allocated before its lane
+// is observed -- which is what a hardware move produces, and this module exists because the operator
+// moved hardware. The sentences below are the service's own, so the two questions no longer share a
+// renderer.
+fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
+  match spark_realization_identity(realization: realization) {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } =>
+      join([
+        "the engine reports the model path this launch is declared to serve (", p as String,
+        "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
+      ], "") as NonEmptyStr
+    RealizationReportedPathDiffers { reported: rep, declared: dec } =>
+      join([
+        "the engine reports the model path ", rep as String,
+        ", which is not the path the pair-serving launch is declared to serve (", dec as String,
+        "), so this readback does not establish the specific service this route would name. It does NOT establish that the process is a different launch: a process that IS the intended launch, running with drifted configuration, reports exactly this way, and a configuration comparison cannot separate those -- which is the inference this module refuses everywhere else and must refuse in its own diagnosis too",
+      ], "") as NonEmptyStr
+    RealizationDeclaredPathUnpinned =>
+      "the pair-serving snapshot is unpinned, so there is no declared configuration to compare the engine's reported one against" as NonEmptyStr
+    RealizationReadbackUnresolved =>
+      "the route's /v1/models readback did not resolve, so the process reported nothing that bears on which declared launch answered" as NonEmptyStr
+  }
+}
+
+// ── THE SERVICE CAUSE: WHICH OF THE THREE FACTS IS MISSING ─────────────────────────────────────
+//
+// Each arm is one missing fact, checked in a fixed order: the incarnation observation first, then
+// whether that observation is about THIS endpoint and these hosts, then the declared unit's digest and
+// the launch's provenance against it, and last the configuration. The observation comes first because
+// it is the one fact nothing about our declaration can supply. A reader who sees
+// ServiceIncarnationUnobserved therefore knows the other facts were not consulted, which is also why
+// that arm carries the configuration diagnosis separately rather than as a verdict.
+type SparkServiceIdentityCause
+  = ServiceIncarnationUnobserved { configuration: SparkRealizationIdentity, obligation: NonEmptyStr }
+  | ServiceObservationNamesAnotherEndpoint { observed: NonEmptyStr, answering: NonEmptyStr }
+  | ServiceIncarnationOutsideRealization { incarnation: NonEmptyStr }
+  | ServiceDeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
+  | ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitProvenance }
+  | ServiceConfigurationDisagrees { configuration: SparkRealizationIdentity }
+
+// THE DECLARED SIDE OF THE UNIT COMPARISON IS ITSELF A STANDING, because nothing in .dag computes it.
+// std.content_hash only admits a SHA-256 read from outside as hex (sha256_hex_digest), and the probe's
+// unit_sha is a SHA-256 of the unit file on the host. Minting a structural fingerprint of the rendered
+// text and comparing it to that would be a cross-family comparison: incomparable, never agreement.
+// The production caller therefore passes DeclaredUnitDigestUnavailable.
+type DeclaredUnitDigestStanding
+  = DeclaredUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
+  | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
+
+data spark_pair_head_unit_digest_unavailable_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no operation available to this path computes a SHA-256 over the rendered bytes of gunbc.spark.pair_serving_realization spark_pair_head_unit_file, so there is no declared unit digest in the family the host's unit_sha is read in, and whether the answering incarnation was launched from our declaration cannot be compared. TRIGGER: a SHA-256 digest of the rendered head unit bytes, SUFFICIENT FOR DeclaredUnitDigested to be compared with VllmServingLaunch.unit_digest through gunbc.spark.vllm_serving_launch launch_unit_provenance"
+
+data spark_serving_incarnation_unobserved_obligation: NonEmptyStr = "gunbc.spark.serving_offer: nothing on this path observes which engine incarnation the answering endpoint process belongs to. gunbc.instruments.fabric_capacity_standing launch_from_fields reads an incarnation from a probe but never which exporter belongs to it, and its live host read is a frontier. TRIGGER: an observation on the live host binding the answering endpoint process to a gunbc.spark.vllm_serving_launch VllmServingLaunch, SUFFICIENT FOR gunbc.harness.harness_seat harness_serving_realization to carry EndpointIncarnationObserved. ACCESS PRECEDES IT: no principal this fleet runs as can read a running container on the Sparks (gunbc-automation holds no passwordless grant that reaches docker and is in no docker group), so that observation needs gunbc.spark.managed_access_bootstrap InspectServingContainer installed through gunbc.spark.managed_grant_install. The grant is necessary and not sufficient: it reads the container, and binding the answering socket to a process inside it is a further observation"
+
+fn spark_launch_unit_provenance_text(provenance: LaunchUnitProvenance) -> String {
+  match provenance {
+    LaunchedFromDeclaredUnit { declared: d } => join(["launched from the declared unit ", serialize_content_hash(hash: d) as String], "")
+    LaunchedFromDifferentUnit { observed: o, declared: d } =>
+      join(["the incarnation's unit digest ", serialize_content_hash(hash: o) as String, " is not the declared head unit's ", serialize_content_hash(hash: d) as String], "")
+    LaunchUnitDigestsIncomparable => "the incarnation's unit digest and the declared unit digest are in different hash families, so they cannot be compared"
+  }
+}
+
+fn spark_service_identity_cause_text(cause: SparkServiceIdentityCause, realization: SparkServingRealization) -> String {
+  match cause {
+    ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
+      join([o as String, ". The readback, which cannot identify the deployment on its own, reports: ", spark_realization_identity_cause(realization: realization) as String], "")
+    ServiceObservationNamesAnotherEndpoint { observed: ob, answering: an } =>
+      join(["the incarnation observation is about endpoint process ", ob as String, ", not the process that answered this route, ", an as String], "")
+    ServiceIncarnationOutsideRealization { incarnation: i } =>
+      join(["the observed incarnation ", i as String, " is not on this realization's group and hosts"], "")
+    ServiceDeclaredUnitDigestUnavailable { obligation: o } => o as String
+    ServiceIncarnationNotFromDeclaredUnit { provenance: p } => spark_launch_unit_provenance_text(provenance: p)
+    ServiceConfigurationDisagrees { configuration: _ } =>
+      join(["the incarnation is observed and was launched from the declared unit, but the readback disagrees: ", spark_realization_identity_cause(realization: realization) as String], "")
+  }
+}
+
+fn spark_service_unidentified(realization: SparkServingRealization, cause: SparkServiceIdentityCause) -> SparkServingRoute {
+  ServingRouteServiceUnidentified {
+    allocation: spark_fleet_site_allocation.allocation,
+    cause: cause,
+    obligation: join([
+      "the operator's dated site allocation covers every host of this realization, so the REGION is established and is not in question. The SERVICE is not. ",
+      spark_serving_route_service_identity_obligation as String,
+      " For this realization: ",
+      spark_service_identity_cause_text(cause: cause, realization: realization),
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
+  match identity {
+    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => true
+    RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+    RealizationReadbackUnresolved => false
+  }
+}
+
+fn spark_service_from_observation(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+  let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
+  let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
+  if (observed_key as String) != (answering_key as String) {
+    spark_service_unidentified(realization: realization, cause: ServiceObservationNamesAnotherEndpoint { observed: observed_key, answering: answering_key })
+  } else if (fabric_group_wire(g: observation.launch.group) as String) != (fabric_group_wire(g: realization.endpoint.group) as String)
+      || !any(realization.hosts, h => host_identity_eq(a: h, b: observation.launch.head)) {
+    spark_service_unidentified(realization: realization, cause: ServiceIncarnationOutsideRealization { incarnation: launch_wire(i: observation.launch) as NonEmptyStr })
+  } else {
+    match declared_unit {
+      DeclaredUnitDigestUnavailable { obligation: o } =>
+        spark_service_unidentified(realization: realization, cause: ServiceDeclaredUnitDigestUnavailable { obligation: o })
+      DeclaredUnitDigested { unit_name: _, digest: declared } =>
+        match launch_unit_provenance(launch: observation.launch, declared: declared) {
+          LaunchedFromDifferentUnit { observed: o, declared: d } =>
+            spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: o, declared: d } })
+          LaunchUnitDigestsIncomparable =>
+            spark_service_unidentified(realization: realization, cause: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable })
+          LaunchedFromDeclaredUnit { declared: _ } => {
+            let identity = spark_realization_identity(realization: realization)
+            if spark_configuration_matches(identity: identity) {
+              ServingRouteOperatorAsserted {
+                route: spark_first_party_route(),
+                allocation: spark_fleet_site_allocation.allocation,
+                answered_by: observation,
+              }
+            } else {
+              spark_service_unidentified(realization: realization, cause: ServiceConfigurationDisagrees { configuration: identity })
+            }
+          }
+        }
+    }
+  }
+}
+
+fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
+  let hosts = realization.hosts
   if count(hosts) == 0 {
     ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }
   } else {
@@ -176,11 +425,31 @@ fn spark_serving_route_standing(hosts: List<HostIdentity>) -> SparkServingRoute 
     if count(uncovered) > 0 {
       ServingRouteRegionUnobserved { obligation: spark_serving_route_uncovered_obligation(uncovered: uncovered) }
     } else {
-      ServingRouteOperatorAsserted {
-        route: spark_first_party_route(),
-        allocation: spark_fleet_site_allocation.allocation,
+      match realization.incarnation {
+        EndpointIncarnationUnobserved { obligation: o } =>
+          spark_service_unidentified(realization: realization, cause: ServiceIncarnationUnobserved {
+            configuration: spark_realization_identity(realization: realization),
+            obligation: o,
+          })
+        EndpointIncarnationObserved { observation: obs } =>
+          spark_service_from_observation(realization: realization, declared_unit: declared_unit, observation: obs)
       }
     }
+  }
+}
+
+// ── THE RUNTIME COMPONENT OF A SERVING TURN'S SOURCE ───────────────────────────────────────────
+//
+// The runtime is the container image the answering incarnation was created from, and it is read ONLY
+// through the endpoint-to-incarnation observation. An image digest from the probe with no binding to
+// the answering endpoint would be a fact about some launch on those hosts, not about the one serving
+// this turn. Weights and tokenizer have no counterpart here: VllmServingLaunch carries no digest of
+// the bytes an engine loaded, so gunbc.serving.turn_demand keeps them unobserved.
+fn spark_serving_turn_runtime(incarnation: EndpointIncarnationStanding) -> TurnComponentStanding {
+  match incarnation {
+    EndpointIncarnationUnobserved { obligation: o } => TurnComponentUnobserved { obligation: o }
+    EndpointIncarnationObserved { observation: obs } =>
+      TurnComponentObserved { digest: obs.launch.executable_digest, receipt: obs.receipt }
   }
 }
 
@@ -214,23 +483,25 @@ fn bind_spark_serving_offer<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  readiness: SparkServingReadiness,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: SparkServingRoute,
 ) -> SparkOfferBinding<P> {
   match route {
     ServingRouteRegionUnobserved { obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
-    ServingRouteOperatorAsserted { route: asserted, allocation: _ } =>
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: why } =>
+      SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+    ServingRouteOperatorAsserted { route: asserted, allocation: _, answered_by: _ } =>
       bind_spark_serving_offer_on_route(
         principal: principal, executor: executor, launch: launch, model: model,
         trust_domain: trust_domain, isolation: isolation, seats: seats,
-        readiness: readiness, route: asserted,
+        availability: availability, route: asserted,
       )
     ServingRouteObserved { route: r0 } =>
       bind_spark_serving_offer_on_route(
         principal: principal, executor: executor, launch: launch, model: model,
         trust_domain: trust_domain, isolation: isolation, seats: seats,
-        readiness: readiness, route: r0,
+        availability: availability, route: r0,
       )
   }
 }
@@ -248,10 +519,10 @@ fn bind_spark_serving_offer_on_route<P>(
   trust_domain: TrustDomainRef,
   isolation: IsolationProfile,
   seats: Int,
-  readiness: SparkServingReadiness,
+  availability: ServingFrontDoorAvailabilityVerdict,
   route: ProviderRoute,
 ) -> SparkOfferBinding<P> {
-  match readiness {
+  match spark_serving_readiness_of(verdict: availability, launch: launch) {
       ServingUnobserved { obligation: why } =>
         SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
       ServingObserved { ready_at: at, receipt: r } =>

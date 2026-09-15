@@ -228,7 +228,7 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 // and matched rather than read: the old code did concat("outcome=", trim(verify.stdout)), so a
 // verify that REFUSED emitted the literal receipt line "outcome=" -- a fabricated plausible output
 // standing where the answer was unknown, written into a receipt someone would later read as fact.
-func verify_enrollment_outcome() -> String
+fn verify_enrollment_outcome() -> String
   uses net: Network
 {
   match run_shell_command_capture(
@@ -288,7 +288,7 @@ fn scan_host_key_lines(host: String) -> String {
   }
 }
 
-func fleet_host_key_scan_wet() -> ProcessExit
+fn fleet_host_key_scan_wet() -> ProcessExit
   uses net: Network
 {
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
@@ -334,7 +334,7 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // its OWN temp HOME. The registry is therefore materialized into the CURRENT process's
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
-func fleet_host_key_enroll_apply() -> String
+fn fleet_host_key_enroll_apply() -> String
   uses net: Network
 {
   if length(fleet_host_key_enrollments) == 0 {
@@ -378,7 +378,7 @@ func fleet_host_key_enroll_apply() -> String
   }
 }
 
-func fleet_host_key_enroll_wet() -> ProcessExit
+fn fleet_host_key_enroll_wet() -> ProcessExit
   uses net: Network
 {
   let receipt = fleet_host_key_enroll_apply()
@@ -418,7 +418,7 @@ fn fleet_automation_authorized_keys_line() -> String {
 // absent means write it, unreadable means stop and say so. Matching the arms makes the third
 // state impossible to fall through: a refusal now refuses instead of mutating the file.
 
-func fleet_authorized_key_self_enroll_wet() -> ProcessExit
+fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
   uses net: Network
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)

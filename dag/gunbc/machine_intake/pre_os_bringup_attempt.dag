@@ -1,0 +1,366 @@
+module gunbc.machine_intake_pre_os_bringup_attempt
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.measure { ByteSize }
+import std.scoped_authorization { AttemptIdentity }
+import std.decl_ref { DeclarationRef }
+import std.temporal_effect { HeldLease, held_lease_observed_verdict }
+import std.upsert_decision { Converged, ObservationVerdict }
+import std.human_intervention {
+  BreakGlassOnly,
+  HumanIntervention,
+  NoDischargeSiteModeled,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  ManagedAcActuatorDeclared,
+  NoManagedAcActuator,
+  PreOsObservationCapabilities,
+  SolAbsent,
+  SolPresentEmitting,
+  SolPresentSilent,
+}
+
+// ONE PRE-OS BRING-UP ATTEMPT: THE COLLECTORS ARE A CONSTRUCTOR INPUT TO THE ACTUATION, NOT A
+// CHECKLIST BESIDE IT. The receipt that shaped this module (Mt. Collins unit 1, 2026-09-11, evidence
+// gunbc.machine_intake_mtcollins1_32dimm_bringup_observation): the observer armed a watcher for a
+// controller down-transition that had already happened, and two stale SOL capture processes were
+// left competing for the one session the controller allows, so the capture that was believed to
+// be watching the reset was watching nothing. Neither was carelessness. Both are ORDERING defects:
+// a power action was reachable while the things that would observe its consequences were not
+// proven to exist. Here no PowerActuationRequest can be constructed without a CollectorsReady, and
+// CollectorsReady has exactly one producer, which refuses.
+//
+// WHAT "PROVEN RUNNING" MEANS, per collector, because "armed" is not it. A collector proves it is
+// running by exhibiting a fact only a running collector could produce: the console client is
+// still alive after the session was activated, under a deadline that will end it; the SEL tail
+// has recorded the cursor it will read forward from; the liveness watcher has observed the
+// controller REACHABLE before the action, so a later "down" is a transition it witnessed and not
+// a state it was born into. Readiness at activation earns nothing about the interval after it.
+//
+// THIS MODULE IS PURE. It models readiness and the request; issuing the action is an effect at a
+// declared frontier (pre_os_actuation_issuance_frontier), and the issued receipt this module can
+// mint is control-plane only: PowerActuationIssued says the controller ACKNOWLEDGED, which by
+// gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect cannot construct a
+// terminal about the host. The subject-level reading lives in
+// gunbc.machine_intake_pre_os_bringup_verdict and is built from independent observations only.
+
+// ── the actuations, four and not interchangeable ───────────────────────────────────────────────
+
+// FOUR VARIANTS BECAUSE THE SAME UNIT ANSWERED EACH DIFFERENTLY ON THE SAME DAY. A chassis reset
+// logs `System Restart` and a transient PCP rail droop; a chassis power cycle logs `Soft-power
+// control failure`, `Power off/down`, `Initiated by power up`, `Power cycle`; an AC cycle logs `AC
+// lost`, re-asserts every fan and PSU presence, and takes the CONTROLLER down with the host; a
+// controller reset moves the observer's own instruments and not the host. A model carrying one
+// "restart" would have described none of them.
+type PowerActuationKind
+  = HostWarmReset
+  | ChassisPowerCycle
+  | BmcControllerReset
+  | AcPowerCycle
+
+// ── the collectors and their proofs ────────────────────────────────────────────────────────────
+
+type CollectorKind
+  = ConsoleCapture
+  | SelCursorTail
+  | ControllerLivenessWatch
+
+// THE PROOF EACH COLLECTOR MUST EXHIBIT. These are facts, not flags: each names something the
+// collector READ, and a collector that has read nothing has no proof to offer.
+//
+// THE CONSOLE'S SESSION BANNER IS NOT A PROOF OF RUNNING, AND AN EARLIER REVISION SAID IT WAS. On
+// 2026-09-12 (eager-owl-205, artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt) the same
+// client invoked with a pty and stdin held open stayed connected 645 seconds and captured real
+// firmware output; every earlier 86-byte "silent" capture was the client printing its banner,
+// hitting stdin EOF, and exiting rc=0 after about three seconds while the wrapper slept out the
+// window. The banner therefore proves SESSION ACTIVATION ACKNOWLEDGED and nothing about the
+// interval after it. The proof this arm demands is the client still alive at an instant AFTER
+// activation, under an explicit deadline that will terminate it -- because a correctly held
+// client never exits on its own, and a collector that only waits on it never returns. THIS PROOF
+// IS A SUMMARY OF AN ATTEMPT OBSERVATION: the per-attempt carrier (activation, coverage,
+// termination, host payload) is gunbc.machine_intake_sol_collector_observation on gunbc#11127, and
+// deriving this arm from a SolCollectorObservation whose activation is acknowledged and whose
+// termination is not yet decided is the declared join between the two, in whichever change lands
+// second.
+type CollectorRunningProof
+  = ConsoleSessionHeldPastActivation { capture_path: NonEmptyStr, activation_bytes: ByteSize, client_alive_at: EpochMs, terminate_deadline: EpochMs }
+  | SelCursorRecorded { last_record_id: Int, recorded_at: EpochMs }
+  | ControllerObservedReachable { at: EpochMs }
+
+// A PROVEN COLLECTOR CARRIES ONLY ITS PROOF; its kind is DERIVED from the proof, so a SEL cursor
+// offered as the proof that a console capture is running is not a state that can be written
+// (review 64203: construction over validation). Only the unproven and absent arms name a kind
+// explicitly, because they have no proof to derive it from.
+type CollectorStanding
+  = CollectorProvenRunning { proof: CollectorRunningProof }
+  | CollectorArmedUnproven { kind: CollectorKind }
+  | CollectorAbsent { kind: CollectorKind }
+
+fn proof_kind(proof: CollectorRunningProof) -> CollectorKind {
+  match proof {
+    ConsoleSessionHeldPastActivation { capture_path: _, activation_bytes: _, client_alive_at: _, terminate_deadline: _ } => ConsoleCapture
+    SelCursorRecorded { last_record_id: _, recorded_at: _ } => SelCursorTail
+    ControllerObservedReachable { at: _ } => ControllerLivenessWatch
+  }
+}
+
+fn collector_kind_eq(a: CollectorKind, b: CollectorKind) -> Bool {
+  match a {
+    ConsoleCapture => match b { ConsoleCapture => true  SelCursorTail => false  ControllerLivenessWatch => false }
+    SelCursorTail => match b { ConsoleCapture => false  SelCursorTail => true  ControllerLivenessWatch => false }
+    ControllerLivenessWatch => match b { ConsoleCapture => false  SelCursorTail => false  ControllerLivenessWatch => true }
+  }
+}
+
+// THE COLLECTORS AN ATTEMPT REQUIRES, DERIVED FROM THE PLATFORM PROFILE. A roster rather than
+// fields so the readiness fold can name WHICH is missing. The console collector is required only
+// where the profile says a console exists to collect from: on a platform whose console capability
+// is SolAbsent, demanding a console proof would make readiness unreachable for a reason that is
+// not a collector defect. SEL cursor and controller liveness are required on every platform this
+// model admits, because both are read over the controller itself.
+fn required_collectors(profile: PreOsObservationCapabilities) -> List<CollectorKind> {
+  match profile.console {
+    SolAbsent { established_by: _ } => [SelCursorTail, ControllerLivenessWatch]
+    SolPresentSilent { established_by: _ } => [ConsoleCapture, SelCursorTail, ControllerLivenessWatch]
+    SolPresentEmitting { established_by: _ } => [ConsoleCapture, SelCursorTail, ControllerLivenessWatch]
+  }
+}
+
+// ── the evidence sink and the console lease ────────────────────────────────────────────────────
+
+type EvidenceSinkStanding
+  = EvidenceSinkPresent { directory: NonEmptyStr }
+  | EvidenceSinkAbsent
+
+// WHY THE CONSOLE IS A LEASE AND NOT A COLLECTOR ALONE. The controller admits ONE SOL session. Two
+// captures armed against it do not both run; the second steals the session or is refused, and the
+// first keeps writing a file that no longer receives bytes. std.temporal_effect HeldLease already
+// carries the states a held-session lease can be observed in, and its own fold
+// held_lease_observed_verdict already says which of them is the held one (Converged) -- so
+// readiness consults that verdict rather than re-deriving it from the coproduct (review 64281).
+// The refusing arm carries the verdict, so a stale holder (Drifted, the two-stale-processes
+// receipt) and a foreign holder (Conflict) stay distinguishable to whoever repairs it.
+
+// ── readiness ──────────────────────────────────────────────────────────────────────────────────
+
+// THE GAPS, ONE ARM EACH, because each has a different repair: an absent sink is a filesystem
+// step; a stale lease is a process to kill and a session to deactivate; a missing baseline is a
+// watcher to re-arm BEFORE the action.
+type CollectorGap
+  = EvidenceSinkMissing
+  | ConsoleLeaseNotHeld { verdict: ObservationVerdict }
+  | CollectorNotProven { kind: CollectorKind }
+  | ConsoleDeadlineNotAfterAliveInstant { client_alive_at: EpochMs, terminate_deadline: EpochMs }
+
+// SEALED. The only producer is collectors_ready below, so a CollectorsReady in hand IS the fact
+// that every gap above was checked and none held. There is no literal any other module can write.
+type CollectorsReady sole_constructor {
+  attempt: AttemptIdentity
+  evidence_sink: NonEmptyStr
+  console_lease: HeldLease
+  collectors: List<CollectorStanding>
+}
+
+type CollectorsReadiness
+  = Ready { ready: CollectorsReady }
+  | NotReady { gap: CollectorGap }
+
+fn standing_kind(c: CollectorStanding) -> CollectorKind {
+  match c {
+    CollectorProvenRunning { proof: p } => proof_kind(proof: p)
+    CollectorArmedUnproven { kind: k } => k
+    CollectorAbsent { kind: k } => k
+  }
+}
+
+// ONE COLLECTOR'S STANDING WITHIN THE ROSTER, as the first gap it presents or none. The console
+// proof's instants are CONSUMED here, not carried: a deadline that does not lie after the instant
+// the client was seen alive bounds nothing, and readiness refuses it (eager-owl-205, 2026-09-12).
+fn collector_gap_for(kind: CollectorKind, collectors: List<CollectorStanding>) -> CollectorGap? {
+  let matching = filter(xs: collectors, f: c => collector_kind_eq(a: standing_kind(c: c), b: kind))
+  match matching.first() {
+    Absent => Present { value: CollectorNotProven { kind: kind } }
+    Present { value: s } =>
+      match s {
+        CollectorProvenRunning { proof: p } =>
+          match p {
+            ConsoleSessionHeldPastActivation { capture_path: _, activation_bytes: _, client_alive_at: alive, terminate_deadline: deadline } =>
+              if deadline > alive { none } else { Present { value: ConsoleDeadlineNotAfterAliveInstant { client_alive_at: alive, terminate_deadline: deadline } } }
+            SelCursorRecorded { last_record_id: _, recorded_at: _ } => none
+            ControllerObservedReachable { at: _ } => none
+          }
+        CollectorArmedUnproven { kind: k } => Present { value: CollectorNotProven { kind: k } }
+        CollectorAbsent { kind: k } => Present { value: CollectorNotProven { kind: k } }
+      }
+  }
+}
+
+fn first_collector_gap(profile: PreOsObservationCapabilities, collectors: List<CollectorStanding>) -> CollectorGap? {
+  fold(
+    required_collectors(profile: profile),
+    init: none,
+    f: (acc, kind) => match acc {
+      Present { value: _ } => acc
+      Absent => collector_gap_for(kind: kind, collectors: collectors)
+    },
+  )
+}
+
+// THE ONLY WAY IN. Sink, then -- where the profile says a console exists -- the console lease,
+// then every required collector's proof; the first gap refuses and nothing downstream of it is
+// constructed. On a platform whose console capability is SolAbsent there is no session to hold,
+// so an honestly absent lease is not a gap there (review 64441); demanding one would be the
+// over-generalised prohibition DESIGN section 4d names. The lease decision and the construction
+// live in ONE function so no helper can be handed an unchecked lease and asked to construct
+// (review 64457). Note what is NOT an input: a power action. Readiness is decided with no
+// knowledge of what will be done, so it cannot be relaxed for a "harmless" one.
+fn collectors_ready(
+  attempt: AttemptIdentity,
+  profile: PreOsObservationCapabilities,
+  sink: EvidenceSinkStanding,
+  console_lease: HeldLease,
+  collectors: List<CollectorStanding>,
+) -> CollectorsReadiness {
+  let lease_gap = match profile.console {
+    SolAbsent { established_by: _ } => none
+    SolPresentSilent { established_by: _ } => console_lease_gap(console_lease: console_lease)
+    SolPresentEmitting { established_by: _ } => console_lease_gap(console_lease: console_lease)
+  }
+  match sink {
+    EvidenceSinkAbsent => NotReady { gap: EvidenceSinkMissing }
+    EvidenceSinkPresent { directory: dir } =>
+      match lease_gap {
+        Present { value: gap } => NotReady { gap: gap }
+        Absent =>
+          match first_collector_gap(profile: profile, collectors: collectors) {
+            Present { value: gap } => NotReady { gap: gap }
+            Absent =>
+              Ready {
+                ready: CollectorsReady {
+                  attempt: attempt,
+                  evidence_sink: dir,
+                  console_lease: console_lease,
+                  collectors: collectors,
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE LEASE'S GAP, IF ANY, read through std.temporal_effect's own verdict: Converged is held,
+// every other verdict is carried into the refusal so a stale holder and a foreign holder stay
+// distinguishable to whoever repairs it.
+fn console_lease_gap(console_lease: HeldLease) -> CollectorGap? {
+  let verdict = held_lease_observed_verdict(observed: console_lease.observed)
+  match verdict {
+    Converged => none
+    _ => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+  }
+}
+
+// ── the request ────────────────────────────────────────────────────────────────────────────────
+
+// THE AC CYCLE IS A HUMAN-ATTENDED BARRIER, TYPED. No actuator on this fleet can perform it, so the
+// request for one is a HumanIntervention with BreakGlassOnly frequency -- the emergency axis
+// std.human_intervention deliberately keeps out of the routine burden comparison -- and it carries
+// the readiness it was minted from, so the human is asked to act only once the collectors are
+// proven. NoDischargeSiteModeled is the honest completion evidence: nothing yet records that the
+// cord was pulled and restored, and that carrier's own dissolve-on names what would.
+fn ac_cycle_barrier(ready: CollectorsReady) -> HumanIntervention {
+  HumanIntervention {
+    identity: concat("ac-power-cycle:", ready.attempt as String) as NonEmptyStr,
+    frequency: BreakGlassOnly,
+    subject: "the host's AC inlet(s); this fleet has no managed PDU outlet to actuate",
+    instruction: "with every collector proven running and the console lease held, remove AC from every populated inlet, wait for the controller to become unreachable, restore AC, and hand the observed instants to the attempt's evidence sink",
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// WHAT AN ACTUATOR IS ASKED TO DO. The wire words are IPMI chassis-control actions for the two
+// host actions (extdeps.bmc.ipmi ChassisPowerControl) and the controller's own cold reset for the
+// third; none is a literal in a call, so a second controller family binds different words to the
+// same request. DeclaredAcActuator carries the realization the profile's managed-AC arm named --
+// a pointer, never an outlet -- and is reachable only from that arm.
+type ActuatorRealization
+  = ChassisControlAction { action_wire: NonEmptyStr }
+  | ControllerColdReset
+  | DeclaredAcActuator { realization: DeclarationRef }
+
+type PowerActuationRequest
+  = ActuatorRequest { ready: CollectorsReady, kind: PowerActuationKind, realization: ActuatorRealization }
+  | HumanAttendedRequest { ready: CollectorsReady, kind: PowerActuationKind, barrier: HumanIntervention }
+
+// CONSTRUCTIBLE ONLY FROM A CollectorsReady, which is the law in one signature. There is no
+// overload taking a readiness verdict, a Bool, or nothing. Whether an AC cycle is an actuator
+// request or a human-attended barrier is decided by the PROFILE's managed-AC arm, not by this
+// module: NoManagedAcActuator is the only inhabited arm today, so the barrier is what every real
+// profile yields.
+fn power_actuation_request(ready: CollectorsReady, profile: PreOsObservationCapabilities, kind: PowerActuationKind) -> PowerActuationRequest {
+  match kind {
+    HostWarmReset => ActuatorRequest { ready: ready, kind: kind, realization: ChassisControlAction { action_wire: "reset" } }
+    ChassisPowerCycle => ActuatorRequest { ready: ready, kind: kind, realization: ChassisControlAction { action_wire: "cycle" } }
+    BmcControllerReset => ActuatorRequest { ready: ready, kind: kind, realization: ControllerColdReset }
+    AcPowerCycle =>
+      match profile.managed_ac {
+        NoManagedAcActuator => HumanAttendedRequest { ready: ready, kind: kind, barrier: ac_cycle_barrier(ready: ready) }
+        ManagedAcActuatorDeclared { realization: r } => ActuatorRequest { ready: ready, kind: kind, realization: DeclaredAcActuator { realization: r } }
+      }
+  }
+}
+
+fn power_actuation_request_readiness(request: PowerActuationRequest) -> CollectorsReady {
+  match request {
+    ActuatorRequest { ready: r, kind: _, realization: _ } => r
+    HumanAttendedRequest { ready: r, kind: _, barrier: _ } => r
+  }
+}
+
+// ── the control-plane receipt ──────────────────────────────────────────────────────────────────
+
+// WHAT THE CONTROLLER SAID WHEN ASKED. Accepted is an exit status and nothing more.
+type ControllerAcknowledgement
+  = ActuationAccepted { at: EpochMs }
+  | ActuationRefusedByController { at: EpochMs, detail: NonEmptyStr }
+
+// NAMED ISSUED, NEVER COMPLETED. This is the split
+// gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect prescribes and
+// gunbc#11001's BootControlIssued performs for boot control: the control-plane facts construct a
+// control-plane terminal. Nothing here says the host reset, cycled, or trained its memory; the
+// verdict module says what the SEL and console established afterwards, and it does not take this
+// receipt as an input at all.
+type PowerActuationIssued sole_constructor {
+  request: PowerActuationRequest
+  acknowledged_at: EpochMs
+}
+
+type PowerActuationOutcome
+  = Issued { issued: PowerActuationIssued }
+  | RefusedByController { request: PowerActuationRequest, at: EpochMs, detail: NonEmptyStr }
+  | AwaitingHumanAttendance { request: PowerActuationRequest, barrier: HumanIntervention }
+
+fn power_actuation_outcome(request: PowerActuationRequest, ack: ControllerAcknowledgement) -> PowerActuationOutcome {
+  match request {
+    HumanAttendedRequest { ready: _, kind: _, barrier: b } => AwaitingHumanAttendance { request: request, barrier: b }
+    ActuatorRequest { ready: _, kind: _, realization: _ } =>
+      match ack {
+        ActuationAccepted { at: t } => Issued { issued: PowerActuationIssued { request: request, acknowledged_at: t } }
+        ActuationRefusedByController { at: t, detail: d } => RefusedByController { request: request, at: t, detail: d }
+      }
+  }
+}
+
+// ── the declared frontier ──────────────────────────────────────────────────────────────────────
+
+// THE EFFECTFUL ISSUER IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO RATHER THAN LEAVING A func THAT
+// NOTHING CALLS (DESIGN section 3c). Producing a CollectorsReady from live instruments means
+// spawning the console capture under a held lease, reading the SEL cursor, and observing the
+// controller reachable, then handing the request to extdeps.bmc.ipmi ChassisPowerControl and
+// reading its exit status into a ControllerAcknowledgement. That orchestrator is the capability
+// this frontier names; it retires this row when it lands with its own executed receipt. Until
+// then the pure folds above are consumed by the regression corpus and its witnesses, and the
+// machine is not driven by a model that has never run.
+data pre_os_actuation_issuance_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a collector orchestrator that produces CollectorsReady from live instruments -- console capture spawned under the held session lease with TWO bounds, an observation deadline that ends the capture interval and starts termination and a cleanup deadline bounding termination of the owned client and its children, output draining and session release, where termination at the observation deadline is the NORMAL outcome and not an interruption -- SEL cursor read, controller observed reachable -- and dispatches PowerActuationRequest to the controller transport, reading its acknowledgement into ControllerAcknowledgement; SUFFICIENT FOR every pre-OS power action in machine-intake, not merely one host's wrapper",
+)

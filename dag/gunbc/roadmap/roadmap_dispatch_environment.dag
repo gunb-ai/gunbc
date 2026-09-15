@@ -39,6 +39,8 @@ import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation,
   ContractClosesNothing,
   ContractCloses,
+  ContractNotAgentWork,
+  non_agent_work_mode_label,
   contract_closure,
 }
 import extdeps.languages.json.parse { json_text_parseable }
@@ -428,6 +430,12 @@ fn dispatch_environment_admission_decision(
       receipts: receipts,
       validation_summary: validation_summary,
       reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit dispatch",
+    }
+    ContractNotAgentWork { mode } =>
+    EnvironmentRefused {
+      receipts: receipts,
+      validation_summary: validation_summary,
+      reason: join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], ""),
     }
     ContractCloses { validations: _ } =>
     if !exact_coverage {

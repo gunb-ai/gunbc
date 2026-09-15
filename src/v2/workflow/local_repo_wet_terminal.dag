@@ -212,8 +212,96 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
+// MEMORY CAPTURE DIGEST MEMBER (2026-09-13, parent admission for gunbc#11144).
+// This is a distinct admitted effect: execute the local coreutils `sha256sum`
+// binary, supply captured text on stdin, and read its stdout and exit status.
+// It writes no files, creates no repository, and uses no network, cargo,
+// remote host or install media. It does not extend the command-v probe group.
+// Measured through claim_batch --wet before enrollment: the production content
+// verifier accepts the known-answer input and refuses changed bytes and an
+// added terminal newline under the same expected digest. Missing executable or
+// failed digest execution remains a refusal, never a fabricated hash match.
+// TEN EFFECT-PLAN BASH MATERIALIZATION MEMBERS (2026-09-14, gunbc#11357; the If / Let / Call
+// climb for gunbc-private#60). Their effect is executing a materialized script under bash through
+// shell.Exec.Run: the commands inside are `id -u`, `test -x` / `test -f` over fixed paths, `printf`
+// and `true`, run either directly or through a bound shell variable. They write no files, build
+// no repository, and use no network, cargo, remote host or install media. They are on THIS lane
+// rather than the dark bin-wet class because the floor plans the file's identities, each reaches a
+// route gap on shell.Exec.Run (floor_route_gap chunk_04 and chunk_11), and a changed witness ending
+// in a route gap is admitted only when a wet terminal joins it -- measured on gunbc#11357 run
+// 34823848386, cause changed_witness_planned_without_terminal_verdict. The file's exclusion row
+// (gunbc.ci.ci_layer_roots excl_local_repo_wet_bash_materialized_reason) records the move out of the
+// bin-witness wet class, whose standing excl_bin_wet_reason carries. Measured wet through
+// `gunbc run --claim-run` over this tree before enrollment: all ten held, and every metacharacter
+// probe failed without output rather than running its payload.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_two_declared_operations_execute" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_two_declared_operations_execute",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_fail_fast_prevents_later_operation_execution" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_fail_fast_prevents_later_operation_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_if_selects_the_observed_branch" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_if_selects_the_observed_branch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan" },
+      entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
+      function: "effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.memory_capture_real_execution_witness", function: "w_capture_digest_binds_consumed_content" },
+      entry: "dag/test/claim/host/memory_capture_real_execution_witness_test.dag",
+      function: "w_capture_digest_binds_consumed_content",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
@@ -500,6 +588,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution" },
       entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
       function: "a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "commit_then_independent_read_back_agrees_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "commit_then_independent_read_back_agrees_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "an_advance_after_commit_lands_generation_two_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "an_advance_after_commit_lands_generation_two_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

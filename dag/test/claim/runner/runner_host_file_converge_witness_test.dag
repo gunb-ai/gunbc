@@ -1,6 +1,6 @@
 module test.claim.runner_host_file_converge_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -22,17 +22,22 @@ import gunbc.runner_unit_file {
   runner_unit_teardown_dropin,
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
+  RunnerJobUserRuntimeUidFigure,
 }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, File }
 import gunbc.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
+  RunnerHostFileDesiredPopulation,
+  RunnerHostFileWithheld,
   runner_host_file_desired_population,
+  runner_host_file_desired_population_from_uid_figure,
   RunnerHostFileSubject,
   RunnerHostFileSubjectAdmitted,
   RunnerHostFileSubjectRefused,
@@ -95,12 +100,32 @@ import gunbc.runner_host_file_converge {
   ManagerReloadOwedNotAttempted,
   runner_host_file_run_succeeded,
   runner_host_file_write_admission,
-  run_runner_host_files,
 }
 
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
 // answered by the hermetic ssh mock; nothing reads the live tree.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_cited_job_user_uid() -> RunnerJobUserRuntimeUidFigure {
+  RunnerJobUserRuntimeUidFigure {
+    uid: 4242,
+    evidence: CitedToAuthority {
+      authority: ExternalAuthority {
+        uri: Uri {
+          scheme: File,
+          locator: "dag/test/claim/runner/runner_host_file_converge_witness_test.dag#fixture_cited_job_user_uid",
+        },
+      },
+    },
+  }
+}
+
+fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
+  runner_host_file_desired_population_from_uid_figure(
+    host: "srv1" as HostIdentity,
+    figure: fixture_cited_job_user_uid(),
+  )
+}
 
 // ── The bytes, against independently authored oracles ─────────────────────────────────────────────
 
@@ -134,17 +159,17 @@ test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
 data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\\-runner\\@)\} = 0;\n"
 
 fn desired_content(subject: String) -> String {
-  match runner_host_file_desired_population() {
+  match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
   }
 }
 
 fn desired_path(subject: String) -> String {
-  match runner_host_file_desired_population() {
+  match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
   }
 }
@@ -154,12 +179,30 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
     && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
 }
 
-test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
-  match runner_host_file_desired_population() {
+test fn production_desired_population_withholds_uncited_depriv_and_still_delivers_teardown() -> Bool {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: w } =>
       length(fs) == 2
+        && length(w) == 2
+        && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "TranscribedUncited"))
+        && any(w, x => (x.subject as String) == "runner-unit-fragment")
+        && any(fs, f => (f.subject as String) == "runner-teardown-dropin")
+        && any(fs, f => (f.subject as String) == "needrestart-runner-deferral")
+        && !any(fs, f => (f.subject as String) == "runner-unit-fragment")
+        && !any(fs, f => (f.subject as String) == "runner-depriv-dropin")
+  }
+}
+
+test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: w } =>
+      length(fs) == 4
+        && length(w) == 0
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
+        && desired_path(subject: "runner-unit-fragment") == "/etc/systemd/system/actions-runner@.service"
+        && desired_path(subject: "runner-depriv-dropin") == "/etc/systemd/system/actions-runner@.service.d/depriv.conf"
   }
 }
 
@@ -199,9 +242,9 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 // Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
 // would refuse at the seal rather than reaching a sudo leg.
 test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
-  match runner_host_file_desired_population() {
+  match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
         TypedRemoteFileWriteAdmitted { write: _ } => true
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
@@ -228,6 +271,13 @@ test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
   match runner_host_file_subject(host: "srv9" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => true
     RunnerHostFileSubjectAdmitted { subject: _ } => false
+  }
+}
+
+test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
+  match runner_host_file_desired_population(host: "srv9" as HostIdentity) {
+    RunnerHostFilesDesiredRefused { cause: _ } => true
+    RunnerHostFilesDesired { files: _, withheld: _ } => false
   }
 }
 
@@ -444,9 +494,9 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
 
 fn teardown_desired() -> RunnerHostFileDesired? {
-  match runner_host_file_desired_population() {
+  match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
-    RunnerHostFilesDesired { files: fs } =>
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
       fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
   }
 }
@@ -486,7 +536,9 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
 
 // Observe succeeds on a host whose teardown is NOT yet effective -- that is what it exists to report --
 // and apply does not. Apply also refuses a reload it owed and did not perform, and a population with
-// any unit it could not read.
+// any unit it could not read. run_runner_host_files is not driven here: the floor classifies that
+// call as reaching shell.PosixCommandV.Check (no mock_response). Privilege, unread slots, and
+// ancestor refusal stay as the classifiers; re-enroll the integration when Check has a hermetic arm.
 test fn observe_reports_what_apply_refuses() -> Bool {
   let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
   let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
@@ -496,45 +548,4 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
-}
-
-// ── The route, over the hermetic ssh fixture ─────────────────────────────────────────────────────
-
-// THE WHOLE APPLY ROUTE RUNS: privilege, content and metadata observation for both files, the slot
-// listing and show, the reload decision. The mock answers every leg with exit 0 and a stdout that
-// names no path and no unit, so find certifies no ancestor as root-only -- both files are REFUSED
-// before any write -- and no slot unit has a block of its own -- every desired unit reads as UNREAD.
-// Nothing is written or reloaded, and the run ends refused. A route that reported success here would
-// be certifying ownership and a teardown that no host reported.
-test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
-  match witness_subject() {
-    Absent => false
-    Present { value: s } =>
-      match fleet_ssh_execution_context_hermetic_witness_fixture() {
-        Absent => false
-        Present { value: context } =>
-          match runner_host_file_desired_population() {
-            RunnerHostFilesDesiredRefused { cause: _ } => false
-            RunnerHostFilesDesired { files: fs } => {
-              let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)
-              let privileged = match run.privilege { AdministratorPrivilegeAvailable => true AdministratorPrivilegeRefused { reason: _ } => false }
-              let refused_before_write = all(run.results, r => is_refused(a: r.planned.action) && match r.outcome {
-                HostFileNotAttempted { reason: _ } => true
-                HostFileLeftInPlace => false
-                HostFileNotAppliedObserveOnly => false
-                HostFileWriteRefused { step: _, reason: _ } => false
-                HostFileConvergedByWrite { converged: _ } => false
-              })
-              let not_reloaded = match run.reload { ManagerReloadNotOwed => true ManagerReloaded => false ManagerReloadRefused { reason: _ } => false ManagerReloadOwedNotAttempted { reason: _ } => false }
-              let every_desired_unread = match run.slots {
-                SlotPopulationUnobservable { reason: _ } => false
-                SlotPopulationObserved { units: us } =>
-                  length(us) == length(s.desired_units) && all(us, r => standing_wire_of(st: r.standing) == "unread")
-              }
-              privileged && length(run.results) == 2 && refused_before_write && not_reloaded && every_desired_unread
-                && !runner_host_file_run_succeeded(run: run)
-            }
-          }
-      }
-  }
 }

@@ -5,7 +5,7 @@ data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"
 data closed_loopback_chassis_id: NonEmptyStr = "Self"
 data closed_loopback_netrc_file: NonEmptyStr = "/dev/null"
 
-func witness_redfish_get_chassis_sensors_closed_host() -> Bool {
+fn witness_redfish_get_chassis_sensors_closed_host() -> Bool {
   let r = redfish.Http.GetChassisSensors(
     bmc_host: closed_loopback_bmc_host,
     chassis_id: closed_loopback_chassis_id,

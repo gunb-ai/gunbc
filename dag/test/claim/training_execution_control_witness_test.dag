@@ -51,6 +51,7 @@ import product.training.resolution {
   resolve_training, training_work_for, admit_training_run_desired,
   resolved_training_manifest, TrainingResolvedManifest,
 }
+import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_for }
 import product.fabric.execution {
   Attempt, ExecutionAttemptLineage,
   InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
@@ -84,7 +85,7 @@ import extdeps.currency.currency { Usd }
 import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
 import std.integer { PositiveInt }
 import std.nat { Nat }
-import std.types { NonEmptyStr, Bool, List }
+import std.types { NonEmptyStr, Bool, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -377,38 +378,89 @@ fn grant_for(
   key: NonEmptyStr,
   attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
-) -> ExecutionGrant<NonEmptyStr> {
-  ExecutionGrant {
-    id: FabricIdentity { principal: "gunbai", key: key },
-    object: FabricGrantObject {
-      offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
-      quote: QuotedFlatPerGrant(MoneyOnce {
-        amount: money_amount_micro(count: 1000),
-        currency: Usd,
-      }),
-    },
-    context: FabricGrantContext {
-      demand: demand,
-      work: s.work,
-      attempt: attempt,
-      executor: "spark-1",
-      lease: LeaseIdentity {
-        lease_key: "lease-1",
-        resource_fingerprint: h(s: "slice-1"),
-        generation: 9,
-      },
-      issued_at: "2026-08-28T01:00:00Z",
-      maximum_liability: money_amount_micro(count: 1000000),
-    },
-    evidence: FabricGrantEvidence {
-      fungibility_receipt: "fungibility-1",
-      offer_authority: "offer-authority-1",
-      resource_conservation: "resource-conservation-1",
-      budget_conservation: "budget-conservation-1",
-      principal_authority: "principal-authority-1",
-    },
-    resource_reservations: ["reservation-gpu-1"],
-    money_reservation: "reservation-money-1",
+) -> ExecutionGrant<NonEmptyStr>? {
+  match fixture_permit_for(
+    route: fixture_route(),
+    offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+    demand: demand,
+    work: s.work,
+  ) {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
+        id: FabricIdentity { principal: "gunbai", key: key },
+        object: FabricGrantObject {
+          offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+          quote: QuotedFlatPerGrant(MoneyOnce {
+            amount: money_amount_micro(count: 1000),
+            currency: Usd,
+          }),
+        },
+        context: FabricGrantContext {
+          demand: demand,
+          work: s.work,
+          attempt: attempt,
+          executor: "spark-1",
+          lease: LeaseIdentity {
+            lease_key: "lease-1",
+            resource_fingerprint: h(s: "slice-1"),
+            generation: 9,
+          },
+          issued_at: "2026-08-28T01:00:00Z",
+          maximum_liability: money_amount_micro(count: 1000000),
+        },
+        evidence: FabricGrantEvidence {
+          fungibility_receipt: "fungibility-1",
+          offer_authority: "offer-authority-1",
+          resource_conservation: "resource-conservation-1",
+          budget_conservation: "budget-conservation-1",
+          principal_authority: "principal-authority-1",
+        },
+        permit: permit,
+        resource_reservations: ["reservation-gpu-1"],
+        money_reservation: "reservation-money-1",
+      }
+    }
+  }
+}
+
+fn fixture_start_claim(
+  observed_generation: Int,
+  ledger_generation: Int,
+  existing: List<TrainingExecutionClaim<NonEmptyStr>>,
+  transition: TrainingStartTransitionKey<NonEmptyStr>,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  grant_attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  grant_key: NonEmptyStr,
+  s: TrainingRunSubject<NonEmptyStr>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+) -> TrainingStartClaimAdmission<NonEmptyStr>? {
+  match grant_for(s: s, key: grant_key, attempt: grant_attempt, demand: demand) {
+    Absent => none
+    Present { value: g } => Present {
+      value: admit_start_claim(
+        observed_generation: observed_generation,
+        ledger_generation: ledger_generation,
+        existing: existing,
+        transition: transition,
+        attempt: attempt,
+        grant: g,
+      )
+    }
+  }
+}
+
+fn claim_from(a: TrainingStartClaimAdmission<NonEmptyStr>?) -> TrainingExecutionClaim<NonEmptyStr>? {
+  match a {
+    Absent => none
+    Present { value: adm } => claim_or_none(a: adm)
+  }
+}
+
+fn named_admission(a: TrainingStartClaimAdmission<NonEmptyStr>?) -> NonEmptyStr {
+  match a {
+    Absent => "no-permit"
+    Present { value: adm } => admission_name(a: adm)
   }
 }
 
@@ -521,26 +573,32 @@ test fn two_passes_claiming_one_transition_commit_one_attempt() -> Bool {
       let k = initial_transition(s: s)
       let a1 = attempt_id(k: "e1")
       let a2 = attempt_id(k: "e2")
-      match claim_or_none(a: admit_start_claim(
+      match claim_from(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 4,
         existing: [],
         transition: k,
         attempt: a1,
-        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+            grant_attempt: a1,
+        grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
       )) {
         none => false
         Present { value: first_claim } => {
-          let second = admit_start_claim(
+          let second = fixture_start_claim(
             observed_generation: 4,
             ledger_generation: 4,
             existing: [first_claim],
             transition: k,
             attempt: a2,
-            grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+            grant_attempt: a2,
+            grant_key: "grant-2",
+            s: s,
+            demand: s.demand,
           )
-          admission_name(a: second) == "already-committed"
-            && match claim_or_none(a: second) {
+          named_admission(a: second) == "already-committed"
+            && match claim_from(a: second) {
               none => false
               Present { value: held } => fabric_identity_eq(left: held.attempt, right: a1)
             }
@@ -575,23 +633,29 @@ test fn a_retry_is_a_different_transition_and_commits_beside_the_initial_claim()
     Present { value: s } => {
       let a1 = attempt_id(k: "e1")
       let a2 = attempt_id(k: "e2")
-      match claim_or_none(a: admit_start_claim(
+      match claim_from(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 4,
         existing: [],
         transition: initial_transition(s: s),
         attempt: a1,
-        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+        grant_attempt: a1,
+        grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
       )) {
         none => false
         Present { value: c1 } =>
-          admission_name(a: admit_start_claim(
+          named_admission(a: fixture_start_claim(
             observed_generation: 4,
             ledger_generation: 4,
             existing: [c1],
             transition: retry_transition(s: s, prior: "e1"),
             attempt: a2,
-            grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+            grant_attempt: a2,
+            grant_key: "grant-2",
+        s: s,
+        demand: s.demand,
           )) == "committed"
       }
     }
@@ -607,13 +671,16 @@ test fn a_stale_snapshot_is_neither_committed_nor_already_committed() -> Bool {
     none => false
     Present { value: s } => {
       let a1 = attempt_id(k: "e1")
-      admission_name(a: admit_start_claim(
+      named_admission(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 5,
         existing: [],
         transition: initial_transition(s: s),
         attempt: a1,
-        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+        grant_attempt: a1,
+        grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
       )) == "stale"
     }
   }
@@ -625,18 +692,16 @@ test fn a_grant_naming_another_attempt_refuses_the_claim() -> Bool {
   match subject_fixture() {
     none => false
     Present { value: s } =>
-      admission_name(a: admit_start_claim(
+      named_admission(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 4,
         existing: [],
         transition: initial_transition(s: s),
         attempt: attempt_id(k: "e1"),
-        grant: grant_for(
-          s: s,
-          key: "grant-1",
-          attempt: attempt_id(k: "e2"),
-          demand: s.demand,
-        ),
+        grant_attempt: attempt_id(k: "e2"),
+        grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
       )) == "refused"
   }
 }
@@ -647,18 +712,16 @@ test fn a_grant_naming_another_demand_refuses_the_claim() -> Bool {
   match subject_fixture() {
     none => false
     Present { value: s } =>
-      admission_name(a: admit_start_claim(
+      named_admission(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 4,
         existing: [],
         transition: initial_transition(s: s),
         attempt: attempt_id(k: "e1"),
-        grant: grant_for(
-          s: s,
-          key: "grant-1",
-          attempt: attempt_id(k: "e1"),
-          demand: FabricIdentity { principal: "brian", key: "demand-other" },
-        ),
+        grant_attempt: attempt_id(k: "e1"),
+        grant_key: "grant-1",
+        s: s,
+        demand: FabricIdentity { principal: "brian", key: "demand-other" },
       )) == "refused"
   }
 }
@@ -675,23 +738,29 @@ test fn two_active_claims_on_one_transition_slot_refuse_the_control_composition(
         Present { value: g } => {
           let a1 = attempt_id(k: "e1")
           let a2 = attempt_id(k: "e2")
-          match claim_or_none(a: admit_start_claim(
+          match claim_from(a: fixture_start_claim(
             observed_generation: 4,
             ledger_generation: 4,
             existing: [],
             transition: initial_transition(s: s),
             attempt: a1,
-            grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+            grant_attempt: a1,
+            grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
           )) {
             none => false
             Present { value: c1 } =>
-              match claim_or_none(a: admit_start_claim(
+              match claim_from(a: fixture_start_claim(
                 observed_generation: 4,
                 ledger_generation: 4,
                 existing: [],
                 transition: initial_transition(s: s),
                 attempt: a2,
-                grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+                grant_attempt: a2,
+                grant_key: "grant-2",
+        s: s,
+        demand: s.demand,
               )) {
                 none => false
                 Present { value: c2 } =>
@@ -718,13 +787,16 @@ test fn a_claim_for_an_attempt_outside_the_graph_is_refused() -> Bool {
         none => false
         Present { value: g } => {
           let ax = attempt_id(k: "e9")
-          match claim_or_none(a: admit_start_claim(
+          match claim_from(a: fixture_start_claim(
             observed_generation: 4,
             ledger_generation: 4,
             existing: [],
             transition: initial_transition(s: s),
             attempt: ax,
-            grant: grant_for(s: s, key: "grant-9", attempt: ax, demand: s.demand),
+            grant_attempt: ax,
+            grant_key: "grant-9",
+        s: s,
+        demand: s.demand,
           )) {
             none => false
             Present { value: c } =>
@@ -753,33 +825,42 @@ test fn independent_control_defects_are_all_reported() -> Bool {
           let a1 = attempt_id(k: "e1")
           let a2 = attempt_id(k: "e2")
           let ax = attempt_id(k: "e9")
-          match claim_or_none(a: admit_start_claim(
+          match claim_from(a: fixture_start_claim(
             observed_generation: 4,
             ledger_generation: 4,
             existing: [],
             transition: initial_transition(s: s),
             attempt: a1,
-            grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+            grant_attempt: a1,
+            grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
           )) {
             none => false
             Present { value: c1 } =>
-              match claim_or_none(a: admit_start_claim(
+              match claim_from(a: fixture_start_claim(
                 observed_generation: 4,
                 ledger_generation: 4,
                 existing: [],
                 transition: initial_transition(s: s),
                 attempt: a2,
-                grant: grant_for(s: s, key: "grant-2", attempt: a2, demand: s.demand),
+                grant_attempt: a2,
+                grant_key: "grant-2",
+        s: s,
+        demand: s.demand,
               )) {
                 none => false
                 Present { value: c2 } =>
-                  match claim_or_none(a: admit_start_claim(
+                  match claim_from(a: fixture_start_claim(
                     observed_generation: 4,
                     ledger_generation: 4,
                     existing: [],
                     transition: retry_transition(s: s, prior: "e1"),
                     attempt: ax,
-                    grant: grant_for(s: s, key: "grant-9", attempt: ax, demand: s.demand),
+                    grant_attempt: ax,
+                    grant_key: "grant-9",
+        s: s,
+        demand: s.demand,
                   )) {
                     none => false
                     Present { value: cx } => {
@@ -808,13 +889,16 @@ test fn a_dispatch_receipt_is_recorded_on_an_already_committed_claim() -> Bool {
     none => false
     Present { value: s } => {
       let a1 = attempt_id(k: "e1")
-      match claim_or_none(a: admit_start_claim(
+      match claim_from(a: fixture_start_claim(
         observed_generation: 4,
         ledger_generation: 4,
         existing: [],
         transition: initial_transition(s: s),
         attempt: a1,
-        grant: grant_for(s: s, key: "grant-1", attempt: a1, demand: s.demand),
+        grant_attempt: a1,
+        grant_key: "grant-1",
+        s: s,
+        demand: s.demand,
       )) {
         none => false
         Present { value: c } => {
