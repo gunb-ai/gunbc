@@ -492,7 +492,7 @@ fn spark_pair_head_unit_unsigned(args: VllmEngineArgs, snapshot: ModelSnapshotDe
                 ]),
                 install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
               }),
-            )
+            }
         }
       }
     }
@@ -531,7 +531,7 @@ fn spark_pair_worker_unit_unsigned(head: FabricLaneObserved, self: FabricLaneObs
               ]),
               install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
             }),
-          )
+          }
       }
     }
   }
@@ -693,39 +693,50 @@ fn spark_pair_publish_declared_head_artifact(realization: SparkPairRealization) 
   }
 }
 
+fn spark_pair_standing_from_artifact_lines(expected: ContentHash, stored_id: String, name: String, digest_wire: String) -> DeclaredUnitDigestStanding {
+  if stored_id != (serialize_content_hash(hash: expected) as String) {
+    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+  } else {
+    match spark_pair_parse_sha256_wire(wire: digest_wire) {
+      Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+      Present { value: digest } =>
+        DeclaredUnitDigested { unit_name: name as NonEmptyStr, digest: digest }
+    }
+  }
+}
+
+fn spark_pair_standing_from_artifact_body(expected: ContentHash, body: String) -> DeclaredUnitDigestStanding {
+  let lines = filter(split(s: body, delimiter: "\n"), line => line != "")
+  match first(lines) {
+    Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+    Present { value: stored_id } =>
+      match lines.skip(n: 1).first() {
+        Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+        Present { value: name } =>
+          match lines.skip(n: 2).first() {
+            Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+            Present { value: digest_wire } =>
+              spark_pair_standing_from_artifact_lines(expected: expected, stored_id: stored_id, name: name, digest_wire: digest_wire)
+          }
+      }
+  }
+}
+
+fn spark_pair_lookup_declared_head_digest_at(group: FabricGroup, expected: ContentHash) -> DeclaredUnitDigestStanding {
+  let rd = Filesystem.Read(path: spark_pair_declared_unit_artifact_path(group: group))
+  if !rd.success {
+    DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
+  } else {
+    spark_pair_standing_from_artifact_body(expected: expected, body: rd.content)
+  }
+}
+
 fn spark_pair_lookup_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
   match spark_pair_head_render_inputs_identity_for_group(group: group) {
     Absent =>
       DeclaredUnitDigestUnavailable { obligation: spark_pair_no_realization_names_group_obligation }
-    Present { value: expected } => {
-      let rd = Filesystem.Read(path: spark_pair_declared_unit_artifact_path(group: group))
-      if !rd.success {
-        DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-      } else {
-        let lines = filter(split(s: rd.content, delimiter: "\n"), line => line != "")
-        match lines[0] {
-          Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-          Present { value: stored_id } =>
-            if stored_id != (serialize_content_hash(hash: expected) as String) {
-              DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-            } else {
-              match lines[1] {
-                Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-                Present { value: name } =>
-                  match lines[2] {
-                    Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-                    Present { value: digest_wire } =>
-                      match spark_pair_parse_sha256_wire(wire: digest_wire) {
-                        Absent => DeclaredUnitDigestUnavailable { obligation: spark_pair_declared_unit_artifact_unavailable_obligation }
-                        Present { value: digest } =>
-                          DeclaredUnitDigested { unit_name: name as NonEmptyStr, digest: digest }
-                      }
-                  }
-              }
-            }
-        }
-      }
-    }
+    Present { value: expected } =>
+      spark_pair_lookup_declared_head_digest_at(group: group, expected: expected)
   }
 }
 
