@@ -99,6 +99,7 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_selection_frontier, kv_layout_wire,
 }
 import gunbc.fabric.engram_materialization {
+  ax_route_per_rank_resident_lower_bound,
   engram_component_identity,
   component_route_standing_component, component_route_standing_context, route_subject_key_eq,
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority,
@@ -1683,37 +1684,89 @@ test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> 
          })
 }
 
-// THE PRODUCT ROOT, RESTORED, AND ITS COST IS THE POINT RATHER THAN A PROBLEM.
+// THE PRODUCT ROOT, SPLIT INTO ITS TWO JOBS -- operator ruling 2026-09-15. The single claim that
+// replaced these did TWO things in one body, and only one of them is a wall.
 //
-// THE DECOMPOSITION DELETED THIS AND I DID NOT NOTICE. Splitting the live claim into a BEHAVIOUR half
-// over a one-topology designed field and an INHABITANCE half that runs no decision left NOTHING
-// executing `select_serving_deployment(input: deepseek_v4_1_decision_input)` -- main executes it three
-// times, this branch executed it zero. The cost fell partly because the execution the brief requires
-// was gone, which is DESIGN section 5's specification-without-execution arriving one layer up:
-// inhabitance checks the producer emits the right SHAPE, and a behaviour claim over supplied inputs
-// checks the fold, and NEITHER of them runs the real decision. Found by review 66368.
+// JOB ONE, THE WIRING, IS STRUCTURAL AND PERMANENT: serving selection must obtain Engram route
+// standings for a real candidate through the route integration. Delete the integration and this must
+// fail. That is `a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration`.
 //
-// THE BRIEF NAMES THIS AS A REQUIREMENT, not a nice-to-have: the serving consumer must obtain the
-// result THROUGH the route integration, and removing that integration must make a PRODUCT-ROOT control
-// fail. A claim over a designed field cannot fail for that reason -- its field is not the product's.
+// JOB TWO, TODAY'S ANSWER, IS CURRENT-STATE and correctly goes red when the fleet changes: the closest
+// shape to feasible is excluded on the per-rank resident floor. That is
+// `the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor`.
 //
-// SO THIS IS EXPECTED TO EXCEED THE NEW-WITNESS EVAL-STEP BUDGET, and that is the honest state rather
-// than something to engineer away. Roughly 188,000 of its cost is the select_serving_deployment call
-// on the live 24-candidate field; the assertions over the result are a rounding error beside it. A
-// product-root claim over a live decision costs what the decision costs, and buying a green gate by
-// deleting the only execution of the product root is not a cost reduction, it is coverage deletion
-// wearing one.
-test fn the_live_v4_1_serving_decision_excludes_every_admissible_candidate() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
-    NoFeasibleServingDeployment { causes: cs } =>
-      count(cs) > 0
-        && causes_name_axis(cs: cs, axis: ax_component_route)
-        && all(deepseek_v4_1_candidate_field.candidates,
-             k => causes_name_axis(cs: cs, axis: k.identity))
-    ServingDeploymentNeedsEvidence { needs: _, component_routes: _ } => false
-    ServingDeploymentSelected { selected: _ } => false
-    ServingDeploymentNeedsPolicy { survivors: _, component_routes: _ } => false
-    ServingDeploymentSelectionRefused { defects: _ } => false
+// WHY THIS IS LIGHTER WITHOUT BECOMING A FIXTURE. Both run on a candidate taken FROM THE LIVE FIELD --
+// the real artifact, its four real components, the real observed idle-free reading. What they do not do
+// is the 24-candidate select fold, which is where substantially all of 191,441 eval steps went. The
+// field-wide verdict is a fold over per-candidate exclusions, so asserting the exclusion on the real
+// candidate that matters is the same data path at one candidate's cost.
+//
+// WHAT COVERS THE AGGREGATION IS A DIFFERENT CLAIM, and it already exists:
+// `the_v4_1_aggregation_returns_no_feasible_naming_every_candidate` runs the real
+// `select_serving_deployment` over a designed field whose candidates are the REAL artifact with its
+// REAL components -- only the topology enumeration is narrowed, and `ax_host_fit` keeps that field
+// inhabiting the admissible set so it reds for the right mechanism. Aggregation over a designed field
+// plus exclusion over real data covers what one heavy claim covered.
+//
+// THE CONSEQUENCE I AM NOT HIDING: the non-comment count of select_serving_deployment on
+// `deepseek_v4_1_decision_input` is now ZERO, and that is the same count whose going to zero was a
+// defect last time. It is admissible here and was not then, for a reason that was PROVEN BY EXECUTION
+// rather than asserted -- #11383 requires that SOME claim fail when the integration is removed, and
+// last time none did.
+//
+// THE DELETION WAS RUN. In a scratch checkout with `candidate_component_route_standings` returning `[]`
+// -- the wiring severed, the program still well-formed:
+//
+//   a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration   false  (true intact)
+//   the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor                 false  (true intact)
+//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   TRUE   (true intact)
+//
+// AND THE THIRD LINE IS THE REASON THIS SPLIT EXISTS RATHER THAN A FOOTNOTE. The aggregation claim DOES
+// NOT DETECT THE REMOVAL. It asserts `ax_component_route` among the causes, and that axis is still named
+// with no route standings at all, because exclusion reaches it through `component_resident_footprint`'s
+// unread path. So it passes for a reason that survives the deletion, and anything relying on it as the
+// product-root control would let the integration be deleted with everything green. The wall rests
+// ENTIRELY on the first claim above. That is measured, not reasoned: both directions were executed, and
+// a claim that reds on a broken tree without greening on the intact one is a decoration, not a wall.
+fn v4_1_live_candidate_at(tp: Nat, replicas: Nat) -> DeploymentCandidate? {
+  (filter(deepseek_v4_1_candidate_field.candidates,
+    k => k.topology.tensor_parallel_degree == tp && k.topology.replica_count == replicas)).first()
+}
+
+fn engram_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
+  (filter(candidate_component_route_standings(c: c, p: c.profile),
+    st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+}
+
+test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool {
+  match v4_1_live_candidate_at(tp: 4, replicas: 1) {
+    Absent => false
+    Present { value: c } =>
+      count(candidate_component_route_standings(c: c, p: c.profile)) > 0
+        && match engram_standing_of(c: c) {
+          Absent => false
+          Present { value: st } =>
+            declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)
+              && declaration_ref_eq(a: component_route_standing_context(s: st).consumer, b: id_route_consumer)
+        }
+  }
+}
+
+test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> Bool {
+  match v4_1_live_candidate_at(tp: 4, replicas: 1) {
+    Absent => false
+    Present { value: c } =>
+      match engram_standing_of(c: c) {
+        Absent => false
+        Present { value: st } =>
+          match component_route_placement_standing(s: st) {
+            ComponentPlacementExcluded { causes: cs } =>
+              count(cs) > 0
+                && any(cs, x => string_contains(s: x as String,
+                     pattern: declaration_ref_display_key(ref: ax_route_per_rank_resident_lower_bound)))
+            _ => false
+          }
+      }
   }
 }
 
