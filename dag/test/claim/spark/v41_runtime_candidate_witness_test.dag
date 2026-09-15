@@ -21,9 +21,33 @@ import gunbc.spark.v41_runtime_candidate {
   V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
-  v41_partition_bytes, v41_engram_population,
+  v41_partition_bytes, v41_engram_population_of,
 }
 import std.measure { byte_size_count }
+import extdeps.safetensors.format {
+  SafetensorsPopulationStanding, safetensors_population_standing,
+  MembershipClosedAgainstFullIndex,
+}
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram_index_members, deepseek_v4_1_flash_engram_shard_files,
+  deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_engram_population,
+  deepseek_v4_1_flash_index_tensor_count,
+}
+
+// THE SAME TWELVE ROWS, READ AS IF THE INDEX HAD BEEN ENUMERATED. Every key-identity law below needs a
+// candidate that actually keys, and the live population cannot produce one: it closes against the rows
+// that were read, which this module now treats as an unestablished axis. Supplying a closed standing is
+// the honest way to write "if the index were enumerated" -- it changes only the closure, and it is a
+// fixture rather than a claim about the checkpoint.
+data w_closed_population: SafetensorsPopulationStanding = safetensors_population_standing(
+  members: deepseek_v4_1_flash_engram_index_members,
+  shards: deepseek_v4_1_flash_engram_shard_files,
+  closure: MembershipClosedAgainstFullIndex {
+    index_population_count: deepseek_v4_1_flash_index_tensor_count,
+    how: "fixture: this closure is asserted by the test, not read from the revision's index" as NonEmptyStr,
+  },
+  reading: deepseek_v4_1_flash_engram_population_reading,
+)
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
@@ -64,7 +88,7 @@ fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResiden
       weights: V41ManifestObserved { digest: w_sha(c: "a") },
       tokenizer: V41ManifestObserved { digest: w_sha(c: "b") },
     },
-    engram: V41EngramRealizationInputs { partition: partition, row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") }, route: route },
+    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") }, route: route },
     topology: topology_shape(tensor_parallel_degree: tp, replica_count: 1),
     device: device,
   }
@@ -190,19 +214,44 @@ test fn a_partition_fixed_by_patch_enters_the_runtime_key() -> Bool {
 // THE LIVE PARTITION IS TOTAL AND DISJOINT OVER THE CITED POPULATION, AND ITS STORAGE-BACKED BYTES ARE
 // DERIVED FROM THE CITED SPANS: 101377628352 + 101380404048. A foreign or a missing tensor refuses.
 test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses() -> Bool {
-  byte_size_count(b: v41_partition_bytes(population: v41_engram_population(), names: v41_candidate_partition.storage_backed)) == 202758032400
-    && (match v41_admit_partition(p: v41_candidate_partition) {
+  byte_size_count(b: v41_partition_bytes(population: v41_engram_population_of(standing: w_closed_population), names: v41_candidate_partition.storage_backed)) == 202758032400
+    && (match v41_admit_partition(p: v41_candidate_partition, standing: w_closed_population) {
       V41PartitionAdmitted { partition: _ } => true
       V41PartitionRefused { defects: _ } => false
     })
-    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.2.engram.embed.weight" as NonEmptyStr]), resident: v41_candidate_partition.resident }) {
+    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: concat(v41_candidate_partition.storage_backed, ["layers.2.engram.embed.weight" as NonEmptyStr]), resident: v41_candidate_partition.resident }, standing: w_closed_population) {
       V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.2.engram.embed.weight"))
       V41PartitionAdmitted { partition: _ } => false
     })
-    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: v41_candidate_partition.storage_backed, resident: ["layers.1.engram.q_weight" as NonEmptyStr] }) {
+    && (match v41_admit_partition(p: V41EngramResidencyPartition { storage_backed: v41_candidate_partition.storage_backed, resident: ["layers.1.engram.q_weight" as NonEmptyStr] }, standing: w_closed_population) {
       V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.wkv.scale"))
       V41PartitionAdmitted { partition: _ } => false
     })
+}
+
+// THE LIVE CHECKPOINT CANNOT KEY ITS ENGRAM AXIS, AND THAT IS THE POINT. The population closes against
+// the twelve rows that were read rather than against the revision's index, so a thirteenth Engram tensor
+// would be neither reconciled nor refused and a partition can be total over the twelve while missing it.
+// The fixture standing differs from the live one in the closure ALONE -- same members, same shards, same
+// reading -- so this pair discriminates the membership residual and nothing else.
+test fn an_unreconciled_membership_leaves_the_engram_axis_unestablished() -> Bool {
+  let live = v41_candidate_standing(c: V41CandidateInputs {
+    runtime: w_default(patches: w_two_patches()).runtime,
+    model_source: w_default(patches: w_two_patches()).model_source,
+    engram: V41EngramRealizationInputs {
+      partition: v41_candidate_partition,
+      population: deepseek_v4_1_flash_engram_population,
+      row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") },
+      route: engram_route_b_identity,
+    },
+    topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
+    device: gb10_observed_compute_capability,
+  })
+  match live.standing {
+    V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("membership is reconciled against 12 index rows that were read"))
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  }
 }
 
 // A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THAT IS THE ONE THE BYTE TOTAL EXISTS
@@ -216,7 +265,7 @@ test fn a_partition_that_keeps_the_large_tables_resident_refuses() -> Bool {
     storage_backed: v41_candidate_partition.resident,
     resident: v41_candidate_partition.storage_backed,
   }
-  match v41_admit_partition(p: inverted) {
+  match v41_admit_partition(p: inverted, standing: w_closed_population) {
     V41PartitionRefused { defects: d } => any(d, x => (x as String).contains("the large Engram tables are the ones being kept resident"))
     V41PartitionAdmitted { partition: _ } => false
   }

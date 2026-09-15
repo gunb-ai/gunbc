@@ -18,9 +18,12 @@ import extdeps.flashinfer.flashinfer {
   FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel,
   FlashInferWheelFilenameFields, flashinfer_wheel_filename_fields,
 }
-import extdeps.safetensors.format { SafetensorsEntry }
+import extdeps.safetensors.format {
+  SafetensorsEntry, SafetensorsPopulationStanding,
+  safetensors_population_entries, safetensors_population_closure_obligations,
+}
 import extdeps.deepseek.deepseek_v4_1_flash {
-  deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14,
+  deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
 }
 import gunbc.spark.vllm_runtime_image_build {
   vllm_image_build_key_inputs, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
@@ -287,16 +290,22 @@ fn v41_partition_bytes(population: List<SafetensorsEntry>, names: List<NonEmptyS
     f: (acc, e) => measure_add(a: acc, b: byte_size(count: e.end_offset - e.begin_offset)))
 }
 
-fn v41_engram_population() -> List<SafetensorsEntry> {
-  concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14)
+// THE POPULATION IS READ THROUGH ITS STANDING, NEVER AROUND IT. Concatenating the two layers' entry
+// lists reaches the same twelve rows while stepping past the carrier that says what those rows are
+// CLOSED AGAINST, and extdeps.safetensors.format says exactly what that carrier is for: "A consumer
+// that establishes a subject over this reads the obligation and carries it onto its own evidence axis,
+// so an unenumerated index shows up as an open question in the decision rather than as a sentence in
+// this file." This module is such a consumer.
+fn v41_engram_population_of(standing: SafetensorsPopulationStanding) -> List<SafetensorsEntry> {
+  safetensors_population_entries(s: standing)
 }
 
 fn v41_count_named(names: List<NonEmptyStr>, name: NonEmptyStr) -> Int {
   length(filter(names, n => (n as String) == (name as String)))
 }
 
-fn v41_admit_partition(p: V41EngramResidencyPartition) -> V41PartitionAdmission {
-  let population = v41_engram_population()
+fn v41_admit_partition(p: V41EngramResidencyPartition, standing: SafetensorsPopulationStanding) -> V41PartitionAdmission {
+  let population = v41_engram_population_of(standing: standing)
   let assigned = concat(p.storage_backed, p.resident)
   let unassigned = map(filter(population, e => v41_count_named(names: assigned, name: e.name) == 0), e => join(["tensor ", e.name as String, " is neither storage-backed nor resident"], "") as NonEmptyStr)
   let twice = map(filter(population, e => v41_count_named(names: assigned, name: e.name) > 1), e => join(["tensor ", e.name as String, " is assigned more than once"], "") as NonEmptyStr)
@@ -373,8 +382,14 @@ fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
 
 // ── THE ENGRAM REALIZATION ──────────────────────────────────────────────────────────────────────
 
+// THE POPULATION STANDING IS AN INPUT, not a constant this module reaches for, because its membership
+// closure is the thing that decides whether this axis can key at all. A caller supplies which reading of
+// the checkpoint's Engram tensors the candidate is being built over, and the live row supplies the real
+// one; a fixture that wants a keyed candidate must supply a standing closed against a full index, which
+// is the honest way to say "if the index were enumerated".
 type V41EngramRealizationInputs {
   partition: V41EngramResidencyPartition
+  population: SafetensorsPopulationStanding
   row_store_encoding: V41ManifestStanding
   route: DeclarationRef
 }
@@ -395,8 +410,21 @@ fn v41_decl_field_wire(f: DeclField) -> String {
   }
 }
 
+// AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
+// no key is minted for an axis with a hole in it. The checkpoint's Engram population closes against the
+// twelve rows that were READ rather than against the revision's 96085-name index, so a thirteenth Engram
+// tensor at this revision would be neither reconciled nor refused -- and a partition can be total and
+// disjoint over the twelve while missing it entirely. Keying here would hash "the Engram tensors we
+// happen to have read" and call it the Engram realization, and two different future candidates over
+// different readings of the same checkpoint would share it. So the residual the population carries is
+// folded onto this axis as an obligation, and it is the only one of the three standings that can be
+// discharged by reading the index rather than by writing something.
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
-  match v41_admit_partition(p: e.partition) {
+  let membership = safetensors_population_closure_obligations(s: e.population)
+  if length(membership) != 0 {
+    V41IdentityUnestablished { obligations: membership }
+  } else {
+  match v41_admit_partition(p: e.partition, standing: e.population) {
     V41PartitionRefused { defects: d } => V41IdentityRefused { defects: d }
     V41PartitionAdmitted { partition: p } =>
       if !v41_route_admitted(route: e.route) {
@@ -413,6 +441,7 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
             ])) }
         }
       }
+  }
   }
 }
 
@@ -572,6 +601,7 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
+    population: deepseek_v4_1_flash_engram_population,
     row_store_encoding: V41ManifestUnestablished { obligation: "no rank-local Engram row-store encoding exists yet, so the materialized artifact has no identity" as NonEmptyStr },
     route: engram_route_b_identity,
   },
