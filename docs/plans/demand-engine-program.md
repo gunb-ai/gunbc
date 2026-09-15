@@ -159,7 +159,7 @@ Order: M0 -> M1 -> M2 -> M3a -> M3b -> M4 -> M5 -> M6 -> M7. The first authority
 
 **Deletes in the same change.** `v2.program` `program_run_dependencies` and every fixture row that restates derivable dataflow.
 
-**Production consumer.** `v2.program`'s run and `module_resolution_plan`'s module dependencies, derived rather than written.
+**Production consumer.** `v2.program`'s run and `module_resolution_plan`'s module dependencies, derived rather than written. Execution follows the adopted consumer-relative sequence (M2a: derive -> switch `v2.program` -> delete `program_run_dependencies`; M2b: one next consumer); `module_resolution_plan`'s future work is adapting its already-derived import authority to judgment dependencies and replacing its batch realization, not deleting a hand-authored population.
 
 **Qualification.** Derived relations equal the hand rows on every existing specimen before the rows are deleted; a missing-edge mutation makes admission refuse instead of reading as independence; an undeclared effect refuses concurrent realization at the realization layer, not in the engine; a selected arm's read set differs by branch and yields different evaluation identities.
 
@@ -240,6 +240,8 @@ Order: M0 -> M1 -> M2 -> M3a -> M3b -> M4 -> M5 -> M6 -> M7. The first authority
 ## 6. Program-wide qualification
 
 - **Identity of results.** Every engine milestone is byte-identical in driver rows against its predecessor on the bounded concurrent A/B harness, then on one capped exact-head full fold; a difference stops the line.
+- **Production-route pairing.** Every hand-specimen or supplied-boundary witness is paired with at least one production-route inhabitance witness. The real producer's value must reach the real consumer through the authority under test, and deleting or bypassing that integration must make the paired control red. Shape agreement alone does not discharge this obligation.
+- **Full JudgmentContract equality.** Semantic-equivalence receipts compare the complete `JudgmentContract` result: value, ordered diagnostics, refusal arm and cause, provenance/occurrence contract, effect requests and receipts, and required artifact outputs. Native driver-row byte identity is an additional projection-specific requirement, never the complete generic equality criterion.
 - **Discriminating controls.** Every new witness names its mutation and why it reds, and fits the floor's per-identity step budget (hand specimens, not the corpus).
 - **Deletion is the census.** Each milestone runs a delete-first branch through the fail-closed floor before its detailed plan, and lands with a census showing no production consumer of what it retired.
 - **Conformance.** Every change is read by `conformance-identity`, `conformance-realization`, `conformance-compute` and `conformance-decision`; departures state reasons. `conformance-identity` owns the key relation and input completeness; `conformance-realization` owns faithful realization of an admitted identity and result contract. Cache purity is one discriminator across that boundary.

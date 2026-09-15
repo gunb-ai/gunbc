@@ -90,15 +90,13 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-realization",
     label: "materialization / realization",
-    question: "Does the change cache, memoize, build, emit or execute something without inhabiting the corpus's realization model -- a content-addressed pure spec realized by a bound handler -- and if it departs from that model, does it say why?",
+    question: "Given an admitted identity and result contract, does the handler, provider, placement or transport faithfully realize it -- preserving completeness, readback, retention, refusal and binding obligations -- without substituting, truncating or bypassing the admitted key; and where it departs, does it say why?",
     homes: ConformanceHomes {
       first: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
       rest: [
         decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
         decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
         decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
-        decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
-        decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
       ],
     },
     tells: [
@@ -182,13 +180,15 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-identity",
     label: "keys / hashing",
-    question: "When this change defines, derives or consumes a key or a hash -- a computation identity, a cache or memo key, a store key, a structural fingerprint, a scoped entity or occurrence identity -- does it inhabit a named keying relation derived algorithmically from that relation's declared inputs through the existing key authority, with a canonical encoding injective over the domain and a hash family chosen for the key's sharing scope (structural fingerprints within one run, collision-resistant digests across a run, host or store boundary); and where it departs, does it state the departure and its reason?",
+    question: "When this change defines, derives or consumes a key or a hash -- a computation identity, a cache or memo key, a store key, a structural fingerprint, a scoped entity or occurrence identity -- does it inhabit a named keying relation derived algorithmically from that relation's declared inputs through the existing key authority, with a canonical encoding injective over the domain, a declared equality, a hash family chosen for the key's sharing scope, and a declared collision disposition for that scope; and where it departs, does it state the departure and its reason?",
     homes: ConformanceHomes {
       first: decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
       rest: [
         decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
         decl_ref(module_path: "v2.std.node", decl_name: "content_hash"),
         decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
+        decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
+        decl_ref(module_path: "std.computation_identity", decl_name: "ComputationIdentity"),
       ],
     },
     tells: [
