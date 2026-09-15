@@ -1,0 +1,46 @@
+module gunbc.readiness
+
+// Canonical runtime-readiness algebra. Independent of std.realization_reconcile
+// Reconciliation / ReconciledEffect: a readiness result cannot inhabit a
+// convergence verdict by construction (CONVERGENCE-ONE C5; control 8).
+// Ready / Pending / Refused is the reserved shape. Pending is "not yet" and
+// does not choose a remedy. Refused is a usable negative, distinct from
+// Pending. An observer returns this after ONE attempt; retry cadence belongs
+// to the transaction caller.
+// CONSUMERS: gunbc.live_deploy.readiness live_deploy_service_ready_once,
+// gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
+
+type Readiness<Evidence, PendingCause, RefusalCause>
+  = Ready { evidence: Evidence }
+  | Pending { cause: PendingCause }
+  | Refused { cause: RefusalCause }
+
+fn readiness_is_ready<Evidence, PendingCause, RefusalCause>(
+  r: Readiness<Evidence, PendingCause, RefusalCause>,
+) -> Bool {
+  match r {
+    Ready { evidence: _ } => true
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+fn readiness_is_pending<Evidence, PendingCause, RefusalCause>(
+  r: Readiness<Evidence, PendingCause, RefusalCause>,
+) -> Bool {
+  match r {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => true
+    Refused { cause: _ } => false
+  }
+}
+
+fn readiness_is_refused<Evidence, PendingCause, RefusalCause>(
+  r: Readiness<Evidence, PendingCause, RefusalCause>,
+) -> Bool {
+  match r {
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
+    Refused { cause: _ } => true
+  }
+}

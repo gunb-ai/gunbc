@@ -14,10 +14,14 @@ import gunbc.live_deploy.readiness {
   show_healthz_read_fixture_healthy,
   live_deploy_healthz_get_for_port,
   service_ready_apply_effect_for_deploy,
+  service_readiness_reason,
+  observe_service_readiness_from_healthz,
+  ServiceProbeUnanswered,
   HealthzEffectiveRead,
   HealthzBodyRead,
   HealthzProbeRefused,
 }
+import gunbc.readiness { Ready, Pending, Refused, readiness_is_ready }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_poll_max_attempts,
@@ -173,6 +177,22 @@ test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   }
 }
 
+test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
+  match observe_service_readiness_from_healthz(
+    read: HealthzProbeRefused {
+      probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
+    },
+    bundle: materialize_live_roadmap_site_surface_bundle(),
+    expected_revision: deploy_witness_release_revision,
+    expected_surface_identity: witness_expected_surface_identity(),
+  ) {
+    Pending { cause: ServiceProbeUnanswered { detail } } =>
+      string_contains(s: detail, pattern: "timed out")
+    Ready { evidence: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
 test fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
   systemctl_status_operation_argv_matches_authority(
     unit: live_deploy_service_ready_unit_authority
@@ -225,7 +245,7 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
     access: ci_deploy_srv1_access,
   )
   let delay = sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
-  !reconciliation_converged(r: probe) && delay
+  !readiness_is_ready(r: probe) && delay
 }
 
 test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
@@ -249,12 +269,13 @@ test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Boo
     last_probe: "health probe never succeeded"
   )
   match r {
-    NotConverged { reason: why, applied: _ } =>
-      string_contains(s: why, pattern: "ServiceNotReady")
-        && string_contains(s: why, pattern: "waited_s=120")
-        && string_contains(s: why, pattern: "health probe never succeeded")
-        && !string_contains(s: why, pattern: "converged")
-    Converged { evidence: _, applied: _ } => false
+    Refused { cause: _ } =>
+      string_contains(s: service_readiness_reason(r: r), pattern: "ServiceNotReady")
+        && string_contains(s: service_readiness_reason(r: r), pattern: "waited_s=120")
+        && string_contains(s: service_readiness_reason(r: r), pattern: "health probe never succeeded")
+        && !string_contains(s: service_readiness_reason(r: r), pattern: "converged")
+    Ready { evidence: _ } => false
+    Pending { cause: _ } => false
   }
 }
 
