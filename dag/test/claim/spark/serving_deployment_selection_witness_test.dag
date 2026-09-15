@@ -9,6 +9,7 @@ import v2.std.optional { Present, Absent }
 import std.interval { IntervalReady, IntervalRefused }
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
+  group_rank_free_memory_observed,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
@@ -2097,4 +2098,18 @@ test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
     Present { value: b } => byte_size_count(b: b) > 0
     Absent => false
   }
+}
+
+// THE MINT REFUSING IS NOT EVIDENCE THAT THE AUTHORED ROWS PASS IT. The two claims above establish what
+// `gib_hundredths_interval` does with endpoints THIS CLAIM supplies; they say nothing about the rows
+// actually in the corpus. Because the construction is stored rather than the interval, a transposed row
+// is writable and would otherwise stay silent until a consumer folded it. This is the claim that makes
+// an authored transposition red HERE instead -- it is the whole of the class's rung-two standing, and
+// deleting it drops the class to rung one.
+test fn every_authored_free_memory_row_mints_its_region() -> Bool {
+  count(group_rank_free_memory_observed) > 0
+    && all(group_rank_free_memory_observed, r => match r.free {
+      IntervalReady { interval: _ } => true
+      IntervalRefused { reason: _ } => false
+    })
 }

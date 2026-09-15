@@ -328,6 +328,22 @@ fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
 // in which to unwrap it, and every way of unwrapping it here -- swapping the endpoints, dropping the
 // row, substituting a default -- is the absorbing fallback DESIGN section 5 forbids. Storing the
 // construction keeps the refusal on the path to the consumer, which is what the wall is for.
+//
+// SO THIS CLASS DOES NOT INHERIT `OrderedClosedInterval`'s RUNG, and saying otherwise would be rung
+// inflation (DESIGN section 4b). `OrderedClosedInterval` reaches rung four: reversed endpoints have no
+// constructor. Here a reversed pair is still WRITABLE in the row -- `gib_hundredths_interval(low: 11695,
+// high: 11685)` is an authorable row that compiles -- and refuses only when a consumer folds the
+// construction. Measured against that boundary the class sits at rung one to two: the harm is contained
+// by a typed refusal that reaches `candidate_component_budget` as an evidence obligation (one), and the
+// witness roster below asserts every authored row mints successfully, so an authored transposition reds
+// at witness time rather than at the first consumer (two) -- which depends on that claim executing and
+// staying enrolled, and is therefore not three.
+//
+// CEILING: rung four, by a `std.interval` mint that can be checked at construction, so a reversed pair
+// has no constructor at the row either. TRIGGER: that mint existing in `std.interval` -- the capability,
+// not this module's adoption of it. It is deliberately not proposed here: `std.interval` is a
+// load-bearing authority and widening its constructor surface is its own decision, not a side effect of
+// repairing one observation row.
 type GroupRankFreeMemoryObserved {
   group: FabricGroup
   reported_free_wire: NonEmptyStr
