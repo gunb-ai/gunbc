@@ -685,28 +685,22 @@ fn v41_candidate() -> V41CandidateVerdict {
 // THE STORAGE-BACKED LOOKUP PATCH, ORDERED. Overlay bytes first, then the hook that imports them
 // into engram.py. Partition is launch configuration: the runtime takes an exact local path and an
 // expected identity rather than hard-coding which tensors are storage-backed.
-data v41_engram_file_backed_overlay_sha256: String = "b04b442efd9c836e8275f8419444bd5fcb54e2de6ea6939207b9219f360fac77"
-data v41_engram_storage_hook_sha256: String = "e51d640b9947f53e29cdae37a769ba5f8cd848587ce91436d2316d43a511a6b0"
+//
+// THE DIGEST IS THE FILE, AND A HEX LITERAL IS NOT A READING OF IT. The hermetic claim route has
+// no mock_response for sha256sum.Sha256.DigestFile, so this fold must not mint V41PatchesObserved
+// from transcribed hex (that would stay green after the files change). Observed is produced only
+// by DigestFile over these paths, on a route that can actually run that operation.
+data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py" as NonEmptyStr
+data v41_engram_storage_hook_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr
 
 fn v41_storage_backed_patch_population() -> V41PatchPopulation {
-  match v41_engine_patch(
-    path: "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py" as NonEmptyStr,
-    applies_to: vllm_d2d649e6_revision,
-    sha256_hex: v41_engram_file_backed_overlay_sha256,
-    purpose: "rank-local file backing for Engram rows; mmap without cudaHostRegister of the whole table" as NonEmptyStr,
-  ) {
-    Absent => V41PatchesUnestablished { obligation: "overlay patch digest did not parse" as NonEmptyStr }
-    Present { value: overlay } => match v41_engine_patch(
-      path: "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr,
-      applies_to: vllm_d2d649e6_revision,
-      sha256_hex: v41_engram_storage_hook_sha256,
-      purpose: "hook FileBackedEngramStorage into ParallelEngramEmbedding without new scheduler machinery" as NonEmptyStr,
-    ) {
-      Absent => V41PatchesUnestablished { obligation: "hook patch digest did not parse" as NonEmptyStr }
-      Present { value: hook } => V41PatchesObserved {
-        patches: [overlay, hook],
-        partition: PartitionByLaunchConfiguration,
-      }
-    }
+  V41PatchesUnestablished {
+    obligation: join([
+      "patch identity is sha256sum.Sha256.DigestFile over ",
+      v41_engram_file_backed_overlay_path as String,
+      " then ",
+      v41_engram_storage_hook_path as String,
+      "; a hex literal is not that producer, and the hermetic claim route has no DigestFile arm",
+    ], "") as NonEmptyStr,
   }
 }

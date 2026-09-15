@@ -423,10 +423,11 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
   }
 }
 
-test fn the_live_storage_backed_patches_are_observed() -> Bool {
+test fn the_live_storage_backed_patches_are_not_minted_from_transcribed_hex() -> Bool {
   match v41_storage_backed_patch_population() {
-    V41PatchesObserved { patches: ps, partition: _ } => length(ps) == 2
+    V41PatchesObserved { patches: _, partition: _ } => false
     V41PatchesAbsentByObservation => false
-    V41PatchesUnestablished { obligation: _ } => false
+    V41PatchesUnestablished { obligation: o } =>
+      (o as String).contains("DigestFile") && (o as String).contains("engram_file_backed.py")
   }
 }

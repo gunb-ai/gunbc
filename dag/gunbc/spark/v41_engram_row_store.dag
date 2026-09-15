@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import std.measure { byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
@@ -27,7 +27,7 @@ data v41_row_store_format_revision: Nat = 1
 data v41_row_store_endianness: NonEmptyStr = "little" as NonEmptyStr
 data v41_row_store_row_order: NonEmptyStr = "global-ascending-interleaved-by-rank" as NonEmptyStr
 data v41_row_store_partition_rule: NonEmptyStr = "dest_rank = global_row % rank_count; local_row = global_row / rank_count" as NonEmptyStr
-data v41_row_store_alignment_bytes: Nat = 64
+data v41_row_store_alignment_bytes: ByteSize = byte_size(count: 64)
 data v41_row_store_rank_count: Nat = 4
 
 type V41RowGeometry sole_constructor {
@@ -46,16 +46,16 @@ fn v41_row_geometry() -> V41RowGeometry {
   }
 }
 
-fn v41_row_bytes(g: V41RowGeometry) -> Nat {
-  weight_bytes(g: g) + scale_bytes(g: g)
+fn v41_row_bytes(g: V41RowGeometry) -> ByteSize {
+  byte_size(count: byte_size_count(b: weight_bytes(g: g)) + byte_size_count(b: scale_bytes(g: g)))
 }
 
-fn weight_bytes(g: V41RowGeometry) -> Nat {
-  g.weight_width * byte_size_count(b: safetensors_dtype_byte_width(d: g.weight_dtype))
+fn weight_bytes(g: V41RowGeometry) -> ByteSize {
+  byte_size(count: g.weight_width * byte_size_count(b: safetensors_dtype_byte_width(d: g.weight_dtype)))
 }
 
-fn scale_bytes(g: V41RowGeometry) -> Nat {
-  g.scale_width * byte_size_count(b: safetensors_dtype_byte_width(d: g.scale_dtype))
+fn scale_bytes(g: V41RowGeometry) -> ByteSize {
+  byte_size(count: g.scale_width * byte_size_count(b: safetensors_dtype_byte_width(d: g.scale_dtype)))
 }
 
 type V41TensorSlice sole_constructor {
@@ -84,7 +84,7 @@ type V41RowStoreEncodingSpec sole_constructor {
   endianness: NonEmptyStr
   row_order: NonEmptyStr
   partition_rule: NonEmptyStr
-  alignment_bytes: Nat
+  alignment_bytes: ByteSize
 }
 
 fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> V41RowStoreEncodingSpec {
@@ -117,7 +117,7 @@ fn v41_encoding_spec_inputs(spec: V41RowStoreEncodingSpec) -> List<ArtifactReali
     v41_input(identity: "row_order", value: spec.row_order as String),
     v41_input(identity: "partition_rule", value: spec.partition_rule as String),
     v41_input(identity: "rank_count", value: to_string(spec.rank_count)),
-    v41_input(identity: "alignment_bytes", value: to_string(spec.alignment_bytes)),
+    v41_input(identity: "alignment_bytes", value: to_string(byte_size_count(b: spec.alignment_bytes))),
     v41_input(identity: "weight_dtype", value: "SafeF8E4M3"),
     v41_input(identity: "scale_dtype", value: "SafeF8E8M0"),
     v41_input(identity: "weight_width", value: to_string(spec.geometry.weight_width)),
@@ -185,7 +185,7 @@ type V41PlacedRow sole_constructor {
   global_row: Nat
   rank: Nat
   local_row: Nat
-  offset: Nat
+  offset: ByteSize
   payload: NonEmptyStr
 }
 
@@ -204,7 +204,7 @@ fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank
     global_row: row.global_row,
     rank: rank,
     local_row: v41_local_row(global_row: row.global_row, rank_count: spec.rank_count),
-    offset: prior_on_rank * v41_row_bytes(g: spec.geometry),
+    offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
     payload: row.payload,
   }
 }
@@ -237,7 +237,7 @@ fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> Lis
 }
 
 fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat) -> String {
-  join(map(filter(placed, r => r.rank == rank).sort_by(r => r.offset), r => r.payload as String), "")
+  join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
 }
 
 fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat) -> ContentHash {
@@ -258,7 +258,7 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
     s => join(["source row ", s.tensor as String, "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr)
   let dup = map(
     filter(placed, p => length(filter(placed, q => q.rank == p.rank && q.offset == p.offset)) != 1),
-    p => join(["rank ", to_string(p.rank), " offset ", to_string(p.offset), " is not unique"], "") as NonEmptyStr)
+    p => join(["rank ", to_string(p.rank), " offset ", to_string(byte_size_count(b: p.offset)), " is not unique"], "") as NonEmptyStr)
   let wrong_rank = map(
     filter(placed, p => p.rank != v41_dest_rank(global_row: p.global_row, rank_count: spec.rank_count)),
     p => join(["row ", to_string(p.global_row), " placed on rank ", to_string(p.rank), " against the declared partition rule"], "") as NonEmptyStr)
