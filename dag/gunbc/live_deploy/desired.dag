@@ -37,7 +37,6 @@ import gunbc.live_deploy.spec {
 // operation may be pointed at. Convergence folds consume a caller-supplied DeploymentSpec;
 // they do not enumerate this list or choose a row. A fold that picked which deployment it was
 // acting on would rebuild the conflation DESIGN §3d forbids.
-
 type DesiredDeployment {
   instance: HostDashboardInstance
   target: DeploymentHostTarget
@@ -112,12 +111,13 @@ fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeployment?
     f: (acc, row) =>
       match acc {
         Present { value } => Present { value: value }
-        Absent =>
-          if row.instance.instance_id as String == instance_id {
+        Absent => {
+          if row.instance.instance_id == instance_id as NonEmptyStr {
             Present { value: row }
           } else {
             none
           }
+        }
       },
   )
 }

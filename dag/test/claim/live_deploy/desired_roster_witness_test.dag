@@ -140,12 +140,13 @@ fn discrimination_apply_plan(row: DesiredDeployment) -> ReleaseEffectPlan {
     target: deploy_witness_release_target(spec: spec),
     mutation_for: m => match m {
       UnitFile => WriteUnit
-      DirectoryRoot { path } =>
+      DirectoryRoot { path } => {
         if path as String == owned as String {
           CreateRoot
         } else {
           KeepMember
         }
+      }
       _ => KeepMember
     },
   )
@@ -172,6 +173,10 @@ test fn selecting_lab_changes_emitted_apply_bytes() -> Bool {
     && string_contains(
       s: lab_sh,
       pattern: dashboard_instance_dispatch_worktree_root(instance: lab_row.instance) as String,
+    )
+    && !string_contains(
+      s: lab_sh,
+      pattern: dashboard_instance_dispatch_worktree_root(instance: live_row.instance) as String,
     )
 }
 
