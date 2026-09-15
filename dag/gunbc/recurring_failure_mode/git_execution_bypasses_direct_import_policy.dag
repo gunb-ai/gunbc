@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.git_execution_bypasses_direct_import_policy
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// This is the wall's coverage record, consumed by the existing derived failure-mode ledger.
+data git_execution_bypasses_direct_import_policy: RecurringFailureMode = RecurringFailureMode {
+  identity: "git_execution_bypasses_direct_import_policy" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a direct-import policy is cited as establishing absence of execution of that dependency. HARM: a caller reaches the same executable through a configured or capability-passed program without adding a protected import, defeating the supposed closure while the import check stays clean.",
+
+    "SOURCE-VERIFIED SPECIMEN, NOT AN EXECUTED REPRODUCTION: gunbc.roadmap.roadmap_event_carrier carrier_exec passes layout.git_program and caller-supplied arguments to carrier_exec_program. The use-site has no extdeps.git import. The observed use is enrolled as gunbc.git_use_census.roadmap_event_git_execution roadmap_event_git_execution. This is a KNOWN BYPASS of gunbc.git_use_authority git_import_authority_verdict, not merely an uncounted import.",
+
+    "COVERAGE GRAIN OF THIS WALL: direct .dag Git/GitHub imports are the policy population; no required-lane execution is yet established. Rust uses are unreached, carried as individual census rows, with next capability a Node dependency producer including Rust sources. Configured or opaque .dag process invocations are unreached and form the KNOWN BYPASS, with next capability Node-derived process provenance through capability bindings and caller arguments. Import refusal in gunbc.scm.* does not establish absence of Git execution there.",
+
+    "RUNG FOUND AT: no executed prevention claim; the bypass is source-verified and the import policy is not yet connected to required acceptance. CEILING: structural guarantee only for execution dependencies whose provenance can be completely modeled; unknown external executable behavior remains a refusing boundary. NEXT TRIGGER: the executing acceptance path consumes Node-derived process provenance and refuses an unresolved executable dependency instead of treating absence of a direct import as absence of execution. No claim is made that the required provenance analysis already executes merely because capability bindings are Nodes.",
+
+    "IMPORT-CLOSURE TRIGGER, A DIFFERENT SUBJECT: the existing required parse population feeds the same .dag import policy and its total verdict stops the required lane, with forbidden-import RED, adapter and legacy positive controls, withdrawal and incomplete-population controls, and mutation controls for both the host and policy. That establishes mechanically preventable direct-import closure only. Approval-bound roster growth remains review diligence, mitigatable, until externally originated approval evidence is verifiable at the gate.",
+  ],
+
+  evidence: [],
+}

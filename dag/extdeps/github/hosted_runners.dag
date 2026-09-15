@@ -8,6 +8,7 @@ import std.measure {
   hardware_thread_count,
 }
 import extdeps.github.actions { RunnerLabel, Ubuntu2404, Ubuntu2404Arm, UbuntuSlim }
+import extdeps.github.repository { RepositoryVisibility, PublicRepository, PrivateRepository }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -32,11 +33,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // alias of the current x64 row and deliberately not a row - pinning by alias lets the vendor move
 // the fact.
 
-type RepoVisibility = PublicRepo | PrivateRepo
-
 type GithubHostedRunnerCatalogRow {
   runs_on_label: RunnerLabel
-  visibility: RepoVisibility
+  visibility: RepositoryVisibility
   vcpus: HardwareThreadCount
   memory_bytes: ByteSize
   storage_bytes: ByteSize
@@ -45,7 +44,7 @@ type GithubHostedRunnerCatalogRow {
 
 data github_hosted_ubuntu_slim_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: UbuntuSlim,
-  visibility: PublicRepo,
+  visibility: PublicRepository,
   vcpus: hardware_thread_count(1),
   memory_bytes: byte_size(5000000000),
   storage_bytes: byte_size(14000000000),
@@ -54,7 +53,7 @@ data github_hosted_ubuntu_slim_public_catalog: GithubHostedRunnerCatalogRow = Gi
 
 data github_hosted_ubuntu_slim_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: UbuntuSlim,
-  visibility: PrivateRepo,
+  visibility: PrivateRepository,
   vcpus: hardware_thread_count(1),
   memory_bytes: byte_size(5000000000),
   storage_bytes: byte_size(14000000000),
@@ -63,7 +62,7 @@ data github_hosted_ubuntu_slim_private_catalog: GithubHostedRunnerCatalogRow = G
 
 data github_hosted_ubuntu_2404_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: Ubuntu2404,
-  visibility: PublicRepo,
+  visibility: PublicRepository,
   vcpus: hardware_thread_count(4),
   memory_bytes: byte_size(16000000000),
   storage_bytes: byte_size(14000000000),
@@ -72,7 +71,7 @@ data github_hosted_ubuntu_2404_public_catalog: GithubHostedRunnerCatalogRow = Gi
 
 data github_hosted_ubuntu_2404_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: Ubuntu2404,
-  visibility: PrivateRepo,
+  visibility: PrivateRepository,
   vcpus: hardware_thread_count(2),
   memory_bytes: byte_size(8000000000),
   storage_bytes: byte_size(14000000000),
@@ -81,7 +80,7 @@ data github_hosted_ubuntu_2404_private_catalog: GithubHostedRunnerCatalogRow = G
 
 data github_hosted_ubuntu_2404_arm_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: Ubuntu2404Arm,
-  visibility: PublicRepo,
+  visibility: PublicRepository,
   vcpus: hardware_thread_count(4),
   memory_bytes: byte_size(16000000000),
   storage_bytes: byte_size(14000000000),
@@ -90,7 +89,7 @@ data github_hosted_ubuntu_2404_arm_public_catalog: GithubHostedRunnerCatalogRow 
 
 data github_hosted_ubuntu_2404_arm_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
   runs_on_label: Ubuntu2404Arm,
-  visibility: PrivateRepo,
+  visibility: PrivateRepository,
   vcpus: hardware_thread_count(2),
   memory_bytes: byte_size(8000000000),
   storage_bytes: byte_size(14000000000),

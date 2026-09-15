@@ -1,9 +1,13 @@
 module gunbc.runner_unit_file
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.measure { hardware_thread_count_value }
 import std.disposition { Disposition, SingleAuthority }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
+import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
+import product.placement_supply { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_makeflags_env_name }
@@ -46,9 +50,23 @@ import gunbc.runner_unit {
   runner_unit_template_name,
   runner_unit_dropin_path,
 }
-import gunbc.runner_host_deploy { RunnerHostDeploy, GithubAppRunnerConfig, github_app_runner_org }
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy,
+  GithubAppRunnerConfig,
+  github_app_runner_org,
+  runner_job_user_env_name,
+}
+import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
-import gunbc.host_converge { gunbc_runner_jobserver_service }
+import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
+import gunbc.ci_fleet { fleet_compute_offer_for }
+import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
+import gunbc.build_cache_instance { ci_cache_instance }
+import gunbc.build_cache_unit {
+  sccache_endpoint_env_assignment,
+  sccache_error_log_env_assignment,
+  sccache_cache_dir_env_assignment,
+}
 
 data gunbc_runner_unit_file_scope_disposition: Disposition = SingleAuthority
 
@@ -358,23 +376,136 @@ fn runner_unit_text(rendering: RunnerUnitFileRendering) -> RunnerUnitTextRenderi
 
 data runner_unit_system_path: String = join(["/etc/systemd/system/", runner_unit_template_name as String], "")
 
-// THE TEARDOWN REACHES THE FLEET AS A DROP-IN, AND THE WHOLE UNIT STILL DOES NOT, for a reason that is
-// about the other drop-ins rather than about this one. The live unit on every runner host is ctrl's
-// fragment plus a hand-placed `depriv.conf` that carries `User=root`, `CTRL_RUNNER_JOB_USER`, the
-// shared sccache environment and `DOCKER_HOST` -- facts no module in this repository declares. Installing
-// runner_unit_text as the fragment would keep those facts in force only because a drop-in the model has
-// never read happens to override the render, so the modeled unit would be correct by accident on some
-// hosts and wrong on any host missing that file. Modeling depriv's facts is the cut that lets the
-// fragment be delivered; the teardown does not wait on it, because systemd merges drop-ins over the
-// fragment and no present drop-in sets either directive (read on srv1, 2026-09-11).
+// THE FIFO REALIZATION THE FLEET STILL RUNS. Fragment delivery is not the permit-scope cutover;
+// InvocationLocalCargo binds jobs_per_slot to gunbc_runner_cores_per_slot only when that cutover
+// lands. Until then the bytes must evidence the same fifo the observer reads.
+fn gunbc_fleet_runner_permit_scope() -> CompileParallelismRealization {
+  BorrowerHeldCooperativeHostFifo {
+    fifo_path: gunbc_runner_jobserver_default_fifo as NonEmptyStr,
+    daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
+  }
+}
+
+// jit-runner.sh reads this name after unit_user mints the JIT config, then setpriv-drops to it.
+// THE XDG RUNTIME UID THE ROOTLESS DOCKER SOCKET PATH IS FORMED FROM.
+// fleet_posix_ci_runner_user.uid claims 1001 and is recorded in that module as wrong; consuming it
+// here would point DOCKER_HOST at another principal's socket. The NUMBER is
+// fleet_ci_runner_reported_contradiction.reported_uid — one fact, not a second 999. The figure is
+// TranscribedUncited until id(1) of RunnerHostDeploy.job_user grounds PosixUser.uid. It is a path
+// ingredient, not a safety verdict; the standing travels with the number.
+type RunnerJobUserRuntimeUidFigure {
+  uid: Int
+  evidence: CitedFigureStanding
+}
+
+fn runner_job_user_xdg_runtime_uid() -> RunnerJobUserRuntimeUidFigure {
+  RunnerJobUserRuntimeUidFigure {
+    uid: fleet_ci_runner_reported_contradiction().reported_uid,
+    evidence: TranscribedUncited {
+      read_obligation: "id -u of RunnerHostDeploy.job_user on the host; do not substitute fleet_posix_ci_runner_user.uid" as NonEmptyStr,
+    },
+  }
+}
+
+type RunnerUnitDeprivRendering
+  = RunnerUnitDeprivRendered { drop_in: SystemdDropIn }
+  | RunnerUnitDeprivRefused { reason: NonEmptyStr }
+
+// DOCKER_HOST is formed from the uid only when the figure is CitedToAuthority. TranscribedUncited
+// is a bet (DESIGN 4d): installing it would promote the bet. The uid is the contradiction row's
+// reported_uid, not a second literal.
+fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) -> String? {
+  match figure.evidence {
+    TranscribedUncited { read_obligation: _ } => none
+    CitedToAuthority { authority: _ } => Present { value: docker_rootless_unix_endpoint(uid: figure.uid) }
+  }
+}
+
+fn runner_unit_depriv_directives(
+  deploy: RunnerHostDeploy,
+  host: HostIdentity,
+  figure: RunnerJobUserRuntimeUidFigure,
+) -> RunnerUnitDeprivRendering {
+  match docker_host_from_runtime_uid_figure(figure: figure) {
+    Absent =>
+      RunnerUnitDeprivRefused {
+        reason: "runner_unit_file: runner_job_user_xdg_runtime_uid is TranscribedUncited; refusing DOCKER_HOST rather than consuming a typed bet as a fact" as NonEmptyStr,
+      }
+    Present { value: docker_host } => {
+      let cache = ci_cache_instance(host: host)
+      RunnerUnitDeprivRendered {
+        drop_in: SystemdDropIn {
+          sections: [
+            DropInServiceSection {
+              directives: [
+                ServiceUser { name: deploy.unit_user },
+                runner_unit_environment(name: runner_job_user_env_name, value: deploy.job_user as String),
+                Environment { assignment: sccache_cache_dir_env_assignment(instance: cache) },
+                Environment { assignment: sccache_endpoint_env_assignment(instance: cache) },
+                Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
+                Environment { assignment: sccache_error_log_env_assignment(instance: cache) },
+                runner_unit_environment(name: docker_host_env_var, value: docker_host),
+              ],
+            },
+          ],
+        }
+      }
+    }
+  }
+}
+
+data runner_unit_depriv_dropin_file_name: NonEmptyStr = "depriv.conf" as NonEmptyStr
+
+fn runner_unit_depriv_dropin_path() -> NonEmptyStr {
+  runner_unit_dropin_path(file_name: runner_unit_depriv_dropin_file_name)
+}
+
+fn gunbc_runner_unit_depriv_dropin_text_from_figure(
+  deploy: RunnerHostDeploy,
+  host: HostIdentity,
+  figure: RunnerJobUserRuntimeUidFigure,
+) -> RunnerUnitTextRendering {
+  match runner_unit_depriv_directives(deploy: deploy, host: host, figure: figure) {
+    RunnerUnitDeprivRefused { reason: r } => RunnerUnitTextRefused { reason: r }
+    RunnerUnitDeprivRendered { drop_in: d } => RunnerUnitText { text: serialize_systemd_drop_in(drop_in: d) }
+  }
+}
+
+fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
+  gunbc_runner_unit_depriv_dropin_text_from_figure(
+    deploy: deploy,
+    host: host,
+    figure: runner_job_user_xdg_runtime_uid(),
+  )
+}
+
+fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {
+  match fleet_compute_offer_for(host: host) {
+    Absent =>
+      RunnerUnitTextRefused {
+        reason: "runner_unit_file: host has no fleet compute offer, so the label set is unknown" as NonEmptyStr,
+      }
+    Present { value: offer } =>
+      runner_unit_text(
+        rendering: gunbc_runner_unit_file(
+          deploy: deploy,
+          spec: host_pinned_runner_spec(offer: offer, host: host),
+          permit_scope: gunbc_fleet_runner_permit_scope(),
+        ),
+      )
+  }
+}
+
+// THE TEARDOWN REACHES THE FLEET AS A DROP-IN. Depriv is a second drop-in from this same module:
+// User= from deploy.unit_user, the job-user env, the CI sccache instance env, and the job user's
+// rootless docker endpoint only when runner_job_user_xdg_runtime_uid is CitedToAuthority. The
+// production figure is TranscribedUncited; depriv then refuses so converge cannot overwrite live
+// depriv.conf from a bet, and the fragment is withheld with it. When both land, fragment User=
+// is deploy.runner_user, not root.
 //
-// ONE AUTHORITY, TWO ARTIFACTS. The directive pair comes from runner_unit_teardown_directives, the same
-// function the fragment render uses, so the drop-in and the eventual fragment cannot disagree about the
-// teardown. When the fragment is delivered the drop-in becomes a restatement of it and deletes with that
-// change.
-//
-// The `70-` prefix sorts after every numbered drop-in the fleet carries (10- through 60-) so a later
-// numbered file cannot silently re-set the pair; `depriv.conf` sorts later still and sets neither.
+// ONE AUTHORITY, TWO ARTIFACTS. The teardown pair comes from runner_unit_teardown_directives, the
+// same function the fragment render uses. The `70-` prefix sorts after every numbered drop-in the
+// fleet carries (10- through 60-); `depriv.conf` sorts later still and does not set teardown.
 data runner_unit_teardown_dropin_file_name: NonEmptyStr = "70-fleet-teardown.conf" as NonEmptyStr
 
 fn runner_unit_teardown_dropin(intent: RunnerUnitLifecycleIntent) -> SystemdDropIn {

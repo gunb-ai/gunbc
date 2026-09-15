@@ -1,23 +1,36 @@
 module v2.test.native_decl_selection
 
 import v2.compiler.compile {
+  native_lane_module_resolution,
+  native_lane_file_refusal_index,
+  NativeLaneModuleResolved,
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneUniverseModule,
   native_test_context_from_ingest,
   native_test_eval_one,
   native_test_infer_resolved,
   native_test_resolve_module,
-  NativeTestPreparedModule
+  NativeTestPreparedModule,
+  NativeTestContext
 }
 import v2.compiler.native_test_vocabulary {
   NativeTestObservation,
   NativeTestPassed,
   NativeTestRefused,
-  NativeTestStageEntry
+  NativeTestStageEntry,
+  NativeTestStagePrepare
 }
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { resolution_context }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.test.name_resolve.admission_fail_closed { fc_duplicate_roots }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -144,5 +157,48 @@ test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
       observation_is_entry_not_found(
         observation: native_test_eval_one(prepared: prepared, declaration: ^shared_name)
       )
+  }
+}
+
+
+// This witness prices refusal routing, so begin at the normalized-root boundary.
+// Re-tokenizing and parsing source with the full language model is unrelated work here.
+test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> Bool {
+  match fc_duplicate_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      let context = NativeTestContext {
+        resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots),
+        index: source_root_index_empty(),
+        active_roots: [],
+        file_refusals: []
+      }
+      match native_lane_module_resolution(
+        context: context,
+        refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+        entry: NativeLaneUniverseModule {
+          module: "v2.test.collision",
+          path: ^native_decl_selection_collision_cu,
+          declarations: ["real_test"]
+        }
+      ) {
+        NativeLaneModuleResolved { resolved: _ } => false
+        NativeLaneModuleContextRowsDecided { rows: _ } => false
+        NativeLaneModuleResolveRowsDecided { rows: rows } =>
+          length(xs: rows) == 1 && fold_list(
+            xs: rows,
+            empty: true,
+            cons: fn(ok, row) {
+              ok && match row.verdict {
+                NativeTestRefused { stage: stage, reason: reason } =>
+                  match stage {
+                    NativeTestStagePrepare => reason == ^resolve_duplicate_module_name
+                    _ => false
+                  }
+                _ => false
+              }
+            }
+          )
+      }
   }
 }

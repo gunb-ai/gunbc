@@ -1799,59 +1799,154 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// MAIN RETURNED THE ROSTER TO ITS EMPTY RESTING STATE before this branch restored its live
-/// #10994 admissions. The #11182 relocation rows that an
+/// THE ROSTER IS EMPTY AGAIN, which is its resting state. The #11182 relocation rows that an
 /// earlier revision of this block described as surviving are no longer here either; that claim
 /// was already stale on main, where the array held one row, and it is repaired now because this
 /// is the roster's own next touch. The distinction the paragraph above draws still holds and is
 /// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
 /// the array was being emptied.
-/// RECHECKED AGAINST MAIN 9989db5538f (2026-09-14). All seventeen #10994 binding sites
-/// still reference their spelling at base and head, and the sole declaring modules still move
-/// from roadmap_model to roadmap_sizing or roadmap_spawner to roadmap_status. None is consumed.
-/// The named anchor dissolution below is retained from this branch: main also retired that
-/// row in #11356, but dropping this receipt would lose its identity and the base-side check.
+/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
+/// change makes, one per call site the required floor enumerated.
 ///
-/// ONE ROW, gunbc#11193: the `extdeps_external_authority_anchor` leaf in
-/// `extdeps.realization.artifact_store_fs` narrows from two candidates to that module's own.
+/// main now names neither the row nor the check that retired it. The entry above is kept rather
+/// than dropped as a duplicate because it is the only place in this file that NAMES the retired
+/// row and records the identity check that admitted the deletion -- the history main
+/// intentionally dropped along with the row. One retirement, recorded once, by the side that
+/// wrote down what it was.
 ///
-/// WHAT PRODUCED THE DELTA. The `AmbiguousBareNameRead` wall refused `Filesystem` read bare by that
-/// module, and prescribed naming the authority: `import extdeps.filesystem.filesystem_io
-/// { Filesystem }`. The import had been BRACE-LESS, which binds nothing for the refused name and
-/// widens every leaf in the module's candidate sets -- so naming it also removed `filesystem_io`'s
-/// own `extdeps_external_authority_anchor` from that leaf's candidates. The anchor motion is a
-/// consequence of the prescribed repair, not a second change riding along with it.
+/// NOT THE `two rows` RETIREMENT, and an earlier wording of this paragraph conflated them. Main's
+/// surviving two-rows prose is the THIRTY-SEVENTH dissolution, the `gunbc#11156` pair discharged
+/// by #11156 merging -- a different retirement, a different trigger, a different population. It
+/// say which row went.
 ///
-/// WHY THIS DOES NOT CHANGE WHICH DECLARATION THE SPELLING DENOTES, which is the claim the comment
-/// above makes of every row here and the reason this one belongs under it. The spelling occurs
-/// EXACTLY ONCE in that module -- line 22, its own `data` declaration -- and nothing reads it:
-/// neither of the module's two importers (`test.claim.artifact_store_fs_witness`,
-/// `v2.test.claim.manual.emit_source_store_test`) imports the anchor, and the only other corpus
-/// references to that leaf are a `decl_name` STRING in `std.citation` and a different module's
-/// anchor imported by `test.claim.ilm4926_designation_witness` from
-/// `extdeps.cpu_attachment.ilm4926`. So the base two-candidate set sat at a DECLARATION SITE WITH
-/// NO REFERENCE anywhere in the closure: there was no denotation to move, only a candidate count
-/// that a brace-less import had inflated.
+/// THE ROSTER RETURNED TO EMPTY ON MAIN, which is its resting state, AND THIS BRANCH REFILLS IT.
+/// Main's correction is kept because it is true and this branch's earlier wording was not: the
+/// #11182 relocation rows an older revision of this block described as surviving are gone, that
+/// claim was already stale on main where the array held one row, and gunbc#11274 retired them.
+/// This branch does not restore them and does not re-assert them. What follows the header below
+/// is a DIFFERENT population -- the 37 `string_eq` rows this change owes -- so the array is
+/// non-empty here for a reason stated at its own site rather than because emptiness was undone.
+/// The distinction main draws still holds and is why it is kept: a consumed row goes because its
+/// transition is PRESENT AT THE BASE, not because the array was being emptied.
+
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared
+/// byte-identical in every `v2.lens` module that needed it. This change deletes those bodies --
+/// the delta is read from the diff, `git diff origin/main...HEAD -- '*.dag' | grep '^-fn
+/// [a-z_]*string_eq'`, not from a count transcribed here -- and lands an authority in
+/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
+/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
+/// `string_eq` is the `eq` argument to `contains`.
 ///
-/// I DID NOT ESTABLISH WHICH CANDIDATE THE BASE RESOLUTION PICKED, and this row does not need it.
-/// The two declarations differ materially -- this module's anchor cites the repository's own
-/// `dag/extdeps/realization` tree, `filesystem_io`'s cites the POSIX `write` specification -- so had
-/// anything referenced the leaf the question would have mattered and would have needed the resolver
-/// run rather than reasoned about. Nothing references it, so the question does not arise.
-/// ANCHOR NARROWING DISSOLVED on the merge of main a745dac28d5 (2026-09-14).
-/// The #11193-labelled row landed in #11347. At this base artifact_store_fs already
-/// imports only Filesystem from filesystem_io and declares its own anchor, so the
-/// anchor's candidate set is exactly {extdeps.realization.artifact_store_fs} at both
-/// base and head. Its transition is consumed; this roster touch deletes the row.
-/// The seventeen #10994 references were rechecked against this base and still move
-/// from roadmap_model to roadmap_sizing or roadmap_spawner to roadmap_status.
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
+/// both sides at every one of the 37 sites below, and what changed is which declaration it
+/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
+/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// `AuthoredReferenceResolution`.
 ///
-/// INVENTORY RELOCATION DISSOLUTION, rechecked against origin/main e3f60ebbf527 (2026-09-14).
-/// A consumed row goes because its transition is PRESENT AT THE BASE, not because the array
-/// is being emptied. The earlier retention claim for #11182 became false: product.inventory
-/// now declares InventoryLotEvidence and admit_ledger_evidence. Main already deleted all seven
-/// admissions; this merge preserves that deletion. The #10994 transitions below still move
-/// declaring identities relative to this base, so their seventeen exact admissions remain.
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. EVERY DELETED BODY WAS
+/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
+/// it denoted at the base. A body differing anywhere would have made this a semantic change
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so each was
+/// compared before the collapse rather than assumed equal from the shared spelling.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than what
+/// this change deletes.
+///
+/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
+/// enumeration in this file is a transcription that rots -- and the first attempt at one was
+/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
+/// under. Re-derive with:
+///
+///   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
+///
+/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
+/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
+///
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: survivors under NICKNAMED spellings,
+/// byte-identical to the authority but invisible to a search for the exact name. That is §3's
+/// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
+/// frontier below is adjudicated by that command and not by a roll call in this file.
+///
+/// NO SURVIVOR STATES ITS OWN RETENTION. Two earlier wordings of this header were wrong here in
+/// opposite directions: the first claimed every survivor was declared, the second claimed
+/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` was the one that was. The
+/// second is now moot because that clone is gone: its stated retention was that the module
+/// declared no imports, so the one import the collapse needs would move it into its own import
+/// closure and strand `dedupe_snoc`, `tokenize` and `parse_module`. That is a real obstacle and
+/// it is not a dissolution trigger -- it named source work this change can express -- so the
+/// module now declares its own import surface and calls the authority. EVERY HIT THE COMMAND
+/// STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention stated, nothing at its
+/// declaration saying why it survives. The claim that any of it is declared is exactly the kind
+/// of statement this header exists to refuse -- it told a reader asking `is this residue tracked`
+/// YES, in the authority they consult first.
+///
+/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
+/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
+/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
+/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
+/// inflation this phrasing exists to avoid.
+///
+/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
+/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
+/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
+/// and one that deserves its own evidence.
+///
+/// TRIGGER for the 37 rows: they went when #11138 merged. The base then carried the shared
+/// declaration and the rows were consumed; they were deleted on the roster's next touch
+/// (gunbc#11373), and the frontier above is unaffected by that deletion.
+///
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
+
+/// THE gunbc#11373 ROWS DISSOLVED HERE (2026-09-15), BY THE TRIGGER THE BLOCK ABOVE WROTE FOR
+/// THEM. That block says it plainly -- delete these rows after #11373 lands and the base resolves
+/// these bindings, and a separate cleanup does not waive it. #11373 is present at this merge's
+/// base, so the floor on gunbc#10729 measured 0 unadjudicated deltas, 0 stale admissions and all
+/// 32 CONSUMED, due on the roster's next touch. This merge IS that touch, so they go here rather
+/// than waiting for a cleanup PR that would have to re-derive the same join.
+///
+/// ADJUDICATED BY THE FLOOR'S OWN RECEIPT, not by this sentence: every one of the 32 reported
+/// `already satisfied at the base -- consumed by its own merge`, which is the run joining each
+/// row against the merged tree on its own tuple. The count is occurrences, not constants: 17
+/// TargetChanged and 15 NewPoolCoincidenceResolution bindings across the Ubuntu NIC coverage,
+/// runner hardware observation, DGX PXE and PXE-rescue consumers.
+///
+/// gunbc#11306 repository-visibility unification (2026-09-13). Six rows for one move: the
+/// spellings `RepositoryVisibility`, `PublicRepository` and `PrivateRepository` relocate from
+/// `extdeps.github.actions_token` to `extdeps.github.repository`. The concept was FORKED, which is
+/// what made the move necessary rather than cosmetic: `actions_token` declared
+/// `RepositoryVisibility = PublicRepository | PrivateRepository` for the fork-token rule while
+/// `hosted_runners` declared `RepoVisibility = PublicRepo | PrivateRepo` for the runner hardware
+/// tables -- one upstream fact under two spellings, free to disagree, and neither reusable by a
+/// third consumer that needed to ask whether a repository is world-readable. GitHub's repository
+/// resource owns `visibility` as a field, so the resource gets the module and the field gets the
+/// type.
+///
+/// THREE SPELLINGS ACROSS TWO MODULES, ENUMERATED BY EXACT IDENTITY. Every row is `TargetChanged`
+/// and the claim is this roster's header claim verbatim: a spelling authored on both sides now
+/// resolves to a different module, and NOT ONE of them changes which declaration the spelling
+/// denotes -- the coproduct and its two arms move unedited, so a binding whose meaning had actually
+/// moved would refuse on its own row rather than hide under these. The membership half of the same
+/// motion is reported separately and auto-admitted as `ExplicitlyEvaluatedZeroDelta`. The rows are
+/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
+/// rebind that happened to land in the same two modules. `hosted_runners` produces no row here: its
+/// arms were spelled `PublicRepo`/`PrivateRepo` and are new names at the head, not rebinds.
+///
+/// DISSOLVE-ON: gunbc#11306 merging. Once the relocation is on main, base and head of every
+/// pull_request build both carry it, the `TargetChanged` deltas stop being producible, all six
+/// report stale and refuse every unrelated PR. The deletion PR is authored and linked from #11306
+/// BEFORE this lands, so the trigger has a waiting actuator rather than a sentence. Remove them by
+/// that trigger, not by reinterpreting it.
 ///
 /// #10994's seventeen rows: HOW THEIR `expected_candidates` SETS WERE ESTABLISHED, and why each
 /// is a singleton. The sets are NOT transcribed from a run's `found candidates` -- copying found
@@ -2046,6 +2141,66 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "witness_empty_calibration_cell_refuses",
             spelling: "VolumeSmall",
             expected_candidates: &["gunbc.roadmap_sizing"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.github.actions_token",
+            in_declaration: "ActionsRepositoryPolicyObservation",
+            spelling: "RepositoryVisibility",
+            expected_candidates: &["extdeps.github.repository"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.github.actions_token",
+            in_declaration: "fork_write_tokens_reachable",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_allows",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "fork_policy_denies",
+            spelling: "PrivateRepository",
+            expected_candidates: &["extdeps.github.repository"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "repository visibility unifies onto its resource module (gunbc#11306)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.actions_job_grant_witness",
+            in_declaration: "public_fork_policy_allows",
+            spelling: "PublicRepository",
+            expected_candidates: &["extdeps.github.repository"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2311,6 +2466,159 @@ fn membership_map(index: &DeclarationIndex) -> BTreeMap<String, BTreeSet<String>
         .into_iter()
         .map(|r| (r.module_path.clone(), direct_membership(index, r)))
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// THE DEPENDENTS DIRECTION — match-bearing consumers of a coproduct whose arm set changed
+// ---------------------------------------------------------------------------
+
+/// One coproduct whose arm set differs between the base and head indexes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetChange {
+    pub module_path: String,
+    pub declaration: String,
+    pub arms_added: Vec<String>,
+    pub arms_removed: Vec<String>,
+}
+
+/// How a consumer's match arm was bound to the changed coproduct, carried so the receipt can
+/// name the two populations apart: a read whose candidate set names the declaring module, and a
+/// bare read whose candidate set is EMPTY at this grain -- the flat last-writer-wins channel the
+/// namespace cut is retiring. The second is planned too (it is a consumer in the compiler's
+/// eyes, and a missed one is exactly the silent class this selector closes), but it is counted
+/// under its own name so the deficit stays visible instead of being absorbed into the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArmConsumerBinding {
+    BoundToDeclaringModule,
+    BoundThroughFlatBareChannel,
+}
+
+/// One module that carries a `match` naming an arm of a changed coproduct, with the declaring
+/// module that arm resolved to and the declarations in the consumer that carry the match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetMatchConsumer {
+    pub changed_module_path: String,
+    pub changed_declaration: String,
+    pub consumer_module_path: String,
+    pub consumer_rel_path: String,
+    pub in_declarations: Vec<String>,
+    pub binding: ArmConsumerBinding,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ArmSetConsumerSelection {
+    pub changes: Vec<ArmSetChange>,
+    pub consumers: Vec<ArmSetMatchConsumer>,
+}
+
+/// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
+/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
+/// tree carries; the planned set is producer-derived, never a path filter).
+///
+/// A `match` over a closed coproduct that was exhaustive when it landed goes stale when the
+/// coproduct grows an arm in ANOTHER module: the match site has an empty diff, so no
+/// diff-keyed selector can see it, and the required floor's prepared subject is the gate
+/// closure plus the changed set -- the consumer is never Strict-prepared and `check_match`
+/// never runs on it (gunbc#11194, found by a person reading arms). This is the DEPENDENTS
+/// direction; `touched_entry_files` seeding is the DEPENDENCY direction, and neither closes
+/// the class alone.
+///
+/// THE RELATION IS THE ONE THE WALL ALREADY USES. A consumer is a module whose `matched_arms`
+/// (a pattern head, read at the one site that has no transport entry) names an arm of the
+/// changed coproduct and whose `declaring_candidates` for that spelling include the declaring
+/// module -- on EITHER side, because a match naming a REMOVED arm has no head-side candidate
+/// (the surface no longer exports it) while its base-side one names the declarer exactly. No
+/// second consumer relation is minted here; this is `declaring_candidates` asked one more
+/// question.
+///
+/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the
+/// diff, so the dependency direction already seeds it); a coproduct that is NEW at head (no
+/// consumer can have matched it exhaustively before it existed); and a module whose match
+/// names the arm but whose candidate set names a DIFFERENT declarer (a same-spelled arm of an
+/// unrelated coproduct -- a consumer of that one, not of this one). A match that names none
+/// of the coproduct's arms -- a wildcard, or arms of another type -- is not a consumer, and it
+/// is also not stale.
+pub(crate) fn arm_set_changed_match_consumers(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> ArmSetConsumerSelection {
+    let mut changes: Vec<ArmSetChange> = Vec::new();
+    for head_record in index_records(head) {
+        let Some(base_record) = index_get(base, &head_record.module_path) else {
+            continue;
+        };
+        for (declaration, head_arms) in &head_record.coproduct_arms {
+            let Some(base_arms) = base_record.coproduct_arms.get(declaration) else {
+                continue;
+            };
+            if head_arms == base_arms {
+                continue;
+            }
+            changes.push(ArmSetChange {
+                module_path: head_record.module_path.clone(),
+                declaration: declaration.clone(),
+                arms_added: head_arms.difference(base_arms).cloned().collect(),
+                arms_removed: base_arms.difference(head_arms).cloned().collect(),
+            });
+        }
+    }
+    let mut consumers: Vec<ArmSetMatchConsumer> = Vec::new();
+    for change in &changes {
+        let universe: BTreeSet<&String> = {
+            let head_arms = &index_get(head, &change.module_path)
+                .expect("a change names a head module")
+                .coproduct_arms[&change.declaration];
+            let base_arms = &index_get(base, &change.module_path)
+                .expect("a change names a base module")
+                .coproduct_arms[&change.declaration];
+            head_arms.iter().chain(base_arms.iter()).collect()
+        };
+        for consumer in index_records(head) {
+            if consumer.module_path == change.module_path {
+                continue;
+            }
+            let mut in_declarations: BTreeSet<String> = BTreeSet::new();
+            let mut binding: Option<ArmConsumerBinding> = None;
+            for (in_declaration, spelling) in &consumer.matched_arms {
+                let leaf = qualified_last_segment(spelling.clone());
+                if !universe.contains(&leaf) {
+                    continue;
+                }
+                let mut candidates = declaring_candidates(head, consumer, spelling);
+                candidates.extend(declaring_candidates(base, consumer, spelling));
+                let bound = if candidates.contains(&change.module_path) {
+                    ArmConsumerBinding::BoundToDeclaringModule
+                } else if candidates.is_empty() {
+                    ArmConsumerBinding::BoundThroughFlatBareChannel
+                } else {
+                    // Bound to another declarer of a same-spelled arm: not this coproduct's consumer.
+                    continue;
+                };
+                in_declarations.insert(in_declaration.clone());
+                // A declarer-bound read wins over a flat one for the module's disposition: the
+                // module IS a resolved consumer if any read resolves, and the flat count is for
+                // modules that reach the coproduct by no other route.
+                binding = Some(match (binding, bound) {
+                    (Some(ArmConsumerBinding::BoundToDeclaringModule), _)
+                    | (_, ArmConsumerBinding::BoundToDeclaringModule) => {
+                        ArmConsumerBinding::BoundToDeclaringModule
+                    }
+                    _ => ArmConsumerBinding::BoundThroughFlatBareChannel,
+                });
+            }
+            if let Some(binding) = binding {
+                consumers.push(ArmSetMatchConsumer {
+                    changed_module_path: change.module_path.clone(),
+                    changed_declaration: change.declaration.clone(),
+                    consumer_module_path: consumer.module_path.clone(),
+                    consumer_rel_path: consumer.rel_path.clone(),
+                    in_declarations: in_declarations.into_iter().collect(),
+                    binding,
+                });
+            }
+        }
+    }
+    ArmSetConsumerSelection { changes, consumers }
 }
 
 // ---------------------------------------------------------------------------
@@ -3080,26 +3388,44 @@ pub fn run_required_wave_admission(
 /// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
 /// base and head speak different grammars. Nothing about the adjudication differs between the two
 /// callers: the seam selects the subject, never the rules.
-pub fn run_wave_admission_between(
+/// The base side of one change, reconstructed from the head index, at file grain.
+///
+/// LIFTED OUT OF `run_wave_admission_between` so the required floor's planning row can ask the
+/// same question over ITS OWN comparison window. The two callers resolve different windows on
+/// purpose -- the wall compares against the merge base with `origin/main`, the floor against
+/// `v2.workflow.floor_diff_observe`'s resolved baseline -- so the refs are parameters and the
+/// reconstruction is one function. It is `pub(crate)`: its only callers are in this crate, and a
+/// public export would be seed surface growth under the freeze.
+pub(crate) enum BaselineReconstruction {
+    /// The window's base IS its head: nothing to reconstruct, and not a refusal.
+    NoSubject { head: String },
+    /// The base could not be observed. NOT an empty base: the two are different states with
+    /// different remedies, and conflating them is the empty-observation narrow.
+    NotEvaluated { reason: String },
+    Reconstructed {
+        base: String,
+        head: String,
+        base_index: DeclarationIndex,
+        /// Every head path the diff touched, UNFILTERED -- consumers apply their own scope.
+        head_touched: Vec<String>,
+    },
+}
+
+/// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain -- the
+/// construction, not an optimisation -- unless the two revisions speak different grammars, in
+/// which case the whole base side is read under the base's own environment (see below). Only
+/// changed files are re-parsed from their base blobs and substituted on the ordinary route.
+pub(crate) fn reconstruct_base_index(
     workspace: &std::path::Path,
     base: &str,
     head: &str,
     head_index: &DeclarationIndex,
-) -> Result<WaveAdmissionOutcome, String> {
+) -> Result<BaselineReconstruction, String> {
     let base = base.to_string();
     let head = head.to_string();
     let workspace = workspace.to_path_buf();
     if base == head {
-        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
-            return Ok(WaveAdmissionOutcome::NoSubject { head });
-        }
-        // Landing owns roster debt even though it has no namespace delta to compare.
-        return Ok(WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
-            roster_touched: false,
-        });
+        return Ok(BaselineReconstruction::NoSubject { head });
     }
 
     // WHICH GRAMMAR DOES THE BASE SPEAK? Everything below reads base-side declarations, and reading
@@ -3117,7 +3443,7 @@ pub fn run_wave_admission_between(
         // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
         // NotEvaluated rather than a confident answer under the wrong rules.
         Err(e) => {
-            return Ok(WaveAdmissionOutcome::NotEvaluated {
+            return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!(
                     "the base revision's parse environment could not be established ({}), so its declarations cannot be read under any grammar this run can justify", environment_load_refusal_text(&e)
                 ),
@@ -3131,14 +3457,14 @@ pub fn run_wave_admission_between(
     match kernel_set_serves_both(&workspace, &base, &head) {
         Ok(true) => {}
         Ok(false) => {
-            return Ok(WaveAdmissionOutcome::NotEvaluated {
+            return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!(
                     "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set this binary carries cannot speak for the base side"
                 ),
             })
         }
         Err(e) => {
-            return Ok(WaveAdmissionOutcome::NotEvaluated {
+            return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!("the kernel declaring file could not be compared ({})", environment_load_refusal_text(&e)),
             })
         }
@@ -3249,7 +3575,7 @@ pub fn run_wave_admission_between(
     if !present.is_empty() {
         if let Err(e) = materialize_revision_paths(&workspace, &base, &base_tree, &present) {
             let _ = std::fs::remove_dir_all(&base_tree);
-            return Ok(WaveAdmissionOutcome::NotEvaluated {
+            return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!(
                     "the base revision's files could not be materialized ({}), so the baseline is \
                      unobservable and no verdict is available",
@@ -3269,7 +3595,7 @@ pub fn run_wave_admission_between(
             Ok(c) => c,
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&base_tree);
-                return Ok(WaveAdmissionOutcome::NotEvaluated {
+                return Ok(BaselineReconstruction::NotEvaluated {
                     reason: format!(
                         "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
                          partially unobservable and no verdict is available"
@@ -3294,7 +3620,7 @@ pub fn run_wave_admission_between(
             // reason. The residual case argues for deletion, not for retention.
             Err(reason) => {
                 let _ = std::fs::remove_dir_all(&base_tree);
-                return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                return Ok(BaselineReconstruction::NotEvaluated { reason });
             }
         }
     }
@@ -3331,9 +3657,56 @@ pub fn run_wave_admission_between(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         }
     }
+
+    Ok(BaselineReconstruction::Reconstructed {
+        base,
+        head,
+        base_index,
+        head_touched,
+    })
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules.
+pub fn run_wave_admission_between(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<WaveAdmissionOutcome, String> {
+    let (base, head, base_index, head_touched) =
+        match reconstruct_base_index(workspace, base, head, head_index)? {
+            BaselineReconstruction::NoSubject { head } => {
+                if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+                    return Ok(WaveAdmissionOutcome::NoSubject { head });
+                }
+                // Landing owns roster debt even though it has no namespace delta to compare.
+                return Ok(WaveAdmissionOutcome::Adjudicated {
+                    base: head.clone(),
+                    head,
+                    report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+                    roster_touched: false,
+                });
+            }
+            BaselineReconstruction::NotEvaluated { reason } => {
+                return Ok(WaveAdmissionOutcome::NotEvaluated { reason })
+            }
+            BaselineReconstruction::Reconstructed {
+                base,
+                head,
+                base_index,
+                head_touched,
+            } => (base, head, base_index, head_touched),
+        };
 
     // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
     // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this

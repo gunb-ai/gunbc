@@ -3772,7 +3772,7 @@ pub fn last_consumed_token_end(
 ) -> Option<i64> {
     loop {
         if (from.clone() >= until.clone()) {
-            break end;
+            break end.clone();
         } else {
             match all.clone().get((from.clone()) as usize).cloned() {
                 std::option::Option::None => {
@@ -9675,7 +9675,7 @@ pub fn int_to_string(value: i64) -> String {
 pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
     loop {
         if (value.clone() == 0) {
-            break acc;
+            break acc.clone();
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
@@ -15417,7 +15417,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 let r3 =
                     parse_required_expression_after_separator(r2.tokens.clone(), tr.ctx.clone());
                 if has_err(r3.err.clone()) {
-                    return r3;
+                    return r3.clone();
                 }
                 let minted = mint_parsed_node_identity(r3.ctx.clone());
                 let node = Rc::new(Node {
@@ -15461,7 +15461,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 }
                 let r3 = parse_required_expression_after_separator(r2.tokens.clone(), ctx.clone());
                 if has_err(r3.err.clone()) {
-                    return r3;
+                    return r3.clone();
                 }
                 parsed_expr_result(r3.tokens.clone(), r3.ctx.clone(), |identity| {
                     crate::v1_std_core::make_named_expr_node(

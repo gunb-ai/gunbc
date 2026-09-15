@@ -15,7 +15,7 @@ import std.types { String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
 import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
-import product.data_category { PersonalIdentity }
+import product.data_category { PersonalIdentity, personal_identity_ref }
 import product.data_class { Classified }
 import gunbc.principal_projection { oidc_projection }
 
@@ -39,5 +39,5 @@ fn email_in_the_clear() -> String {
 }
 
 fn self_classified(raw: String) -> Classified<PersonalIdentity, String> {
-  Classified { category: decl_ref(module_path: "product.data_category", decl_name: "PersonalIdentity"), reveal: fn(k) { raw } }
+  Classified { category: personal_identity_ref(), reveal: fn(k) { raw } }
 }
