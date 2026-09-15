@@ -65,6 +65,18 @@ fn v41_order_token(o: V41RowStoreOrder) -> NonEmptyStr {
   }
 }
 
+fn v41_uninhabited_scheme_defects(spec: V41RowStoreEncodingSpec) -> List<NonEmptyStr> {
+  concat(
+    match spec.rank_map {
+      InterleaveByRankRemainder => [] as List<NonEmptyStr>
+      RankMapReservedUninhabited => ["rank map ReservedUninhabited is not a placement rule; dest_rank is refused rather than fabricated" as NonEmptyStr]
+    },
+    match spec.row_order {
+      GlobalAscendingInterleavedByRank => [] as List<NonEmptyStr>
+      RowOrderReservedUninhabited => ["row order ReservedUninhabited is not a concatenation rule; a rank payload is refused rather than emptied" as NonEmptyStr]
+    })
+}
+
 type V41RowGeometry sole_constructor {
   weight_dtype: SafetensorsDtype
   scale_dtype: SafetensorsDtype
@@ -149,7 +161,7 @@ fn v41_try_tensor_slice(e: SafetensorsEntry) -> V41TensorSlice? {
 }
 
 fn v41_selected_storage_entries(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<SafetensorsEntry> {
-  filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)) && (e.name as String).contains(".embed.weight"))
+  filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)))
 }
 
 type V41RowStoreEncodingSpec sole_constructor {
@@ -216,6 +228,34 @@ fn v41_encoding_spec_override_endianness(spec: V41RowStoreEncodingSpec, endianne
   }
 }
 
+fn v41_encoding_spec_override_rank_map(spec: V41RowStoreEncodingSpec, rank_map: V41RowStorePartition) -> V41RowStoreEncodingSpec {
+  V41RowStoreEncodingSpec {
+    component: spec.component,
+    partition: spec.partition,
+    slices: spec.slices,
+    geometry: spec.geometry,
+    rank_count: spec.rank_count,
+    format_revision: spec.format_revision,
+    endianness: spec.endianness,
+    row_order: spec.row_order,
+    rank_map: rank_map,
+  }
+}
+
+fn v41_encoding_spec_override_row_order(spec: V41RowStoreEncodingSpec, row_order: V41RowStoreOrder) -> V41RowStoreEncodingSpec {
+  V41RowStoreEncodingSpec {
+    component: spec.component,
+    partition: spec.partition,
+    slices: spec.slices,
+    geometry: spec.geometry,
+    rank_count: spec.rank_count,
+    format_revision: spec.format_revision,
+    endianness: spec.endianness,
+    row_order: row_order,
+    rank_map: spec.rank_map,
+  }
+}
+
 fn v41_slice_inputs(s: V41TensorSlice) -> List<ArtifactRealizationInput> {
   [
     v41_input(identity: join(["slice.", s.name as String, ".rows"], ""), value: to_string(s.global_rows)),
@@ -263,7 +303,10 @@ fn v41_rank_store_inputs(ranks: List<V41RankStoreIdentity>) -> List<ArtifactReal
 }
 
 fn v41_identify_row_store(spec: V41RowStoreEncodingSpec, rank_stores: List<V41RankStoreIdentity>) -> V41RowStoreEncoding {
-  if length(rank_stores) != spec.rank_count {
+  let scheme = v41_uninhabited_scheme_defects(spec: spec)
+  if length(scheme) != 0 {
+    V41RowStoreEncodingRefused { defects: scheme }
+  } else if length(rank_stores) != spec.rank_count {
     V41RowStoreEncodingRefused { defects: [join(["row store names ", to_string(length(rank_stores)), " ranks, encoding spec declares ", to_string(spec.rank_count)], "") as NonEmptyStr] }
   } else if !all(nat_ranks(n: spec.rank_count), k => any(rank_stores, r => r.rank == k)) {
     V41RowStoreEncodingRefused { defects: ["every declared rank must carry its own content digest; a missing rank is not a store" as NonEmptyStr] }
@@ -302,29 +345,36 @@ type V41PlacedRow sole_constructor {
   payload: NonEmptyStr
 }
 
-fn v41_dest_rank(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+fn v41_dest_rank(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat? {
   match spec.rank_map {
-    InterleaveByRankRemainder => global_row % spec.rank_count
-    RankMapReservedUninhabited => spec.rank_count
+    InterleaveByRankRemainder => Present { value: global_row % spec.rank_count }
+    RankMapReservedUninhabited => none
   }
 }
 
-fn v41_local_row(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
+fn v41_local_row(global_row: Nat, spec: V41RowStoreEncodingSpec) -> Nat? {
   match spec.rank_map {
-    InterleaveByRankRemainder => global_row / spec.rank_count
-    RankMapReservedUninhabited => 0
+    InterleaveByRankRemainder => Present { value: global_row / spec.rank_count }
+    RankMapReservedUninhabited => none
   }
 }
 
-fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank: Nat) -> V41PlacedRow {
-  let rank = v41_dest_rank(global_row: row.global_row, spec: spec)
-  V41PlacedRow {
-    tensor: row.tensor,
-    global_row: row.global_row,
-    rank: rank,
-    local_row: v41_local_row(global_row: row.global_row, spec: spec),
-    offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
-    payload: row.payload,
+fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank: Nat) -> V41PlacedRow? {
+  match v41_dest_rank(global_row: row.global_row, spec: spec) {
+    Absent => none
+    Present { value: rank } => match v41_local_row(global_row: row.global_row, spec: spec) {
+      Absent => none
+      Present { value: local } => Present {
+        value: V41PlacedRow {
+          tensor: row.tensor,
+          global_row: row.global_row,
+          rank: rank,
+          local_row: local,
+          offset: byte_size(count: prior_on_rank * byte_size_count(b: v41_row_bytes(g: spec.geometry))),
+          payload: row.payload,
+        }
+      }
+    }
   }
 }
 
@@ -345,29 +395,45 @@ type V41TransformResult
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
 
 fn v41_count_on_rank_before(rows: List<V41SourceRow>, index: Nat, rank: Nat, spec: V41RowStoreEncodingSpec) -> Nat {
-  length(filter(enumerate(rows), p => p.first < index && v41_dest_rank(global_row: p.second.global_row, spec: spec) == rank))
+  length(filter(enumerate(rows), p => p.first < index && match v41_dest_rank(global_row: p.second.global_row, spec: spec) {
+    Present { value: d } => d == rank
+    Absent => false
+  }))
 }
 
 fn v41_place_all(rows: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> List<V41PlacedRow> {
-  map(enumerate(rows), p => v41_place_row(
-    row: p.second,
-    spec: spec,
-    prior_on_rank: v41_count_on_rank_before(rows: rows, index: p.first, rank: v41_dest_rank(global_row: p.second.global_row, spec: spec), spec: spec)))
+  flat_map(enumerate(rows), p => match v41_dest_rank(global_row: p.second.global_row, spec: spec) {
+    Absent => [] as List<V41PlacedRow>
+    Present { value: rank } => match v41_place_row(
+      row: p.second,
+      spec: spec,
+      prior_on_rank: v41_count_on_rank_before(rows: rows, index: p.first, rank: rank, spec: spec),
+    ) {
+      Present { value: placed } => [placed]
+      Absent => [] as List<V41PlacedRow>
+    }
+  })
 }
 
-fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String {
+fn v41_rank_payload(placed: List<V41PlacedRow>, rank: Nat, order: V41RowStoreOrder) -> String? {
   match order {
-    GlobalAscendingInterleavedByRank => join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
-    RowOrderReservedUninhabited => "" as String
+    GlobalAscendingInterleavedByRank => Present {
+      value: join(map(filter(placed, r => r.rank == rank).sort_by(r => byte_size_count(b: r.offset)), r => r.payload as String), "")
+    }
+    RowOrderReservedUninhabited => none
   }
 }
 
-fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat, spec: V41RowStoreEncodingSpec) -> ContentHash {
-  let payload = v41_rank_payload(placed: placed, rank: rank, order: spec.row_order)
-  if payload == "" {
-    content_hash_of_value(value: "empty-rank" as NonEmptyStr)
-  } else {
-    content_hash_of_value(value: payload as NonEmptyStr)
+fn v41_rank_digest(placed: List<V41PlacedRow>, rank: Nat, spec: V41RowStoreEncodingSpec) -> ContentHash? {
+  match v41_rank_payload(placed: placed, rank: rank, order: spec.row_order) {
+    Absent => none
+    Present { value: payload } => Present {
+      value: if payload == "" {
+        content_hash_of_value(value: "empty-rank" as NonEmptyStr)
+      } else {
+        content_hash_of_value(value: payload as NonEmptyStr)
+      }
+    }
   }
 }
 
@@ -382,33 +448,65 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
     filter(placed, p => length(filter(placed, q => q.rank == p.rank && q.offset == p.offset)) != 1),
     p => join(["rank ", to_string(p.rank), " offset ", to_string(byte_size_count(b: p.offset)), " is not unique"], "") as NonEmptyStr)
   let wrong_rank = map(
-    filter(placed, p => p.rank != v41_dest_rank(global_row: p.global_row, spec: spec)),
+    filter(placed, p => match v41_dest_rank(global_row: p.global_row, spec: spec) {
+      Absent => true
+      Present { value: d } => p.rank != d
+    }),
     p => join(["row ", to_string(p.global_row), " placed on rank ", to_string(p.rank), " against the declared partition rule"], "") as NonEmptyStr)
   concat(concat(concat(count_mismatch, lost), dup), wrong_rank)
 }
 
 fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
-  v41_assess_placed(source: source, spec: spec, placed: v41_place_all(rows: source, spec: spec))
+  let scheme = v41_uninhabited_scheme_defects(spec: spec)
+  if length(scheme) != 0 {
+    V41TransformUnfaithful { defects: scheme }
+  } else {
+    v41_assess_placed(source: source, spec: spec, placed: v41_place_all(rows: source, spec: spec))
+  }
+}
+
+fn v41_rank_stores_from_placed(placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec) -> List<V41RankStoreIdentity>? {
+  let rows = map(nat_ranks(n: spec.rank_count), k => match v41_rank_digest(placed: placed, rank: k, spec: spec) {
+    Present { value: d } => Present { value: V41RankStoreIdentity { rank: k, digest: d } }
+    Absent => none
+  })
+  if any(rows, r => match r { Present { value: _ } => false, Absent => true }) {
+    none
+  } else {
+    Present {
+      value: flat_map(rows, r => match r {
+        Present { value: id } => [id]
+        Absent => [] as List<V41RankStoreIdentity>
+      })
+    }
+  }
 }
 
 fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, placed: List<V41PlacedRow>) -> V41TransformResult {
-  let defects = v41_correspondence_defects(source: source, placed: placed, spec: spec)
-  if length(defects) != 0 {
-    V41TransformUnfaithful { defects: defects }
+  let scheme = v41_uninhabited_scheme_defects(spec: spec)
+  if length(scheme) != 0 {
+    V41TransformUnfaithful { defects: scheme }
   } else {
-    let ranks = map(nat_ranks(n: spec.rank_count), k => V41RankStoreIdentity { rank: k, digest: v41_rank_digest(placed: placed, rank: k, spec: spec) })
-    match v41_identify_row_store(spec: spec, rank_stores: ranks) {
-      V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
-        V41FixtureCorrespondenceHolds {
-          subject: V41FixtureRows {
-            row_count: length(source),
-            how: "supplied fixture rows; not the published Engram shard payloads" as NonEmptyStr,
-          },
-          placed: placed,
-          encoding: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d },
+    let defects = v41_correspondence_defects(source: source, placed: placed, spec: spec)
+    if length(defects) != 0 {
+      V41TransformUnfaithful { defects: defects }
+    } else {
+      match v41_rank_stores_from_placed(placed: placed, spec: spec) {
+        Absent => V41TransformUnfaithful { defects: ["rank payload is refused for this row order; an empty-rank digest is not a substitute" as NonEmptyStr] }
+        Present { value: ranks } => match v41_identify_row_store(spec: spec, rank_stores: ranks) {
+          V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
+            V41FixtureCorrespondenceHolds {
+              subject: V41FixtureRows {
+                row_count: length(source),
+                how: "supplied fixture rows; not the published Engram shard payloads" as NonEmptyStr,
+              },
+              placed: placed,
+              encoding: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d },
+            }
+          V41RowStoreEncodingRefused { defects: ds } => V41TransformUnfaithful { defects: ds }
+          V41RowStoreEncodingUnestablished { obligation: o } => V41TransformUnfaithful { defects: [o] }
         }
-      V41RowStoreEncodingRefused { defects: ds } => V41TransformUnfaithful { defects: ds }
-      V41RowStoreEncodingUnestablished { obligation: o } => V41TransformUnfaithful { defects: [o] }
+      }
     }
   }
 }
