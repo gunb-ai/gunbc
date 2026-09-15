@@ -262,6 +262,28 @@ mod compiler_tests {
     }
 
     #[test]
+    fn parse_two_arg_call_terminates() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("parse-two-arg".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let tokens = tokenize(
+                    "module test\nfn add(a: Int, b: Int) -> Int { a }\nfn use_add() -> Int { add(1, 2) }\n".to_string(),
+                    "test.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let _ = tx.send(result.module.is_some());
+            })
+            .expect("spawn parse-two-arg");
+        let ok = rx
+            .recv_timeout(std::time::Duration::from_secs(8))
+            .expect("seed parser hung on a two-parameter fn and two-argument call (TCO identity-passthrough elision)");
+        assert!(ok, "two-arg module should parse");
+    }
+
+    #[test]
     fn self_parse_tokenize_dag() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)

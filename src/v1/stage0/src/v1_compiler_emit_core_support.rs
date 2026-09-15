@@ -207,8 +207,10 @@ pub fn to_string_helper(
     mut __tco_loop_acc: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
     loop {
-        #[allow(unused_mut)] let mut value = __tco_loop_value.clone();
-        #[allow(unused_mut)] let mut acc = __tco_loop_acc.clone();
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value.clone();
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc.clone();
         if (value.clone() == 0) {
             break acc.clone();
         } else {

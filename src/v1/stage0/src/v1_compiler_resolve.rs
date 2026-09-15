@@ -913,11 +913,16 @@ pub fn kahn_drain(
     mut __tco_loop_fuel: i64,
 ) -> Rc<KahnDrainState> {
     loop {
-        #[allow(unused_mut)] let mut queue = __tco_loop_queue.clone();
-        #[allow(unused_mut)] let mut sorted = __tco_loop_sorted.clone();
-        #[allow(unused_mut)] let mut in_degree_map = __tco_loop_in_degree_map.clone();
-        #[allow(unused_mut)] let mut adjacency = __tco_loop_adjacency.clone();
-        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut queue = __tco_loop_queue.clone();
+        #[allow(unused_mut)]
+        let mut sorted = __tco_loop_sorted.clone();
+        #[allow(unused_mut)]
+        let mut in_degree_map = __tco_loop_in_degree_map.clone();
+        #[allow(unused_mut)]
+        let mut adjacency = __tco_loop_adjacency.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnDrainState {
                 sorted: sorted.clone(),
@@ -1010,11 +1015,13 @@ pub fn kahn_drain(
             let __tco_0 = new_zero.clone();
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
-            let __tco_3 = (fuel - 1);
+            let __tco_3 = adjacency;
+            let __tco_4 = (fuel - 1);
             __tco_loop_queue = __tco_0;
             __tco_loop_sorted = __tco_1;
             __tco_loop_in_degree_map = __tco_2;
-            __tco_loop_fuel = __tco_3;
+            __tco_loop_adjacency = __tco_3;
+            __tco_loop_fuel = __tco_4;
             continue;
         }
     }

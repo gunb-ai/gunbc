@@ -152,8 +152,12 @@ pub fn source_scan_while(
         } else {
             if pred(source.source_chars.clone()[(start.clone()) as usize].clone()) {
                 {
-                    let __tco_0 = (start + 1);
-                    __tco_loop_start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    let __tco_2 = pred;
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
+                    __tco_loop_pred = __tco_2;
                     continue;
                 }
             } else {
@@ -175,8 +179,10 @@ pub fn source_skip_ws(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_start
             let ch = source.source_chars.clone()[(start.clone()) as usize].clone();
             if ((ch.clone() == 32) || (ch.clone() == 9)) {
                 {
-                    let __tco_0 = (start + 1);
-                    __tco_loop_start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
                     continue;
                 }
             } else {
@@ -199,8 +205,10 @@ pub fn source_scan_to_eol(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_s
                 break start.clone();
             } else {
                 {
-                    let __tco_0 = (start + 1);
-                    __tco_loop_start = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (start + 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_start = __tco_1;
                     continue;
                 }
             }
@@ -275,8 +283,10 @@ pub fn source_line_start(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_po
                 break pos.clone();
             } else {
                 {
-                    let __tco_0 = (pos - 1);
-                    __tco_loop_pos = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos - 1);
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
                     continue;
                 }
             }
@@ -329,8 +339,12 @@ pub fn tokenize_line_first_content_pos(
             let ch = source_code_point(source.clone(), pos.clone());
             if ((ch.clone() == 32) || (ch.clone() == 9)) {
                 {
-                    let __tco_0 = (pos + 1);
-                    __tco_loop_pos = __tco_0;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = end;
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_end = __tco_2;
                     continue;
                 }
             } else {
@@ -510,27 +524,39 @@ pub fn tokenize_loop(
                 interp_depth: depth,
                 ..
             } => {
-                let __tco_0 = v1_rt::rc_list_push(annotations, capture.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_0 = source;
+                let __tco_1 = tokens;
+                let __tco_2 = v1_rt::rc_list_push(annotations, capture.clone());
+                let __tco_3 = Rc::new(TokPos {
                     pos: next_pos.clone(),
                     interp_depth: depth.clone(),
                 });
-                let __tco_2 = (fuel - 1);
-                __tco_loop_annotations = __tco_0;
-                __tco_loop_pos = __tco_1;
-                __tco_loop_fuel = __tco_2;
+                let __tco_4 = (fuel - 1);
+                let __tco_5 = env;
+                __tco_loop_source = __tco_0;
+                __tco_loop_tokens = __tco_1;
+                __tco_loop_annotations = __tco_2;
+                __tco_loop_pos = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                __tco_loop_env = __tco_5;
                 continue;
             }
             ScanStep::ScannedToken { result: result, .. } => {
-                let __tco_0 = v1_rt::rc_list_push(tokens, result.token.clone());
-                let __tco_1 = Rc::new(TokPos {
+                let __tco_0 = source;
+                let __tco_1 = v1_rt::rc_list_push(tokens, result.token.clone());
+                let __tco_2 = annotations;
+                let __tco_3 = Rc::new(TokPos {
                     pos: result.pos.clone(),
                     interp_depth: result.interp_depth.clone(),
                 });
-                let __tco_2 = (fuel - 1);
-                __tco_loop_tokens = __tco_0;
-                __tco_loop_pos = __tco_1;
-                __tco_loop_fuel = __tco_2;
+                let __tco_4 = (fuel - 1);
+                let __tco_5 = env;
+                __tco_loop_source = __tco_0;
+                __tco_loop_tokens = __tco_1;
+                __tco_loop_annotations = __tco_2;
+                __tco_loop_pos = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                __tco_loop_env = __tco_5;
                 continue;
             }
         }
@@ -1105,24 +1131,28 @@ pub fn scan_string_body(
                                 == 123))
                         {
                             {
-                                let __tco_0 = (pos + 3);
-                                let __tco_1 = v1_rt::rc_list_push(
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 3);
+                                let __tco_2 = v1_rt::rc_list_push(
                                     v1_rt::rc_list_push(v1_rt::rc_list_push(acc, 92), 117),
                                     123,
                                 );
-                                __tco_loop_pos = __tco_0;
-                                __tco_loop_acc = __tco_1;
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         } else {
                             {
-                                let __tco_0 = (pos + 2);
-                                let __tco_1 = v1_rt::rc_list_push(
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 2);
+                                let __tco_2 = v1_rt::rc_list_push(
                                     v1_rt::rc_list_push(acc, 92),
                                     escaped.clone(),
                                 );
-                                __tco_loop_pos = __tco_0;
-                                __tco_loop_acc = __tco_1;
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         }
@@ -1141,19 +1171,23 @@ pub fn scan_string_body(
                             });
                         } else {
                             {
-                                let __tco_0 = (pos + 1);
-                                let __tco_1 = v1_rt::rc_list_push(acc, 123);
-                                __tco_loop_pos = __tco_0;
-                                __tco_loop_acc = __tco_1;
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 1);
+                                let __tco_2 = v1_rt::rc_list_push(acc, 123);
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                         }
                     } else {
                         {
-                            let __tco_0 = (pos + 1);
-                            let __tco_1 = v1_rt::rc_list_push(acc, ch.clone());
-                            __tco_loop_pos = __tco_0;
-                            __tco_loop_acc = __tco_1;
+                            let __tco_0 = source;
+                            let __tco_1 = (pos + 1);
+                            let __tco_2 = v1_rt::rc_list_push(acc, ch.clone());
+                            __tco_loop_source = __tco_0;
+                            __tco_loop_pos = __tco_1;
+                            __tco_loop_acc = __tco_2;
                             continue;
                         }
                     }
@@ -1269,12 +1303,14 @@ pub fn unicode_escape_at(
                 } else {
                     match hex_digit_value(ch.clone()) {
                         Some(digit) => {
-                            let __tco_0 = (pos + 1);
-                            let __tco_1 = (digit_count + 1);
-                            let __tco_2 = ((value * 16) + digit.clone());
-                            __tco_loop_pos = __tco_0;
-                            __tco_loop_digit_count = __tco_1;
-                            __tco_loop_value = __tco_2;
+                            let __tco_0 = source;
+                            let __tco_1 = (pos + 1);
+                            let __tco_2 = (digit_count + 1);
+                            let __tco_3 = ((value * 16) + digit.clone());
+                            __tco_loop_source = __tco_0;
+                            __tco_loop_pos = __tco_1;
+                            __tco_loop_digit_count = __tco_2;
+                            __tco_loop_value = __tco_3;
                             continue;
                         }
                         std::option::Option::None => {
@@ -1317,10 +1353,12 @@ pub fn process_escapes_loop(
                         let lo = code_point_at(source.clone(), (pos.clone() + 3));
                         match hex_escape_char(hi.clone(), lo.clone()) {
                             Some(decoded) => {
-                                let __tco_0 = (pos + 4);
-                                let __tco_1 = v1_rt::rc_list_push(acc, decoded.clone());
-                                __tco_loop_pos = __tco_0;
-                                __tco_loop_acc = __tco_1;
+                                let __tco_0 = source;
+                                let __tco_1 = (pos + 4);
+                                let __tco_2 = v1_rt::rc_list_push(acc, decoded.clone());
+                                __tco_loop_source = __tco_0;
+                                __tco_loop_pos = __tco_1;
+                                __tco_loop_acc = __tco_2;
                                 continue;
                             }
                             std::option::Option::None => {
@@ -1334,11 +1372,13 @@ pub fn process_escapes_loop(
                         {
                             match unicode_escape_at(source.clone(), (pos.clone() + 3), 0, 0) {
                                 Some(decoded) => {
-                                    let __tco_0 = decoded.next_pos.clone();
-                                    let __tco_1 =
+                                    let __tco_0 = source;
+                                    let __tco_1 = decoded.next_pos.clone();
+                                    let __tco_2 =
                                         v1_rt::rc_list_push(acc, decoded.code_point.clone());
-                                    __tco_loop_pos = __tco_0;
-                                    __tco_loop_acc = __tco_1;
+                                    __tco_loop_source = __tco_0;
+                                    __tco_loop_pos = __tco_1;
+                                    __tco_loop_acc = __tco_2;
                                     continue;
                                 }
                                 std::option::Option::None => {
@@ -1381,10 +1421,12 @@ pub fn process_escapes_loop(
                             };
                             match decoded.clone() {
                                 Some(code_point) => {
-                                    let __tco_0 = (pos + 2);
-                                    let __tco_1 = v1_rt::rc_list_push(acc, code_point.clone());
-                                    __tco_loop_pos = __tco_0;
-                                    __tco_loop_acc = __tco_1;
+                                    let __tco_0 = source;
+                                    let __tco_1 = (pos + 2);
+                                    let __tco_2 = v1_rt::rc_list_push(acc, code_point.clone());
+                                    __tco_loop_source = __tco_0;
+                                    __tco_loop_pos = __tco_1;
+                                    __tco_loop_acc = __tco_2;
                                     continue;
                                 }
                                 std::option::Option::None => {
@@ -1396,10 +1438,12 @@ pub fn process_escapes_loop(
                 }
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    let __tco_1 = v1_rt::rc_list_push(acc, ch.clone());
-                    __tco_loop_pos = __tco_0;
-                    __tco_loop_acc = __tco_1;
+                    let __tco_0 = source;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = v1_rt::rc_list_push(acc, ch.clone());
+                    __tco_loop_source = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             }
@@ -1482,8 +1526,12 @@ pub fn all_hex_upper_in_range(
             let ch = v1_rt::code_point(v1_rt::char_at(&text, pos.clone()));
             if is_hex_upper_digit(ch.clone()) {
                 {
-                    let __tco_0 = (pos + 1);
-                    __tco_loop_pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = (pos + 1);
+                    let __tco_2 = end;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_pos = __tco_1;
+                    __tco_loop_end = __tco_2;
                     continue;
                 }
             } else {
@@ -1517,8 +1565,14 @@ pub fn sentinel_prefix_matches(
                 break false;
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    __tco_loop_pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = prefix;
+                    let __tco_2 = (pos + 1);
+                    let __tco_3 = len;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_prefix = __tco_1;
+                    __tco_loop_pos = __tco_2;
+                    __tco_loop_len = __tco_3;
                     continue;
                 }
             }
@@ -1553,8 +1607,16 @@ pub fn sentinel_suffix_matches(
                 break false;
             } else {
                 {
-                    let __tco_0 = (pos + 1);
-                    __tco_loop_pos = __tco_0;
+                    let __tco_0 = text;
+                    let __tco_1 = suffix;
+                    let __tco_2 = (pos + 1);
+                    let __tco_3 = sfx_len;
+                    let __tco_4 = text_start;
+                    __tco_loop_text = __tco_0;
+                    __tco_loop_suffix = __tco_1;
+                    __tco_loop_pos = __tco_2;
+                    __tco_loop_sfx_len = __tco_3;
+                    __tco_loop_text_start = __tco_4;
                     continue;
                 }
             }

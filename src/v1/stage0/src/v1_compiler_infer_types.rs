@@ -2087,7 +2087,8 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
-        #[allow(unused_mut)] let mut n = __tco_loop_n.clone();
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n.clone();
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
             && has_structure.clone())
@@ -2297,9 +2298,12 @@ pub fn node_type_compatible(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        #[allow(unused_mut)] let mut left = __tco_loop_left.clone();
-        #[allow(unused_mut)] let mut right = __tco_loop_right.clone();
-        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left.clone();
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -2363,8 +2367,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
+                                                        let __tco_2 = source_indices;
                                                         __tco_loop_left = __tco_0;
                                                         __tco_loop_right = __tco_1;
+                                                        __tco_loop_source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2420,8 +2426,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
+                                                        let __tco_2 = source_indices;
                                                         __tco_loop_left = __tco_0;
                                                         __tco_loop_right = __tco_1;
+                                                        __tco_loop_source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2450,8 +2458,10 @@ pub fn node_type_compatible(
                                         {
                                             let __tco_0 = left_inner.clone();
                                             let __tco_1 = right_inner.clone();
+                                            let __tco_2 = source_indices;
                                             __tco_loop_left = __tco_0;
                                             __tco_loop_right = __tco_1;
+                                            __tco_loop_source_indices = __tco_2;
                                             continue;
                                         }
                                     }
@@ -3098,9 +3108,12 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
-        #[allow(unused_mut)] let mut n = __tco_loop_n.clone();
-        #[allow(unused_mut)] let mut candidates = __tco_loop_candidates.clone();
-        #[allow(unused_mut)] let mut source_indices = __tco_loop_source_indices.clone();
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n.clone();
+        #[allow(unused_mut)]
+        let mut candidates = __tco_loop_candidates.clone();
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices.clone();
         match candidates.clone().first().cloned() {
             std::option::Option::None => {
                 break std::option::Option::None;
@@ -3118,14 +3131,18 @@ pub fn first_matching_algebra_field(
                         }));
                     }
                     std::option::Option::None => {
-                        let __tco_0 = Rc::new(
+                        let __tco_0 = n;
+                        let __tco_1 = Rc::new(
                             candidates
                                 .iter()
                                 .cloned()
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        __tco_loop_candidates = __tco_0;
+                        let __tco_2 = source_indices;
+                        __tco_loop_n = __tco_0;
+                        __tco_loop_candidates = __tco_1;
+                        __tco_loop_source_indices = __tco_2;
                         continue;
                     }
                 }

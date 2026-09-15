@@ -685,15 +685,24 @@ pub fn topo_resolve_loop(
     mut __tco_loop_fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
     loop {
-        #[allow(unused_mut)] let mut remaining = __tco_loop_remaining.clone();
-        #[allow(unused_mut)] let mut resolved = __tco_loop_resolved.clone();
-        #[allow(unused_mut)] let mut declared_sigs = __tco_loop_declared_sigs.clone();
-        #[allow(unused_mut)] let mut call_edges = __tco_loop_call_edges.clone();
-        #[allow(unused_mut)] let mut local_func_set = __tco_loop_local_func_set.clone();
-        #[allow(unused_mut)] let mut module_name = __tco_loop_module_name.clone();
-        #[allow(unused_mut)] let mut diagnostics = __tco_loop_diagnostics.clone();
-        #[allow(unused_mut)] let mut parent_envs = __tco_loop_parent_envs.clone();
-        #[allow(unused_mut)] let mut fuel = __tco_loop_fuel.clone();
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining.clone();
+        #[allow(unused_mut)]
+        let mut resolved = __tco_loop_resolved.clone();
+        #[allow(unused_mut)]
+        let mut declared_sigs = __tco_loop_declared_sigs.clone();
+        #[allow(unused_mut)]
+        let mut call_edges = __tco_loop_call_edges.clone();
+        #[allow(unused_mut)]
+        let mut local_func_set = __tco_loop_local_func_set.clone();
+        #[allow(unused_mut)]
+        let mut module_name = __tco_loop_module_name.clone();
+        #[allow(unused_mut)]
+        let mut diagnostics = __tco_loop_diagnostics.clone();
+        #[allow(unused_mut)]
+        let mut parent_envs = __tco_loop_parent_envs.clone();
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel.clone();
         if ((remaining.clone().len() as i64) == 0) {
             {
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
@@ -910,12 +919,22 @@ pub fn topo_resolve_loop(
         {
             let __tco_0 = next_remaining.clone();
             let __tco_1 = ready_accum.signatures.clone();
-            let __tco_2 = ready_accum.diagnostics.clone();
-            let __tco_3 = (fuel - 1);
+            let __tco_2 = declared_sigs;
+            let __tco_3 = call_edges;
+            let __tco_4 = local_func_set;
+            let __tco_5 = module_name;
+            let __tco_6 = ready_accum.diagnostics.clone();
+            let __tco_7 = parent_envs;
+            let __tco_8 = (fuel - 1);
             __tco_loop_remaining = __tco_0;
             __tco_loop_resolved = __tco_1;
-            __tco_loop_diagnostics = __tco_2;
-            __tco_loop_fuel = __tco_3;
+            __tco_loop_declared_sigs = __tco_2;
+            __tco_loop_call_edges = __tco_3;
+            __tco_loop_local_func_set = __tco_4;
+            __tco_loop_module_name = __tco_5;
+            __tco_loop_diagnostics = __tco_6;
+            __tco_loop_parent_envs = __tco_7;
+            __tco_loop_fuel = __tco_8;
             continue;
         }
     }
