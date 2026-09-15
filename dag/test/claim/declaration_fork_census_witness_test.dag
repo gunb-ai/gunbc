@@ -1,0 +1,51 @@
+module test.claim.declaration_fork_census_witness_test
+
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.decl_index { DeclFact, FnItem, DataItem }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+import gunbc.instruments.declaration_fork_census { DeclarationForkCensus, declaration_fork_census_over }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD BEHIND `gunbc.instruments.declaration_fork_census` `census`, over AUTHORED facts, so
+// the instrument's arithmetic has executed evidence that does not depend on what the tree happened
+// to contain. The corpus number is read by running the entry point, never copied here.
+
+fn fact(qualified_name: String, name: String, path: String) -> DeclFact {
+  DeclFact {
+    qualified_name: qualified_name,
+    name: name,
+    kind: DataItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: path,
+  }
+}
+
+// Three modules each declaring the per-module convention `live_tree_disposition`, one fork of
+// `probe` across two modules, and one sole declarer. Forked names: 2; rows under them: 3 + 2 = 5.
+fn shaped_facts() -> List<DeclFact> {
+  [
+    fact("a.live_tree_disposition", "live_tree_disposition", "dag/a.dag"),
+    fact("b.live_tree_disposition", "live_tree_disposition", "dag/b.dag"),
+    fact("c.live_tree_disposition", "live_tree_disposition", "dag/c.dag"),
+    fact("a.probe", "probe", "dag/a.dag"),
+    fact("b.probe", "probe", "dag/b.dag"),
+    fact("c.only_here", "only_here", "dag/c.dag"),
+  ]
+}
+
+test fn forked_names_and_rows_are_counted_at_declaration_grain() -> Bool {
+  let c = declaration_fork_census_over(facts: shaped_facts())
+  c.facts == 6 && c.names == 3 && c.forked_names == 2 && c.forked_rows == 5
+}
+
+// THE CONTROL: no name declared twice, nothing forked -- and the counts still name the population
+// read, so an empty answer is distinguishable from an unread one.
+test fn a_population_with_no_repeated_name_forks_nothing() -> Bool {
+  let c = declaration_fork_census_over(facts: [
+    fact("a.x", "x", "dag/a.dag"),
+    fact("b.y", "y", "dag/b.dag"),
+  ])
+  c.facts == 2 && c.names == 2 && c.forked_names == 0 && c.forked_rows == 0
+}
