@@ -215,23 +215,3 @@ fn pre_os_occurrence_index(envelopes: List<ObservationEnvelope>) -> Map<ChunkOcc
     map_insert(m: acc, key: envelope.chunk.occurrence, value: standing)
   })
 }
-
-fn pre_os_occurrence_conflicts(envelopes: List<ObservationEnvelope>, subject: ObservationEnvelope) -> Bool {
-  match map_lookup(m: pre_os_occurrence_index(envelopes: envelopes), key: subject.chunk.occurrence) {
-    Absent => false
-    Present { value: contents } => contents.conflicting || contents.first != pre_os_occurrence_content_key(envelope: subject)
-  }
-}
-
-type PreOsUniqueEnvelopes { seen: Map<PreOsEnvelopeKey, Bool>, reversed: List<ObservationEnvelope> }
-
-fn pre_os_unique_occurrences(envelopes: List<ObservationEnvelope>) -> List<ObservationEnvelope> {
-  let retained = fold(envelopes, init: PreOsUniqueEnvelopes { seen: empty_map(), reversed: [] }, f: (acc, envelope) => {
-    let key = pre_os_envelope_key(envelope: envelope)
-    match map_lookup(m: acc.seen, key: key) {
-      Present { value: _ } => acc
-      Absent => PreOsUniqueEnvelopes { seen: map_insert(m: acc.seen, key: key, value: true), reversed: concat([envelope], acc.reversed) }
-    }
-  })
-  reverse(retained.reversed)
-}

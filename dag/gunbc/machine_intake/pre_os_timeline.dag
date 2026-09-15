@@ -59,9 +59,23 @@ type PreOsCapturedCycleReading {
   milestones: PreOsMilestones
   firmware_selection: ObservationAttempt<NonEmptyStr, NonEmptyStr>
 }
-type PreOsCycleScan { next_offset: StreamPosition, cycles: List<PreOsCapturedCycleReading> }
+// THE CYCLE SCAN IS CARRIED FORWARD, NOT RE-FOLDED PER ROW (review 66670, DESIGN section 6: a
+// quadratic fold is always fixed). `closed` holds every cycle whose end has been seen, newest
+// first; `tail` is the text since the last cycle marker -- the OPEN cycle when `open_anchor` is
+// present, the pre-marker prefix otherwise -- and `tail_offset` is the stream position of its
+// first byte. A new chunk extends only the tail: cycles it closes are read once and pushed, the
+// open cycle is re-read over its own text (its milestones can change until it closes), and the
+// closed cycles are never re-derived. Because the tail carries everything since the last marker,
+// a marker that straddles two chunks is found when its second half arrives, exactly as a split of
+// the whole span would find it.
+type PreOsCycleScan {
+  closed: List<PreOsCapturedCycleReading>
+  tail: String
+  tail_offset: StreamPosition
+  open_anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>?
+}
 
-type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, PreOsRefusal> }
+type PreOsConsoleSpan { chunks: List<PreOsReplayObservation>, payload: String, composition: ObservationAttempt<String, PreOsRefusal>, scan: PreOsCycleScan }
 
 // Check each supplied range through its carrier and keep the refusal at the
 // preceding/current chunk location. No isolation silently discards its cause.
@@ -80,7 +94,7 @@ fn pre_os_composable_payload(observation: PreOsReplayObservation) -> Observation
   }
 }
 
-fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation) -> PreOsConsoleSpan {
+fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservation, host_mac: NonEmptyStr) -> PreOsConsoleSpan {
   let text = match current.payload { ObservationEstablished { observed: payload } => payload ObservationRefused { cause: _ } => "" }
   let composition: ObservationAttempt<String, PreOsRefusal> = match pre_os_composable_payload(observation: current) {
     ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "current chunk") }
@@ -106,12 +120,23 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
     }
   }
   match composition {
-    ObservationRefused { cause: _ } => PreOsConsoleSpan { chunks: [current], payload: text, composition: composition }
+    ObservationRefused { cause: _ } => pre_os_fresh_span(current: current, text: text, composition: composition, host_mac: host_mac)
     ObservationEstablished { observed: combined } => match previous {
-      Present { value: before } => PreOsConsoleSpan { chunks: concat(before.chunks, [current]), payload: combined, composition: composition }
-      Absent => PreOsConsoleSpan { chunks: [current], payload: text, composition: composition }
+      Present { value: before } => {
+        let chunks = concat(before.chunks, [current])
+        PreOsConsoleSpan { chunks: chunks, payload: combined, composition: composition,
+          scan: pre_os_scan_extend(scan: before.scan, chunks: chunks, text: text, host_mac: host_mac) }
+      }
+      Absent => pre_os_fresh_span(current: current, text: text, composition: composition, host_mac: host_mac)
     }
   }
+}
+
+// A span that starts (or restarts) at this chunk scans from the chunk's own first byte.
+fn pre_os_fresh_span(current: PreOsReplayObservation, text: String, composition: ObservationAttempt<String, PreOsRefusal>, host_mac: NonEmptyStr) -> PreOsConsoleSpan {
+  let empty = PreOsCycleScan { closed: [], tail: "", tail_offset: current.envelope.chunk.range.first, open_anchor: none }
+  PreOsConsoleSpan { chunks: [current], payload: text, composition: composition,
+    scan: pre_os_scan_extend(scan: empty, chunks: [current], text: text, host_mac: host_mac) }
 }
 
 // A byte position cannot be compared with an anchor in another source stream.
@@ -138,26 +163,54 @@ fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition)
   }
 }
 
-fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
-  match span.chunks.first() {
-    Absent => []
-    Present { value: first } => {
-      let marker = mtcollins_dram_cycle_start as String
-      let parts = split(s: span.payload, delimiter: marker)
-      let prefix_bytes = match parts.first() { Absent => byte_size(count: 0) Present { value: prefix } => pre_os_utf8_size(text: prefix) }
-      let scanned = fold(parts.skip(n: 1), init: PreOsCycleScan { next_offset: position_advanced_by(p: first.envelope.chunk.range.first, extent: prefix_bytes), cycles: [] }, f: (acc, part) => {
-        let anchor = pre_os_cycle_anchor(chunks: span.chunks, at: acc.next_offset)
-        let cycle = PreOsCapturedCycleReading {
-          firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
-          kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
-          anchor: anchor,
-          milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
-          firmware_selection: pre_os_firmware_boot_selection(text: part, host_mac: host_mac),
+fn pre_os_cycle_reading(anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>, text: String, host_mac: NonEmptyStr) -> PreOsCapturedCycleReading {
+  PreOsCapturedCycleReading {
+    firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
+    kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
+    anchor: anchor,
+    milestones: pre_os_milestones(console: ObservationEstablished { observed: text }, os_boot: pre_os_host_userspace_boot(text: text, host_mac: host_mac)),
+    firmware_selection: pre_os_firmware_boot_selection(text: text, host_mac: host_mac),
+  }
+}
+
+// One marker part becomes one cycle: its anchor is at the marker, its text follows the marker,
+// and the scan's next tail begins after that text.
+type PreOsScanStep { closed: List<PreOsCapturedCycleReading>, offset: StreamPosition, open_anchor: ObservationAttempt<PreOsCapturedCycleAnchor, PreOsRefusal>?, open_text: String, open_offset: StreamPosition }
+
+fn pre_os_scan_extend(scan: PreOsCycleScan, chunks: List<PreOsReplayObservation>, text: String, host_mac: NonEmptyStr) -> PreOsCycleScan {
+  let marker = mtcollins_dram_cycle_start as String
+  let combined = concat(scan.tail, text)
+  let parts = split(s: combined, delimiter: marker)
+  let head = match parts.first() { Absent => "" Present { value: h } => h }
+  match parts.skip(n: 1).first() {
+    Absent => PreOsCycleScan { closed: scan.closed, tail: combined, tail_offset: scan.tail_offset, open_anchor: scan.open_anchor }
+    Present { value: _ } => {
+      let closed_head = match scan.open_anchor {
+        Absent => scan.closed
+        Present { value: anchor } => concat([pre_os_cycle_reading(anchor: anchor, text: head, host_mac: host_mac)], scan.closed)
+      }
+      let after_head = position_advanced_by(p: scan.tail_offset, extent: pre_os_utf8_size(text: head))
+      let stepped = fold(parts.skip(n: 1), init: PreOsScanStep { closed: closed_head, offset: after_head, open_anchor: none, open_text: "", open_offset: after_head }, f: (acc, part) => {
+        let closed = match acc.open_anchor {
+          Absent => acc.closed
+          Present { value: anchor } => concat([pre_os_cycle_reading(anchor: anchor, text: acc.open_text, host_mac: host_mac)], acc.closed)
         }
-        PreOsCycleScan { next_offset: position_advanced_by(p: position_advanced_by(p: acc.next_offset, extent: pre_os_utf8_size(text: marker)), extent: pre_os_utf8_size(text: part)), cycles: concat([cycle], acc.cycles) }
+        let anchor = pre_os_cycle_anchor(chunks: chunks, at: acc.offset)
+        let text_offset = position_advanced_by(p: acc.offset, extent: pre_os_utf8_size(text: marker))
+        PreOsScanStep { closed: closed, open_anchor: Present { value: anchor }, open_text: part, open_offset: text_offset,
+          offset: position_advanced_by(p: text_offset, extent: pre_os_utf8_size(text: part)) }
       })
-      reverse(scanned.cycles)
+      PreOsCycleScan { closed: stepped.closed, tail: stepped.open_text, tail_offset: stepped.open_offset, open_anchor: stepped.open_anchor }
     }
+  }
+}
+
+// The cycles a span holds: every closed cycle in order, then the open one read over its text so far.
+fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
+  let closed = reverse(span.scan.closed)
+  match span.scan.open_anchor {
+    Absent => closed
+    Present { value: anchor } => concat(closed, [pre_os_cycle_reading(anchor: anchor, text: span.scan.tail, host_mac: host_mac)])
   }
 }
 
@@ -232,12 +285,15 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       Absent => none
       Present { value: previous } => previous
     }
-    let span = pre_os_console_span(previous: previous_span, current: o)
-    let console_spans = match o.format {
-      PreOsSelSnapshot => acc.console_spans
-      PreOsConsoleText => {
+    let span: PreOsConsoleSpan? = match o.format {
+      PreOsSelSnapshot => none
+      PreOsConsoleText => Present { value: pre_os_console_span(previous: previous_span, current: o, host_mac: host_mac) }
+    }
+    let console_spans = match span {
+      Absent => acc.console_spans
+      Present { value: s } => {
         let current: PreOsConsoleSpan? = match association {
-          ObservationEstablished { observed: _ } => Present { value: span }
+          ObservationEstablished { observed: _ } => Present { value: s }
           ObservationRefused { cause: _ } => none
         }
         map_insert(m: acc.console_spans, key: o.envelope.binding, value: current)
@@ -245,12 +301,12 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     }
     let console: ObservationAttempt<String, PreOsRefusal> = match association {
       ObservationRefused { cause } => ObservationRefused { cause: cause }
-      ObservationEstablished { observed: _ } => match o.format {
-        PreOsConsoleText => match pre_os_composable_payload(observation: o) {
+      ObservationEstablished { observed: _ } => match span {
+        Present { value: s } => match pre_os_composable_payload(observation: o) {
           ObservationRefused { cause } => ObservationRefused { cause: pre_os_refusal_at(cause: cause, location: "current chunk") }
-          ObservationEstablished { observed: _ } => ObservationEstablished { observed: span.payload }
+          ObservationEstablished { observed: _ } => ObservationEstablished { observed: s.payload }
         }
-        PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL observations do not establish console milestones") }
+        Absent => ObservationRefused { cause: pre_os_text_refusal(text: "SEL observations do not establish console milestones") }
       }
     }
     let configuration: ObservationAttempt<MemoryConfiguration, PreOsRefusal> = match inventory_question {
@@ -270,8 +326,8 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     let row = PreOsTimelineRow {
       retention: retention_exposure(envelope: o.envelope),
       configuration: configuration, sel: sel, observation: o, association: association,
-      console_composition: match o.format { PreOsConsoleText => span.composition PreOsSelSnapshot => ObservationRefused { cause: pre_os_text_refusal(text: "SEL snapshot is not a console span") } },
-      cycles: match console { ObservationEstablished { observed: _ } => pre_os_captured_cycles(span: span, host_mac: host_mac) ObservationRefused { cause: _ } => [] },
+      console_composition: match span { Present { value: s } => s.composition Absent => ObservationRefused { cause: pre_os_text_refusal(text: "SEL snapshot is not a console span") } },
+      cycles: match console { ObservationEstablished { observed: _ } => match span { Present { value: s } => pre_os_captured_cycles(span: s, host_mac: host_mac) Absent => [] } ObservationRefused { cause: _ } => [] },
       boot: match milestones {
         ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
         ObservationEstablished { observed: value } => pre_os_assessment_refusal(assessment: pre_os_boot_assessment(milestones: value))
