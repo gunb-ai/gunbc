@@ -59,7 +59,7 @@ SimulationSummary           counts that must reconcile
 
 ## 2. Rosetta stone — `.dag` read through Python
 
-The compiler emits Python (`--target python`) as well as Rust, and the Python it emits is the most direct statement of what each `.dag` construct *is*: a product type becomes a `@dataclass`, a sum type becomes a `Union` of dataclasses, a function becomes a `def`. Use the table as the bridge from what you already know. Where Java, JavaScript, C or SQL has a closer analogue it is named in the third column.
+The compiler emits Python (`--target python`) as well as Rust, and the Python it emits is the most direct statement of what each `.dag` construct *is*: a product type becomes a `@dataclass`, a sum type becomes a `Union` of dataclasses, a function becomes a `def`. (The type projection is sound; the function bodies are not yet — §8 names the filed class. The table below is the bridge either way.) Use the table as the bridge from what you already know. Where Java, JavaScript, C or SQL has a closer analogue it is named in the third column.
 
 | `.dag` | Python | also like |
 | --- | --- | --- |
@@ -382,7 +382,7 @@ What to look for in `$OUT/src/examples_blackjack_*.rs`: a `type` became a `pub s
 
 **Never repair the emitted Rust.** If `cargo check` fails, the defect is in the `.dag` or in the compiler, and either way the fix lands upstream of the projection. Ask when you hit one; a compiler bug found by a new example is a real contribution.
 
-`--target python` also runs, and its type projection — `@dataclass` per record, `Union` per sum type — is the best illustration of the Rosetta table in §2. Its function bodies are **not** currently valid Python (a `let` chain is emitted as `return name = …`), so read the Python for the shapes and check the Rust for the behavior. Do not repair the Python target in this project; it is out of scope and named here so you do not lose an afternoon to it.
+`--target python` also runs, and its type projection — `@dataclass` per record, `Union` per sum type — is the best illustration of the Rosetta table in §2. Its function bodies are **not** currently valid Python: the class is filed as `gunbc.recurring_failure_mode` `python_target_returns_a_statement`, which names the emitting function, the reproducing command (the weather example through `--target python`, then `python3 -m py_compile`) and the capability that retires it. So read the Python for the shapes and check the Rust for the behavior. The repair belongs to the emitter lane, not to an onboarding project; the row is where its status lives, and it is named here so you do not lose an afternoon rediscovering it.
 
 ## 9. Milestones
 
