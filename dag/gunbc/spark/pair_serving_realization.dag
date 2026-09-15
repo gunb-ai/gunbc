@@ -603,12 +603,8 @@ fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, uni
 }
 
 fn spark_pair_worker_realizations(head: FabricLaneObserved, workers: List<SparkPairServingParticipant>) -> List<SparkPairHostRealization>? {
-  spark_pair_worker_realizations_using(workers: workers, render: fn(w, spec) { spark_pair_worker_unit_unsigned(head: head, self: w.lane, spec: spec) })
-}
-
-fn spark_pair_worker_realizations_using(workers: List<SparkPairServingParticipant>, render: fn(SparkPairServingParticipant, DockerCreateSpec) -> SparkPairUnitRender) -> List<SparkPairHostRealization>? {
   let realized = flat_map(workers, w =>
-    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { render(w, spec) }) {
+    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_unsigned(head: head, self: w.lane, spec: spec) }) {
       Present { value: r } => [r]
       Absent => [] as List<SparkPairHostRealization>
     })
@@ -771,11 +767,6 @@ fn spark_pair_lookup_declared_head_digest(group: FabricGroup) -> DeclaredUnitDig
     Present { value: expected } =>
       spark_pair_lookup_declared_head_digest_at(group: group, expected: expected)
   }
-}
-
-fn spark_pair_withdraw_declared_head_artifact(group: FabricGroup) -> Bool {
-  let wr = Filesystem.Write(path: spark_pair_declared_unit_artifact_path(group: group), content: "withdrawn\n")
-  wr.success
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a
