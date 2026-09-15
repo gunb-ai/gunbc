@@ -8,6 +8,17 @@ import gunbc.machine_intake_megarac_served_ui_catalog_observation {
   megarac_spx_ui_surface_path,
   megarac_spx_ui_surface_sha256,
 }
+import extdeps.bmc.megarac {
+  MegaRacServedUiSurface,
+  ServedUiFactFirmwareUncatalogued,
+  ServedUiFactKnown,
+  ServedUiSurfaceAbsent,
+  ServedUiSurfacePresent,
+  megarac_firmware_0_32,
+  megarac_served_ui_surface_catalog_token,
+  megarac_served_ui_surface_standing,
+  megarac_served_ui_surfaces,
+}
 import gunbc.mtcollins_memory_change {
   mtcollins_training_capture_path,
   mtcollins_training_capture_sha256,
@@ -25,16 +36,25 @@ test fn committed_spx_ui_surface_hashes_to_the_catalog_identity() -> Bool {
   ) == Sha256Matches
 }
 
-// PATH PRESENCE AND ABSENCE ARE READ FROM THE HASHED FILE, not from a second authored list.
-// RED: add a redfish line, or drop api/fru or aep_dimm_info, or add settings/bios.
-test fn committed_spx_ui_surface_redfish_absent_fru_and_aep_dimm_present() -> Bool {
+// PATH PRESENCE IS ONE FACT, ASKED OF THE HASHED FILE THROUGH THE MODEL'S OWN STANDING. For every
+// surface the decoder names, the catalog bytes must contain that surface's token exactly when
+// megarac_served_ui_surface_standing says Present at 0.32 -- so the authored map and the file are
+// joined by execution, and neither can drift from the other unnoticed (review 66694).
+// RED: add a redfish line, drop api/fru or aep_dimm_info, add settings/bios, or flip one arm of
+// megarac_served_ui_surface_presence_at_0_32 without the bytes.
+fn surface_standing_agrees_with_catalog(content: String, surface: MegaRacServedUiSurface) -> Bool {
+  let in_catalog = string_contains(s: content, pattern: megarac_served_ui_surface_catalog_token(surface: surface) as String)
+  match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: surface) {
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => in_catalog
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => !in_catalog
+    ServedUiFactFirmwareUncatalogued { firmware: _ } => false
+  }
+}
+
+test fn committed_spx_ui_surface_agrees_with_every_served_ui_surface_standing() -> Bool {
   let read = Filesystem.Read(path: megarac_spx_ui_surface_path as String)
   read.success
-    && !string_contains(s: read.content, pattern: "redfish")
-    && string_contains(s: read.content, pattern: "api/aep_inventory/aep_dimm_info")
-    && string_contains(s: read.content, pattern: "api/fru")
-    && string_contains(s: read.content, pattern: "api/maintenance/hpm/getbiosversions")
-    && !string_contains(s: read.content, pattern: "settings/bios")
+    && all(megarac_served_ui_surfaces, surface => surface_standing_agrees_with_catalog(content: read.content, surface: surface))
 }
 
 test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {

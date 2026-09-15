@@ -323,6 +323,23 @@ type MegaRacServedUiSurfacePresence
   = ServedUiSurfacePresent
   | ServedUiSurfaceAbsent
 
+// THE CATALOG SUBSTRING EACH SURFACE IS NAMED BY. The presence map below is a transcription of the
+// 0.32 served-UI catalog (gunbc.machine_intake_megarac_served_ui_catalog_observation, hashed and
+// committed); this row is the join that makes it checkable against the bytes rather than a second
+// authored list beside them (review 66694): the integrity witness asks, for every surface, that
+// the catalog contains the substring exactly when the map says Present.
+fn megarac_served_ui_surface_catalog_token(surface: MegaRacServedUiSurface) -> NonEmptyStr {
+  match surface {
+    RedfishService => "redfish"
+    BiosUefiSettings => "settings/bios"
+    FruInventory => "api/fru"
+    AepDimmInventory => "api/aep_inventory/aep_dimm_info"
+    BiosVersionFlash => "api/maintenance/hpm/getbiosversions"
+  }
+}
+
+data megarac_served_ui_surfaces: List<MegaRacServedUiSurface> = [RedfishService, BiosUefiSettings, FruInventory, AepDimmInventory, BiosVersionFlash]
+
 fn megarac_served_ui_surface_presence_at_0_32(surface: MegaRacServedUiSurface) -> MegaRacServedUiSurfacePresence {
   match surface {
     RedfishService => ServedUiSurfaceAbsent
