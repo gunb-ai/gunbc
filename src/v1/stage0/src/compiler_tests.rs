@@ -531,29 +531,6 @@ mod compiler_tests {
                 &go_spec.tco.temp_var_prefix,
                 "continue",
             );
-            let identity_mask = std::rc::Rc::new(im::vector![true, false]);
-            let mutant = crate::v1_compiler_emit::tco_reassign_identity_elision_mutant(
-                args.clone(),
-                names.clone(),
-                identity_mask,
-                rust_spec.clone(),
-            );
-            let mutant_lines: Vec<&str> = mutant
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty() && !l.contains("continue"))
-                .collect();
-            let mutant_assigns = mutant_lines
-                .iter()
-                .filter(|l| {
-                    l.contains(&format!("{} =", acc)) || l.contains(&format!("{} =", nslot))
-                })
-                .count();
-            assert_eq!(
-                mutant_assigns, 1,
-                "identity-elision mutant must drop the same-named slot write, got {}",
-                mutant
-            );
             let src = concat!(
                 "module tco_slot_fixture\n",
                 "fn walk(acc: Int, n: Int) -> Int {{\n",

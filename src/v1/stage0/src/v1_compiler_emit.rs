@@ -3679,22 +3679,6 @@ pub fn tco_reassign_core(
     }
 }
 
-pub fn tco_identity_passthrough_elision_mutant(
-    arg_val: Rc<Node>,
-    param_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match (*arg_val.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            (crate::v1_std_core::expr_var_name_at(arg_val.clone(), si.clone())
-                == param_name.clone())
-        }
-        _ => false,
-    }
-}
-
 pub fn emit_shared_tco_expr(
     mut __tco_loop_frame: Rc<TcoFrame>,
     mut __tco_loop_fn_name: String,
@@ -4040,71 +4024,6 @@ pub fn shared_tco_reassign(
             "".to_string(),
         );
         all_lines.clone().join(&"\n".to_string())
-    }
-}
-
-pub fn tco_reassign_identity_elision_mutant(
-    ordered_args: Rc<Vec<String>>,
-    param_names: Rc<Vec<String>>,
-    identity_mask: Rc<Vec<bool>>,
-    spec: Rc<LanguageSpec>,
-) -> String {
-    {
-        let kept = Rc::new({
-            let mut __result = Vec::new();
-            for pair in Rc::new(
-                param_names
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
-                if match identity_mask
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(pair.0.clone() as usize)
-                    .next()
-                {
-                    Some(elide) => !elide.clone(),
-                    std::option::Option::None => true,
-                } {
-                    __result.push(pair);
-                }
-            }
-            __result
-        });
-        let kept_args = Rc::new({
-            let mut __result = Vec::new();
-            for pair in kept.iter().cloned() {
-                __result.push(
-                    match ordered_args
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(pair.0.clone() as usize)
-                        .next()
-                    {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => pair.1.clone(),
-                    },
-                );
-            }
-            __result
-        });
-        let kept_names = Rc::new({
-            let mut __result = Vec::new();
-            for pair in kept.iter().cloned() {
-                __result.push(pair.1.clone());
-            }
-            __result
-        });
-        shared_tco_reassign(kept_args.clone(), kept_names.clone(), spec.clone())
     }
 }
 

@@ -1808,13 +1808,6 @@ fn tco_reassign_core(
   concat(temp_lets, assigns, [concat(line_prefix, continue_str)])
 }
 
-fn tco_identity_passthrough_elision_mutant(arg_val: Node, param_name: String, si: Map<String, NewlineIndex>) -> Bool {
-  match arg_val.expr_data {
-    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_indices: si) == param_name
-    _ => false
-  }
-}
-
 fn emit_shared_tco_expr(
   frame: TcoFrame,
   fn_name: String,
@@ -2003,19 +1996,6 @@ fn shared_tco_reassign(
     temp_assign_op: spec.tco.temp_assign_op, stmt_terminator: spec.block_syntax.stmt_terminator,
     continue_str: spec.tco.continue_str, line_prefix: "")
   all_lines |> join(separator: "\n")
-}
-
-fn tco_reassign_identity_elision_mutant(
-  ordered_args: List<String>,
-  param_names: List<String>,
-  identity_mask: List<Bool>,
-  spec: LanguageSpec
-) -> String {
-  let kept = param_names |> enumerate
-    |> filter(pair => match identity_mask |> skip(pair.first) |> first { Present { value: elide } => !elide  Absent => true })
-  let kept_args = kept |> map(pair => match ordered_args |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
-  let kept_names = kept |> map(pair => pair.second)
-  shared_tco_reassign(ordered_args: kept_args, param_names: kept_names, spec: spec)
 }
 
 fn unified_tco_recurse(expr: Node, scope: InferScope, depth: Int,

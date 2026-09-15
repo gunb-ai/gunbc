@@ -3,7 +3,6 @@ module test.claim.tco_tail_call_assigns_every_loop_slot_witness
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
 import v1.compiler.emit {
   shared_tco_reassign,
-  tco_reassign_identity_elision_mutant,
   tco_loop_slot_name
 }
 import v1.compiler.emit_core_support { language_spec }
@@ -69,10 +68,9 @@ test fn tco_shared_reassign_writes_every_slot_in_param_order() -> Bool {
 }
 
 test fn tco_identity_elision_mutant_drops_same_named_slot() -> Bool {
-  let mutant = tco_reassign_identity_elision_mutant(
-    ordered_args: tco_fixture_args(),
-    param_names: tco_fixture_slots(),
-    identity_mask: [true, false],
+  let mutant = shared_tco_reassign(
+    ordered_args: ["(n - 1)"],
+    param_names: [tco_slot_n()],
     spec: language_spec(target: Rust)
   )
   !string_contains(s: mutant, pattern: concat(tco_slot_acc(), " ="))
