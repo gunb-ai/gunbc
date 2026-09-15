@@ -17,7 +17,7 @@ import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   SparkPairDeclaredHeadPublish, SparkPairDeclaredHeadPublished, SparkPairDeclaredHeadPublishRefused,
-  spark_pair_digest_unit_render, spark_pair_rendered_unit_artifact, spark_pair_container_spec,
+  spark_pair_rendered_unit_artifact, spark_pair_container_spec,
   spark_pair_container_env, spark_pair_head_unit_name, spark_pair_lookup_declared_head_digest,
   spark_pair_realizations, spark_pair_publish_declared_head_artifact,
   spark_pair_seal_unit_render,
@@ -57,7 +57,14 @@ fn w_head_render() -> DeclaredUnitDigestStanding {
     SparkPairServingUnitRefused { group: _, cause: c } =>
       DeclaredUnitDigestUnavailable { obligation: c }
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
-      spark_pair_digest_unit_render(render: w_sealed_head(head: h.lane))
+      match w_sealed_head(head: h.lane) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+          DeclaredUnitDigestUnavailable { obligation: c }
+        SparkPairUnitSealed { artifact: a } =>
+          DeclaredUnitDigested { unit_name: a.unit_name, digest: a.digest }
+        SparkPairUnitRendered { unit_name: _, text: _ } =>
+          DeclaredUnitDigestUnavailable { obligation: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
+      }
   }
 }
 
@@ -135,14 +142,15 @@ test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> 
           match spark_pair_publish_declared_head_artifact(realization: r) {
             SparkPairDeclaredHeadPublishRefused { cause: _ } => false
             SparkPairDeclaredHeadPublished { group: _, digest: _ } =>
-              match spark_pair_digest_unit_render(render: spark_pair_seal_unit_render(render: h.unit)) {
-                DeclaredUnitDigestUnavailable { obligation: _ } => false
-                DeclaredUnitDigested { unit_name: _, digest: from_unit } =>
+              match spark_pair_seal_unit_render(render: h.unit) {
+                SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+                SparkPairUnitRendered { unit_name: _, text: _ } => false
+                SparkPairUnitSealed { artifact: a } =>
                   match spark_pair_lookup_declared_head_digest(group: g) {
                     DeclaredUnitDigestUnavailable { obligation: _ } => false
                     DeclaredUnitDigested { unit_name: n, digest: from_store } =>
                       (n as String) == (spark_pair_head_unit_name as String)
-                        && match compare_content_hash(left: from_unit, right: from_store) {
+                        && match compare_content_hash(left: a.digest, right: from_store) {
                           ContentHashEqual => true
                           ContentHashDifferent => false
                           ContentHashCrossFamilyIncomparable => false

@@ -289,11 +289,21 @@ pub fn compare_content_hash(
 }
 
 pub fn content_hash_sha256_wire_tag() -> String {
-    "sha256:".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "sha256:".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn content_hash_sha512_wire_tag() -> String {
-    "sha512:".to_string()
+    thread_local! {
+        static CACHED: String = {
+            "sha512:".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
