@@ -39,7 +39,7 @@ import v2.compiler.self_host.generation {
 }
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
-import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect, FreshEffect }
+import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed
@@ -215,6 +215,14 @@ type ArtifactRequest
 // the verdicts were produced under). Requires the verdicts AND the preparation diagnostics: a
 // bundle that dropped the diagnostics of a module that failed to prepare would read as a module
 // with no tests, which is the fabricated-plausible-output arm section 5 forbids.
+// Those five identities make the bundle a REPEATABLE computation: same subject, same verdicts.
+// demand_nature is therefore IdempotentEffect (cache-admissible; a store hit is memoize), never
+// FreshEffect, which the ladder maps to ExemptFreshEffect/Recompute and would contradict the
+// store serving a prior commit. The cargo/test-run effect is that demand_nature, not a persisted
+// effect-request/receipt output: carries_effect_requests_receipts is false, so provider_serve
+// completeness is exactly the two required parts (option b — the judgment result does not carry
+// effect receipts). NativeCompilerArtifactRequest is the same cut: IdempotentEffect over the
+// generation axes, persisted executable+build diagnostics only.
 //
 // DECLARED FRONTIER (DESIGN section 3c). These three families are consumed today only by the store
 // semantics (std.materialization_object, extdeps.realization.materialization_store_local) and their
@@ -245,10 +253,10 @@ type NativeModuleVerdictBundleSubject {
 // - demand_nature: demand-engine-program M3 share/materialization admission. TRIGGER: M3's engine
 //   consumes DemandNature for in-flight attach vs refuse-fresh.
 // - result.carries_semantic_value, ordered_diagnostics, carries_effect_requests_receipts,
-//   carries_refusal_arm: demand-engine-program M5 observation-contract (law evidence over the
-//   complete observable result: value, diagnostic population and order, effect requests and order,
-//   refusal shape). TRIGGER: M5's AssociativeUnder<ObservationContract> (and siblings) read these
-//   axes from this ResultContract rather than minting a second observation vocabulary.
+//   carries_refusal_arm: demand-engine-program M7 law-bearing algebraic decomposition
+//   (AssociativeUnder<ObservationContract> and siblings). TRIGGER: M7 reads these axes from this
+//   ResultContract rather than minting a second observation vocabulary. (T0 numbering: law-bearing
+//   decomposition is M7; M5 is realization/materialization.)
 // - PersistedOutputObligation.occurrence_contract (per output, not per family): demand-engine-program
 //   M1 remaining qualification — two parses of one program with different occurrence ids yield equal
 //   demand and materialization identities while occurrence-scoped outputs refuse cross-scope
@@ -367,7 +375,7 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      carries_effect_requests_receipts: true,
+      carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
       required_persisted_outputs: [
         persisted_output(id: output_native_compiler_executable, occurrence_contract: SemanticOnly),
@@ -403,14 +411,14 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
     result: ResultContract {
       carries_semantic_value: true,
       ordered_diagnostics: true,
-      carries_effect_requests_receipts: true,
+      carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
       required_persisted_outputs: [
         persisted_output(id: output_module_test_verdicts, occurrence_contract: SemanticOnly),
         persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: SemanticOnly)
       ]
     },
-    demand_nature: FreshEffect
+    demand_nature: IdempotentEffect
   }
 }
 

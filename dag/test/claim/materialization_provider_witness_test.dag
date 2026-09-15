@@ -23,6 +23,7 @@ import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
   identity_grade_is_known
 }
+import std.materialization_ladder { IdempotentEffect }
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
@@ -735,6 +736,10 @@ test fn six_judgment_contracts_join_the_cache_identity_kinds() -> Bool {
     && (right_only == 0)
     && interface_semantic
     && diagnostics_scoped
+    && (request_judgment_contract(req: witness_native_compiler_request()).demand_nature == IdempotentEffect)
+    && (request_judgment_contract(req: witness_verdict_bundle_request()).demand_nature == IdempotentEffect)
+    && (request_judgment_contract(req: witness_native_compiler_request()).result.carries_effect_requests_receipts == false)
+    && (request_judgment_contract(req: witness_verdict_bundle_request()).result.carries_effect_requests_receipts == false)
 }
 
 test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
