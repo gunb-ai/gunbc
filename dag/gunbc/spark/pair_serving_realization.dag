@@ -401,17 +401,6 @@ fn spark_pair_rendered_unit_artifact(unit_name: NonEmptyStr, text: String) -> Sp
   }
 }
 
-fn spark_pair_digest_unit_render(render: SparkPairUnitRender) -> DeclaredUnitDigestStanding {
-  match render {
-    SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
-      DeclaredUnitDigestUnavailable { obligation: c }
-    SparkPairUnitSealed { artifact: a } =>
-      DeclaredUnitDigested { unit_name: a.unit_name, digest: a.digest }
-    SparkPairUnitRendered { unit_name: _, text: _ } =>
-      DeclaredUnitDigestUnavailable { obligation: "unsigned unit bytes are not a declared digest; seal at apply publish" as NonEmptyStr }
-  }
-}
-
 fn spark_pair_head_unit_unsigned(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
