@@ -1,6 +1,6 @@
 module gunbc.live_deploy.repository_convergence_placement
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -58,8 +58,14 @@ import extdeps.systemd.unit_file {
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.spec {
-  deployment_slice_unit_name, DeploymentSpec, deployment_spec_srv1 }
+  deployment_slice_unit_name, DeploymentSpec }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  desired_deployment_roster,
+  selected_deployment_spec,
+}
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
+import v2.std.collection { Present, Absent }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
 //
@@ -707,21 +713,42 @@ fn placement_converge_for_spec(
 // renders it from the spec through convergence_receipt_path, so production never spells it; it
 // remains a parameter so the acceptance matrix can point one execution at a scratch location
 // without a second entry point that differs from the production one in any other way.
+fn desired_deployment_for_convergence_receipt(receipt: String) -> DesiredDeployment? {
+  fold(
+    desired_deployment_roster(),
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        Absent =>
+          if convergence_receipt_path(instance_root: row.instance.instance_root as String) == receipt {
+            Present { value: row }
+          } else {
+            none
+          }
+      },
+  )
+}
+
 fn repository_converge_srv1_owner_wet(
   candidate: String,
   object_source: String,
   receipt: String,
 ) -> ProcessExit {
-  let spec = deployment_spec_srv1()
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the transition's outcome is written, not returned, because the deploy that ordered it runs in a different process")
   } else {
-    placement_converge_for_spec(
-      spec: spec,
-      candidate: candidate,
-      object_source: object_source,
-      receipt_path: receipt,
-    )
+    match desired_deployment_for_convergence_receipt(receipt: receipt) {
+      Absent =>
+        exit_failure(reason: join(["repository-convergence: receipt path is not a desired-deployment receipts path: ", receipt], ""))
+      Present { value: row } =>
+        placement_converge_for_spec(
+          spec: selected_deployment_spec(row: row),
+          candidate: candidate,
+          object_source: object_source,
+          receipt_path: receipt,
+        )
+    }
   }
 }
 

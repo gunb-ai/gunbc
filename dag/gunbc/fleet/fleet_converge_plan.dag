@@ -129,10 +129,10 @@ import gunbc.fleet_converge_timer {
   fleet_converge_timer_unit_name,
 }
 import gunbc.live_deploy.spec {
-  deployment_spec_srv1,
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.host_axis_caps {
   CapMember,
   CapMemberAt,

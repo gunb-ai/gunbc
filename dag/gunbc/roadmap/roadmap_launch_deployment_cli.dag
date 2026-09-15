@@ -54,7 +54,8 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   RevisionBoundAtEmission, live_deploy_serve_unit_file, live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file,
 }

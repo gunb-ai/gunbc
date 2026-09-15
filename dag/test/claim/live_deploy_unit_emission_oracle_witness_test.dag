@@ -21,10 +21,10 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentServiceConfig,
-  deployment_spec_srv1,
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh }

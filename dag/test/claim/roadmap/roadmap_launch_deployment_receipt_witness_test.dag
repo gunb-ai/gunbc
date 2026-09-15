@@ -1,5 +1,7 @@
 module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FIXTURE IS ONE COMPLETE FACT POPULATION; EVERY RED CONTROL REPLACES EXACTLY ONE MEMBER and

@@ -1,0 +1,84 @@
+module test.claim.live_deploy.desired_roster
+
+import std.types { Bool, String, Int }
+import gunbc.live_deploy.desired {
+  DesiredRosterAdmitted,
+  DesiredRosterSameHostCollision,
+  desired_deployment_roster,
+  desired_roster_standing,
+  selected_deployment_spec,
+  srv1_production_desired_deployment,
+  srv1_lab_desired_deployment,
+  srv2_deploy_desired_deployment,
+  spec_owned_identities,
+}
+import gunbc.live_deploy.spec {
+  deployment_plan_host_identity,
+  deployment_plan_listen_port,
+}
+import gunbc.live_deploy.emit { live_deploy_apply_script_for }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
+  let rows = desired_deployment_roster()
+  count(rows) == 3
+    && match desired_roster_standing(rows: rows) {
+      DesiredRosterAdmitted => true
+      DesiredRosterSameHostCollision { host: _ } => false
+    }
+}
+
+test fn roster_rows_carry_distinct_instance_ids() -> Bool {
+  let a = srv1_production_desired_deployment().instance.instance_id
+  let b = srv1_lab_desired_deployment().instance.instance_id
+  let c = srv2_deploy_desired_deployment().instance.instance_id
+  !(a == b) && !(a == c) && !(b == c)
+}
+
+test fn owned_identities_are_host_qualified_and_pairwise_disjoint() -> Bool {
+  let idents = flat_map(
+    map(desired_deployment_roster(), r => selected_deployment_spec(row: r)),
+    s => spec_owned_identities(spec: s),
+  )
+  count(idents) > 0
+    && fold(
+      idents,
+      init: true,
+      f: (ok, ident) =>
+        ok && fold(
+          idents,
+          init: 0,
+          f: (n, other) => if other == ident { n + 1 } else { n },
+        ) == 1,
+    )
+}
+
+test fn same_host_production_and_lab_do_not_share_port_unit_or_handler() -> Bool {
+  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: lab)
+    && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: lab))
+    && !(live.service.unit_name == lab.service.unit_name)
+    && !(live.service.serve_function == lab.service.serve_function)
+    && !(live.service.repo_root == lab.service.repo_root)
+}
+
+test fn selecting_lab_changes_emitted_apply_bytes() -> Bool {
+  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let live_sh = live_deploy_apply_script_for(spec: live, plan: deploy_witness_full_install_plan(spec: live))
+  let lab_sh = live_deploy_apply_script_for(spec: lab, plan: deploy_witness_full_install_plan(spec: lab))
+  !(live_sh == lab_sh)
+    && string_contains(s: live_sh, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle ")
+}
+
+test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
+  let srv2 = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  deployment_plan_host_identity(spec: srv2) == "srv2"
+    && !(deployment_plan_host_identity(spec: selected_deployment_spec(row: srv1_production_desired_deployment())) == "srv2")
+}
