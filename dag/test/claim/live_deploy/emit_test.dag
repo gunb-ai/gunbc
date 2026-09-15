@@ -317,21 +317,66 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
     && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
+// THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
+//
+// `apply_emitted_steps_text` carries the deployment's own steps and not the program FRAME the fold
+// wraps them in. For a PRESENCE claim that costs nothing -- the string it looks for is in a step or
+// it is nowhere. For an ABSENCE claim it is the difference between a wall and a hole: the preamble
+// installs the sudoers drop-in and ensures the publication principal, which is exactly where an
+// elevation regression would land. So the one absence conjunct below that bans a shell elevation
+// reads both halves.
+//
+// THE TWO DEPENDENCY CONJUNCTS ASSERT THE COMMANDS AND NO LONGER ASSERT THE CONDITIONAL'S SPELLING.
+//
+// They read `if ! <dpkg> >/dev/null 2>&1; then <apt>; fi` as one literal, and that string is the
+// BASH GRAMMAR'S RENDERING of the step rather than anything the step carries:
+// `ensure_apt_package_step` builds an `If { cond: Not { inner: ExitZero { run: <dpkg> } }, then_:
+// [<apt>] }`, and the `if`/`then`/`fi` tokens exist only after `v2.extdeps.languages.bash` folds
+// it. The projection carries step CONTENT, so it holds both commands and none of the glue.
+//
+// WHAT IS ASSERTED NOW IS STRICTLY MORE THAN ITS NEIGHBOUR COVERS: both the guard command and the
+// PRIVILEGED install, on the real apply path. `witness_dependency_ensure_is_idempotent` above reads
+// `deployment_ensure_dependency_script`, which renders the UNELEVATED form, so the privileged
+// commands the deploy actually emits had no other witness.
+//
+// WHAT IS GIVEN UP: that the install is GUARDED by the check rather than merely beside it. No
+// witness asserts that rendering now. It is structural in the producer -- the install is the `then_`
+// arm of the `If` and cannot be emitted unguarded without rewriting `ensure_apt_package_step` -- but
+// structural-in-the-producer is not an executing check, and saying otherwise would be the rung
+// inflation DESIGN section 4b names. NEXT-RUNG TRIGGER: a witness over `ensure_apt_package_step`
+// asserting its `If` shape directly, which is cheap and needs no rendering at all.
+// WHAT REMAINS UNREAD, stated rather than left to be discovered: the generated-by comments, the
+// stage directory and its trap, the memory-cap step and the closing receipt. Each is a fixed
+// literal inside `apply_intent_from_effects` with no parameter that could carry an elevation, so
+// acquiring one there means editing that function directly.
+fn witness_apply_preamble_text() -> String {
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access: a } =>
+      pipeline_steps_text(steps: deploy_apply_preamble_steps(access: a, spec: deployment_spec_srv1()))
+    DeployAccessJobPrincipalRefused { refusal: r } =>
+      deploy_access_job_principal_refused_emit_poison(refusal: r)
+  }
+}
+
 test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
-  let sh = witness_apply_script()
+  let spec = deployment_spec_srv1()
+  let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !string_contains(s: sh, pattern: "sudo bash")
+    && !string_contains(s: witness_apply_preamble_text(), pattern: "sudo bash")
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
     && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
-    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
-    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tailscale)), "; fi")))))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tmux)), "; fi")))))
+    && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tailscale)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: apt_install_effect(package: package_tmux)))
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
 }
 
@@ -1247,3 +1292,4 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
     && !string_contains(s: text, pattern: "actions-runner@srv1-02.service")
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
+

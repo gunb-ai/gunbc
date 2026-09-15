@@ -5,7 +5,12 @@ import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit { apply_step_effects }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
-import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
+import v2.std.orchestration {
+  Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call,
+  Pipeline, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or,
+  ValueSource, CmdSubstLines, Glob, ModeledList, Expr, ExprLit, ExprVarRef, ExprCmdSubst,
+}
+import v2.std.optional { Present, Absent }
 
 // THE APPLY'S OWN STEP EMISSION, WITH THE HOST OBSERVATION MOCKED AND NOTHING ELSE CHANGED.
 //
@@ -47,11 +52,86 @@ fn apply_empty_host_effects(spec: DeploymentSpec) -> List<MemberEffect<Deploymen
   map(spec.steps, st => EffectAdd { to: st })
 }
 
+// THE FOLD IS TOTAL OVER `PipelineStep` AND DESCENDS, AND THE FIRST VERSION WAS NEITHER.
+//
+// It read `Do { run: r } => concat(acc, r.command)` with a `_ => acc` wildcard, which compiles, is
+// exhaustive over the type, and DISCARDS THE PAYLOAD -- DESIGN's "total at the level examined,
+// blind one level down", with the bare wildcard as the tell. What it dropped is not hypothetical:
+// `ensure_apt_package_step` is an `If { cond: Not { inner: ExitZero { run } }, then_, else_ }`, so
+// every dependency the deployment ensures was invisible. The projection of the production spec
+// contained no `dpkg`, no `apt-get` and no `tmux` at all.
+//
+// THE FAILURE MODE THAT MAKES THIS WORTH SPELLING OUT IS NOT THE MISSING PRESENCE CLAIM -- that one
+// went red and said so. It is the ABSENCE claims: `!string_contains(projection, X)` passes
+// vacuously for any X the fold cannot see, so a fold with a wildcard turns every negative conjunct
+// into a decoration. Both directions are fixed by the same move, which is to have no wildcard.
+//
+// SERIALIZING THROUGH THE REAL BASH EMITTER WOULD ALSO FIX IT AND IS NOT AFFORDABLE. Measured
+// across the two plans on required floor run 34907066707: the step construction for the extra
+// members costs ~14k eval steps and their serialization ~32k, so emitting the whole step list
+// projects well past the 72,300 ceiling this module exists to fit under. The fold recovers the
+// COMMAND TEXT rather than the bash rendering: what a claim can assert on is every command,
+// predicate, binder and argument the steps carry, in order, without the grammar between them.
+fn predicate_text(p: Predicate) -> String {
+  match p {
+    ExitZero { run: r } => r.command
+    LogMatches { source: src, pattern: pat } => concat(src, pat)
+    StrEq { lhs: a, rhs: b } => concat(a, b)
+    StrEmpty { operand: o } => o
+    StrNonempty { operand: o } => o
+    IntNe { lhs: a, rhs: b } => concat(a, b)
+    Not { inner: i } => predicate_text(p: i)
+    And { lhs: a, rhs: b } => concat(predicate_text(p: a), predicate_text(p: b))
+    Or { lhs: a, rhs: b } => concat(predicate_text(p: a), predicate_text(p: b))
+  }
+}
+
+fn value_source_text(v: ValueSource) -> String {
+  match v {
+    CmdSubstLines { run: r } => r.command
+    Glob { pattern: pat } => pat
+    ModeledList { items: xs } => fold(xs, init: "", f: (acc, x) => concat(acc, x))
+  }
+}
+
+fn expr_text(e: Expr) -> String {
+  match e {
+    ExprLit { spelling: sp } => sp
+    ExprVarRef { name: n } => n
+    ExprCmdSubst { callee: c, args: a } => concat(c, fold(a, init: "", f: (acc, x) => concat(acc, x)))
+  }
+}
+
+fn pipeline_step_text(st: PipelineStep) -> String {
+  match st {
+    Do { run: r } => r.command
+    Comment { text: t } => t
+    Exit { status: st2 } => st2
+    Let { name: n, value: v } => concat(n, expr_text(e: v))
+    Call { callee: c, args: a } => concat(c, fold(a, init: "", f: (acc, x) => concat(acc, x)))
+    If { cond: c, then_: t, else_: e } => concat(
+      predicate_text(p: c),
+      concat(
+        pipeline_text(p: t),
+        match e {
+          Present { value: pe } => pipeline_text(p: pe)
+          Absent => ""
+        },
+      ),
+    )
+    For { binder: _, over: o, body: bd } => concat(value_source_text(v: o), pipeline_text(p: bd))
+    While { cond: c, body: bd } => concat(predicate_text(p: c), pipeline_text(p: bd))
+    Retry { body: bd, escalations: _, on_exhausted: oe } =>
+      concat(pipeline_text(p: bd), pipeline_text(p: oe))
+  }
+}
+
+fn pipeline_text(p: Pipeline) -> String {
+  fold(p.steps, init: "", f: (acc, st) => concat(acc, pipeline_step_text(st: st)))
+}
+
 fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
-  fold(steps, init: "", f: (acc, st) => match st {
-    Do { run: r } => concat(acc, r.command)
-    _ => acc
-  })
+  fold(steps, init: "", f: (acc, st) => concat(acc, pipeline_step_text(st: st)))
 }
 
 fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
