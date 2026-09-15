@@ -1714,36 +1714,64 @@ test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> 
 // rather than asserted -- #11383 requires that SOME claim fail when the integration is removed, and
 // last time none did.
 //
-// THE DELETION WAS RUN. In a scratch checkout with `candidate_component_route_standings` returning `[]`
-// -- the wiring severed, the program still well-formed:
+// THE DELETION WAS RUN AGAINST THE PRODUCTION SEAM. `routed_candidates` -- the producer
+// `select_serving_deployment` reaches through `select_over_routed` -- rewritten to carry
+// `route_standings: []`, the program still well-formed, every other declaration untouched:
 //
 //   a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration   false  (true intact)
 //   the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor                 false  (true intact)
-//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   TRUE   (true intact)
+//   the_v4_1_aggregation_returns_no_feasible_naming_every_candidate                   false  (true intact)
 //
-// AND THE THIRD LINE IS THE REASON THIS SPLIT EXISTS RATHER THAN A FOOTNOTE. The aggregation claim DOES
-// NOT DETECT THE REMOVAL. It asserts `ax_component_route` among the causes, and that axis is still named
-// with no route standings at all, because exclusion reaches it through `component_resident_footprint`'s
-// unread path. So it passes for a reason that survives the deletion, and anything relying on it as the
-// product-root control would let the integration be deleted with everything green. The wall rests
-// ENTIRELY on the first claim above. That is measured, not reasoned: both directions were executed, and
-// a claim that reds on a broken tree without greening on the intact one is a decoration, not a wall.
+// AN EARLIER VERSION OF THIS TABLE PROVED THE WRONG THING, recorded because the error was in the TEST
+// rather than in the code and would otherwise be invisible. It severed `candidate_component_route_standings`,
+// which `select_serving_deployment` DOES NOT USE: the entry path runs `routed_candidates` ->
+// `resolved_route_demands` + `candidate_standings_from_demands`, a parallel producer that also reaches
+// `engram_route_standing`. The wall red because the wall called the thing that was severed, and the
+// serving consumer's own path was never touched. `routed_standing_of` below is the repair.
+//
+// THAT TABLE ALSO CARRIED AN UNVERIFIED CAUSAL CLAIM, which is the part worth keeping. It reported the
+// aggregation as surviving the deletion and attributed the survival to exclusion reaching
+// `ax_component_route` through `component_resident_footprint`'s unread path. The real reason was that
+// the aggregation's producer had never been severed: against the production seam the aggregation reds
+// too, third row above. A deletion proof is only as good as the identity of what it deleted, and an
+// explanation of a result is a second claim that needs its own execution.
 fn v4_1_live_candidate_at(tp: Nat, replicas: Nat) -> DeploymentCandidate? {
   (filter(deepseek_v4_1_candidate_field.candidates,
     k => k.topology.tensor_parallel_degree == tp && k.topology.replica_count == replicas)).first()
 }
 
-fn engram_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
-  (filter(candidate_component_route_standings(c: c, p: c.profile),
-    st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+// THE STANDINGS AS THE SERVING CONSUMER OBTAINS THEM, not as a parallel helper produces them. There
+// are TWO producers that both reach `engram_route_standing`, and only one is on the entry path:
+//
+//   select_serving_deployment -> select_over_routed(routed: routed_candidates(field)) ->
+//     resolved_route_demands + candidate_standings_from_demands     <- the production seam
+//   candidate_component_route_standings -> component_route_standing_for     <- a direct helper
+//
+// A wall built on the second proves nothing about the first. This walks `routed_candidates` over a
+// one-candidate field so the claim is cheap AND traverses the same producer the consumer does.
+fn v4_1_single_candidate_probe_field(c: DeploymentCandidate) -> ServingDeploymentCandidateField {
+  serving_candidate_field(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test",
+                       decl_name: "v4_1_single_candidate_probe_field"),
+    domain: deepseek_v4_1_candidate_field.domain,
+    candidates: [c])
+}
+
+fn routed_standing_of(c: DeploymentCandidate) -> ComponentRouteStanding? {
+  match (routed_candidates(field: v4_1_single_candidate_probe_field(c: c))).first() {
+    Absent => none
+    Present { value: rc } =>
+      (filter(rc.route_standings,
+        st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity))).first()
+  }
 }
 
 test fn a_real_v4_1_candidate_obtains_its_engram_route_standing_through_the_integration() -> Bool {
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
-      count(candidate_component_route_standings(c: c, p: c.profile)) > 0
-        && match engram_standing_of(c: c) {
+      count(routed_candidates(field: v4_1_single_candidate_probe_field(c: c))) > 0
+        && match routed_standing_of(c: c) {
           Absent => false
           Present { value: st } =>
             declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)
@@ -1756,7 +1784,7 @@ test fn the_closest_v4_1_shape_is_excluded_on_the_per_rank_resident_floor() -> B
   match v4_1_live_candidate_at(tp: 4, replicas: 1) {
     Absent => false
     Present { value: c } =>
-      match engram_standing_of(c: c) {
+      match routed_standing_of(c: c) {
         Absent => false
         Present { value: st } =>
           match component_route_placement_standing(s: st) {
