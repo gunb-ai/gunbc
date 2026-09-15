@@ -1324,34 +1324,34 @@ fn candidate_component_budget(
                   ], "") as NonEmptyStr,
                 },
                 ready: region =>
-            match measure_sub(a: group_rank_free_memory_upper(i: region), b: siblings_per_rank) {
-              MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
-                subject: ctx,
-                rank_count: c.topology.tensor_parallel_degree,
-                per_rank_bytes_available: byte_size(count: 0),
-                authority: id_component_budget_authority,
-                how: join([
-                  "this artifact's OTHER components already require more than a rank has free (",
-                  to_string(byte_size_count(b: siblings_per_rank)), " bytes per rank against ",
-                  free.reported_free_wire as String,
-                  "), so nothing remains for this component on any route. Zero here is a DERIVED remainder, not a missing measurement",
-                ], "") as NonEmptyStr,
-              }
-              MeasureDifference { value: avail } => ComponentBudgetEstablished {
-                subject: ctx,
-                rank_count: c.topology.tensor_parallel_degree,
-                per_rank_bytes_available: avail,
-                authority: id_component_budget_authority,
-                how: join([
-                  "observed idle free per rank (", free.reported_free_wire as String,
-                  ", ", free.instrument as String, ") minus the per-rank ceiling of this artifact's other components (",
-                  to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
-                  to_string(c.topology.tensor_parallel_degree), " ranks). ",
-                  free.precision_caveat as String,
-                  ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
-                ], "") as NonEmptyStr,
-              }
-            },
+                match measure_sub(a: group_rank_free_memory_upper(i: region), b: siblings_per_rank) {
+                  MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
+                    subject: ctx,
+                    rank_count: c.topology.tensor_parallel_degree,
+                    per_rank_bytes_available: byte_size(count: 0),
+                    authority: id_component_budget_authority,
+                    how: join([
+                      "this artifact's OTHER components already require more than a rank has free (",
+                      to_string(byte_size_count(b: siblings_per_rank)), " bytes per rank against ",
+                      free.reported_free_wire as String,
+                      "), so nothing remains for this component on any route. Zero here is a DERIVED remainder, not a missing measurement",
+                    ], "") as NonEmptyStr,
+                  }
+                  MeasureDifference { value: avail } => ComponentBudgetEstablished {
+                    subject: ctx,
+                    rank_count: c.topology.tensor_parallel_degree,
+                    per_rank_bytes_available: avail,
+                    authority: id_component_budget_authority,
+                    how: join([
+                      "observed idle free per rank (", free.reported_free_wire as String,
+                      ", ", free.instrument as String, ") minus the per-rank ceiling of this artifact's other components (",
+                      to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
+                      to_string(c.topology.tensor_parallel_degree), " ranks). ",
+                      free.precision_caveat as String,
+                      ". The UPPER endpoint of that reading is used, so a route is refused only if it does not fit even the most generous value the reporter could have rounded to. Every sibling of this component has a read footprint, which is what admits this budget at all",
+                    ], "") as NonEmptyStr,
+                  }
+                },
               },
             )
         }
