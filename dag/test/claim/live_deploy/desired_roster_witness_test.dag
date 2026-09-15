@@ -1,6 +1,6 @@
 module test.claim.live_deploy.desired_roster
 
-import std.types { Bool, String, Int, List }
+import std.types { Bool, String, Int, List, CommitSha }
 import std.dissolution {
   dissolution_status,
   DissolutionPending,
@@ -27,8 +27,10 @@ import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_plan_listen_port,
 }
-import gunbc.live_deploy.emit { live_deploy_apply_script_for }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import gunbc.live_deploy.emit {
+  live_deploy_systemd_unit_for,
+  RevisionBoundAtEmission,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -100,12 +102,13 @@ test fn same_host_production_and_lab_do_not_share_port_unit_or_handler() -> Bool
 test fn selecting_lab_changes_emitted_apply_bytes() -> Bool {
   let live = selected_deployment_spec(row: srv1_production_desired_deployment())
   let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let live_sh = live_deploy_apply_script_for(spec: live, plan: deploy_witness_full_install_plan(spec: live))
-  let lab_sh = live_deploy_apply_script_for(spec: lab, plan: deploy_witness_full_install_plan(spec: lab))
-  !(live_sh == lab_sh)
-    && string_contains(s: live_sh, pattern: "--function roadmap_serve_handle ")
-    && string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle_srv1_lab ")
-    && !string_contains(s: lab_sh, pattern: "--function roadmap_serve_handle ")
+  let rev = RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha }
+  let live_unit = live_deploy_systemd_unit_for(spec: live, revision: rev)
+  let lab_unit = live_deploy_systemd_unit_for(spec: lab, revision: rev)
+  !(live_unit == lab_unit)
+    && string_contains(s: live_unit, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle ")
 }
 
 test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
