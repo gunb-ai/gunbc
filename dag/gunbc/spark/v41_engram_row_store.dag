@@ -341,7 +341,10 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
 }
 
 fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
-  let placed = v41_place_all(rows: source, spec: spec)
+  v41_assess_placed(source: source, spec: spec, placed: v41_place_all(rows: source, spec: spec))
+}
+
+fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, placed: List<V41PlacedRow>) -> V41TransformResult {
   let defects = v41_correspondence_defects(source: source, placed: placed, spec: spec)
   if length(defects) != 0 {
     V41TransformUnfaithful { defects: defects }
@@ -360,6 +363,44 @@ fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSp
       V41RowStoreEncodingRefused { defects: ds } => V41TransformUnfaithful { defects: ds }
       V41RowStoreEncodingUnestablished { obligation: o } => V41TransformUnfaithful { defects: [o] }
     }
+  }
+}
+
+fn v41_placed_with_payload(row: V41PlacedRow, payload: NonEmptyStr) -> V41PlacedRow {
+  V41PlacedRow {
+    tensor: row.tensor,
+    global_row: row.global_row,
+    rank: row.rank,
+    local_row: row.local_row,
+    offset: row.offset,
+    payload: payload,
+  }
+}
+
+fn v41_tampered_payload_is_unfaithful(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, tamper: NonEmptyStr) -> Bool {
+  let placed = v41_place_all(rows: source, spec: spec)
+  match v41_assess_placed(
+    source: source,
+    spec: spec,
+    placed: map(placed, p => if p.global_row == 0 { v41_placed_with_payload(row: p, payload: tamper) } else { p }),
+  ) {
+    V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("no exact placed image"))
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41PublishedTransformUnestablished { obligation: _ } => false
+  }
+}
+
+fn v41_dropped_source_row_is_unfaithful(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> Bool {
+  match v41_assess_placed(
+    source: source,
+    spec: spec,
+    placed: filter(v41_place_all(rows: source, spec: spec), p => p.global_row != 0),
+  ) {
+    V41TransformUnfaithful { defects: d } =>
+      any(d, x => (x as String).contains("no exact placed image"))
+        && any(d, x => (x as String).contains("source rows"))
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41PublishedTransformUnestablished { obligation: _ } => false
   }
 }
 
@@ -429,16 +470,3 @@ fn v41_rank_digest_of(e: V41RowStoreEncoding, rank: Nat) -> ContentHash? {
   }
 }
 
-// WRONG RANGE OR WRONG ENCODING REFUSES FAITHFULNESS. A payload that is not the source byte, or a
-// spec whose geometry does not match the placed offsets, is Unfaithful.
-fn v41_wrong_encoding_refuses(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, tamper: NonEmptyStr) -> Bool {
-  match v41_transform_fixture(source: source, spec: spec) {
-    V41FixtureCorrespondenceHolds { subject: _, placed: placed, encoding: _ } =>
-      !v41_sample_agrees(placed: placed, tensor: (match source.first() {
-        Present { value: s } => s.tensor
-        Absent => "none" as NonEmptyStr
-      }), global_row: 0, payload: tamper)
-    V41PublishedTransformUnestablished { obligation: _ } => false
-    V41TransformUnfaithful { defects: _ } => true
-  }
-}

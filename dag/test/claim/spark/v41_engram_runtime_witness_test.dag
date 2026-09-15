@@ -23,7 +23,7 @@ import gunbc.spark.v41_runtime_candidate {
   v41_storage_backed_patch_population,
 }
 import extdeps.safetensors.format {
-  SafetensorsPopulationStanding, safetensors_population_standing, MembershipClosedAgainstFullIndex,
+  SafetensorsEntry, SafetensorsPopulationStanding, safetensors_population_standing, MembershipClosedAgainstFullIndex,
   safetensors_entry, SafeF8E4M3, SafeF8E8M0, SafeF16,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -35,7 +35,7 @@ import gunbc.spark.v41_engram_row_store {
   v41_tensor_slice, v41_source_row, v41_encoding_spec_with_slices, v41_encoding_spec_with_geometry, v41_encoding_spec_key,
   v41_row_geometry_of, v41_row_store_spec, v41_layer_index_from_tensor_name,
   v41_transform_fixture, v41_published_transform_standing,
-  v41_wrong_encoding_refuses, v41_sample_agrees, v41_rank_digest_of,
+  v41_tampered_payload_is_unfaithful, v41_dropped_source_row_is_unfaithful, v41_sample_agrees, v41_rank_digest_of,
   v41_encoding_spec_of, v41_encoding_spec_key_of, v41_encoding_digest_of, v41_rank_stores_of, v41_fixture_encoding,
   V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
@@ -228,7 +228,9 @@ test fn control_wrong_row_store_encoding_or_range_refuses_faithfulness() -> Bool
         n == 8
           && (how as String).contains("not the published")
           && v41_sample_agrees(placed: placed, tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: 3, payload: "r3" as NonEmptyStr)
-          && v41_wrong_encoding_refuses(source: w_source(), spec: w_tiny_spec(), tamper: "NOT-THE-SOURCE" as NonEmptyStr)
+          && v41_tampered_payload_is_unfaithful(source: w_source(), spec: w_tiny_spec(), tamper: "NOT-THE-SOURCE" as NonEmptyStr)
+          && !v41_tampered_payload_is_unfaithful(source: w_source(), spec: w_tiny_spec(), tamper: "r0" as NonEmptyStr)
+          && v41_dropped_source_row_is_unfaithful(source: w_source(), spec: w_tiny_spec())
           && length(placed) == 8
       V41PublishedEngramShards => false
     }
