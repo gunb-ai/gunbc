@@ -8,7 +8,9 @@ import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
 // keyed by listing identity, every column Derived, OperatorEntered, or ListingStanding. Sheets types
@@ -1071,19 +1073,19 @@ fn buyer_review_sheet_projection(
   }
 }
 
-// Trigger: a public caller of review_sheet_ensure supplies
-// buyer_review_sheet_projection (derived_columns from the buyer roster,
-// rows keyed by Browse itemId). That caller cannot live in this module:
-// the roster is private strategy.buyer_review_sheet. Live GetValues /
-// BatchUpdate is a different frontier (live_sheets_transport_frontier).
-data buyer_review_ensure_projection_frontier: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.review_sheet_sheets",
-    decl_name: "review_sheet_ensure",
-    field: WholeDeclaration
-  }
-}
+// The ensure consumer of buyer_review_sheet_projection is a declared frontier, enrolled in
+// gunbc.census_closure_frontier. The caller cannot live in this module: the roster is private
+// strategy.buyer_review_sheet. Live GetValues / BatchUpdate is a different frontier
+// (live_sheets_transport_frontier).
+data buyer_review_ensure_projection_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_projection", decl_name: "buyer_review_sheet_projection"),
+    reason: "no executing caller of review_sheet_ensure supplies buyer_review_sheet_projection; the buyer roster it projects is private strategy.buyer_review_sheet, so the caller cannot live in this repository's public modules",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing caller of gunbc.review_sheet_sheets review_sheet_ensure supplies buyer_review_sheet_projection built from the buyer roster (derived_columns from strategy.buyer_review_sheet, rows keyed by Browse itemId) and the ensure decision is consumed on that route; a witness that the projection fold exists does not fire this"
+    )
+  )
+]
 
 data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
