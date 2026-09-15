@@ -3784,11 +3784,11 @@ pub fn v1_clone_bound_fixpoint_loop(
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     loop {
         if (remaining.clone() <= 0) {
-            break bounds;
+            break bounds.clone();
         } else {
             let round = generic_type_names.iter().cloned().fold(
                 Rc::new(CloneBoundRound {
-                    bounds: bounds,
+                    bounds: bounds.clone(),
                     added: 0,
                 }),
                 |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(

@@ -1,6 +1,11 @@
 module v2.test.generated.cross_representation_equality
 
-import v2.std.node_reflection { coproduct_arm_keys }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.node_reflection { coproduct_arm_keys_at }
+
+// THE ROOTS THE REFLECTION READ CONSULTS, named so the population is re-derivable.
+data cross_representation_pool_roots: List<String> = ["dag", "src/v2"]
 
 
 fn reference_cross_representation_equality_anchor() -> GeneratedAnchorKey {
@@ -49,18 +54,46 @@ fn roster_covers_straddle(modeled: Symbol, native: Symbol) -> Bool {
   )
 }
 
-fn roster_covers_genuine_straddle(modeled: Symbol, native: Symbol) -> Bool {
-  (length(xs: coproduct_arm_keys(type_name: modeled)) > 0)
+// THE MODELED TYPE IS CITED, NOT SPELLED, and Bool is why. `Bool` is declared as a closed coproduct
+// in BOTH v2.std.logic and std.types, so a bare spelling cannot say which one this claim means --
+// and before the reflection cutover this check consumed whichever the interpreter's load order
+// reached first while reading as though it had asked a determinate question. The guarded route
+// refuses that spelling, correctly, so each call site now names its module. The bare symbol is
+// derived from the citation rather than passed beside it, so the roster match and the arm-key read
+// cannot drift onto two different names.
+fn roster_covers_genuine_straddle(modeled_ref: DeclarationRef, native: Symbol) -> Bool {
+  let modeled = symbol_intern_lexeme(lexeme: modeled_ref.decl_name as String)
+  (match coproduct_arm_keys_at(
+     pool_roots: cross_representation_pool_roots,
+     ref: modeled_ref
+   ) {
+     Rejected { diagnostics: _ } => false
+     Accepted { value: arms, diagnostics: _ } => length(xs: arms) > 0
+   })
     && roster_covers_straddle(modeled: modeled, native: native)
 }
 
 fn witness_cross_representation_roster_covers_bool() -> Bool {
   (length(xs: testgen_scheduled_cross_representation_equality_generators()) > 0)
-    && roster_covers_genuine_straddle(modeled: ^Bool, native: cross_repr_native_value_bool)
+    && roster_covers_genuine_straddle(
+      modeled_ref: DeclarationRef {
+        module_path: "v2.std.logic",
+        decl_name: "Bool",
+        field: WholeDeclaration
+      },
+      native: cross_repr_native_value_bool
+    )
 }
 
 fn witness_cross_representation_roster_covers_optional_null() -> Bool {
-  roster_covers_genuine_straddle(modeled: ^Optional, native: cross_repr_native_value_null)
+  roster_covers_genuine_straddle(
+    modeled_ref: DeclarationRef {
+      module_path: "v2.std.optional",
+      decl_name: "Optional",
+      field: WholeDeclaration
+    },
+    native: cross_repr_native_value_null
+  )
 }
 
 data witness_cross_representation_equality_is_equals: Bool = witness_cross_representation_claim_is_equals()

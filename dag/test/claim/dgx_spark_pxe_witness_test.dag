@@ -1,5 +1,7 @@
 module test.claim.dgx_spark_pxe_witness
 
+import extdeps.pci.identity { PciVendorId, PciDeviceId }
+
 import std.types { NonEmptyStr, Bool, String, List, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.uri { Uri, Http, Tftp }
@@ -17,8 +19,6 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   BootloaderEnrolledForPxe,
 }
 import extdeps.os.ubuntu_kernel_nic_coverage {
-  PciVendorId,
-  PciDeviceId,
   r8169_claims_pci_device,
   Noble2404GaLinux68,
 }

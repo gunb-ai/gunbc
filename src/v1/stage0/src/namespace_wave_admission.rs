@@ -1558,11 +1558,6 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
-    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
-const SCM_MERGE_BASE_COHOME_LABEL: &str =
-    "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
-
 /// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
 /// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
 /// next roster-touching change, which is this one.
@@ -1804,17 +1799,453 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// THE ROSTER HOLDS ONLY gunbc#10729's SCM re-home rows; empty is its resting state. The #11182 relocation rows that an
+/// THE ROSTER IS EMPTY AGAIN, which is its resting state. The #11182 relocation rows that an
 /// earlier revision of this block described as surviving are no longer here either; that claim
 /// was already stale on main, where the array held one row, and it is repaired now because this
 /// is the roster's own next touch. The distinction the paragraph above draws still holds and is
 /// why it is kept: a consumed row goes because its transition is PRESENT AT THE BASE, not because
 /// the array was being emptied.
+/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
+/// change makes, one per call site the required floor enumerated.
 ///
-/// THE gunbc#11138 string_eq ROWS WENT ON THEIR OWN TRIGGER: #11138 is present at base and the floor on
-/// gunbc#10729 reported all 37 CONSUMED ADMISSION.
+/// main now names neither the row nor the check that retired it. The entry above is kept rather
+/// than dropped as a duplicate because it is the only place in this file that NAMES the retired
+/// row and records the identity check that admitted the deletion -- the history main
+/// intentionally dropped along with the row. One retirement, recorded once, by the side that
+/// wrote down what it was.
+///
+/// NOT THE `two rows` RETIREMENT, and an earlier wording of this paragraph conflated them. Main's
+/// surviving two-rows prose is the THIRTY-SEVENTH dissolution, the `gunbc#11156` pair discharged
+/// by #11156 merging -- a different retirement, a different trigger, a different population. It
+/// say which row went.
+///
+/// THE ROSTER RETURNED TO EMPTY ON MAIN, which is its resting state, AND THIS BRANCH REFILLS IT.
+/// Main's correction is kept because it is true and this branch's earlier wording was not: the
+/// #11182 relocation rows an older revision of this block described as surviving are gone, that
+/// claim was already stale on main where the array held one row, and gunbc#11274 retired them.
+/// This branch does not restore them and does not re-assert them. What follows the header below
+/// is a DIFFERENT population -- the 37 `string_eq` rows this change owes -- so the array is
+/// non-empty here for a reason stated at its own site rather than because emptiness was undone.
+/// The distinction main draws still holds and is why it is kept: a consumed row goes because its
+/// transition is PRESENT AT THE BASE, not because the array was being emptied.
 
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared
+/// byte-identical in every `v2.lens` module that needed it. This change deletes those bodies --
+/// the delta is read from the diff, `git diff origin/main...HEAD -- '*.dag' | grep '^-fn
+/// [a-z_]*string_eq'`, not from a count transcribed here -- and lands an authority in
+/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
+/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
+/// `string_eq` is the `eq` argument to `contains`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
+/// both sides at every one of the 37 sites below, and what changed is which declaration it
+/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
+/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// `AuthoredReferenceResolution`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. EVERY DELETED BODY WAS
+/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
+/// it denoted at the base. A body differing anywhere would have made this a semantic change
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so each was
+/// compared before the collapse rather than assumed equal from the shared spelling.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than what
+/// this change deletes.
+///
+/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
+/// enumeration in this file is a transcription that rots -- and the first attempt at one was
+/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
+/// under. Re-derive with:
+///
+///   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
+///
+/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
+/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
+///
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: survivors under NICKNAMED spellings,
+/// byte-identical to the authority but invisible to a search for the exact name. That is §3's
+/// NICKNAME surviving precisely because a name-shaped search does not find it -- which is why the
+/// frontier below is adjudicated by that command and not by a roll call in this file.
+///
+/// NO SURVIVOR STATES ITS OWN RETENTION. Two earlier wordings of this header were wrong here in
+/// opposite directions: the first claimed every survivor was declared, the second claimed
+/// `v2.lens.enforcement.grammar_coverage` `grammar_coverage_string_eq` was the one that was. The
+/// second is now moot because that clone is gone: its stated retention was that the module
+/// declared no imports, so the one import the collapse needs would move it into its own import
+/// closure and strand `dedupe_snoc`, `tokenize` and `parse_module`. That is a real obstacle and
+/// it is not a dissolution trigger -- it named source work this change can express -- so the
+/// module now declares its own import surface and calls the authority. EVERY HIT THE COMMAND
+/// STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention stated, nothing at its
+/// declaration saying why it survives. The claim that any of it is declared is exactly the kind
+/// of statement this header exists to refuse -- it told a reader asking `is this residue tracked`
+/// YES, in the authority they consult first.
+///
+/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
+/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
+/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
+/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
+/// inflation this phrasing exists to avoid.
+///
+/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
+/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
+/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
+/// and one that deserves its own evidence.
+///
+/// TRIGGER for the 37 rows: they went when #11138 merged. The base then carried the shared
+/// declaration and the rows were consumed; they were deleted on the roster's next touch
+/// (gunbc#11373), and the frontier above is unaffected by that deletion.
+///
+/// PCI IDENTITY REPAIR (gunbc#11373, 2026-09-14). The required floor at d616837c802
+/// measured 39 deltas: six ExplicitlyEvaluatedZeroDelta memberships and one
+/// SameDeclarationIdentityRebind removal auto-admit. These 32 exact binding rows
+/// adjudicate the remaining 17 TargetChanged and 15 NewPoolCoincidenceResolution
+/// deltas. The former relocate Ubuntu-owned brands to their PCI authority; the
+/// latter restore bindings whose runner consumers landed without that authority.
+/// This is const admission data for the existing seed consumer, not new policy.
+/// Every binding requires the complete singleton candidate set, not a subset.
+/// Delete these rows after #11373 lands and the base resolves these bindings:
+/// run_wave_admission_between(base == head) adjudicates the nonempty roster, and
+/// wave_admission_refusal charges consumed rows on that landing run. A separate
+/// cleanup PR must remove the consumed rows; this admission does not waive it.
+const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
+    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
+const SCM_MERGE_BASE_COHOME_LABEL: &str =
+    "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
+
+/// gunbc#10729 REFILLS THE ROSTER ALONGSIDE MAIN'S OWN IN-FLIGHT ROWS, and the rows below are the
+/// SCM re-home cohort: merge-base and commit-subject authorities co-homed into
+/// `gunbc.scm.repository_envelope`. An earlier revision of this paragraph said the roster held
+/// ONLY this branch's rows. That was true when it was written against a main whose array was
+/// empty, and it is false here: main is carrying its own relocation rows, and this merge keeps
+/// both cohorts because each admits a transition its own side has in flight. The distinction the
+/// paragraphs above draw is what makes that safe -- a row goes when its transition is PRESENT AT
+/// THE BASE, which is a fact about that row's own trigger and not about how full the array is.
+///
+/// FIVE OF THIS COHORT'S ROWS WENT ON THEIR OWN TRIGGER before this merge. Splitting
+/// `MergeBaseRefusal` out of `MergeBaseOutcome` removed the bindings they admitted, so the floor
+/// reported them CONSUMED and they were deleted rather than carried; `squash_merge`'s
+/// `MergeBaseDerived` row stays, because that route still matches the derived arm.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "r8169_claims_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "realtek_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8125_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8126_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.os.ubuntu_kernel_nic_coverage",
+            in_declaration: "rtl8127_pci_device_id",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_first_boot_receipt",
+            in_declaration: "mtcollins1_igb_binding",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "LinuxDriverQualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciClassPopulationObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "PciFunctionObservation",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "i350_igb_qualification",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciAddress",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_observed_pci_functions",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_host_hardware_observation",
+            in_declaration: "mtcollins1_pci_mass_storage_population",
+            spelling: "PciClassCode",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "PciDeviceIdentity",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.dgx_pxe_boot",
+            in_declaration: "SparkUnattendedPxeBootRefusalReason",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.pxe_rescue_observation",
+            in_declaration: "spark_2196_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_accepts_hwe_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "w_nic_coverage_refuses_ga_kernel_for_8127",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_device",
+            spelling: "PciDeviceId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11373 PCI identity authority repair; delete after landing",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.dgx_spark_pxe_witness",
+            in_declaration: "witness_claimed_pci_vendor",
+            spelling: "PciVendorId",
+            expected_candidates: &["extdeps.pci.identity"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
