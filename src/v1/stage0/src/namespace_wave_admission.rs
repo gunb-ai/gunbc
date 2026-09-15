@@ -2160,6 +2160,348 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
         subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "a_binary_only_plan_installs_and_restarts_without_publishing_the_tree",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "a_twin_deployment_on_one_host_collides_with_nothing",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration:
+                "a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "emitted_twin_retract_removes_nothing_of_productions",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "fleet_converge_timer_not_installed_by_deploy_apply",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "member_fragment_text",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "production_apply_carries_its_own_handler_and_tree_sync_env",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "production_apply_creates_productions_binary_parent_directory",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "production_apply_serves_its_own_endpoint_and_scopes_no_path",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "production_belt_unit_carries_productions_spawn_root",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "production_retract_offs_its_own_endpoint",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "retract_is_not_emitted_without_an_observed_scoped_removal",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "the_full_plan_lands_its_members_in_the_deployments_order",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration:
+                "the_preamble_ensures_the_publication_principal_as_a_nologin_system_account",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "the_publication_member_emits_convergence_and_no_rsync",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "twin_apply_serves_its_own_endpoint_and_not_productions",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "twin_retract_offs_its_own_endpoint_and_not_productions",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "twin_teardown_removes_nothing_production_owns",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_apply_script_contains_systemd_and_tailscale",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_apply_script_text",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_execstart_at_another_candidate_differs",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_execstart_carries_exactly_the_admitted_revision",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_execstart_omitting_the_revision_is_not_the_emitted_line",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_owned_vs_ensured_typed",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_retract_owned_process_removes_serve_service",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_retract_script_owned_only",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_retract_script_text",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_spec_listen_port_is_8080",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_spec_targets_srv1",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_spec_uses_apt_package_manager",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_systemd_unit_emitted",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_tailnet_domain_propagates_optional",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_tailnet_url_absent_not_fabricated",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.live_deploy.emit",
+            in_declaration: "witness_tree_sync_restart_diagnoses_on_failure",
+            spelling: "deployment_spec_srv1",
+            expected_candidates: &["gunbc.live_deploy.desired"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: C2_DEPLOYMENT_SPEC_SRV1_HOME_LABEL,
+        subject: AdmissionSubject::Binding {
             module: "test.claim.live_deploy.intent",
             in_declaration: "witness_readback_requires_service_ready_gate",
             spelling: "deployment_spec_srv1",
