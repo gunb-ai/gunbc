@@ -390,8 +390,10 @@ fn spark_pair_snapshot_inputs_wire(snapshot: ModelSnapshotDesired) -> NonEmptySt
 // knobs. Lookup treats a stored identity equal to this value as "the bytes still match current
 // desire"; omitting a field that the renderer consults would keep a stale artifact looking current
 // (DESIGN §5: refuse, never widen). Serve argv reads executor backend, kv dtype, memory request,
-// prefix caching, and prefill scheduling; create/lifecycle reads the lane's netdev, RDMA device,
-// and rail address. Those belong here with tp/seqs/len and the snapshot path.
+// prefix caching, prefill scheduling, AND the served-model / listen-port / tool-parser rows the
+// argv interpolates as constants. Ray start interpolates cpus/gpus/object-store/gcs-port from the
+// first-pair observation. Create/lifecycle reads the lane's netdev, RDMA device, and rail address.
+// Those belong here with tp/seqs/len and the snapshot path.
 fn spark_pair_engine_inputs_wire(args: VllmEngineArgs) -> NonEmptyStr {
   join([
     "tp", to_string(args.tensor_parallel_size),
@@ -402,6 +404,23 @@ fn spark_pair_engine_inputs_wire(args: VllmEngineArgs) -> NonEmptyStr {
     "|mem", vllm_memory_request_key(r: args.memory_request),
     "|prefix", join(vllm_prefix_caching_argv(r: args.prefix_caching_request), ","),
     "|prefill", join(spark_pair_prefill_scheduling_argv(args: args), ","),
+  ], "") as NonEmptyStr
+}
+
+fn spark_pair_serve_surface_inputs_wire() -> NonEmptyStr {
+  join([
+    "model", spark_pair_served_model_name as String,
+    "|port", to_string(spark_pair_serve_port),
+    "|parser", spark_pair_tool_call_parser as String,
+  ], "") as NonEmptyStr
+}
+
+fn spark_pair_ray_cluster_inputs_wire() -> NonEmptyStr {
+  join([
+    "cpus", to_string(spark_pair_ray_num_cpus),
+    "|gpus", to_string(spark_pair_ray_num_gpus),
+    "|object_store", to_string(spark_pair_ray_object_store_bytes),
+    "|gcs", to_string(spark_pair_ray_gcs_port),
   ], "") as NonEmptyStr
 }
 
@@ -421,6 +440,8 @@ fn spark_pair_head_render_inputs_identity(args: VllmEngineArgs, snapshot: ModelS
     ArtifactRealizationInput { identity: "unit_name" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_head_unit_name) },
     ArtifactRealizationInput { identity: "snapshot" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_snapshot_inputs_wire(snapshot: snapshot)) },
     ArtifactRealizationInput { identity: "engine" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_engine_inputs_wire(args: args)) },
+    ArtifactRealizationInput { identity: "serve_surface" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_serve_surface_inputs_wire()) },
+    ArtifactRealizationInput { identity: "ray_cluster" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_ray_cluster_inputs_wire()) },
     ArtifactRealizationInput { identity: "head_lane" as NonEmptyStr, content_digest: content_hash_atom(value: spark_pair_lane_inputs_wire(lane: head)) },
   ])
 }
