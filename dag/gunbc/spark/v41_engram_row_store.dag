@@ -34,6 +34,7 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 data v41_row_store_format_revision: Nat = 1
 data v41_row_store_endianness: Endianness = LittleEndian
 data v41_row_store_rank_count: Nat = 4
+// On-disk prefix of a rank store. The overlay MAGIC bytes must be this value; they are not a second format.
 data v41_row_store_magic: NonEmptyStr = "ENGR1\n"
 
 // THE PARTITION RULE IS THE PLACER. InterleaveByRankRemainder is dest_rank = global_row % rank_count
