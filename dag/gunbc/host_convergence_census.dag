@@ -15,8 +15,14 @@ import std.dissolution {
 }
 
 // CONVERGENCE-ONE C0 registry. Cites the existing stack; does not rewire it.
-// RUNG: mitigation. NEXT-RUNG TRIGGER: a discovery join over independently
-// enumerated host-effect declarations so a missing mutation identity refuses.
+// RUNG: mitigation.
+// NEXT-RUNG TRIGGERS (two classes; completeness does not cover resolution):
+// (1) completeness — a discovery join over independently enumerated host-effect
+//     declarations so a missing mutation identity refuses.
+// (2) citation resolution — `gunbc.dissolution_observation` `census_ref_verdict`
+//     / `v2.std.decl_ref_resolution.resolve_declaration_ref` over this module's
+//     `DeclarationRef` fields. This witness is SubstrateInputsOnly, so that join
+//     is not authorable on the current path; a stale cite is currently silent.
 // phases.mutates is derived from persistent_host_effect at census_row.
 // deletion is std.dissolution: none when RetainAuthority, else retires_dissolution(identity).
 // intended_authority is a fold over disposition: Retain -> current; Bind -> target;
@@ -213,14 +219,14 @@ fn owed_dissolution(
 
 fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRefusal? {
   match row.disposition {
-    BindToAuthority { target: t } =>
-      if declaration_ref_eq(a: row.identity, b: t) {
+    BindToAuthority { target: _ } =>
+      if declaration_ref_eq(a: row.identity, b: intended_authority(row: row)) {
         Present { value: SelfSuccessor { identity: row.identity } }
       } else {
         none
       }
-    RenameOutOfConvergence { canonical: c } =>
-      if declaration_ref_eq(a: row.identity, b: c) {
+    RenameOutOfConvergence { canonical: _ } =>
+      if declaration_ref_eq(a: row.identity, b: intended_authority(row: row)) {
         Present { value: SelfSuccessor { identity: row.identity } }
       } else {
         none

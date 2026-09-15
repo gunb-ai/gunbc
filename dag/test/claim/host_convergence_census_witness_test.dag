@@ -34,6 +34,7 @@ import gunbc.host_convergence_census {
   host_convergence_census_is_admitted,
   persistent_status_mutates,
   std_decision,
+  intended_authority,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -116,6 +117,22 @@ test fn w_derived_mutates_follows_host_effect_status() -> Bool {
     init: true,
     f: fn(acc, r) {
       acc && (r.phases.mutates == persistent_status_mutates(s: r.persistent_host_effect))
+    },
+  )
+}
+
+test fn w_intended_authority_follows_bind_target() -> Bool {
+  fold(
+    well_formed_pair(),
+    init: true,
+    f: fn(acc, r) {
+      acc && match r.disposition {
+        BindToAuthority { target: t } =>
+          declaration_ref_eq(a: intended_authority(row: r), b: t)
+        RetainAuthority =>
+          declaration_ref_eq(a: intended_authority(row: r), b: r.current_authority)
+        _ => true
+      }
     },
   )
 }
