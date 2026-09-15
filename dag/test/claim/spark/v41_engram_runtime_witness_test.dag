@@ -30,10 +30,10 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_index_tensor_count,
 }
 import gunbc.spark.v41_engram_row_store {
-  V41RowStoreEncodingSpec, V41TensorSlice, V41SourceRow, V41TransformFaithful, V41TransformUnfaithful,
+  V41RowStoreEncodingSpec, V41TensorSlice, V41SourceRow, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
   v41_row_geometry, v41_row_store_format_revision, v41_row_store_endianness, v41_row_store_row_order,
   v41_row_store_partition_rule, v41_row_store_alignment_bytes, v41_row_store_rank_count,
-  v41_transform, v41_encoding_spec_key, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished,
+  v41_transform_fixture, v41_published_transform_standing, v41_encoding_spec_key, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished,
   V41RowStoreEncodingRefused, v41_wrong_encoding_refuses, v41_sample_agrees, v41_rank_digest_of,
 }
 import gunbc.spark.v41_runtime_realized {
@@ -143,13 +143,14 @@ fn w_source() -> List<V41SourceRow> {
 }
 
 fn w_identified() -> V41RowStoreEncodingIdentified? {
-  match v41_transform(source: w_source(), spec: w_tiny_spec()) {
-    V41TransformFaithful { placed: _, encoding: e } => match e {
+  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: e } => match e {
       V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
         Present { value: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } }
       V41RowStoreEncodingUnestablished { obligation: _ } => none
       V41RowStoreEncodingRefused { defects: _ } => none
     }
+    V41PublishedTransformUnestablished { obligation: _ } => none
     V41TransformUnfaithful { defects: _ } => none
   }
 }
@@ -233,26 +234,36 @@ test fn control_incomplete_manifests_stay_unestablished() -> Bool {
 }
 
 test fn control_wrong_row_store_encoding_or_range_refuses_faithfulness() -> Bool {
-  match v41_transform(source: w_source(), spec: w_tiny_spec()) {
-    V41TransformFaithful { placed: placed, encoding: _ } =>
-      v41_sample_agrees(placed: placed, tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: 3, payload: "r3" as NonEmptyStr)
+  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
+    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: _ } =>
+      (sub.row_count == 8)
+        && (sub.how as String).contains("not the published")
+        && v41_sample_agrees(placed: placed, tensor: "layers.1.engram.embed.weight" as NonEmptyStr, global_row: 3, payload: "r3" as NonEmptyStr)
         && v41_wrong_encoding_refuses(source: w_source(), spec: w_tiny_spec(), tamper: "NOT-THE-SOURCE" as NonEmptyStr)
         && length(placed) == 8
+    V41PublishedTransformUnestablished { obligation: _ } => false
     V41TransformUnfaithful { defects: _ } => false
   }
 }
 
-test fn the_whole_population_is_the_witness_and_a_new_physical_encoding_has_its_own_digest() -> Bool {
-  match v41_transform(source: w_source(), spec: w_tiny_spec()) {
-    V41TransformFaithful { placed: placed, encoding: e } => match e {
+test fn fixture_correspondence_does_not_establish_the_published_shards() -> Bool {
+  match v41_transform_fixture(source: w_source(), spec: w_tiny_spec()) {
+    V41FixtureCorrespondenceHolds { subject: sub, placed: placed, encoding: e } => match e {
       V41RowStoreEncodingIdentified { spec: spec, spec_key: sk, rank_stores: rs, content_digest: d } =>
         length(placed) == 8
+          && sub.row_count == 8
           && length(rs) == 4
           && serialize_content_hash(hash: sk) as String != serialize_content_hash(hash: d) as String
           && (spec.component.decl_name as String) == "deepseek_v4_1_engram_component"
+          && match v41_published_transform_standing() {
+            V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("published Engram shards")
+            V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+            V41TransformUnfaithful { defects: _ } => false
+          }
       V41RowStoreEncodingUnestablished { obligation: _ } => false
       V41RowStoreEncodingRefused { defects: _ } => false
     }
+    V41PublishedTransformUnestablished { obligation: _ } => false
     V41TransformUnfaithful { defects: _ } => false
   }
 }

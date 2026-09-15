@@ -171,11 +171,9 @@ fn nat_ranks(n: Nat) -> List<Nat> {
   if n == 0 { [] as List<Nat> } else { concat(nat_ranks(n: n - 1), [n - 1]) }
 }
 
-// ── THE TRANSFORM: EVERY SOURCE ELEMENT TO EXACTLY ONE RANK CELL ───────────────────────────────
-//
-// There is no quantization change. Faithfulness is a complete correspondence, not a sample: each
-// admitted source row maps to exactly one rank, exactly one local row, the declared dtypes, and an
-// offset, and that placement is included in that rank's independently recomputed digest.
+// THE TRANSFORM: EVERY SOURCE ELEMENT TO EXACTLY ONE RANK CELL, ON THE SOURCE THAT WAS SUPPLIED.
+// There is no quantization change. Correspondence is complete for that source, not sampled. The
+// published shards are a different subject: v41_published_transform_standing stays Unestablished.
 type V41SourceRow sole_constructor {
   tensor: NonEmptyStr
   global_row: Nat
@@ -211,11 +209,20 @@ fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec, prior_on_rank
   }
 }
 
+// CORRESPONDENCE IS SCOPED TO THE SOURCE LIST THAT WAS SUPPLIED. A green result over eight fixture
+// rows is not a reading of the published 384006168- and 384016682-row tables. The published arm has
+// no constructor that can mint correspondence: it is Unestablished until those shard bytes are the source.
+type V41TransformSubject
+  = V41FixtureRows { row_count: Nat, how: NonEmptyStr }
+  | V41PublishedEngramShards
+
 type V41TransformResult
-  = V41TransformFaithful {
+  = V41FixtureCorrespondenceHolds {
+      subject: V41FixtureRows
       placed: List<V41PlacedRow>
       encoding: V41RowStoreEncoding
     }
+  | V41PublishedTransformUnestablished { obligation: NonEmptyStr }
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
 
 fn v41_count_on_rank_before(rows: List<V41SourceRow>, index: Nat, rank: Nat, rank_count: Nat) -> Nat {
@@ -258,7 +265,7 @@ fn v41_correspondence_defects(source: List<V41SourceRow>, placed: List<V41Placed
   concat(concat(concat(count_mismatch, lost), dup), wrong_rank)
 }
 
-fn v41_transform(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
+fn v41_transform_fixture(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41TransformResult {
   let placed = v41_place_all(rows: source, spec: spec)
   let defects = v41_correspondence_defects(source: source, placed: placed, spec: spec)
   if length(defects) != 0 {
@@ -267,7 +274,11 @@ fn v41_transform(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V
     let ranks = map(nat_ranks(n: spec.rank_count), k => V41RankStoreIdentity { rank: k, digest: v41_rank_digest(placed: placed, rank: k) })
     match v41_identify_row_store(spec: spec, rank_stores: ranks) {
       V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
-        V41TransformFaithful {
+        V41FixtureCorrespondenceHolds {
+          subject: V41FixtureRows {
+            row_count: length(source),
+            how: "supplied fixture rows; not the published Engram shard payloads" as NonEmptyStr,
+          },
           placed: placed,
           encoding: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d },
         }
@@ -277,8 +288,16 @@ fn v41_transform(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V
   }
 }
 
-// A SAMPLE IS A DIAGNOSTIC. It may not mint faithfulness. The witness is v41_transform over the
-// whole admitted source population for that run.
+data v41_published_transform_subject: V41TransformSubject = V41PublishedEngramShards
+
+fn v41_published_transform_standing() -> V41TransformResult {
+  V41PublishedTransformUnestablished {
+    obligation: "the published Engram shards (layers 1 and 14 embed weight+scale) have not been supplied as the transform source; a fixture correspondence is a different subject and does not discharge this" as NonEmptyStr,
+  }
+}
+
+// A SAMPLE IS A DIAGNOSTIC. It may not mint faithfulness. The witness for a FIXTURE run is
+// v41_transform_fixture over every supplied fixture row. It is not a witness of the published tables.
 fn v41_sample_agrees(placed: List<V41PlacedRow>, tensor: NonEmptyStr, global_row: Nat, payload: NonEmptyStr) -> Bool {
   any(placed, p => (p.tensor as String) == (tensor as String) && p.global_row == global_row && (p.payload as String) == (payload as String))
 }
@@ -306,12 +325,13 @@ fn v41_rank_digest_of(e: V41RowStoreEncoding, rank: Nat) -> ContentHash? {
 // WRONG RANGE OR WRONG ENCODING REFUSES FAITHFULNESS. A payload that is not the source byte, or a
 // spec whose geometry does not match the placed offsets, is Unfaithful.
 fn v41_wrong_encoding_refuses(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, tamper: NonEmptyStr) -> Bool {
-  match v41_transform(source: source, spec: spec) {
-    V41TransformFaithful { placed: placed, encoding: _ } =>
+  match v41_transform_fixture(source: source, spec: spec) {
+    V41FixtureCorrespondenceHolds { subject: _, placed: placed, encoding: _ } =>
       !v41_sample_agrees(placed: placed, tensor: (match source.first() {
         Present { value: s } => s.tensor
         Absent => "none" as NonEmptyStr
       }), global_row: 0, payload: tamper)
+    V41PublishedTransformUnestablished { obligation: _ } => false
     V41TransformUnfaithful { defects: _ } => true
   }
 }

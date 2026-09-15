@@ -140,7 +140,7 @@ test fn the_live_candidate_is_unestablished_and_names_every_missing_axis() -> Bo
       !any(o, x => (x as String).contains("no Engram storage-backed lookup patch"))
         && any(o, x => (x as String).contains("weight manifest"))
         && any(o, x => (x as String).contains("tokenizer"))
-        && any(o, x => (x as String).contains("row-store encoding"))
+        && any(o, x => (x as String).contains("published-shard row-store"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
   }

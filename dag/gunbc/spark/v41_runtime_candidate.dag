@@ -671,7 +671,7 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
     population: deepseek_v4_1_flash_engram_population,
-    row_store_encoding: V41ManifestUnestablished { obligation: "no rank-local Engram row-store encoding exists yet, so the materialized artifact has no identity" as NonEmptyStr },
+    row_store_encoding: V41ManifestUnestablished { obligation: "no published-shard row-store content digest exists; fixture correspondence over eight rows is a different subject and does not identify the materialized tables" as NonEmptyStr },
     route: engram_route_b_identity,
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
