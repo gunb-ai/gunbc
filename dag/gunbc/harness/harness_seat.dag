@@ -53,7 +53,10 @@ import gunbc.spark.serving_offer {
   SparkServingRoute,
   spark_serving_incarnation_unobserved_obligation,
 }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_declared_digest }
+import gunbc.spark.pair_serving_realization {
+  DeclaredUnitDigestStanding, SparkPairDeclaredUnitDigest,
+  spark_pair_declared_unit_digests, spark_pair_head_unit_declared_digest_among,
+}
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -500,14 +503,14 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
   }
 }
 
-fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding) -> SparkServingRoute {
+fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, declared_unit: DeclaredUnitDigestStanding) -> SparkServingRoute {
   spark_serving_route_standing(
     realization: harness_serving_realization(group: group, launch: launch, readback: readback),
-    declared_unit: spark_pair_head_unit_declared_digest(group: group),
+    declared_unit: declared_unit,
   )
 }
 
-fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs) -> HarnessCandidates {
+fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, requirement: ServingModelRequirement, seats: Nat, now: EpochSecs, declared_unit: DeclaredUnitDigestStanding) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
     executor: fabric_group_wire(g: group),
@@ -517,7 +520,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     isolation: serving_isolation_profile(),
     seats: seats as Int,
     availability: availability,
-    route: harness_serving_route(group: group, launch: launch, readback: readback),
+    route: harness_serving_route(group: group, launch: launch, readback: readback, declared_unit: declared_unit),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
@@ -549,7 +552,7 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, declared_units: List<SparkPairDeclaredUnitDigest>) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -580,7 +583,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now)
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, declared_units: declared_units)
           }
       }
     }
@@ -605,6 +608,7 @@ fn harness_candidate_from_standing(
   route_ceiling: ServingRouteTurnCeiling,
   layout: EventLogLayout,
   now: EpochSecs,
+  declared_units: List<SparkPairDeclaredUnitDigest>,
 ) -> HarnessCandidates {
           match standing {
             HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
@@ -620,7 +624,7 @@ fn harness_candidate_from_standing(
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-                  layout: layout, now: now,
+                  layout: layout, now: now, declared_units: declared_units,
                 )
               }
             HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -647,6 +651,7 @@ fn harness_add_serving_candidate(
   seats: Nat,
   layout: EventLogLayout,
   now: EpochSecs,
+  declared_units: List<SparkPairDeclaredUnitDigest>,
 ) -> HarnessCandidates {
   let group = endpoint.group
   let admission = serving_group_admission(
@@ -659,7 +664,7 @@ fn harness_add_serving_candidate(
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now)
+      harness_bind_candidate(acc: acc, group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, requirement: requirement, seats: seats, now: now, declared_unit: spark_pair_head_unit_declared_digest_among(roster: declared_units, group: group))
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
     InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
@@ -690,8 +695,9 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
 fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, layout: EventLogLayout, now: EpochSecs, excluded: List<String>) -> HarnessCandidates {
+  let declared_units = spark_pair_declared_unit_digests()
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now))
+    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, layout: layout, now: now, declared_units: declared_units))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
