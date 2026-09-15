@@ -140,6 +140,8 @@ test fn roadmap_receipt_continuity_acceptance_contract_holds() -> Bool {
     && witness_unreadable_merge_base_carrier_parse_refuses_prior_observation()
     && witness_missing_carrier_prevents_silent_empty_authority_projection()
     && witness_dispatch_never_presents_empty_frontier_on_authority_refusal()
+    && witness_unreplayable_history_refuses_receipts_projection()
+    && witness_replayable_empty_live_set_still_projects_affirmatively()
 }
 
 test fn witness_fixture_history_loads_with_nonempty_live_set() -> Bool {
@@ -474,4 +476,64 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
       }
       RoadmapAuthorityProjectionRefused { detail: _ } => false
     }
+}
+
+// A receipt built here rather than projected from the carrier fixture, so the discriminating pair
+// below does not rest on a fixture whose load state it is not testing.
+fn standalone_receipt() -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: nid(s: "namespace-occurrence-transport"),
+    criteria_digest: content_hash_atom(value: "replay-discriminator" as NonEmptyStr),
+    red_control: RedControlExecuted {
+      witness_module: "test.claim.roadmap_receipt_continuity_acceptance",
+      witness_fn: "witness_unreplayable_history_refuses_receipts_projection",
+      executed_on: "2026-09-14",
+    },
+    handback: HandbackDelivered {
+      first_artifact: "dag/gunbc/roadmap/roadmap_model.dag",
+      further_artifacts: [],
+    },
+    accepted_by: "operator",
+    accepted_on: "2026-09-14",
+  }
+}
+
+// A lone revocation naming a receipt no earlier event recorded: replay cannot apply it.
+fn unreplayable_history() -> List<RoadmapAcceptanceEvent> {
+  [exact_revocation_for(receipt: standalone_receipt())]
+}
+
+// The same receipt recorded and then exactly revoked: replay succeeds and the live set is empty.
+fn replayable_empty_live_history() -> List<RoadmapAcceptanceEvent> {
+  let receipt = standalone_receipt()
+  [AcceptanceRecorded { receipt: receipt }, exact_revocation_for(receipt: receipt)]
+}
+
+// THE DISCRIMINATING PAIR: both histories yield an empty live list under the pre-repair producer.
+// Asserted through acceptance_receipts_projection_from_events, the single arm both authority
+// wrappers call.
+test fn witness_unreplayable_history_refuses_receipts_projection() -> Bool {
+  match project_live_acceptance_receipts(history: unreplayable_history()) {
+    LiveAcceptanceReceiptsReplayed { live: _ } => false
+    LiveAcceptanceReceiptsReplayRefused =>
+      match acceptance_receipts_projection_from_events(events: unreplayable_history()) {
+        RoadmapAcceptanceReceiptsProjected { receipts: _ } => false
+        RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+          string_contains(s: detail, pattern: "replay refused")
+      }
+  }
+}
+
+test fn witness_replayable_empty_live_set_still_projects_affirmatively() -> Bool {
+  match project_live_acceptance_receipts(history: replayable_empty_live_history()) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } =>
+      count(live) == 0
+        && match acceptance_receipts_projection_from_events(
+          events: replayable_empty_live_history(),
+        ) {
+          RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+          RoadmapAcceptanceReceiptsProjected { receipts: receipts } => count(receipts) == 0
+        }
+  }
 }
